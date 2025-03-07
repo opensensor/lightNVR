@@ -34,6 +34,7 @@ typedef struct {
     void *headers;  // Implementation-specific headers structure
     void *body;
     uint64_t body_length;
+    bool needs_free;  // Flag to indicate if body needs to be freed
 } http_response_t;
 
 // Request handler function type
@@ -212,6 +213,9 @@ int set_response_header(http_response_t *response, const char *name, const char 
  */
 int get_web_server_stats(int *active_connections, double *requests_per_second, 
                         uint64_t *bytes_sent, uint64_t *bytes_received);
+
+
+int url_decode(const char *src, char *dst, size_t dst_size);
 
 
 static void *web_server_shutdown_monitor(void *arg);

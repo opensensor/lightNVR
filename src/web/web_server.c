@@ -17,6 +17,7 @@
 #include <sys/time.h>
 
 #include "../web/web_server.h"
+#include "../web/api_handlers.h"
 #include "../core/logger.h"
 #include "../core/config.h"
 #include "../database/database_manager.h"
@@ -160,7 +161,6 @@ static void send_response(int client_socket, const http_response_t *response);
 static void handle_static_file(const http_request_t *request, http_response_t *response);
 static const char *get_mime_type(const char *path);
 static const char *get_status_message(int status_code);
-static int url_decode(const char *src, char *dst, size_t dst_size);
 static void parse_query_string(const char *query_string, void *params);
 static int basic_auth_check(const http_request_t *request);
 static void handle_cors_preflight(const http_request_t *request, http_response_t *response);
@@ -229,6 +229,9 @@ int init_web_server(int port, const char *web_root) {
         web_server.running = 0;
         return -1;
     }
+    
+    // Register API handlers
+    register_api_handlers();
     
     log_info("Web server started on port %d", port);
     return 0;
@@ -754,6 +757,17 @@ static void *server_thread_func(void *arg) {
     return NULL;
 }
 
+int path_matches(const char *pattern, const char *path) {
+    // Special case: if pattern ends with "/*", it matches any path that starts with the prefix
+    size_t pattern_len = strlen(pattern);
+    if (pattern_len >= 2 && pattern[pattern_len-2] == '/' && pattern[pattern_len-1] == '*') {
+        return strncmp(pattern, path, pattern_len-1) == 0;
+    }
+
+    // Otherwise, exact match
+    return strcmp(pattern, path) == 0;
+}
+
 // Handle a client connection
 static void handle_client(int client_socket) {
     // Set socket timeout
@@ -834,7 +848,7 @@ static void handle_client(int client_socket) {
     
     pthread_mutex_lock(&web_server.mutex);
     for (int i = 0; i < web_server.handler_count; i++) {
-        if (strcmp(web_server.handlers[i].path, request.path) == 0) {
+        if (path_matches(web_server.handlers[i].path, request.path)) {
             if (web_server.handlers[i].method[0] == '\0' || 
                 (request.method == HTTP_GET && strcmp(web_server.handlers[i].method, "GET") == 0) ||
                 (request.method == HTTP_POST && strcmp(web_server.handlers[i].method, "POST") == 0) ||
@@ -891,32 +905,45 @@ static void handle_client(int client_socket) {
 static int parse_request(int client_socket, http_request_t *request) {
     char buffer[REQUEST_BUFFER_SIZE];
     ssize_t bytes_read;
-    
+
+    // Initialize request
+    memset(request, 0, sizeof(http_request_t));
+
     // Read request line and headers
     bytes_read = recv(client_socket, buffer, sizeof(buffer) - 1, 0);
     if (bytes_read <= 0) {
         log_error("Failed to read request: %s", strerror(errno));
         return -1;
     }
-    
+
     buffer[bytes_read] = '\0';
-    
-    // Parse request line
-    char *line = strtok(buffer, "\r\n");
-    if (!line) {
-        log_error("Invalid request format");
+
+    // Make a working copy of the buffer
+    char *buffer_copy = strdup(buffer);
+    if (!buffer_copy) {
+        log_error("Failed to allocate memory for request parsing");
         return -1;
     }
-    
+
+    // Parse request line
+    char *saveptr;
+    char *line = strtok_r(buffer_copy, "\r\n", &saveptr);
+    if (!line) {
+        log_error("Invalid request format");
+        free(buffer_copy);
+        return -1;
+    }
+
     char method[16];
     char path[256];
     char version[16];
-    
+
     if (sscanf(line, "%15s %255s %15s", method, path, version) != 3) {
         log_error("Invalid request line: %s", line);
+        free(buffer_copy);
         return -1;
     }
-    
+
     // Set request method
     if (strcmp(method, "GET") == 0) {
         request->method = HTTP_GET;
@@ -930,9 +957,10 @@ static int parse_request(int client_socket, http_request_t *request) {
         request->method = HTTP_OPTIONS;
     } else {
         log_error("Unsupported method: %s", method);
+        free(buffer_copy);
         return -1;
     }
-    
+
     // Parse path and query string
     char *query = strchr(path, '?');
     if (query) {
@@ -940,37 +968,80 @@ static int parse_request(int client_socket, http_request_t *request) {
         strncpy(request->query_string, query + 1, sizeof(request->query_string) - 1);
         request->query_string[sizeof(request->query_string) - 1] = '\0';
     }
-    
+
     // URL decode path
     char decoded_path[256];
     url_decode(path, decoded_path, sizeof(decoded_path));
     strncpy(request->path, decoded_path, sizeof(request->path) - 1);
     request->path[sizeof(request->path) - 1] = '\0';
-    
-    // Parse headers
-    while ((line = strtok(NULL, "\r\n")) != NULL && *line) {
-        char name[128];
-        char value[1024];
-        
-        if (sscanf(line, "%127[^:]: %1023[^\r\n]", name, value) != 2) {
-            continue;
+
+    // Parse headers - directly search for each header in the original buffer
+    // Check for Content-Type
+    char *content_type = strcasestr(buffer, "Content-Type:");
+    if (content_type) {
+        content_type += 13; // Skip "Content-Type:"
+        while (*content_type == ' ') content_type++; // Skip spaces
+
+        char *end = strstr(content_type, "\r\n");
+        if (end) {
+            size_t len = end - content_type;
+            if (len < sizeof(request->content_type)) {
+                strncpy(request->content_type, content_type, len);
+                request->content_type[len] = '\0';
+            } else {
+                strncpy(request->content_type, content_type, sizeof(request->content_type) - 1);
+                request->content_type[sizeof(request->content_type) - 1] = '\0';
+            }
         }
-        
-        // Process specific headers
-        if (strcasecmp(name, "Content-Type") == 0) {
-            strncpy(request->content_type, value, sizeof(request->content_type) - 1);
-            request->content_type[sizeof(request->content_type) - 1] = '\0';
-        } else if (strcasecmp(name, "Content-Length") == 0) {
-            request->content_length = strtoull(value, NULL, 10);
-        } else if (strcasecmp(name, "User-Agent") == 0) {
-            strncpy(request->user_agent, value, sizeof(request->user_agent) - 1);
-            request->user_agent[sizeof(request->user_agent) - 1] = '\0';
-        }
-        
-        // In a real implementation, we would add all headers to the headers structure
     }
-    
-    // Read request body if present
+
+    // Check for Content-Length
+    char *content_length = strcasestr(buffer, "Content-Length:");
+    if (content_length) {
+        content_length += 15; // Skip "Content-Length:"
+        while (*content_length == ' ') content_length++; // Skip spaces
+
+        request->content_length = strtoull(content_length, NULL, 10);
+    }
+
+    // Check for User-Agent
+    char *user_agent = strcasestr(buffer, "User-Agent:");
+    if (user_agent) {
+        user_agent += 11; // Skip "User-Agent:"
+        while (*user_agent == ' ') user_agent++; // Skip spaces
+
+        char *end = strstr(user_agent, "\r\n");
+        if (end) {
+            size_t len = end - user_agent;
+            if (len < sizeof(request->user_agent)) {
+                strncpy(request->user_agent, user_agent, len);
+                request->user_agent[len] = '\0';
+            } else {
+                strncpy(request->user_agent, user_agent, sizeof(request->user_agent) - 1);
+                request->user_agent[sizeof(request->user_agent) - 1] = '\0';
+            }
+        }
+    }
+
+    free(buffer_copy);
+
+    // Find the end of headers to locate the body
+    char *body_start = strstr(buffer, "\r\n\r\n");
+    if (!body_start) {
+        // Try alternative line endings
+        body_start = strstr(buffer, "\n\n");
+        if (!body_start) {
+            log_warn("Invalid request format: could not find end of headers. Using simplified parsing.");
+            // In this case, we'll make a best effort to parse
+            body_start = NULL;
+        } else {
+            body_start += 2; // Skip "\n\n"
+        }
+    } else {
+        body_start += 4; // Skip "\r\n\r\n"
+    }
+
+    // Read request body if present and content length is specified
     if (request->content_length > 0) {
         // Allocate memory for body
         request->body = malloc(request->content_length + 1);
@@ -978,31 +1049,41 @@ static int parse_request(int client_socket, http_request_t *request) {
             log_error("Failed to allocate memory for request body");
             return -1;
         }
-        
-        // Calculate how much of the body we've already read
-        size_t header_size = bytes_read - (buffer + bytes_read - strstr(buffer, "\r\n\r\n") - 4);
+
         size_t body_bytes_read = 0;
-        
-        if (header_size < bytes_read) {
-            body_bytes_read = bytes_read - header_size;
-            memcpy(request->body, buffer + header_size, body_bytes_read);
-        }
-        
-        // Read the rest of the body
-        while (body_bytes_read < request->content_length) {
-            bytes_read = recv(client_socket, (char *)request->body + body_bytes_read, 
-                             request->content_length - body_bytes_read, 0);
-            
-            if (bytes_read <= 0) {
-                log_error("Failed to read request body: %s", strerror(errno));
-                free(request->body);
-                request->body = NULL;
-                return -1;
+
+        // If we found body_start, copy the part we already have
+        if (body_start) {
+            size_t header_size = body_start - buffer;
+            if (header_size < bytes_read) {
+                body_bytes_read = bytes_read - header_size;
+                if (body_bytes_read > request->content_length) {
+                    body_bytes_read = request->content_length;
+                }
+                memcpy(request->body, body_start, body_bytes_read);
             }
-            
+        }
+
+        // Read the rest of the body if needed
+        while (body_bytes_read < request->content_length) {
+            bytes_read = recv(client_socket, (char *)request->body + body_bytes_read,
+                             request->content_length - body_bytes_read, 0);
+
+            if (bytes_read <= 0) {
+                if (bytes_read == 0 || (errno != EAGAIN && errno != EWOULDBLOCK)) {
+                    log_error("Failed to read request body: %s", strerror(errno));
+                    free(request->body);
+                    request->body = NULL;
+                    return -1;
+                }
+                // Socket would block, try again after a small delay
+                usleep(1000); // 1ms delay
+                continue;
+            }
+
             body_bytes_read += bytes_read;
         }
-        
+
         // Null-terminate the body (for text bodies)
         ((char *)request->body)[request->content_length] = '\0';
     }
@@ -1108,7 +1189,7 @@ static const char *get_status_message(int status_code) {
 }
 
 // URL decode a string
-static int url_decode(const char *src, char *dst, size_t dst_size) {
+int url_decode(const char *src, char *dst, size_t dst_size) {
     size_t src_len = strlen(src);
     size_t i, j = 0;
     
