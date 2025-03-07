@@ -821,7 +821,7 @@ void handle_streaming_request(const http_request_t *request, http_response_t *re
     }
 
     // Check if this is an HLS segment request
-    if (strstr(request->path, "/hls/segment_") && strstr(request->path, ".ts")) {
+    if (strstr(request->path, "/hls/index") && strstr(request->path, ".ts")) {
         handle_hls_segment(request, response);
         return;
     }
