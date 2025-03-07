@@ -71,6 +71,3 @@ Makefile
 
 # Swap files
 /swap
-
-# Core dumps
-core
