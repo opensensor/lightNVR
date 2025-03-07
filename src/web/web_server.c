@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,13 +18,13 @@
 #include <ctype.h>
 #include <sys/time.h>
 
-#include "../web/web_server.h"
-#include "../web/api_handlers.h"
-#include "../core/logger.h"
-#include "../core/config.h"
-#include "../database/database_manager.h"
-#include "../video/stream_manager.h"
-#include "../storage/storage_manager.h"
+#include "web/web_server.h"
+#include "web/api_handlers.h"
+#include "core/logger.h"
+#include "core/config.h"
+#include "database/database_manager.h"
+#include "video/stream_manager.h"
+#include "storage/storage_manager.h"
 
 // Maximum number of pending connections
 #define MAX_PENDING 20

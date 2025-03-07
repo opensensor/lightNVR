@@ -10,7 +10,7 @@
 #include <errno.h>
 #include <libgen.h>
 
-#include "../core/logger.h"
+#include "core/logger.h"
 
 // Logger state
 static struct {

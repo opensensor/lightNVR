@@ -7,8 +7,8 @@
 #include <libavutil/avutil.h>
 #include <libavutil/time.h>
 
-#include "../../include/core/logger.h"
-#include "../../include/video/hls_writer.h"
+#include "core/logger.h"
+#include "video/hls_writer.h"
 
 /**
  * Create new HLS writer

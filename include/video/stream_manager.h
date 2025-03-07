@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "../core/config.h"
+#include "core/config.h"
 
 // Stream status enum
 typedef enum {
