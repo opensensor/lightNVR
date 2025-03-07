@@ -1,0 +1,76 @@
+# Build directories
+/build/
+/bin/
+/lib/
+/obj/
+
+# Generated files
+/include/core/version.h
+
+# Compiled Object files
+*.o
+*.obj
+*.lo
+*.slo
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Compiled Static libraries
+*.a
+*.la
+*.lai
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+/lightnvr
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Dependency directories
+/deps/
+
+# Log files
+*.log
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Configuration files with sensitive information
+# Keep the default config but ignore user configs
+/lightnvr.conf
+/config/lightnvr.conf
+
+# Recording files
+/recordings/
+
+# Swap files
+/swap
+
+# Core dumps
+core
