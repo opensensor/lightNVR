@@ -24,7 +24,7 @@ LightNVR provides a lightweight yet powerful solution for recording and managing
 
 ## System Requirements
 
-- **Processor**: Ingenic A1 SoC or similar low-power ARM processor
+- **Processor**: Ingenic A1 SoC or similar low-power MIPS processor
 - **Memory**: 256MB RAM minimum
 - **Storage**: External SSD via USB/SATA
 - **Network**: Ethernet connection
