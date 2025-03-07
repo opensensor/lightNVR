@@ -9,14 +9,14 @@
 #include <fcntl.h>
 #include <errno.h>
 
-#include "version.h"
-#include "config.h"
-#include "logger.h"
-#include "stream_manager.h"
-#include "storage_manager.h"
-#include "database_manager.h"
-#include "web_server.h"
-#include "../../include/video/streams.h"
+#include "core/version.h"
+#include "core/config.h"
+#include "core/logger.h"
+#include "video/stream_manager.h"
+#include "storage/storage_manager.h"
+#include "database/database_manager.h"
+#include "web/web_server.h"
+#include "video/streams.h"
 
 // Global flag for graceful shutdown
 static volatile bool running = true;

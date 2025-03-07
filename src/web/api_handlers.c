@@ -5,12 +5,12 @@
 #include <ctype.h>
 #include <time.h>
 
-#include "../../include/web/web_server.h"
-#include "../../include/web/api_handlers.h"
-#include "../../include/core/config.h"
-#include "../../include/core/logger.h"
-#include "../../include/video/stream_manager.h"
-#include "../../include/video/streams.h"
+#include "web/web_server.h"
+#include "web/api_handlers.h"
+#include "core/config.h"
+#include "core/logger.h"
+#include "video/stream_manager.h"
+#include "video/streams.h"
 
 #define LIGHTNVR_VERSION_STRING "0.1.0"
 

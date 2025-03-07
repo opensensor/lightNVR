@@ -10,8 +10,8 @@
 #include <errno.h>
 #include <libgen.h>
 
-#include "../database/database_manager.h"
-#include "../core/logger.h"
+#include "database/database_manager.h"
+#include "core/logger.h"
 
 // Database handle
 static sqlite3 *db = NULL;

@@ -5,9 +5,9 @@
 #include <unistd.h>
 #include <time.h>
 
-#include "../../include/video/stream_manager.h"
-#include "../../include/core/logger.h"
-#include "../../include/storage/storage_manager.h"
+#include "video/stream_manager.h"
+#include "core/logger.h"
+#include "storage/storage_manager.h"
 
 // Stream handle structure
 struct stream_handle_s {

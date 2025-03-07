@@ -8,8 +8,8 @@
 #include <unistd.h>
 #include <errno.h>
 
-#include "../../include/storage/storage_manager.h"
-#include "../../include/core/logger.h"
+#include "storage/storage_manager.h"
+#include "core/logger.h"
 
 // Storage manager state
 static struct {

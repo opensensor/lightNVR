@@ -11,11 +11,11 @@
 #include <libavutil/avutil.h>
 #include <libavutil/time.h>
 
-#include "../../include/web/web_server.h"
-#include "../../include/core/logger.h"
-#include "../../include/core/config.h"
-#include "../../include/video/stream_manager.h"
-#include "../../include/video/hls_writer.h"
+#include "web/web_server.h"
+#include "core/logger.h"
+#include "core/config.h"
+#include "video/stream_manager.h"
+#include "video/hls_writer.h"
 
 #define LIGHTNVR_VERSION_STRING "0.1.0"
 

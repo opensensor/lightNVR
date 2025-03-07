@@ -12,13 +12,8 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -ffunction-sections -fdata-sections 
 
 # Include directories
 include_directories(
+    ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/core
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/video
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/storage
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/web
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/database
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/utils
 )
 
 # Find required packages
