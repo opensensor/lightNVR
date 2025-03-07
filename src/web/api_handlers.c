@@ -22,10 +22,9 @@ static config_t* get_current_config(void);
 
 // Helper function to get current configuration
 static config_t* get_current_config(void) {
-    // For now, just initialize a default configuration
-    // In a real implementation, this would get the actual global configuration
-    load_default_config(&local_config);
-    return &local_config;
+    // This should return a reference to the actual global config
+    extern config_t global_config;  // Declared in streams.c
+    return &global_config;
 }
 
 // Helper function to create a simple JSON string
@@ -351,23 +350,23 @@ void handle_get_stream(const http_request_t *request, http_response_t *response)
 void handle_post_stream(const http_request_t *request, http_response_t *response) {
     // Copy current config settings from global config
     memcpy(&local_config, get_current_config(), sizeof(config_t));
-    
+
     // Ensure we have a request body
     if (!request->body || request->content_length == 0) {
         create_json_response(response, 400, "{\"error\": \"Empty request body\"}");
         return;
     }
-    
+
     // Make a null-terminated copy of the request body
     char *json = malloc(request->content_length + 1);
     if (!json) {
         create_json_response(response, 500, "{\"error\": \"Memory allocation failed\"}");
         return;
     }
-    
+
     memcpy(json, request->body, request->content_length);
     json[request->content_length] = '\0';
-    
+
     // Parse JSON into stream configuration
     stream_config_t config;
     if (parse_stream_json(json, &config) != 0) {
@@ -375,22 +374,22 @@ void handle_post_stream(const http_request_t *request, http_response_t *response
         create_json_response(response, 400, "{\"error\": \"Invalid stream configuration\"}");
         return;
     }
-    
+
     free(json);
-    
+
     // Check if stream already exists
     if (get_stream_by_name(config.name) != NULL) {
         create_json_response(response, 409, "{\"error\": \"Stream with this name already exists\"}");
         return;
     }
-    
+
     // Add the stream
     stream_handle_t stream = add_stream(&config);
     if (!stream) {
         create_json_response(response, 500, "{\"error\": \"Failed to add stream\"}");
         return;
     }
-    
+
     // Start the stream if enabled
     if (config.enabled) {
         if (start_stream(stream) != 0) {
@@ -398,18 +397,34 @@ void handle_post_stream(const http_request_t *request, http_response_t *response
             // Continue anyway, the stream is added
         }
     }
-    
+
+    // Add the stream to local_config.streams
+    bool stream_added_to_config = false;
+    for (int i = 0; i < local_config.max_streams; i++) {
+        if (local_config.streams[i].name[0] == '\0') {
+            // Found an empty slot
+            memcpy(&local_config.streams[i], &config, sizeof(stream_config_t));
+            log_info("Added stream '%s' to configuration at index %d", config.name, i);
+            stream_added_to_config = true;
+            break;
+        }
+    }
+
+    if (!stream_added_to_config) {
+        log_warn("Couldn't find empty slot in config for stream '%s'", config.name);
+    }
+
     // Save configuration to ensure the new stream is persisted
     if (save_config(&local_config, "/etc/lightnvr/lightnvr.conf") != 0) {
         log_warn("Failed to save configuration after adding stream");
         // Continue anyway, the stream is added
     }
-    
+
     // Create success response
     char response_json[256];
     snprintf(response_json, sizeof(response_json), "{\"success\": true, \"name\": \"%s\"}", config.name);
     create_json_response(response, 201, response_json);
-    
+
     log_info("Stream added: %s", config.name);
 }
 
@@ -419,7 +434,7 @@ void handle_post_stream(const http_request_t *request, http_response_t *response
 void handle_put_stream(const http_request_t *request, http_response_t *response) {
     // Copy current config settings from global config
     memcpy(&local_config, get_current_config(), sizeof(config_t));
-    
+
     // Extract stream name from the URL
     // URL format: /api/streams/{stream_name}
     const char *stream_name = strrchr(request->path, '/');
@@ -427,33 +442,33 @@ void handle_put_stream(const http_request_t *request, http_response_t *response)
         create_json_response(response, 400, "{\"error\": \"Invalid stream name\"}");
         return;
     }
-    
+
     // Skip the '/'
     stream_name++;
-    
+
     // Find the stream
     stream_handle_t stream = get_stream_by_name(stream_name);
     if (!stream) {
         create_json_response(response, 404, "{\"error\": \"Stream not found\"}");
         return;
     }
-    
+
     // Ensure we have a request body
     if (!request->body || request->content_length == 0) {
         create_json_response(response, 400, "{\"error\": \"Empty request body\"}");
         return;
     }
-    
+
     // Make a null-terminated copy of the request body
     char *json = malloc(request->content_length + 1);
     if (!json) {
         create_json_response(response, 500, "{\"error\": \"Memory allocation failed\"}");
         return;
     }
-    
+
     memcpy(json, request->body, request->content_length);
     json[request->content_length] = '\0';
-    
+
     // Parse JSON into stream configuration
     stream_config_t config;
     if (parse_stream_json(json, &config) != 0) {
@@ -461,18 +476,18 @@ void handle_put_stream(const http_request_t *request, http_response_t *response)
         create_json_response(response, 400, "{\"error\": \"Invalid stream configuration\"}");
         return;
     }
-    
+
     free(json);
-    
+
     // Ensure the stream name in the URL matches the one in the body
     if (strcmp(stream_name, config.name) != 0) {
         create_json_response(response, 400, "{\"error\": \"Stream name in URL does not match the one in the body\"}");
         return;
     }
-    
+
     // Get current stream status
     stream_status_t current_status = get_stream_status(stream);
-    
+
     // Stop the stream if it's running
     if (current_status == STREAM_STATUS_RUNNING || current_status == STREAM_STATUS_STARTING) {
         if (stop_stream(stream) != 0) {
@@ -480,18 +495,46 @@ void handle_put_stream(const http_request_t *request, http_response_t *response)
             // Continue anyway, we'll try to update
         }
     }
-    
+
     // Update the stream configuration
     if (update_stream_config(stream, &config) != 0) {
         create_json_response(response, 500, "{\"error\": \"Failed to update stream configuration\"}");
         return;
     }
-    
+
     // Start the stream if enabled
     if (config.enabled) {
         if (start_stream(stream) != 0) {
             log_warn("Failed to start stream: %s", config.name);
             // Continue anyway, the configuration is updated
+        }
+    }
+
+    // Update the stream in local_config.streams
+    bool stream_updated_in_config = false;
+    for (int i = 0; i < local_config.max_streams; i++) {
+        if (strcmp(local_config.streams[i].name, stream_name) == 0) {
+            // Found the stream in config
+            memcpy(&local_config.streams[i], &config, sizeof(stream_config_t));
+            log_info("Updated stream '%s' in configuration at index %d", config.name, i);
+            stream_updated_in_config = true;
+            break;
+        }
+    }
+
+    if (!stream_updated_in_config) {
+        // If we didn't find the stream in config (shouldn't happen normally), try to add it
+        for (int i = 0; i < local_config.max_streams; i++) {
+            if (local_config.streams[i].name[0] == '\0') {
+                memcpy(&local_config.streams[i], &config, sizeof(stream_config_t));
+                log_info("Added missing stream '%s' to configuration at index %d", config.name, i);
+                stream_updated_in_config = true;
+                break;
+            }
+        }
+
+        if (!stream_updated_in_config) {
+            log_warn("Couldn't find stream '%s' or empty slot in config", stream_name);
         }
     }
     
@@ -515,7 +558,7 @@ void handle_put_stream(const http_request_t *request, http_response_t *response)
 void handle_delete_stream(const http_request_t *request, http_response_t *response) {
     // Copy current config settings from global config
     memcpy(&local_config, get_current_config(), sizeof(config_t));
-    
+
     // Extract stream name from the URL
     // URL format: /api/streams/{stream_name}
     const char *stream_name = strrchr(request->path, '/');
@@ -523,26 +566,42 @@ void handle_delete_stream(const http_request_t *request, http_response_t *respon
         create_json_response(response, 400, "{\"error\": \"Invalid stream name\"}");
         return;
     }
-    
+
     // Skip the '/'
     stream_name++;
-    
+
     // Find the stream
     stream_handle_t stream = get_stream_by_name(stream_name);
     if (!stream) {
         create_json_response(response, 404, "{\"error\": \"Stream not found\"}");
         return;
     }
-    
+
     // Stop and remove the stream
     if (stop_stream(stream) != 0) {
         log_warn("Failed to stop stream: %s", stream_name);
         // Continue anyway, we'll try to remove it
     }
-    
+
     if (remove_stream(stream) != 0) {
         create_json_response(response, 500, "{\"error\": \"Failed to remove stream\"}");
         return;
+    }
+
+    // Remove the stream from local_config.streams
+    bool stream_removed_from_config = false;
+    for (int i = 0; i < local_config.max_streams; i++) {
+        if (strcmp(local_config.streams[i].name, stream_name) == 0) {
+            // Found the stream in config, clear it
+            memset(&local_config.streams[i], 0, sizeof(stream_config_t));
+            log_info("Removed stream '%s' from configuration at index %d", stream_name, i);
+            stream_removed_from_config = true;
+            break;
+        }
+    }
+
+    if (!stream_removed_from_config) {
+        log_warn("Couldn't find stream '%s' in config to remove", stream_name);
     }
     
     // Save configuration to ensure the changes are persisted

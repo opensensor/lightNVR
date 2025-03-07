@@ -131,45 +131,19 @@ stream_handle_t add_stream(const stream_config_t *config) {
     stream_manager.total_streams++;
     
     pthread_mutex_unlock(&stream_manager.mutex);
+
+    // After successfully adding the stream, update global config
+    extern config_t global_config;
+    for (int i = 0; i < global_config.max_streams; i++) {
+        if (global_config.streams[i].name[0] == '\0') {
+            // Found an empty slot
+            memcpy(&global_config.streams[i], config, sizeof(stream_config_t));
+            break;
+        }
+    }
     
     log_info("Added stream: %s", config->name);
     return &stream_manager.streams[slot];
-}
-
-// Remove a stream
-int remove_stream(stream_handle_t handle) {
-    if (!handle) {
-        return -1;
-    }
-    
-    pthread_mutex_lock(&stream_manager.mutex);
-    
-    // Check if stream is valid
-    int slot = handle->id - 1;
-    if (slot < 0 || slot >= stream_manager.max_streams || stream_manager.streams[slot].id == 0) {
-        pthread_mutex_unlock(&stream_manager.mutex);
-        return -1;
-    }
-    
-    // Stop stream if running
-    if (stream_manager.streams[slot].thread_running) {
-        // Signal thread to stop
-        stream_manager.streams[slot].thread_running = false;
-        
-        // Unlock mutex while waiting for thread to exit
-        pthread_mutex_unlock(&stream_manager.mutex);
-        pthread_join(stream_manager.streams[slot].thread, NULL);
-        pthread_mutex_lock(&stream_manager.mutex);
-    }
-    
-    // Clear stream
-    memset(&stream_manager.streams[slot], 0, sizeof(struct stream_handle_s));
-    
-    stream_manager.total_streams--;
-    
-    pthread_mutex_unlock(&stream_manager.mutex);
-    
-    return 0;
 }
 
 // Start a stream
@@ -225,13 +199,157 @@ int get_stream_config(stream_handle_t handle, stream_config_t *config) {
     return 0;
 }
 
+// In src/video/stream_manager.c
+
 // Update stream configuration
 int update_stream_config(stream_handle_t handle, const stream_config_t *config) {
     if (!handle || !config) {
+        log_error("Invalid parameters for update_stream_config");
         return -1;
     }
-    
+
+    pthread_mutex_lock(&stream_manager.mutex);
+
+    // Find the stream slot index
+    int slot = handle->id - 1;
+    if (slot < 0 || slot >= stream_manager.max_streams) {
+        log_error("Invalid stream handle in update_stream_config");
+        pthread_mutex_unlock(&stream_manager.mutex);
+        return -1;
+    }
+
+    // Store old name for comparison
+    char old_name[MAX_STREAM_NAME];
+    strncpy(old_name, handle->config.name, MAX_STREAM_NAME - 1);
+    old_name[MAX_STREAM_NAME - 1] = '\0';
+
+    // Update the stream configuration
     handle->config = *config;
+
+    // If the stream name changed, update any internal references
+    if (strcmp(old_name, config->name) != 0) {
+        log_info("Stream name changed from '%s' to '%s'", old_name, config->name);
+
+        // Update any internal mappings or references here if needed
+        // For example, if you maintain a name-to-stream map
+    }
+
+    pthread_mutex_unlock(&stream_manager.mutex);
+
+    // Update the global configuration to keep it in sync
+    extern config_t global_config;
+    bool config_updated = false;
+
+    // First look for the existing entry with the old name
+    for (int i = 0; i < global_config.max_streams; i++) {
+        if (strcmp(global_config.streams[i].name, old_name) == 0) {
+            // Found the entry, update it
+            memcpy(&global_config.streams[i], config, sizeof(stream_config_t));
+            config_updated = true;
+            break;
+        }
+    }
+
+    // If we didn't find an entry with the old name (rare case, possible inconsistency)
+    // Look for an empty slot to add the new config
+    if (!config_updated) {
+        for (int i = 0; i < global_config.max_streams; i++) {
+            if (global_config.streams[i].name[0] == '\0') {
+                memcpy(&global_config.streams[i], config, sizeof(stream_config_t));
+                config_updated = true;
+                break;
+            }
+        }
+    }
+
+    if (!config_updated) {
+        log_warn("Could not update stream '%s' in global config - no matching entry or free slot found", config->name);
+    } else {
+        // Save the updated configuration to file
+        // This ensures changes are persisted immediately and not lost if the service crashes
+        if (save_config(&global_config, "/etc/lightnvr/lightnvr.conf") != 0) {
+            log_warn("Failed to save configuration after updating stream");
+        }
+    }
+
+    log_info("Stream configuration updated: %s", config->name);
+    return 0;
+}
+
+// Remove a stream
+int remove_stream(stream_handle_t handle) {
+    if (!handle) {
+        log_error("Invalid stream handle in remove_stream");
+        return -1;
+    }
+
+    pthread_mutex_lock(&stream_manager.mutex);
+
+    // Check if stream is valid
+    int slot = handle->id - 1;
+    if (slot < 0 || slot >= stream_manager.max_streams || stream_manager.streams[slot].id == 0) {
+        pthread_mutex_unlock(&stream_manager.mutex);
+        log_error("Invalid stream slot in remove_stream: %d", slot);
+        return -1;
+    }
+
+    // Get stream name for logging and config updates
+    char stream_name[MAX_STREAM_NAME];
+    strncpy(stream_name, handle->config.name, MAX_STREAM_NAME - 1);
+    stream_name[MAX_STREAM_NAME - 1] = '\0';
+
+    // Stop stream if running
+    if (stream_manager.streams[slot].thread_running) {
+        // Signal thread to stop
+        stream_manager.streams[slot].thread_running = false;
+
+        // Unlock mutex while waiting for thread to exit
+        pthread_mutex_unlock(&stream_manager.mutex);
+        pthread_join(stream_manager.streams[slot].thread, NULL);
+        pthread_mutex_lock(&stream_manager.mutex);
+    }
+
+    // Clean up any associated resources
+    if (stream_manager.streams[slot].recording_handle) {
+        // Close recording if active
+        // In a real implementation, you would call your close_recording function here
+        stream_manager.streams[slot].recording_handle = NULL;
+    }
+
+    // Clear stream slot
+    memset(&stream_manager.streams[slot], 0, sizeof(struct stream_handle_s));
+
+    // Update stream count
+    stream_manager.total_streams--;
+    if (stream_manager.active_streams > 0) {
+        stream_manager.active_streams--;
+    }
+
+    pthread_mutex_unlock(&stream_manager.mutex);
+
+    // Update the global configuration by removing the stream entry
+    extern config_t global_config;
+    bool found = false;
+
+    for (int i = 0; i < global_config.max_streams; i++) {
+        if (strcmp(global_config.streams[i].name, stream_name) == 0) {
+            // Found the stream to remove - clear its slot
+            memset(&global_config.streams[i], 0, sizeof(stream_config_t));
+            found = true;
+            break;
+        }
+    }
+
+    if (!found) {
+        log_warn("Stream '%s' not found in global config during removal", stream_name);
+    } else {
+        // Save configuration to persist the removal
+        if (save_config(&global_config, "/etc/lightnvr/lightnvr.conf") != 0) {
+            log_warn("Failed to save configuration after removing stream");
+        }
+    }
+
+    log_info("Stream removed: %s", stream_name);
     return 0;
 }
 

@@ -154,6 +154,30 @@ static int daemonize() {
     return 0;
 }
 
+// Add this to src/core/main.c after initializing the stream manager
+static void load_streams_from_config(const config_t *config) {
+    for (int i = 0; i < config->max_streams; i++) {
+        if (config->streams[i].name[0] != '\0') {
+            log_info("Loading stream from config: %s", config->streams[i].name);
+            stream_handle_t stream = add_stream(&config->streams[i]);
+
+            if (stream) {
+                log_info("Stream loaded: %s", config->streams[i].name);
+
+                if (config->streams[i].enabled) {
+                    if (start_stream(stream) == 0) {
+                        log_info("Stream started: %s", config->streams[i].name);
+                    } else {
+                        log_warn("Failed to start stream: %s", config->streams[i].name);
+                    }
+                }
+            } else {
+                log_error("Failed to add stream from config: %s", config->streams[i].name);
+            }
+        }
+    }
+}
+
 int main(int argc, char *argv[]) {
     int pid_fd = -1;
     bool daemon_mode = false;
@@ -257,6 +281,7 @@ int main(int argc, char *argv[]) {
         log_error("Failed to initialize stream manager");
         goto cleanup;
     }
+    load_streams_from_config(&config);
 
     // Initialize FFmpeg streaming backend
     init_streaming_backend();
