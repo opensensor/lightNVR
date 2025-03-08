@@ -471,7 +471,7 @@ int create_file_response(http_response_t *response, int status_code,
     // Open file
     FILE *file = fopen(file_path, "rb");
     if (!file) {
-        log_error("Failed to open file: %s", file_path);
+        log_error("Failed to open file: %s (error: %s)", file_path, strerror(errno));
         return -1;
     }
     
@@ -480,10 +480,16 @@ int create_file_response(http_response_t *response, int status_code,
     long file_size = ftell(file);
     fseek(file, 0, SEEK_SET);
     
+    if (file_size <= 0) {
+        log_error("Invalid file size for %s: %ld", file_path, file_size);
+        fclose(file);
+        return -1;
+    }
+    
     // Allocate memory for file content
     response->body = malloc(file_size);
     if (!response->body) {
-        log_error("Failed to allocate memory for file content");
+        log_error("Failed to allocate memory for file content (%ld bytes)", file_size);
         fclose(file);
         return -1;
     }
@@ -493,7 +499,7 @@ int create_file_response(http_response_t *response, int status_code,
     fclose(file);
     
     if (bytes_read != (size_t)file_size) {
-        log_error("Failed to read file content");
+        log_error("Failed to read file content: expected %ld bytes, got %zu bytes", file_size, bytes_read);
         free(response->body);
         response->body = NULL;
         return -1;
@@ -512,6 +518,7 @@ int create_file_response(http_response_t *response, int status_code,
         response->content_type[sizeof(response->content_type) - 1] = '\0';
     }
     
+    log_info("Serving file: %s, size: %ld bytes, type: %s", file_path, file_size, response->content_type);
     return 0;
 }
 

@@ -1221,36 +1221,37 @@ void handle_delete_recording(const http_request_t *request, http_response_t *res
 void handle_download_recording(const http_request_t *request, http_response_t *response) {
     // Extract recording ID from the URL
     // URL format: /api/recordings/{id}/download
-    char *path_copy = strdup(request->path);
-    if (!path_copy) {
-        create_json_response(response, 500, "{\"error\": \"Memory allocation failed\"}");
-        return;
-    }
+    const char *path = request->path;
+    const char *prefix = "/api/recordings/";
     
-    // Find the ID part of the path
-    char *id_start = strstr(path_copy, "/api/recordings/");
-    if (!id_start) {
-        free(path_copy);
+    // Check if path starts with the expected prefix
+    if (strncmp(path, prefix, strlen(prefix)) != 0) {
         create_json_response(response, 400, "{\"error\": \"Invalid request path\"}");
         return;
     }
     
-    id_start += 16; // Skip "/api/recordings/"
+    // Extract the ID part (everything between prefix and next slash or end of string)
+    const char *id_start = path + strlen(prefix);
+    const char *id_end = strchr(id_start, '/');
     
-    // Find the end of the ID
-    char *id_end = strchr(id_start, '/');
-    if (!id_end) {
-        free(path_copy);
-        create_json_response(response, 400, "{\"error\": \"Invalid request path\"}");
+    char id_str[32];
+    if (id_end) {
+        // ID is between prefix and slash
+        size_t id_len = id_end - id_start;
+        if (id_len >= sizeof(id_str)) {
+            create_json_response(response, 400, "{\"error\": \"ID too long\"}");
+            return;
+        }
+        strncpy(id_str, id_start, id_len);
+        id_str[id_len] = '\0';
+    } else {
+        // No slash found, invalid path
+        create_json_response(response, 400, "{\"error\": \"Invalid request path format\"}");
         return;
     }
-    
-    *id_end = '\0'; // Null-terminate the ID string
     
     // Convert ID to integer
-    uint64_t id = strtoull(id_start, NULL, 10);
-    free(path_copy);
-    
+    uint64_t id = strtoull(id_str, NULL, 10);
     if (id == 0) {
         create_json_response(response, 400, "{\"error\": \"Invalid recording ID\"}");
         return;
@@ -1272,17 +1273,33 @@ void handle_download_recording(const http_request_t *request, http_response_t *r
         return;
     }
     
+    // Determine content type based on file extension
+    const char *content_type = "video/mp4"; // Default
+    const char *ext = strrchr(metadata.file_path, '.');
+    if (ext) {
+        if (strcasecmp(ext, ".mp4") == 0) {
+            content_type = "video/mp4";
+        } else if (strcasecmp(ext, ".ts") == 0) {
+            content_type = "video/mp2t";
+        } else if (strcasecmp(ext, ".webm") == 0) {
+            content_type = "video/webm";
+        } else if (strcasecmp(ext, ".mkv") == 0) {
+            content_type = "video/x-matroska";
+        }
+    }
+    
     // Create file response
-    if (create_file_response(response, 200, metadata.file_path, "video/mp4") != 0) {
+    if (create_file_response(response, 200, metadata.file_path, content_type) != 0) {
         create_json_response(response, 500, "{\"error\": \"Failed to read recording file\"}");
         return;
     }
     
     // Set Content-Disposition header for download
     char filename[128];
-    snprintf(filename, sizeof(filename), "%s_%lld.mp4", 
+    snprintf(filename, sizeof(filename), "%s_%lld%s", 
              metadata.stream_name, 
-             (long long)metadata.start_time);
+             (long long)metadata.start_time,
+             ext ? ext : ".mp4");
     
     char header_value[256];
     snprintf(header_value, sizeof(header_value), "attachment; filename=\"%s\"", filename);
