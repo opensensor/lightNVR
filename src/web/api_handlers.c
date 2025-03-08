@@ -1186,23 +1186,38 @@ void handle_delete_recording(const http_request_t *request, http_response_t *res
         return;
     }
     
+    log_info("Attempting to delete recording with ID: %llu", (unsigned long long)id);
+    
     // Get recording metadata from database
     recording_metadata_t metadata;
     int result = get_recording_metadata_by_id(id, &metadata);
     
     if (result != 0) {
+        log_error("Recording with ID %llu not found in database", (unsigned long long)id);
         create_json_response(response, 404, "{\"error\": \"Recording not found\"}");
         return;
     }
     
+    log_info("Found recording in database: ID=%llu, Path=%s", (unsigned long long)id, metadata.file_path);
+    
+    // Check if file exists
+    struct stat st;
+    if (stat(metadata.file_path, &st) != 0) {
+        log_warn("Recording file not found on disk: %s (error: %s)", metadata.file_path, strerror(errno));
+        // Continue with metadata deletion even if file is missing
+    }
+    
     // Delete the recording file
-    if (delete_recording(metadata.file_path) != 0) {
+    int delete_result = delete_recording(metadata.file_path);
+    if (delete_result != 0) {
+        log_error("Failed to delete recording file: %s (error code: %d)", metadata.file_path, delete_result);
         create_json_response(response, 500, "{\"error\": \"Failed to delete recording file\"}");
         return;
     }
     
     // Delete the recording metadata from database
     if (delete_recording_metadata(id) != 0) {
+        log_error("Failed to delete recording metadata for ID: %llu", (unsigned long long)id);
         create_json_response(response, 500, "{\"error\": \"Failed to delete recording metadata\"}");
         return;
     }
@@ -1215,7 +1230,7 @@ void handle_delete_recording(const http_request_t *request, http_response_t *res
     
     create_json_response(response, 200, json);
     
-    log_info("Recording deleted: ID=%llu, Path=%s", (unsigned long long)id, metadata.file_path);
+    log_info("Recording deleted successfully: ID=%llu, Path=%s", (unsigned long long)id, metadata.file_path);
 }
 
 /**

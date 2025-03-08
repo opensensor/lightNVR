@@ -111,7 +111,27 @@ int list_recordings(const char *stream_name, time_t start_time, time_t end_time,
 
 // Delete a recording
 int delete_recording(const char *path) {
-    // Stub implementation
+    if (!path) {
+        log_error("Invalid path for delete_recording");
+        return -1;
+    }
+    
+    log_info("Deleting recording file: %s", path);
+    
+    // Check if file exists
+    struct stat st;
+    if (stat(path, &st) != 0) {
+        log_error("File not found: %s (error: %s)", path, strerror(errno));
+        return -1;
+    }
+    
+    // Delete the file
+    if (unlink(path) != 0) {
+        log_error("Failed to delete file: %s (error: %s)", path, strerror(errno));
+        return -1;
+    }
+    
+    log_info("Successfully deleted recording file: %s", path);
     return 0;
 }
 
