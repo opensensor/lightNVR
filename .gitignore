@@ -5,7 +5,7 @@
 /obj/
 
 # Generated files
-/include/core/version.h
+cmake-build-debug/
 
 # Compiled Object files
 *.o
