@@ -1080,101 +1080,71 @@ function loadRecordings() {
     }
     
     // Fetch recordings from API
-    // In a real implementation, this would be an API endpoint
-    // For now, we'll use sample data
-    
-    // Simulate API call delay
-    setTimeout(() => {
-        // Sample recordings data
-        const recordings = [
-            {
-                id: 1,
-                stream: 'Front Door',
-                start_time: '2025-03-06 10:00:00',
-                duration: '15:00',
-                size: '125 MB'
-            },
-            {
-                id: 2,
-                stream: 'Front Door',
-                start_time: '2025-03-06 10:15:00',
-                duration: '15:00',
-                size: '130 MB'
-            },
-            {
-                id: 3,
-                stream: 'Back Yard',
-                start_time: '2025-03-06 10:00:00',
-                duration: '15:00',
-                size: '110 MB'
-            },
-            {
-                id: 4,
-                stream: 'Back Yard',
-                start_time: '2025-03-06 10:15:00',
-                duration: '15:00',
-                size: '115 MB'
+    fetch(`/api/recordings${queryString}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to load recordings');
             }
-        ];
-        
-        // Filter recordings based on stream filter
-        let filteredRecordings = recordings;
-        if (streamFilter && streamFilter !== 'all') {
-            filteredRecordings = recordings.filter(recording => recording.stream === streamFilter);
-        }
-        
-        tbody.innerHTML = '';
-        
-        if (filteredRecordings.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="empty-message">No recordings found</td></tr>';
+            return response.json();
+        })
+        .then(recordings => {
+            tbody.innerHTML = '';
+            
+            if (!recordings || recordings.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="empty-message">No recordings found</td></tr>';
+                hideLoading(recordingsTable);
+                return;
+            }
+            
+            recordings.forEach(recording => {
+                const tr = document.createElement('tr');
+                
+                tr.innerHTML = `
+                    <td>${recording.stream}</td>
+                    <td>${recording.start_time}</td>
+                    <td>${recording.duration}</td>
+                    <td>${recording.size}</td>
+                    <td>
+                        <button class="btn-primary play-recording" data-id="${recording.id}">Play</button>
+                        <button class="btn download-recording" data-id="${recording.id}">Download</button>
+                        <button class="btn-danger delete-recording" data-id="${recording.id}">Delete</button>
+                    </td>
+                `;
+                
+                tbody.appendChild(tr);
+            });
+            
+            // Add event listeners for play, download, and delete buttons
+            document.querySelectorAll('.play-recording').forEach(button => {
+                button.addEventListener('click', function() {
+                    const recordingId = this.getAttribute('data-id');
+                    playRecording(recordingId);
+                });
+            });
+            
+            document.querySelectorAll('.download-recording').forEach(button => {
+                button.addEventListener('click', function() {
+                    const recordingId = this.getAttribute('data-id');
+                    downloadRecording(recordingId);
+                });
+            });
+            
+            document.querySelectorAll('.delete-recording').forEach(button => {
+                button.addEventListener('click', function() {
+                    const recordingId = this.getAttribute('data-id');
+                    if (confirm('Are you sure you want to delete this recording?')) {
+                        deleteRecording(recordingId);
+                    }
+                });
+            });
+        })
+        .catch(error => {
+            console.error('Error loading recordings:', error);
+            tbody.innerHTML = '<tr><td colspan="5" class="empty-message">Error loading recordings</td></tr>';
+        })
+        .finally(() => {
             hideLoading(recordingsTable);
-            return;
-        }
-        
-        filteredRecordings.forEach(recording => {
-            const tr = document.createElement('tr');
-            
-            tr.innerHTML = `
-                <td>${recording.stream}</td>
-                <td>${recording.start_time}</td>
-                <td>${recording.duration}</td>
-                <td>${recording.size}</td>
-                <td>
-                    <button class="btn-primary play-recording" data-id="${recording.id}">Play</button>
-                    <button class="btn download-recording" data-id="${recording.id}">Download</button>
-                    <button class="btn-danger delete-recording" data-id="${recording.id}">Delete</button>
-                </td>
-            `;
-            
-            tbody.appendChild(tr);
         });
-        
-        // Add event listeners for play, download, and delete buttons
-        document.querySelectorAll('.play-recording').forEach(button => {
-            button.addEventListener('click', function() {
-                const recordingId = this.getAttribute('data-id');
-                playRecording(recordingId);
-            });
-        });
-        
-        document.querySelectorAll('.download-recording').forEach(button => {
-            button.addEventListener('click', function() {
-                const recordingId = this.getAttribute('data-id');
-                downloadRecording(recordingId);
-            });
-        });
-        
-        document.querySelectorAll('.delete-recording').forEach(button => {
-            button.addEventListener('click', function() {
-                const recordingId = this.getAttribute('data-id');
-                if (confirm('Are you sure you want to delete this recording?')) {
-                    deleteRecording(recordingId);
-                }
-            });
-        });
-        
-        hideLoading(recordingsTable);
-    }, 500);
 }
 
 /**
@@ -1492,37 +1462,74 @@ function testStream() {
  * Play recording
  */
 function playRecording(recordingId) {
-    // In a real implementation, this would load the recording URL
-    // For now, we'll just show the video modal with a placeholder message
-    
     const videoModal = document.getElementById('video-modal');
     const videoPlayer = document.getElementById('video-player');
     const videoTitle = document.getElementById('video-modal-title');
     
-    // Set video title
-    videoTitle.textContent = `Recording Playback (ID: ${recordingId})`;
-    
-    // In a real implementation, we would set the video source
-    // For now, we'll just show a message
-    videoPlayer.innerHTML = `<div style="display:flex;justify-content:center;align-items:center;height:300px;background:#000;color:#fff;">
-        <p>Video playback would be shown here (Recording ID: ${recordingId})</p>
-    </div>`;
-    
-    // Show the modal
+    // Show loading state
+    videoModal.classList.add('loading');
     videoModal.style.display = 'block';
+    
+    // Fetch recording details
+    fetch(`/api/recordings/${recordingId}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to load recording details');
+            }
+            return response.json();
+        })
+        .then(recording => {
+            // Set video title
+            videoTitle.textContent = `${recording.stream} - ${recording.start_time}`;
+            
+            // Set video source
+            videoPlayer.innerHTML = '';
+            const videoElement = document.createElement('video');
+            videoElement.controls = true;
+            videoElement.autoplay = true;
+            videoElement.src = `/api/recordings/${recordingId}/download`;
+            
+            // Add event listeners
+            videoElement.addEventListener('loadeddata', () => {
+                videoModal.classList.remove('loading');
+            });
+            
+            videoElement.addEventListener('error', () => {
+                videoModal.classList.remove('loading');
+                videoPlayer.innerHTML = `
+                    <div style="display:flex;justify-content:center;align-items:center;height:300px;background:#000;color:#fff;">
+                        <p>Error loading video. The recording may be unavailable or in an unsupported format.</p>
+                    </div>
+                `;
+            });
+            
+            videoPlayer.appendChild(videoElement);
+            
+            // Set download button URL
+            const downloadBtn = document.getElementById('video-download-btn');
+            if (downloadBtn) {
+                downloadBtn.onclick = () => {
+                    window.location.href = `/api/recordings/${recordingId}/download`;
+                };
+            }
+        })
+        .catch(error => {
+            console.error('Error loading recording:', error);
+            videoModal.classList.remove('loading');
+            videoPlayer.innerHTML = `
+                <div style="display:flex;justify-content:center;align-items:center;height:300px;background:#000;color:#fff;">
+                    <p>Error: ${error.message}</p>
+                </div>
+            `;
+        });
 }
 
 /**
  * Download recording
  */
 function downloadRecording(recordingId) {
-    // In a real implementation, this would initiate a download
-    // For demonstration purposes, we'll just show a message
-    
-    alert(`Download started for recording ID: ${recordingId}`);
-    
-    // In a real implementation, you would use something like:
-    // window.location.href = `/api/recordings/${recordingId}/download`;
+    // Initiate download by redirecting to the download URL
+    window.location.href = `/api/recordings/${recordingId}/download`;
 }
 
 /**
@@ -1538,13 +1545,31 @@ function deleteRecording(recordingId) {
         showLoading(recordingsTable);
     }
     
-    // In a real implementation, this would make an API call to delete the recording
-    // For demonstration purposes, we'll just simulate success
-    
-    setTimeout(() => {
-        alert(`Recording ID: ${recordingId} deleted successfully`);
+    // Send delete request to API
+    fetch(`/api/recordings/${recordingId}`, {
+        method: 'DELETE'
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Failed to delete recording');
+        }
+        return response.json();
+    })
+    .then(data => {
+        // Show success message
+        alert('Recording deleted successfully');
+        
+        // Reload recordings
         loadRecordings();
-    }, 500);
+    })
+    .catch(error => {
+        console.error('Error deleting recording:', error);
+        alert('Error deleting recording: ' + error.message);
+        
+        if (recordingsTable) {
+            hideLoading(recordingsTable);
+        }
+    });
 }
 
 /**

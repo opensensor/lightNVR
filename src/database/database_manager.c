@@ -464,6 +464,90 @@ int update_recording_metadata(uint64_t id, time_t end_time,
     return 0;
 }
 
+// Get recording metadata by ID
+int get_recording_metadata_by_id(uint64_t id, recording_metadata_t *metadata) {
+    int rc;
+    sqlite3_stmt *stmt;
+    int result = -1;
+    
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+    
+    if (!metadata) {
+        log_error("Invalid parameters for get_recording_metadata_by_id");
+        return -1;
+    }
+    
+    pthread_mutex_lock(&db_mutex);
+    
+    const char *sql = "SELECT id, stream_name, file_path, start_time, end_time, "
+                      "size_bytes, width, height, fps, codec, is_complete "
+                      "FROM recordings WHERE id = ?;";
+    
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(&db_mutex);
+        return -1;
+    }
+    
+    // Bind parameters
+    sqlite3_bind_int64(stmt, 1, (sqlite3_int64)id);
+    
+    // Execute query and fetch result
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        metadata->id = (uint64_t)sqlite3_column_int64(stmt, 0);
+        
+        const char *stream = (const char *)sqlite3_column_text(stmt, 1);
+        if (stream) {
+            strncpy(metadata->stream_name, stream, sizeof(metadata->stream_name) - 1);
+            metadata->stream_name[sizeof(metadata->stream_name) - 1] = '\0';
+        } else {
+            metadata->stream_name[0] = '\0';
+        }
+        
+        const char *path = (const char *)sqlite3_column_text(stmt, 2);
+        if (path) {
+            strncpy(metadata->file_path, path, sizeof(metadata->file_path) - 1);
+            metadata->file_path[sizeof(metadata->file_path) - 1] = '\0';
+        } else {
+            metadata->file_path[0] = '\0';
+        }
+        
+        metadata->start_time = (time_t)sqlite3_column_int64(stmt, 3);
+        
+        if (sqlite3_column_type(stmt, 4) != SQLITE_NULL) {
+            metadata->end_time = (time_t)sqlite3_column_int64(stmt, 4);
+        } else {
+            metadata->end_time = 0;
+        }
+        
+        metadata->size_bytes = (uint64_t)sqlite3_column_int64(stmt, 5);
+        metadata->width = sqlite3_column_int(stmt, 6);
+        metadata->height = sqlite3_column_int(stmt, 7);
+        metadata->fps = sqlite3_column_int(stmt, 8);
+        
+        const char *codec = (const char *)sqlite3_column_text(stmt, 9);
+        if (codec) {
+            strncpy(metadata->codec, codec, sizeof(metadata->codec) - 1);
+            metadata->codec[sizeof(metadata->codec) - 1] = '\0';
+        } else {
+            metadata->codec[0] = '\0';
+        }
+        
+        metadata->is_complete = sqlite3_column_int(stmt, 10) != 0;
+        
+        result = 0; // Success
+    }
+    
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(&db_mutex);
+    
+    return result;
+}
+
 // Get recording metadata from the database
 int get_recording_metadata(time_t start_time, time_t end_time, 
                           const char *stream_name, recording_metadata_t *metadata, 

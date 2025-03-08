@@ -121,6 +121,15 @@ int get_recording_metadata(time_t start_time, time_t end_time,
                           int max_count);
 
 /**
+ * Get recording metadata by ID
+ * 
+ * @param id Recording ID
+ * @param metadata Pointer to metadata structure to fill
+ * @return 0 on success, non-zero on failure
+ */
+int get_recording_metadata_by_id(uint64_t id, recording_metadata_t *metadata);
+
+/**
  * Delete recording metadata from the database
  * 
  * @param id Recording ID

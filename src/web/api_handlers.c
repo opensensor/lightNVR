@@ -1,9 +1,13 @@
+#define _XOPEN_SOURCE
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <ctype.h>
 #include <time.h>
+#include <sys/stat.h>
 
 #include "web/web_server.h"
 #include "web/api_handlers.h"
@@ -11,6 +15,8 @@
 #include "core/logger.h"
 #include "video/stream_manager.h"
 #include "video/streams.h"
+#include "database/database_manager.h"
+#include "storage/storage_manager.h"
 
 #define LIGHTNVR_VERSION_STRING "0.1.0"
 
@@ -902,6 +908,373 @@ void handle_streaming_request(const http_request_t *request, http_response_t *re
 }
 
 /**
+ * Handle GET request for recordings
+ */
+void handle_get_recordings(const http_request_t *request, http_response_t *response) {
+    // Get query parameters
+    char date_str[32] = {0};
+    char stream_name[MAX_STREAM_NAME] = {0};
+    time_t start_time = 0;
+    time_t end_time = 0;
+    
+    // Get date filter if provided
+    if (get_query_param(request, "date", date_str, sizeof(date_str)) == 0) {
+        // Parse date string (format: YYYY-MM-DD)
+        struct tm tm = {0};
+        if (strptime(date_str, "%Y-%m-%d", &tm) != NULL) {
+            // Set start time to beginning of day
+            tm.tm_hour = 0;
+            tm.tm_min = 0;
+            tm.tm_sec = 0;
+            start_time = mktime(&tm);
+            
+            // Set end time to end of day
+            tm.tm_hour = 23;
+            tm.tm_min = 59;
+            tm.tm_sec = 59;
+            end_time = mktime(&tm);
+        } else {
+            log_warn("Invalid date format: %s", date_str);
+        }
+    }
+    
+    // Get stream filter if provided
+    get_query_param(request, "stream", stream_name, sizeof(stream_name));
+    
+    // If no stream name provided or "all" specified, set to NULL for all streams
+    if (stream_name[0] == '\0' || strcmp(stream_name, "all") == 0) {
+        stream_name[0] = '\0';
+    }
+    
+    // Get recordings from database
+    recording_metadata_t recordings[100]; // Limit to 100 recordings
+    int count = get_recording_metadata(start_time, end_time, 
+                                     stream_name[0] ? stream_name : NULL, 
+                                     recordings, 100);
+    
+    if (count < 0) {
+        create_json_response(response, 500, "{\"error\": \"Failed to get recordings\"}");
+        return;
+    }
+    
+    // Build JSON response
+    char *json = malloc(count * 512 + 32); // Allocate enough space for all recordings
+    if (!json) {
+        create_json_response(response, 500, "{\"error\": \"Memory allocation failed\"}");
+        return;
+    }
+    
+    strcpy(json, "[");
+    int pos = 1;
+    
+    for (int i = 0; i < count; i++) {
+        char recording_json[512];
+        
+        // Format start and end times
+        char start_time_str[32];
+        char end_time_str[32];
+        strftime(start_time_str, sizeof(start_time_str), "%Y-%m-%d %H:%M:%S", localtime(&recordings[i].start_time));
+        strftime(end_time_str, sizeof(end_time_str), "%Y-%m-%d %H:%M:%S", localtime(&recordings[i].end_time));
+        
+        // Calculate duration in seconds
+        int duration_sec = recordings[i].end_time - recordings[i].start_time;
+        
+        // Format duration as HH:MM:SS
+        char duration_str[16];
+        int hours = duration_sec / 3600;
+        int minutes = (duration_sec % 3600) / 60;
+        int seconds = duration_sec % 60;
+        snprintf(duration_str, sizeof(duration_str), "%02d:%02d:%02d", hours, minutes, seconds);
+        
+        // Format size in human-readable format
+        char size_str[16];
+        if (recordings[i].size_bytes < 1024) {
+            snprintf(size_str, sizeof(size_str), "%llu B", (unsigned long long)recordings[i].size_bytes);
+        } else if (recordings[i].size_bytes < 1024 * 1024) {
+            snprintf(size_str, sizeof(size_str), "%.1f KB", (float)recordings[i].size_bytes / 1024);
+        } else if (recordings[i].size_bytes < 1024 * 1024 * 1024) {
+            snprintf(size_str, sizeof(size_str), "%.1f MB", (float)recordings[i].size_bytes / (1024 * 1024));
+        } else {
+            snprintf(size_str, sizeof(size_str), "%.1f GB", (float)recordings[i].size_bytes / (1024 * 1024 * 1024));
+        }
+        
+        // Create JSON for this recording
+        snprintf(recording_json, sizeof(recording_json),
+                 "{"
+                 "\"id\": %llu,"
+                 "\"stream\": \"%s\","
+                 "\"start_time\": \"%s\","
+                 "\"end_time\": \"%s\","
+                 "\"duration\": \"%s\","
+                 "\"size\": \"%s\","
+                 "\"path\": \"%s\","
+                 "\"width\": %d,"
+                 "\"height\": %d,"
+                 "\"fps\": %d,"
+                 "\"codec\": \"%s\","
+                 "\"complete\": %s"
+                 "}",
+                 (unsigned long long)recordings[i].id,
+                 recordings[i].stream_name,
+                 start_time_str,
+                 end_time_str,
+                 duration_str,
+                 size_str,
+                 recordings[i].file_path,
+                 recordings[i].width,
+                 recordings[i].height,
+                 recordings[i].fps,
+                 recordings[i].codec,
+                 recordings[i].is_complete ? "true" : "false");
+        
+        // Add comma if not first element
+        if (i > 0) {
+            json[pos++] = ',';
+        }
+        
+        // Append to JSON array
+        strcpy(json + pos, recording_json);
+        pos += strlen(recording_json);
+    }
+    
+    // Close array
+    json[pos++] = ']';
+    json[pos] = '\0';
+    
+    // Create response
+    create_json_response(response, 200, json);
+    
+    // Free resources
+    free(json);
+}
+
+/**
+ * Handle GET request for a specific recording
+ */
+void handle_get_recording(const http_request_t *request, http_response_t *response) {
+    // Extract recording ID from the URL
+    // URL format: /api/recordings/{id}
+    const char *id_str = strrchr(request->path, '/');
+    if (!id_str || strlen(id_str) <= 1) {
+        create_json_response(response, 400, "{\"error\": \"Invalid recording ID\"}");
+        return;
+    }
+    
+    // Skip the '/'
+    id_str++;
+    
+    // Convert ID to integer
+    uint64_t id = strtoull(id_str, NULL, 10);
+    if (id == 0) {
+        create_json_response(response, 400, "{\"error\": \"Invalid recording ID\"}");
+        return;
+    }
+    
+    // Get recording metadata from database
+    recording_metadata_t metadata;
+    int result = get_recording_metadata_by_id(id, &metadata);
+    
+    if (result != 0) {
+        create_json_response(response, 404, "{\"error\": \"Recording not found\"}");
+        return;
+    }
+    
+    // Format start and end times
+    char start_time_str[32];
+    char end_time_str[32];
+    strftime(start_time_str, sizeof(start_time_str), "%Y-%m-%d %H:%M:%S", localtime(&metadata.start_time));
+    strftime(end_time_str, sizeof(end_time_str), "%Y-%m-%d %H:%M:%S", localtime(&metadata.end_time));
+    
+    // Calculate duration in seconds
+    int duration_sec = metadata.end_time - metadata.start_time;
+    
+    // Format duration as HH:MM:SS
+    char duration_str[16];
+    int hours = duration_sec / 3600;
+    int minutes = (duration_sec % 3600) / 60;
+    int seconds = duration_sec % 60;
+    snprintf(duration_str, sizeof(duration_str), "%02d:%02d:%02d", hours, minutes, seconds);
+    
+    // Format size in human-readable format
+    char size_str[16];
+    if (metadata.size_bytes < 1024) {
+        snprintf(size_str, sizeof(size_str), "%llu B", (unsigned long long)metadata.size_bytes);
+    } else if (metadata.size_bytes < 1024 * 1024) {
+        snprintf(size_str, sizeof(size_str), "%.1f KB", (float)metadata.size_bytes / 1024);
+    } else if (metadata.size_bytes < 1024 * 1024 * 1024) {
+        snprintf(size_str, sizeof(size_str), "%.1f MB", (float)metadata.size_bytes / (1024 * 1024));
+    } else {
+        snprintf(size_str, sizeof(size_str), "%.1f GB", (float)metadata.size_bytes / (1024 * 1024 * 1024));
+    }
+    
+    // Create JSON response
+    char json[1024];
+    snprintf(json, sizeof(json),
+             "{"
+             "\"id\": %llu,"
+             "\"stream\": \"%s\","
+             "\"start_time\": \"%s\","
+             "\"end_time\": \"%s\","
+             "\"duration\": \"%s\","
+             "\"size\": \"%s\","
+             "\"path\": \"%s\","
+             "\"width\": %d,"
+             "\"height\": %d,"
+             "\"fps\": %d,"
+             "\"codec\": \"%s\","
+             "\"complete\": %s,"
+             "\"url\": \"/api/recordings/%llu/download\""
+             "}",
+             (unsigned long long)metadata.id,
+             metadata.stream_name,
+             start_time_str,
+             end_time_str,
+             duration_str,
+             size_str,
+             metadata.file_path,
+             metadata.width,
+             metadata.height,
+             metadata.fps,
+             metadata.codec,
+             metadata.is_complete ? "true" : "false",
+             (unsigned long long)metadata.id);
+    
+    // Create response
+    create_json_response(response, 200, json);
+}
+
+/**
+ * Handle DELETE request to remove a recording
+ */
+void handle_delete_recording(const http_request_t *request, http_response_t *response) {
+    // Extract recording ID from the URL
+    // URL format: /api/recordings/{id}
+    const char *id_str = strrchr(request->path, '/');
+    if (!id_str || strlen(id_str) <= 1) {
+        create_json_response(response, 400, "{\"error\": \"Invalid recording ID\"}");
+        return;
+    }
+    
+    // Skip the '/'
+    id_str++;
+    
+    // Convert ID to integer
+    uint64_t id = strtoull(id_str, NULL, 10);
+    if (id == 0) {
+        create_json_response(response, 400, "{\"error\": \"Invalid recording ID\"}");
+        return;
+    }
+    
+    // Get recording metadata from database
+    recording_metadata_t metadata;
+    int result = get_recording_metadata_by_id(id, &metadata);
+    
+    if (result != 0) {
+        create_json_response(response, 404, "{\"error\": \"Recording not found\"}");
+        return;
+    }
+    
+    // Delete the recording file
+    if (delete_recording(metadata.file_path) != 0) {
+        create_json_response(response, 500, "{\"error\": \"Failed to delete recording file\"}");
+        return;
+    }
+    
+    // Delete the recording metadata from database
+    if (delete_recording_metadata(id) != 0) {
+        create_json_response(response, 500, "{\"error\": \"Failed to delete recording metadata\"}");
+        return;
+    }
+    
+    // Create success response
+    char json[256];
+    snprintf(json, sizeof(json), 
+             "{\"success\": true, \"id\": %llu, \"message\": \"Recording deleted successfully\"}", 
+             (unsigned long long)id);
+    
+    create_json_response(response, 200, json);
+    
+    log_info("Recording deleted: ID=%llu, Path=%s", (unsigned long long)id, metadata.file_path);
+}
+
+/**
+ * Handle GET request to download a recording
+ */
+void handle_download_recording(const http_request_t *request, http_response_t *response) {
+    // Extract recording ID from the URL
+    // URL format: /api/recordings/{id}/download
+    char *path_copy = strdup(request->path);
+    if (!path_copy) {
+        create_json_response(response, 500, "{\"error\": \"Memory allocation failed\"}");
+        return;
+    }
+    
+    // Find the ID part of the path
+    char *id_start = strstr(path_copy, "/api/recordings/");
+    if (!id_start) {
+        free(path_copy);
+        create_json_response(response, 400, "{\"error\": \"Invalid request path\"}");
+        return;
+    }
+    
+    id_start += 16; // Skip "/api/recordings/"
+    
+    // Find the end of the ID
+    char *id_end = strchr(id_start, '/');
+    if (!id_end) {
+        free(path_copy);
+        create_json_response(response, 400, "{\"error\": \"Invalid request path\"}");
+        return;
+    }
+    
+    *id_end = '\0'; // Null-terminate the ID string
+    
+    // Convert ID to integer
+    uint64_t id = strtoull(id_start, NULL, 10);
+    free(path_copy);
+    
+    if (id == 0) {
+        create_json_response(response, 400, "{\"error\": \"Invalid recording ID\"}");
+        return;
+    }
+    
+    // Get recording metadata from database
+    recording_metadata_t metadata;
+    int result = get_recording_metadata_by_id(id, &metadata);
+    
+    if (result != 0) {
+        create_json_response(response, 404, "{\"error\": \"Recording not found\"}");
+        return;
+    }
+    
+    // Check if file exists
+    struct stat st;
+    if (stat(metadata.file_path, &st) != 0) {
+        create_json_response(response, 404, "{\"error\": \"Recording file not found\"}");
+        return;
+    }
+    
+    // Create file response
+    if (create_file_response(response, 200, metadata.file_path, "video/mp4") != 0) {
+        create_json_response(response, 500, "{\"error\": \"Failed to read recording file\"}");
+        return;
+    }
+    
+    // Set Content-Disposition header for download
+    char filename[128];
+    snprintf(filename, sizeof(filename), "%s_%lld.mp4", 
+             metadata.stream_name, 
+             (long long)metadata.start_time);
+    
+    char header_value[256];
+    snprintf(header_value, sizeof(header_value), "attachment; filename=\"%s\"", filename);
+    
+    set_response_header(response, "Content-Disposition", header_value);
+    
+    log_info("Recording download: ID=%llu, Path=%s", (unsigned long long)id, metadata.file_path);
+}
+
+/**
  * Register API handlers
  */
 void register_api_handlers(void) {
@@ -922,6 +1295,12 @@ void register_api_handlers(void) {
     // Register system API handlers
     register_request_handler("/api/system/info", "GET", handle_get_system_info);
     register_request_handler("/api/system/logs", "GET", handle_get_system_logs);
+    
+    // Register recording API handlers
+    register_request_handler("/api/recordings", "GET", handle_get_recordings);
+    register_request_handler("/api/recordings/", "GET", handle_get_recording);
+    register_request_handler("/api/recordings/", "DELETE", handle_delete_recording);
+    register_request_handler("/api/recordings/", "GET", handle_download_recording);
 
     log_info("API handlers registered");
 }

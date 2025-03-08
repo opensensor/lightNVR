@@ -54,6 +54,26 @@ void handle_get_system_info(const http_request_t *request, http_response_t *resp
 void handle_get_system_logs(const http_request_t *request, http_response_t *response);
 
 /**
+ * Handle GET request for recordings
+ */
+void handle_get_recordings(const http_request_t *request, http_response_t *response);
+
+/**
+ * Handle GET request for a specific recording
+ */
+void handle_get_recording(const http_request_t *request, http_response_t *response);
+
+/**
+ * Handle DELETE request to remove a recording
+ */
+void handle_delete_recording(const http_request_t *request, http_response_t *response);
+
+/**
+ * Handle GET request to download a recording
+ */
+void handle_download_recording(const http_request_t *request, http_response_t *response);
+
+/**
  * Register API handlers
  */
 void register_api_handlers(void);
