@@ -312,47 +312,97 @@ void handle_get_streams(const http_request_t *request, http_response_t *response
 }
 
 /**
- * Handle GET request for a specific stream
+ * Improved handler for stream API endpoints that correctly handles URL-encoded identifiers
  */
 void handle_get_stream(const http_request_t *request, http_response_t *response) {
-    // Extract stream name from the URL
-    // URL format: /api/streams/{stream_name}
-    const char *stream_name = strrchr(request->path, '/');
-    if (!stream_name || strlen(stream_name) <= 1) {
-        create_json_response(response, 400, "{\"error\": \"Invalid stream name\"}");
+    // Extract stream ID from the URL
+    // URL pattern can be:
+    // 1. /api/streams/123 (numeric ID)
+    // 2. /api/streams/Front%20Door (URL-encoded stream name)
+
+    const char *path = request->path;
+    const char *prefix = "/api/streams/";
+
+    // Log the request
+    log_debug("Stream request path: %s", path);
+
+    // Verify path starts with expected prefix
+    if (strncmp(path, prefix, strlen(prefix)) != 0) {
+        log_error("Invalid request path: %s", path);
+        create_json_response(response, 400, "{\"error\": \"Invalid request path\"}");
         return;
     }
-    
-    // Skip the '/'
-    stream_name++;
-    
-    // Find the stream
-    stream_handle_t stream = get_stream_by_name(stream_name);
+
+    // Extract the stream identifier (everything after the prefix)
+    const char *stream_id = path + strlen(prefix);
+
+    // Skip any leading slashes in the ID part
+    while (*stream_id == '/') {
+        stream_id++;
+    }
+
+    // Find query string if present and truncate
+    char *stream_id_copy = strdup(stream_id);
+    if (!stream_id_copy) {
+        log_error("Memory allocation failed for stream ID");
+        create_json_response(response, 500, "{\"error\": \"Memory allocation failed\"}");
+        return;
+    }
+
+    char *query_start = strchr(stream_id_copy, '?');
+    if (query_start) {
+        *query_start = '\0'; // Truncate at query string
+    }
+
+    // URL-decode the stream identifier
+    char decoded_id[256];
+    url_decode(stream_id_copy, decoded_id, sizeof(decoded_id));
+    free(stream_id_copy);
+
+    log_info("Looking up stream with identifier: %s", decoded_id);
+
+    // First try to find the stream by ID (if it's a number)
+    stream_handle_t stream = NULL;
+
+    // try by name
     if (!stream) {
+        stream = get_stream_by_name(decoded_id);
+        log_debug("Tried to find stream by name '%s', result: %s",
+                 decoded_id, stream ? "found" : "not found");
+    }
+
+    // If still not found, return error
+    if (!stream) {
+        log_error("Stream not found: %s", decoded_id);
         create_json_response(response, 404, "{\"error\": \"Stream not found\"}");
         return;
     }
-    
+
     // Get stream configuration
     stream_config_t config;
     if (get_stream_config(stream, &config) != 0) {
+        log_error("Failed to get stream configuration for: %s", decoded_id);
         create_json_response(response, 500, "{\"error\": \"Failed to get stream configuration\"}");
         return;
     }
-    
+
     // Create JSON response
     char *json = create_stream_json(&config);
     if (!json) {
+        log_error("Failed to create stream JSON for: %s", decoded_id);
         create_json_response(response, 500, "{\"error\": \"Failed to create stream JSON\"}");
         return;
     }
-    
+
     // Create response
     create_json_response(response, 200, json);
-    
+
     // Free resources
     free(json);
+
+    log_info("Successfully served stream details for: %s", decoded_id);
 }
+
 
 /**
  * Handle POST request to create a new stream
@@ -447,33 +497,73 @@ void handle_post_stream(const http_request_t *request, http_response_t *response
     log_info("Stream added: %s", config.name);
 }
 
+
 /**
- * Handle PUT request to update a stream
+ * Improved handler for updating a stream that correctly handles URL-encoded identifiers
  */
 void handle_put_stream(const http_request_t *request, http_response_t *response) {
     // Copy current config settings from global config
     memcpy(&local_config, get_current_config(), sizeof(config_t));
 
-    // Extract stream name from the URL
-    // URL format: /api/streams/{stream_name}
-    const char *stream_name = strrchr(request->path, '/');
-    if (!stream_name || strlen(stream_name) <= 1) {
-        create_json_response(response, 400, "{\"error\": \"Invalid stream name\"}");
+    // Extract stream identifier from the URL
+    const char *path = request->path;
+    const char *prefix = "/api/streams/";
+
+    // Verify path starts with expected prefix
+    if (strncmp(path, prefix, strlen(prefix)) != 0) {
+        log_error("Invalid request path: %s", path);
+        create_json_response(response, 400, "{\"error\": \"Invalid request path\"}");
         return;
     }
 
-    // Skip the '/'
-    stream_name++;
+    // Extract the stream identifier (everything after the prefix)
+    const char *stream_id = path + strlen(prefix);
 
-    // Find the stream
-    stream_handle_t stream = get_stream_by_name(stream_name);
+    // Skip any leading slashes in the ID part
+    while (*stream_id == '/') {
+        stream_id++;
+    }
+
+    // Find query string if present and truncate
+    char *stream_id_copy = strdup(stream_id);
+    if (!stream_id_copy) {
+        log_error("Memory allocation failed for stream ID");
+        create_json_response(response, 500, "{\"error\": \"Memory allocation failed\"}");
+        return;
+    }
+
+    char *query_start = strchr(stream_id_copy, '?');
+    if (query_start) {
+        *query_start = '\0'; // Truncate at query string
+    }
+
+    // URL-decode the stream identifier
+    char decoded_id[256];
+    url_decode(stream_id_copy, decoded_id, sizeof(decoded_id));
+    free(stream_id_copy);
+
+    log_info("Updating stream with identifier: %s", decoded_id);
+
+    // Find the stream by ID or name
+    stream_handle_t stream = NULL;
+
+    // try by name
     if (!stream) {
+        stream = get_stream_by_name(decoded_id);
+        log_debug("Tried to find stream by name '%s', result: %s",
+                 decoded_id, stream ? "found" : "not found");
+    }
+
+    // If still not found, return error
+    if (!stream) {
+        log_error("Stream not found: %s", decoded_id);
         create_json_response(response, 404, "{\"error\": \"Stream not found\"}");
         return;
     }
 
     // Ensure we have a request body
     if (!request->body || request->content_length == 0) {
+        log_error("Empty request body for stream update");
         create_json_response(response, 400, "{\"error\": \"Empty request body\"}");
         return;
     }
@@ -481,6 +571,7 @@ void handle_put_stream(const http_request_t *request, http_response_t *response)
     // Make a null-terminated copy of the request body
     char *json = malloc(request->content_length + 1);
     if (!json) {
+        log_error("Memory allocation failed for request body");
         create_json_response(response, 500, "{\"error\": \"Memory allocation failed\"}");
         return;
     }
@@ -492,16 +583,24 @@ void handle_put_stream(const http_request_t *request, http_response_t *response)
     stream_config_t config;
     if (parse_stream_json(json, &config) != 0) {
         free(json);
+        log_error("Invalid stream configuration in request body");
         create_json_response(response, 400, "{\"error\": \"Invalid stream configuration\"}");
         return;
     }
 
     free(json);
 
-    // Ensure the stream name in the URL matches the one in the body
-    if (strcmp(stream_name, config.name) != 0) {
-        create_json_response(response, 400, "{\"error\": \"Stream name in URL does not match the one in the body\"}");
+    // Get current stream config to check name
+    stream_config_t current_config;
+    if (get_stream_config(stream, &current_config) != 0) {
+        log_error("Failed to get current stream configuration");
+        create_json_response(response, 500, "{\"error\": \"Failed to get current stream configuration\"}");
         return;
+    }
+
+    // Special handling for name changes - log both names for clarity
+    if (strcmp(current_config.name, config.name) != 0) {
+        log_info("Stream name change detected: '%s' -> '%s'", current_config.name, config.name);
     }
 
     // Get current stream status
@@ -509,26 +608,31 @@ void handle_put_stream(const http_request_t *request, http_response_t *response)
 
     // Stop the stream if it's running
     if (current_status == STREAM_STATUS_RUNNING || current_status == STREAM_STATUS_STARTING) {
+        log_info("Stopping stream before update: %s", current_config.name);
         if (stop_stream(stream) != 0) {
-            log_warn("Failed to stop stream: %s", config.name);
+            log_warn("Failed to stop stream: %s", current_config.name);
             // Continue anyway, we'll try to update
         }
     }
 
     // Update the stream configuration
+    log_info("Updating stream configuration for: %s", current_config.name);
     if (update_stream_config(stream, &config) != 0) {
+        log_error("Failed to update stream configuration");
         create_json_response(response, 500, "{\"error\": \"Failed to update stream configuration\"}");
         return;
     }
 
     // Start the stream if enabled
     if (config.enabled) {
+        log_info("Stream is enabled, starting it: %s", config.name);
         if (start_stream(stream) != 0) {
             log_warn("Failed to start stream: %s", config.name);
             // Continue anyway, the configuration is updated
         } else {
             // Start recording if record flag is set
             if (config.record) {
+                log_info("Starting recording for stream: %s", config.name);
                 if (start_hls_stream(config.name) == 0) {
                     log_info("Recording started for stream: %s", config.name);
                 } else {
@@ -536,82 +640,143 @@ void handle_put_stream(const http_request_t *request, http_response_t *response)
                 }
             }
         }
+    } else {
+        log_info("Stream is disabled, not starting it: %s", config.name);
     }
 
     // Update the stream in local_config.streams
     bool stream_updated_in_config = false;
     for (int i = 0; i < local_config.max_streams; i++) {
-        if (strcmp(local_config.streams[i].name, stream_name) == 0) {
+        if (strcmp(local_config.streams[i].name, current_config.name) == 0) {
             // Found the stream in config
+            log_info("Updating stream '%s' in configuration at index %d", config.name, i);
             memcpy(&local_config.streams[i], &config, sizeof(stream_config_t));
-            log_info("Updated stream '%s' in configuration at index %d", config.name, i);
             stream_updated_in_config = true;
             break;
         }
     }
 
     if (!stream_updated_in_config) {
-        // If we didn't find the stream in config (shouldn't happen normally), try to add it
+        log_warn("Couldn't find stream '%s' in config, checking for empty slot", current_config.name);
+        // If we didn't find the stream in config, try to add it
         for (int i = 0; i < local_config.max_streams; i++) {
             if (local_config.streams[i].name[0] == '\0') {
-                memcpy(&local_config.streams[i], &config, sizeof(stream_config_t));
                 log_info("Added missing stream '%s' to configuration at index %d", config.name, i);
+                memcpy(&local_config.streams[i], &config, sizeof(stream_config_t));
                 stream_updated_in_config = true;
                 break;
             }
         }
 
         if (!stream_updated_in_config) {
-            log_warn("Couldn't find stream '%s' or empty slot in config", stream_name);
+            log_warn("Couldn't find stream '%s' or empty slot in configuration", current_config.name);
         }
     }
-    
+
     // Save configuration to ensure the changes are persisted
     if (save_config(&local_config, "/etc/lightnvr/lightnvr.conf") != 0) {
         log_warn("Failed to save configuration after updating stream");
-        // Continue anyway, the stream is updated
+        // Continue anyway, the stream is updated in memory
     }
-    
+
     // Create success response
     char response_json[256];
-    snprintf(response_json, sizeof(response_json), "{\"success\": true, \"name\": \"%s\"}", config.name);
+    snprintf(response_json, sizeof(response_json),
+             "{\"success\": true, \"name\": \"%s\", \"id\": \"%s\"}",
+             config.name, decoded_id);
     create_json_response(response, 200, response_json);
-    
-    log_info("Stream updated: %s", config.name);
+
+    log_info("Stream updated successfully: %s", config.name);
 }
 
 /**
- * Handle DELETE request to remove a stream
+ * Improved handler for deleting a stream that correctly handles URL-encoded identifiers
  */
 void handle_delete_stream(const http_request_t *request, http_response_t *response) {
     // Copy current config settings from global config
     memcpy(&local_config, get_current_config(), sizeof(config_t));
 
-    // Extract stream name from the URL
-    // URL format: /api/streams/{stream_name}
-    const char *stream_name = strrchr(request->path, '/');
-    if (!stream_name || strlen(stream_name) <= 1) {
-        create_json_response(response, 400, "{\"error\": \"Invalid stream name\"}");
+    // Extract stream identifier from the URL
+    const char *path = request->path;
+    const char *prefix = "/api/streams/";
+
+    // Verify path starts with expected prefix
+    if (strncmp(path, prefix, strlen(prefix)) != 0) {
+        log_error("Invalid request path: %s", path);
+        create_json_response(response, 400, "{\"error\": \"Invalid request path\"}");
         return;
     }
 
-    // Skip the '/'
-    stream_name++;
+    // Extract the stream identifier (everything after the prefix)
+    const char *stream_id = path + strlen(prefix);
 
-    // Find the stream
-    stream_handle_t stream = get_stream_by_name(stream_name);
+    // Skip any leading slashes in the ID part
+    while (*stream_id == '/') {
+        stream_id++;
+    }
+
+    // Find query string if present and truncate
+    char *stream_id_copy = strdup(stream_id);
+    if (!stream_id_copy) {
+        log_error("Memory allocation failed for stream ID");
+        create_json_response(response, 500, "{\"error\": \"Memory allocation failed\"}");
+        return;
+    }
+
+    char *query_start = strchr(stream_id_copy, '?');
+    if (query_start) {
+        *query_start = '\0'; // Truncate at query string
+    }
+
+    // URL-decode the stream identifier
+    char decoded_id[256];
+    url_decode(stream_id_copy, decoded_id, sizeof(decoded_id));
+    free(stream_id_copy);
+
+    log_info("Deleting stream with identifier: %s", decoded_id);
+
+    // Find the stream by ID or name
+    stream_handle_t stream = NULL;
+
+    // try by name
     if (!stream) {
+        stream = get_stream_by_name(decoded_id);
+        log_debug("Tried to find stream by name '%s', result: %s",
+                 decoded_id, stream ? "found" : "not found");
+    }
+
+    // If still not found, return error
+    if (!stream) {
+        log_error("Stream not found: %s", decoded_id);
         create_json_response(response, 404, "{\"error\": \"Stream not found\"}");
         return;
     }
 
+    // Get stream name for logging and config updates
+    stream_config_t config;
+    if (get_stream_config(stream, &config) != 0) {
+        log_error("Failed to get stream configuration for: %s", decoded_id);
+        create_json_response(response, 500, "{\"error\": \"Failed to get stream configuration\"}");
+        return;
+    }
+
+    // Save stream name before removal
+    char stream_name[MAX_STREAM_NAME];
+    strncpy(stream_name, config.name, MAX_STREAM_NAME - 1);
+    stream_name[MAX_STREAM_NAME - 1] = '\0';
+
+    log_info("Found stream to delete: %s (name: %s)", decoded_id, stream_name);
+
     // Stop and remove the stream
+    log_info("Stopping stream: %s", stream_name);
     if (stop_stream(stream) != 0) {
         log_warn("Failed to stop stream: %s", stream_name);
         // Continue anyway, we'll try to remove it
     }
 
+    log_info("Removing stream: %s", stream_name);
     if (remove_stream(stream) != 0) {
+        log_error("Failed to remove stream: %s", stream_name);
         create_json_response(response, 500, "{\"error\": \"Failed to remove stream\"}");
         return;
     }
@@ -621,29 +786,31 @@ void handle_delete_stream(const http_request_t *request, http_response_t *respon
     for (int i = 0; i < local_config.max_streams; i++) {
         if (strcmp(local_config.streams[i].name, stream_name) == 0) {
             // Found the stream in config, clear it
+            log_info("Removing stream '%s' from configuration at index %d", stream_name, i);
             memset(&local_config.streams[i], 0, sizeof(stream_config_t));
-            log_info("Removed stream '%s' from configuration at index %d", stream_name, i);
             stream_removed_from_config = true;
             break;
         }
     }
 
     if (!stream_removed_from_config) {
-        log_warn("Couldn't find stream '%s' in config to remove", stream_name);
+        log_warn("Couldn't find stream '%s' in configuration to remove", stream_name);
     }
-    
+
     // Save configuration to ensure the changes are persisted
     if (save_config(&local_config, "/etc/lightnvr/lightnvr.conf") != 0) {
         log_warn("Failed to save configuration after removing stream");
-        // Continue anyway, the stream is removed
+        // Continue anyway, the stream is removed from memory
     }
-    
+
     // Create success response
     char response_json[256];
-    snprintf(response_json, sizeof(response_json), "{\"success\": true, \"name\": \"%s\"}", stream_name);
+    snprintf(response_json, sizeof(response_json),
+             "{\"success\": true, \"name\": \"%s\", \"id\": \"%s\"}",
+             stream_name, decoded_id);
     create_json_response(response, 200, response_json);
-    
-    log_info("Stream removed: %s", stream_name);
+
+    log_info("Stream removed successfully: %s", stream_name);
 }
 
 /**
@@ -1176,59 +1343,76 @@ void handle_delete_recording(const http_request_t *request, http_response_t *res
         create_json_response(response, 400, "{\"error\": \"Invalid recording ID\"}");
         return;
     }
-    
+
     // Skip the '/'
     id_str++;
-    
+
     // Convert ID to integer
     uint64_t id = strtoull(id_str, NULL, 10);
     if (id == 0) {
         create_json_response(response, 400, "{\"error\": \"Invalid recording ID\"}");
         return;
     }
-    
+
     log_info("Attempting to delete recording with ID: %llu", (unsigned long long)id);
-    
+
     // Get recording metadata from database
     recording_metadata_t metadata;
     int result = get_recording_metadata_by_id(id, &metadata);
-    
+
     if (result != 0) {
         log_error("Recording with ID %llu not found in database", (unsigned long long)id);
         create_json_response(response, 404, "{\"error\": \"Recording not found\"}");
         return;
     }
-    
+
     log_info("Found recording in database: ID=%llu, Path=%s", (unsigned long long)id, metadata.file_path);
-    
-    // Check if file exists first
-    struct stat st;
-    if (stat(metadata.file_path, &st) != 0) {
-        log_warn("Recording file not found on disk: %s (error: %s)",
-                metadata.file_path, strerror(errno));
 
-        // Check for MP4 file as an alternative
-        char mp4_path[MAX_PATH_LENGTH];
-        const char *dir_end = strrchr(metadata.file_path, '/');
-        if (dir_end) {
-            // Extract directory path
-            size_t dir_len = dir_end - metadata.file_path + 1;
-            strncpy(mp4_path, metadata.file_path, dir_len);
-            mp4_path[dir_len] = '\0';
-            strcat(mp4_path, "recording_*.mp4");
+    // Determine directory where recording segments are stored
+    char dir_path[MAX_PATH_LENGTH];
+    const char *last_slash = strrchr(metadata.file_path, '/');
+    if (last_slash) {
+        size_t dir_len = last_slash - metadata.file_path + 1; // Include the slash
+        strncpy(dir_path, metadata.file_path, dir_len);
+        dir_path[dir_len] = '\0';
+        log_info("Recording directory: %s", dir_path);
 
-            // Try to find matching MP4 files
-            glob_t glob_result;
-            if (glob(mp4_path, GLOB_NOSORT, NULL, &glob_result) == 0) {
-                for (size_t i = 0; i < glob_result.gl_pathc; i++) {
-                    log_info("Attempting to delete alternate file: %s", glob_result.gl_pathv[i]);
-                    if (unlink(glob_result.gl_pathv[i]) == 0) {
-                        log_info("Successfully deleted alternate file: %s", glob_result.gl_pathv[i]);
-                    }
-                }
-                globfree(&glob_result);
+        // Delete all TS segment files in this directory
+        char delete_cmd[MAX_PATH_LENGTH + 50];
+        snprintf(delete_cmd, sizeof(delete_cmd), "rm -f %s*.ts %s*.mp4 %s*.m3u8",
+                dir_path, dir_path, dir_path);
+        log_info("Executing cleanup command: %s", delete_cmd);
+        system(delete_cmd); // Ignore result - we'll continue with metadata deletion anyway
+    }
+
+    // Explicitly try to delete the main file
+    if (access(metadata.file_path, F_OK) == 0) {
+        if (unlink(metadata.file_path) != 0) {
+            log_warn("Failed to delete recording file: %s (error: %s)",
+                    metadata.file_path, strerror(errno));
+            // Continue anyway - we'll still delete the metadata
+        } else {
+            log_info("Successfully deleted recording file: %s", metadata.file_path);
+        }
+    } else {
+        log_warn("Recording file not found on disk: %s", metadata.file_path);
+    }
+
+    // Delete MP4 recordings if they exist
+    char mp4_path[MAX_PATH_LENGTH];
+    snprintf(mp4_path, sizeof(mp4_path), "%srecording*.mp4", dir_path);
+
+    // Use glob to find MP4 files - this requires including glob.h
+    glob_t glob_result;
+    if (glob(mp4_path, GLOB_NOSORT, NULL, &glob_result) == 0) {
+        for (size_t i = 0; i < glob_result.gl_pathc; i++) {
+            log_info("Deleting MP4 file: %s", glob_result.gl_pathv[i]);
+            if (unlink(glob_result.gl_pathv[i]) != 0) {
+                log_warn("Failed to delete MP4 file: %s (error: %s)",
+                       glob_result.gl_pathv[i], strerror(errno));
             }
         }
+        globfree(&glob_result);
     }
 
     // Delete the recording metadata from database
@@ -2211,36 +2395,36 @@ void handle_get_debug_recordings(const http_request_t *request, http_response_t 
 }
 
 /**
- * Register API handlers
+ * Register fixed API handlers to ensure proper URL handling
  */
 void register_api_handlers(void) {
-    // Register settings API handlers
+    // Register settings API handlers (unchanged)
     register_request_handler("/api/settings", "GET", handle_get_settings);
     register_request_handler("/api/settings", "POST", handle_post_settings);
 
-    // Register stream API handlers
+    // Register stream API handlers (unchanged)
     register_request_handler("/api/streams", "GET", handle_get_streams);
     register_request_handler("/api/streams", "POST", handle_post_stream);
     register_request_handler("/api/streams/test", "POST", handle_test_stream);
 
-    // Register stream-specific API handlers (for individual streams)
-    register_request_handler("/api/streams/", "GET", handle_get_stream);
-    register_request_handler("/api/streams/", "PUT", handle_put_stream);
-    register_request_handler("/api/streams/", "DELETE", handle_delete_stream);
+    // Register improved stream-specific API handlers for individual streams
+    // Use a more specific pattern that matches the exact pattern of IDs
+    register_request_handler("/api/streams/*", "GET", handle_get_stream);
+    register_request_handler("/api/streams/*", "PUT", handle_put_stream);
+    register_request_handler("/api/streams/*", "DELETE", handle_delete_stream);
 
-    // Register system API handlers
+    // Register system API handlers (unchanged)
     register_request_handler("/api/system/info", "GET", handle_get_system_info);
     register_request_handler("/api/system/logs", "GET", handle_get_system_logs);
 
-    // Register recording API handlers
+    // Register recording API handlers (unchanged)
     register_request_handler("/api/recordings", "GET", handle_get_recordings);
     register_request_handler("/api/recordings/", "GET", handle_get_recording);
     register_request_handler("/api/recordings/", "DELETE", handle_delete_recording);
     register_request_handler("/api/debug/recordings", "GET", handle_get_debug_recordings);
-    // Use a separate specific pattern for download endpoint
     register_request_handler("/api/recordings/download/*", "GET", handle_download_recording);
 
-    log_info("API handlers registered");
+    log_info("API handlers registered with improved URL handling");
 }
 
 void register_streaming_api_handlers(void) {

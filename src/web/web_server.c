@@ -188,11 +188,34 @@ int init_web_server(int port, const char *web_root) {
         log_error("Failed to create server socket: %s", strerror(errno));
         return -1;
     }
-    
-    // Set socket options
+
+    // Set socket options for reuse
     int opt = 1;
     if (setsockopt(web_server.server_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
-        log_error("Failed to set socket options: %s", strerror(errno));
+        log_error("Failed to set SO_REUSEADDR on socket: %s", strerror(errno));
+        close(web_server.server_socket);
+        web_server.server_socket = -1;
+        return -1;
+    }
+
+    // Add SO_REUSEPORT if available (not supported on all systems)
+#ifdef SO_REUSEPORT
+    if (setsockopt(web_server.server_socket, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt)) < 0) {
+        log_warn("Failed to set SO_REUSEPORT on socket: %s", strerror(errno));
+        // Continue anyway, this is optional
+    }
+#endif
+
+    // Set socket to non-blocking mode
+    int flags = fcntl(web_server.server_socket, F_GETFL, 0);
+    if (flags == -1) {
+        log_error("Failed to get socket flags: %s", strerror(errno));
+        close(web_server.server_socket);
+        web_server.server_socket = -1;
+        return -1;
+    }
+    if (fcntl(web_server.server_socket, F_SETFL, flags | O_NONBLOCK) == -1) {
+        log_error("Failed to set socket to non-blocking mode: %s", strerror(errno));
         close(web_server.server_socket);
         web_server.server_socket = -1;
         return -1;
@@ -786,7 +809,20 @@ int get_web_server_stats(int *active_connections, double *requests_per_second,
 }
 
 // Server thread function
+// Server thread function
 static void *server_thread_func(void *arg) {
+    // Set socket back to blocking mode for more reliable accept
+    int flags = fcntl(web_server.server_socket, F_GETFL, 0);
+    if (flags != -1) {
+        fcntl(web_server.server_socket, F_SETFL, flags & ~O_NONBLOCK);
+    }
+
+    // Set a timeout on the socket to allow checking running status
+    struct timeval tv;
+    tv.tv_sec = 1;  // 1 second timeout
+    tv.tv_usec = 0;
+    setsockopt(web_server.server_socket, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
     while (1) {
         // Check if server is still running
         pthread_mutex_lock(&web_server.mutex);
@@ -794,29 +830,30 @@ static void *server_thread_func(void *arg) {
             pthread_mutex_unlock(&web_server.mutex);
             break;
         }
-        
+
         // Check if we have too many active connections
         if (web_server.active_connections >= web_server.max_connections) {
             pthread_mutex_unlock(&web_server.mutex);
             usleep(100000); // 100ms
             continue;
         }
-        
+
         pthread_mutex_unlock(&web_server.mutex);
-        
+
         // Accept a new connection
         struct sockaddr_in client_addr;
         socklen_t client_len = sizeof(client_addr);
         int client_socket = accept(web_server.server_socket, (struct sockaddr *)&client_addr, &client_len);
-        
+
         if (client_socket < 0) {
-            if (errno == EINTR) {
-                // Interrupted by signal, just continue
+            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+                // Timeout or interrupted - normal condition, just continue
+                continue;
+            } else {
+                log_error("Failed to accept connection: %s", strerror(errno));
+                usleep(100000); // 100ms pause before retry
                 continue;
             }
-            
-            log_error("Failed to accept connection: %s", strerror(errno));
-            break;
         }
         
         // Update statistics
@@ -987,6 +1024,7 @@ static void handle_client(int client_socket) {
 }
 
 // Parse HTTP request
+// Parse HTTP request
 static int parse_request(int client_socket, http_request_t *request) {
     char buffer[REQUEST_BUFFER_SIZE];
     ssize_t bytes_read;
@@ -997,7 +1035,12 @@ static int parse_request(int client_socket, http_request_t *request) {
     // Read request line and headers
     bytes_read = recv(client_socket, buffer, sizeof(buffer) - 1, 0);
     if (bytes_read <= 0) {
-        log_error("Failed to read request: %s", strerror(errno));
+        if (bytes_read == 0) {
+            // Connection closed by client - not an error
+            log_debug("Client closed connection");
+        } else {
+            log_error("Failed to read request: %s", strerror(errno));
+        }
         return -1;
     }
 
@@ -1172,7 +1215,7 @@ static int parse_request(int client_socket, http_request_t *request) {
         // Null-terminate the body (for text bodies)
         ((char *)request->body)[request->content_length] = '\0';
     }
-    
+
     return 0;
 }
 
@@ -1202,48 +1245,98 @@ static void send_response(int client_socket, const http_response_t *response) {
     }
 }
 
-// Handle static file request
+/**
+ * Handle static file request with SPA support
+ * This function serves static files and handles SPA routing
+ */
 static void handle_static_file(const http_request_t *request, http_response_t *response) {
     char file_path[MAX_PATH_SIZE];
-    
+
+    // Check if this is an API request
+    if (strncmp(request->path, "/api/", 5) == 0) {
+        // API endpoint not found
+        create_text_response(response, 404, "404 API Endpoint Not Found", "text/plain");
+        return;
+    }
+
     // Construct file path
     snprintf(file_path, sizeof(file_path), "%s%s", web_server.web_root, request->path);
-    
+
     // If path ends with '/', append 'index.html'
     size_t path_len = strlen(file_path);
     if (file_path[path_len - 1] == '/') {
         strncat(file_path, "index.html", sizeof(file_path) - path_len - 1);
     }
-    
+
     // Check if file exists
     struct stat st;
-    if (stat(file_path, &st) != 0) {
-        // File not found
-        create_text_response(response, 404, "404 Not Found", "text/plain");
-        return;
-    }
-    
-    // Check if it's a directory
-    if (S_ISDIR(st.st_mode)) {
-        // Redirect to add trailing slash if needed
-        if (request->path[strlen(request->path) - 1] != '/') {
-            char redirect_path[256];
-            snprintf(redirect_path, sizeof(redirect_path), "%s/", request->path);
-            create_redirect_response(response, 301, redirect_path);
-        } else {
-            // Try to serve index.html
-            strncat(file_path, "index.html", sizeof(file_path) - strlen(file_path) - 1);
-            if (stat(file_path, &st) != 0 || !S_ISREG(st.st_mode)) {
-                create_text_response(response, 403, "403 Forbidden", "text/plain");
+    if (stat(file_path, &st) == 0) {
+        // Check if it's a directory
+        if (S_ISDIR(st.st_mode)) {
+            // Redirect to add trailing slash if needed
+            if (request->path[strlen(request->path) - 1] != '/') {
+                char redirect_path[256];
+                snprintf(redirect_path, sizeof(redirect_path), "%s/", request->path);
+                create_redirect_response(response, 301, redirect_path);
                 return;
+            } else {
+                // Try to serve index.html
+                strncat(file_path, "index.html", sizeof(file_path) - strlen(file_path) - 1);
+                if (stat(file_path, &st) != 0 || !S_ISREG(st.st_mode)) {
+                    create_text_response(response, 403, "403 Forbidden", "text/plain");
+                    return;
+                }
             }
         }
+
+        // File exists, serve it
+        if (create_file_response(response, 200, file_path, NULL) != 0) {
+            create_text_response(response, 500, "500 Internal Server Error", "text/plain");
+        }
+        return;
     }
-    
-    // Serve the file
-    if (create_file_response(response, 200, file_path, NULL) != 0) {
-        create_text_response(response, 500, "500 Internal Server Error", "text/plain");
+
+    // File doesn't exist - check SPA routes
+    // List of known SPA routes
+    const char *spa_routes[] = {
+        "/",
+        "/recordings",
+        "/streams",
+        "/settings",
+        "/system",
+        "/debug",
+        NULL  // Terminator
+    };
+
+    // Check if the path matches a known SPA route
+    int is_spa_route = 0;
+    for (int i = 0; spa_routes[i] != NULL; i++) {
+        if (strcmp(request->path, spa_routes[i]) == 0) {
+            is_spa_route = 1;
+            break;
+        }
     }
+
+    // If it's a known SPA route or path with assumed dynamic segments (/recordings/123)
+    // Serve the index.html file
+    if (is_spa_route ||
+        strncmp(request->path, "/recordings/", 12) == 0 ||
+        strncmp(request->path, "/streams/", 9) == 0) {
+
+        char index_path[MAX_PATH_SIZE];
+        snprintf(index_path, sizeof(index_path), "%s/index.html", web_server.web_root);
+
+        // Check if index.html exists
+        if (stat(index_path, &st) == 0 && S_ISREG(st.st_mode)) {
+            if (create_file_response(response, 200, index_path, NULL) != 0) {
+                create_text_response(response, 500, "500 Internal Server Error", "text/plain");
+            }
+            return;
+        }
+    }
+
+    // If we get here, the file doesn't exist and it's not a SPA route
+    create_text_response(response, 404, "404 Not Found", "text/plain");
 }
 
 // Get MIME type for a file

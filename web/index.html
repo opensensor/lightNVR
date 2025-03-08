@@ -8,388 +8,413 @@
     <link rel="icon" href="img/favicon.ico" type="image/x-icon">
 </head>
 <body>
-    <div class="container">
-        <header>
-            <div class="logo">
-                <h1>LightNVR</h1>
-                <span class="version">v0.1.0</span>
-            </div>
-            <nav>
-                <ul>
-                    <li><a href="#" class="active" data-page="live">Live View</a></li>
-                    <li><a href="#" data-page="recordings">Recordings</a></li>
-                    <li><a href="#" data-page="streams">Streams</a></li>
-                    <li><a href="#" data-page="settings">Settings</a></li>
-                    <li><a href="#" data-page="system">System</a></li>
-                    <li><a href="#" data-page="debug">Debug</a></li>
-                </ul>
-            </nav>
-            <div class="user-menu">
-                <span id="username">Admin</span>
-                <a href="#" id="logout">Logout</a>
-            </div>
-        </header>
+<div class="container">
+    <header>
+        <div class="logo">
+            <h1>LightNVR</h1>
+            <span class="version">v0.1.0</span>
+        </div>
+        <nav>
+            <ul>
+                <li><a href="/" id="nav-live">Live View</a></li>
+                <li><a href="/recordings" id="nav-recordings">Recordings</a></li>
+                <li><a href="/streams" id="nav-streams">Streams</a></li>
+                <li><a href="/settings" id="nav-settings">Settings</a></li>
+                <li><a href="/system" id="nav-system">System</a></li>
+                <li><a href="/debug" id="nav-debug">Debug</a></li>
+            </ul>
+        </nav>
+        <div class="user-menu">
+            <span id="username">Admin</span>
+            <a href="/logout" id="logout">Logout</a>
+        </div>
+    </header>
 
-        <main>
-            <!-- Live View Page -->
-            <section id="live-page" class="page active">
-                <div class="page-header">
-                    <h2>Live View</h2>
-                    <div class="controls">
-                        <select id="layout-selector">
-                            <option value="1">Single View</option>
-                            <option value="4">2x2 Grid</option>
-                            <option value="9">3x3 Grid</option>
-                            <option value="16">4x4 Grid</option>
-                        </select>
-                        <button id="fullscreen-btn">Fullscreen</button>
-                    </div>
-                </div>
-                <div class="video-container" id="video-grid">
-                    <div class="placeholder">
-                        <p>No streams configured</p>
-                        <a href="#" data-page="streams" class="btn">Configure Streams</a>
-                    </div>
-                </div>
-            </section>
+    <main id="main-content">
+        <!-- Content will be loaded here based on the URL -->
+    </main>
 
-            <!-- Recordings Page -->
-            <section id="recordings-page" class="page">
-                <div class="page-header">
-                    <h2>Recordings</h2>
-                    <div class="controls">
-                        <input type="date" id="date-picker">
-                        <select id="stream-filter">
-                            <option value="all">All Streams</option>
-                        </select>
-                        <button id="refresh-btn">Refresh</button>
-                    </div>
-                </div>
-                <div class="recordings-container">
-                    <table id="recordings-table">
-                        <thead>
-                            <tr>
-                                <th>Stream</th>
-                                <th>Start Time</th>
-                                <th>Duration</th>
-                                <th>Size</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td colspan="5" class="empty-message">No recordings found</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </section>
+    <footer>
+        <div class="status">
+            <span id="status-indicator" class="status-ok"></span>
+            <span id="status-text">System running normally</span>
+        </div>
+        <div class="copyright">
+            &copy; 2025 LightNVR - <a href="https://github.com/yourusername/lightnvr" target="_blank">GitHub</a>
+        </div>
+    </footer>
+</div>
 
-            <!-- Streams Page -->
-            <section id="streams-page" class="page">
-                <div class="page-header">
-                    <h2>Streams</h2>
-                    <div class="controls">
-                        <button id="add-stream-btn" class="btn-primary">Add Stream</button>
-                    </div>
-                </div>
-                <div class="streams-container">
-                    <table id="streams-table">
-                        <thead>
-                            <tr>
-                                <th>Name</th>
-                                <th>URL</th>
-                                <th>Status</th>
-                                <th>Resolution</th>
-                                <th>FPS</th>
-                                <th>Recording</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td colspan="7" class="empty-message">No streams configured</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-
-            <!-- Settings Page -->
-            <section id="settings-page" class="page">
-                <div class="page-header">
-                    <h2>Settings</h2>
-                    <div class="controls">
-                        <button id="save-settings-btn" class="btn-primary">Save Settings</button>
-                    </div>
-                </div>
-                <div class="settings-container">
-                    <div class="settings-group">
-                        <h3>General Settings</h3>
-                        <div class="setting">
-                            <label for="setting-log-level">Log Level</label>
-                            <select id="setting-log-level">
-                                <option value="0">Error</option>
-                                <option value="1">Warning</option>
-                                <option value="2" selected>Info</option>
-                                <option value="3">Debug</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="settings-group">
-                        <h3>Storage Settings</h3>
-                        <div class="setting">
-                            <label for="setting-storage-path">Storage Path</label>
-                            <input type="text" id="setting-storage-path" value="/var/lib/lightnvr/recordings">
-                        </div>
-                        <div class="setting">
-                            <label for="setting-max-storage">Maximum Storage Size (GB)</label>
-                            <input type="number" id="setting-max-storage" value="0" min="0">
-                            <span class="hint">0 = unlimited</span>
-                        </div>
-                        <div class="setting">
-                            <label for="setting-retention">Retention Period (days)</label>
-                            <input type="number" id="setting-retention" value="30" min="1">
-                        </div>
-                        <div class="setting">
-                            <label for="setting-auto-delete">Auto Delete Oldest</label>
-                            <input type="checkbox" id="setting-auto-delete" checked>
-                        </div>
-                    </div>
-                    <div class="settings-group">
-                        <h3>Web Interface Settings</h3>
-                        <div class="setting">
-                            <label for="setting-web-port">Web Port</label>
-                            <input type="number" id="setting-web-port" value="8080" min="1" max="65535">
-                        </div>
-                        <div class="setting">
-                            <label for="setting-auth-enabled">Enable Authentication</label>
-                            <input type="checkbox" id="setting-auth-enabled" checked>
-                        </div>
-                        <div class="setting">
-                            <label for="setting-username">Username</label>
-                            <input type="text" id="setting-username" value="admin">
-                        </div>
-                        <div class="setting">
-                            <label for="setting-password">Password</label>
-                            <input type="password" id="setting-password" value="admin">
-                        </div>
-                    </div>
-                    <div class="settings-group">
-                        <h3>Memory Optimization</h3>
-                        <div class="setting">
-                            <label for="setting-buffer-size">Buffer Size (KB)</label>
-                            <input type="number" id="setting-buffer-size" value="1024" min="128">
-                        </div>
-                        <div class="setting">
-                            <label for="setting-use-swap">Use Swap File</label>
-                            <input type="checkbox" id="setting-use-swap" checked>
-                        </div>
-                        <div class="setting">
-                            <label for="setting-swap-size">Swap Size (MB)</label>
-                            <input type="number" id="setting-swap-size" value="128" min="32">
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- System Page -->
-            <section id="system-page" class="page">
-                <div class="page-header">
-                    <h2>System</h2>
-                    <div class="controls">
-                        <button id="refresh-system-btn">Refresh</button>
-                    </div>
-                </div>
-                <div class="system-container">
-                    <div class="system-group">
-                        <h3>System Information</h3>
-                        <div class="info-item">
-                            <span class="label">Version:</span>
-                            <span class="value" id="system-version">0.1.0</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="label">Uptime:</span>
-                            <span class="value" id="system-uptime">0d 0h 0m</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="label">CPU Usage:</span>
-                            <span class="value" id="system-cpu">0%</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="label">Memory Usage:</span>
-                            <span class="value" id="system-memory">0 MB / 256 MB</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="label">Storage Usage:</span>
-                            <span class="value" id="system-storage">0 GB / 0 GB</span>
-                        </div>
-                    </div>
-                    <div class="system-group">
-                        <h3>Stream Statistics</h3>
-                        <div class="info-item">
-                            <span class="label">Active Streams:</span>
-                            <span class="value" id="system-active-streams">0 / 0</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="label">Recording Streams:</span>
-                            <span class="value" id="system-recording-streams">0</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="label">Total Received:</span>
-                            <span class="value" id="system-received">0 MB</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="label">Total Recorded:</span>
-                            <span class="value" id="system-recorded">0 MB</span>
-                        </div>
-                    </div>
-                    <div class="system-group">
-                        <h3>System Actions</h3>
-                        <div class="action-buttons">
-                            <button id="restart-btn" class="btn-warning">Restart Service</button>
-                            <button id="shutdown-btn" class="btn-danger">Shutdown Service</button>
-                            <button id="clear-logs-btn" class="btn">Clear Logs</button>
-                            <button id="backup-config-btn" class="btn">Backup Configuration</button>
-                        </div>
-                    </div>
-                    <div class="system-group">
-                        <h3>System Logs</h3>
-                        <div class="log-container">
-                            <pre id="system-logs">No logs available</pre>
-                        </div>
-                    </div>
-                </div>
-            </section>
-        </main>
-
-        <footer>
-            <div class="status">
-                <span id="status-indicator" class="status-ok"></span>
-                <span id="status-text">System running normally</span>
-            </div>
-            <div class="copyright">
-                &copy; 2025 LightNVR - <a href="https://github.com/yourusername/lightnvr" target="_blank">GitHub</a>
-            </div>
-        </footer>
-    </div>
-
-    <!-- Modal for stream configuration -->
-    <div id="stream-modal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Add/Edit Stream</h3>
-                <span class="close">&times;</span>
-            </div>
-            <div class="modal-body">
-                <form id="stream-form">
-                    <div class="form-group">
-                        <label for="stream-name">Name</label>
-                        <input type="text" id="stream-name" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="stream-url">URL</label>
-                        <input type="text" id="stream-url" placeholder="rtsp://example.com/stream" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="stream-enabled">Enabled</label>
-                        <input type="checkbox" id="stream-enabled" checked>
-                    </div>
-                    <div class="form-group">
-                        <label for="stream-width">Width</label>
-                        <input type="number" id="stream-width" value="1280" min="320" max="1920">
-                    </div>
-                    <div class="form-group">
-                        <label for="stream-height">Height</label>
-                        <input type="number" id="stream-height" value="720" min="240" max="1080">
-                    </div>
-                    <div class="form-group">
-                        <label for="stream-fps">FPS</label>
-                        <input type="number" id="stream-fps" value="15" min="1" max="30">
-                    </div>
-                    <div class="form-group">
-                        <label for="stream-codec">Codec</label>
-                        <select id="stream-codec">
-                            <option value="h264">H.264</option>
-                            <option value="h265">H.265</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="stream-priority">Priority</label>
-                        <select id="stream-priority">
-                            <option value="1">Low (1)</option>
-                            <option value="5" selected>Medium (5)</option>
-                            <option value="10">High (10)</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="stream-record">Record</label>
-                        <input type="checkbox" id="stream-record" checked>
-                    </div>
-                    <div class="form-group">
-                        <label for="stream-segment">Segment Duration (seconds)</label>
-                        <input type="number" id="stream-segment" value="900" min="60" max="3600">
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button id="stream-test-btn" class="btn">Test Connection</button>
-                <button id="stream-save-btn" class="btn-primary">Save</button>
-                <button id="stream-cancel-btn" class="btn-secondary">Cancel</button>
+<!-- Templates for each page content -->
+<template id="live-template">
+    <section id="live-page" class="page">
+        <div class="page-header">
+            <h2>Live View</h2>
+            <div class="controls">
+                <select id="layout-selector">
+                    <option value="1">Single View</option>
+                    <option value="4">2x2 Grid</option>
+                    <option value="9">3x3 Grid</option>
+                    <option value="16">4x4 Grid</option>
+                </select>
+                <button id="fullscreen-btn">Fullscreen</button>
             </div>
         </div>
-    </div>
-
-    <!-- Modal for video playback -->
-    <div id="video-modal" class="modal">
-        <div class="modal-content video-modal-content">
-            <div class="modal-header">
-                <h3 id="video-modal-title">Recording Playback</h3>
-                <span class="close">&times;</span>
-            </div>
-            <div class="modal-body video-modal-body">
-                <video id="video-player" controls></video>
-            </div>
-            <div class="modal-footer">
-                <button id="video-download-btn" class="btn">Download</button>
-                <button id="video-close-btn" class="btn-secondary">Close</button>
+        <div class="video-container" id="video-grid">
+            <div class="placeholder">
+                <p>No streams configured</p>
+                <a href="/streams" class="btn">Configure Streams</a>
             </div>
         </div>
-    </div>
+    </section>
+</template>
 
-    <!-- Snapshot Preview Modal -->
-    <div id="snapshot-preview-modal" class="modal">
-        <div class="modal-content snapshot-preview-content">
-            <div class="modal-header snapshot-preview-header">
-                <h3 id="snapshot-preview-title">Snapshot Preview</h3>
-                <span class="close">&times;</span>
-            </div>
-            <div class="modal-body snapshot-preview-body">
-                <img id="snapshot-preview-image" src="" alt="Snapshot Preview">
-            </div>
-            <div class="modal-footer snapshot-preview-footer">
-                <button id="snapshot-download-btn" class="btn-primary">Download</button>
-                <button id="snapshot-close-btn" class="btn-secondary">Close</button>
+<template id="recordings-template">
+    <section id="recordings-page" class="page">
+        <div class="page-header">
+            <h2>Recordings</h2>
+            <div class="controls">
+                <input type="date" id="date-picker">
+                <select id="stream-filter">
+                    <option value="all">All Streams</option>
+                </select>
+                <button id="refresh-btn">Refresh</button>
             </div>
         </div>
-    </div>
+        <div class="recordings-container">
+            <table id="recordings-table">
+                <thead>
+                <tr>
+                    <th>Stream</th>
+                    <th>Start Time</th>
+                    <th>Duration</th>
+                    <th>Size</th>
+                    <th>Actions</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr>
+                    <td colspan="5" class="empty-message">No recordings found</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</template>
 
-    <!-- Database Debug Modal -->
-    <div id="debug-modal" class="modal">
-        <div class="modal-content debug-modal-content">
-            <div class="modal-header">
-                <h3>Database Debug</h3>
-                <span class="close">&times;</span>
-                <div class="modal-body debug-modal-body">
-                    <pre id="debug-output"></pre>
-                    <button id="debug-close-btn" class="btn-secondary">Close</button>
-                    <button id="debug-refresh-btn" class="btn">Refresh</button>
+<template id="streams-template">
+    <section id="streams-page" class="page">
+        <div class="page-header">
+            <h2>Streams</h2>
+            <div class="controls">
+                <button id="add-stream-btn" class="btn-primary">Add Stream</button>
+            </div>
+        </div>
+        <div class="streams-container">
+            <table id="streams-table">
+                <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>URL</th>
+                    <th>Status</th>
+                    <th>Resolution</th>
+                    <th>FPS</th>
+                    <th>Recording</th>
+                    <th>Actions</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr>
+                    <td colspan="7" class="empty-message">No streams configured</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</template>
+
+<template id="settings-template">
+    <section id="settings-page" class="page">
+        <div class="page-header">
+            <h2>Settings</h2>
+            <div class="controls">
+                <button id="save-settings-btn" class="btn-primary">Save Settings</button>
+            </div>
+        </div>
+        <div class="settings-container">
+            <div class="settings-group">
+                <h3>General Settings</h3>
+                <div class="setting">
+                    <label for="setting-log-level">Log Level</label>
+                    <select id="setting-log-level">
+                        <option value="0">Error</option>
+                        <option value="1">Warning</option>
+                        <option value="2" selected>Info</option>
+                        <option value="3">Debug</option>
+                    </select>
+                </div>
+            </div>
+            <div class="settings-group">
+                <h3>Storage Settings</h3>
+                <div class="setting">
+                    <label for="setting-storage-path">Storage Path</label>
+                    <input type="text" id="setting-storage-path" value="/var/lib/lightnvr/recordings">
+                </div>
+                <div class="setting">
+                    <label for="setting-max-storage">Maximum Storage Size (GB)</label>
+                    <input type="number" id="setting-max-storage" value="0" min="0">
+                    <span class="hint">0 = unlimited</span>
+                </div>
+                <div class="setting">
+                    <label for="setting-retention">Retention Period (days)</label>
+                    <input type="number" id="setting-retention" value="30" min="1">
+                </div>
+                <div class="setting">
+                    <label for="setting-auto-delete">Auto Delete Oldest</label>
+                    <input type="checkbox" id="setting-auto-delete" checked>
+                </div>
+            </div>
+            <div class="settings-group">
+                <h3>Web Interface Settings</h3>
+                <div class="setting">
+                    <label for="setting-web-port">Web Port</label>
+                    <input type="number" id="setting-web-port" value="8080" min="1" max="65535">
+                </div>
+                <div class="setting">
+                    <label for="setting-auth-enabled">Enable Authentication</label>
+                    <input type="checkbox" id="setting-auth-enabled" checked>
+                </div>
+                <div class="setting">
+                    <label for="setting-username">Username</label>
+                    <input type="text" id="setting-username" value="admin">
+                </div>
+                <div class="setting">
+                    <label for="setting-password">Password</label>
+                    <input type="password" id="setting-password" value="admin">
+                </div>
+            </div>
+            <div class="settings-group">
+                <h3>Memory Optimization</h3>
+                <div class="setting">
+                    <label for="setting-buffer-size">Buffer Size (KB)</label>
+                    <input type="number" id="setting-buffer-size" value="1024" min="128">
+                </div>
+                <div class="setting">
+                    <label for="setting-use-swap">Use Swap File</label>
+                    <input type="checkbox" id="setting-use-swap" checked>
+                </div>
+                <div class="setting">
+                    <label for="setting-swap-size">Swap Size (MB)</label>
+                    <input type="number" id="setting-swap-size" value="128" min="32">
                 </div>
             </div>
         </div>
-    </div>
+    </section>
+</template>
 
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-    <script src="js/app.js"></script>
+<template id="system-template">
+    <section id="system-page" class="page">
+        <div class="page-header">
+            <h2>System</h2>
+            <div class="controls">
+                <button id="refresh-system-btn">Refresh</button>
+            </div>
+        </div>
+        <div class="system-container">
+            <div class="system-group">
+                <h3>System Information</h3>
+                <div class="info-item">
+                    <span class="label">Version:</span>
+                    <span class="value" id="system-version">0.1.0</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Uptime:</span>
+                    <span class="value" id="system-uptime">0d 0h 0m</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">CPU Usage:</span>
+                    <span class="value" id="system-cpu">0%</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Memory Usage:</span>
+                    <span class="value" id="system-memory">0 MB / 256 MB</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Storage Usage:</span>
+                    <span class="value" id="system-storage">0 GB / 0 GB</span>
+                </div>
+            </div>
+            <div class="system-group">
+                <h3>Stream Statistics</h3>
+                <div class="info-item">
+                    <span class="label">Active Streams:</span>
+                    <span class="value" id="system-active-streams">0 / 0</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Recording Streams:</span>
+                    <span class="value" id="system-recording-streams">0</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Total Received:</span>
+                    <span class="value" id="system-received">0 MB</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Total Recorded:</span>
+                    <span class="value" id="system-recorded">0 MB</span>
+                </div>
+            </div>
+            <div class="system-group">
+                <h3>System Actions</h3>
+                <div class="action-buttons">
+                    <button id="restart-btn" class="btn-warning">Restart Service</button>
+                    <button id="shutdown-btn" class="btn-danger">Shutdown Service</button>
+                    <button id="clear-logs-btn" class="btn">Clear Logs</button>
+                    <button id="backup-config-btn" class="btn">Backup Configuration</button>
+                </div>
+            </div>
+            <div class="system-group">
+                <h3>System Logs</h3>
+                <div class="log-container">
+                    <pre id="system-logs">No logs available</pre>
+                </div>
+            </div>
+        </div>
+    </section>
+</template>
+
+<template id="debug-template">
+    <section id="debug-page" class="page">
+        <div class="page-header">
+            <h2>Debug</h2>
+            <div class="controls">
+                <button id="debug-db-btn" class="btn">Database Debug</button>
+            </div>
+        </div>
+        <div class="debug-container">
+            <div class="debug-group">
+                <h3>Debug Information</h3>
+                <pre id="debug-info">No debug information available</pre>
+            </div>
+        </div>
+    </section>
+</template>
+
+<!-- Modal for stream configuration -->
+<div id="stream-modal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Add/Edit Stream</h3>
+            <span class="close">&times;</span>
+        </div>
+        <div class="modal-body">
+            <form id="stream-form">
+                <div class="form-group">
+                    <label for="stream-name">Name</label>
+                    <input type="text" id="stream-name" required>
+                </div>
+                <div class="form-group">
+                    <label for="stream-url">URL</label>
+                    <input type="text" id="stream-url" placeholder="rtsp://example.com/stream" required>
+                </div>
+                <div class="form-group">
+                    <label for="stream-enabled">Enabled</label>
+                    <input type="checkbox" id="stream-enabled" checked>
+                </div>
+                <div class="form-group">
+                    <label for="stream-width">Width</label>
+                    <input type="number" id="stream-width" value="1280" min="320" max="1920">
+                </div>
+                <div class="form-group">
+                    <label for="stream-height">Height</label>
+                    <input type="number" id="stream-height" value="720" min="240" max="1080">
+                </div>
+                <div class="form-group">
+                    <label for="stream-fps">FPS</label>
+                    <input type="number" id="stream-fps" value="15" min="1" max="30">
+                </div>
+                <div class="form-group">
+                    <label for="stream-codec">Codec</label>
+                    <select id="stream-codec">
+                        <option value="h264">H.264</option>
+                        <option value="h265">H.265</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="stream-priority">Priority</label>
+                    <select id="stream-priority">
+                        <option value="1">Low (1)</option>
+                        <option value="5" selected>Medium (5)</option>
+                        <option value="10">High (10)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="stream-record">Record</label>
+                    <input type="checkbox" id="stream-record" checked>
+                </div>
+                <div class="form-group">
+                    <label for="stream-segment">Segment Duration (seconds)</label>
+                    <input type="number" id="stream-segment" value="900" min="60" max="3600">
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button id="stream-test-btn" class="btn">Test Connection</button>
+            <button id="stream-save-btn" class="btn-primary">Save</button>
+            <button id="stream-cancel-btn" class="btn-secondary">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal for video playback -->
+<div id="video-modal" class="modal">
+    <div class="modal-content video-modal-content">
+        <div class="modal-header">
+            <h3 id="video-modal-title">Recording Playback</h3>
+            <span class="close">&times;</span>
+        </div>
+        <div class="modal-body video-modal-body">
+            <video id="video-player" controls></video>
+        </div>
+        <div class="modal-footer">
+            <button id="video-download-btn" class="btn">Download</button>
+            <button id="video-close-btn" class="btn-secondary">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- Snapshot Preview Modal -->
+<div id="snapshot-preview-modal" class="modal">
+    <div class="modal-content snapshot-preview-content">
+        <div class="modal-header snapshot-preview-header">
+            <h3 id="snapshot-preview-title">Snapshot Preview</h3>
+            <span class="close">&times;</span>
+        </div>
+        <div class="modal-body snapshot-preview-body">
+            <img id="snapshot-preview-image" src="" alt="Snapshot Preview">
+        </div>
+        <div class="modal-footer snapshot-preview-footer">
+            <button id="snapshot-download-btn" class="btn-primary">Download</button>
+            <button id="snapshot-close-btn" class="btn-secondary">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- Database Debug Modal -->
+<div id="debug-modal" class="modal">
+    <div class="modal-content debug-modal-content">
+        <div class="modal-header">
+            <h3>Database Debug</h3>
+            <span class="close">&times;</span>
+            <div class="modal-body debug-modal-body">
+                <pre id="debug-output"></pre>
+                <button id="debug-close-btn" class="btn-secondary">Close</button>
+                <button id="debug-refresh-btn" class="btn">Refresh</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<script src="js/app.js"></script>
 </body>
 </html>

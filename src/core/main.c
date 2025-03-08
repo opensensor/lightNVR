@@ -29,7 +29,15 @@ void init_recordings_system(void);
 // Global flag for graceful shutdown
 static volatile bool running = true;
 
-// Signal handler for graceful shutdown
+// Declare a global variable to store the web server socket
+static int web_server_socket = -1;
+
+// Function to set the web server socket
+void set_web_server_socket(int socket_fd) {
+    web_server_socket = socket_fd;
+}
+
+// Modify the signal handler
 static void signal_handler(int sig) {
     log_info("Received signal %d, shutting down...", sig);
     running = false;
@@ -43,6 +51,63 @@ static void init_signals() {
     sigaction(SIGINT, &sa, NULL);
     sigaction(SIGTERM, &sa, NULL);
     sigaction(SIGHUP, &sa, NULL);
+}
+
+/**
+ * Check if another instance is running and kill it if needed
+ */
+static int check_and_kill_existing_instance(const char *pid_file) {
+    FILE *fp = fopen(pid_file, "r");
+    if (!fp) {
+        // No PID file, assume no other instance is running
+        return 0;
+    }
+
+    // Read PID from file
+    pid_t existing_pid;
+    if (fscanf(fp, "%d", &existing_pid) != 1) {
+        fclose(fp);
+        log_warn("Invalid PID file format");
+        unlink(pid_file);  // Remove invalid PID file
+        return 0;
+    }
+    fclose(fp);
+
+    // Check if process exists
+    if (kill(existing_pid, 0) == 0) {
+        // Process exists, ask user if they want to kill it
+        log_warn("Another instance with PID %d appears to be running", existing_pid);
+
+        // In a non-interactive environment, we can automatically kill it
+        log_info("Attempting to terminate previous instance (PID: %d)", existing_pid);
+
+        // Send SIGTERM to let it clean up
+        if (kill(existing_pid, SIGTERM) == 0) {
+            // Wait a bit for it to terminate
+            int timeout = 5;  // 5 seconds
+            while (timeout-- > 0 && kill(existing_pid, 0) == 0) {
+                sleep(1);
+            }
+
+            // If still running, force kill
+            if (timeout <= 0 && kill(existing_pid, 0) == 0) {
+                log_warn("Process didn't terminate gracefully, using SIGKILL");
+                kill(existing_pid, SIGKILL);
+                sleep(1);  // Give it a moment
+            }
+
+            log_info("Previous instance terminated");
+        } else {
+            log_error("Failed to terminate previous instance: %s", strerror(errno));
+            return -1;
+        }
+    } else {
+        // Process doesn't exist, remove stale PID file
+        log_warn("Removing stale PID file");
+        unlink(pid_file);
+    }
+
+    return 0;
 }
 
 // Function to create PID file
@@ -270,6 +335,12 @@ int main(int argc, char *argv[]) {
             log_error("Failed to daemonize");
             return EXIT_FAILURE;
         }
+    }
+
+    // In main function, before creating the PID file:
+    if (check_and_kill_existing_instance(config.pid_file) != 0) {
+        log_error("Failed to handle existing instance");
+        return EXIT_FAILURE;
     }
 
     // Create PID file

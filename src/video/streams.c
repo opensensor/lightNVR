@@ -10,7 +10,8 @@
 #include <pthread.h>
 #include <ctype.h>
 #include <sys/stat.h>
-#include <dirent.h>
+#include <signal.h>
+#include <errno.h>
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
@@ -162,26 +163,143 @@ void init_streaming_backend(void) {
     log_info("Streaming backend initialized");
 }
 
+// Add this function to implement a thread join with timeout
+static int pthread_join_with_timeout(pthread_t thread, void **retval, int timeout_sec) {
+    // Simple approach: use a second thread to join
+    pthread_t timeout_thread;
+    int *result = malloc(sizeof(int));
+    *result = -1;
+
+    // Structure to pass data to helper thread
+    struct {
+        pthread_t thread;
+        void **retval;
+        int *result;
+    } join_data = {thread, retval, result};
+
+    // Helper thread function
+    void *join_helper(void *arg) {
+        struct {
+            pthread_t thread;
+            void **retval;
+            int *result;
+        } *data = arg;
+
+        *(data->result) = pthread_join(data->thread, data->retval);
+        return NULL;
+    }
+
+    // Create helper thread to join the target thread
+    if (pthread_create(&timeout_thread, NULL, join_helper, &join_data) != 0) {
+        free(result);
+        return EAGAIN;
+    }
+
+    // Wait for timeout
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += timeout_sec;
+
+
+    // Not glibc - use sleep and check
+    while (1) {
+        // Check if thread has completed
+        if (pthread_kill(timeout_thread, 0) != 0) {
+            break;
+        }
+
+        struct timespec now;
+        clock_gettime(CLOCK_REALTIME, &now);
+        if (now.tv_sec >= ts.tv_sec &&
+            (now.tv_nsec >= ts.tv_nsec || now.tv_sec > ts.tv_sec)) {
+            pthread_cancel(timeout_thread);
+            pthread_join(timeout_thread, NULL);
+            free(result);
+            return ETIMEDOUT;
+        }
+
+        usleep(100000); // Sleep 100ms and try again
+    }
+
+    // Get the join result
+    int join_result = *result;
+    free(result);
+    return join_result;
+}
+
 /**
  * Cleanup FFmpeg resources
  */
+
+// In cleanup_streaming_backend function:
 void cleanup_streaming_backend(void) {
+    log_info("Cleaning up streaming backend...");
     pthread_mutex_lock(&contexts_mutex);
 
     // Stop all running transcodes
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (transcode_contexts[i]) {
-            transcode_contexts[i]->running = 0;
-            pthread_join(transcode_contexts[i]->thread, NULL);
+            log_info("Stopping stream in slot %d: %s", i,
+                    transcode_contexts[i]->config.name);
 
+            // Copy the stream name for later use
+            char stream_name[MAX_STREAM_NAME];
+            strncpy(stream_name, transcode_contexts[i]->config.name,
+                    MAX_STREAM_NAME - 1);
+            stream_name[MAX_STREAM_NAME - 1] = '\0';
+
+            // Mark as not running
+            transcode_contexts[i]->running = 0;
+
+            // Clean up resources (even if we can't join the thread)
             if (transcode_contexts[i]->hls_writer) {
                 hls_writer_close(transcode_contexts[i]->hls_writer);
-            }
-            
-            if (transcode_contexts[i]->mp4_writer) {
-                mp4_writer_close(transcode_contexts[i]->mp4_writer);
+                transcode_contexts[i]->hls_writer = NULL;
             }
 
+            if (transcode_contexts[i]->mp4_writer) {
+                mp4_writer_close(transcode_contexts[i]->mp4_writer);
+                transcode_contexts[i]->mp4_writer = NULL;
+            }
+
+            // Attempt to join the thread with a timeout
+            pthread_t thread = transcode_contexts[i]->thread;
+            pthread_mutex_unlock(&contexts_mutex);
+
+            // Try to join with a timeout (simple implementation)
+            struct timespec ts_start, ts_now;
+            clock_gettime(CLOCK_REALTIME, &ts_start);
+            int joined = 0;
+
+            while (1) {
+                // Try to join non-blocking
+                if (pthread_join_with_timeout(thread, NULL, 2) == 0) {
+                    joined = 1;
+                    break;
+                }
+
+                // Check timeout
+                clock_gettime(CLOCK_REALTIME, &ts_now);
+                if (ts_now.tv_sec - ts_start.tv_sec >= 2) {
+                    // 2 second timeout reached
+                    break;
+                }
+
+                // Sleep a bit before trying again
+                usleep(100000); // 100ms
+            }
+
+            if (!joined) {
+                log_warn("Could not join thread for stream %s within timeout",
+                        stream_name);
+            }
+
+            // Stop recording
+            stop_recording(stream_name);
+
+            pthread_mutex_lock(&contexts_mutex);
+
+            // Free the context
             free(transcode_contexts[i]);
             transcode_contexts[i] = NULL;
         }
@@ -220,8 +338,52 @@ static void *stream_transcode_thread(void *arg) {
     int video_stream_idx = -1;
     int ret;
     time_t last_update = 0;  // Track when we last updated metadata
+    time_t start_time = time(NULL);  // Record when we started
 
     log_info("Starting transcoding thread for stream %s", ctx->config.name);
+
+    // Generate timestamp for recording files
+    char timestamp_str[32];
+    struct tm *tm_info = localtime(&start_time);
+    strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M%S", tm_info);
+
+    // Create MP4 output path with timestamp
+    snprintf(ctx->mp4_output_path, MAX_PATH_LENGTH, "%s/recording_%s.mp4",
+             ctx->output_path, timestamp_str);
+
+    // Verify output directory exists and is writable
+    struct stat st;
+    if (stat(ctx->output_path, &st) != 0 || !S_ISDIR(st.st_mode)) {
+        log_error("Output directory does not exist or is not a directory: %s", ctx->output_path);
+
+        // Recreate it as a last resort
+        char mkdir_cmd[MAX_PATH_LENGTH * 2];
+        snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p %s", ctx->output_path);
+
+        if (system(mkdir_cmd) != 0 || stat(ctx->output_path, &st) != 0 || !S_ISDIR(st.st_mode)) {
+            log_error("Failed to create output directory: %s", ctx->output_path);
+            goto cleanup;
+        }
+
+        // Set permissions
+        snprintf(mkdir_cmd, sizeof(mkdir_cmd), "chmod -R 777 %s", ctx->output_path);
+        system(mkdir_cmd);
+    }
+
+    // Check directory permissions
+    if (access(ctx->output_path, W_OK) != 0) {
+        log_error("Output directory is not writable: %s", ctx->output_path);
+
+        // Try to fix permissions
+        char chmod_cmd[MAX_PATH_LENGTH * 2];
+        snprintf(chmod_cmd, sizeof(chmod_cmd), "chmod -R 777 %s", ctx->output_path);
+        system(chmod_cmd);
+
+        if (access(ctx->output_path, W_OK) != 0) {
+            log_error("Still unable to write to output directory: %s", ctx->output_path);
+            goto cleanup;
+        }
+    }
 
     // Open input
     ret = avformat_open_input(&input_ctx, ctx->config.url, NULL, NULL);
@@ -250,7 +412,7 @@ static void *stream_transcode_thread(void *arg) {
         goto cleanup;
     }
 
-    // Set up HLS writer
+    // Set up HLS writer with improved error handling
     ctx->hls_writer = hls_writer_create(ctx->output_path, ctx->config.name, ctx->config.segment_duration);
     if (!ctx->hls_writer) {
         log_error("Failed to create HLS writer for %s", ctx->config.name);
@@ -259,17 +421,13 @@ static void *stream_transcode_thread(void *arg) {
 
     // Set up MP4 writer if recording is enabled
     if (ctx->config.record) {
-        // Create MP4 output path with timestamp
-        time_t now = time(NULL);
-        snprintf(ctx->mp4_output_path, MAX_PATH_LENGTH, "%s/recording_%ld.mp4", ctx->output_path, now);
-        
-        // Create MP4 writer
         ctx->mp4_writer = mp4_writer_create(ctx->mp4_output_path, ctx->config.name);
         if (!ctx->mp4_writer) {
             log_error("Failed to create MP4 writer for %s", ctx->config.name);
             // Continue anyway with just HLS
         } else {
-            log_info("Created MP4 writer for stream %s at %s", ctx->config.name, ctx->mp4_output_path);
+            log_info("Created MP4 writer for stream %s at %s",
+                    ctx->config.name, ctx->mp4_output_path);
         }
     }
 
@@ -316,14 +474,22 @@ static void *stream_transcode_thread(void *arg) {
 
         // Process video packets
         if (pkt->stream_index == video_stream_idx) {
-            // Write to HLS
-            hls_writer_write_packet(ctx->hls_writer, pkt, input_ctx->streams[video_stream_idx]);
-            
+            // Write to HLS with error handling
+            ret = hls_writer_write_packet(ctx->hls_writer, pkt, input_ctx->streams[video_stream_idx]);
+            if (ret < 0) {
+                log_error("Failed to write packet to HLS: %d", ret);
+                // Continue anyway to keep the stream going
+            }
+
             // Write to MP4 if enabled
             if (ctx->mp4_writer) {
-                mp4_writer_write_packet(ctx->mp4_writer, pkt, input_ctx->streams[video_stream_idx]);
+                ret = mp4_writer_write_packet(ctx->mp4_writer, pkt, input_ctx->streams[video_stream_idx]);
+                if (ret < 0) {
+                    log_error("Failed to write packet to MP4: %d", ret);
+                    // Continue anyway to keep the stream going
+                }
             }
-            
+
             // Periodically update recording metadata (every 30 seconds)
             time_t now = time(NULL);
             if (now - last_update >= 30) {
@@ -570,7 +736,7 @@ void stop_recording(const char *stream_name) {
             // Mark recording as complete
             time_t end_time = time(NULL);
             update_recording_metadata(recording_id, end_time, total_size, true);
-            
+
             log_info("Completed recording %llu for stream %s, duration: %ld seconds, size: %llu bytes", 
                     (unsigned long long)recording_id, stream_name, 
                     (long)(end_time - start_time), 
@@ -582,7 +748,6 @@ void stop_recording(const char *stream_name) {
     
     pthread_mutex_unlock(&recordings_mutex);
 }
-
 /**
  * Start HLS transcoding for a stream
  */
@@ -641,16 +806,49 @@ int start_hls_stream(const char *stream_name) {
     snprintf(ctx->output_path, MAX_PATH_LENGTH, "%s/hls/%s",
              global_config->storage_path, stream_name);
 
-    // Create directory if it doesn't exist
-    char mkdir_cmd[MAX_PATH_LENGTH + 10];
-    snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p %s", ctx->output_path);
-    if (system(mkdir_cmd) != 0) {
-        log_warn("Failed to create directory: %s", ctx->output_path);
+    // Create directory if it doesn't exist - use more robust method
+    char dir_cmd[MAX_PATH_LENGTH * 2];
+
+    // Create the base directory
+    snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s", ctx->output_path);
+    int ret = system(dir_cmd);
+    if (ret != 0) {
+        log_error("Failed to create directory: %s (return code: %d)", ctx->output_path, ret);
+        free(ctx);
+        pthread_mutex_unlock(&contexts_mutex);
+        return -1;
     }
+
+    // Set full permissions to ensure FFmpeg can write files
+    snprintf(dir_cmd, sizeof(dir_cmd), "chmod -R 777 %s", ctx->output_path);
+    system(dir_cmd);
+
+    log_info("Created directory with full permissions: %s", ctx->output_path);
+
+    // Check that we can actually write to this directory
+    char test_file[MAX_PATH_LENGTH];
+    snprintf(test_file, sizeof(test_file), "%s/.test_write", ctx->output_path);
+    FILE *test = fopen(test_file, "w");
+    if (!test) {
+        log_error("Directory is not writable: %s (error: %s)", ctx->output_path, strerror(errno));
+        free(ctx);
+        pthread_mutex_unlock(&contexts_mutex);
+        return -1;
+    }
+    fclose(test);
+    remove(test_file);
+    log_info("Verified directory is writable: %s", ctx->output_path);
 
     // Start recording if enabled in config
     if (config.record) {
-        start_recording(stream_name, ctx->output_path);
+        uint64_t recording_id = start_recording(stream_name, ctx->output_path);
+        if (recording_id > 0) {
+            log_info("Started recording for stream %s with ID %llu",
+                    stream_name, (unsigned long long)recording_id);
+        } else {
+            log_warn("Failed to start recording for stream %s", stream_name);
+            // Continue anyway, the HLS stream will still work
+        }
     }
 
     // Start transcoding thread
@@ -675,42 +873,87 @@ int start_hls_stream(const char *stream_name) {
 int stop_hls_stream(const char *stream_name) {
     int found = 0;
 
+    // Log that we're attempting to stop the stream
+    log_info("Attempting to stop HLS stream: %s", stream_name);
+
     pthread_mutex_lock(&contexts_mutex);
+
+    // Find the stream context
+    stream_transcode_ctx_t *ctx = NULL;
+    int index = -1;
 
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (transcode_contexts[i] && strcmp(transcode_contexts[i]->config.name, stream_name) == 0) {
-            // Mark as not running
-            transcode_contexts[i]->running = 0;
-
-            // Join thread
-            pthread_join(transcode_contexts[i]->thread, NULL);
-
-            // Cleanup resources
-            if (transcode_contexts[i]->hls_writer) {
-                hls_writer_close(transcode_contexts[i]->hls_writer);
-            }
-            
-            if (transcode_contexts[i]->mp4_writer) {
-                mp4_writer_close(transcode_contexts[i]->mp4_writer);
-            }
-
-            // Stop recording
-            stop_recording(stream_name);
-
-            free(transcode_contexts[i]);
-            transcode_contexts[i] = NULL;
-
+            ctx = transcode_contexts[i];
+            index = i;
             found = 1;
             break;
         }
     }
 
-    pthread_mutex_unlock(&contexts_mutex);
-
     if (!found) {
         log_warn("HLS stream %s not found for stopping", stream_name);
+        pthread_mutex_unlock(&contexts_mutex);
         return -1;
     }
+
+    // Mark as not running first
+    ctx->running = 0;
+    log_info("Marked HLS stream %s as stopping (index: %d)", stream_name, index);
+
+    // Unlock before joining thread to prevent deadlocks
+    pthread_mutex_unlock(&contexts_mutex);
+
+    // Join thread with timeout
+    int join_result = 0;
+    struct timespec timeout;
+    clock_gettime(CLOCK_REALTIME, &timeout);
+    timeout.tv_sec += 5; // 5 second timeout
+
+    pthread_t thread_to_join = ctx->thread;
+    void *thread_result;
+    join_result = pthread_join(thread_to_join, &thread_result);
+    if (join_result != 0) {
+        log_error("Failed to join thread for stream %s (error: %d), will continue cleanup",
+                 stream_name, join_result);
+    } else {
+        log_info("Successfully joined thread for stream %s", stream_name);
+    }
+
+    // Re-lock for cleanup
+    pthread_mutex_lock(&contexts_mutex);
+
+    // Verify context is still valid
+    if (index >= 0 && index < MAX_STREAMS && transcode_contexts[index] == ctx) {
+        // Cleanup resources
+        if (ctx->hls_writer) {
+            log_info("Closing HLS writer for stream %s", stream_name);
+            hls_writer_close(ctx->hls_writer);
+            ctx->hls_writer = NULL;
+        }
+
+        if (ctx->mp4_writer) {
+            log_info("Closing MP4 writer for stream %s", stream_name);
+            mp4_writer_close(ctx->mp4_writer);
+            ctx->mp4_writer = NULL;
+        }
+
+        // Stop recording
+        log_info("Stopping recording for stream %s", stream_name);
+        pthread_mutex_unlock(&contexts_mutex);
+        stop_recording(stream_name);
+        pthread_mutex_lock(&contexts_mutex);
+
+        // Free context and clear slot
+        free(ctx);
+        transcode_contexts[index] = NULL;
+
+        log_info("Successfully cleaned up resources for stream %s", stream_name);
+    } else {
+        log_warn("Context for stream %s was modified during cleanup", stream_name);
+    }
+
+    pthread_mutex_unlock(&contexts_mutex);
 
     log_info("Stopped HLS stream %s", stream_name);
     return 0;

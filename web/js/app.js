@@ -1,5 +1,5 @@
 /**
- * LightNVR Web Interface JavaScript
+ * LightNVR Web Interface JavaScript with URL-based Navigation
  */
 
 // Wait for DOM to be fully loaded
@@ -12,8 +12,8 @@ document.addEventListener('DOMContentLoaded', function() {
  * Initialize the application
  */
 function initApp() {
-    // Set up navigation
-    setupNavigation();
+    // Initialize router for URL-based navigation
+    initRouter();
 
     // Set up modals
     setupModals();
@@ -21,160 +21,262 @@ function initApp() {
     // Set up snapshot modal
     setupSnapshotModal();
 
-    // Set up event handlers
-    setupEventHandlers();
-
     // Add stream styles
     addStreamStyles();
 
-    // Load initial data
-    loadInitialData();
+    // Add status message styles
+    addStatusMessageStyles();
 
     console.log('LightNVR Web Interface initialized');
 }
 
 /**
- * Set up navigation between pages
+ * Initialize the router for URL-based navigation
  */
-function setupNavigation() {
-    const navLinks = document.querySelectorAll('nav a');
-    
-    navLinks.forEach(link => {
-        link.addEventListener('click', function(e) {
-            e.preventDefault();
-            
-            // Get the page to show
-            const pageId = this.getAttribute('data-page');
-            
-            // Remove active class from all links
-            navLinks.forEach(link => link.classList.remove('active'));
-            
-            // Add active class to clicked link
-            this.classList.add('active');
-            
-            // Hide all pages
-            document.querySelectorAll('.page').forEach(page => {
-                page.classList.remove('active');
+function initRouter() {
+    // Define routes and corresponding handlers
+    const router = {
+        routes: {
+            '/': loadLiveView,
+            '/recordings': loadRecordingsView,
+            '/streams': loadStreamsView,
+            '/settings': loadSettingsView,
+            '/system': loadSystemView,
+            '/debug': loadDebugView,
+            '/logout': handleLogout
+        },
+
+        init: function() {
+            // Handle initial page load based on URL
+            this.navigate(window.location.pathname || '/');
+
+            // Handle navigation clicks
+            document.querySelectorAll('nav a').forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const path = link.getAttribute('href');
+                    this.navigate(path);
+                });
             });
-            
-            // Show the selected page
-            document.getElementById(`${pageId}-page`).classList.add('active');
-            
-            // Refresh data when switching to certain pages
-            if (pageId === 'streams') {
-                loadStreams();
-            } else if (pageId === 'recordings') {
-                loadRecordings();
-            } else if (pageId === 'system') {
-                loadSystemInfo();
+
+            // Handle browser back/forward buttons
+            window.addEventListener('popstate', (e) => {
+                this.navigate(window.location.pathname, false);
+            });
+
+            // Handle page links outside of navigation
+            document.addEventListener('click', e => {
+                const link = e.target.closest('a[href^="/"]');
+                if (link && !link.hasAttribute('target') && !link.hasAttribute('download')) {
+                    e.preventDefault();
+                    this.navigate(link.getAttribute('href'));
+                }
+            });
+        },
+
+        navigate: function(path, addToHistory = true) {
+            // Default to home if path is not recognized
+            if (!this.routes[path]) {
+                path = '/';
             }
-        });
-    });
-    
-    // Handle page links outside of navigation
-    document.querySelectorAll('a[data-page]').forEach(link => {
-        if (!link.closest('nav')) {
-            link.addEventListener('click', function(e) {
-                e.preventDefault();
-                
-                // Get the page to show
-                const pageId = this.getAttribute('data-page');
-                
-                // Find the corresponding nav link and click it
-                document.querySelector(`nav a[data-page="${pageId}"]`).click();
+
+            // Update URL in the address bar
+            if (addToHistory) {
+                history.pushState({path: path}, '', path);
+            }
+
+            // Update active navigation link
+            document.querySelectorAll('nav a').forEach(a => {
+                a.classList.remove('active');
             });
+
+            const activeNav = document.querySelector(`nav a[href="${path}"]`);
+            if (activeNav) {
+                activeNav.classList.add('active');
+            }
+
+            // Load the requested page content
+            this.routes[path]();
         }
-    });
+    };
+
+    // Initialize the router
+    router.init();
+
+    // Store router in window for global access
+    window.appRouter = router;
 }
 
 /**
- * Set up modal dialogs
+ * Load template into main content area
  */
-function setupModals() {
-    // Stream modal
-    const streamModal = document.getElementById('stream-modal');
+function loadTemplate(templateId) {
+    const mainContent = document.getElementById('main-content');
+    const template = document.getElementById(templateId);
+
+    if (template && mainContent) {
+        mainContent.innerHTML = '';
+        const clone = document.importNode(template.content, true);
+        mainContent.appendChild(clone);
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Page loader functions
+ */
+function loadLiveView() {
+    if (loadTemplate('live-template')) {
+        document.title = 'Live View - LightNVR';
+
+        // Set up event handlers for Live View page
+        setupLiveViewHandlers();
+
+        // Load streams for video grid
+        loadStreams(true);
+    }
+}
+
+function loadRecordingsView() {
+    if (loadTemplate('recordings-template')) {
+        document.title = 'Recordings - LightNVR';
+
+        // Set up event handlers for Recordings page
+        setupRecordingsHandlers();
+
+        // Load recordings data
+        loadRecordings();
+    }
+}
+
+function loadStreamsView() {
+    if (loadTemplate('streams-template')) {
+        document.title = 'Streams - LightNVR';
+
+        // Set up event handlers for Streams page
+        setupStreamsHandlers();
+
+        // Load streams data
+        loadStreams();
+    }
+}
+
+function loadSettingsView() {
+    if (loadTemplate('settings-template')) {
+        document.title = 'Settings - LightNVR';
+
+        // Set up event handlers for Settings page
+        setupSettingsHandlers();
+
+        // Load settings data
+        loadSettings();
+    }
+}
+
+function loadSystemView() {
+    if (loadTemplate('system-template')) {
+        document.title = 'System - LightNVR';
+
+        // Set up event handlers for System page
+        setupSystemHandlers();
+
+        // Load system information
+        loadSystemInfo();
+    }
+}
+
+function loadDebugView() {
+    if (loadTemplate('debug-template')) {
+        document.title = 'Debug - LightNVR';
+
+        // Set up event handlers for Debug page
+        setupDebugHandlers();
+
+        // Load debug information
+        loadDebugInfo();
+    }
+}
+
+function handleLogout() {
+    if (confirm('Are you sure you want to logout?')) {
+        // In a real implementation, this would make an API call to logout
+        alert('Logout successful');
+        // Redirect to login page (would be implemented in a real app)
+        window.appRouter.navigate('/');
+    } else {
+        // If user cancels logout, go back to previous page
+        window.history.back();
+    }
+}
+
+/**
+ * Page-specific event handlers
+ */
+function setupLiveViewHandlers() {
+    // Layout selector
+    const layoutSelector = document.getElementById('layout-selector');
+    if (layoutSelector) {
+        layoutSelector.addEventListener('change', function() {
+            updateVideoLayout(this.value);
+        });
+    }
+
+    // Fullscreen button
+    const fullscreenBtn = document.getElementById('fullscreen-btn');
+    if (fullscreenBtn) {
+        fullscreenBtn.addEventListener('click', function() {
+            toggleFullscreen();
+        });
+    }
+}
+
+function setupRecordingsHandlers() {
+    // Date picker
+    const datePicker = document.getElementById('date-picker');
+    if (datePicker) {
+        datePicker.value = new Date().toISOString().substring(0, 10);
+        datePicker.addEventListener('change', function() {
+            loadRecordings();
+        });
+    }
+
+    // Stream filter
+    const streamFilter = document.getElementById('stream-filter');
+    if (streamFilter) {
+        streamFilter.addEventListener('change', function() {
+            loadRecordings();
+        });
+    }
+
+    // Refresh button
+    const refreshBtn = document.getElementById('refresh-btn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', function() {
+            loadRecordings();
+        });
+    }
+}
+
+function setupStreamsHandlers() {
+    // Add stream button
     const addStreamBtn = document.getElementById('add-stream-btn');
-    const streamCancelBtn = document.getElementById('stream-cancel-btn');
-    const streamCloseBtn = streamModal.querySelector('.close');
-    
-    // Show stream modal when add stream button is clicked
     if (addStreamBtn) {
         addStreamBtn.addEventListener('click', function() {
-            // Reset form
-            document.getElementById('stream-form').reset();
-            // Show modal
-            streamModal.style.display = 'block';
-        });
-    }
-    
-    // Hide stream modal when cancel button is clicked
-    if (streamCancelBtn) {
-        streamCancelBtn.addEventListener('click', function() {
-            streamModal.style.display = 'none';
-        });
-    }
-    
-    // Hide stream modal when close button is clicked
-    if (streamCloseBtn) {
-        streamCloseBtn.addEventListener('click', function() {
-            streamModal.style.display = 'none';
-        });
-    }
-    
-    // Video modal
-    const videoModal = document.getElementById('video-modal');
-    const videoCloseBtn = document.getElementById('video-close-btn');
-    const videoModalCloseBtn = videoModal.querySelector('.close');
-    
-    // Hide video modal when close button is clicked
-    if (videoCloseBtn) {
-        videoCloseBtn.addEventListener('click', function() {
-            // Stop video playback
-            const videoPlayer = document.getElementById('video-player');
-            if (videoPlayer) {
-                videoPlayer.pause();
-                videoPlayer.src = '';
+            const streamModal = document.getElementById('stream-modal');
+            if (streamModal) {
+                // Reset form
+                document.getElementById('stream-form').reset();
+                // Clear original name data attribute
+                delete streamModal.dataset.originalName;
+                // Show modal
+                streamModal.style.display = 'block';
             }
-            
-            videoModal.style.display = 'none';
         });
     }
-    
-    // Hide video modal when close button is clicked
-    if (videoModalCloseBtn) {
-        videoModalCloseBtn.addEventListener('click', function() {
-            // Stop video playback
-            const videoPlayer = document.getElementById('video-player');
-            if (videoPlayer) {
-                videoPlayer.pause();
-                videoPlayer.src = '';
-            }
-            
-            videoModal.style.display = 'none';
-        });
-    }
-    
-    // Close modals when clicking outside
-    window.addEventListener('click', function(e) {
-        if (e.target === streamModal) {
-            streamModal.style.display = 'none';
-        } else if (e.target === videoModal) {
-            // Stop video playback
-            const videoPlayer = document.getElementById('video-player');
-            if (videoPlayer) {
-                videoPlayer.pause();
-                videoPlayer.src = '';
-            }
-            
-            videoModal.style.display = 'none';
-        }
-    });
 }
 
-/**
- * Set up event handlers for various UI elements
- */
-function setupEventHandlers() {
+function setupSettingsHandlers() {
     // Save settings button
     const saveSettingsBtn = document.getElementById('save-settings-btn');
     if (saveSettingsBtn) {
@@ -182,23 +284,9 @@ function setupEventHandlers() {
             saveSettings();
         });
     }
-    
-    // Stream save button
-    const streamSaveBtn = document.getElementById('stream-save-btn');
-    if (streamSaveBtn) {
-        streamSaveBtn.addEventListener('click', function() {
-            saveStream();
-        });
-    }
-    
-    // Stream test button
-    const streamTestBtn = document.getElementById('stream-test-btn');
-    if (streamTestBtn) {
-        streamTestBtn.addEventListener('click', function() {
-            testStream();
-        });
-    }
-    
+}
+
+function setupSystemHandlers() {
     // Refresh system button
     const refreshSystemBtn = document.getElementById('refresh-system-btn');
     if (refreshSystemBtn) {
@@ -206,7 +294,7 @@ function setupEventHandlers() {
             loadSystemInfo();
         });
     }
-    
+
     // Restart service button
     const restartBtn = document.getElementById('restart-btn');
     if (restartBtn) {
@@ -216,7 +304,7 @@ function setupEventHandlers() {
             }
         });
     }
-    
+
     // Shutdown service button
     const shutdownBtn = document.getElementById('shutdown-btn');
     if (shutdownBtn) {
@@ -226,7 +314,7 @@ function setupEventHandlers() {
             }
         });
     }
-    
+
     // Clear logs button
     const clearLogsBtn = document.getElementById('clear-logs-btn');
     if (clearLogsBtn) {
@@ -236,7 +324,7 @@ function setupEventHandlers() {
             }
         });
     }
-    
+
     // Backup configuration button
     const backupConfigBtn = document.getElementById('backup-config-btn');
     if (backupConfigBtn) {
@@ -244,63 +332,196 @@ function setupEventHandlers() {
             backupConfig();
         });
     }
-    
-    // Layout selector
-    const layoutSelector = document.getElementById('layout-selector');
-    if (layoutSelector) {
-        layoutSelector.addEventListener('change', function() {
-            updateVideoLayout(this.value);
-        });
-    }
-    
-    // Fullscreen button
-    const fullscreenBtn = document.getElementById('fullscreen-btn');
-    if (fullscreenBtn) {
-        fullscreenBtn.addEventListener('click', function() {
-            toggleFullscreen();
-        });
-    }
-    
-    // Logout button
-    const logoutBtn = document.getElementById('logout');
-    if (logoutBtn) {
-        logoutBtn.addEventListener('click', function(e) {
-            e.preventDefault();
-            logout();
-        });
-    }
-    
-    // Refresh buttons
-    const refreshStreamsBtn = document.querySelector('button#refresh-streams-btn');
-    if (refreshStreamsBtn) {
-        refreshStreamsBtn.addEventListener('click', function() {
-            loadStreams();
-        });
-    }
-    
-    const refreshRecordingsBtn = document.getElementById('refresh-btn');
-    if (refreshRecordingsBtn) {
-        refreshRecordingsBtn.addEventListener('click', function() {
-            loadRecordings();
+}
+
+function setupDebugHandlers() {
+    // Debug database button
+    const debugDbBtn = document.getElementById('debug-db-btn');
+    if (debugDbBtn) {
+        debugDbBtn.addEventListener('click', function() {
+            openDebugModal();
         });
     }
 }
 
 /**
- * Load initial data for the application
+ * Set up modal dialogs
  */
-function loadInitialData() {
-    // Load system information
-    loadSystemInfo();
-    
-    // Load streams
-    loadStreams();
-    
-    // Load recordings
-    loadRecordings();
-    
-    // Load settings
-    loadSettings();
+function setupModals() {
+    // Stream modal
+    const streamModal = document.getElementById('stream-modal');
+    const streamCancelBtn = document.getElementById('stream-cancel-btn');
+    const streamSaveBtn = document.getElementById('stream-save-btn');
+    const streamTestBtn = document.getElementById('stream-test-btn');
+    const streamCloseBtn = streamModal?.querySelector('.close');
+
+    // Hide stream modal when cancel button is clicked
+    if (streamCancelBtn) {
+        streamCancelBtn.addEventListener('click', function() {
+            streamModal.style.display = 'none';
+        });
+    }
+
+    // Hide stream modal when close button is clicked
+    if (streamCloseBtn) {
+        streamCloseBtn.addEventListener('click', function() {
+            streamModal.style.display = 'none';
+        });
+    }
+
+    // Save stream when save button is clicked
+    if (streamSaveBtn) {
+        streamSaveBtn.addEventListener('click', function() {
+            saveStream();
+        });
+    }
+
+    // Test stream when test button is clicked
+    if (streamTestBtn) {
+        streamTestBtn.addEventListener('click', function() {
+            testStream();
+        });
+    }
+
+    // Video modal
+    const videoModal = document.getElementById('video-modal');
+    const videoCloseBtn = document.getElementById('video-close-btn');
+    const videoModalCloseBtn = videoModal?.querySelector('.close');
+
+    // Hide video modal when close button is clicked
+    if (videoCloseBtn) {
+        videoCloseBtn.addEventListener('click', function() {
+            closeVideoModal();
+        });
+    }
+
+    // Hide video modal when close button is clicked
+    if (videoModalCloseBtn) {
+        videoModalCloseBtn.addEventListener('click', function() {
+            closeVideoModal();
+        });
+    }
+
+    // Debug modal
+    const debugModal = document.getElementById('debug-modal');
+    const debugCloseBtn = document.getElementById('debug-close-btn');
+    const debugModalCloseBtn = debugModal?.querySelector('.close');
+    const debugRefreshBtn = document.getElementById('debug-refresh-btn');
+
+    // Close debug modal when close button is clicked
+    if (debugCloseBtn) {
+        debugCloseBtn.addEventListener('click', function() {
+            debugModal.style.display = 'none';
+        });
+    }
+
+    // Close debug modal when close button is clicked
+    if (debugModalCloseBtn) {
+        debugModalCloseBtn.addEventListener('click', function() {
+            debugModal.style.display = 'none';
+        });
+    }
+
+    // Refresh debug data when refresh button is clicked
+    if (debugRefreshBtn) {
+        debugRefreshBtn.addEventListener('click', function() {
+            refreshDebugData();
+        });
+    }
+
+    // Close modals when clicking outside
+    window.addEventListener('click', function(e) {
+        if (e.target === streamModal) {
+            streamModal.style.display = 'none';
+        } else if (e.target === videoModal) {
+            closeVideoModal();
+        } else if (e.target === debugModal) {
+            debugModal.style.display = 'none';
+        }
+    });
+}
+
+/**
+ * Close video modal and stop playback
+ */
+function closeVideoModal() {
+    const videoModal = document.getElementById('video-modal');
+    const videoPlayer = document.getElementById('video-player');
+
+    if (videoPlayer) {
+        const video = videoPlayer.querySelector('video');
+        if (video) {
+            video.pause();
+            video.src = '';
+        }
+        videoPlayer.innerHTML = '';
+    }
+
+    if (videoModal) {
+        videoModal.style.display = 'none';
+    }
+}
+
+/**
+ * Open debug modal and load data
+ */
+function openDebugModal() {
+    const debugModal = document.getElementById('debug-modal');
+    if (!debugModal) return;
+
+    // Refresh debug data
+    refreshDebugData();
+
+    // Show modal
+    debugModal.style.display = 'block';
+}
+
+/**
+ * Refresh debug data
+ */
+function refreshDebugData() {
+    const debugOutput = document.getElementById('debug-output');
+    if (!debugOutput) return;
+
+    debugOutput.textContent = 'Loading debug data...';
+
+    // Simulate API call with delay
+    setTimeout(() => {
+        debugOutput.textContent = JSON.stringify({
+            database: {
+                version: '1.0.0',
+                size: '1.2 MB',
+                tables: ['streams', 'recordings', 'settings', 'logs'],
+                records: {
+                    streams: 2,
+                    recordings: 24,
+                    settings: 18,
+                    logs: 156
+                }
+            }
+        }, null, 2);
+    }, 500);
+}
+
+/**
+ * Load debug information
+ */
+function loadDebugInfo() {
+    const debugInfo = document.getElementById('debug-info');
+    if (!debugInfo) return;
+
+    debugInfo.textContent = 'Loading debug information...';
+
+    // Simulate API call with delay
+    setTimeout(() => {
+        debugInfo.textContent = `Environment: Development
+Node.js Version: 18.15.0
+Database: SQLite 3.36.0
+FFmpeg Version: 4.4.2
+OS: Linux 5.15.0-52-generic x86_64
+Memory Usage: 78.4 MB
+Uptime: 1d 4h 23m`;
+    }, 500);
 }
 
 /**
@@ -308,9 +529,9 @@ function loadInitialData() {
  */
 function handleApiError(error, fallbackMessage) {
     console.error('API Error:', error);
-    
+
     let errorMessage = fallbackMessage || 'An error occurred';
-    
+
     if (error.response && error.response.json) {
         error.response.json().then(data => {
             if (data && data.error) {
@@ -330,10 +551,10 @@ function handleApiError(error, fallbackMessage) {
  */
 function showLoading(element) {
     if (!element) return;
-    
+
     // Add loading class to element
     element.classList.add('loading');
-    
+
     // Optionally add a loading spinner
     const spinner = document.createElement('div');
     spinner.className = 'spinner';
@@ -345,10 +566,10 @@ function showLoading(element) {
  */
 function hideLoading(element) {
     if (!element) return;
-    
+
     // Remove loading class from element
     element.classList.remove('loading');
-    
+
     // Remove loading spinner if exists
     const spinner = element.querySelector('.spinner');
     if (spinner) {
@@ -362,9 +583,9 @@ function hideLoading(element) {
 function loadSystemInfo() {
     const systemContainer = document.querySelector('.system-container');
     if (!systemContainer) return;
-    
+
     showLoading(systemContainer);
-    
+
     // Fetch system information from API
     fetch('/api/system/info')
         .then(response => {
@@ -376,24 +597,24 @@ function loadSystemInfo() {
         .then(data => {
             // Update system information
             document.getElementById('system-version').textContent = data.version || '0.1.0';
-            
+
             // Format uptime
             const uptime = data.uptime || 0;
             const days = Math.floor(uptime / 86400);
             const hours = Math.floor((uptime % 86400) / 3600);
             const minutes = Math.floor((uptime % 3600) / 60);
             document.getElementById('system-uptime').textContent = `${days}d ${hours}h ${minutes}m`;
-            
+
             document.getElementById('system-cpu').textContent = `${data.cpu_usage || 0}%`;
             document.getElementById('system-memory').textContent = `${data.memory_usage || 0} MB / ${data.memory_total || 0} MB`;
             document.getElementById('system-storage').textContent = `${data.storage_usage || 0} GB / ${data.storage_total || 0} GB`;
-            
+
             // Update stream statistics
             document.getElementById('system-active-streams').textContent = `${data.active_streams || 0} / ${data.max_streams || 0}`;
             document.getElementById('system-recording-streams').textContent = `${data.recording_streams || 0}`;
             document.getElementById('system-received').textContent = `${data.data_received || 0} MB`;
             document.getElementById('system-recorded').textContent = `${data.data_recorded || 0} MB`;
-            
+
             // Load logs
             loadSystemLogs();
         })
@@ -421,7 +642,7 @@ function loadSystemInfo() {
 function loadSystemLogs() {
     const logsContainer = document.getElementById('system-logs');
     if (!logsContainer) return;
-    
+
     // Fetch logs from API
     fetch('/api/system/logs')
         .then(response => {
@@ -444,106 +665,130 @@ function loadSystemLogs() {
 }
 
 /**
- * Load streams
+ * Load streams - for Streams page or Live View page
  */
-function loadStreams() {
-    const streamsTable = document.getElementById('streams-table');
-    if (!streamsTable) return;
-    
-    const tbody = streamsTable.querySelector('tbody');
-    
-    showLoading(streamsTable);
-    
-    // Clear existing rows
-    tbody.innerHTML = '<tr><td colspan="7" class="empty-message">Loading streams...</td></tr>';
-    
-    // Fetch streams from API
-    fetch('/api/streams')
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Failed to load streams');
-            }
-            return response.json();
-        })
-        .then(streams => {
-            tbody.innerHTML = '';
-            
-            if (!streams || streams.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="empty-message">No streams configured</td></tr>';
-                return;
-            }
-            
-            streams.forEach(stream => {
-                const tr = document.createElement('tr');
-                
-                tr.innerHTML = `
-                    <td>${stream.name}</td>
-                    <td>${stream.url}</td>
-                    <td>${stream.status || 'Unknown'}</td>
-                    <td>${stream.width}x${stream.height}</td>
-                    <td>${stream.fps}</td>
-                    <td>${stream.record ? 'Yes' : 'No'}</td>
-                    <td>
-                        <button class="btn-primary edit-stream" data-name="${stream.name}">Edit</button>
-                        <button class="btn-danger delete-stream" data-name="${stream.name}">Delete</button>
-                    </td>
-                `;
-                
-                tbody.appendChild(tr);
-            });
-            
-            // Add event listeners for edit and delete buttons
-            document.querySelectorAll('.edit-stream').forEach(button => {
-                button.addEventListener('click', function() {
-                    const streamName = this.getAttribute('data-name');
-                    editStream(streamName);
-                });
-            });
-            
-            document.querySelectorAll('.delete-stream').forEach(button => {
-                button.addEventListener('click', function() {
-                    const streamName = this.getAttribute('data-name');
-                    if (confirm(`Are you sure you want to delete the stream "${streamName}"?`)) {
-                        deleteStream(streamName);
-                    }
-                });
-            });
-            
-            // Update stream filter in recordings page
-            updateStreamFilter(streams);
-            
-            // Update video grid
-            updateVideoGrid(streams);
-        })
-        .catch(error => {
-            console.error('Error loading streams:', error);
-            tbody.innerHTML = '<tr><td colspan="7" class="empty-message">Error loading streams</td></tr>';
-        })
-        .finally(() => {
-            hideLoading(streamsTable);
-        });
-}
+// Fix for streams page interactions
+function loadStreams(forLiveView = false) {
+    if (forLiveView) {
+        // For Live View page, load streams for video grid
+        const videoGrid = document.getElementById('video-grid');
+        if (!videoGrid) return;
 
-/**
- * Update stream filter dropdown
- */
-function updateStreamFilter(streams) {
-    const streamFilter = document.getElementById('stream-filter');
-    if (!streamFilter) return;
-    
-    // Clear existing options except "All Streams"
-    while (streamFilter.options.length > 1) {
-        streamFilter.remove(1);
-    }
-    
-    // Add stream options
-    if (streams && streams.length > 0) {
-        streams.forEach(stream => {
-            const option = document.createElement('option');
-            option.value = stream.name;
-            option.textContent = stream.name;
-            streamFilter.appendChild(option);
-        });
+        showLoading(videoGrid);
+
+        // Fetch streams from API
+        fetch('/api/streams')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to load streams');
+                }
+                return response.json();
+            })
+            .then(streams => {
+                hideLoading(videoGrid);
+                updateVideoGrid(streams);
+            })
+            .catch(error => {
+                console.error('Error loading streams for live view:', error);
+                hideLoading(videoGrid);
+
+                const placeholder = document.createElement('div');
+                placeholder.className = 'placeholder';
+                placeholder.innerHTML = `
+                    <p>Error loading streams</p>
+                    <a href="/streams" class="btn">Configure Streams</a>
+                `;
+                videoGrid.innerHTML = '';
+                videoGrid.appendChild(placeholder);
+            });
+    } else {
+        // For Streams page, load streams for table
+        const streamsTable = document.getElementById('streams-table');
+        if (!streamsTable) return;
+
+        const tbody = streamsTable.querySelector('tbody');
+
+        showLoading(streamsTable);
+
+        // Clear existing rows
+        tbody.innerHTML = '<tr><td colspan="7" class="empty-message">Loading streams...</td></tr>';
+
+        // Fetch streams from API
+        fetch('/api/streams')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to load streams');
+                }
+                return response.json();
+            })
+            .then(streams => {
+                tbody.innerHTML = '';
+
+                if (!streams || streams.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="empty-message">No streams configured</td></tr>';
+                    return;
+                }
+
+                streams.forEach(stream => {
+                    const tr = document.createElement('tr');
+
+                    // Ensure we have an ID for the stream (use name as fallback if needed)
+                    const streamId = stream.id || stream.name;
+
+                    tr.innerHTML = `
+                        <td>${stream.name}</td>
+                        <td>${stream.url}</td>
+                        <td><span class="status-indicator ${stream.status}">${stream.status}</span></td>
+                        <td>${stream.width}x${stream.height}</td>
+                        <td>${stream.fps}</td>
+                        <td>${stream.record ? 'Yes' : 'No'}</td>
+                        <td>
+                            <button class="btn-icon edit-btn" data-id="${streamId}" title="Edit"><span class="icon">✎</span></button>
+                            <button class="btn-icon snapshot-btn" data-id="${streamId}" title="Snapshot"><span class="icon">📷</span></button>
+                            <button class="btn-icon delete-btn" data-id="${streamId}" title="Delete"><span class="icon">×</span></button>
+                        </td>
+                    `;
+
+                    tbody.appendChild(tr);
+                });
+
+                // Add event listeners for edit, snapshot, and delete buttons
+                document.querySelectorAll('.edit-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const streamId = this.getAttribute('data-id');
+                        console.log('Editing stream with ID:', streamId);
+                        editStream(streamId);
+                    });
+                });
+
+                document.querySelectorAll('.snapshot-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const streamId = this.getAttribute('data-id');
+                        console.log('Taking snapshot of stream with ID:', streamId);
+                        takeSnapshot(streamId);
+                    });
+                });
+
+                document.querySelectorAll('.delete-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const streamId = this.getAttribute('data-id');
+                        console.log('Deleting stream with ID:', streamId);
+                        if (confirm(`Are you sure you want to delete this stream?`)) {
+                            deleteStream(streamId);
+                        }
+                    });
+                });
+
+                // Update stream filter in recordings page
+                updateStreamFilter(streams);
+            })
+            .catch(error => {
+                console.error('Error loading streams:', error);
+                tbody.innerHTML = '<tr><td colspan="7" class="empty-message">Error loading streams</td></tr>';
+            })
+            .finally(() => {
+                hideLoading(streamsTable);
+            });
     }
 }
 
@@ -562,7 +807,7 @@ function updateVideoGrid(streams) {
         placeholder.className = 'placeholder';
         placeholder.innerHTML = `
             <p>No streams configured</p>
-            <a href="#" data-page="streams" class="btn">Configure Streams</a>
+            <a href="/streams" class="btn">Configure Streams</a>
         `;
         videoGrid.appendChild(placeholder);
         return;
@@ -571,19 +816,14 @@ function updateVideoGrid(streams) {
     // Get layout
     const layout = document.getElementById('layout-selector').value;
 
-    // Set grid columns based on layout
-    if (layout === '1') {
-        videoGrid.style.gridTemplateColumns = '1fr';
-    } else if (layout === '4') {
-        videoGrid.style.gridTemplateColumns = 'repeat(2, 1fr)';
-    } else if (layout === '9') {
-        videoGrid.style.gridTemplateColumns = 'repeat(3, 1fr)';
-    } else if (layout === '16') {
-        videoGrid.style.gridTemplateColumns = 'repeat(4, 1fr)';
-    }
+    // Update video layout
+    updateVideoLayout(layout);
 
     // Add video elements for each stream
     streams.forEach(stream => {
+        // Ensure we have an ID for the stream (use name as fallback if needed)
+        const streamId = stream.id || stream.name;
+
         const videoContainer = document.createElement('div');
         videoContainer.className = 'video-item';
 
@@ -591,8 +831,8 @@ function updateVideoGrid(streams) {
             <div class="video-header">
                 <span>${stream.name}</span>
                 <div class="video-controls">
-                    <button class="btn-small snapshot" data-name="${stream.name}">Snapshot</button>
-                    <button class="btn-small fullscreen" data-name="${stream.name}">Fullscreen</button>
+                    <button class="btn-small snapshot" data-id="${streamId}" data-name="${stream.name}">Snapshot</button>
+                    <button class="btn-small fullscreen" data-id="${streamId}" data-name="${stream.name}">Fullscreen</button>
                 </div>
             </div>
             <div class="video-player" id="player-${stream.name.replace(/\s+/g, '-')}">
@@ -611,18 +851,23 @@ function updateVideoGrid(streams) {
     streams.forEach(stream => {
         initializeVideoPlayer(stream);
 
+        // Ensure we have an ID for the stream (use name as fallback if needed)
+        const streamId = stream.id || stream.name;
+
         // Add event listener for snapshot button
-        const snapshotBtn = videoGrid.querySelector(`.snapshot[data-name="${stream.name}"]`);
+        const snapshotBtn = videoGrid.querySelector(`.snapshot[data-id="${streamId}"]`);
         if (snapshotBtn) {
             snapshotBtn.addEventListener('click', () => {
-                takeSnapshot(stream.name);
+                console.log('Taking snapshot of stream with ID:', streamId);
+                takeSnapshot(streamId);
             });
         }
 
         // Add event listener for fullscreen button
-        const fullscreenBtn = videoGrid.querySelector(`.fullscreen[data-name="${stream.name}"]`);
+        const fullscreenBtn = videoGrid.querySelector(`.fullscreen[data-id="${streamId}"]`);
         if (fullscreenBtn) {
             fullscreenBtn.addEventListener('click', () => {
+                console.log('Toggling fullscreen for stream with ID:', streamId);
                 toggleStreamFullscreen(stream.name);
             });
         }
@@ -630,8 +875,135 @@ function updateVideoGrid(streams) {
 }
 
 /**
- * Initialize video player for a stream
- /**
+ * Update stream filter dropdown
+ */
+function updateStreamFilter(streams) {
+    const streamFilter = document.getElementById('stream-filter');
+    if (!streamFilter) return;
+
+    // Clear existing options except "All Streams"
+    while (streamFilter.options.length > 1) {
+        streamFilter.remove(1);
+    }
+
+    // Add stream options
+    if (streams && streams.length > 0) {
+        streams.forEach(stream => {
+            const streamId = stream.id || stream.name;
+            const option = document.createElement('option');
+            option.value = streamId;
+            option.textContent = stream.name;
+            streamFilter.appendChild(option);
+        });
+    }
+}
+
+/**
+ * Take a snapshot of a stream
+ */
+function takeSnapshot(streamId) {
+    console.log('Taking snapshot for stream ID:', streamId);
+
+    // First get the stream name from ID
+    fetch(`/api/streams/${encodeURIComponent(streamId)}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to load stream details');
+            }
+            return response.json();
+        })
+        .then(stream => {
+            // Now take the snapshot
+            const videoElementId = `video-${stream.name.replace(/\s+/g, '-')}`;
+            const videoElement = document.getElementById(videoElementId);
+            const containerId = `player-${stream.name.replace(/\s+/g, '-')}`;
+            const container = document.getElementById(containerId);
+
+            if (!videoElement || !container) {
+                // If we're on the streams page, not the live view page
+                // Send a direct request to the API to take a snapshot
+                showStatusMessage('Taking snapshot...');
+
+                fetch(`/api/streams/${encodeURIComponent(streamId)}/snapshot`, {
+                    method: 'POST'
+                })
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Failed to take snapshot');
+                        }
+                        return response.blob();
+                    })
+                    .then(blob => {
+                        const imageUrl = URL.createObjectURL(blob);
+                        showSnapshotPreview(imageUrl, stream.name);
+                    })
+                    .catch(error => {
+                        console.error('Error taking snapshot:', error);
+                        showStatusMessage('Error taking snapshot: ' + error.message, 3000);
+                    });
+
+                return;
+            }
+
+            // Show status message
+            showStatusMessage('Taking snapshot...');
+
+            // Create a canvas to capture the image
+            const canvas = document.createElement('canvas');
+
+            // For real video, use the video dimensions
+            if (videoElement.videoWidth && videoElement.videoHeight) {
+                canvas.width = videoElement.videoWidth;
+                canvas.height = videoElement.videoHeight;
+
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+
+                // Add timestamp
+                const now = new Date();
+                const timestamp = now.toLocaleString();
+
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                ctx.fillRect(0, canvas.height - 30, canvas.width, 30);
+
+                ctx.fillStyle = 'white';
+                ctx.font = '14px Arial';
+                ctx.textAlign = 'left';
+                ctx.fillText(`${stream.name} - ${timestamp}`, 10, canvas.height - 10);
+
+                // Show preview instead of direct download
+                const imageData = canvas.toDataURL('image/jpeg', 0.9);
+                showSnapshotPreview(imageData, stream.name);
+            } else {
+                showStatusMessage('Cannot take snapshot: video not loaded', 3000);
+            }
+        })
+        .catch(error => {
+            console.error('Error getting stream details:', error);
+            showStatusMessage('Error taking snapshot: ' + error.message, 3000);
+        });
+}
+
+/**
+ * Update video layout
+ */
+function updateVideoLayout(layout) {
+    const videoGrid = document.getElementById('video-grid');
+    if (!videoGrid) return;
+
+    // Set grid columns based on layout
+    if (layout === '1') {
+        videoGrid.style.gridTemplateColumns = '1fr';
+    } else if (layout === '4') {
+        videoGrid.style.gridTemplateColumns = 'repeat(2, 1fr)';
+    } else if (layout === '9') {
+        videoGrid.style.gridTemplateColumns = 'repeat(3, 1fr)';
+    } else if (layout === '16') {
+        videoGrid.style.gridTemplateColumns = 'repeat(4, 1fr)';
+    }
+}
+
+/**
  * Initialize video player for a stream using HLS.js
  */
 function initializeVideoPlayer(stream) {
@@ -662,7 +1034,7 @@ function initializeVideoPlayer(stream) {
         });
     }
     // Use HLS.js for browsers that don't support HLS natively
-    else if (Hls.isSupported()) {
+    else if (Hls && Hls.isSupported()) {
         const hls = new Hls({
             maxBufferLength: 30,
             maxMaxBufferLength: 60,
@@ -815,113 +1187,6 @@ function cleanupVideoPlayer(streamName) {
 }
 
 /**
- * Take a snapshot of a stream
- */
-function takeSnapshot(streamName) {
-    const videoElementId = `video-${streamName.replace(/\s+/g, '-')}`;
-    const videoElement = document.getElementById(videoElementId);
-    const containerId = `player-${streamName.replace(/\s+/g, '-')}`;
-    const container = document.getElementById(containerId);
-
-    if (!videoElement || !container) {
-        alert('Stream not found');
-        return;
-    }
-
-    // Create a canvas to capture the image
-    const canvas = document.createElement('canvas');
-
-    // If using poster (in our simulation), use that size
-    if (videoElement.poster) {
-        const img = new Image();
-        img.onload = function() {
-            canvas.width = img.width;
-            canvas.height = img.height;
-
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0);
-
-            // Add a timestamp
-            const now = new Date();
-            const timestamp = now.toLocaleString();
-
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-            ctx.fillRect(0, canvas.height - 30, canvas.width, 30);
-
-            ctx.fillStyle = 'white';
-            ctx.font = '14px Arial';
-            ctx.textAlign = 'left';
-            ctx.fillText(`${streamName} - ${timestamp}`, 10, canvas.height - 10);
-
-            // Trigger download
-            downloadSnapshot(canvas, streamName);
-        };
-        img.src = videoElement.poster;
-    }
-    // For real video, use the video dimensions
-    else if (videoElement.videoWidth && videoElement.videoHeight) {
-        canvas.width = videoElement.videoWidth;
-        canvas.height = videoElement.videoHeight;
-
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
-
-        // Add timestamp
-        const now = new Date();
-        const timestamp = now.toLocaleString();
-
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-        ctx.fillRect(0, canvas.height - 30, canvas.width, 30);
-
-        ctx.fillStyle = 'white';
-        ctx.font = '14px Arial';
-        ctx.textAlign = 'left';
-        ctx.fillText(`${streamName} - ${timestamp}`, 10, canvas.height - 10);
-
-        // Trigger download
-        downloadSnapshot(canvas, streamName);
-    } else {
-        alert('Cannot take snapshot: video not loaded');
-    }
-}
-
-/**
- * Download a snapshot
- */
-function downloadSnapshot(canvas, streamName) {
-    try {
-        // Create a formatted timestamp for the filename
-        const now = new Date();
-        const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
-        const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '');
-        const filename = `${streamName.replace(/\s+/g, '_')}_${dateStr}_${timeStr}.jpg`;
-
-        // Create a link and trigger download
-        const link = document.createElement('a');
-        link.download = filename;
-        link.href = canvas.toDataURL('image/jpeg', 0.8);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-
-        // Show success message
-        const statusElement = document.getElementById('status-text');
-        if (statusElement) {
-            const originalText = statusElement.textContent;
-            statusElement.textContent = `Snapshot saved: ${filename}`;
-
-            // Reset status after a delay
-            setTimeout(() => {
-                statusElement.textContent = originalText;
-            }, 3000);
-        }
-    } catch (error) {
-        console.error('Error saving snapshot:', error);
-        alert('Error saving snapshot: ' + error.message);
-    }
-}
-
-/**
  * Toggle fullscreen for a specific stream
  */
 function toggleStreamFullscreen(streamName) {
@@ -944,101 +1209,12 @@ function toggleStreamFullscreen(streamName) {
 }
 
 /**
- * Add CSS for the video player
- */
-function addStreamStyles() {
-    // Check if styles already exist
-    if (document.getElementById('stream-styles')) {
-        return;
-    }
-
-    // Create style element
-    const style = document.createElement('style');
-    style.id = 'stream-styles';
-
-    style.textContent = `
-        .video-player {
-            position: relative;
-            width: 100%;
-            height: 0;
-            padding-bottom: 56.25%; /* 16:9 aspect ratio */
-            background-color: #000;
-            overflow: hidden;
-        }
-        
-        .video-player video {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-        }
-        
-        .loading-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.7);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            color: white;
-            display: none;
-        }
-        
-        .video-player.loading .loading-overlay {
-            display: flex;
-        }
-        
-        .spinner {
-            width: 40px;
-            height: 40px;
-            border: 4px solid rgba(255, 255, 255, 0.3);
-            border-radius: 50%;
-            border-top-color: white;
-            animation: spin 1s ease-in-out infinite;
-            margin-bottom: 10px;
-        }
-        
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-    `;
-
-    document.head.appendChild(style);
-}
-
-/**
- * Update video layout
- */
-function updateVideoLayout(layout) {
-    // Get current streams
-    const videoGrid = document.getElementById('video-grid');
-    if (!videoGrid) return;
-    
-    // Set grid columns based on layout
-    if (layout === '1') {
-        videoGrid.style.gridTemplateColumns = '1fr';
-    } else if (layout === '4') {
-        videoGrid.style.gridTemplateColumns = 'repeat(2, 1fr)';
-    } else if (layout === '9') {
-        videoGrid.style.gridTemplateColumns = 'repeat(3, 1fr)';
-    } else if (layout === '16') {
-        videoGrid.style.gridTemplateColumns = 'repeat(4, 1fr)';
-    }
-}
-
-/**
- * Toggle fullscreen mode
+ * Toggle fullscreen mode for the entire video grid
  */
 function toggleFullscreen() {
     const videoGrid = document.getElementById('video-grid');
     if (!videoGrid) return;
-    
+
     if (!document.fullscreenElement) {
         videoGrid.requestFullscreen().catch(err => {
             console.error(`Error attempting to enable fullscreen: ${err.message}`);
@@ -1054,18 +1230,18 @@ function toggleFullscreen() {
 function loadRecordings() {
     const recordingsTable = document.getElementById('recordings-table');
     if (!recordingsTable) return;
-    
+
     const tbody = recordingsTable.querySelector('tbody');
-    
+
     showLoading(recordingsTable);
-    
+
     // Clear existing rows
     tbody.innerHTML = '<tr><td colspan="5" class="empty-message">Loading recordings...</td></tr>';
-    
+
     // Get filter values
     const dateFilter = document.getElementById('date-picker').value;
     const streamFilter = document.getElementById('stream-filter').value;
-    
+
     // Build query string
     let queryString = '';
     if (dateFilter) {
@@ -1078,7 +1254,7 @@ function loadRecordings() {
     if (queryString) {
         queryString = '?' + queryString;
     }
-    
+
     // Fetch recordings from API
     fetch(`/api/recordings${queryString}`)
         .then(response => {
@@ -1089,48 +1265,48 @@ function loadRecordings() {
         })
         .then(recordings => {
             tbody.innerHTML = '';
-            
+
             if (!recordings || recordings.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="5" class="empty-message">No recordings found</td></tr>';
                 hideLoading(recordingsTable);
                 return;
             }
-            
+
             recordings.forEach(recording => {
                 const tr = document.createElement('tr');
-                
+
                 tr.innerHTML = `
                     <td>${recording.stream}</td>
                     <td>${recording.start_time}</td>
                     <td>${recording.duration}</td>
                     <td>${recording.size}</td>
                     <td>
-                        <button class="btn-primary play-recording" data-id="${recording.id}">Play</button>
-                        <button class="btn download-recording" data-id="${recording.id}">Download</button>
-                        <button class="btn-danger delete-recording" data-id="${recording.id}">Delete</button>
+                        <button class="btn-icon play-btn" data-id="${recording.id}" title="Play"><span class="icon">▶</span></button>
+                        <button class="btn-icon download-btn" data-id="${recording.id}" title="Download"><span class="icon">↓</span></button>
+                        <button class="btn-icon delete-btn" data-id="${recording.id}" title="Delete"><span class="icon">×</span></button>
                     </td>
                 `;
-                
+
                 tbody.appendChild(tr);
             });
-            
+
             // Add event listeners for play, download, and delete buttons
-            document.querySelectorAll('.play-recording').forEach(button => {
-                button.addEventListener('click', function() {
+            document.querySelectorAll('.play-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
                     const recordingId = this.getAttribute('data-id');
                     playRecording(recordingId);
                 });
             });
-            
-            document.querySelectorAll('.download-recording').forEach(button => {
-                button.addEventListener('click', function() {
+
+            document.querySelectorAll('.download-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
                     const recordingId = this.getAttribute('data-id');
                     downloadRecording(recordingId);
                 });
             });
-            
-            document.querySelectorAll('.delete-recording').forEach(button => {
-                button.addEventListener('click', function() {
+
+            document.querySelectorAll('.delete-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
                     const recordingId = this.getAttribute('data-id');
                     if (confirm('Are you sure you want to delete this recording?')) {
                         deleteRecording(recordingId);
@@ -1148,14 +1324,130 @@ function loadRecordings() {
 }
 
 /**
+ * Play recording
+ */
+function playRecording(recordingId) {
+    const videoModal = document.getElementById('video-modal');
+    const videoPlayer = document.getElementById('video-player');
+    const videoTitle = document.getElementById('video-modal-title');
+
+    if (!videoModal || !videoPlayer || !videoTitle) return;
+
+    // Show loading state
+    videoModal.classList.add('loading');
+    videoModal.style.display = 'block';
+
+    // Fetch recording details
+    fetch(`/api/recordings/${recordingId}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to load recording details');
+            }
+            return response.json();
+        })
+        .then(recording => {
+            // Set video title
+            videoTitle.textContent = `${recording.stream} - ${recording.start_time}`;
+
+            // Set video source
+            videoPlayer.innerHTML = '';
+            const videoElement = document.createElement('video');
+            videoElement.controls = true;
+            videoElement.autoplay = true;
+            videoElement.src = `/api/recordings/download/${recordingId}`;
+
+            // Add event listeners
+            videoElement.addEventListener('loadeddata', () => {
+                videoModal.classList.remove('loading');
+            });
+
+            videoElement.addEventListener('error', () => {
+                videoModal.classList.remove('loading');
+                videoPlayer.innerHTML = `
+                    <div style="display:flex;justify-content:center;align-items:center;height:300px;background:#000;color:#fff;">
+                        <p>Error loading video. The recording may be unavailable or in an unsupported format.</p>
+                    </div>
+                `;
+            });
+
+            videoPlayer.appendChild(videoElement);
+
+            // Set download button URL
+            const downloadBtn = document.getElementById('video-download-btn');
+            if (downloadBtn) {
+                downloadBtn.onclick = () => {
+                    window.location.href = `/api/recordings/download/${recordingId}`;
+                };
+            }
+        })
+        .catch(error => {
+            console.error('Error loading recording:', error);
+            videoModal.classList.remove('loading');
+            videoPlayer.innerHTML = `
+                <div style="display:flex;justify-content:center;align-items:center;height:300px;background:#000;color:#fff;">
+                    <p>Error: ${error.message}</p>
+                </div>
+            `;
+        });
+}
+
+/**
+ * Download recording
+ */
+function downloadRecording(recordingId) {
+    // Initiate download by redirecting to the download URL
+    window.location.href = `/api/recordings/download/${recordingId}`;
+}
+
+/**
+ * Delete recording
+ */
+function deleteRecording(recordingId) {
+    if (!confirm('Are you sure you want to delete this recording?')) {
+        return;
+    }
+
+    const recordingsTable = document.getElementById('recordings-table');
+    if (recordingsTable) {
+        showLoading(recordingsTable);
+    }
+
+    // Send delete request to API
+    fetch(`/api/recordings/${recordingId}`, {
+        method: 'DELETE'
+    })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to delete recording');
+            }
+            return response.json();
+        })
+        .then(data => {
+            // Show success message
+            alert('Recording deleted successfully');
+
+            // Reload recordings
+            loadRecordings();
+        })
+        .catch(error => {
+            console.error('Error deleting recording:', error);
+            alert('Error deleting recording: ' + error.message);
+
+            if (recordingsTable) {
+                hideLoading(recordingsTable);
+            }
+        });
+}
+
+/**
  * Load settings
  */
 function loadSettings() {
     const settingsContainer = document.querySelector('.settings-container');
     if (!settingsContainer) return;
-    
+
     showLoading(settingsContainer);
-    
+
     // Fetch settings from the server
     fetch('/api/settings')
         .then(response => {
@@ -1194,9 +1486,9 @@ function loadSettings() {
 function saveSettings() {
     const settingsContainer = document.querySelector('.settings-container');
     if (!settingsContainer) return;
-    
+
     showLoading(settingsContainer);
-    
+
     // Collect all settings from the form
     const settings = {
         log_level: parseInt(document.getElementById('setting-log-level').value, 10),
@@ -1212,7 +1504,7 @@ function saveSettings() {
         use_swap: document.getElementById('setting-use-swap').checked,
         swap_size: parseInt(document.getElementById('setting-swap-size').value, 10)
     };
-    
+
     // Send settings to the server
     fetch('/api/settings', {
         method: 'POST',
@@ -1221,35 +1513,36 @@ function saveSettings() {
         },
         body: JSON.stringify(settings)
     })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('Failed to save settings');
-        }
-        return response.json();
-    })
-    .then(data => {
-        alert('Settings saved successfully');
-    })
-    .catch(error => {
-        console.error('Error saving settings:', error);
-        alert('Error saving settings: ' + error.message);
-    })
-    .finally(() => {
-        hideLoading(settingsContainer);
-    });
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to save settings');
+            }
+            return response.json();
+        })
+        .then(data => {
+            alert('Settings saved successfully');
+        })
+        .catch(error => {
+            console.error('Error saving settings:', error);
+            alert('Error saving settings: ' + error.message);
+        })
+        .finally(() => {
+            hideLoading(settingsContainer);
+        });
 }
 
 /**
  * Edit stream
  */
-function editStream(streamName) {
+function editStream(streamId) {
+    console.log('Editing stream:', streamId);
     const streamModal = document.getElementById('stream-modal');
     if (!streamModal) return;
-    
+
     showLoading(streamModal);
-    
+
     // Fetch stream details from API
-    fetch(`/api/streams/${encodeURIComponent(streamName)}`)
+    fetch(`/api/streams/${encodeURIComponent(streamId)}`)
         .then(response => {
             if (!response.ok) {
                 throw new Error('Failed to load stream details');
@@ -1257,21 +1550,22 @@ function editStream(streamName) {
             return response.json();
         })
         .then(stream => {
+            console.log('Loaded stream details:', stream);
             // Fill the form with stream data
             document.getElementById('stream-name').value = stream.name;
             document.getElementById('stream-url').value = stream.url;
-            document.getElementById('stream-enabled').checked = stream.enabled;
-            document.getElementById('stream-width').value = stream.width;
-            document.getElementById('stream-height').value = stream.height;
-            document.getElementById('stream-fps').value = stream.fps;
-            document.getElementById('stream-codec').value = stream.codec;
-            document.getElementById('stream-priority').value = stream.priority;
-            document.getElementById('stream-record').checked = stream.record;
-            document.getElementById('stream-segment').value = stream.segment_duration;
-            
-            // Store original name for later comparison
-            streamModal.dataset.originalName = stream.name;
-            
+            document.getElementById('stream-enabled').checked = stream.enabled !== false; // Default to true if not specified
+            document.getElementById('stream-width').value = stream.width || 1280;
+            document.getElementById('stream-height').value = stream.height || 720;
+            document.getElementById('stream-fps').value = stream.fps || 15;
+            document.getElementById('stream-codec').value = stream.codec || 'h264';
+            document.getElementById('stream-priority').value = stream.priority || 5;
+            document.getElementById('stream-record').checked = stream.record !== false; // Default to true if not specified
+            document.getElementById('stream-segment').value = stream.segment_duration || 900;
+
+            // Store original stream ID for later comparison
+            streamModal.dataset.streamId = streamId;
+
             // Show the modal
             streamModal.style.display = 'block';
         })
@@ -1290,9 +1584,9 @@ function editStream(streamName) {
 function saveStream() {
     const streamModal = document.getElementById('stream-modal');
     if (!streamModal) return;
-    
+
     showLoading(streamModal);
-    
+
     // Collect stream data from form
     const streamData = {
         name: document.getElementById('stream-name').value,
@@ -1306,24 +1600,27 @@ function saveStream() {
         record: document.getElementById('stream-record').checked,
         segment_duration: parseInt(document.getElementById('stream-segment').value, 10)
     };
-    
+
     // Validate required fields
     if (!streamData.name || !streamData.url) {
         alert('Name and URL are required');
         hideLoading(streamModal);
         return;
     }
-    
+
     // Check if this is a new stream or an update
-    const originalName = streamModal.dataset.originalName;
+    const streamId = streamModal.dataset.streamId;
     let method = 'POST';
     let url = '/api/streams';
-    
-    if (originalName) {
+
+    if (streamId) {
+        console.log('Updating existing stream:', streamId);
         method = 'PUT';
-        url = `/api/streams/${encodeURIComponent(originalName)}`;
+        url = `/api/streams/${encodeURIComponent(streamId)}`;
+    } else {
+        console.log('Creating new stream');
     }
-    
+
     // Send to API
     fetch(url, {
         method: method,
@@ -1332,70 +1629,81 @@ function saveStream() {
         },
         body: JSON.stringify(streamData)
     })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('Failed to save stream');
-        }
-        return response.json();
-    })
-    .then(data => {
-        // Close the modal
-        streamModal.style.display = 'none';
-        
-        // Clear original name
-        delete streamModal.dataset.originalName;
-        
-        // Reload streams
-        loadStreams();
-        
-        alert('Stream saved successfully');
-    })
-    .catch(error => {
-        console.error('Error saving stream:', error);
-        alert('Error saving stream: ' + error.message);
-    })
-    .finally(() => {
-        hideLoading(streamModal);
-    });
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to save stream');
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Stream saved successfully:', data);
+            // Close the modal
+            streamModal.style.display = 'none';
+
+            // Clear stream ID
+            delete streamModal.dataset.streamId;
+
+            // Reload streams
+            if (document.getElementById('streams-table')) {
+                loadStreams(); // For streams page
+            } else if (document.getElementById('video-grid')) {
+                loadStreams(true); // For live view page
+            }
+
+            alert('Stream saved successfully');
+        })
+        .catch(error => {
+            console.error('Error saving stream:', error);
+            alert('Error saving stream: ' + error.message);
+        })
+        .finally(() => {
+            hideLoading(streamModal);
+        });
 }
 
 /**
  * Delete stream
  */
-function deleteStream(streamName) {
-    if (!confirm(`Are you sure you want to delete stream "${streamName}"?`)) {
+function deleteStream(streamId) {
+    console.log('Deleting stream:', streamId);
+    if (!confirm('Are you sure you want to delete this stream?')) {
         return;
     }
-    
+
     const streamsTable = document.getElementById('streams-table');
     if (streamsTable) {
         showLoading(streamsTable);
     }
-    
+
     // Send delete request to API
-    fetch(`/api/streams/${encodeURIComponent(streamName)}`, {
+    fetch(`/api/streams/${encodeURIComponent(streamId)}`, {
         method: 'DELETE'
     })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('Failed to delete stream');
-        }
-        return response.json();
-    })
-    .then(data => {
-        // Reload streams
-        loadStreams();
-        
-        alert(`Stream "${streamName}" deleted successfully`);
-    })
-    .catch(error => {
-        console.error('Error deleting stream:', error);
-        alert('Error deleting stream: ' + error.message);
-        
-        if (streamsTable) {
-            hideLoading(streamsTable);
-        }
-    });
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to delete stream');
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Stream deleted successfully:', data);
+            // Reload streams
+            if (document.getElementById('streams-table')) {
+                loadStreams(); // For streams page
+            } else if (document.getElementById('video-grid')) {
+                loadStreams(true); // For live view page
+            }
+
+            alert('Stream deleted successfully');
+        })
+        .catch(error => {
+            console.error('Error deleting stream:', error);
+            alert('Error deleting stream: ' + error.message);
+
+            if (streamsTable) {
+                hideLoading(streamsTable);
+            }
+        });
 }
 
 /**
@@ -1404,16 +1712,16 @@ function deleteStream(streamName) {
 function testStream() {
     const streamModal = document.getElementById('stream-modal');
     if (!streamModal) return;
-    
+
     // Get URL from form
     const url = document.getElementById('stream-url').value;
     if (!url) {
         alert('Please enter a stream URL');
         return;
     }
-    
+
     showLoading(streamModal);
-    
+
     // Send test request to API
     fetch('/api/streams/test', {
         method: 'POST',
@@ -1422,154 +1730,40 @@ function testStream() {
         },
         body: JSON.stringify({ url: url })
     })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('Failed to test stream connection');
-        }
-        return response.json();
-    })
-    .then(data => {
-        if (data.success) {
-            alert(`Stream connection test successful for URL: ${url}`);
-            
-            // Optionally auto-fill some form fields based on detected stream info
-            if (data.details) {
-                if (data.details.codec) {
-                    document.getElementById('stream-codec').value = data.details.codec;
-                }
-                if (data.details.width && data.details.height) {
-                    document.getElementById('stream-width').value = data.details.width;
-                    document.getElementById('stream-height').value = data.details.height;
-                }
-                if (data.details.fps) {
-                    document.getElementById('stream-fps').value = data.details.fps;
-                }
-            }
-        } else {
-            alert(`Stream connection test failed: ${data.error || 'Unknown error'}`);
-        }
-    })
-    .catch(error => {
-        console.error('Error testing stream connection:', error);
-        alert('Error testing stream connection: ' + error.message);
-    })
-    .finally(() => {
-        hideLoading(streamModal);
-    });
-}
-
-/**
- * Play recording
- */
-function playRecording(recordingId) {
-    const videoModal = document.getElementById('video-modal');
-    const videoPlayer = document.getElementById('video-player');
-    const videoTitle = document.getElementById('video-modal-title');
-    
-    // Show loading state
-    videoModal.classList.add('loading');
-    videoModal.style.display = 'block';
-    
-    // Fetch recording details
-    fetch(`/api/recordings/${recordingId}`)
         .then(response => {
             if (!response.ok) {
-                throw new Error('Failed to load recording details');
+                throw new Error('Failed to test stream connection');
             }
             return response.json();
         })
-        .then(recording => {
-            // Set video title
-            videoTitle.textContent = `${recording.stream} - ${recording.start_time}`;
-            
-            // Set video source
-            videoPlayer.innerHTML = '';
-            const videoElement = document.createElement('video');
-            videoElement.controls = true;
-            videoElement.autoplay = true;
-            videoElement.src = `/api/recordings/download/${recordingId}`;
-            
-            // Add event listeners
-            videoElement.addEventListener('loadeddata', () => {
-                videoModal.classList.remove('loading');
-            });
-            
-            videoElement.addEventListener('error', () => {
-                videoModal.classList.remove('loading');
-                videoPlayer.innerHTML = `
-                    <div style="display:flex;justify-content:center;align-items:center;height:300px;background:#000;color:#fff;">
-                        <p>Error loading video. The recording may be unavailable or in an unsupported format.</p>
-                    </div>
-                `;
-            });
-            
-            videoPlayer.appendChild(videoElement);
-            
-            // Set download button URL
-            const downloadBtn = document.getElementById('video-download-btn');
-            if (downloadBtn) {
-                downloadBtn.onclick = () => {
-                    window.location.href = `/api/recordings/download/${recordingId}`;
-                };
+        .then(data => {
+            if (data.success) {
+                alert(`Stream connection test successful for URL: ${url}`);
+
+                // Optionally auto-fill some form fields based on detected stream info
+                if (data.details) {
+                    if (data.details.codec) {
+                        document.getElementById('stream-codec').value = data.details.codec;
+                    }
+                    if (data.details.width && data.details.height) {
+                        document.getElementById('stream-width').value = data.details.width;
+                        document.getElementById('stream-height').value = data.details.height;
+                    }
+                    if (data.details.fps) {
+                        document.getElementById('stream-fps').value = data.details.fps;
+                    }
+                }
+            } else {
+                alert(`Stream connection test failed: ${data.error || 'Unknown error'}`);
             }
         })
         .catch(error => {
-            console.error('Error loading recording:', error);
-            videoModal.classList.remove('loading');
-            videoPlayer.innerHTML = `
-                <div style="display:flex;justify-content:center;align-items:center;height:300px;background:#000;color:#fff;">
-                    <p>Error: ${error.message}</p>
-                </div>
-            `;
+            console.error('Error testing stream connection:', error);
+            alert('Error testing stream connection: ' + error.message);
+        })
+        .finally(() => {
+            hideLoading(streamModal);
         });
-}
-
-/**
- * Download recording
- */
-function downloadRecording(recordingId) {
-    // Initiate download by redirecting to the download URL
-    window.location.href = `/api/recordings/download/${recordingId}`;
-}
-
-/**
- * Delete recording
- */
-function deleteRecording(recordingId) {
-    if (!confirm('Are you sure you want to delete this recording?')) {
-        return;
-    }
-    
-    const recordingsTable = document.getElementById('recordings-table');
-    if (recordingsTable) {
-        showLoading(recordingsTable);
-    }
-    
-    // Send delete request to API
-    fetch(`/api/recordings/${recordingId}`, {
-        method: 'DELETE'
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('Failed to delete recording');
-        }
-        return response.json();
-    })
-    .then(data => {
-        // Show success message
-        alert('Recording deleted successfully');
-        
-        // Reload recordings
-        loadRecordings();
-    })
-    .catch(error => {
-        console.error('Error deleting recording:', error);
-        alert('Error deleting recording: ' + error.message);
-        
-        if (recordingsTable) {
-            hideLoading(recordingsTable);
-        }
-    });
 }
 
 /**
@@ -1579,33 +1773,43 @@ function restartService() {
     if (!confirm('Are you sure you want to restart the LightNVR service?')) {
         return;
     }
-    
+
     const systemContainer = document.querySelector('.system-container');
     if (systemContainer) {
         showLoading(systemContainer);
     }
-    
-    // In a real implementation, this would make an API call to restart the service
-    // For demonstration purposes, we'll just simulate success
-    
-    setTimeout(() => {
-        alert('Service restart initiated');
-        
-        if (systemContainer) {
+
+    // Send restart request to API
+    fetch('/api/system/restart', {
+        method: 'POST'
+    })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to restart service');
+            }
+            return response.json();
+        })
+        .then(data => {
             hideLoading(systemContainer);
-        }
-        
-        // Update status
-        document.getElementById('status-indicator').className = 'status-indicator status-warning';
-        document.getElementById('status-text').textContent = 'System restarting...';
-        
-        // After a delay, reload everything
-        setTimeout(() => {
-            document.getElementById('status-indicator').className = 'status-indicator status-ok';
-            document.getElementById('status-text').textContent = 'System running normally';
-            loadInitialData();
-        }, 3000);
-    }, 1000);
+
+            // Update status
+            document.getElementById('status-indicator').className = 'status-warning';
+            document.getElementById('status-text').textContent = 'System restarting...';
+
+            // Show message
+            alert('Service restart initiated. The system will be unavailable for a few moments.');
+
+            // After a delay, check system status
+            setTimeout(checkSystemStatus, 5000);
+        })
+        .catch(error => {
+            console.error('Error restarting service:', error);
+            alert('Error restarting service: ' + error.message);
+
+            if (systemContainer) {
+                hideLoading(systemContainer);
+            }
+        });
 }
 
 /**
@@ -1615,26 +1819,40 @@ function shutdownService() {
     if (!confirm('Are you sure you want to shutdown the LightNVR service?')) {
         return;
     }
-    
+
     const systemContainer = document.querySelector('.system-container');
     if (systemContainer) {
         showLoading(systemContainer);
     }
-    
-    // In a real implementation, this would make an API call to shutdown the service
-    // For demonstration purposes, we'll just simulate success
-    
-    setTimeout(() => {
-        alert('Service shutdown initiated');
-        
-        if (systemContainer) {
+
+    // Send shutdown request to API
+    fetch('/api/system/shutdown', {
+        method: 'POST'
+    })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to shutdown service');
+            }
+            return response.json();
+        })
+        .then(data => {
             hideLoading(systemContainer);
-        }
-        
-        // Update status
-        document.getElementById('status-indicator').className = 'status-indicator status-error';
-        document.getElementById('status-text').textContent = 'System shutting down...';
-    }, 1000);
+
+            // Update status
+            document.getElementById('status-indicator').className = 'status-danger';
+            document.getElementById('status-text').textContent = 'System shutting down...';
+
+            // Show message
+            alert('Service shutdown initiated. The system will become unavailable shortly.');
+        })
+        .catch(error => {
+            console.error('Error shutting down service:', error);
+            alert('Error shutting down service: ' + error.message);
+
+            if (systemContainer) {
+                hideLoading(systemContainer);
+            }
+        });
 }
 
 /**
@@ -1644,54 +1862,125 @@ function clearLogs() {
     if (!confirm('Are you sure you want to clear the logs?')) {
         return;
     }
-    
+
     const logsContainer = document.getElementById('system-logs');
     if (!logsContainer) return;
-    
-    // In a real implementation, this would make an API call to clear the logs
-    // For demonstration purposes, we'll just clear the logs display
-    
-    logsContainer.textContent = 'Logs cleared';
-    alert('Logs cleared successfully');
+
+    showLoading(logsContainer.parentElement);
+
+    // Send clear logs request to API
+    fetch('/api/system/logs/clear', {
+        method: 'POST'
+    })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to clear logs');
+            }
+            return response.json();
+        })
+        .then(data => {
+            // Clear logs display
+            logsContainer.textContent = 'Logs cleared';
+
+            // Show message
+            alert('Logs cleared successfully');
+        })
+        .catch(error => {
+            console.error('Error clearing logs:', error);
+            alert('Error clearing logs: ' + error.message);
+        })
+        .finally(() => {
+            hideLoading(logsContainer.parentElement);
+        });
 }
 
 /**
  * Backup configuration
  */
 function backupConfig() {
-    // In a real implementation, this would make an API call to backup the configuration
-    // For demonstration purposes, we'll just show a success message
-    
-    alert('Configuration backup created successfully');
-    
-    // In a real implementation, you might initiate a download:
-    // window.location.href = '/api/system/backup/download';
-}
-
-/**
- * Logout
- */
-function logout() {
-    if (!confirm('Are you sure you want to logout?')) {
-        return;
+    const systemContainer = document.querySelector('.system-container');
+    if (systemContainer) {
+        showLoading(systemContainer);
     }
-    
-    // In a real implementation, this would make an API call to logout
-    // For demonstration purposes, we'll just show a message and redirect
-    
-    alert('Logout successful');
-    
-    // Redirect to login page
-    // window.location.href = '/login.html';
+
+    // Send backup request to API
+    fetch('/api/system/backup', {
+        method: 'POST'
+    })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to create backup');
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.backupUrl) {
+                // Create a link and trigger download
+                const link = document.createElement('a');
+                link.href = data.backupUrl;
+                link.download = data.filename || 'lightnvr-backup.json';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+                // Show message
+                alert('Configuration backup created and downloaded successfully');
+            } else {
+                alert('Configuration backup created successfully');
+            }
+        })
+        .catch(error => {
+            console.error('Error creating backup:', error);
+            alert('Error creating backup: ' + error.message);
+        })
+        .finally(() => {
+            if (systemContainer) {
+                hideLoading(systemContainer);
+            }
+        });
 }
 
+/**
+ * Check system status after restart
+ */
+function checkSystemStatus() {
+    fetch('/api/system/status')
+        .then(response => {
+            if (!response.ok) {
+                // If server not responding yet, try again after delay
+                setTimeout(checkSystemStatus, 2000);
+                return;
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data && data.status === 'ok') {
+                // Service is back online
+                document.getElementById('status-indicator').className = 'status-ok';
+                document.getElementById('status-text').textContent = 'System running normally';
+
+                // Reload system information
+                loadSystemInfo();
+            } else {
+                // Not ready yet, try again
+                setTimeout(checkSystemStatus, 2000);
+            }
+        })
+        .catch(error => {
+            // Error or server not responding, try again
+            console.log('Waiting for system to restart...');
+            setTimeout(checkSystemStatus, 2000);
+        });
+}
 
 /**
- * Setup Snapshot Preview Modal
+ * Setup snapshot preview modal
  */
 function setupSnapshotModal() {
     // Get modal elements
     const modal = document.getElementById('snapshot-preview-modal');
+    if (!modal) return;
+
     const closeBtn = modal.querySelector('.close');
     const downloadBtn = document.getElementById('snapshot-download-btn');
     const closeModalBtn = document.getElementById('snapshot-close-btn');
@@ -1753,7 +2042,7 @@ function showSnapshotPreview(imageData, streamName) {
     modal.dataset.streamName = streamName;
 
     // Show modal
-    modal.style.display = 'flex';
+    modal.style.display = 'block';
 }
 
 /**
@@ -1811,77 +2100,210 @@ function showStatusMessage(message, duration = 3000) {
 }
 
 /**
- * Enhanced Take Snapshot function
+ * Add status message styles
  */
-function takeSnapshot(streamName) {
-    const videoElementId = `video-${streamName.replace(/\s+/g, '-')}`;
-    const videoElement = document.getElementById(videoElementId);
-    const containerId = `player-${streamName.replace(/\s+/g, '-')}`;
-    const container = document.getElementById(containerId);
-
-    if (!videoElement || !container) {
-        alert('Stream not found');
+function addStatusMessageStyles() {
+    // Check if styles already exist
+    if (document.getElementById('status-message-styles')) {
         return;
     }
 
-    // Show status message
-    showStatusMessage('Taking snapshot...');
+    // Create style element
+    const style = document.createElement('style');
+    style.id = 'status-message-styles';
 
-    // Create a canvas to capture the image
-    const canvas = document.createElement('canvas');
+    style.textContent = `
+        .status-message {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 4px;
+            z-index: 1000;
+            font-size: 14px;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.3s, transform 0.3s;
+            max-width: 80%;
+        }
+        
+        .status-message.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    `;
 
-    // If using poster (in our simulation), use that size
-    if (videoElement.poster) {
-        const img = new Image();
-        img.onload = function() {
-            canvas.width = img.width;
-            canvas.height = img.height;
+    document.head.appendChild(style);
+}
 
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0);
-
-            // Add a timestamp
-            const now = new Date();
-            const timestamp = now.toLocaleString();
-
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-            ctx.fillRect(0, canvas.height - 30, canvas.width, 30);
-
-            ctx.fillStyle = 'white';
-            ctx.font = '14px Arial';
-            ctx.textAlign = 'left';
-            ctx.fillText(`${streamName} - ${timestamp}`, 10, canvas.height - 10);
-
-            // Show preview instead of direct download
-            const imageData = canvas.toDataURL('image/jpeg', 0.9);
-            showSnapshotPreview(imageData, streamName);
-        };
-        img.src = videoElement.poster;
+/**
+ * Add stream styles
+ */
+function addStreamStyles() {
+    // Check if styles already exist
+    if (document.getElementById('stream-styles')) {
+        return;
     }
-    // For real video, use the video dimensions
-    else if (videoElement.videoWidth && videoElement.videoHeight) {
-        canvas.width = videoElement.videoWidth;
-        canvas.height = videoElement.videoHeight;
 
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+    // Create style element
+    const style = document.createElement('style');
+    style.id = 'stream-styles';
 
-        // Add timestamp
-        const now = new Date();
-        const timestamp = now.toLocaleString();
+    style.textContent = `
+        .video-grid {
+            display: grid;
+            gap: 1rem;
+            height: calc(100vh - 200px);
+            min-height: 400px;
+        }
+        
+        .video-item {
+            background-color: #000;
+            border-radius: 4px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .video-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+        }
+        
+        .video-controls {
+            display: flex;
+            gap: 5px;
+        }
+        
+        .btn-small {
+            padding: 2px 5px;
+            font-size: 12px;
+            background-color: rgba(255, 255, 255, 0.2);
+            border: none;
+            border-radius: 3px;
+            color: white;
+            cursor: pointer;
+        }
+        
+        .btn-small:hover {
+            background-color: rgba(255, 255, 255, 0.3);
+        }
+        
+        .video-player {
+            position: relative;
+            flex: 1;
+            width: 100%;
+            background-color: #000;
+            overflow: hidden;
+        }
+        
+        .video-player video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            display: none;
+        }
+        
+        .video-player.loading .loading-overlay {
+            display: flex;
+        }
+        
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+            margin-bottom: 10px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .error-message {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .error-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: #f44336;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .retry-button {
+            margin-top: 15px;
+            padding: 5px 15px;
+            background-color: #1e88e5;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        .play-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+        }
+        
+        .play-button {
+            width: 0;
+            height: 0;
+            border-top: 20px solid transparent;
+            border-bottom: 20px solid transparent;
+            border-left: 30px solid white;
+            margin-left: 10px;
+        }
+    `;
 
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-        ctx.fillRect(0, canvas.height - 30, canvas.width, 30);
-
-        ctx.fillStyle = 'white';
-        ctx.font = '14px Arial';
-        ctx.textAlign = 'left';
-        ctx.fillText(`${streamName} - ${timestamp}`, 10, canvas.height - 10);
-
-        // Show preview instead of direct download
-        const imageData = canvas.toDataURL('image/jpeg', 0.9);
-        showSnapshotPreview(imageData, streamName);
-    } else {
-        showStatusMessage('Cannot take snapshot: video not loaded', 3000);
-    }
+    document.head.appendChild(style);
 }
