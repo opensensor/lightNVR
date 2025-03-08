@@ -1,3 +1,8 @@
+/*
+ * Complete streams.c file with recording functionality integrated.
+ * Save this file as src/video/streams.c
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,6 +21,7 @@
 #include "core/config.h"
 #include "video/stream_manager.h"
 #include "video/hls_writer.h"
+#include "database/database_manager.h"
 
 #define LIGHTNVR_VERSION_STRING "0.1.0"
 
@@ -24,6 +30,13 @@ static config_t local_config;
 
 // Global configuration - to be accessed from other modules if needed
 config_t global_config;
+
+// Forward declarations for recording functions
+uint64_t start_recording(const char *stream_name, const char *output_path);
+void update_recording(const char *stream_name);
+void stop_recording(const char *stream_name);
+void init_recordings(void);
+void init_recordings_system(void);
 
 // Forward declarations
 static void log_ffmpeg_error(int err, const char *message);
@@ -44,6 +57,18 @@ typedef struct {
 // Hash map for tracking running transcode contexts
 static stream_transcode_ctx_t *transcode_contexts[MAX_STREAMS];
 static pthread_mutex_t contexts_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// Structure to keep track of active recordings
+typedef struct {
+    uint64_t recording_id;
+    char stream_name[MAX_STREAM_NAME];
+    char output_path[MAX_PATH_LENGTH];
+    time_t start_time;
+} active_recording_t;
+
+// Array to store active recordings (one for each stream)
+static active_recording_t active_recordings[MAX_STREAMS];
+static pthread_mutex_t recordings_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /**
  * Get current global configuration
@@ -161,6 +186,19 @@ void cleanup_streaming_backend(void) {
     log_info("Streaming backend cleaned up");
 }
 
+// Initialize the active recordings array
+void init_recordings() {
+    pthread_mutex_lock(&recordings_mutex);
+    memset(active_recordings, 0, sizeof(active_recordings));
+    pthread_mutex_unlock(&recordings_mutex);
+}
+
+// Function to initialize the recording system
+void init_recordings_system() {
+    init_recordings();
+    log_info("Recordings system initialized");
+}
+
 /**
  * Transcoding thread function for a single stream
  */
@@ -172,6 +210,7 @@ static void *stream_transcode_thread(void *arg) {
     AVPacket *pkt = NULL;
     int video_stream_idx = -1;
     int ret;
+    time_t last_update = 0;  // Track when we last updated metadata
 
     log_info("Starting transcoding thread for stream %s", ctx->config.name);
 
@@ -253,6 +292,13 @@ static void *stream_transcode_thread(void *arg) {
         // Process video packets
         if (pkt->stream_index == video_stream_idx) {
             hls_writer_write_packet(ctx->hls_writer, pkt, input_ctx->streams[video_stream_idx]);
+            
+            // Periodically update recording metadata (every 30 seconds)
+            time_t now = time(NULL);
+            if (now - last_update >= 30) {
+                update_recording(ctx->config.name);
+                last_update = now;
+            }
         }
 
         av_packet_unref(pkt);
@@ -275,6 +321,186 @@ cleanup:
 
     log_info("Transcoding thread for stream %s exited", ctx->config.name);
     return NULL;
+}
+
+/**
+ * Start a new recording for a stream
+ */
+uint64_t start_recording(const char *stream_name, const char *output_path) {
+    if (!stream_name || !output_path) {
+        log_error("Invalid parameters for start_recording");
+        return 0;
+    }
+    
+    stream_handle_t stream = get_stream_by_name(stream_name);
+    if (!stream) {
+        log_error("Stream %s not found", stream_name);
+        return 0;
+    }
+    
+    stream_config_t config;
+    if (get_stream_config(stream, &config) != 0) {
+        log_error("Failed to get config for stream %s", stream_name);
+        return 0;
+    }
+    
+    // Create recording metadata
+    recording_metadata_t metadata;
+    memset(&metadata, 0, sizeof(recording_metadata_t));
+    
+    strncpy(metadata.stream_name, stream_name, sizeof(metadata.stream_name) - 1);
+    
+    // Format path for the recording
+    char recording_path[MAX_PATH_LENGTH];
+    snprintf(recording_path, sizeof(recording_path), "%s/index.m3u8", output_path);
+    strncpy(metadata.file_path, recording_path, sizeof(metadata.file_path) - 1);
+    
+    metadata.start_time = time(NULL);
+    metadata.end_time = 0; // Will be updated when recording ends
+    metadata.size_bytes = 0; // Will be updated as segments are added
+    metadata.width = config.width;
+    metadata.height = config.height;
+    metadata.fps = config.fps;
+    strncpy(metadata.codec, config.codec, sizeof(metadata.codec) - 1);
+    metadata.is_complete = false;
+    
+    // Add recording to database
+    uint64_t recording_id = add_recording_metadata(&metadata);
+    if (recording_id == 0) {
+        log_error("Failed to add recording metadata for stream %s", stream_name);
+        return 0;
+    }
+    
+    // Store active recording
+    pthread_mutex_lock(&recordings_mutex);
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (active_recordings[i].recording_id == 0) {
+            active_recordings[i].recording_id = recording_id;
+            strncpy(active_recordings[i].stream_name, stream_name, MAX_STREAM_NAME - 1);
+            strncpy(active_recordings[i].output_path, output_path, MAX_PATH_LENGTH - 1);
+            active_recordings[i].start_time = metadata.start_time;
+            
+            log_info("Started recording for stream %s with ID %llu", 
+                    stream_name, (unsigned long long)recording_id);
+            
+            pthread_mutex_unlock(&recordings_mutex);
+            return recording_id;
+        }
+    }
+    
+    // No free slots
+    pthread_mutex_unlock(&recordings_mutex);
+    log_error("No free slots for active recordings");
+    return 0;
+}
+
+/**
+ * Update recording metadata with current size and segment count
+ */
+void update_recording(const char *stream_name) {
+    if (!stream_name) return;
+    
+    pthread_mutex_lock(&recordings_mutex);
+    
+    // Find the active recording for this stream
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (active_recordings[i].recording_id > 0 && 
+            strcmp(active_recordings[i].stream_name, stream_name) == 0) {
+            
+            uint64_t recording_id = active_recordings[i].recording_id;
+            char output_path[MAX_PATH_LENGTH];
+            strncpy(output_path, active_recordings[i].output_path, MAX_PATH_LENGTH - 1);
+            output_path[MAX_PATH_LENGTH - 1] = '\0';
+            time_t start_time = active_recordings[i].start_time;
+            
+            pthread_mutex_unlock(&recordings_mutex);
+            
+            // Calculate total size of all segments
+            uint64_t total_size = 0;
+            struct stat st;
+            char segment_path[MAX_PATH_LENGTH];
+            
+            // This is a simple approach - in a real implementation you'd want to track
+            // which segments actually belong to this recording
+            for (int j = 0; j < 1000; j++) {
+                snprintf(segment_path, sizeof(segment_path), "%s/index%d.ts", output_path, j);
+                if (stat(segment_path, &st) == 0) {
+                    total_size += st.st_size;
+                } else {
+                    // No more segments
+                    break;
+                }
+            }
+            
+            // Update recording metadata
+            time_t current_time = time(NULL);
+            update_recording_metadata(recording_id, current_time, total_size, false);
+            
+            log_debug("Updated recording %llu for stream %s, size: %llu bytes", 
+                    (unsigned long long)recording_id, stream_name, (unsigned long long)total_size);
+            
+            return;
+        }
+    }
+    
+    pthread_mutex_unlock(&recordings_mutex);
+}
+
+/**
+ * Stop an active recording
+ */
+void stop_recording(const char *stream_name) {
+    if (!stream_name) return;
+    
+    pthread_mutex_lock(&recordings_mutex);
+    
+    // Find the active recording for this stream
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (active_recordings[i].recording_id > 0 && 
+            strcmp(active_recordings[i].stream_name, stream_name) == 0) {
+            
+            uint64_t recording_id = active_recordings[i].recording_id;
+            char output_path[MAX_PATH_LENGTH];
+            strncpy(output_path, active_recordings[i].output_path, MAX_PATH_LENGTH - 1);
+            output_path[MAX_PATH_LENGTH - 1] = '\0';
+            time_t start_time = active_recordings[i].start_time;
+            
+            // Clear the active recording slot
+            active_recordings[i].recording_id = 0;
+            active_recordings[i].stream_name[0] = '\0';
+            active_recordings[i].output_path[0] = '\0';
+            
+            pthread_mutex_unlock(&recordings_mutex);
+            
+            // Calculate final size of all segments
+            uint64_t total_size = 0;
+            struct stat st;
+            char segment_path[MAX_PATH_LENGTH];
+            
+            for (int j = 0; j < 1000; j++) {
+                snprintf(segment_path, sizeof(segment_path), "%s/index%d.ts", output_path, j);
+                if (stat(segment_path, &st) == 0) {
+                    total_size += st.st_size;
+                } else {
+                    // No more segments
+                    break;
+                }
+            }
+            
+            // Mark recording as complete
+            time_t end_time = time(NULL);
+            update_recording_metadata(recording_id, end_time, total_size, true);
+            
+            log_info("Completed recording %llu for stream %s, duration: %ld seconds, size: %llu bytes", 
+                    (unsigned long long)recording_id, stream_name, 
+                    (long)(end_time - start_time), 
+                    (unsigned long long)total_size);
+            
+            return;
+        }
+    }
+    
+    pthread_mutex_unlock(&recordings_mutex);
 }
 
 /**
@@ -342,6 +568,11 @@ int start_hls_stream(const char *stream_name) {
         log_warn("Failed to create directory: %s", ctx->output_path);
     }
 
+    // Start recording if enabled in config
+    if (config.record) {
+        start_recording(stream_name, ctx->output_path);
+    }
+
     // Start transcoding thread
     if (pthread_create(&ctx->thread, NULL, stream_transcode_thread, ctx) != 0) {
         free(ctx);
@@ -379,6 +610,9 @@ int stop_hls_stream(const char *stream_name) {
                 hls_writer_close(transcode_contexts[i]->hls_writer);
             }
 
+            // Stop recording
+            stop_recording(stream_name);
+
             free(transcode_contexts[i]);
             transcode_contexts[i] = NULL;
 
@@ -398,9 +632,6 @@ int stop_hls_stream(const char *stream_name) {
     return 0;
 }
 
-/**
- * Handle request for HLS manifest
- */
 /**
  * Handle request for HLS manifest
  */

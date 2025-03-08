@@ -14,6 +14,10 @@
 #include "core/logger.h"
 #include "video/stream_manager.h"
 #include "storage/storage_manager.h"
+#include "video/streams.h"
+
+// External function declaration
+void init_recordings_system(void);
 #include "database/database_manager.h"
 #include "web/web_server.h"
 #include "video/streams.h"

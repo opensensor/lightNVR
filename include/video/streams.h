@@ -33,4 +33,16 @@ void handle_webrtc_ice(const http_request_t *request, http_response_t *response)
 // create_stream_error_response
 void create_stream_error_response(http_response_t *response, int status_code, const char *message);
 
+// Function to initialize the recordings system
+void init_recordings_system(void);
+
+// Start a recording for a stream
+uint64_t start_recording(const char *stream_name, const char *output_path);
+
+// Update a recording's metadata
+void update_recording(const char *stream_name);
+
+// Stop a recording
+void stop_recording(const char *stream_name);
+
 #endif /* STREAMS_H */
