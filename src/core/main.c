@@ -18,6 +18,10 @@
 #include "web/web_server.h"
 #include "video/streams.h"
 
+// Include necessary headers for signal handling
+#include <signal.h>
+#include <fcntl.h>
+
 // Global flag for graceful shutdown
 static volatile bool running = true;
 
@@ -167,6 +171,15 @@ static void load_streams_from_config(const config_t *config) {
                 if (config->streams[i].enabled) {
                     if (start_stream(stream) == 0) {
                         log_info("Stream started: %s", config->streams[i].name);
+                        
+                        // Start recording if record flag is set
+                        if (config->streams[i].record) {
+                            if (start_hls_stream(config->streams[i].name) == 0) {
+                                log_info("Recording started for stream: %s", config->streams[i].name);
+                            } else {
+                                log_warn("Failed to start recording for stream: %s", config->streams[i].name);
+                            }
+                        }
                     } else {
                         log_warn("Failed to start stream: %s", config->streams[i].name);
                     }

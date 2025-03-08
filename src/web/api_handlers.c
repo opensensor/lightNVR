@@ -401,6 +401,15 @@ void handle_post_stream(const http_request_t *request, http_response_t *response
         if (start_stream(stream) != 0) {
             log_warn("Failed to start stream: %s", config.name);
             // Continue anyway, the stream is added
+        } else {
+            // Start recording if record flag is set
+            if (config.record) {
+                if (start_hls_stream(config.name) == 0) {
+                    log_info("Recording started for stream: %s", config.name);
+                } else {
+                    log_warn("Failed to start recording for stream: %s", config.name);
+                }
+            }
         }
     }
 
@@ -513,6 +522,15 @@ void handle_put_stream(const http_request_t *request, http_response_t *response)
         if (start_stream(stream) != 0) {
             log_warn("Failed to start stream: %s", config.name);
             // Continue anyway, the configuration is updated
+        } else {
+            // Start recording if record flag is set
+            if (config.record) {
+                if (start_hls_stream(config.name) == 0) {
+                    log_info("Recording started for stream: %s", config.name);
+                } else {
+                    log_warn("Failed to start recording for stream: %s", config.name);
+                }
+            }
         }
     }
 
