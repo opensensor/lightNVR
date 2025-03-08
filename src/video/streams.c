@@ -382,6 +382,39 @@ uint64_t start_recording(const char *stream_name, const char *output_path) {
         return 0;
     }
 
+    // Check if there's already an active recording for this stream
+    uint64_t existing_recording_id = 0;
+    pthread_mutex_lock(&recordings_mutex);
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (active_recordings[i].recording_id > 0 && 
+            strcmp(active_recordings[i].stream_name, stream_name) == 0) {
+            existing_recording_id = active_recordings[i].recording_id;
+            
+            // If we found an existing recording, stop it first
+            log_info("Found existing recording for stream %s with ID %llu, stopping it first", 
+                    stream_name, (unsigned long long)existing_recording_id);
+            
+            // Clear the active recording slot but remember the ID
+            active_recordings[i].recording_id = 0;
+            active_recordings[i].stream_name[0] = '\0';
+            active_recordings[i].output_path[0] = '\0';
+            
+            pthread_mutex_unlock(&recordings_mutex);
+            
+            // Mark the existing recording as complete
+            time_t end_time = time(NULL);
+            update_recording_metadata(existing_recording_id, end_time, 0, true);
+            
+            log_info("Marked existing recording %llu as complete", 
+                    (unsigned long long)existing_recording_id);
+            
+            // Re-lock the mutex for the next section
+            pthread_mutex_lock(&recordings_mutex);
+            break;
+        }
+    }
+    pthread_mutex_unlock(&recordings_mutex);
+
     // Create recording metadata
     recording_metadata_t metadata;
     memset(&metadata, 0, sizeof(recording_metadata_t));
