@@ -18,6 +18,9 @@ function initApp() {
     // Set up modals
     setupModals();
 
+    // Set up snapshot modal
+    setupSnapshotModal();
+
     // Set up event handlers
     setupEventHandlers();
 
