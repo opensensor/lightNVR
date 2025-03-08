@@ -8,9 +8,10 @@
 #include <ctype.h>
 #include <time.h>
 #include <sys/stat.h>
-#include <errno.h>  // Add this line for errno support
+#include <errno.h>
 #include <sys/types.h>
 #include <fcntl.h>
+#include <glob.h>
 
 #include "web/web_server.h"
 #include "web/api_handlers.h"
@@ -1200,21 +1201,36 @@ void handle_delete_recording(const http_request_t *request, http_response_t *res
     
     log_info("Found recording in database: ID=%llu, Path=%s", (unsigned long long)id, metadata.file_path);
     
-    // Check if file exists
+    // Check if file exists first
     struct stat st;
     if (stat(metadata.file_path, &st) != 0) {
-        log_warn("Recording file not found on disk: %s (error: %s)", metadata.file_path, strerror(errno));
-        // Continue with metadata deletion even if file is missing
+        log_warn("Recording file not found on disk: %s (error: %s)",
+                metadata.file_path, strerror(errno));
+
+        // Check for MP4 file as an alternative
+        char mp4_path[MAX_PATH_LENGTH];
+        const char *dir_end = strrchr(metadata.file_path, '/');
+        if (dir_end) {
+            // Extract directory path
+            size_t dir_len = dir_end - metadata.file_path + 1;
+            strncpy(mp4_path, metadata.file_path, dir_len);
+            mp4_path[dir_len] = '\0';
+            strcat(mp4_path, "recording_*.mp4");
+
+            // Try to find matching MP4 files
+            glob_t glob_result;
+            if (glob(mp4_path, GLOB_NOSORT, NULL, &glob_result) == 0) {
+                for (size_t i = 0; i < glob_result.gl_pathc; i++) {
+                    log_info("Attempting to delete alternate file: %s", glob_result.gl_pathv[i]);
+                    if (unlink(glob_result.gl_pathv[i]) == 0) {
+                        log_info("Successfully deleted alternate file: %s", glob_result.gl_pathv[i]);
+                    }
+                }
+                globfree(&glob_result);
+            }
+        }
     }
-    
-    // Delete the recording file
-    int delete_result = delete_recording(metadata.file_path);
-    if (delete_result != 0) {
-        log_error("Failed to delete recording file: %s (error code: %d)", metadata.file_path, delete_result);
-        create_json_response(response, 500, "{\"error\": \"Failed to delete recording file\"}");
-        return;
-    }
-    
+
     // Delete the recording metadata from database
     if (delete_recording_metadata(id) != 0) {
         log_error("Failed to delete recording metadata for ID: %llu", (unsigned long long)id);

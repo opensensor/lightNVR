@@ -259,8 +259,9 @@ static void *stream_transcode_thread(void *arg) {
 
     // Set up MP4 writer if recording is enabled
     if (ctx->config.record) {
-        // Create MP4 output path
-        snprintf(ctx->mp4_output_path, MAX_PATH_LENGTH, "%s/recording.mp4", ctx->output_path);
+        // Create MP4 output path with timestamp
+        time_t now = time(NULL);
+        snprintf(ctx->mp4_output_path, MAX_PATH_LENGTH, "%s/recording_%ld.mp4", ctx->output_path, now);
         
         // Create MP4 writer
         ctx->mp4_writer = mp4_writer_create(ctx->mp4_output_path, ctx->config.name);
