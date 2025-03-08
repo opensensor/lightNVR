@@ -185,12 +185,9 @@ int get_form_param(const http_request_t *request, const char *name,
  * 
  * @param request HTTP request
  * @param name Header name
- * @param value Buffer to store header value
- * @param value_size Size of value buffer
  * @return 0 on success, non-zero if header not found
  */
-int get_request_header(const http_request_t *request, const char *name, 
-                      char *value, size_t value_size);
+const char * get_request_header(const http_request_t *request, const char *name);
 
 /**
  * Set a response header

@@ -1487,7 +1487,7 @@ function playRecording(recordingId) {
             const videoElement = document.createElement('video');
             videoElement.controls = true;
             videoElement.autoplay = true;
-            videoElement.src = `/api/recordings/${recordingId}/download`;
+            videoElement.src = `/api/recordings/download/${recordingId}`;
             
             // Add event listeners
             videoElement.addEventListener('loadeddata', () => {
@@ -1509,7 +1509,7 @@ function playRecording(recordingId) {
             const downloadBtn = document.getElementById('video-download-btn');
             if (downloadBtn) {
                 downloadBtn.onclick = () => {
-                    window.location.href = `/api/recordings/${recordingId}/download`;
+                    window.location.href = `/api/recordings/download/${recordingId}`;
                 };
             }
         })
@@ -1529,7 +1529,7 @@ function playRecording(recordingId) {
  */
 function downloadRecording(recordingId) {
     // Initiate download by redirecting to the download URL
-    window.location.href = `/api/recordings/${recordingId}/download`;
+    window.location.href = `/api/recordings/download/${recordingId}`;
 }
 
 /**

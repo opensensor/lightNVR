@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>LightNVR Debug</title>
+    <style>
+        body { font-family: monospace; padding: 20px; max-width: 1200px; margin: 0 auto; }
+        pre { background: #f5f5f5; padding: 10px; border-radius: 5px; overflow-x: auto; }
+        h2 { margin-top: 30px; border-bottom: 1px solid #ccc; padding-bottom: 5px; }
+        .db-item { margin-bottom: 20px; padding: 10px; border: 1px solid #ddd; border-radius: 5px; }
+        .error { color: red; font-weight: bold; }
+        .success { color: green; }
+        button { padding: 8px 16px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #3e8e41; }
+    </style>
+</head>
+<body>
+<h1>LightNVR Debug Interface</h1>
+
+<h2>Database Recordings</h2>
+<button id="load-recordings">Load Recordings</button>
+<div id="recordings-container">
+    <p>Click "Load Recordings" to see what's in the database.</p>
+</div>
+
+<h2>Test Recording Access</h2>
+<div>
+    <label for="recording-id">Recording ID:</label>
+    <input type="number" id="recording-id" value="5">
+    <button id="test-recording">Test Access</button>
+</div>
+<div id="test-result"></div>
+
+<script>
+    document.getElementById('load-recordings').addEventListener('click', function() {
+        const container = document.getElementById('recordings-container');
+        container.innerHTML = '<p>Loading recordings...</p>';
+
+        fetch('/api/debug/recordings')
+            .then(response => response.json())
+            .then(data => {
+                let html = `<p>Found ${data.count} recordings in database</p>`;
+
+                if (data.count > 0) {
+                    data.recordings.forEach(rec => {
+                        html += `
+                                <div class="db-item">
+                                    <div><strong>ID:</strong> ${rec.id}</div>
+                                    <div><strong>Stream:</strong> ${rec.stream}</div>
+                                    <div><strong>Path:</strong> ${rec.path} (${rec.path_status})</div>
+                                    <div><strong>Size:</strong> ${rec.size} bytes</div>
+                                    <div><strong>Start:</strong> ${new Date(rec.start_time * 1000).toLocaleString()}</div>
+                                    <div><strong>End:</strong> ${rec.end_time ? new Date(rec.end_time * 1000).toLocaleString() : 'N/A'}</div>
+                                    <div><strong>Complete:</strong> ${rec.complete}</div>
+                                    <div>
+                                        <a href="/api/recordings/${rec.id}" target="_blank">View Metadata</a> |
+                                        <a href="/api/recordings/${rec.id}/download" target="_blank">Download</a>
+                                    </div>
+                                </div>
+                            `;
+                    });
+                } else {
+                    html += '<p>No recordings found in database</p>';
+                }
+
+                container.innerHTML = html;
+            })
+            .catch(error => {
+                container.innerHTML = `<p class="error">Error loading recordings: ${error.message}</p>`;
+            });
+    });
+
+    document.getElementById('test-recording').addEventListener('click', function() {
+        const id = document.getElementById('recording-id').value;
+        const resultDiv = document.getElementById('test-result');
+        resultDiv.innerHTML = `<p>Testing access to recording ID: ${id}...</p>`;
+
+        fetch(`/api/recordings/${id}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                resultDiv.innerHTML = `
+                        <p class="success">Successfully accessed recording metadata:</p>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                        <p>Now testing download access:</p>
+                    `;
+
+                // Also test the download URL
+                return fetch(`/api/recordings/${id}/download`, { method: 'HEAD' });
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`Download HTTP error ${response.status}`);
+                }
+                resultDiv.innerHTML += `
+                        <p class="success">Download URL is accessible!</p>
+                        <a href="/api/recordings/${id}/download" target="_blank">Click to download</a>
+                    `;
+            })
+            .catch(error => {
+                resultDiv.innerHTML += `<p class="error">Error: ${error.message}</p>`;
+            });
+    });
+</script>
+</body>
+</html>

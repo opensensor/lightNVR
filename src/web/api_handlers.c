@@ -8,6 +8,9 @@
 #include <ctype.h>
 #include <time.h>
 #include <sys/stat.h>
+#include <errno.h>  // Add this line for errno support
+#include <sys/types.h>
+#include <fcntl.h>
 
 #include "web/web_server.h"
 #include "web/api_handlers.h"
@@ -1216,97 +1219,964 @@ void handle_delete_recording(const http_request_t *request, http_response_t *res
 }
 
 /**
- * Handle GET request to download a recording
+ * Serve an MP4 file with proper headers for download
  */
-void handle_download_recording(const http_request_t *request, http_response_t *response) {
-    // Extract recording ID from the URL
-    // URL format: /api/recordings/{id}/download
-    const char *path = request->path;
-    const char *prefix = "/api/recordings/";
-    
-    // Check if path starts with the expected prefix
-    if (strncmp(path, prefix, strlen(prefix)) != 0) {
-        create_json_response(response, 400, "{\"error\": \"Invalid request path\"}");
-        return;
-    }
-    
-    // Extract the ID part (everything between prefix and next slash or end of string)
-    const char *id_start = path + strlen(prefix);
-    const char *id_end = strchr(id_start, '/');
-    
-    char id_str[32];
-    if (id_end) {
-        // ID is between prefix and slash
-        size_t id_len = id_end - id_start;
-        if (id_len >= sizeof(id_str)) {
-            create_json_response(response, 400, "{\"error\": \"ID too long\"}");
-            return;
-        }
-        strncpy(id_str, id_start, id_len);
-        id_str[id_len] = '\0';
-    } else {
-        // No slash found, invalid path
-        create_json_response(response, 400, "{\"error\": \"Invalid request path format\"}");
-        return;
-    }
-    
-    // Convert ID to integer
-    uint64_t id = strtoull(id_str, NULL, 10);
-    if (id == 0) {
-        create_json_response(response, 400, "{\"error\": \"Invalid recording ID\"}");
-        return;
-    }
-    
-    // Get recording metadata from database
-    recording_metadata_t metadata;
-    int result = get_recording_metadata_by_id(id, &metadata);
-    
-    if (result != 0) {
-        create_json_response(response, 404, "{\"error\": \"Recording not found\"}");
-        return;
-    }
-    
-    // Check if file exists
+void serve_mp4_file(http_response_t *response, const char *file_path, const char *filename) {
+    // Verify file exists and is readable
     struct stat st;
-    if (stat(metadata.file_path, &st) != 0) {
+    if (stat(file_path, &st) != 0 || access(file_path, R_OK) != 0) {
+        log_error("MP4 file not accessible: %s (error: %s)", file_path, strerror(errno));
         create_json_response(response, 404, "{\"error\": \"Recording file not found\"}");
         return;
     }
-    
-    // Determine content type based on file extension
-    const char *content_type = "video/mp4"; // Default
-    const char *ext = strrchr(metadata.file_path, '.');
-    if (ext) {
-        if (strcasecmp(ext, ".mp4") == 0) {
-            content_type = "video/mp4";
-        } else if (strcasecmp(ext, ".ts") == 0) {
-            content_type = "video/mp2t";
-        } else if (strcasecmp(ext, ".webm") == 0) {
-            content_type = "video/webm";
-        } else if (strcasecmp(ext, ".mkv") == 0) {
-            content_type = "video/x-matroska";
-        }
+
+    // Check file size
+    if (st.st_size == 0) {
+        log_error("MP4 file is empty: %s", file_path);
+        create_json_response(response, 500, "{\"error\": \"Recording file is empty\"}");
+        return;
     }
-    
-    // Create file response
-    if (create_file_response(response, 200, metadata.file_path, content_type) != 0) {
+
+    log_info("Serving MP4 file: %s, size: %lld bytes", file_path, (long long)st.st_size);
+
+    // Set content type header
+    set_response_header(response, "Content-Type", "video/mp4");
+
+    // Set content length header
+    char content_length[32];
+    snprintf(content_length, sizeof(content_length), "%lld", (long long)st.st_size);
+    set_response_header(response, "Content-Length", content_length);
+
+    // Set disposition header for download
+    char disposition[256];
+    snprintf(disposition, sizeof(disposition), "attachment; filename=\"%s\"", filename);
+    set_response_header(response, "Content-Disposition", disposition);
+
+    // Set status code
+    response->status_code = 200;
+
+    // Open file for reading
+    int fd = open(file_path, O_RDONLY);
+    if (fd < 0) {
+        log_error("Failed to open MP4 file: %s (error: %s)", file_path, strerror(errno));
         create_json_response(response, 500, "{\"error\": \"Failed to read recording file\"}");
         return;
     }
-    
-    // Set Content-Disposition header for download
+
+    // Allocate response body
+    response->body = malloc(st.st_size);
+    if (!response->body) {
+        log_error("Failed to allocate memory for response body");
+        close(fd);
+        create_json_response(response, 500, "{\"error\": \"Server memory allocation failed\"}");
+        return;
+    }
+
+    // Read file content into response body
+    ssize_t bytes_read = read(fd, response->body, st.st_size);
+    close(fd);
+
+    if (bytes_read != st.st_size) {
+        log_error("Failed to read complete file: %s (read %zd of %lld bytes)",
+                file_path, bytes_read, (long long)st.st_size);
+        free(response->body);
+        create_json_response(response, 500, "{\"error\": \"Failed to read complete recording file\"}");
+        return;
+    }
+
+    // Set response body length
+    response->body_length = st.st_size;
+
+    log_info("Successfully read MP4 file into response: %s (%lld bytes)",
+            file_path, (long long)st.st_size);
+}
+
+
+/**
+ * Serve a file for download with proper headers to force browser download
+ */
+void serve_file_for_download(http_response_t *response, const char *file_path, const char *filename, off_t file_size) {
+    // Open the file for reading
+    int fd = open(file_path, O_RDONLY);
+    if (fd < 0) {
+        log_error("Failed to open file for download: %s (error: %s)",
+                file_path, strerror(errno));
+        create_json_response(response, 500, "{\"error\": \"Failed to read file\"}");
+        return;
+    }
+
+    // Set response status
+    response->status_code = 200;
+
+    // Set headers to force download
+    set_response_header(response, "Content-Type", "application/octet-stream");
+
+    // Set content length
+    char content_length[32];
+    snprintf(content_length, sizeof(content_length), "%lld", (long long)file_size);
+    set_response_header(response, "Content-Length", content_length);
+
+    // Force download with Content-Disposition
+    char disposition[256];
+    snprintf(disposition, sizeof(disposition), "attachment; filename=\"%s\"", filename);
+    set_response_header(response, "Content-Disposition", disposition);
+
+    // Prevent caching
+    set_response_header(response, "Cache-Control", "no-cache, no-store, must-revalidate");
+    set_response_header(response, "Pragma", "no-cache");
+    set_response_header(response, "Expires", "0");
+
+    log_info("Serving file for download: %s, size: %lld bytes", file_path, (long long)file_size);
+
+    // Allocate memory for the file content
+    response->body = malloc(file_size);
+    if (!response->body) {
+        log_error("Failed to allocate memory for file: %s (size: %lld bytes)",
+                file_path, (long long)file_size);
+        close(fd);
+        create_json_response(response, 500, "{\"error\": \"Server memory allocation failed\"}");
+        return;
+    }
+
+    // Read the file content
+    ssize_t bytes_read = read(fd, response->body, file_size);
+    close(fd);
+
+    if (bytes_read != file_size) {
+        log_error("Failed to read complete file: %s (read %zd of %lld bytes)",
+                file_path, bytes_read, (long long)file_size);
+        free(response->body);
+        create_json_response(response, 500, "{\"error\": \"Failed to read complete file\"}");
+        return;
+    }
+
+    // Set response body length
+    response->body_length = file_size;
+
+    log_info("File prepared for download: %s (%lld bytes)", file_path, (long long)file_size);
+}
+
+
+/**
+ * Serve the direct file download
+ */
+void serve_direct_download(http_response_t *response, uint64_t id, recording_metadata_t *metadata) {
+    // Determine if this is an HLS stream (m3u8)
+    const char *ext = strrchr(metadata->file_path, '.');
+    bool is_hls = (ext && strcasecmp(ext, ".m3u8") == 0);
+
+    if (is_hls) {
+        // Check if a direct MP4 recording already exists in the same directory
+        char dir_path[256];
+        const char *last_slash = strrchr(metadata->file_path, '/');
+        if (last_slash) {
+            size_t dir_len = last_slash - metadata->file_path;
+            strncpy(dir_path, metadata->file_path, dir_len);
+            dir_path[dir_len] = '\0';
+        } else {
+            // If no slash, use the current directory
+            strcpy(dir_path, ".");
+        }
+
+        // Check for an existing MP4 file
+        char mp4_path[256];
+        snprintf(mp4_path, sizeof(mp4_path), "%s/recording.mp4", dir_path);
+
+        struct stat mp4_stat;
+        if (stat(mp4_path, &mp4_stat) == 0 && mp4_stat.st_size > 0) {
+            // Direct MP4 exists, serve it
+            log_info("Found direct MP4 recording: %s (%lld bytes)",
+                   mp4_path, (long long)mp4_stat.st_size);
+
+            // Create filename for download
+            char filename[128];
+            snprintf(filename, sizeof(filename), "%s_%lld.mp4",
+                   metadata->stream_name, (long long)metadata->start_time);
+
+            // Set necessary headers
+            set_response_header(response, "Content-Type", "application/octet-stream");
+            char content_length[32];
+            snprintf(content_length, sizeof(content_length), "%lld", (long long)mp4_stat.st_size);
+            set_response_header(response, "Content-Length", content_length);
+            char disposition[256];
+            snprintf(disposition, sizeof(disposition), "attachment; filename=\"%s\"", filename);
+            set_response_header(response, "Content-Disposition", disposition);
+
+            log_info("Serving direct MP4 recording for download: %s", mp4_path);
+
+            // Use existing file serving mechanism
+            int result = create_file_response(response, 200, mp4_path, "application/octet-stream");
+            if (result != 0) {
+                log_error("Failed to create file response: %s", mp4_path);
+                create_json_response(response, 500, "{\"error\": \"Failed to serve recording file\"}");
+                return;
+            }
+
+            log_info("Direct MP4 recording download started: ID=%llu, Path=%s, Filename=%s",
+                   (unsigned long long)id, mp4_path, filename);
+            return;
+        }
+
+        // No direct MP4 found, create one
+        char output_path[256];
+        snprintf(output_path, sizeof(output_path), "%s/download_%llu.mp4",
+                dir_path, (unsigned long long)id);
+
+        log_info("Converting HLS stream to MP4: %s -> %s", metadata->file_path, output_path);
+
+        // Create a more robust FFmpeg command
+        char ffmpeg_cmd[512];
+        snprintf(ffmpeg_cmd, sizeof(ffmpeg_cmd),
+                "ffmpeg -y -i %s -c copy -bsf:a aac_adtstoasc -movflags +faststart %s 2>/dev/null",
+                metadata->file_path, output_path);
+
+        log_info("Running FFmpeg command: %s", ffmpeg_cmd);
+
+        // Execute FFmpeg command
+        int cmd_result = system(ffmpeg_cmd);
+        if (cmd_result != 0) {
+            log_error("FFmpeg command failed with status %d", cmd_result);
+
+            // Try alternative approach with TS files directly
+            log_info("Trying alternative conversion method with TS files");
+            snprintf(ffmpeg_cmd, sizeof(ffmpeg_cmd),
+                    "cd %s && ffmpeg -y -pattern_type glob -i \"*.ts\" -c copy -bsf:a aac_adtstoasc -movflags +faststart %s 2>/dev/null",
+                    dir_path, output_path);
+
+            log_info("Running alternative FFmpeg command: %s", ffmpeg_cmd);
+
+            cmd_result = system(ffmpeg_cmd);
+            if (cmd_result != 0) {
+                log_error("Alternative FFmpeg command failed with status %d", cmd_result);
+                create_json_response(response, 500, "{\"error\": \"Failed to convert recording\"}");
+                return;
+            }
+        }
+
+        // Verify the output file was created and has content
+        struct stat st;
+        if (stat(output_path, &st) != 0 || st.st_size == 0) {
+            log_error("Converted MP4 file not found or empty: %s", output_path);
+            create_json_response(response, 500, "{\"error\": \"Failed to convert recording\"}");
+            return;
+        }
+
+        log_info("Successfully converted HLS to MP4: %s (%lld bytes)",
+                output_path, (long long)st.st_size);
+
+        // Create filename for download
+        char filename[128];
+        snprintf(filename, sizeof(filename), "%s_%lld.mp4",
+               metadata->stream_name, (long long)metadata->start_time);
+
+        // Set necessary headers
+        set_response_header(response, "Content-Type", "application/octet-stream");
+        char content_length[32];
+        snprintf(content_length, sizeof(content_length), "%lld", (long long)st.st_size);
+        set_response_header(response, "Content-Length", content_length);
+        char disposition[256];
+        snprintf(disposition, sizeof(disposition), "attachment; filename=\"%s\"", filename);
+        set_response_header(response, "Content-Disposition", disposition);
+
+        // Serve the converted file
+        int result = create_file_response(response, 200, output_path, "application/octet-stream");
+        if (result != 0) {
+            log_error("Failed to create file response: %s", output_path);
+            create_json_response(response, 500, "{\"error\": \"Failed to serve converted MP4 file\"}");
+            return;
+        }
+
+        log_info("Converted MP4 download started: ID=%llu, Path=%s, Filename=%s",
+               (unsigned long long)id, output_path, filename);
+    } else {
+        // For non-HLS files, serve directly
+        // Create filename for download
+        char filename[128];
+        snprintf(filename, sizeof(filename), "%s_%lld%s",
+               metadata->stream_name, (long long)metadata->start_time,
+               ext ? ext : ".mp4");
+
+        // Get file size
+        struct stat st;
+        if (stat(metadata->file_path, &st) != 0) {
+            log_error("Failed to stat file: %s", metadata->file_path);
+            create_json_response(response, 500, "{\"error\": \"Failed to access recording file\"}");
+            return;
+        }
+
+        // Set necessary headers
+        set_response_header(response, "Content-Type", "application/octet-stream");
+        char content_length[32];
+        snprintf(content_length, sizeof(content_length), "%lld", (long long)st.st_size);
+        set_response_header(response, "Content-Length", content_length);
+        char disposition[256];
+        snprintf(disposition, sizeof(disposition), "attachment; filename=\"%s\"", filename);
+        set_response_header(response, "Content-Disposition", disposition);
+
+        // Serve the file
+        int result = create_file_response(response, 200, metadata->file_path, "application/octet-stream");
+        if (result != 0) {
+            log_error("Failed to create file response: %s", metadata->file_path);
+            create_json_response(response, 500, "{\"error\": \"Failed to serve recording file\"}");
+            return;
+        }
+
+        log_info("Original file download started: ID=%llu, Path=%s, Filename=%s",
+               (unsigned long long)id, metadata->file_path, filename);
+    }
+}
+
+
+/**
+ * Generate a download page with a download link
+ */
+void generate_download_page(http_response_t *response, uint64_t id, recording_metadata_t *metadata) {
+    // Create download URL
+    char download_url[256];
+    snprintf(download_url, sizeof(download_url), "/api/recordings/download/%llu?direct=1",
+             (unsigned long long)id);
+
+    // Determine if this is an HLS stream (m3u8)
+    const char *ext = strrchr(metadata->file_path, '.');
+    bool is_hls = (ext && strcasecmp(ext, ".m3u8") == 0);
+
+    // Format timestamp for display
+    char timestamp[32];
+    time_t time = (time_t)metadata->start_time;
+    struct tm *tm_info = localtime(&time);
+    strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm_info);
+
+    // Create HTML page with download link
+    char html[2048];
+    snprintf(html, sizeof(html),
+            "<!DOCTYPE html>\n"
+            "<html>\n"
+            "<head>\n"
+            "    <title>Download Recording</title>\n"
+            "    <style>\n"
+            "        body { font-family: Arial, sans-serif; margin: 40px; }\n"
+            "        .container { max-width: 800px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }\n"
+            "        h1 { color: #333; }\n"
+            "        .info { margin: 20px 0; }\n"
+            "        .download-btn { display: inline-block; background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; font-weight: bold; }\n"
+            "        .download-btn:hover { background-color: #45a049; }\n"
+            "    </style>\n"
+            "</head>\n"
+            "<body>\n"
+            "    <div class=\"container\">\n"
+            "        <h1>Download Recording</h1>\n"
+            "        <div class=\"info\">\n"
+            "            <p><strong>Stream:</strong> %s</p>\n"
+            "            <p><strong>Recording ID:</strong> %llu</p>\n"
+            "            <p><strong>Timestamp:</strong> %s</p>\n"
+            "            <p><strong>Type:</strong> %s</p>\n"
+            "        </div>\n"
+            "        <p>Click the button below to download the recording:</p>\n"
+            "        <a href=\"%s\" class=\"download-btn\" download>Download Recording</a>\n"
+            "    </div>\n"
+            "</body>\n"
+            "</html>",
+            metadata->stream_name,
+            (unsigned long long)id,
+            timestamp,
+            is_hls ? "HLS Stream (will be converted to MP4)" : "Direct Recording",
+            download_url);
+
+    // Set response
+    response->status_code = 200;
+    response->body = strdup(html);
+    response->body_length = strlen(html);
+
+    // Set content type
+    set_response_header(response, "Content-Type", "text/html");
+
+    log_info("Generated download page for recording ID %llu", (unsigned long long)id);
+}
+
+
+/**
+ * Serve a file for download with proper headers
+ */
+void serve_download_file(http_response_t *response, const char *file_path, const char *content_type,
+                       const char *stream_name, time_t timestamp) {
+    // Verify file exists and is readable
+    struct stat st;
+    if (stat(file_path, &st) != 0) {
+        log_error("File not found: %s", file_path);
+        create_json_response(response, 404, "{\"error\": \"Recording file not found\"}");
+        return;
+    }
+
+    if (access(file_path, R_OK) != 0) {
+        log_error("File not readable: %s", file_path);
+        create_json_response(response, 403, "{\"error\": \"Recording file not readable\"}");
+        return;
+    }
+
+    if (st.st_size == 0) {
+        log_error("File is empty: %s", file_path);
+        create_json_response(response, 500, "{\"error\": \"Recording file is empty\"}");
+        return;
+    }
+
+    // Generate filename for download
     char filename[128];
-    snprintf(filename, sizeof(filename), "%s_%lld%s", 
-             metadata.stream_name, 
-             (long long)metadata.start_time,
-             ext ? ext : ".mp4");
-    
-    char header_value[256];
-    snprintf(header_value, sizeof(header_value), "attachment; filename=\"%s\"", filename);
-    
-    set_response_header(response, "Content-Disposition", header_value);
-    
-    log_info("Recording download: ID=%llu, Path=%s", (unsigned long long)id, metadata.file_path);
+    char *file_ext = strrchr(file_path, '.');
+    if (!file_ext) {
+        // Default to .mp4 if no extension
+        file_ext = ".mp4";
+    }
+
+    snprintf(filename, sizeof(filename), "%s_%lld%s",
+           stream_name, (long long)timestamp, file_ext);
+
+    // Set response headers for download
+    set_response_header(response, "Content-Type", "application/octet-stream");
+
+    // Set Content-Disposition to force download
+    char disposition[256];
+    snprintf(disposition, sizeof(disposition), "attachment; filename=\"%s\"", filename);
+    set_response_header(response, "Content-Disposition", disposition);
+
+    // Set Cache-Control
+    set_response_header(response, "Cache-Control", "no-cache, no-store, must-revalidate");
+    set_response_header(response, "Pragma", "no-cache");
+    set_response_header(response, "Expires", "0");
+
+    // Log the download attempt
+    log_info("Serving file for download: %s, size: %lld bytes, type: %s",
+           file_path, (long long)st.st_size, content_type);
+
+    // Serve the file - use your existing file serving function
+    int result = create_file_response(response, 200, file_path, "application/octet-stream");
+    if (result != 0) {
+        log_error("Failed to serve file: %s", file_path);
+        create_json_response(response, 500, "{\"error\": \"Failed to serve recording file\"}");
+        return;
+    }
+
+    log_info("Download started: Path=%s, Filename=%s", file_path, filename);
+}
+
+/**
+ * Schedule a file for deletion after it has been served
+ * This function should be customized based on your application's architecture
+ */
+void schedule_file_deletion(const char *file_path) {
+    // Simple implementation: create a background task to delete the file after a delay
+    char delete_cmd[512];
+
+    // Wait 5 minutes before deleting to ensure the file has been fully downloaded
+    snprintf(delete_cmd, sizeof(delete_cmd),
+            "(sleep 300 && rm -f %s) > /dev/null 2>&1 &",
+            file_path);
+
+    system(delete_cmd);
+    log_info("Scheduled temporary file for deletion: %s", file_path);
+}
+/**
+ * Serve a video file with support for HTTP range requests (essential for video streaming)
+ */
+void serve_video_file(http_response_t *response, const char *file_path, const char *content_type,
+                      const char *filename, const http_request_t *request) {
+    // Verify file exists and is readable
+    struct stat st;
+    if (stat(file_path, &st) != 0) {
+        log_error("Video file not found: %s (error: %s)", file_path, strerror(errno));
+        create_json_response(response, 404, "{\"error\": \"Video file not found\"}");
+        return;
+    }
+
+    if (access(file_path, R_OK) != 0) {
+        log_error("Video file not readable: %s (error: %s)", file_path, strerror(errno));
+        create_json_response(response, 403, "{\"error\": \"Video file not accessible\"}");
+        return;
+    }
+
+    // Check file size
+    if (st.st_size == 0) {
+        log_error("Video file is empty: %s", file_path);
+        create_json_response(response, 500, "{\"error\": \"Video file is empty\"}");
+        return;
+    }
+
+    log_info("Serving video file: %s, size: %lld bytes", file_path, (long long)st.st_size);
+
+    // Open file
+    int fd = open(file_path, O_RDONLY);
+    if (fd < 0) {
+        log_error("Failed to open video file: %s (error: %s)", file_path, strerror(errno));
+        create_json_response(response, 500, "{\"error\": \"Failed to open video file\"}");
+        return;
+    }
+
+    // Parse Range header if present
+    const char *range_header = get_request_header(request, "Range");
+    off_t start_pos = 0;
+    off_t end_pos = st.st_size - 1;
+    bool is_range_request = false;
+
+    if (range_header && strncmp(range_header, "bytes=", 6) == 0) {
+        is_range_request = true;
+        // Parse range header - format is typically "bytes=start-end"
+        char range_value[256];
+        strncpy(range_value, range_header + 6, sizeof(range_value) - 1);
+        range_value[sizeof(range_value) - 1] = '\0';
+
+        char *dash = strchr(range_value, '-');
+        if (dash) {
+            *dash = '\0'; // Split the string at dash
+
+            // Parse start position
+            if (range_value[0] != '\0') {
+                start_pos = atoll(range_value);
+                // Ensure start_pos is within file bounds
+                if (start_pos >= st.st_size) {
+                    start_pos = 0;
+                }
+            }
+
+            // Parse end position if provided
+            if (dash[1] != '\0') {
+                end_pos = atoll(dash + 1);
+                // Ensure end_pos is within file bounds
+                if (end_pos >= st.st_size) {
+                    end_pos = st.st_size - 1;
+                }
+            }
+
+            // Sanity check
+            if (start_pos > end_pos) {
+                start_pos = 0;
+                end_pos = st.st_size - 1;
+                is_range_request = false;
+            }
+        }
+    }
+
+    // Allocate our chunk buffer (for reading from file)
+    size_t content_length = end_pos - start_pos + 1;
+    size_t chunk_size = 64 * 1024; // 64KB chunks for streaming
+    char *buffer = malloc(chunk_size);
+
+    if (!buffer) {
+        log_error("Failed to allocate buffer for streaming file");
+        close(fd);
+        create_json_response(response, 500, "{\"error\": \"Server memory allocation failed\"}");
+        return;
+    }
+
+    // Set content type header
+    set_response_header(response, "Content-Type", content_type);
+
+    // Set content length header
+    char content_length_str[32];
+    snprintf(content_length_str, sizeof(content_length_str), "%zu", content_length);
+    set_response_header(response, "Content-Length", content_length_str);
+
+    // Set Accept-Ranges header to indicate range support
+    set_response_header(response, "Accept-Ranges", "bytes");
+
+    // Set disposition header for download if requested
+    if (filename) {
+        char disposition[256];
+        snprintf(disposition, sizeof(disposition), "attachment; filename=\"%s\"", filename);
+        set_response_header(response, "Content-Disposition", disposition);
+    }
+
+    // For range requests, set status code and Content-Range header
+    if (is_range_request) {
+        response->status_code = 206; // Partial Content
+
+        char content_range[64];
+        snprintf(content_range, sizeof(content_range), "bytes %lld-%lld/%lld",
+                 (long long)start_pos, (long long)end_pos, (long long)st.st_size);
+        set_response_header(response, "Content-Range", content_range);
+
+        log_info("Serving range request: %s", content_range);
+    } else {
+        response->status_code = 200; // OK
+    }
+
+    // Seek to start position
+    if (lseek(fd, start_pos, SEEK_SET) == -1) {
+        log_error("Failed to seek in file: %s (error: %s)", file_path, strerror(errno));
+        free(buffer);
+        close(fd);
+        create_json_response(response, 500, "{\"error\": \"Failed to read from video file\"}");
+        return;
+    }
+
+    // Allocate response body to exact content length
+    response->body = malloc(content_length);
+    if (!response->body) {
+        log_error("Failed to allocate response body of size %zu bytes", content_length);
+        free(buffer);
+        close(fd);
+        create_json_response(response, 500, "{\"error\": \"Server memory allocation failed\"}");
+        return;
+    }
+
+    // Read the file in chunks and fill response body
+    size_t total_read = 0;
+    size_t bytes_left = content_length;
+    char *write_ptr = response->body;
+
+    while (bytes_left > 0) {
+        size_t to_read = bytes_left < chunk_size ? bytes_left : chunk_size;
+        ssize_t bytes_read = read(fd, buffer, to_read);
+
+        if (bytes_read <= 0) {
+            if (bytes_read == 0) {
+                // End of file reached prematurely
+                log_warn("Unexpected EOF in file: %s (read %zu of %zu bytes)",
+                      file_path, total_read, content_length);
+                break;
+            } else {
+                // Read error
+                log_error("Error reading file: %s (error: %s)", file_path, strerror(errno));
+                free(buffer);
+                free(response->body);
+                response->body = NULL;
+                close(fd);
+                create_json_response(response, 500, "{\"error\": \"Failed to read from video file\"}");
+                return;
+            }
+        }
+
+        // Copy this chunk to response body
+        memcpy(write_ptr, buffer, bytes_read);
+        write_ptr += bytes_read;
+        total_read += bytes_read;
+        bytes_left -= bytes_read;
+    }
+
+    // If we didn't read the expected amount, resize the response body
+    if (total_read != content_length) {
+        log_warn("Partial read: expected %zu bytes, read %zu bytes", content_length, total_read);
+        void *resized = realloc(response->body, total_read);
+        if (resized) {
+            response->body = resized;
+        }
+
+        // Update content length header
+        snprintf(content_length_str, sizeof(content_length_str), "%zu", total_read);
+        set_response_header(response, "Content-Length", content_length_str);
+    }
+
+    response->body_length = total_read;
+
+    // Clean up
+    free(buffer);
+    close(fd);
+
+    log_info("Successfully prepared video file for response: %s (%zu of %zu bytes)",
+            file_path, total_read, content_length);
+}
+
+/**
+ * Handle download request for a recording in a way that supports video streaming
+ */
+void handle_download_recording(const http_request_t *request, http_response_t *response) {
+    // Extract recording ID from the URL
+    // URL format: /api/recordings/download/{id}
+    const char *path = request->path;
+    const char *prefix = "/api/recordings/download/";
+
+    // Log the request path for debugging
+    log_debug("Download recording request path: %s", path);
+
+    // Check if path starts with the expected prefix
+    if (strncmp(path, prefix, strlen(prefix)) != 0) {
+        log_error("Invalid request path prefix: %s", path);
+        create_json_response(response, 400, "{\"error\": \"Invalid request path\"}");
+        return;
+    }
+
+    // Extract the ID part (everything after the prefix)
+    const char *id_start = path + strlen(prefix);
+
+    // Find query string if present
+    const char *query_start = strchr(id_start, '?');
+    size_t id_len = query_start ? (query_start - id_start) : strlen(id_start);
+
+    // Validate ID length
+    if (id_len == 0 || id_len >= 32) {
+        log_error("Invalid ID length: %zu", id_len);
+        create_json_response(response, 400, "{\"error\": \"Invalid recording ID format\"}");
+        return;
+    }
+
+    // Copy ID string
+    char id_str[32];
+    strncpy(id_str, id_start, id_len);
+    id_str[id_len] = '\0';
+
+    // Convert ID to integer
+    uint64_t id = strtoull(id_str, NULL, 10);
+    if (id == 0) {
+        log_error("Failed to parse recording ID: %s", id_str);
+        create_json_response(response, 400, "{\"error\": \"Invalid recording ID\"}");
+        return;
+    }
+
+    log_info("Attempting to download recording with ID: %llu", (unsigned long long)id);
+
+    // Get recording metadata from database
+    recording_metadata_t metadata;
+    int result = get_recording_metadata_by_id(id, &metadata);
+
+    if (result != 0) {
+        log_error("Recording with ID %llu not found in database", (unsigned long long)id);
+        create_json_response(response, 404, "{\"error\": \"Recording not found\"}");
+        return;
+    }
+
+    log_info("Found recording in database: ID=%llu, Path=%s",
+            (unsigned long long)id, metadata.file_path);
+
+    // Determine if this is an HLS stream (m3u8)
+    const char *ext = strrchr(metadata.file_path, '.');
+    bool is_hls = (ext && strcasecmp(ext, ".m3u8") == 0);
+
+    // Get query parameters
+    bool direct_download = false;
+    char param_value[8];
+    if (get_query_param(request, "direct", param_value, sizeof(param_value)) == 0) {
+        direct_download = (strcmp(param_value, "1") == 0 ||
+                          strcasecmp(param_value, "true") == 0);
+    }
+
+    if (is_hls) {
+        // Get the directory containing the recording
+        char dir_path[256];
+        const char *last_slash = strrchr(metadata.file_path, '/');
+        if (last_slash) {
+            size_t dir_len = last_slash - metadata.file_path;
+            strncpy(dir_path, metadata.file_path, dir_len);
+            dir_path[dir_len] = '\0';
+        } else {
+            // If no slash, use the current directory
+            strcpy(dir_path, ".");
+        }
+
+        // Check for the direct MP4 recording
+        char mp4_path[256];
+        snprintf(mp4_path, sizeof(mp4_path), "%s/recording.mp4", dir_path);
+
+        struct stat mp4_stat;
+        if (stat(mp4_path, &mp4_stat) == 0 && mp4_stat.st_size > 0) {
+            // Direct MP4 exists, serve it
+            log_info("Found direct MP4 recording: %s (%lld bytes)",
+                   mp4_path, (long long)mp4_stat.st_size);
+
+            // Create filename for download
+            char filename[128];
+            snprintf(filename, sizeof(filename), "%s_%lld.mp4",
+                   metadata.stream_name, (long long)metadata.start_time);
+
+            // Serve the file
+            serve_video_file(response, mp4_path, "video/mp4",
+                             direct_download ? filename : NULL, request);
+            return;
+        }
+
+        // No direct MP4 available - convert the HLS stream
+        char output_path[256];
+        snprintf(output_path, sizeof(output_path), "/tmp/lightnvr_download_%llu.mp4",
+                (unsigned long long)id);
+
+        log_info("No direct MP4 found. Converting HLS to MP4: %s -> %s",
+                metadata.file_path, output_path);
+
+        // Check if the file already exists (from a previous conversion)
+        struct stat output_stat;
+        bool conversion_needed = true;
+
+        if (stat(output_path, &output_stat) == 0 && output_stat.st_size > 0) {
+            log_info("Found existing converted MP4: %s (%lld bytes)",
+                   output_path, (long long)output_stat.st_size);
+            conversion_needed = false;
+        }
+
+        if (conversion_needed) {
+            // Create FFmpeg command to convert HLS to MP4
+            char ffmpeg_cmd[512];
+            snprintf(ffmpeg_cmd, sizeof(ffmpeg_cmd),
+                    "ffmpeg -y -i %s -c copy -bsf:a aac_adtstoasc -movflags +faststart %s > /dev/null 2>&1",
+                    metadata.file_path, output_path);
+
+            log_info("Running FFmpeg command: %s", ffmpeg_cmd);
+
+            int cmd_result = system(ffmpeg_cmd);
+            if (cmd_result != 0) {
+                log_error("FFmpeg command failed with status %d", cmd_result);
+
+                // Try alternative approach - directly use the TS files
+                char fallback_cmd[512];
+                snprintf(fallback_cmd, sizeof(fallback_cmd),
+                        "cd %s && cat $(ls -v index*.ts) > /tmp/combined.ts && "
+                        "ffmpeg -y -i /tmp/combined.ts -c copy -bsf:a aac_adtstoasc -movflags +faststart %s "
+                        " > /dev/null 2>&1 && rm /tmp/combined.ts",
+                        dir_path, output_path);
+
+                log_info("Trying alternative conversion with direct TS files: %s", fallback_cmd);
+
+                cmd_result = system(fallback_cmd);
+                if (cmd_result != 0) {
+                    log_error("Alternative conversion failed with status %d", cmd_result);
+                    create_json_response(response, 500, "{\"error\": \"Failed to convert recording to MP4\"}");
+                    return;
+                }
+            }
+
+            // Verify the MP4 file was created
+            struct stat st;
+            if (stat(output_path, &st) != 0 || st.st_size == 0) {
+                log_error("MP4 file not found or empty after conversion: %s", output_path);
+                create_json_response(response, 500, "{\"error\": \"Failed to convert recording to MP4\"}");
+                return;
+            }
+
+            log_info("Successfully converted recording to MP4: %s (%lld bytes)",
+                    output_path, (long long)st.st_size);
+        }
+
+        // Create filename for download
+        char filename[128];
+        snprintf(filename, sizeof(filename), "%s_%lld.mp4",
+               metadata.stream_name, (long long)metadata.start_time);
+
+        // Serve the converted file
+        serve_video_file(response, output_path, "video/mp4",
+                       direct_download ? filename : NULL, request);
+
+        // If temporary file was created, schedule deletion after a certain period
+        // We don't delete right away to allow for streaming and seeking
+        if (conversion_needed) {
+            // Schedule file for deletion after 24 hours
+            schedule_file_deletion(output_path);
+        }
+    } else {
+        // Not an HLS recording - serve the original file
+        const char *content_type = "video/mp4"; // Default
+
+        // Determine content type based on extension
+        if (ext) {
+            if (strcasecmp(ext, ".mp4") == 0) {
+                content_type = "video/mp4";
+            } else if (strcasecmp(ext, ".ts") == 0) {
+                content_type = "video/mp2t";
+            } else if (strcasecmp(ext, ".webm") == 0) {
+                content_type = "video/webm";
+            } else if (strcasecmp(ext, ".mkv") == 0) {
+                content_type = "video/x-matroska";
+            }
+        }
+
+        // Create filename for download if needed
+        char filename[128] = {0};
+        if (direct_download) {
+            snprintf(filename, sizeof(filename), "%s_%lld%s",
+                   metadata.stream_name, (long long)metadata.start_time,
+                   ext ? ext : ".mp4");
+        }
+
+        // Serve the file directly
+        serve_video_file(response, metadata.file_path, content_type,
+                       direct_download ? filename : NULL, request);
+    }
+
+    log_info("Video serving complete for recording ID: %llu", (unsigned long long)id);
+}
+
+/**
+ * Callback to remove temporary files after they've been sent
+ */
+void remove_temp_file_callback(void *data) {
+    if (!data) return;
+
+    char *temp_file_path = (char *)data;
+    log_info("Removing temporary file: %s", temp_file_path);
+
+    if (remove(temp_file_path) != 0) {
+        log_warn("Failed to remove temporary file: %s (error: %s)",
+               temp_file_path, strerror(errno));
+    }
+
+    free(temp_file_path);
+}
+
+/**
+ * Handle GET request for debug database info
+ */
+void handle_get_debug_recordings(const http_request_t *request, http_response_t *response) {
+    // Get recordings from database with no filters
+    recording_metadata_t recordings[100]; // Limit to 100 recordings
+    int count = get_recording_metadata(0, 0, NULL, recordings, 100);
+
+    if (count < 0) {
+        log_error("DEBUG: Failed to get recordings from database");
+        create_json_response(response, 500, "{\"error\": \"Failed to get recordings\", \"count\": -1}");
+        return;
+    }
+
+    // Create a detailed debug response
+    char *debug_json = malloc(10000); // Allocate a large buffer
+    if (!debug_json) {
+        create_json_response(response, 500, "{\"error\": \"Memory allocation failed\"}");
+        return;
+    }
+
+    // Start building JSON
+    int pos = sprintf(debug_json,
+        "{\n"
+        "  \"count\": %d,\n"
+        "  \"recordings\": [\n", count);
+
+    for (int i = 0; i < count; i++) {
+        // Add a comma between items (but not before the first item)
+        if (i > 0) {
+            pos += sprintf(debug_json + pos, ",\n");
+        }
+
+        char path_status[32] = "unknown";
+        struct stat st;
+        if (stat(recordings[i].file_path, &st) == 0) {
+            strcpy(path_status, "exists");
+        } else {
+            strcpy(path_status, "missing");
+        }
+
+        pos += sprintf(debug_json + pos,
+            "    {\n"
+            "      \"id\": %llu,\n"
+            "      \"stream\": \"%s\",\n"
+            "      \"path\": \"%s\",\n"
+            "      \"path_status\": \"%s\",\n"
+            "      \"size\": %llu,\n"
+            "      \"start_time\": %llu,\n"
+            "      \"end_time\": %llu,\n"
+            "      \"complete\": %s\n"
+            "    }",
+            (unsigned long long)recordings[i].id,
+            recordings[i].stream_name,
+            recordings[i].file_path,
+            path_status,
+            (unsigned long long)recordings[i].size_bytes,
+            (unsigned long long)recordings[i].start_time,
+            (unsigned long long)recordings[i].end_time,
+            recordings[i].is_complete ? "true" : "false");
+    }
+
+    // Close JSON
+    pos += sprintf(debug_json + pos, "\n  ]\n}");
+
+    // Create response
+    create_json_response(response, 200, debug_json);
+
+    // Free resources
+    free(debug_json);
 }
 
 /**
@@ -1330,12 +2200,14 @@ void register_api_handlers(void) {
     // Register system API handlers
     register_request_handler("/api/system/info", "GET", handle_get_system_info);
     register_request_handler("/api/system/logs", "GET", handle_get_system_logs);
-    
+
     // Register recording API handlers
     register_request_handler("/api/recordings", "GET", handle_get_recordings);
     register_request_handler("/api/recordings/", "GET", handle_get_recording);
     register_request_handler("/api/recordings/", "DELETE", handle_delete_recording);
-    register_request_handler("/api/recordings/", "GET", handle_download_recording);
+    register_request_handler("/api/debug/recordings", "GET", handle_get_debug_recordings);
+    // Use a separate specific pattern for download endpoint
+    register_request_handler("/api/recordings/download/*", "GET", handle_download_recording);
 
     log_info("API handlers registered");
 }

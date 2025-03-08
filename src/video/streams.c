@@ -45,13 +45,18 @@ void handle_hls_segment(const http_request_t *request, http_response_t *response
 void handle_webrtc_offer(const http_request_t *request, http_response_t *response);
 void handle_webrtc_ice(const http_request_t *request, http_response_t *response);
 
+// Forward declarations for MP4 writer
+#include "video/mp4_writer.h"
+
 // Structure for stream transcoding context
 typedef struct {
     stream_config_t config;
     int running;
     pthread_t thread;
     char output_path[MAX_PATH_LENGTH];
+    char mp4_output_path[MAX_PATH_LENGTH];
     hls_writer_t *hls_writer;
+    mp4_writer_t *mp4_writer;
 } stream_transcode_ctx_t;
 
 // Hash map for tracking running transcode contexts
@@ -172,6 +177,10 @@ void cleanup_streaming_backend(void) {
             if (transcode_contexts[i]->hls_writer) {
                 hls_writer_close(transcode_contexts[i]->hls_writer);
             }
+            
+            if (transcode_contexts[i]->mp4_writer) {
+                mp4_writer_close(transcode_contexts[i]->mp4_writer);
+            }
 
             free(transcode_contexts[i]);
             transcode_contexts[i] = NULL;
@@ -248,6 +257,21 @@ static void *stream_transcode_thread(void *arg) {
         goto cleanup;
     }
 
+    // Set up MP4 writer if recording is enabled
+    if (ctx->config.record) {
+        // Create MP4 output path
+        snprintf(ctx->mp4_output_path, MAX_PATH_LENGTH, "%s/recording.mp4", ctx->output_path);
+        
+        // Create MP4 writer
+        ctx->mp4_writer = mp4_writer_create(ctx->mp4_output_path, ctx->config.name);
+        if (!ctx->mp4_writer) {
+            log_error("Failed to create MP4 writer for %s", ctx->config.name);
+            // Continue anyway with just HLS
+        } else {
+            log_info("Created MP4 writer for stream %s at %s", ctx->config.name, ctx->mp4_output_path);
+        }
+    }
+
     // Initialize packet - use newer API to avoid deprecation warning
     pkt = av_packet_alloc();
     if (!pkt) {
@@ -291,7 +315,13 @@ static void *stream_transcode_thread(void *arg) {
 
         // Process video packets
         if (pkt->stream_index == video_stream_idx) {
+            // Write to HLS
             hls_writer_write_packet(ctx->hls_writer, pkt, input_ctx->streams[video_stream_idx]);
+            
+            // Write to MP4 if enabled
+            if (ctx->mp4_writer) {
+                mp4_writer_write_packet(ctx->mp4_writer, pkt, input_ctx->streams[video_stream_idx]);
+            }
             
             // Periodically update recording metadata (every 30 seconds)
             time_t now = time(NULL);
@@ -319,6 +349,11 @@ cleanup:
         ctx->hls_writer = NULL;
     }
 
+    if (ctx->mp4_writer) {
+        mp4_writer_close(ctx->mp4_writer);
+        ctx->mp4_writer = NULL;
+    }
+
     log_info("Transcoding thread for stream %s exited", ctx->config.name);
     return NULL;
 }
@@ -331,30 +366,39 @@ uint64_t start_recording(const char *stream_name, const char *output_path) {
         log_error("Invalid parameters for start_recording");
         return 0;
     }
-    
+
+    // Add debug logging
+    log_info("Starting recording for stream: %s at path: %s", stream_name, output_path);
+
     stream_handle_t stream = get_stream_by_name(stream_name);
     if (!stream) {
         log_error("Stream %s not found", stream_name);
         return 0;
     }
-    
+
     stream_config_t config;
     if (get_stream_config(stream, &config) != 0) {
         log_error("Failed to get config for stream %s", stream_name);
         return 0;
     }
-    
+
     // Create recording metadata
     recording_metadata_t metadata;
     memset(&metadata, 0, sizeof(recording_metadata_t));
-    
+
     strncpy(metadata.stream_name, stream_name, sizeof(metadata.stream_name) - 1);
+
+    // Format paths for the recording - MAKE SURE THIS POINTS TO REAL FILES
+    char hls_path[MAX_PATH_LENGTH];
+    char mp4_path[MAX_PATH_LENGTH];
     
-    // Format path for the recording
-    char recording_path[MAX_PATH_LENGTH];
-    snprintf(recording_path, sizeof(recording_path), "%s/index.m3u8", output_path);
-    strncpy(metadata.file_path, recording_path, sizeof(metadata.file_path) - 1);
+    // HLS path (primary path stored in metadata)
+    snprintf(hls_path, sizeof(hls_path), "%s/index.m3u8", output_path);
+    strncpy(metadata.file_path, hls_path, sizeof(metadata.file_path) - 1);
     
+    // MP4 path (stored in details field for now)
+    snprintf(mp4_path, sizeof(mp4_path), "%s/recording.mp4", output_path);
+
     metadata.start_time = time(NULL);
     metadata.end_time = 0; // Will be updated when recording ends
     metadata.size_bytes = 0; // Will be updated as segments are added
@@ -363,14 +407,16 @@ uint64_t start_recording(const char *stream_name, const char *output_path) {
     metadata.fps = config.fps;
     strncpy(metadata.codec, config.codec, sizeof(metadata.codec) - 1);
     metadata.is_complete = false;
-    
-    // Add recording to database
+
+    // Add recording to database with detailed error handling
     uint64_t recording_id = add_recording_metadata(&metadata);
     if (recording_id == 0) {
-        log_error("Failed to add recording metadata for stream %s", stream_name);
+        log_error("Failed to add recording metadata for stream %s. Database error.", stream_name);
         return 0;
     }
-    
+
+    log_info("Recording metadata added to database with ID: %llu", (unsigned long long)recording_id);
+
     // Store active recording
     pthread_mutex_lock(&recordings_mutex);
     for (int i = 0; i < MAX_STREAMS; i++) {
@@ -608,6 +654,10 @@ int stop_hls_stream(const char *stream_name) {
             // Cleanup resources
             if (transcode_contexts[i]->hls_writer) {
                 hls_writer_close(transcode_contexts[i]->hls_writer);
+            }
+            
+            if (transcode_contexts[i]->mp4_writer) {
+                mp4_writer_close(transcode_contexts[i]->mp4_writer);
             }
 
             // Stop recording

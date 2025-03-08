@@ -39,7 +39,13 @@ typedef struct {
     uint64_t max_storage_size; // in bytes
     int retention_days;
     bool auto_delete_oldest;
-    
+
+    // New recording format options
+    bool record_mp4_directly;        // Record directly to MP4 alongside HLS
+    char mp4_storage_path[256];      // Path for MP4 recordings storage
+    int mp4_segment_duration;        // Duration of each MP4 segment in minutes
+    int mp4_retention_days;          // Number of days to keep MP4 recordings
+
     // Database settings
     char db_path[MAX_PATH_LENGTH];
     

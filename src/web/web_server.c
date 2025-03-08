@@ -594,36 +594,52 @@ int create_redirect_response(http_response_t *response, int status_code, const c
     return 0;
 }
 
-// Get a query parameter from a request
-int get_query_param(const http_request_t *request, const char *name, 
-                   char *value, size_t value_size) {
-    if (!request || !name || !value || value_size == 0) {
+/**
+ * Helper function to get a query parameter from request
+ */
+int get_query_param(const http_request_t *request, const char *param_name, char *value, size_t value_size) {
+    if (!request || !request->query_string || !param_name || !value) {
         return -1;
     }
-    
-    if (!request->query_string[0]) {
-        return -1;
-    }
-    
-    char query_copy[1024];
-    strncpy(query_copy, request->query_string, sizeof(query_copy) - 1);
-    query_copy[sizeof(query_copy) - 1] = '\0';
-    
-    char *token = strtok(query_copy, "&");
-    while (token) {
-        char *eq = strchr(token, '=');
-        if (eq) {
-            *eq = '\0';
-            if (strcmp(token, name) == 0) {
-                char *val = eq + 1;
-                url_decode(val, value, value_size);
-                return 0;
-            }
+
+    // Find the parameter in the query string
+    const char *query = request->query_string;
+    size_t param_len = strlen(param_name);
+    char search[param_len + 2];
+
+    // Format as "param=" or "param&"
+    snprintf(search, sizeof(search), "%s=", param_name);
+
+    const char *param_start = strstr(query, search);
+    if (!param_start) {
+        // Try at the beginning of the query string
+        if (strncmp(query, search, strlen(search)) == 0) {
+            param_start = query;
+        } else {
+            return -1; // Parameter not found
         }
-        token = strtok(NULL, "&");
     }
-    
-    return -1;
+
+    // Move past "param="
+    param_start += strlen(search);
+
+    // Find the end of the parameter value
+    const char *param_end = strchr(param_start, '&');
+    if (!param_end) {
+        param_end = param_start + strlen(param_start);
+    }
+
+    // Calculate value length
+    size_t value_len = param_end - param_start;
+    if (value_len >= value_size) {
+        value_len = value_size - 1; // Ensure space for null terminator
+    }
+
+    // Copy value
+    strncpy(value, param_start, value_len);
+    value[value_len] = '\0';
+
+    return 0;
 }
 
 // Get a form parameter from a request
@@ -662,19 +678,79 @@ int get_form_param(const http_request_t *request, const char *name,
     return -1;
 }
 
+// HTTP header structure
+struct http_header {
+    char name[64];
+    char value[256];
+    struct http_header *next;
+};
+
 // Get a header from a request
-int get_request_header(const http_request_t *request, const char *name, 
-                      char *value, size_t value_size) {
-    // In a real implementation, we would search the headers structure
-    // For simplicity, we'll just return an error
-    return -1;
+const char * get_request_header(const http_request_t *request, const char *name) {
+    if (!request || !name) {
+        log_error("Invalid parameters for get_request_header");
+        return NULL;
+    }
+    
+    // Search for the header in the raw request buffer
+    // This is a simplified implementation that searches for common headers directly
+    
+    // Check for common headers with special handling
+    if (strcasecmp(name, "Content-Type") == 0 && request->content_type[0] != '\0') {
+        return request->content_type;
+    }
+    else if (strcasecmp(name, "User-Agent") == 0 && request->user_agent[0] != '\0') {
+        return request->user_agent;
+    }
+    else if (strcasecmp(name, "Content-Length") == 0 && request->content_length > 0) {
+        // Convert content length to string and return it
+        // This is a simplified approach using a static buffer
+        static char content_length_str[32];
+        snprintf(content_length_str, sizeof(content_length_str), "%llu", 
+                (unsigned long long)request->content_length);
+        return content_length_str;
+    }
+    
+    // For a more complete implementation, we would need to:
+    // 1. Have a proper headers structure in the request
+    // 2. Parse all headers during request parsing
+    // 3. Search that structure here
+    
+    // If the header is not found or not implemented
+    return NULL;
 }
 
 // Set a response header
 int set_response_header(http_response_t *response, const char *name, const char *value) {
-    // In a real implementation, we would add the header to the headers structure
-    // For simplicity, we'll just log it
+    if (!response || !name || !value) {
+        log_error("Invalid parameters for set_response_header");
+        return -1;
+    }
+    
+    // Handle special headers with direct field access
+    if (strcasecmp(name, "Content-Type") == 0) {
+        strncpy(response->content_type, value, sizeof(response->content_type) - 1);
+        response->content_type[sizeof(response->content_type) - 1] = '\0';
+        return 0;
+    }
+    
+    // For a complete implementation, we would:
+    // 1. Create a headers structure if it doesn't exist
+    // 2. Add or update the header in that structure
+    
+    // Allocate headers structure if it doesn't exist
+    if (!response->headers) {
+        // Create a simple linked list for headers
+        response->headers = calloc(1, sizeof(struct http_header));
+        if (!response->headers) {
+            log_error("Failed to allocate memory for response headers");
+            return -1;
+        }
+    }
+    
+    // For now, just log the header and consider it set
     log_debug("Setting response header: %s: %s", name, value);
+    
     return 0;
 }
 

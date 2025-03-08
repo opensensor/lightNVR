@@ -21,6 +21,7 @@
                     <li><a href="#" data-page="streams">Streams</a></li>
                     <li><a href="#" data-page="settings">Settings</a></li>
                     <li><a href="#" data-page="system">System</a></li>
+                    <li><a href="#" data-page="debug">Debug</a></li>
                 </ul>
             </nav>
             <div class="user-menu">
@@ -369,6 +370,21 @@
             <div class="modal-footer snapshot-preview-footer">
                 <button id="snapshot-download-btn" class="btn-primary">Download</button>
                 <button id="snapshot-close-btn" class="btn-secondary">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Database Debug Modal -->
+    <div id="debug-modal" class="modal">
+        <div class="modal-content debug-modal-content">
+            <div class="modal-header">
+                <h3>Database Debug</h3>
+                <span class="close">&times;</span>
+                <div class="modal-body debug-modal-body">
+                    <pre id="debug-output"></pre>
+                    <button id="debug-close-btn" class="btn-secondary">Close</button>
+                    <button id="debug-refresh-btn" class="btn">Refresh</button>
+                </div>
             </div>
         </div>
     </div>
