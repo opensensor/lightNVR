@@ -203,9 +203,14 @@ static void signal_handler(int sig) {
             web_server.server_socket = -1;
             server_socket = -1; // Update the global reference
         }
-        
-        // In daemon mode, we don't want to exit here, just let the main loop handle cleanup
-        // This is handled by the running flag in main.c
+
+        // Set global running flag to false if not in daemon mode
+        extern bool daemon_mode;
+        if (!daemon_mode) {
+            extern volatile bool running;
+            running = false;
+        }
+        // In daemon mode, the signal is handled by daemon_signal_handler
     }
 }
 
@@ -222,12 +227,16 @@ int init_web_server(int port, const char *web_root) {
     strncpy(web_server.web_root, web_root, MAX_PATH_LENGTH - 1);
     web_server.web_root[MAX_PATH_LENGTH - 1] = '\0';
 
-    // Setup signal handlers
-    struct sigaction sa;
-    memset(&sa, 0, sizeof(sa));
-    sa.sa_handler = signal_handler;
-    sigaction(SIGINT, &sa, NULL);
-    sigaction(SIGTERM, &sa, NULL);
+    // Setup signal handlers only if not in daemon mode
+    // In daemon mode, signals are handled by the daemon process
+    extern bool daemon_mode; // From main.c
+    if (!daemon_mode) {
+        struct sigaction sa;
+        memset(&sa, 0, sizeof(sa));
+        sa.sa_handler = signal_handler;
+        sigaction(SIGINT, &sa, NULL);
+        sigaction(SIGTERM, &sa, NULL);
+    }
 
     // Ignore SIGPIPE
     signal(SIGPIPE, SIG_IGN);

@@ -33,8 +33,8 @@ void init_recordings_system(void);
 // Global flag for graceful shutdown
 volatile bool running = true;
 
-// Global flag for daemon mode
-static bool daemon_mode = false;
+// Global flag for daemon mode (made extern so web_server.c can access it)
+bool daemon_mode = false;
 
 // Declare a global variable to store the web server socket
 static int web_server_socket = -1;
@@ -161,17 +161,21 @@ static void remove_pid_file(int fd, const char *pid_file) {
 
 // Function to daemonize the process
 static int daemonize(const char *pid_file) {
-    // Use the daemon.c implementation instead of duplicating code
     int result = init_daemon(pid_file);
-    
-    // If daemon initialization was successful, we're now in the child process
-    // We should not create another PID file or set up duplicate signal handlers
-    if (result == 0) {
-        // Set the running flag to true to ensure the main loop runs
-        running = true;
+
+    // If daemon initialization failed, return error
+    if (result != 0) {
+        return result;
     }
-    
-    return result;
+
+    // We're now in the child process, set daemon_mode flag
+    daemon_mode = true;
+
+    // Make sure the running flag is set to true
+    running = true;
+
+    // Return success
+    return 0;
 }
 
 // Add this to src/core/main.c after initializing the stream manager
@@ -334,6 +338,14 @@ int main(int argc, char *argv[]) {
 
     // Main loop
     while (running) {
+        // Log that the daemon is still running (maybe once per minute)
+        static time_t last_log_time = 0;
+        time_t now = time(NULL);
+        if (now - last_log_time > 60) {
+            log_debug("Daemon is still running...");
+            last_log_time = now;
+        }
+
         // Process events, monitor system health, etc.
         sleep(1);
     }

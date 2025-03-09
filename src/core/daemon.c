@@ -13,6 +13,10 @@
 #include <sys/wait.h>
 #include <sys/time.h>
 
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
 #include "web/web_server.h"
 #include "core/logger.h"
 #include "core/daemon.h"
@@ -40,21 +44,10 @@ int init_daemon(const char *pid_file) {
         return -1;
     }
 
-    // Setup signal handlers before forking
-    struct sigaction sa;
-    memset(&sa, 0, sizeof(sa));
-    sa.sa_handler = daemon_signal_handler;
-    sigemptyset(&sa.sa_mask);
+// Ignore child signals
+signal(SIGCHLD, SIG_IGN);
 
-    // Handle termination signals
-    sigaction(SIGTERM, &sa, NULL);
-    sigaction(SIGINT, &sa, NULL);
-    sigaction(SIGHUP, &sa, NULL);
-
-    // Ignore child signals
-    signal(SIGCHLD, SIG_IGN);
-
-    // Fork the process
+// Fork the process
     pid_t pid = fork();
     if (pid < 0) {
         log_error("Failed to fork daemon process: %s", strerror(errno));
@@ -117,6 +110,17 @@ int init_daemon(const char *pid_file) {
         close(dev_null);
     }
 
+    // Setup signal handlers in the child process
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = daemon_signal_handler;
+    sigemptyset(&sa.sa_mask);
+
+    // Handle termination signals
+    sigaction(SIGTERM, &sa, NULL);
+    sigaction(SIGINT, &sa, NULL);
+    sigaction(SIGHUP, &sa, NULL);
+
     // Write PID file
     if (write_pid_file(pid_file_path) != 0) {
         return -1;
@@ -146,15 +150,21 @@ static void daemon_signal_handler(int sig) {
     case SIGINT:
         log_info("Received signal %d, shutting down daemon...", sig);
 
-        // Set global flag to stop main loop instead of exiting immediately
+        // Set global flag to stop main loop
         running = false;
 
-        // Don't exit here, let the main loop handle cleanup
+        // Also signal the web server to shut down
+        extern int server_socket;
+        if (server_socket >= 0) {
+            shutdown(server_socket, SHUT_RDWR);
+            close(server_socket);
+            server_socket = -1; // Update the global reference
+        }
         break;
 
     case SIGHUP:
         // Reload configuration
-        log_info("Received SIGHUP, reloading configuration...");
+            log_info("Received SIGHUP, reloading configuration...");
         // TODO: Implement configuration reload
         break;
 
@@ -265,36 +275,8 @@ int stop_daemon(const char *pid_file) {
 
     fclose(fp);
 
-    // Send SIGTERM to the process
-    if (kill(pid, SIGTERM) != 0) {
-        if (errno == ESRCH) {
-            log_warn("No process with PID %d is running, removing stale PID file", pid);
-            remove_daemon_pid_file(file_path);
-            return 0;
-        } else {
-            log_error("Failed to send SIGTERM to process %d: %s", pid, strerror(errno));
-            return -1;
-        }
-    }
-
-    log_info("Sent SIGTERM to process %d, waiting for it to terminate...", pid);
-
-    // Wait for process to terminate (up to 10 seconds)
-    for (int i = 0; i < 100; i++) {
-        if (kill(pid, 0) != 0) {
-            if (errno == ESRCH) {
-                // Process has terminated
-                log_info("Process %d has terminated", pid);
-                return 0;
-            }
-        }
-
-        // Sleep for 100ms
-        usleep(100000);
-    }
-
-    // Process didn't terminate, try SIGKILL
-    log_warn("Process %d didn't terminate after 10 seconds, sending SIGKILL", pid);
+    // Send SIGKILL directly since SIGTERM doesn't work reliably
+    log_info("Sending SIGKILL to process %d", pid);
 
     if (kill(pid, SIGKILL) != 0) {
         if (errno == ESRCH) {
