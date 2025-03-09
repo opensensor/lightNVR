@@ -9,20 +9,31 @@
     <script>
         // Redirect to the appropriate page based on the URL
         document.addEventListener('DOMContentLoaded', function() {
+            // Check if logout parameter is present
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('logout') === 'true') {
+                // Handle logout
+                alert('Logout successful');
+                // Redirect to live view after logout
+                window.location.href = 'live.html';
+                return;
+            }
+            
+            // Handle path-based navigation for backward compatibility
             const path = window.location.pathname;
             
             if (path === '/' || path === '/index.html') {
-                window.location.href = '/live.html';
+                window.location.href = 'live.html';
             } else if (path === '/recordings') {
-                window.location.href = '/recordings.html';
+                window.location.href = 'recordings.html';
             } else if (path === '/streams') {
-                window.location.href = '/streams.html';
+                window.location.href = 'streams.html';
             } else if (path === '/settings') {
-                window.location.href = '/settings.html';
+                window.location.href = 'settings.html';
             } else if (path === '/system') {
-                window.location.href = '/system.html';
+                window.location.href = 'system.html';
             } else if (path === '/debug') {
-                window.location.href = '/debug.html';
+                window.location.href = 'debug.html';
             }
         });
     </script>
