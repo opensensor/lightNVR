@@ -111,8 +111,11 @@ Description=LightNVR - Lightweight Network Video Recorder
 After=network.target
 
 [Service]
-Type=simple
-ExecStart=$PREFIX/bin/lightnvr -c $CONFIG_DIR/lightnvr.conf -d
+Type=forking
+PIDFile=/var/run/lightnvr.pid
+Environment="LD_LIBRARY_PATH=/usr/local/lib"
+Environment="FFMPEG_DATADIR=/usr/share/ffmpeg"
+ExecStart=/usr/local/bin/lightnvr -c /etc/lightnvr/lightnvr.conf -d
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
