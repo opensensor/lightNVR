@@ -82,7 +82,6 @@ function loadStreams(forLiveView = false) {
                         <td>${stream.record ? 'Yes' : 'No'}</td>
                         <td>
                             <button class="btn-icon edit-btn" data-id="${streamId}" title="Edit"><span class="icon">✎</span></button>
-                            <button class="btn-icon snapshot-btn" data-id="${streamId}" title="Snapshot"><span class="icon">📷</span></button>
                             <button class="btn-icon delete-btn" data-id="${streamId}" title="Delete"><span class="icon">×</span></button>
                         </td>
                     `;
@@ -96,14 +95,6 @@ function loadStreams(forLiveView = false) {
                         const streamId = this.getAttribute('data-id');
                         console.log('Editing stream with ID:', streamId);
                         editStream(streamId);
-                    });
-                });
-
-                document.querySelectorAll('.snapshot-btn').forEach(btn => {
-                    btn.addEventListener('click', function() {
-                        const streamId = this.getAttribute('data-id');
-                        console.log('Taking snapshot of stream with ID:', streamId);
-                        takeSnapshot(streamId);
                     });
                 });
 
@@ -155,91 +146,6 @@ function updateStreamFilter(streams) {
             console.log(`Added stream option: ${stream.name}`);
         });
     }
-}
-
-/**
- * Take a snapshot of a stream
- */
-function takeSnapshot(streamId) {
-    console.log('Taking snapshot for stream ID:', streamId);
-
-    // First get the stream name from ID
-    fetch(`/api/streams/${encodeURIComponent(streamId)}`)
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Failed to load stream details');
-            }
-            return response.json();
-        })
-        .then(stream => {
-            // Now take the snapshot
-            const videoElementId = `video-${stream.name.replace(/\s+/g, '-')}`;
-            const videoElement = document.getElementById(videoElementId);
-            const videoCell = videoElement ? videoElement.closest('.video-cell') : null;
-
-            if (!videoElement || !videoCell) {
-                // If we're on the streams page, not the live view page
-                // Send a direct request to the API to take a snapshot
-                showStatusMessage('Taking snapshot...');
-
-                fetch(`/api/streams/${encodeURIComponent(streamId)}/snapshot`, {
-                    method: 'POST'
-                })
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error('Failed to take snapshot');
-                        }
-                        return response.blob();
-                    })
-                    .then(blob => {
-                        const imageUrl = URL.createObjectURL(blob);
-                        showSnapshotPreview(imageUrl, stream.name);
-                    })
-                    .catch(error => {
-                        console.error('Error taking snapshot:', error);
-                        showStatusMessage('Error taking snapshot: ' + error.message, 3000);
-                    });
-
-                return;
-            }
-
-            // Show status message
-            showStatusMessage('Taking snapshot...');
-
-            // Create a canvas to capture the image
-            const canvas = document.createElement('canvas');
-
-            // For real video, use the video dimensions
-            if (videoElement.videoWidth && videoElement.videoHeight) {
-                canvas.width = videoElement.videoWidth;
-                canvas.height = videoElement.videoHeight;
-
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
-
-                // Add timestamp
-                const now = new Date();
-                const timestamp = now.toLocaleString();
-
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-                ctx.fillRect(0, canvas.height - 30, canvas.width, 30);
-
-                ctx.fillStyle = 'white';
-                ctx.font = '14px Arial';
-                ctx.textAlign = 'left';
-                ctx.fillText(`${stream.name} - ${timestamp}`, 10, canvas.height - 10);
-
-                // Show preview instead of direct download
-                const imageData = canvas.toDataURL('image/jpeg', 0.9);
-                showSnapshotPreview(imageData, stream.name);
-            } else {
-                showStatusMessage('Cannot take snapshot: video not loaded', 3000);
-            }
-        })
-        .catch(error => {
-            console.error('Error getting stream details:', error);
-            showStatusMessage('Error taking snapshot: ' + error.message, 3000);
-        });
 }
 
 /**
