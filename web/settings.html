@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - LightNVR</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="icon" href="img/favicon.ico" type="image/x-icon">
+</head>
+<body>
+<div class="container">
+    <header id="header-container">
+        <!-- Header content will be loaded by JavaScript -->
+    </header>
+
+    <main id="main-content">
+        <section id="settings-page" class="page">
+            <div class="page-header">
+                <h2>Settings</h2>
+                <div class="controls">
+                    <button id="save-settings-btn" class="btn-primary">Save Settings</button>
+                </div>
+            </div>
+            <div class="settings-container">
+                <div class="settings-group">
+                    <h3>General Settings</h3>
+                    <div class="setting">
+                        <label for="setting-log-level">Log Level</label>
+                        <select id="setting-log-level">
+                            <option value="0">Error</option>
+                            <option value="1">Warning</option>
+                            <option value="2" selected>Info</option>
+                            <option value="3">Debug</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="settings-group">
+                    <h3>Storage Settings</h3>
+                    <div class="setting">
+                        <label for="setting-storage-path">Storage Path</label>
+                        <input type="text" id="setting-storage-path" value="/var/lib/lightnvr/recordings">
+                    </div>
+                    <div class="setting">
+                        <label for="setting-max-storage">Maximum Storage Size (GB)</label>
+                        <input type="number" id="setting-max-storage" value="0" min="0">
+                        <span class="hint">0 = unlimited</span>
+                    </div>
+                    <div class="setting">
+                        <label for="setting-retention">Retention Period (days)</label>
+                        <input type="number" id="setting-retention" value="30" min="1">
+                    </div>
+                    <div class="setting">
+                        <label for="setting-auto-delete">Auto Delete Oldest</label>
+                        <input type="checkbox" id="setting-auto-delete" checked>
+                    </div>
+                </div>
+                <div class="settings-group">
+                    <h3>Web Interface Settings</h3>
+                    <div class="setting">
+                        <label for="setting-web-port">Web Port</label>
+                        <input type="number" id="setting-web-port" value="8080" min="1" max="65535">
+                    </div>
+                    <div class="setting">
+                        <label for="setting-auth-enabled">Enable Authentication</label>
+                        <input type="checkbox" id="setting-auth-enabled" checked>
+                    </div>
+                    <div class="setting">
+                        <label for="setting-username">Username</label>
+                        <input type="text" id="setting-username" value="admin">
+                    </div>
+                    <div class="setting">
+                        <label for="setting-password">Password</label>
+                        <input type="password" id="setting-password" value="admin">
+                    </div>
+                </div>
+                <div class="settings-group">
+                    <h3>Memory Optimization</h3>
+                    <div class="setting">
+                        <label for="setting-buffer-size">Buffer Size (KB)</label>
+                        <input type="number" id="setting-buffer-size" value="1024" min="128">
+                    </div>
+                    <div class="setting">
+                        <label for="setting-use-swap">Use Swap File</label>
+                        <input type="checkbox" id="setting-use-swap" checked>
+                    </div>
+                    <div class="setting">
+                        <label for="setting-swap-size">Swap Size (MB)</label>
+                        <input type="number" id="setting-swap-size" value="128" min="32">
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer id="footer-container">
+        <!-- Footer content will be loaded by JavaScript -->
+    </footer>
+</div>
+
+<script src="js/core.js"></script>
+<script src="js/components/layout.js"></script>
+<script src="js/components/ui.js"></script>
+<script src="js/components/settings.js"></script>
+<script src="js/pages/pages.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Load header and footer
+        loadHeader('nav-settings');
+        loadFooter();
+        
+        // Initialize the settings view
+        setupSettingsHandlers();
+        loadSettings();
+    });
+</script>
+</body>
+</html>

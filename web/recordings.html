@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recordings - LightNVR</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="icon" href="img/favicon.ico" type="image/x-icon">
+</head>
+<body>
+<div class="container">
+    <header id="header-container">
+        <!-- Header content will be loaded by JavaScript -->
+    </header>
+
+    <main id="main-content">
+        <section id="recordings-page" class="page">
+            <div class="page-header">
+                <h2>Recordings</h2>
+                <div class="controls">
+                    <input type="date" id="date-picker">
+                    <select id="stream-filter">
+                        <option value="all">All Streams</option>
+                    </select>
+                    <select id="page-size">
+                        <option value="10">10 per page</option>
+                        <option value="20" selected>20 per page</option>
+                        <option value="50">50 per page</option>
+                        <option value="100">100 per page</option>
+                    </select>
+                    <button id="refresh-btn">Refresh</button>
+                </div>
+            </div>
+            <div class="recordings-container">
+                <table id="recordings-table">
+                    <thead>
+                    <tr>
+                        <th>Stream</th>
+                        <th>Start Time</th>
+                        <th>Duration</th>
+                        <th>Size</th>
+                        <th>Actions</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr>
+                        <td colspan="5" class="empty-message">No recordings found</td>
+                    </tr>
+                    </tbody>
+                </table>
+                <div class="pagination-controls">
+                    <div class="pagination-info">
+                        Showing <span id="pagination-showing">0-0</span> of <span id="pagination-total">0</span> recordings
+                    </div>
+                    <div class="pagination-buttons">
+                        <button id="pagination-first" title="First Page">«</button>
+                        <button id="pagination-prev" title="Previous Page">‹</button>
+                        <span id="pagination-current">Page 1 of 1</span>
+                        <button id="pagination-next" title="Next Page">›</button>
+                        <button id="pagination-last" title="Last Page">»</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer id="footer-container">
+        <!-- Footer content will be loaded by JavaScript -->
+    </footer>
+</div>
+
+<!-- Modal for video playback -->
+<div id="video-modal" class="modal">
+    <div class="modal-content video-modal-content">
+        <div class="modal-header">
+            <h3 id="video-modal-title">Recording Playback</h3>
+            <span class="close">&times;</span>
+        </div>
+        <div class="modal-body video-modal-body">
+            <video id="video-player" controls></video>
+        </div>
+        <div class="modal-footer">
+            <button id="video-download-btn" class="btn">Download</button>
+            <button id="video-close-btn" class="btn-secondary">Close</button>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<script src="js/core.js"></script>
+<script src="js/components/layout.js"></script>
+<script src="js/components/ui.js"></script>
+<script src="js/components/streams.js"></script>
+<script src="js/components/recordings.js"></script>
+<script src="js/components/video.js"></script>
+<script src="js/pages/pages.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Load header and footer
+        loadHeader('nav-recordings');
+        loadFooter();
+        
+        // Initialize the recordings view
+        setupRecordingsHandlers();
+        
+        // First load streams to populate the filter dropdown
+        fetch('/api/streams')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to load streams');
+                }
+                return response.json();
+            })
+            .then(streams => {
+                // Update stream filter dropdown
+                updateStreamFilter(streams);
+                
+                // Then load recordings data
+                loadRecordings();
+            })
+            .catch(error => {
+                console.error('Error loading streams for filter:', error);
+                // Load recordings anyway even if streams failed to load
+                loadRecordings();
+            });
+    });
+</script>
+</body>
+</html>

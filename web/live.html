@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live View - LightNVR</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="icon" href="img/favicon.ico" type="image/x-icon">
+</head>
+<body>
+<div class="container">
+    <header id="header-container">
+        <!-- Header content will be loaded by JavaScript -->
+    </header>
+
+    <main id="main-content">
+        <section id="live-page" class="page">
+            <div class="page-header">
+                <h2>Live View</h2>
+                <div class="controls">
+                    <select id="layout-selector">
+                        <option value="1">Single View</option>
+                        <option value="4">2x2 Grid</option>
+                        <option value="9">3x3 Grid</option>
+                        <option value="16">4x4 Grid</option>
+                    </select>
+                    <button id="fullscreen-btn">Fullscreen</button>
+                </div>
+            </div>
+            <div class="video-container" id="video-grid">
+                <div class="placeholder">
+                    <p>No streams configured</p>
+                    <a href="/streams" class="btn">Configure Streams</a>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer id="footer-container">
+        <!-- Footer content will be loaded by JavaScript -->
+    </footer>
+</div>
+
+<!-- Snapshot Preview Modal -->
+<div id="snapshot-preview-modal" class="modal">
+    <div class="modal-content snapshot-preview-content">
+        <div class="modal-header snapshot-preview-header">
+            <h3 id="snapshot-preview-title">Snapshot Preview</h3>
+            <span class="close">&times;</span>
+        </div>
+        <div class="modal-body snapshot-preview-body">
+            <img id="snapshot-preview-image" src="" alt="Snapshot Preview">
+        </div>
+        <div class="modal-footer snapshot-preview-footer">
+            <button id="snapshot-download-btn" class="btn-primary">Download</button>
+            <button id="snapshot-close-btn" class="btn-secondary">Close</button>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<script src="js/core.js"></script>
+<script src="js/components/layout.js"></script>
+<script src="js/components/ui.js"></script>
+<script src="js/components/streams.js"></script>
+<script src="js/components/video.js"></script>
+<script src="js/pages/pages.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Load header and footer
+        loadHeader('nav-live');
+        loadFooter();
+        
+        // Initialize the live view
+        setupLiveViewHandlers();
+        loadStreams(true);
+    });
+</script>
+</body>
+</html>

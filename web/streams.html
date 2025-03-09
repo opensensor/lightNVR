@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Streams - LightNVR</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="icon" href="img/favicon.ico" type="image/x-icon">
+</head>
+<body>
+<div class="container">
+    <header id="header-container">
+        <!-- Header content will be loaded by JavaScript -->
+    </header>
+
+    <main id="main-content">
+        <section id="streams-page" class="page">
+            <div class="page-header">
+                <h2>Streams</h2>
+                <div class="controls">
+                    <button id="add-stream-btn" class="btn-primary">Add Stream</button>
+                </div>
+            </div>
+            <div class="streams-container">
+                <table id="streams-table">
+                    <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>URL</th>
+                        <th>Status</th>
+                        <th>Resolution</th>
+                        <th>FPS</th>
+                        <th>Recording</th>
+                        <th>Actions</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr>
+                        <td colspan="7" class="empty-message">No streams configured</td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <footer id="footer-container">
+        <!-- Footer content will be loaded by JavaScript -->
+    </footer>
+</div>
+
+<!-- Modal for stream configuration -->
+<div id="stream-modal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Add/Edit Stream</h3>
+            <span class="close">&times;</span>
+        </div>
+        <div class="modal-body">
+            <form id="stream-form">
+                <div class="form-group">
+                    <label for="stream-name">Name</label>
+                    <input type="text" id="stream-name" required>
+                </div>
+                <div class="form-group">
+                    <label for="stream-url">URL</label>
+                    <input type="text" id="stream-url" placeholder="rtsp://example.com/stream" required>
+                </div>
+                <div class="form-group">
+                    <label for="stream-enabled">Enabled</label>
+                    <input type="checkbox" id="stream-enabled" checked>
+                </div>
+                <div class="form-group">
+                    <label for="stream-width">Width</label>
+                    <input type="number" id="stream-width" value="1280" min="320" max="1920">
+                </div>
+                <div class="form-group">
+                    <label for="stream-height">Height</label>
+                    <input type="number" id="stream-height" value="720" min="240" max="1080">
+                </div>
+                <div class="form-group">
+                    <label for="stream-fps">FPS</label>
+                    <input type="number" id="stream-fps" value="15" min="1" max="30">
+                </div>
+                <div class="form-group">
+                    <label for="stream-codec">Codec</label>
+                    <select id="stream-codec">
+                        <option value="h264">H.264</option>
+                        <option value="h265">H.265</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="stream-priority">Priority</label>
+                    <select id="stream-priority">
+                        <option value="1">Low (1)</option>
+                        <option value="5" selected>Medium (5)</option>
+                        <option value="10">High (10)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="stream-record">Record</label>
+                    <input type="checkbox" id="stream-record" checked>
+                </div>
+                <div class="form-group">
+                    <label for="stream-segment">Segment Duration (seconds)</label>
+                    <input type="number" id="stream-segment" value="900" min="60" max="3600">
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button id="stream-test-btn" class="btn">Test Connection</button>
+            <button id="stream-save-btn" class="btn-primary">Save</button>
+            <button id="stream-cancel-btn" class="btn-secondary">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- Snapshot Preview Modal -->
+<div id="snapshot-preview-modal" class="modal">
+    <div class="modal-content snapshot-preview-content">
+        <div class="modal-header snapshot-preview-header">
+            <h3 id="snapshot-preview-title">Snapshot Preview</h3>
+            <span class="close">&times;</span>
+        </div>
+        <div class="modal-body snapshot-preview-body">
+            <img id="snapshot-preview-image" src="" alt="Snapshot Preview">
+        </div>
+        <div class="modal-footer snapshot-preview-footer">
+            <button id="snapshot-download-btn" class="btn-primary">Download</button>
+            <button id="snapshot-close-btn" class="btn-secondary">Close</button>
+        </div>
+    </div>
+</div>
+
+<script src="js/core.js"></script>
+<script src="js/components/layout.js"></script>
+<script src="js/components/ui.js"></script>
+<script src="js/components/streams.js"></script>
+<script src="js/pages/pages.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Load header and footer
+        loadHeader('nav-streams');
+        loadFooter();
+        
+        // Initialize the streams view
+        setupStreamsHandlers();
+        loadStreams();
+    });
+</script>
+</body>
+</html>

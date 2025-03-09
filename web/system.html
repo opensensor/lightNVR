@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System - LightNVR</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="icon" href="img/favicon.ico" type="image/x-icon">
+</head>
+<body>
+<div class="container">
+    <header id="header-container">
+        <!-- Header content will be loaded by JavaScript -->
+    </header>
+
+    <main id="main-content">
+        <section id="system-page" class="page">
+            <div class="page-header">
+                <h2>System</h2>
+                <div class="controls">
+                    <button id="refresh-system-btn">Refresh</button>
+                </div>
+            </div>
+            <div class="system-container">
+                <div class="system-group">
+                    <h3>System Information</h3>
+                    <div class="info-item">
+                        <span class="label">Version:</span>
+                        <span class="value" id="system-version">0.2.0</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Uptime:</span>
+                        <span class="value" id="system-uptime">0d 0h 0m</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">CPU Usage:</span>
+                        <span class="value" id="system-cpu">0%</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Memory Usage:</span>
+                        <span class="value" id="system-memory">0 MB / 256 MB</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Storage Usage:</span>
+                        <span class="value" id="system-storage">0 GB / 0 GB</span>
+                    </div>
+                </div>
+                <div class="system-group">
+                    <h3>Stream Statistics</h3>
+                    <div class="info-item">
+                        <span class="label">Active Streams:</span>
+                        <span class="value" id="system-active-streams">0 / 0</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Recording Streams:</span>
+                        <span class="value" id="system-recording-streams">0</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Total Received:</span>
+                        <span class="value" id="system-received">0 MB</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Total Recorded:</span>
+                        <span class="value" id="system-recorded">0 MB</span>
+                    </div>
+                </div>
+                <div class="system-group">
+                    <h3>System Actions</h3>
+                    <div class="action-buttons">
+                        <button id="restart-btn" class="btn-warning">Restart Service</button>
+                        <button id="shutdown-btn" class="btn-danger">Shutdown Service</button>
+                        <button id="clear-logs-btn" class="btn">Clear Logs</button>
+                        <button id="backup-config-btn" class="btn">Backup Configuration</button>
+                    </div>
+                </div>
+                <div class="system-group">
+                    <h3>System Logs</h3>
+                    <div class="log-container">
+                        <pre id="system-logs">No logs available</pre>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer id="footer-container">
+        <!-- Footer content will be loaded by JavaScript -->
+    </footer>
+</div>
+
+<script src="js/core.js"></script>
+<script src="js/components/layout.js"></script>
+<script src="js/components/ui.js"></script>
+<script src="js/components/system.js"></script>
+<script src="js/pages/pages.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Load header and footer
+        loadHeader('nav-system');
+        loadFooter();
+        
+        // Initialize the system view
+        setupSystemHandlers();
+        loadSystemInfo();
+    });
+</script>
+</body>
+</html>
