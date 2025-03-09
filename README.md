@@ -2,15 +2,18 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-LightNVR is a memory-optimized Network Video Recorder software designed specifically for resource-constrained devices like the Ingenic A1 SoC with only 256MB of RAM.
+LightNVR is a tiny, memory-optimized Network Video Recorder software written in C. While originally designed for resource-constrained devices like the Ingenic A1 SoC with only 256MB of RAM, it can run on any Linux system.
 
 ## Overview
 
 LightNVR provides a lightweight yet powerful solution for recording and managing IP camera streams. It's designed to run efficiently on low-power, memory-constrained devices while still providing essential NVR functionality.
 
+![Live Streams Interface](docs/images/live-streams.png)
+
 ### Key Features
 
-- **Memory Efficient**: Optimized to run on devices with as little as 256MB RAM
+- **Cross-Platform**: Runs on any Linux system, from embedded devices to full servers
+- **Memory Efficient**: Optimized to run on devices with low memory (SBCs and certain SoCs)
 - **Stream Support**: Handle up to 16 video streams (with memory-optimized buffering)
 - **Protocol Support**: RTSP and ONVIF (basic profile)
 - **Codec Support**: H.264 (primary), H.265 (if resources permit)
@@ -24,11 +27,21 @@ LightNVR provides a lightweight yet powerful solution for recording and managing
 
 ## System Requirements
 
-- **Processor**: Ingenic A1 SoC or similar low-power MIPS processor
-- **Memory**: 256MB RAM minimum
-- **Storage**: External SSD via USB/SATA
-- **Network**: Ethernet connection
-- **OS**: Linux 4.4 kernel or newer
+- **Processor**: Any Linux-compatible processor (ARM, x86, MIPS, etc.)
+- **Memory**: unknown RAM minimum (more recommended for multiple streams)
+- **Storage**: Any storage device accessible by the OS
+- **Network**: Ethernet or WiFi connection
+- **OS**: Linux with kernel 4.4 or newer
+
+## Screenshots
+
+| ![Stream Management](docs/images/stream-management.png) | ![Recording Management](docs/images/recording-management.png) |
+|:-------------------------------------------------------:|:------------------------------------------------------------:|
+| Stream Management                                       | Recording Management                                          |
+
+| ![Settings Management](docs/images/settings-management.png) | ![System Information](docs/images/System.png) |
+|:----------------------------------------------------------:|:--------------------------------------------:|
+| Settings Management                                         | System Information                            |
 
 ## Quick Start
 
@@ -75,10 +88,12 @@ docker run -d \
 
 ## Documentation
 
+- [Installation Guide](docs/INSTALLATION.md)
 - [Build Instructions](docs/BUILD.md)
 - [Configuration Guide](docs/CONFIGURATION.md)
 - [API Documentation](docs/API.md)
-- [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [Troubleshooting Guide](docs/TROUBLESHOOTING.md)
+- [Architecture Overview](docs/ARCHITECTURE.md)
 
 ## Project Structure
 
@@ -86,7 +101,7 @@ docker run -d \
   - `core/` - Core system components
   - `video/` - Video processing and stream handling
   - `storage/` - Storage management
-  - `web/` - Web interface
+  - `web/` - Web interface and API handlers
   - `database/` - Database operations
   - `utils/` - Utility functions
 - `include/` - Header files
@@ -94,6 +109,7 @@ docker run -d \
 - `config/` - Configuration files
 - `docs/` - Documentation
 - `tests/` - Test suite
+- `web/` - Web interface files (HTML, CSS, JavaScript)
 
 ## Memory Optimization
 
@@ -123,4 +139,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - FFmpeg for video processing capabilities
 - SQLite for efficient database storage
+- libmicrohttpd for the web server
 - All contributors who have helped with the project

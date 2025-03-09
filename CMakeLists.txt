@@ -65,5 +65,5 @@ configure_file(
 )
 
 # Print memory usage warning
-message(STATUS "Building LightNVR for memory-constrained environment (256MB RAM)")
+message(STATUS "Building LightNVR for memory-constrained environment...")
 message(STATUS "Ensure all dependencies are optimized for low memory usage")
