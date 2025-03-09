@@ -1444,7 +1444,7 @@ function setupPaginationButtons(currentPage, totalPages) {
 }
 
 /**
- * Play recording
+ * Play recording - Fixed version
  */
 function playRecording(recordingId) {
     const videoModal = document.getElementById('video-modal');
@@ -1474,22 +1474,20 @@ function playRecording(recordingId) {
             // Set video source
             videoPlayer.innerHTML = '';
             
-            // Create a direct download URL with direct=1 parameter to ensure proper content type
-            const videoUrl = `/api/recordings/download/${recordingId}?direct=1`;
+            // Create a URL for playback
+            const videoUrl = `/api/recordings/download/${recordingId}`;
             console.log('Video URL:', videoUrl);
             
-            // Create video element with source element for better compatibility
+            // Create a simple video element
             const videoElement = document.createElement('video');
             videoElement.controls = true;
             videoElement.autoplay = true;
             videoElement.style.width = '100%';
             videoElement.style.maxHeight = '70vh';
+            videoElement.preload = 'auto';
             
-            // Create source element
-            const sourceElement = document.createElement('source');
-            sourceElement.src = videoUrl;
-            sourceElement.type = 'video/mp4';
-            videoElement.appendChild(sourceElement);
+            // Set the source directly
+            videoElement.src = videoUrl;
             
             // Add event listeners
             videoElement.addEventListener('loadeddata', () => {
@@ -1523,15 +1521,12 @@ function playRecording(recordingId) {
                     }
                 }
                 
-                // Try alternative approach - direct iframe embedding
+                // Show error message with download option
                 videoPlayer.innerHTML = `
-                    <iframe 
-                        src="${videoUrl}" 
-                        style="width:100%;height:400px;border:none;" 
-                        allowfullscreen
-                    ></iframe>
-                    <div style="margin-top:10px;text-align:center;">
-                        <p>If the video doesn't play, you can download it instead:</p>
+                    <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:300px;background:#000;color:#fff;padding:20px;text-align:center;">
+                        <p>Error playing video: ${errorDetails}</p>
+                        <p>The recording may be unavailable or in an unsupported format.</p>
+                        <p style="margin-top:20px;">You can download the video instead:</p>
                         <button id="fallback-download-btn" style="margin-top:10px;padding:8px 16px;background:#1e88e5;color:white;border:none;border-radius:4px;cursor:pointer;">
                             Download Video
                         </button>
@@ -1542,7 +1537,7 @@ function playRecording(recordingId) {
                 const fallbackDownloadBtn = document.getElementById('fallback-download-btn');
                 if (fallbackDownloadBtn) {
                     fallbackDownloadBtn.addEventListener('click', () => {
-                        window.location.href = `/api/recordings/download/${recordingId}`;
+                        downloadRecording(recordingId);
                     });
                 }
             });
@@ -1553,7 +1548,7 @@ function playRecording(recordingId) {
             const downloadBtn = document.getElementById('video-download-btn');
             if (downloadBtn) {
                 downloadBtn.onclick = () => {
-                    window.location.href = `/api/recordings/download/${recordingId}`;
+                    downloadRecording(recordingId);
                 };
             }
         })
@@ -1572,8 +1567,8 @@ function playRecording(recordingId) {
  * Download recording
  */
 function downloadRecording(recordingId) {
-    // Initiate download by redirecting to the download URL
-    window.location.href = `/api/recordings/download/${recordingId}`;
+    // Initiate download by redirecting to the download URL with download=1 parameter
+    window.location.href = `/api/recordings/download/${recordingId}?download=1`;
 }
 
 /**

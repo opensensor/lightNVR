@@ -2001,31 +2001,29 @@ void register_api_handlers(void) {
 
     log_info("API handlers registered with improved URL handling and route priority");
 }
-
 /**
- * Handle GET request to download a recording
+ * Handle GET request to download a recording - Simplified version
  */
 void handle_download_recording(const http_request_t *request, http_response_t *response) {
     // Extract recording ID from the URL
-    // URL format: /api/recordings/download/{id}
     const char *path = request->path;
     const char *prefix = "/api/recordings/download/";
-    
+
     // Verify path starts with expected prefix
     if (strncmp(path, prefix, strlen(prefix)) != 0) {
         log_error("Invalid request path: %s", path);
         create_json_response(response, 400, "{\"error\": \"Invalid request path\"}");
         return;
     }
-    
+
     // Extract the recording ID (everything after the prefix)
     const char *id_str = path + strlen(prefix);
-    
+
     // Skip any leading slashes in the ID part
     while (*id_str == '/') {
         id_str++;
     }
-    
+
     // Find query string if present and truncate
     char *id_str_copy = strdup(id_str);
     if (!id_str_copy) {
@@ -2033,12 +2031,12 @@ void handle_download_recording(const http_request_t *request, http_response_t *r
         create_json_response(response, 500, "{\"error\": \"Memory allocation failed\"}");
         return;
     }
-    
+
     char *query_start = strchr(id_str_copy, '?');
     if (query_start) {
         *query_start = '\0'; // Truncate at query string
     }
-    
+
     // Convert ID to integer
     uint64_t id = strtoull(id_str_copy, NULL, 10);
     if (id == 0) {
@@ -2047,172 +2045,87 @@ void handle_download_recording(const http_request_t *request, http_response_t *r
         create_json_response(response, 400, "{\"error\": \"Invalid recording ID\"}");
         return;
     }
-    
-    // Check for direct download parameter
-    bool direct_download = false;
+
+    // Check for force download parameter
+    bool force_download = false;
     if (query_start) {
         char query_str[256];
         strncpy(query_str, query_start + 1, sizeof(query_str) - 1);
         query_str[sizeof(query_str) - 1] = '\0';
-        
-        if (strstr(query_str, "direct=1") || strstr(query_str, "direct=true")) {
-            direct_download = true;
-            log_info("Direct download requested for recording ID %llu", (unsigned long long)id);
+
+        if (strstr(query_str, "download=1") || strstr(query_str, "download=true")) {
+            force_download = true;
+            log_info("Force download requested for recording ID %llu", (unsigned long long)id);
         }
     }
-    
+
     free(id_str_copy);
-    
+
     // Get recording metadata from database
     recording_metadata_t metadata;
     int result = get_recording_metadata_by_id(id, &metadata);
-    
+
     if (result != 0) {
         log_error("Recording with ID %llu not found in database", (unsigned long long)id);
         create_json_response(response, 404, "{\"error\": \"Recording not found\"}");
         return;
     }
-    
+
     log_info("Found recording in database: ID=%llu, Path=%s", (unsigned long long)id, metadata.file_path);
-    
+
     // Check if the file exists
     struct stat st;
     if (stat(metadata.file_path, &st) != 0) {
-        log_error("Recording file not found on disk: %s (error: %s)", 
+        log_error("Recording file not found on disk: %s (error: %s)",
                  metadata.file_path, strerror(errno));
-        
-        // Check if this is an MP4 recording in the mp4 directory
-        char mp4_path[1024];
-        
-        // Get the stream name from the metadata
-        const char *stream_name = metadata.stream_name;
-        
-        // Get the timestamp from the metadata
-        time_t timestamp = metadata.start_time;
-        
-        // Format the timestamp as YYYYMMDD_HHMMSS
-        struct tm *tm_info = localtime(&timestamp);
-        char timestamp_str[20];
-        strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M%S", tm_info);
-        
-        // Try to find the MP4 file in the mp4 directory
-        snprintf(mp4_path, sizeof(mp4_path), "/var/lib/lightnvr/recordings/mp4/%s/recording_%s.mp4", 
-                stream_name, timestamp_str);
-        
-        log_info("Checking for MP4 file at: %s", mp4_path);
-        
-        if (stat(mp4_path, &st) == 0) {
-            log_info("Found MP4 file at: %s", mp4_path);
-            
-            // Create filename for download
-            char filename[128];
-            snprintf(filename, sizeof(filename), "%s_%s.mp4", stream_name, timestamp_str);
-            
-            // Set content type to video/mp4 for direct playback
-            if (direct_download) {
-                log_info("Serving MP4 file with video/mp4 content type for direct playback");
-                set_response_header(response, "Content-Type", "video/mp4");
-                
-                // Set content length
-                char content_length[32];
-                snprintf(content_length, sizeof(content_length), "%lld", (long long)st.st_size);
-                set_response_header(response, "Content-Length", content_length);
-                
-                // Create file response with video/mp4 content type
-                int result = create_file_response(response, 200, mp4_path, "video/mp4");
-                if (result != 0) {
-                    log_error("Failed to create file response: %s", mp4_path);
-                    create_json_response(response, 500, "{\"error\": \"Failed to serve recording file\"}");
-                }
-            } else {
-                // Serve as download with attachment disposition
-                serve_mp4_file(response, mp4_path, filename);
-            }
-            return;
-        }
-        
-        // If we still can't find the file, try a more flexible approach with glob
-        char mp4_dir[512];
-        snprintf(mp4_dir, sizeof(mp4_dir), "/var/lib/lightnvr/recordings/mp4/%s", stream_name);
-        
-        // Use glob to find MP4 files
-        glob_t glob_result;
-        char glob_pattern[1024];
-        snprintf(glob_pattern, sizeof(glob_pattern), "%s/recording_*.mp4", mp4_dir);
-        
-        if (glob(glob_pattern, GLOB_NOSORT, NULL, &glob_result) == 0) {
-            if (glob_result.gl_pathc > 0) {
-                // Use the first matching file
-                log_info("Found MP4 file using glob: %s", glob_result.gl_pathv[0]);
-                
-                // Create filename for download
-                char filename[128];
-                snprintf(filename, sizeof(filename), "%s_%s.mp4", stream_name, timestamp_str);
-                
-                // Set content type to video/mp4 for direct playback
-                if (direct_download) {
-                    log_info("Serving MP4 file with video/mp4 content type for direct playback");
-                    set_response_header(response, "Content-Type", "video/mp4");
-                    
-                    // Set content length
-                    struct stat glob_st;
-                    if (stat(glob_result.gl_pathv[0], &glob_st) == 0) {
-                        char content_length[32];
-                        snprintf(content_length, sizeof(content_length), "%lld", (long long)glob_st.st_size);
-                        set_response_header(response, "Content-Length", content_length);
-                    }
-                    
-                    // Create file response with video/mp4 content type
-                    int result = create_file_response(response, 200, glob_result.gl_pathv[0], "video/mp4");
-                    if (result != 0) {
-                        log_error("Failed to create file response: %s", glob_result.gl_pathv[0]);
-                        create_json_response(response, 500, "{\"error\": \"Failed to serve recording file\"}");
-                    }
-                } else {
-                    // Serve as download with attachment disposition
-                    serve_mp4_file(response, glob_result.gl_pathv[0], filename);
-                }
-                
-                globfree(&glob_result);
-                return;
-            }
-            globfree(&glob_result);
-        }
-        
-        // If we still can't find the file, return an error
         create_json_response(response, 404, "{\"error\": \"Recording file not found\"}");
         return;
     }
-    
-    // If direct download parameter is set, serve the file directly with proper content type
-    if (direct_download) {
-        // Determine if this is an MP4 file
-        const char *ext = strrchr(metadata.file_path, '.');
-        bool is_mp4 = (ext && strcasecmp(ext, ".mp4") == 0);
-        
-        if (is_mp4) {
-            log_info("Serving MP4 file with video/mp4 content type for direct playback: %s", metadata.file_path);
-            
-            // Set content type to video/mp4 for direct playback
-            set_response_header(response, "Content-Type", "video/mp4");
-            
-            // Set content length
-            char content_length[32];
-            snprintf(content_length, sizeof(content_length), "%lld", (long long)st.st_size);
-            set_response_header(response, "Content-Length", content_length);
-            
-            // Create file response with video/mp4 content type
-            int result = create_file_response(response, 200, metadata.file_path, "video/mp4");
-            if (result != 0) {
-                log_error("Failed to create file response: %s", metadata.file_path);
-                create_json_response(response, 500, "{\"error\": \"Failed to serve recording file\"}");
-            }
+
+    // Determine if this is an MP4 file
+    const char *ext = strrchr(metadata.file_path, '.');
+    bool is_mp4 = (ext && strcasecmp(ext, ".mp4") == 0);
+
+    // Generate a filename for download
+    char filename[128];
+    if (is_mp4) {
+        snprintf(filename, sizeof(filename), "%s_%lld.mp4",
+                metadata.stream_name, (long long)metadata.start_time);
+    } else {
+        // Use whatever extension the file has, or default to .mp4
+        if (ext) {
+            snprintf(filename, sizeof(filename), "%s_%lld%s",
+                    metadata.stream_name, (long long)metadata.start_time, ext);
         } else {
-            // For non-MP4 files, convert to MP4 first
-            serve_direct_download(response, id, &metadata);
+            snprintf(filename, sizeof(filename), "%s_%lld.mp4",
+                    metadata.stream_name, (long long)metadata.start_time);
+        }
+    }
+
+    if (is_mp4 && !force_download) {
+        // For MP4 files with forced download, use the serve_mp4_file function
+        log_info("Serving MP4 file with attachment disposition for download: %s", metadata.file_path);
+        serve_mp4_file(response, metadata.file_path, filename);
+    } else if (is_mp4) {
+        // For MP4 files, serve with video/mp4 content type for playback
+        log_info("Serving MP4 file with video/mp4 content type for playback: %s", metadata.file_path);
+
+        // Set content type to video/mp4 for playback
+        set_response_header(response, "Content-Type", "video/mp4");
+
+        // Set content length
+        char content_length[32];
+        snprintf(content_length, sizeof(content_length), "%lld", (long long)st.st_size);
+        set_response_header(response, "Content-Length", content_length);
+
+        // Create file response with video/mp4 content type
+        int result = create_file_response(response, 200, metadata.file_path, "video/mp4");
+        if (result != 0) {
+            log_error("Failed to create file response: %s", metadata.file_path);
+            create_json_response(response, 500, "{\"error\": \"Failed to serve recording file\"}");
         }
     } else {
-        // Regular download (not direct playback)
+        // For non-MP4 files, use the direct download approach
         serve_direct_download(response, id, &metadata);
     }
 }
