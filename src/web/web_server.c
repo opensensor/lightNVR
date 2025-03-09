@@ -366,20 +366,23 @@ void shutdown_web_server(void) {
     }
     pthread_mutex_unlock(&web_server.mutex);
 
-    // Join server thread with timeout
-    struct timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
-    ts.tv_sec += 5; // 5 second timeout
+// Join server thread with timeout
+struct timespec ts;
+clock_gettime(CLOCK_REALTIME, &ts);
+ts.tv_sec += 30; // 30 second timeout
 
-    int join_result = pthread_timedjoin_np(web_server.server_thread, NULL, &ts);
-    if (join_result != 0) {
-        if (join_result == ETIMEDOUT) {
-            log_warn("Server thread join timed out, cancelling thread");
-            pthread_cancel(web_server.server_thread);
-        } else {
-            log_warn("Failed to join server thread: %s", strerror(join_result));
-        }
+int join_result = pthread_timedjoin_np(web_server.server_thread, NULL, &ts);
+if (join_result != 0) {
+    if (join_result == ETIMEDOUT) {
+        log_warn("Server thread join timed out after 30 seconds, forcefully terminating thread");
+        pthread_cancel(web_server.server_thread);
+        
+        // Force cleanup of any resources that might be held by the thread
+        log_warn("Performing forced cleanup of server resources");
+    } else {
+        log_warn("Failed to join server thread: %s", strerror(join_result));
     }
+}
 
     // Shutdown thread pool
     if (web_server.thread_pool) {

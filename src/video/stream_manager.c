@@ -1,9 +1,12 @@
+#define _GNU_SOURCE  // For pthread_timedjoin_np
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <time.h>
+#include <errno.h>  // For ETIMEDOUT
+#include <signal.h> // For pthread_kill
 
 #include "video/stream_manager.h"
 #include "core/logger.h"
@@ -127,9 +130,10 @@ int init_stream_manager(int max_streams) {
 
 // Shutdown the stream manager
 void shutdown_stream_manager(void) {
+    log_info("Shutting down stream manager...");
     pthread_mutex_lock(&stream_manager.mutex);
     
-    // Stop all streams
+    // Stop all streams with timeout
     for (int i = 0; i < stream_manager.max_streams; i++) {
         if (stream_manager.streams[i].thread_running) {
             // Signal thread to stop
@@ -137,7 +141,24 @@ void shutdown_stream_manager(void) {
             
             // Unlock mutex while waiting for thread to exit
             pthread_mutex_unlock(&stream_manager.mutex);
-            pthread_join(stream_manager.streams[i].thread, NULL);
+            
+            // Join with timeout
+            struct timespec ts;
+            clock_gettime(CLOCK_REALTIME, &ts);
+            ts.tv_sec += 30; // 30 second timeout
+            
+            int join_result = pthread_timedjoin_np(stream_manager.streams[i].thread, NULL, &ts);
+            if (join_result != 0) {
+                if (join_result == ETIMEDOUT) {
+                    log_warn("Stream thread join timed out after 30 seconds for stream %s, forcefully terminating thread", 
+                             stream_manager.streams[i].config.name);
+                    pthread_cancel(stream_manager.streams[i].thread);
+                } else {
+                    log_warn("Failed to join stream thread for %s: %s", 
+                             stream_manager.streams[i].config.name, strerror(join_result));
+                }
+            }
+            
             pthread_mutex_lock(&stream_manager.mutex);
         }
     }
@@ -151,7 +172,7 @@ void shutdown_stream_manager(void) {
     // Destroy mutex
     pthread_mutex_destroy(&stream_manager.mutex);
     
-    log_info("Stream manager shutdown");
+    log_info("Stream manager shutdown complete");
 }
 
 // Add a new stream

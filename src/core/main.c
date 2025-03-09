@@ -356,23 +356,51 @@ int main(int argc, char *argv[]) {
 cleanup:
     log_info("Starting cleanup process...");
     
-    // First stop all streams to ensure proper finalization of recordings
-    log_info("Stopping all active streams...");
-    cleanup_streaming_backend();  // Cleanup FFmpeg streaming
+    // Set up a watchdog timer to force exit if cleanup takes too long
+    pid_t cleanup_pid = fork();
     
-    // Finalize all MP4 recordings
-    log_info("Finalizing all MP4 recordings...");
-    close_all_mp4_writers();
-    
-    // Clean up HLS directories
-    log_info("Cleaning up HLS directories...");
-    cleanup_hls_directories();
-    
-    // Now shut down other components
-    shutdown_web_server();
-    shutdown_stream_manager();
-    shutdown_storage_manager();
-    shutdown_database();
+    if (cleanup_pid == 0) {
+        // Child process - watchdog timer
+        sleep(30);  // Wait 30 seconds
+        log_error("Cleanup process timed out after 30 seconds, forcing exit");
+        kill(getppid(), SIGKILL);  // Force kill the parent process
+        exit(EXIT_FAILURE);
+    } else if (cleanup_pid > 0) {
+        // Parent process - continue with cleanup
+        
+        // First stop all streams to ensure proper finalization of recordings
+        log_info("Stopping all active streams...");
+        cleanup_streaming_backend();  // Cleanup FFmpeg streaming
+        
+        // Finalize all MP4 recordings
+        log_info("Finalizing all MP4 recordings...");
+        close_all_mp4_writers();
+        
+        // Clean up HLS directories
+        log_info("Cleaning up HLS directories...");
+        cleanup_hls_directories();
+        
+        // Now shut down other components
+        shutdown_web_server();
+        shutdown_stream_manager();
+        shutdown_storage_manager();
+        shutdown_database();
+        
+        // Kill the watchdog timer since we completed successfully
+        kill(cleanup_pid, SIGKILL);
+        waitpid(cleanup_pid, NULL, 0);
+    } else {
+        // Fork failed
+        log_error("Failed to create watchdog process for cleanup timeout");
+        // Continue with cleanup anyway
+        cleanup_streaming_backend();
+        close_all_mp4_writers();
+        cleanup_hls_directories();
+        shutdown_web_server();
+        shutdown_stream_manager();
+        shutdown_storage_manager();
+        shutdown_database();
+    }
 
     // Handle PID file cleanup based on mode
     if (daemon_mode) {
