@@ -2,6 +2,30 @@
 #define STREAMS_H
 
 #include "web/web_server.h"
+#include "core/config.h"
+#include "video/hls_writer.h"
+#include "video/mp4_writer.h"
+
+
+// Structure for stream transcoding context
+typedef struct {
+    stream_config_t config;
+    int running;
+    pthread_t thread;
+    char output_path[MAX_PATH_LENGTH];
+    char mp4_output_path[MAX_PATH_LENGTH];
+    hls_writer_t *hls_writer;
+    mp4_writer_t *mp4_writer;
+} stream_transcode_ctx_t;
+
+// Structure to keep track of active recordings
+typedef struct {
+    uint64_t recording_id;
+    char stream_name[MAX_STREAM_NAME];
+    char output_path[MAX_PATH_LENGTH];
+    time_t start_time;
+} active_recording_t;
+
 
 config_t* get_streaming_config(void);
 

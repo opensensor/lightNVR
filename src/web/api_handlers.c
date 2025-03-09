@@ -1741,74 +1741,6 @@ void serve_direct_download(http_response_t *response, uint64_t id, recording_met
     }
 }
 
-
-/**
- * Generate a download page with a download link
- */
-void generate_download_page(http_response_t *response, uint64_t id, recording_metadata_t *metadata) {
-    // Create download URL
-    char download_url[256];
-    snprintf(download_url, sizeof(download_url), "/api/recordings/download/%llu?direct=1",
-             (unsigned long long)id);
-
-    // Determine if this is an HLS stream (m3u8)
-    const char *ext = strrchr(metadata->file_path, '.');
-    bool is_hls = (ext && strcasecmp(ext, ".m3u8") == 0);
-
-    // Format timestamp for display
-    char timestamp[32];
-    time_t time = (time_t)metadata->start_time;
-    struct tm *tm_info = localtime(&time);
-    strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm_info);
-
-    // Create HTML page with download link
-    char html[2048];
-    snprintf(html, sizeof(html),
-            "<!DOCTYPE html>\n"
-            "<html>\n"
-            "<head>\n"
-            "    <title>Download Recording</title>\n"
-            "    <style>\n"
-            "        body { font-family: Arial, sans-serif; margin: 40px; }\n"
-            "        .container { max-width: 800px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }\n"
-            "        h1 { color: #333; }\n"
-            "        .info { margin: 20px 0; }\n"
-            "        .download-btn { display: inline-block; background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; font-weight: bold; }\n"
-            "        .download-btn:hover { background-color: #45a049; }\n"
-            "    </style>\n"
-            "</head>\n"
-            "<body>\n"
-            "    <div class=\"container\">\n"
-            "        <h1>Download Recording</h1>\n"
-            "        <div class=\"info\">\n"
-            "            <p><strong>Stream:</strong> %s</p>\n"
-            "            <p><strong>Recording ID:</strong> %llu</p>\n"
-            "            <p><strong>Timestamp:</strong> %s</p>\n"
-            "            <p><strong>Type:</strong> %s</p>\n"
-            "        </div>\n"
-            "        <p>Click the button below to download the recording:</p>\n"
-            "        <a href=\"%s\" class=\"download-btn\" download>Download Recording</a>\n"
-            "    </div>\n"
-            "</body>\n"
-            "</html>",
-            metadata->stream_name,
-            (unsigned long long)id,
-            timestamp,
-            is_hls ? "HLS Stream (will be converted to MP4)" : "Direct Recording",
-            download_url);
-
-    // Set response
-    response->status_code = 200;
-    response->body = strdup(html);
-    response->body_length = strlen(html);
-
-    // Set content type
-    set_response_header(response, "Content-Type", "text/html");
-
-    log_info("Generated download page for recording ID %llu", (unsigned long long)id);
-}
-
-
 /**
  * Serve a file for download with proper headers
  */
@@ -2010,6 +1942,151 @@ void register_api_handlers(void) {
     register_request_handler("/api/recordings/download/*", "GET", handle_download_recording);
 
     log_info("API handlers registered with improved URL handling");
+}
+
+/**
+ * Handle GET request to download a recording
+ */
+void handle_download_recording(const http_request_t *request, http_response_t *response) {
+    // Extract recording ID from the URL
+    // URL format: /api/recordings/download/{id}
+    const char *path = request->path;
+    const char *prefix = "/api/recordings/download/";
+    
+    // Verify path starts with expected prefix
+    if (strncmp(path, prefix, strlen(prefix)) != 0) {
+        log_error("Invalid request path: %s", path);
+        create_json_response(response, 400, "{\"error\": \"Invalid request path\"}");
+        return;
+    }
+    
+    // Extract the recording ID (everything after the prefix)
+    const char *id_str = path + strlen(prefix);
+    
+    // Skip any leading slashes in the ID part
+    while (*id_str == '/') {
+        id_str++;
+    }
+    
+    // Find query string if present and truncate
+    char *id_str_copy = strdup(id_str);
+    if (!id_str_copy) {
+        log_error("Memory allocation failed for recording ID");
+        create_json_response(response, 500, "{\"error\": \"Memory allocation failed\"}");
+        return;
+    }
+    
+    char *query_start = strchr(id_str_copy, '?');
+    if (query_start) {
+        *query_start = '\0'; // Truncate at query string
+    }
+    
+    // Convert ID to integer
+    uint64_t id = strtoull(id_str_copy, NULL, 10);
+    if (id == 0) {
+        log_error("Invalid recording ID: %s", id_str_copy);
+        free(id_str_copy);
+        create_json_response(response, 400, "{\"error\": \"Invalid recording ID\"}");
+        return;
+    }
+    
+    // Check for direct download parameter
+    bool direct_download = false;
+    if (query_start) {
+        char query_str[256];
+        strncpy(query_str, query_start + 1, sizeof(query_str) - 1);
+        query_str[sizeof(query_str) - 1] = '\0';
+        
+        if (strstr(query_str, "direct=1") || strstr(query_str, "direct=true")) {
+            direct_download = true;
+        }
+    }
+    
+    free(id_str_copy);
+    
+    // Get recording metadata from database
+    recording_metadata_t metadata;
+    int result = get_recording_metadata_by_id(id, &metadata);
+    
+    if (result != 0) {
+        log_error("Recording with ID %llu not found in database", (unsigned long long)id);
+        create_json_response(response, 404, "{\"error\": \"Recording not found\"}");
+        return;
+    }
+    
+    log_info("Found recording in database: ID=%llu, Path=%s", (unsigned long long)id, metadata.file_path);
+    
+    // Check if the file exists
+    struct stat st;
+    if (stat(metadata.file_path, &st) != 0) {
+        log_error("Recording file not found on disk: %s (error: %s)", 
+                 metadata.file_path, strerror(errno));
+        
+        // Check if this is an MP4 recording in the mp4 directory
+        char mp4_path[1024];
+        
+        // Get the stream name from the metadata
+        const char *stream_name = metadata.stream_name;
+        
+        // Get the timestamp from the metadata
+        time_t timestamp = metadata.start_time;
+        
+        // Format the timestamp as YYYYMMDD_HHMMSS
+        struct tm *tm_info = localtime(&timestamp);
+        char timestamp_str[20];
+        strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M%S", tm_info);
+        
+        // Try to find the MP4 file in the mp4 directory
+        snprintf(mp4_path, sizeof(mp4_path), "/var/lib/lightnvr/recordings/mp4/%s/recording_%s.mp4", 
+                stream_name, timestamp_str);
+        
+        log_info("Checking for MP4 file at: %s", mp4_path);
+        
+        if (stat(mp4_path, &st) == 0) {
+            log_info("Found MP4 file at: %s", mp4_path);
+            
+            // Create filename for download
+            char filename[128];
+            snprintf(filename, sizeof(filename), "%s_%s.mp4", stream_name, timestamp_str);
+            
+            // Serve the MP4 file
+            serve_mp4_file(response, mp4_path, filename);
+            return;
+        }
+        
+        // If we still can't find the file, try a more flexible approach with glob
+        char mp4_dir[512];
+        snprintf(mp4_dir, sizeof(mp4_dir), "/var/lib/lightnvr/recordings/mp4/%s", stream_name);
+        
+        // Use glob to find MP4 files
+        glob_t glob_result;
+        char glob_pattern[1024];
+        snprintf(glob_pattern, sizeof(glob_pattern), "%s/recording_*.mp4", mp4_dir);
+        
+        if (glob(glob_pattern, GLOB_NOSORT, NULL, &glob_result) == 0) {
+            if (glob_result.gl_pathc > 0) {
+                // Use the first matching file
+                log_info("Found MP4 file using glob: %s", glob_result.gl_pathv[0]);
+                
+                // Create filename for download
+                char filename[128];
+                snprintf(filename, sizeof(filename), "%s_%s.mp4", stream_name, timestamp_str);
+                
+                // Serve the MP4 file
+                serve_mp4_file(response, glob_result.gl_pathv[0], filename);
+                globfree(&glob_result);
+                return;
+            }
+            globfree(&glob_result);
+        }
+        
+        // If we still can't find the file, return an error
+        create_json_response(response, 404, "{\"error\": \"Recording file not found\"}");
+        return;
+    }
+    
+    // If direct download parameter is set, serve the file directly
+    serve_direct_download(response, id, &metadata);
 }
 
 void register_streaming_api_handlers(void) {

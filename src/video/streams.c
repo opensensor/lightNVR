@@ -25,6 +25,7 @@
 #include "core/logger.h"
 #include "core/config.h"
 #include "video/stream_manager.h"
+#include "video/streams.h"
 #include "video/hls_writer.h"
 #include "video/mp4_writer.h"
 #include "database/database_manager.h"
@@ -40,6 +41,16 @@ config_t global_config;
 static mp4_writer_t *mp4_writers[MAX_STREAMS] = {0};
 static char mp4_writer_stream_names[MAX_STREAMS][64] = {{0}};
 static pthread_mutex_t mp4_writers_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+
+// Hash map for tracking running transcode contexts
+static stream_transcode_ctx_t *transcode_contexts[MAX_STREAMS];
+static pthread_mutex_t contexts_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// Array to store active recordings (one for each stream)
+active_recording_t active_recordings[MAX_STREAMS];
+pthread_mutex_t recordings_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 
 // Forward declarations for recording functions
 uint64_t start_recording(const char *stream_name, const char *output_path);
@@ -208,33 +219,6 @@ void serve_video_file(http_response_t *response, const char *file_path, const ch
     log_info("Successfully prepared video file for response: %s (%zu bytes)",
             file_path, content_length);
 }
-
-// Structure for stream transcoding context
-typedef struct {
-    stream_config_t config;
-    int running;
-    pthread_t thread;
-    char output_path[MAX_PATH_LENGTH];
-    char mp4_output_path[MAX_PATH_LENGTH];
-    hls_writer_t *hls_writer;
-    mp4_writer_t *mp4_writer;
-} stream_transcode_ctx_t;
-
-// Hash map for tracking running transcode contexts
-static stream_transcode_ctx_t *transcode_contexts[MAX_STREAMS];
-static pthread_mutex_t contexts_mutex = PTHREAD_MUTEX_INITIALIZER;
-
-// Structure to keep track of active recordings
-typedef struct {
-    uint64_t recording_id;
-    char stream_name[MAX_STREAM_NAME];
-    char output_path[MAX_PATH_LENGTH];
-    time_t start_time;
-} active_recording_t;
-
-// Array to store active recordings (one for each stream)
-static active_recording_t active_recordings[MAX_STREAMS];
-static pthread_mutex_t recordings_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /**
  * Get current global configuration
@@ -1722,94 +1706,6 @@ int find_mp4_recording(const char *stream_name, time_t timestamp, char *mp4_path
     log_warn("No matching MP4 recording found for stream '%s' with timestamp around %s",
             stream_name, timestamp_str);
     return 0;
-}
-
-/**
- * Enhanced handle_download_recording function focused on finding existing MP4 files
- */
-void handle_download_recording(const http_request_t *request, http_response_t *response) {
-    // Extract recording ID from the URL
-    // URL format: /api/recordings/download/{id}
-    const char *path = request->path;
-    const char *prefix = "/api/recordings/download/";
-
-    // Log the request path for debugging
-    log_debug("Download recording request path: %s", path);
-
-    // Check if path starts with the expected prefix
-    if (strncmp(path, prefix, strlen(prefix)) != 0) {
-        log_error("Invalid request path prefix: %s", path);
-        create_json_response(response, 400, "{\"error\": \"Invalid request path\"}");
-        return;
-    }
-
-    // Extract the ID part (everything after the prefix)
-    const char *id_start = path + strlen(prefix);
-
-    // Find query string if present
-    const char *query_start = strchr(id_start, '?');
-    size_t id_len = query_start ? (query_start - id_start) : strlen(id_start);
-
-    // Validate ID length
-    if (id_len == 0 || id_len >= 32) {
-        log_error("Invalid ID length: %zu", id_len);
-        create_json_response(response, 400, "{\"error\": \"Invalid recording ID format\"}");
-        return;
-    }
-
-    // Copy ID string
-    char id_str[32];
-    strncpy(id_str, id_start, id_len);
-    id_str[id_len] = '\0';
-
-    // Convert ID to integer
-    uint64_t id = strtoull(id_str, NULL, 10);
-    if (id == 0) {
-        log_error("Failed to parse recording ID: %s", id_str);
-        create_json_response(response, 400, "{\"error\": \"Invalid recording ID\"}");
-        return;
-    }
-
-    log_info("Attempting to download recording with ID: %llu", (unsigned long long)id);
-
-    // Get recording metadata from database
-    recording_metadata_t metadata;
-    int result = get_recording_metadata_by_id(id, &metadata);
-
-    if (result != 0) {
-        log_error("Recording with ID %llu not found in database", (unsigned long long)id);
-        create_json_response(response, 404, "{\"error\": \"Recording not found\"}");
-        return;
-    }
-
-    log_info("Found recording in database: ID=%llu, Path=%s, Stream=%s, Time=%lld",
-            (unsigned long long)id, metadata.file_path, metadata.stream_name,
-            (long long)metadata.start_time);
-
-    // Find the MP4 recording
-    char mp4_path[512] = {0};
-    int mp4_found = find_mp4_recording(metadata.stream_name, metadata.start_time,
-                                      mp4_path, sizeof(mp4_path));
-
-    if (mp4_found > 0) {
-        // Create filename for download
-        char filename[128];
-        snprintf(filename, sizeof(filename), "%s_%lld.mp4",
-               metadata.stream_name, (long long)metadata.start_time);
-
-        // Serve the MP4 file
-        log_info("Serving MP4 file: %s with filename %s", mp4_path, filename);
-        serve_video_file(response, mp4_path, "video/mp4", filename, request);
-        return;
-    }
-
-    // If we get here, we couldn't find a suitable MP4 file
-    log_error("Could not find MP4 recording for ID=%llu, Stream=%s, Time=%lld",
-             (unsigned long long)id, metadata.stream_name, (long long)metadata.start_time);
-
-    create_json_response(response, 404,
-        "{\"error\": \"MP4 recording not found. The system found the recording metadata "
-        "but could not locate the corresponding MP4 file.\"}");
 }
 
 /**

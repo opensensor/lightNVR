@@ -15,23 +15,19 @@
 #include <libavutil/avutil.h>
 #include <libavutil/opt.h>
 #include <libavutil/time.h>
+#include <pthread.h>
 
+#include "database/database_manager.h"
 #include "core/config.h"
 #include "core/logger.h"
+#include "video/stream_manager.h"
 #include "video/streams.h"
 #include "video/mp4_writer.h"
 
-struct mp4_writer {
-    char output_path[1024];
-    char stream_name[64];
-    AVFormatContext *output_ctx;
-    int video_stream_idx;
-    int has_audio;
-    int64_t first_dts;
-    int64_t last_dts;
-    AVRational time_base;
-    int is_initialized;
-};
+extern pthread_mutex_t recordings_mutex;
+extern active_recording_t active_recordings[MAX_STREAMS];
+extern pthread_mutex_t recordings_mutex;
+
 
 /**
  * Create a new MP4 writer
@@ -49,6 +45,7 @@ mp4_writer_t *mp4_writer_create(const char *output_path, const char *stream_name
     writer->first_dts = AV_NOPTS_VALUE;
     writer->last_dts = AV_NOPTS_VALUE;
     writer->is_initialized = 0;
+    writer->creation_time = time(NULL);
 
     log_info("Created MP4 writer for stream %s at %s", stream_name, output_path);
 
@@ -243,6 +240,9 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
 /**
  * Enhanced close function that creates symlinks to help with discovery
  */
+/**
+ * Enhanced close function that ensures database entries and creates symlinks to help with discovery
+ */
 void mp4_writer_close(mp4_writer_t *writer) {
     if (!writer) {
         return;
@@ -250,7 +250,7 @@ void mp4_writer_close(mp4_writer_t *writer) {
 
     char output_path[1024];
     char stream_name[64];
-    time_t creation_time = time(NULL);
+    time_t creation_time = writer->creation_time;
 
     // Save these for later use with symlinks
     strncpy(output_path, writer->output_path, sizeof(output_path) - 1);
@@ -295,6 +295,91 @@ void mp4_writer_close(mp4_writer_t *writer) {
         } else {
             log_info("Successfully wrote MP4 file at: %s (size: %lld bytes)",
                     output_path, (long long)st.st_size);
+        }
+
+        // Ensure recording is properly updated in database
+        if (writer->is_initialized) {
+            // Find any active recordings for this stream in our tracking array
+            pthread_mutex_lock(&recordings_mutex);
+            bool found = false;
+
+            for (int i = 0; i < MAX_STREAMS; i++) {
+                if (active_recordings[i].recording_id > 0 &&
+                    strcmp(active_recordings[i].stream_name, writer->stream_name) == 0) {
+
+                    // We found an active recording for this stream
+                    found = true;
+
+                    // Mark recording as complete
+                    time_t end_time = time(NULL);
+                    update_recording_metadata(active_recordings[i].recording_id,
+                                              end_time, st.st_size, true);
+
+                    log_info("Updated database record for recording %llu, size: %lld bytes",
+                            (unsigned long long)active_recordings[i].recording_id,
+                            (long long)st.st_size);
+
+                    // Clear the active recording slot
+                    active_recordings[i].recording_id = 0;
+                    active_recordings[i].stream_name[0] = '\0';
+                    active_recordings[i].output_path[0] = '\0';
+
+                    break;
+                }
+            }
+
+            // If no active recording was found, create one
+            if (!found) {
+                log_info("No active recording found for stream %s, creating database entry",
+                        writer->stream_name);
+
+                // Create recording metadata
+                recording_metadata_t metadata;
+                memset(&metadata, 0, sizeof(recording_metadata_t));
+
+                strncpy(metadata.stream_name, writer->stream_name, sizeof(metadata.stream_name) - 1);
+                strncpy(metadata.file_path, writer->output_path, sizeof(metadata.file_path) - 1);
+
+                metadata.size_bytes = st.st_size;
+
+                // Get stream config for additional metadata
+                stream_handle_t stream = get_stream_by_name(writer->stream_name);
+                if (stream) {
+                    stream_config_t config;
+                    if (get_stream_config(stream, &config) == 0) {
+                        metadata.width = config.width;
+                        metadata.height = config.height;
+                        metadata.fps = config.fps;
+                        strncpy(metadata.codec, config.codec, sizeof(metadata.codec) - 1);
+                    }
+                }
+
+                // Set timestamps
+                time_t duration_sec = 0;
+                if (writer->first_dts != AV_NOPTS_VALUE && writer->last_dts != AV_NOPTS_VALUE) {
+                    // Convert from stream timebase to seconds
+                    int64_t duration_tb = writer->last_dts - writer->first_dts;
+                    if (writer->time_base.den > 0) {
+                        duration_sec = duration_tb * writer->time_base.num / writer->time_base.den;
+                    }
+                }
+
+                time_t now = time(NULL);
+                metadata.start_time = now - duration_sec;
+                metadata.end_time = now;
+                metadata.is_complete = true;
+
+                // Add to database
+                uint64_t recording_id = add_recording_metadata(&metadata);
+                if (recording_id > 0) {
+                    log_info("Created database entry for completed recording, ID: %llu",
+                            (unsigned long long)recording_id);
+                } else {
+                    log_error("Failed to create database entry for completed recording");
+                }
+            }
+
+            pthread_mutex_unlock(&recordings_mutex);
         }
     } else {
         log_error("MP4 file missing or too small: %s", output_path);

@@ -11,6 +11,19 @@
 // Opaque structure for MP4 writer
 typedef struct mp4_writer mp4_writer_t;
 
+struct mp4_writer {
+ char output_path[1024];
+ char stream_name[64];
+ AVFormatContext *output_ctx;
+ int video_stream_idx;
+ int has_audio;
+ int64_t first_dts;
+ int64_t last_dts;
+ AVRational time_base;
+ int is_initialized;
+ time_t creation_time;
+};
+
 /**
  * Create a new MP4 writer
  *
