@@ -1139,6 +1139,8 @@ void handle_get_recordings(const http_request_t *request, http_response_t *respo
         stream_name[0] = '\0';
     }
     
+    log_debug("Filtering recordings by stream: %s", stream_name[0] ? stream_name : "all streams");
+    
     // Get pagination parameters if provided
     if (get_query_param(request, "page", page_str, sizeof(page_str)) == 0) {
         int parsed_page = atoi(page_str);

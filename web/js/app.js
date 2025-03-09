@@ -235,8 +235,15 @@ function setupRecordingsHandlers() {
     // Date picker
     const datePicker = document.getElementById('date-picker');
     if (datePicker) {
-        datePicker.value = new Date().toISOString().substring(0, 10);
+        // Set to today's date
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
+        datePicker.value = `${year}-${month}-${day}`;
+        
         datePicker.addEventListener('change', function() {
+            console.log("Date changed to:", this.value);
             loadRecordings(1); // Reset to page 1 when filter changes
         });
     }
@@ -1438,6 +1445,8 @@ function playRecording(recordingId) {
             return response.json();
         })
         .then(recording => {
+            console.log('Recording details:', recording);
+            
             // Set video title
             videoTitle.textContent = `${recording.stream} - ${recording.start_time}`;
 
@@ -1446,18 +1455,32 @@ function playRecording(recordingId) {
             const videoElement = document.createElement('video');
             videoElement.controls = true;
             videoElement.autoplay = true;
-            videoElement.src = `/api/recordings/download/${recordingId}`;
-
+            
+            // Create a direct download URL
+            const videoUrl = `/api/recordings/download/${recordingId}?direct=1`;
+            console.log('Video URL:', videoUrl);
+            
+            // Set the source
+            videoElement.src = videoUrl;
+            
             // Add event listeners
             videoElement.addEventListener('loadeddata', () => {
+                console.log('Video loaded successfully');
+                videoModal.classList.remove('loading');
+            });
+            
+            videoElement.addEventListener('canplay', () => {
+                console.log('Video can play');
                 videoModal.classList.remove('loading');
             });
 
-            videoElement.addEventListener('error', () => {
+            videoElement.addEventListener('error', (e) => {
+                console.error('Video error:', e);
                 videoModal.classList.remove('loading');
                 videoPlayer.innerHTML = `
                     <div style="display:flex;justify-content:center;align-items:center;height:300px;background:#000;color:#fff;">
                         <p>Error loading video. The recording may be unavailable or in an unsupported format.</p>
+                        <p>Error details: ${videoElement.error ? videoElement.error.message : 'Unknown error'}</p>
                     </div>
                 `;
             });
