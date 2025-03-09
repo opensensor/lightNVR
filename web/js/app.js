@@ -145,8 +145,26 @@ function loadRecordingsView() {
         // Set up event handlers for Recordings page
         setupRecordingsHandlers();
 
-        // Load recordings data
-        loadRecordings();
+        // First load streams to populate the filter dropdown
+        fetch('/api/streams')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to load streams');
+                }
+                return response.json();
+            })
+            .then(streams => {
+                // Update stream filter dropdown
+                updateStreamFilter(streams);
+                
+                // Then load recordings data
+                loadRecordings();
+            })
+            .catch(error => {
+                console.error('Error loading streams for filter:', error);
+                // Load recordings anyway even if streams failed to load
+                loadRecordings();
+            });
     }
 }
 

@@ -1991,8 +1991,8 @@ void register_api_handlers(void) {
 
     // Register recording API handlers (unchanged)
     register_request_handler("/api/recordings", "GET", handle_get_recordings);
-    register_request_handler("/api/recordings/", "GET", handle_get_recording);
-    register_request_handler("/api/recordings/", "DELETE", handle_delete_recording);
+    register_request_handler("/api/recordings/*", "GET", handle_get_recording);
+    register_request_handler("/api/recordings/*", "DELETE", handle_delete_recording);
     register_request_handler("/api/debug/recordings", "GET", handle_get_debug_recordings);
     register_request_handler("/api/recordings/download/*", "GET", handle_download_recording);
 
