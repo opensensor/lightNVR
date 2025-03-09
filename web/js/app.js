@@ -1444,12 +1444,13 @@ function setupPaginationButtons(currentPage, totalPages) {
 }
 
 /**
- * Play recording - Enhanced version with iframe fallback
+ * Play recording - Ultra-simplified direct implementation
  */
 function playRecording(recordingId) {
     const videoModal = document.getElementById('video-modal');
     const videoPlayer = document.getElementById('video-player');
     const videoTitle = document.getElementById('video-modal-title');
+    const videoDownloadBtn = document.getElementById('video-download-btn');
 
     if (!videoModal || !videoPlayer || !videoTitle) return;
 
@@ -1471,69 +1472,68 @@ function playRecording(recordingId) {
             // Set video title
             videoTitle.textContent = `${recording.stream} - ${recording.start_time}`;
 
-            // Set video source
+            // Clear video player
             videoPlayer.innerHTML = '';
             
-            // Create a URL for playback
+            // Base URL for video
             const videoUrl = `/api/recordings/download/${recordingId}`;
+            const downloadUrl = `/api/recordings/download/${recordingId}?download=1`;
+            
             console.log('Video URL:', videoUrl);
-            
-            // Try two different approaches for video playback
-            
-            // First approach: Use an iframe to load the video directly
-            // This bypasses potential MIME type issues and lets the browser handle the video directly
-            const iframe = document.createElement('iframe');
-            iframe.style.width = '100%';
-            iframe.style.height = '70vh';
-            iframe.style.border = 'none';
-            iframe.src = videoUrl;
-            
-            // Add a message for users
-            const messageDiv = document.createElement('div');
-            messageDiv.style.padding = '10px';
-            messageDiv.style.backgroundColor = '#f8f9fa';
-            messageDiv.style.borderTop = '1px solid #dee2e6';
-            messageDiv.style.textAlign = 'center';
-            messageDiv.innerHTML = `
-                <p>If the video doesn't play, you can 
-                <a href="${videoUrl}" target="_blank">open it in a new tab</a> or 
-                <a href="${videoUrl}?download=1" download>download it</a>.</p>
+            console.log('Download URL:', downloadUrl);
+
+            // Create a simple player div
+            videoPlayer.innerHTML = `
+                <iframe 
+                    src="${videoUrl}" 
+                    style="width:100%;height:calc(70vh - 60px);border:none;background:#000;" 
+                    frameborder="0"
+                    allowfullscreen
+                ></iframe>
+                <div style="padding:10px;background:#f8f9fa;border-top:1px solid #dee2e6;text-align:center;">
+                    <p>If the video doesn't play, try downloading it or opening in a new tab.</p>
+                    <div style="margin-top:10px;">
+                        <a href="${downloadUrl}" class="btn btn-primary" style="margin-right:10px;" download>Download Video</a>
+                        <a href="${videoUrl}" class="btn" target="_blank">Open in New Tab</a>
+                    </div>
+                </div>
             `;
             
-            // Add elements to the player
-            videoPlayer.appendChild(iframe);
-            videoPlayer.appendChild(messageDiv);
-            
-            // Hide loading state after a short delay
-            setTimeout(() => {
-                videoModal.classList.remove('loading');
-            }, 1000);
-
-            // Set download button URL
-            const downloadBtn = document.getElementById('video-download-btn');
-            if (downloadBtn) {
-                downloadBtn.onclick = () => {
-                    downloadRecording(recordingId);
-                };
+            // Set direct download URL on the main download button using a regular link
+            if (videoDownloadBtn) {
+                videoDownloadBtn.onclick = null; // Remove any existing click handler
+                videoDownloadBtn.innerHTML = `<a href="${downloadUrl}" download style="color:inherit;text-decoration:none;">Download</a>`;
             }
+            
+            // Hide loading state
+            videoModal.classList.remove('loading');
         })
         .catch(error => {
             console.error('Error loading recording:', error);
             videoModal.classList.remove('loading');
             videoPlayer.innerHTML = `
-                <div style="display:flex;justify-content:center;align-items:center;height:300px;background:#000;color:#fff;">
+                <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:300px;background:#000;color:#fff;padding:20px;text-align:center;">
                     <p>Error: ${error.message}</p>
+                    <p>Cannot load the recording. Please try again later.</p>
+                    <a href="/api/recordings/download/${recordingId}?download=1" class="btn btn-primary" style="margin-top:15px;padding:8px 16px;" download>
+                        Try Direct Download
+                    </a>
                 </div>
             `;
         });
 }
 
 /**
- * Download recording
+ * Download recording - Direct link method
  */
 function downloadRecording(recordingId) {
-    // Initiate download by redirecting to the download URL with download=1 parameter
-    window.location.href = `/api/recordings/download/${recordingId}?download=1`;
+    // Create a direct download link and click it
+    const a = document.createElement('a');
+    a.href = `/api/recordings/download/${recordingId}?download=1`;
+    a.download = ''; // Let the browser determine the filename
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
 }
 
 /**
