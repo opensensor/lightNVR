@@ -493,6 +493,7 @@ int register_mp4_writer_for_stream(const char *stream_name, mp4_writer_t *writer
             break;
         } else if (strcmp(mp4_writer_stream_names[i], stream_name) == 0) {
             // Stream already has a writer, replace it
+            log_info("Replacing existing MP4 writer for stream %s", stream_name);
             mp4_writer_close(mp4_writers[i]);
             mp4_writers[i] = writer;
             pthread_mutex_unlock(&mp4_writers_mutex);
@@ -501,6 +502,7 @@ int register_mp4_writer_for_stream(const char *stream_name, mp4_writer_t *writer
     }
 
     if (slot == -1) {
+        log_error("No available slots for MP4 writer registration");
         pthread_mutex_unlock(&mp4_writers_mutex);
         return -1;
     }
@@ -508,6 +510,8 @@ int register_mp4_writer_for_stream(const char *stream_name, mp4_writer_t *writer
     mp4_writers[slot] = writer;
     strncpy(mp4_writer_stream_names[slot], stream_name, 63);
     mp4_writer_stream_names[slot][63] = '\0';
+    
+    log_info("Registered MP4 writer for stream %s in slot %d", stream_name, slot);
 
     pthread_mutex_unlock(&mp4_writers_mutex);
     return 0;
@@ -572,6 +576,8 @@ static void *stream_transcode_thread(void *arg) {
         // Set permissions
         snprintf(mkdir_cmd, sizeof(mkdir_cmd), "chmod -R 777 %s", ctx->output_path);
         system(mkdir_cmd);
+        
+        log_info("Successfully created output directory: %s", ctx->output_path);
     }
 
     // Check directory permissions
@@ -586,6 +592,38 @@ static void *stream_transcode_thread(void *arg) {
         if (access(ctx->output_path, W_OK) != 0) {
             log_error("Still unable to write to output directory: %s", ctx->output_path);
             goto cleanup;
+        }
+        
+        log_info("Successfully fixed permissions for output directory: %s", ctx->output_path);
+    }
+    
+    // Create a parent directory check file to ensure the parent directory exists
+    char parent_dir[MAX_PATH_LENGTH];
+    const char *last_slash = strrchr(ctx->output_path, '/');
+    if (last_slash) {
+        size_t parent_len = last_slash - ctx->output_path;
+        strncpy(parent_dir, ctx->output_path, parent_len);
+        parent_dir[parent_len] = '\0';
+        
+        // Create a test file in the parent directory
+        char test_file[MAX_PATH_LENGTH];
+        snprintf(test_file, sizeof(test_file), "%s/.hls_parent_check", parent_dir);
+        FILE *fp = fopen(test_file, "w");
+        if (fp) {
+            fclose(fp);
+            // Leave the file there as a marker
+            log_info("Verified parent directory is writable: %s", parent_dir);
+        } else {
+            log_warn("Parent directory may not be writable: %s (error: %s)", 
+                    parent_dir, strerror(errno));
+            
+            // Try to create parent directory with full permissions
+            char parent_cmd[MAX_PATH_LENGTH * 2];
+            snprintf(parent_cmd, sizeof(parent_cmd), "mkdir -p %s && chmod -R 777 %s", 
+                    parent_dir, parent_dir);
+            system(parent_cmd);
+            
+            log_info("Attempted to recreate parent directory with full permissions: %s", parent_dir);
         }
     }
 
@@ -725,7 +763,7 @@ static void *stream_transcode_thread(void *arg) {
             // Write to HLS with error handling
             ret = hls_writer_write_packet(ctx->hls_writer, pkt, input_ctx->streams[video_stream_idx]);
             if (ret < 0) {
-                log_error("Failed to write packet to HLS: %d", ret);
+                log_error("Failed to write packet to HLS for stream %s: %d", ctx->config.name, ret);
                 // Continue anyway to keep the stream going
             }
 
@@ -733,7 +771,7 @@ static void *stream_transcode_thread(void *arg) {
             if (ctx->mp4_writer) {
                 ret = mp4_writer_write_packet(ctx->mp4_writer, pkt, input_ctx->streams[video_stream_idx]);
                 if (ret < 0) {
-                    log_error("Failed to write packet to MP4: %d", ret);
+                    log_error("Failed to write packet to MP4 for stream %s: %d", ctx->config.name, ret);
                     // Continue anyway to keep the stream going
                 }
             }
@@ -1995,8 +2033,8 @@ void handle_webrtc_ice(const http_request_t *request, http_response_t *response)
 
 /**
  * Clean up HLS directories during shutdown
- * This function removes all HLS segment files (.ts) and playlists (.m3u8)
- * to ensure a clean state for the next startup
+ * This function removes old HLS segment files (.ts) and temporary playlists (.m3u8.tmp)
+ * but preserves active playlists to prevent issues with ongoing streams
  */
 void cleanup_hls_directories(void) {
     config_t *global_config = get_streaming_config();
@@ -2042,26 +2080,68 @@ void cleanup_hls_directories(void) {
         if (stat(stream_hls_dir, &st) == 0 && S_ISDIR(st.st_mode)) {
             log_info("Cleaning up HLS files for stream: %s", entry->d_name);
             
-            // Remove all .ts segment files
-            char rm_cmd[MAX_PATH_LENGTH * 2];
-            snprintf(rm_cmd, sizeof(rm_cmd), "rm -f %s/*.ts", stream_hls_dir);
-            int ret = system(rm_cmd);
-            if (ret != 0) {
-                log_warn("Failed to remove HLS segment files in %s (return code: %d)", 
-                        stream_hls_dir, ret);
+            // Check if this stream is currently active
+            bool is_active = false;
+            pthread_mutex_lock(&contexts_mutex);
+            for (int i = 0; i < MAX_STREAMS; i++) {
+                if (transcode_contexts[i] && 
+                    strcmp(transcode_contexts[i]->config.name, entry->d_name) == 0 &&
+                    transcode_contexts[i]->running) {
+                    is_active = true;
+                    break;
+                }
+            }
+            pthread_mutex_unlock(&contexts_mutex);
+            
+            if (is_active) {
+                log_info("Stream %s is active, skipping cleanup of main playlist file", entry->d_name);
+                
+                // For active streams, only remove temporary files and old segments
+                // but preserve the main index.m3u8 file
+                
+                // Remove temporary .m3u8.tmp files
+                char rm_cmd[MAX_PATH_LENGTH * 2];
+                snprintf(rm_cmd, sizeof(rm_cmd), "rm -f %s/*.m3u8.tmp", stream_hls_dir);
+                system(rm_cmd);
+                
+                // Only remove segments that are older than 5 minutes
+                // This ensures we don't delete segments that might still be in use
+                snprintf(rm_cmd, sizeof(rm_cmd), 
+                        "find %s -name \"*.ts\" -type f -mmin +5 -delete", 
+                        stream_hls_dir);
+                system(rm_cmd);
+                
+                log_info("Cleaned up temporary files for active stream: %s", entry->d_name);
             } else {
-                log_info("Removed HLS segment files in %s", stream_hls_dir);
+                // For inactive streams, we can safely remove all files
+                log_info("Stream %s is inactive, removing all HLS files", entry->d_name);
+                
+                // Remove all .ts segment files
+                char rm_cmd[MAX_PATH_LENGTH * 2];
+                snprintf(rm_cmd, sizeof(rm_cmd), "rm -f %s/*.ts", stream_hls_dir);
+                int ret = system(rm_cmd);
+                if (ret != 0) {
+                    log_warn("Failed to remove HLS segment files in %s (return code: %d)", 
+                            stream_hls_dir, ret);
+                } else {
+                    log_info("Removed HLS segment files in %s", stream_hls_dir);
+                }
+                
+                // Remove all .m3u8 playlist files
+                snprintf(rm_cmd, sizeof(rm_cmd), "rm -f %s/*.m3u8*", stream_hls_dir);
+                ret = system(rm_cmd);
+                if (ret != 0) {
+                    log_warn("Failed to remove HLS playlist files in %s (return code: %d)", 
+                            stream_hls_dir, ret);
+                } else {
+                    log_info("Removed HLS playlist files in %s", stream_hls_dir);
+                }
             }
             
-            // Remove all .m3u8 playlist files
-            snprintf(rm_cmd, sizeof(rm_cmd), "rm -f %s/*.m3u8", stream_hls_dir);
-            ret = system(rm_cmd);
-            if (ret != 0) {
-                log_warn("Failed to remove HLS playlist files in %s (return code: %d)", 
-                        stream_hls_dir, ret);
-            } else {
-                log_info("Removed HLS playlist files in %s", stream_hls_dir);
-            }
+            // Ensure the directory has proper permissions
+            char chmod_cmd[MAX_PATH_LENGTH * 2];
+            snprintf(chmod_cmd, sizeof(chmod_cmd), "chmod -R 777 %s", stream_hls_dir);
+            system(chmod_cmd);
         }
     }
     

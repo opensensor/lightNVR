@@ -160,7 +160,10 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
 
     av_dict_set(&options, "hls_time", hls_time, 0);
     av_dict_set(&options, "hls_list_size", "10", 0);
-    av_dict_set(&options, "hls_flags", "delete_segments", 0);
+    
+    // Remove the delete_segments flag to prevent FFmpeg from automatically deleting segments
+    // This will help prevent issues with the index.m3u8.tmp file not being able to be renamed
+    // We'll handle segment cleanup ourselves in cleanup_old_segments
 
     // Create segment filename format string
     char segment_format[MAX_PATH_LENGTH + 32];
@@ -232,11 +235,77 @@ int hls_writer_initialize(hls_writer_t *writer, const AVStream *input_stream) {
 
 
 /**
- * Write packet to HLS stream
+ * Write packet to HLS stream with improved timestamp handling
  */
+/**
+ * Ensure the output directory exists and is writable
+ */
+static int ensure_output_directory(const char *dir_path) {
+    struct stat st;
+    
+    // Check if directory exists
+    if (stat(dir_path, &st) != 0 || !S_ISDIR(st.st_mode)) {
+        log_warn("HLS output directory does not exist or is not a directory: %s", dir_path);
+        
+        // Create directory with parent directories if needed
+        char mkdir_cmd[MAX_PATH_LENGTH * 2];
+        snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p %s", dir_path);
+        
+        if (system(mkdir_cmd) != 0) {
+            log_error("Failed to create HLS output directory: %s", dir_path);
+            return -1;
+        }
+        
+        log_info("Created HLS output directory: %s", dir_path);
+        
+        // Set permissions to ensure FFmpeg can write files
+        snprintf(mkdir_cmd, sizeof(mkdir_cmd), "chmod -R 777 %s", dir_path);
+        system(mkdir_cmd);
+    }
+    
+    // Verify directory is writable
+    if (access(dir_path, W_OK) != 0) {
+        log_error("HLS output directory is not writable: %s", dir_path);
+        
+        // Try to fix permissions
+        char chmod_cmd[MAX_PATH_LENGTH * 2];
+        snprintf(chmod_cmd, sizeof(chmod_cmd), "chmod -R 777 %s", dir_path);
+        system(chmod_cmd);
+        
+        // Check again
+        if (access(dir_path, W_OK) != 0) {
+            log_error("Still unable to write to HLS output directory: %s", dir_path);
+            return -1;
+        }
+    }
+    
+    return 0;
+}
+
+// Track DTS values for each stream to ensure monotonic increase
+static struct {
+    int64_t first_dts;
+    int64_t last_dts;
+    AVRational time_base;
+    int initialized;
+} stream_dts_tracker = {0};
+
 int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVStream *input_stream) {
     if (!writer || !pkt || !input_stream) {
         return -1;
+    }
+
+    // Ensure output directory exists and is writable
+    // This check is performed periodically to handle cases where the directory
+    // might be deleted or become inaccessible during streaming
+    static time_t last_dir_check = 0;
+    time_t now = time(NULL);
+    if (now - last_dir_check >= 10) { // Check every 10 seconds
+        if (ensure_output_directory(writer->output_dir) != 0) {
+            log_error("Failed to ensure HLS output directory exists: %s", writer->output_dir);
+            return -1;
+        }
+        last_dir_check = now;
     }
 
     // Lazy initialization of output stream
@@ -254,9 +323,53 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
         return -1;
     }
 
+    // Initialize DTS tracker if needed
+    if (!stream_dts_tracker.initialized) {
+        stream_dts_tracker.first_dts = pkt->dts != AV_NOPTS_VALUE ? pkt->dts : pkt->pts;
+        stream_dts_tracker.last_dts = stream_dts_tracker.first_dts;
+        stream_dts_tracker.time_base = input_stream->time_base;
+        stream_dts_tracker.initialized = 1;
+        
+        log_debug("Initialized DTS tracker for HLS: first_dts=%lld, time_base=%d/%d",
+                 (long long)stream_dts_tracker.first_dts,
+                 stream_dts_tracker.time_base.num,
+                 stream_dts_tracker.time_base.den);
+    }
+    
+    // Check for timestamp discontinuities before rescaling
+    if (pkt->dts != AV_NOPTS_VALUE) {
+        // If DTS goes backwards or jumps significantly, handle it
+        if (pkt->dts < stream_dts_tracker.last_dts) {
+            log_warn("HLS DTS discontinuity detected: last=%lld, current=%lld, diff=%lld",
+                    (long long)stream_dts_tracker.last_dts,
+                    (long long)pkt->dts,
+                    (long long)(pkt->dts - stream_dts_tracker.last_dts));
+            
+            // Fix the DTS to ensure monotonic increase
+            int64_t fixed_dts = stream_dts_tracker.last_dts + 1;
+            
+            // Adjust PTS relative to the fixed DTS if needed
+            if (pkt->pts != AV_NOPTS_VALUE) {
+                int64_t pts_dts_diff = pkt->pts - pkt->dts;
+                out_pkt.pts = fixed_dts + pts_dts_diff;
+            }
+            
+            out_pkt.dts = fixed_dts;
+        }
+        
+        // Update last DTS for next comparison
+        stream_dts_tracker.last_dts = out_pkt.dts;
+    }
+
     // Adjust timestamps
     av_packet_rescale_ts(&out_pkt, input_stream->time_base,
                         writer->output_ctx->streams[0]->time_base);
+
+    // Final sanity check - ensure PTS >= DTS
+    if (out_pkt.pts != AV_NOPTS_VALUE && out_pkt.dts != AV_NOPTS_VALUE && 
+        out_pkt.pts < out_pkt.dts) {
+        out_pkt.pts = out_pkt.dts;
+    }
 
     // Write the packet
     int ret = av_interleaved_write_frame(writer->output_ctx, &out_pkt);
@@ -266,11 +379,26 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
         char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
         av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
         log_error("Error writing HLS packet: %s", error_buf);
+        
+        // If we get a "No such file or directory" error, try to recreate the directory
+        if (strstr(error_buf, "No such file or directory") != NULL) {
+            log_warn("Directory issue detected, attempting to recreate: %s", writer->output_dir);
+            if (ensure_output_directory(writer->output_dir) == 0) {
+                // Directory recreated, but we still need to return the error
+                // The next packet write attempt should succeed
+                log_info("Successfully recreated HLS output directory: %s", writer->output_dir);
+            }
+        } else if (strstr(error_buf, "Invalid argument") != NULL || 
+                  strstr(error_buf, "non monotonically increasing dts") != NULL) {
+            // Reset DTS tracker on timestamp errors to recover
+            log_warn("Resetting DTS tracker due to timestamp error");
+            stream_dts_tracker.initialized = 0;
+        }
+        
         return ret;
     }
     
     // Periodically clean up old segments (every 60 seconds)
-    time_t now = time(NULL);
     if (now - writer->last_cleanup_time >= 60) {
         // Keep twice the number of segments in the playlist to ensure smooth playback
         // while still cleaning up old segments

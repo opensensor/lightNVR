@@ -197,16 +197,17 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
     AVPacket pkt;
     av_packet_ref(&pkt, in_pkt);
 
-    // Fix timestamps - improved approach to prevent ghosting and ensure correct duration
+    // Enhanced timestamp handling to fix non-monotonic DTS issues
     if (writer->first_dts == AV_NOPTS_VALUE) {
-        // First packet - use its DTS as reference
-        // Only start on a key frame if possible
+        // Wait for a key frame to start if possible
         if (!(in_pkt->flags & AV_PKT_FLAG_KEY)) {
-            // If this is not a key frame and we're just starting, we might want to skip it
-            // But for now, we'll accept it to avoid complexity
-            log_debug("First packet for MP4 is not a key frame - this may cause playback issues");
+            // Skip non-key frames at the beginning
+            log_debug("Skipping non-key frame at start of MP4 recording");
+            av_packet_unref(&pkt);
+            return 0; // Return success but don't process this packet
         }
         
+        // First packet (key frame) - use its DTS as reference
         writer->first_dts = pkt.dts != AV_NOPTS_VALUE ? pkt.dts : pkt.pts;
         writer->first_pts = pkt.pts != AV_NOPTS_VALUE ? pkt.pts : pkt.dts;
 
@@ -217,27 +218,42 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
         pkt.dts = 0;
         pkt.pts = pkt.pts != AV_NOPTS_VALUE ? pkt.pts - writer->first_pts : 0;
         
+        // Ensure PTS is valid (not less than DTS)
+        if (pkt.pts < pkt.dts) {
+            pkt.pts = pkt.dts;
+        }
+        
         log_debug("MP4 writer initialized with first_dts=%lld, first_pts=%lld", 
                  (long long)writer->first_dts, (long long)writer->first_pts);
     } else {
-        // Preserve original pts/dts spacing but ensure monotonic increase
-
-        // Handle DTS (decoding timestamp)
+        // Check for timestamp discontinuities (common in RTSP streams)
+        int64_t expected_dts = writer->last_dts + 1;
+        int64_t dts_diff = 0;
+        
         if (pkt.dts != AV_NOPTS_VALUE) {
-            // Calculate proper offset from the first DTS
-            int64_t dts_diff = pkt.dts - writer->first_dts;
-
-            // If DTS goes backwards or is the same, adjust it to be strictly increasing
-            if (dts_diff <= 0 || pkt.dts <= writer->last_dts) {
-                // Increase by at least 1 tick from the last DTS
-                pkt.dts = writer->last_dts + 1;
+            dts_diff = pkt.dts - writer->first_dts;
+            
+            // If there's a large backward jump in DTS (stream reset or loop)
+            if (dts_diff < 0 || pkt.dts < writer->last_dts) {
+                // This is a discontinuity - log it
+                log_warn("DTS discontinuity detected: last_dts=%lld, current_dts=%lld, diff=%lld",
+                        (long long)writer->last_dts, (long long)pkt.dts, 
+                        (long long)(pkt.dts - writer->last_dts));
+                
+                // Handle the discontinuity by continuing from the last DTS
+                pkt.dts = expected_dts;
+                
+                // If PTS is also invalid, adjust it too
+                if (pkt.pts != AV_NOPTS_VALUE && pkt.pts < pkt.dts) {
+                    pkt.pts = pkt.dts;
+                }
             } else {
+                // Normal case - use the relative offset from first_dts
                 pkt.dts = dts_diff;
             }
         } else {
-            // If DTS is not set, derive it from PTS if possible
-            pkt.dts = pkt.pts != AV_NOPTS_VALUE ?
-                      (pkt.pts - writer->first_pts) : (writer->last_dts + 1);
+            // If DTS is not set, use a continuous value
+            pkt.dts = expected_dts;
         }
 
         // Handle PTS (presentation timestamp)
@@ -245,17 +261,20 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
             // Calculate proper offset from the first PTS
             int64_t pts_diff = pkt.pts - writer->first_pts;
 
-            // PTS can be before DTS for B-frames, but must be >= 0
-            pkt.pts = pts_diff >= 0 ? pts_diff : 0;
-
-            // Ensure PTS is not too far in the future relative to DTS
-            // This helps prevent large PTS-DTS differences that can cause ghosting
-            if (pkt.pts > pkt.dts + (input_stream->time_base.den / input_stream->time_base.num)) {
-                int64_t max_diff = input_stream->time_base.den / input_stream->time_base.num;
-                pkt.pts = pkt.dts + max_diff;
+            // If PTS goes backwards or would be less than DTS, adjust it
+            if (pts_diff < 0 || pkt.pts < pkt.dts) {
+                // Set PTS equal to DTS as a fallback
+                pkt.pts = pkt.dts;
+            } else {
+                pkt.pts = pts_diff;
             }
         } else {
             // If PTS is not set, use DTS
+            pkt.pts = pkt.dts;
+        }
+        
+        // Final sanity check - ensure PTS >= DTS
+        if (pkt.pts < pkt.dts) {
             pkt.pts = pkt.dts;
         }
     }
