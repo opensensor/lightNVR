@@ -21,7 +21,7 @@ void load_default_config(config_t *config) {
     // General settings
     snprintf(config->pid_file, MAX_PATH_LENGTH, "/var/run/lightnvr.pid");
     snprintf(config->log_file, MAX_PATH_LENGTH, "/var/log/lightnvr.log");
-    config->log_level = LOG_INFO;
+    config->log_level = LOG_LEVEL_INFO;
     
     // Storage settings
     snprintf(config->storage_path, MAX_PATH_LENGTH, "/var/lib/lightnvr/recordings");

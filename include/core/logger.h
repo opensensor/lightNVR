@@ -5,11 +5,12 @@
 #include <stddef.h>
 
 // Log levels
+// Change your logger.h enum to avoid conflicting with syslog.h
 typedef enum {
-    LOG_ERROR = 0,
-    LOG_WARN  = 1,
-    LOG_INFO  = 2,
-    LOG_DEBUG = 3
+    LOG_LEVEL_ERROR = 0,
+    LOG_LEVEL_WARN  = 1,
+    LOG_LEVEL_INFO  = 2,
+    LOG_LEVEL_DEBUG = 3
 } log_level_t;
 
 /**

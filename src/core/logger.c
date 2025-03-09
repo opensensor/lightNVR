@@ -21,7 +21,7 @@ static struct {
     pthread_mutex_t mutex;
 } logger = {
     .log_file = NULL,
-    .log_level = LOG_INFO,
+    .log_level = LOG_LEVEL_INFO,
     .console_logging = 1,
     .log_filename = "",
 };
@@ -65,7 +65,7 @@ void shutdown_logger(void) {
 
 // Set the log level
 void set_log_level(log_level_t level) {
-    if (level >= LOG_ERROR && level <= LOG_DEBUG) {
+    if (level >= LOG_LEVEL_ERROR && level <= LOG_LEVEL_DEBUG) {
         pthread_mutex_lock(&logger.mutex);
         logger.log_level = level;
         pthread_mutex_unlock(&logger.mutex);
@@ -167,7 +167,7 @@ void set_console_logging(int enable) {
 void log_error(const char *format, ...) {
     va_list args;
     va_start(args, format);
-    log_message_v(LOG_ERROR, format, args);
+    log_message_v(LOG_LEVEL_ERROR, format, args);
     va_end(args);
 }
 
@@ -175,7 +175,7 @@ void log_error(const char *format, ...) {
 void log_warn(const char *format, ...) {
     va_list args;
     va_start(args, format);
-    log_message_v(LOG_WARN, format, args);
+    log_message_v(LOG_LEVEL_WARN, format, args);
     va_end(args);
 }
 
@@ -183,7 +183,7 @@ void log_warn(const char *format, ...) {
 void log_info(const char *format, ...) {
     va_list args;
     va_start(args, format);
-    log_message_v(LOG_INFO, format, args);
+    log_message_v(LOG_LEVEL_INFO, format, args);
     va_end(args);
 }
 
@@ -191,7 +191,7 @@ void log_info(const char *format, ...) {
 void log_debug(const char *format, ...) {
     va_list args;
     va_start(args, format);
-    log_message_v(LOG_DEBUG, format, args);
+    log_message_v(LOG_LEVEL_DEBUG, format, args);
     va_end(args);
 }
 
@@ -232,7 +232,7 @@ void log_message_v(log_level_t level, const char *format, va_list args) {
     
     // Write to console if enabled
     if (logger.console_logging) {
-        FILE *console = (level == LOG_ERROR) ? stderr : stdout;
+        FILE *console = (level == LOG_LEVEL_ERROR) ? stderr : stdout;
         fprintf(console, "[%s] [%s] %s\n", timestamp, log_level_strings[level], message);
         fflush(console);
     }
