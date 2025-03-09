@@ -1444,7 +1444,7 @@ function setupPaginationButtons(currentPage, totalPages) {
 }
 
 /**
- * Play recording - Fixed version
+ * Play recording - Enhanced version with iframe fallback
  */
 function playRecording(recordingId) {
     const videoModal = document.getElementById('video-modal');
@@ -1478,71 +1478,36 @@ function playRecording(recordingId) {
             const videoUrl = `/api/recordings/download/${recordingId}`;
             console.log('Video URL:', videoUrl);
             
-            // Create a simple video element
-            const videoElement = document.createElement('video');
-            videoElement.controls = true;
-            videoElement.autoplay = true;
-            videoElement.style.width = '100%';
-            videoElement.style.maxHeight = '70vh';
-            videoElement.preload = 'auto';
+            // Try two different approaches for video playback
             
-            // Set the source directly
-            videoElement.src = videoUrl;
+            // First approach: Use an iframe to load the video directly
+            // This bypasses potential MIME type issues and lets the browser handle the video directly
+            const iframe = document.createElement('iframe');
+            iframe.style.width = '100%';
+            iframe.style.height = '70vh';
+            iframe.style.border = 'none';
+            iframe.src = videoUrl;
             
-            // Add event listeners
-            videoElement.addEventListener('loadeddata', () => {
-                console.log('Video loaded successfully');
-                videoModal.classList.remove('loading');
-            });
+            // Add a message for users
+            const messageDiv = document.createElement('div');
+            messageDiv.style.padding = '10px';
+            messageDiv.style.backgroundColor = '#f8f9fa';
+            messageDiv.style.borderTop = '1px solid #dee2e6';
+            messageDiv.style.textAlign = 'center';
+            messageDiv.innerHTML = `
+                <p>If the video doesn't play, you can 
+                <a href="${videoUrl}" target="_blank">open it in a new tab</a> or 
+                <a href="${videoUrl}?download=1" download>download it</a>.</p>
+            `;
             
-            videoElement.addEventListener('canplay', () => {
-                console.log('Video can play');
-                videoModal.classList.remove('loading');
-            });
+            // Add elements to the player
+            videoPlayer.appendChild(iframe);
+            videoPlayer.appendChild(messageDiv);
             
-            videoElement.addEventListener('playing', () => {
-                console.log('Video is playing');
+            // Hide loading state after a short delay
+            setTimeout(() => {
                 videoModal.classList.remove('loading');
-            });
-
-            videoElement.addEventListener('error', (e) => {
-                console.error('Video error:', e);
-                videoModal.classList.remove('loading');
-                
-                // Try to get detailed error information
-                let errorDetails = 'Unknown error';
-                if (videoElement.error) {
-                    switch(videoElement.error.code) {
-                        case 1: errorDetails = 'MEDIA_ERR_ABORTED: Fetching process aborted by user'; break;
-                        case 2: errorDetails = 'MEDIA_ERR_NETWORK: Network error while loading media'; break;
-                        case 3: errorDetails = 'MEDIA_ERR_DECODE: Media decoding error'; break;
-                        case 4: errorDetails = 'MEDIA_ERR_SRC_NOT_SUPPORTED: Media format not supported'; break;
-                        default: errorDetails = `Unknown error (${videoElement.error.code})`;
-                    }
-                }
-                
-                // Show error message with download option
-                videoPlayer.innerHTML = `
-                    <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:300px;background:#000;color:#fff;padding:20px;text-align:center;">
-                        <p>Error playing video: ${errorDetails}</p>
-                        <p>The recording may be unavailable or in an unsupported format.</p>
-                        <p style="margin-top:20px;">You can download the video instead:</p>
-                        <button id="fallback-download-btn" style="margin-top:10px;padding:8px 16px;background:#1e88e5;color:white;border:none;border-radius:4px;cursor:pointer;">
-                            Download Video
-                        </button>
-                    </div>
-                `;
-                
-                // Add event listener to the fallback download button
-                const fallbackDownloadBtn = document.getElementById('fallback-download-btn');
-                if (fallbackDownloadBtn) {
-                    fallbackDownloadBtn.addEventListener('click', () => {
-                        downloadRecording(recordingId);
-                    });
-                }
-            });
-
-            videoPlayer.appendChild(videoElement);
+            }, 1000);
 
             // Set download button URL
             const downloadBtn = document.getElementById('video-download-btn');

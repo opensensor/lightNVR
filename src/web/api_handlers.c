@@ -2001,8 +2001,9 @@ void register_api_handlers(void) {
 
     log_info("API handlers registered with improved URL handling and route priority");
 }
+
 /**
- * Handle GET request to download a recording - Simplified version
+ * Handle GET request to download a recording - With fixed query parameter handling
  */
 void handle_download_recording(const http_request_t *request, http_response_t *response) {
     // Extract recording ID from the URL
@@ -2046,20 +2047,20 @@ void handle_download_recording(const http_request_t *request, http_response_t *r
         return;
     }
 
-    // Check for force download parameter
-    bool force_download = false;
-    if (query_start) {
-        char query_str[256];
-        strncpy(query_str, query_start + 1, sizeof(query_str) - 1);
-        query_str[sizeof(query_str) - 1] = '\0';
+    free(id_str_copy); // Free this as we don't need it anymore
 
-        if (strstr(query_str, "download=1") || strstr(query_str, "download=true")) {
+    // Check for force download parameter - use the request's query params directly
+    bool force_download = false;
+
+    // Get 'download' parameter directly from request's query params
+    char download_param[10] = {0};
+    if (get_query_param(request, "download", download_param, sizeof(download_param)) == 0) {
+        // Check if the parameter is set to "1" or "true"
+        if (strcmp(download_param, "1") == 0 || strcmp(download_param, "true") == 0) {
             force_download = true;
-            log_info("Force download requested for recording ID %llu", (unsigned long long)id);
+            log_info("Force download requested for recording ID %llu (via query param)", (unsigned long long)id);
         }
     }
-
-    free(id_str_copy);
 
     // Get recording metadata from database
     recording_metadata_t metadata;
@@ -2071,7 +2072,8 @@ void handle_download_recording(const http_request_t *request, http_response_t *r
         return;
     }
 
-    log_info("Found recording in database: ID=%llu, Path=%s", (unsigned long long)id, metadata.file_path);
+    log_info("Found recording in database: ID=%llu, Path=%s, Download=%s",
+             (unsigned long long)id, metadata.file_path, force_download ? "true" : "false");
 
     // Check if the file exists
     struct stat st;
@@ -2103,10 +2105,6 @@ void handle_download_recording(const http_request_t *request, http_response_t *r
     }
 
     if (is_mp4 && !force_download) {
-        // For MP4 files with forced download, use the serve_mp4_file function
-        log_info("Serving MP4 file with attachment disposition for download: %s", metadata.file_path);
-        serve_mp4_file(response, metadata.file_path, filename);
-    } else if (is_mp4) {
         // For MP4 files, serve with video/mp4 content type for playback
         log_info("Serving MP4 file with video/mp4 content type for playback: %s", metadata.file_path);
 
@@ -2124,6 +2122,10 @@ void handle_download_recording(const http_request_t *request, http_response_t *r
             log_error("Failed to create file response: %s", metadata.file_path);
             create_json_response(response, 500, "{\"error\": \"Failed to serve recording file\"}");
         }
+    } else if (is_mp4) {
+        // For MP4 files with forced download, use the serve_mp4_file function
+        log_info("Serving MP4 file with attachment disposition for download: %s", metadata.file_path);
+        serve_mp4_file(response, metadata.file_path, filename);
     } else {
         // For non-MP4 files, use the direct download approach
         serve_direct_download(response, id, &metadata);
