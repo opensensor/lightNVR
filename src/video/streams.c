@@ -12,6 +12,7 @@
 #include <sys/stat.h>
 #include <signal.h>
 #include <errno.h>
+#include <time.h>
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
@@ -187,7 +188,7 @@ static int pthread_join_with_timeout(pthread_t thread, void **retval, int timeou
 
         *(data->result) = pthread_join(data->thread, data->retval);
         return NULL;
-    }
+    };
 
     // Create helper thread to join the target thread
     if (pthread_create(&timeout_thread, NULL, join_helper, &join_data) != 0) {
@@ -801,10 +802,44 @@ int start_hls_stream(const char *stream_name) {
     memcpy(&ctx->config, &config, sizeof(stream_config_t));
     ctx->running = 1;
 
-    // Create output path
+    // Create output paths
     config_t *global_config = get_streaming_config();
+    
+    // Create HLS output path
     snprintf(ctx->output_path, MAX_PATH_LENGTH, "%s/hls/%s",
              global_config->storage_path, stream_name);
+    
+    // Create MP4 output path in recordings directory (one level above HLS)
+    char timestamp_str[32];
+    time_t now = time(NULL);
+    struct tm *tm_info = localtime(&now);
+    strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M%S", tm_info);
+    
+    if (global_config->record_mp4_directly && global_config->mp4_storage_path[0] != '\0') {
+        // Use configured MP4 storage path if available
+        snprintf(ctx->mp4_output_path, MAX_PATH_LENGTH, "%s/%s",
+                global_config->mp4_storage_path, stream_name);
+    } else {
+        // Default to recordings directory at same level as hls
+        snprintf(ctx->mp4_output_path, MAX_PATH_LENGTH, "%s/recordings/%s",
+                global_config->storage_path, stream_name);
+    }
+    
+    // Create MP4 directory if it doesn't exist
+    char mp4_dir_cmd[MAX_PATH_LENGTH * 2];
+    snprintf(mp4_dir_cmd, sizeof(mp4_dir_cmd), "mkdir -p %s", ctx->mp4_output_path);
+    system(mp4_dir_cmd);
+    
+    // Set full permissions for MP4 directory
+    snprintf(mp4_dir_cmd, sizeof(mp4_dir_cmd), "chmod -R 777 %s", ctx->mp4_output_path);
+    system(mp4_dir_cmd);
+    
+    // Complete the MP4 path with filename
+    char mp4_filename[MAX_PATH_LENGTH];
+    snprintf(mp4_filename, sizeof(mp4_filename), "%s/recording_%s.mp4", 
+             ctx->mp4_output_path, timestamp_str);
+    strncpy(ctx->mp4_output_path, mp4_filename, MAX_PATH_LENGTH - 1);
+    ctx->mp4_output_path[MAX_PATH_LENGTH - 1] = '\0';
 
     // Create directory if it doesn't exist - use more robust method
     char dir_cmd[MAX_PATH_LENGTH * 2];
@@ -1089,12 +1124,6 @@ void handle_hls_manifest(const http_request_t *request, http_response_t *respons
 /**
  * Handle request for HLS segment
  */
-/**
- * Handle request for HLS segment
- */
-/**
- * Handle request for HLS segment
- */
 void handle_hls_segment(const http_request_t *request, http_response_t *response) {
     // Extract stream name and segment from URL
     // URL format: /api/streaming/{stream_name}/hls/segment_{number}.ts or /api/streaming/{stream_name}/hls/index{number}.ts
@@ -1146,58 +1175,9 @@ void handle_hls_segment(const http_request_t *request, http_response_t *response
 
     log_info("Looking for segment at path: %s", segment_path);
 
-    // Debug: check if directory exists and is accessible
-    char dir_path[MAX_PATH_LENGTH];
-    strncpy(dir_path, segment_path, sizeof(dir_path));
-    char *last_slash = strrchr(dir_path, '/');
-    if (last_slash) {
-        *last_slash = '\0';
-
-        // Check if directory exists
-        if (access(dir_path, F_OK | R_OK) != 0) {
-            log_error("HLS directory not accessible: %s (%s)", dir_path, strerror(errno));
-        } else {
-            log_info("HLS directory exists and is readable: %s", dir_path);
-
-            // List a few of the ts files in the directory using system command
-            char cmd[MAX_PATH_LENGTH * 2];
-            snprintf(cmd, sizeof(cmd), "ls -la %s/*.ts 2>/dev/null | head -5", dir_path);
-            log_info("Listing some TS files in directory:");
-            FILE *ls = popen(cmd, "r");
-            if (ls) {
-                char line[1024];
-                while (fgets(line, sizeof(line), ls)) {
-                    // Remove newline
-                    size_t len = strlen(line);
-                    if (len > 0 && line[len-1] == '\n') line[len-1] = '\0';
-
-                    log_info("  %s", line);
-                }
-                pclose(ls);
-            }
-        }
-    }
-
     // Check if segment file exists
     if (access(segment_path, F_OK) != 0) {
         log_debug("Segment file not found on first attempt: %s (%s)", segment_path, strerror(errno));
-
-        // Try a different path format - sometimes the HLS segments might be named differently
-        char alt_segment_path[MAX_PATH_LENGTH];
-
-        // Try removing any file extension from the segment name and just use the index number
-        char basename[256];
-        strncpy(basename, segment_filename, sizeof(basename));
-        char *dot = strrchr(basename, '.');
-        if (dot) {
-            *dot = '\0';
-        }
-
-        // Try with a different naming convention - more generic pattern matching
-        snprintf(alt_segment_path, MAX_PATH_LENGTH, "%s/hls/%s/index*.ts",
-                 global_config->storage_path, stream_name);
-
-        log_info("Trying alternative path pattern: %s", alt_segment_path);
 
         // Wait longer for it to be created - HLS segments might still be generating
         bool segment_exists = false;
@@ -1214,39 +1194,9 @@ void handle_hls_segment(const http_request_t *request, http_response_t *response
 
         if (!segment_exists) {
             log_error("Segment file not found after waiting: %s", segment_path);
-
-            // As a fallback, try to access the most recent segment file
-            char fallback_cmd[MAX_PATH_LENGTH * 2];
-            snprintf(fallback_cmd, sizeof(fallback_cmd),
-                     "ls -t %s/hls/%s/index*.ts 2>/dev/null | head -1",
-                     global_config->storage_path, stream_name);
-
-            FILE *cmd = popen(fallback_cmd, "r");
-            if (cmd) {
-                char latest_segment[MAX_PATH_LENGTH];
-                if (fgets(latest_segment, sizeof(latest_segment), cmd)) {
-                    // Remove newline
-                    size_t len = strlen(latest_segment);
-                    if (len > 0 && latest_segment[len-1] == '\n') latest_segment[len-1] = '\0';
-
-                    log_info("Found latest segment: %s", latest_segment);
-
-                    // If a recent segment exists, use that instead
-                    if (access(latest_segment, F_OK) == 0) {
-                        strncpy(segment_path, latest_segment, sizeof(segment_path));
-                        segment_exists = true;
-                    }
-                }
-                pclose(cmd);
-            }
-
-            if (!segment_exists) {
-                create_stream_error_response(response, 404, "Segment file not found");
-                return;
-            }
+            create_stream_error_response(response, 404, "Segment file not found");
+            return;
         }
-    } else {
-        log_info("Segment file exists: %s", segment_path);
     }
 
     // Read the segment file
@@ -1295,6 +1245,171 @@ void handle_hls_segment(const http_request_t *request, http_response_t *response
 }
 
 /**
+ * Handle download request for a recording in a way that supports video streaming
+ */
+void handle_download_recording(const http_request_t *request, http_response_t *response) {
+    // Extract recording ID from the URL
+    // URL format: /api/recordings/download/{id}
+    const char *path = request->path;
+    const char *prefix = "/api/recordings/download/";
+
+    // Log the request path for debugging
+    log_debug("Download recording request path: %s", path);
+
+    // Check if path starts with the expected prefix
+    if (strncmp(path, prefix, strlen(prefix)) != 0) {
+        log_error("Invalid request path prefix: %s", path);
+        create_json_response(response, 400, "{\"error\": \"Invalid request path\"}");
+        return;
+    }
+
+    // Extract the ID part (everything after the prefix)
+    const char *id_start = path + strlen(prefix);
+
+    // Find query string if present
+    const char *query_start = strchr(id_start, '?');
+    size_t id_len = query_start ? (query_start - id_start) : strlen(id_start);
+
+    // Validate ID length
+    if (id_len == 0 || id_len >= 32) {
+        log_error("Invalid ID length: %zu", id_len);
+        create_json_response(response, 400, "{\"error\": \"Invalid recording ID format\"}");
+        return;
+    }
+
+    // Copy ID string
+    char id_str[32];
+    strncpy(id_str, id_start, id_len);
+    id_str[id_len] = '\0';
+
+    // Convert ID to integer
+    uint64_t id = strtoull(id_str, NULL, 10);
+    if (id == 0) {
+        log_error("Failed to parse recording ID: %s", id_str);
+        create_json_response(response, 400, "{\"error\": \"Invalid recording ID\"}");
+        return;
+    }
+
+    log_info("Attempting to download recording with ID: %llu", (unsigned long long)id);
+
+    // Get recording metadata from database
+    recording_metadata_t metadata;
+    int result = get_recording_metadata_by_id(id, &metadata);
+
+    if (result != 0) {
+        log_error("Recording with ID %llu not found in database", (unsigned long long)id);
+        create_json_response(response, 404, "{\"error\": \"Recording not found\"}");
+        return;
+    }
+
+    log_info("Found recording in database: ID=%llu, Path=%s",
+            (unsigned long long)id, metadata.file_path);
+
+    // Determine if this is an HLS stream (m3u8)
+    const char *ext = strrchr(metadata.file_path, '.');
+    bool is_hls = (ext && strcasecmp(ext, ".m3u8") == 0);
+
+    // Get query parameters
+    bool direct_download = false;
+    char param_value[8];
+    if (get_query_param(request, "direct", param_value, sizeof(param_value)) == 0) {
+        direct_download = (strcmp(param_value, "1") == 0 ||
+                          strcasecmp(param_value, "true") == 0);
+    }
+
+    if (is_hls) {
+        // Get the directory containing the recording
+        char dir_path[256];
+        const char *last_slash = strrchr(metadata.file_path, '/');
+        if (last_slash) {
+            size_t dir_len = last_slash - metadata.file_path;
+            strncpy(dir_path, metadata.file_path, dir_len);
+            dir_path[dir_len] = '\0';
+        } else {
+            // If no slash, use the current directory
+            strcpy(dir_path, ".");
+        }
+
+        // Check for the direct MP4 recording in the recordings directory
+        config_t *global_config = get_streaming_config();
+        
+        // First try to find MP4 in the configured MP4 storage path
+        char mp4_path[256];
+        char stream_name[MAX_STREAM_NAME];
+        strncpy(stream_name, metadata.stream_name, MAX_STREAM_NAME - 1);
+        stream_name[MAX_STREAM_NAME - 1] = '\0';
+        
+        // Try to find MP4 in recordings directory
+        if (global_config->record_mp4_directly && global_config->mp4_storage_path[0] != '\0') {
+            // Look in configured MP4 storage path
+            snprintf(mp4_path, sizeof(mp4_path), "%s/%s", 
+                    global_config->mp4_storage_path, stream_name);
+        } else {
+            // Look in default recordings directory
+            snprintf(mp4_path, sizeof(mp4_path), "%s/recordings/%s", 
+                    global_config->storage_path, stream_name);
+        }
+        
+        // Get timestamp from metadata to find the right recording
+        char timestamp_str[32];
+        struct tm *tm_info = localtime(&metadata.start_time);
+        strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M", tm_info);
+        
+        // Use glob to find matching MP4 files
+        char glob_pattern[512];
+        snprintf(glob_pattern, sizeof(glob_pattern), 
+                "find %s -name \"recording_%s*.mp4\" | sort", mp4_path, timestamp_str);
+        
+        FILE *glob_result = popen(glob_pattern, "r");
+        char matching_mp4[512] = {0};
+        
+        if (glob_result && fgets(matching_mp4, sizeof(matching_mp4), glob_result)) {
+            // Remove trailing newline
+            size_t len = strlen(matching_mp4);
+            if (len > 0 && matching_mp4[len-1] == '\n') {
+                matching_mp4[len-1] = '\0';
+            }
+            
+            // Check if file exists and has content
+            struct stat mp4_stat;
+            if (stat(matching_mp4, &mp4_stat) == 0 && mp4_stat.st_size > 0) {
+                // Direct MP4 exists, serve it
+                log_info("Found direct MP4 recording: %s (%lld bytes)",
+                       matching_mp4, (long long)mp4_stat.st_size);
+
+                // Create filename for download
+                char filename[128];
+                snprintf(filename, sizeof(filename), "%s_%lld.mp4",
+                       metadata.stream_name, (long long)metadata.start_time);
+
+                // Serve the file
+                serve_video_file(response, matching_mp4, "video/mp4",
+                                 direct_download ? filename : NULL, request);
+                
+                pclose(glob_result);
+                return;
+            }
+        }
+        
+        if (glob_result) {
+            pclose(glob_result);
+        }
+        
+        // No direct MP4 found, serve the HLS stream directly
+        log_info("No direct MP4 recording found, serving HLS stream: %s", metadata.file_path);
+        
+        // Create filename for download
+        char filename[128];
+        snprintf(filename, sizeof(filename), "%s_%lld.m3u8",
+               metadata.stream_name, (long long)metadata.start_time);
+        
+        // Serve the HLS manifest
+        serve_video_file(response, metadata.file_path, "application/vnd.apple.mpegurl",
+                       direct_download ? filename : NULL, request);
+
+}
+
+/**
  * Handle WebRTC offer request - simple placeholder implementation
  */
 void handle_webrtc_offer(const http_request_t *request, http_response_t *response) {
@@ -1329,9 +1444,9 @@ void handle_webrtc_offer(const http_request_t *request, http_response_t *respons
 
     // URL decode the stream name
     char decoded_stream[MAX_STREAM_NAME];
-url_decode(stream_name, decoded_stream, sizeof(decoded_stream));
-strncpy(stream_name, decoded_stream, MAX_STREAM_NAME - 1);
-stream_name[MAX_STREAM_NAME - 1] = '\0';
+    url_decode_stream(decoded_stream);
+    strncpy(stream_name, decoded_stream, MAX_STREAM_NAME - 1);
+    stream_name[MAX_STREAM_NAME - 1] = '\0';
 
     // Check if stream exists
     stream_handle_t stream = get_stream_by_name(stream_name);
@@ -1396,9 +1511,9 @@ void handle_webrtc_ice(const http_request_t *request, http_response_t *response)
 
     // URL decode the stream name
     char decoded_stream[MAX_STREAM_NAME];
-url_decode(stream_name, decoded_stream, sizeof(decoded_stream));
-strncpy(stream_name, decoded_stream, MAX_STREAM_NAME - 1);
-stream_name[MAX_STREAM_NAME - 1] = '\0';
+    url_decode_stream(decoded_stream);
+    strncpy(stream_name, decoded_stream, MAX_STREAM_NAME - 1);
+    stream_name[MAX_STREAM_NAME - 1] = '\0';
 
     // Just acknowledge the ICE candidate
     log_info("Received ICE candidate for stream %s", stream_name);

@@ -1,6 +1,7 @@
 #ifndef HLS_WRITER_H
 #define HLS_WRITER_H
 
+#include <time.h>
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 
@@ -15,6 +16,7 @@ typedef struct {
     char stream_name[MAX_STREAM_NAME];
     int segment_duration;
     int initialized;
+    time_t last_cleanup_time;
     AVFormatContext *output_ctx;
 } hls_writer_t;
 
