@@ -919,8 +919,25 @@ int path_matches(const char *pattern, const char *path) {
         return strncmp(pattern, path, pattern_len-1) == 0;
     }
 
-    // Otherwise, exact match
-    return strcmp(pattern, path) == 0;
+    // Check for exact match
+    if (strcmp(pattern, path) == 0) {
+        return 1;
+    }
+
+    // Check if the path has a trailing slash but pattern doesn't
+    size_t path_len = strlen(path);
+    if (path_len > 0 && path[path_len-1] == '/' && 
+        strncmp(pattern, path, path_len-1) == 0 && pattern[path_len-1] == '\0') {
+        return 1;
+    }
+
+    // Check if the pattern has a trailing slash but path doesn't
+    if (pattern_len > 0 && pattern[pattern_len-1] == '/' && 
+        strncmp(pattern, path, pattern_len-1) == 0 && path[pattern_len-1] == '\0') {
+        return 1;
+    }
+
+    return 0;
 }
 
 

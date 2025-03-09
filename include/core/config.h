@@ -7,7 +7,7 @@
 // Maximum length for path strings
 #define MAX_PATH_LENGTH 256
 // Maximum length for stream names
-#define MAX_STREAM_NAME 64
+#define MAX_STREAM_NAME 256
 // Maximum length for URLs
 #define MAX_URL_LENGTH 256
 // Maximum number of streams supported

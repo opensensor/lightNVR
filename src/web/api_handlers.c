@@ -403,9 +403,9 @@ void handle_get_stream(const http_request_t *request, http_response_t *response)
     log_info("Successfully served stream details for: %s", decoded_id);
 }
 
-
 /**
- * Handle POST request to create a new stream
+ * Handle POST request to create a new stream with improved error handling
+ * and duplicate prevention
  */
 void handle_post_stream(const http_request_t *request, http_response_t *response) {
     // Copy current config settings from global config
@@ -413,6 +413,7 @@ void handle_post_stream(const http_request_t *request, http_response_t *response
 
     // Ensure we have a request body
     if (!request->body || request->content_length == 0) {
+        log_error("Empty request body in stream creation");
         create_json_response(response, 400, "{\"error\": \"Empty request body\"}");
         return;
     }
@@ -420,6 +421,7 @@ void handle_post_stream(const http_request_t *request, http_response_t *response
     // Make a null-terminated copy of the request body
     char *json = malloc(request->content_length + 1);
     if (!json) {
+        log_error("Memory allocation failed for request body");
         create_json_response(response, 500, "{\"error\": \"Memory allocation failed\"}");
         return;
     }
@@ -429,35 +431,103 @@ void handle_post_stream(const http_request_t *request, http_response_t *response
 
     // Parse JSON into stream configuration
     stream_config_t config;
+    memset(&config, 0, sizeof(stream_config_t)); // Ensure complete initialization
+
     if (parse_stream_json(json, &config) != 0) {
         free(json);
+        log_error("Invalid stream configuration");
         create_json_response(response, 400, "{\"error\": \"Invalid stream configuration\"}");
         return;
     }
 
     free(json);
 
-    // Check if stream already exists
-    if (get_stream_by_name(config.name) != NULL) {
+    // Validate stream name and URL
+    if (config.name[0] == '\0') {
+        log_error("Stream name cannot be empty");
+        create_json_response(response, 400, "{\"error\": \"Stream name cannot be empty\"}");
+        return;
+    }
+
+    if (config.url[0] == '\0') {
+        log_error("Stream URL cannot be empty");
+        create_json_response(response, 400, "{\"error\": \"Stream URL cannot be empty\"}");
+        return;
+    }
+
+    log_info("Attempting to add stream: name='%s', url='%s'", config.name, config.url);
+
+    // Check if stream already exists - thorough check for duplicates
+    stream_handle_t existing_stream = get_stream_by_name(config.name);
+    if (existing_stream != NULL) {
+        log_warn("Stream with name '%s' already exists", config.name);
         create_json_response(response, 409, "{\"error\": \"Stream with this name already exists\"}");
+        return;
+    }
+
+    // Check if we've reached the maximum number of streams
+    int stream_count = 0;
+    for (int i = 0; i < local_config.max_streams; i++) {
+        if (local_config.streams[i].name[0] != '\0') {
+            stream_count++;
+        }
+    }
+
+    if (stream_count >= local_config.max_streams) {
+        log_error("Maximum number of streams reached (%d)", local_config.max_streams);
+        create_json_response(response, 507, "{\"error\": \"Maximum number of streams reached\"}");
+        return;
+    }
+
+    // Find an empty slot in the configuration
+    int empty_slot = -1;
+    for (int i = 0; i < local_config.max_streams; i++) {
+        if (local_config.streams[i].name[0] == '\0') {
+            empty_slot = i;
+            break;
+        }
+    }
+
+    if (empty_slot == -1) {
+        // This shouldn't happen if we checked stream_count correctly above
+        log_error("No empty slot found in configuration despite count check");
+        create_json_response(response, 500, "{\"error\": \"Internal configuration error\"}");
         return;
     }
 
     // Add the stream
     stream_handle_t stream = add_stream(&config);
     if (!stream) {
+        log_error("Failed to add stream: %s", config.name);
         create_json_response(response, 500, "{\"error\": \"Failed to add stream\"}");
         return;
     }
 
+    log_info("Stream added successfully: %s (index: %d)", config.name, empty_slot);
+
+    // Now update the configuration
+    memcpy(&local_config.streams[empty_slot], &config, sizeof(stream_config_t));
+
+    // Save configuration to ensure the new stream is persisted
+    if (save_config(&local_config, "/etc/lightnvr/lightnvr.conf") != 0) {
+        log_warn("Failed to save configuration after adding stream");
+        // We won't fail the request, but log the warning
+    } else {
+        log_info("Configuration saved with new stream");
+    }
+
     // Start the stream if enabled
     if (config.enabled) {
+        log_info("Starting stream: %s", config.name);
         if (start_stream(stream) != 0) {
             log_warn("Failed to start stream: %s", config.name);
             // Continue anyway, the stream is added
         } else {
+            log_info("Stream started: %s", config.name);
+
             // Start recording if record flag is set
             if (config.record) {
+                log_info("Starting recording for stream: %s", config.name);
                 if (start_hls_stream(config.name) == 0) {
                     log_info("Recording started for stream: %s", config.name);
                 } else {
@@ -465,36 +535,18 @@ void handle_post_stream(const http_request_t *request, http_response_t *response
                 }
             }
         }
-    }
-
-    // Add the stream to local_config.streams
-    bool stream_added_to_config = false;
-    for (int i = 0; i < local_config.max_streams; i++) {
-        if (local_config.streams[i].name[0] == '\0') {
-            // Found an empty slot
-            memcpy(&local_config.streams[i], &config, sizeof(stream_config_t));
-            log_info("Added stream '%s' to configuration at index %d", config.name, i);
-            stream_added_to_config = true;
-            break;
-        }
-    }
-
-    if (!stream_added_to_config) {
-        log_warn("Couldn't find empty slot in config for stream '%s'", config.name);
-    }
-
-    // Save configuration to ensure the new stream is persisted
-    if (save_config(&local_config, "/etc/lightnvr/lightnvr.conf") != 0) {
-        log_warn("Failed to save configuration after adding stream");
-        // Continue anyway, the stream is added
+    } else {
+        log_info("Stream is disabled, not starting: %s", config.name);
     }
 
     // Create success response
     char response_json[256];
-    snprintf(response_json, sizeof(response_json), "{\"success\": true, \"name\": \"%s\"}", config.name);
+    snprintf(response_json, sizeof(response_json),
+             "{\"success\": true, \"name\": \"%s\", \"index\": %d}",
+             config.name, empty_slot);
     create_json_response(response, 201, response_json);
 
-    log_info("Stream added: %s", config.name);
+    log_info("Stream creation completed successfully: %s", config.name);
 }
 
 
@@ -1020,46 +1072,50 @@ static char* create_streams_json_array() {
  */
 static int parse_stream_json(const char *json, stream_config_t *stream) {
     if (!json || !stream) return -1;
-    
+
     memset(stream, 0, sizeof(stream_config_t));
-    
+
     // Parse JSON to extract stream configuration
     char *name = get_json_string_value(json, "name");
     if (!name) return -1;
-    
+
     char *url = get_json_string_value(json, "url");
     if (!url) {
         free(name);
         return -1;
     }
-    
+
     strncpy(stream->name, name, MAX_STREAM_NAME - 1);
     stream->name[MAX_STREAM_NAME - 1] = '\0';
-    
+
     strncpy(stream->url, url, MAX_URL_LENGTH - 1);
     stream->url[MAX_URL_LENGTH - 1] = '\0';
-    
+
     free(name);
     free(url);
-    
+
     stream->enabled = get_json_boolean_value(json, "enabled", true);
     stream->width = get_json_integer_value(json, "width", 1280);
     stream->height = get_json_integer_value(json, "height", 720);
     stream->fps = get_json_integer_value(json, "fps", 15);
-    
+
     char *codec = get_json_string_value(json, "codec");
     if (codec) {
-        strncpy(stream->codec, codec, sizeof(stream->codec) - 1);
-        stream->codec[sizeof(stream->codec) - 1] = '\0';
+        // Ensure we don't overflow the codec buffer (which is 16 bytes)
+        size_t codec_size = sizeof(stream->codec);
+        strncpy(stream->codec, codec, codec_size - 1);
+        stream->codec[codec_size - 1] = '\0';
         free(codec);
     } else {
-        strcpy(stream->codec, "h264");
+        // Use safe string copy for default codec
+        strncpy(stream->codec, "h264", sizeof(stream->codec) - 1);
+        stream->codec[sizeof(stream->codec) - 1] = '\0';
     }
-    
+
     stream->priority = get_json_integer_value(json, "priority", 5);
     stream->record = get_json_boolean_value(json, "record", true);
     stream->segment_duration = get_json_integer_value(json, "segment_duration", 900);
-    
+
     return 0;
 }
 
