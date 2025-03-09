@@ -1,7 +1,9 @@
 #ifndef STREAMS_H
 #define STREAMS_H
 
-#include "../web/web_server.h"
+#include "web/web_server.h"
+
+config_t* get_streaming_config(void);
 
 // Initialize FFmpeg streaming backend
 void init_streaming_backend(void);

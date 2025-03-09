@@ -2,7 +2,7 @@
  * Complete streams.c file with recording functionality integrated.
  * Save this file as src/video/streams.c
  */
-
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,6 +26,7 @@
 #include "core/config.h"
 #include "video/stream_manager.h"
 #include "video/hls_writer.h"
+#include "video/mp4_writer.h"
 #include "database/database_manager.h"
 
 #define LIGHTNVR_VERSION_STRING "0.1.0"
@@ -35,6 +36,10 @@ static config_t local_config;
 
 // Global configuration - to be accessed from other modules if needed
 config_t global_config;
+// Global array to store MP4 writers
+static mp4_writer_t *mp4_writers[MAX_STREAMS] = {0};
+static char mp4_writer_stream_names[MAX_STREAMS][64] = {{0}};
+static pthread_mutex_t mp4_writers_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // Forward declarations for recording functions
 uint64_t start_recording(const char *stream_name, const char *output_path);
@@ -204,9 +209,6 @@ void serve_video_file(http_response_t *response, const char *file_path, const ch
             file_path, content_length);
 }
 
-// Forward declarations for MP4 writer
-#include "video/mp4_writer.h"
-
 // Structure for stream transcoding context
 typedef struct {
     stream_config_t config;
@@ -238,7 +240,7 @@ static pthread_mutex_t recordings_mutex = PTHREAD_MUTEX_INITIALIZER;
  * Get current global configuration
  * (To avoid conflict with potential existing function, we use a different name)
  */
-static config_t* get_streaming_config(void) {
+config_t* get_streaming_config(void) {
     // For now, just use our global config
     return &global_config;
 }
@@ -485,11 +487,64 @@ void init_recordings_system() {
 }
 
 /**
+ * Functions to register and retrieve MP4 writers for streams
+ * These need to be implemented in your codebase
+ */
+int register_mp4_writer_for_stream(const char *stream_name, mp4_writer_t *writer) {
+    if (!stream_name || !writer) return -1;
+
+    pthread_mutex_lock(&mp4_writers_mutex);
+
+    // Find empty slot or existing entry for this stream
+    int slot = -1;
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (!mp4_writers[i]) {
+            slot = i;
+            break;
+        } else if (strcmp(mp4_writer_stream_names[i], stream_name) == 0) {
+            // Stream already has a writer, replace it
+            mp4_writer_close(mp4_writers[i]);
+            mp4_writers[i] = writer;
+            pthread_mutex_unlock(&mp4_writers_mutex);
+            return 0;
+        }
+    }
+
+    if (slot == -1) {
+        pthread_mutex_unlock(&mp4_writers_mutex);
+        return -1;
+    }
+
+    mp4_writers[slot] = writer;
+    strncpy(mp4_writer_stream_names[slot], stream_name, 63);
+    mp4_writer_stream_names[slot][63] = '\0';
+
+    pthread_mutex_unlock(&mp4_writers_mutex);
+    return 0;
+}
+
+mp4_writer_t *get_mp4_writer_for_stream(const char *stream_name) {
+    if (!stream_name) return NULL;
+
+    pthread_mutex_lock(&mp4_writers_mutex);
+
+    mp4_writer_t *writer = NULL;
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (mp4_writers[i] && strcmp(mp4_writer_stream_names[i], stream_name) == 0) {
+            writer = mp4_writers[i];
+            break;
+        }
+    }
+
+    pthread_mutex_unlock(&mp4_writers_mutex);
+    return writer;
+}
+
+/**
  * Transcoding thread function for a single stream
  */
 static void *stream_transcode_thread(void *arg) {
     stream_transcode_ctx_t *ctx = (stream_transcode_ctx_t *)arg;
-
     AVFormatContext *input_ctx = NULL;
     AVFormatContext *output_ctx = NULL;
     AVPacket *pkt = NULL;
@@ -497,6 +552,7 @@ static void *stream_transcode_thread(void *arg) {
     int ret;
     time_t last_update = 0;  // Track when we last updated metadata
     time_t start_time = time(NULL);  // Record when we started
+    config_t *global_config = get_streaming_config();
 
     log_info("Starting transcoding thread for stream %s", ctx->config.name);
 
@@ -506,8 +562,8 @@ static void *stream_transcode_thread(void *arg) {
     strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M%S", tm_info);
 
     // Create MP4 output path with timestamp
-    snprintf(ctx->mp4_output_path, MAX_PATH_LENGTH, "%s/recording_%s.mp4",
-             ctx->output_path, timestamp_str);
+    snprintf(ctx->mp4_output_path, MAX_PATH_LENGTH, "%s/mp4/%s/recording_%s.mp4",
+            global_config->storage_path, ctx->config.name, timestamp_str);
 
     // Verify output directory exists and is writable
     struct stat st;
@@ -570,24 +626,35 @@ static void *stream_transcode_thread(void *arg) {
         goto cleanup;
     }
 
-    // Set up HLS writer with improved error handling
-    ctx->hls_writer = hls_writer_create(ctx->output_path, ctx->config.name, ctx->config.segment_duration);
+    // Create HLS writer - adding the segment_duration parameter
+    // Using a default of 2 seconds if not specified in config
+    int segment_duration = ctx->config.segment_duration > 0 ?
+                          ctx->config.segment_duration : 2;
+
+    ctx->hls_writer = hls_writer_create(ctx->output_path, ctx->config.name, segment_duration);
     if (!ctx->hls_writer) {
         log_error("Failed to create HLS writer for %s", ctx->config.name);
-        goto cleanup;
+        ctx->running = 0;
+        return NULL;
     }
 
-    // Set up MP4 writer if recording is enabled
-    if (ctx->config.record) {
+    // Only create MP4 writer if path is specified (not empty)
+    if (ctx->mp4_output_path[0] != '\0') {
         ctx->mp4_writer = mp4_writer_create(ctx->mp4_output_path, ctx->config.name);
         if (!ctx->mp4_writer) {
             log_error("Failed to create MP4 writer for %s", ctx->config.name);
-            // Continue anyway with just HLS
+            // Continue anyway, HLS streaming will work
         } else {
-            log_info("Created MP4 writer for stream %s at %s",
-                    ctx->config.name, ctx->mp4_output_path);
+            log_info("Created MP4 writer for %s at %s", ctx->config.name, ctx->mp4_output_path);
+        }
+    } else {
+        // Get MP4 writer that might have been registered separately
+        ctx->mp4_writer = get_mp4_writer_for_stream(ctx->config.name);
+        if (ctx->mp4_writer) {
+            log_info("Using separately registered MP4 writer for %s", ctx->config.name);
         }
     }
+
 
     // Initialize packet - use newer API to avoid deprecation warning
     pkt = av_packet_alloc();
@@ -669,12 +736,15 @@ cleanup:
         avformat_close_input(&input_ctx);
     }
 
+    // When done, close writers
     if (ctx->hls_writer) {
         hls_writer_close(ctx->hls_writer);
         ctx->hls_writer = NULL;
     }
 
-    if (ctx->mp4_writer) {
+    // Only close the MP4 writer if we created it here
+    // If it came from get_mp4_writer_for_stream, it will be closed elsewhere
+    if (ctx->mp4_writer && ctx->mp4_output_path[0] != '\0') {
         mp4_writer_close(ctx->mp4_writer);
         ctx->mp4_writer = NULL;
     }
@@ -906,8 +976,145 @@ void stop_recording(const char *stream_name) {
     
     pthread_mutex_unlock(&recordings_mutex);
 }
+
+void unregister_mp4_writer_for_stream(const char *stream_name) {
+    if (!stream_name) return;
+
+    pthread_mutex_lock(&mp4_writers_mutex);
+
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (mp4_writers[i] && strcmp(mp4_writer_stream_names[i], stream_name) == 0) {
+            mp4_writer_close(mp4_writers[i]);
+            mp4_writers[i] = NULL;
+            mp4_writer_stream_names[i][0] = '\0';
+            break;
+        }
+    }
+
+    pthread_mutex_unlock(&mp4_writers_mutex);
+}
+
 /**
- * Start HLS transcoding for a stream
+ * Update to stop_transcode_stream to handle decoupled MP4 recording
+ */
+int stop_transcode_stream(const char *stream_name) {
+    if (!stream_name) {
+        return -1;
+    }
+
+    int found = 0;
+    pthread_mutex_lock(&contexts_mutex);
+
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (transcode_contexts[i] && strcmp(transcode_contexts[i]->config.name, stream_name) == 0) {
+            found = 1;
+
+            // Signal thread to stop
+            transcode_contexts[i]->running = 0;
+
+            // Try to join the thread with timeout
+            struct timespec timeout;
+            clock_gettime(CLOCK_REALTIME, &timeout);
+            timeout.tv_sec += 2; // 2 second timeout
+
+            int ret = pthread_timedjoin_np(transcode_contexts[i]->thread, NULL, &timeout);
+            if (ret != 0) {
+                log_warn("Could not join thread for stream %s within timeout", stream_name);
+                // We continue anyway
+            }
+
+            // Free context
+            free(transcode_contexts[i]);
+            transcode_contexts[i] = NULL;
+
+            log_info("Stopping stream in slot %d: %s", i, stream_name);
+            break;
+        }
+    }
+
+    pthread_mutex_unlock(&contexts_mutex);
+
+    // Also stop any separate MP4 recording for this stream
+    unregister_mp4_writer_for_stream(stream_name);
+
+    return found ? 0 : -1;
+}
+
+/**
+ * New function to start MP4 recording for a stream
+ * This is completely separate from HLS streaming
+ */
+int start_mp4_recording(const char *stream_name) {
+    stream_handle_t stream = get_stream_by_name(stream_name);
+    if (!stream) {
+        log_error("Stream %s not found for MP4 recording", stream_name);
+        return -1;
+    }
+
+    stream_config_t config;
+    if (get_stream_config(stream, &config) != 0) {
+        log_error("Failed to get config for stream %s for MP4 recording", stream_name);
+        return -1;
+    }
+
+    // Create output paths
+    config_t *global_config = get_streaming_config();
+
+    // Create timestamp for MP4 filename
+    char timestamp_str[32];
+    time_t now = time(NULL);
+    struct tm *tm_info = localtime(&now);
+    strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M%S", tm_info);
+
+    // Create MP4 directory path
+    char mp4_dir[MAX_PATH_LENGTH];
+    if (global_config->record_mp4_directly && global_config->mp4_storage_path[0] != '\0') {
+        // Use configured MP4 storage path if available
+        snprintf(mp4_dir, MAX_PATH_LENGTH, "%s/%s",
+                global_config->mp4_storage_path, stream_name);
+    } else {
+        // Use mp4 directory parallel to hls, NOT inside it
+        snprintf(mp4_dir, MAX_PATH_LENGTH, "%s/mp4/%s",
+                global_config->storage_path, stream_name);
+    }
+
+    // Create MP4 directory if it doesn't exist
+    char dir_cmd[MAX_PATH_LENGTH * 2];
+    snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s", mp4_dir);
+    system(dir_cmd);
+
+    // Set full permissions for MP4 directory
+    snprintf(dir_cmd, sizeof(dir_cmd), "chmod -R 777 %s", mp4_dir);
+    system(dir_cmd);
+
+    // Full path for the MP4 file
+    char mp4_path[MAX_PATH_LENGTH];
+    snprintf(mp4_path, MAX_PATH_LENGTH, "%s/recording_%s.mp4",
+             mp4_dir, timestamp_str);
+
+    // Create MP4 writer directly
+    mp4_writer_t *writer = mp4_writer_create(mp4_path, stream_name);
+    if (!writer) {
+        log_error("Failed to create MP4 writer for stream %s at %s", stream_name, mp4_path);
+        return -1;
+    }
+
+    // Store the writer reference somewhere it can be accessed by the stream processing code
+    // This would depend on your application's architecture
+    // For now, we'll assume there's a function to register the MP4 writer with the stream
+    if (register_mp4_writer_for_stream(stream_name, writer) != 0) {
+        log_error("Failed to register MP4 writer for stream %s", stream_name);
+        mp4_writer_close(writer);
+        return -1;
+    }
+
+    log_info("Started MP4 recording for stream %s at %s", stream_name, mp4_path);
+    return 0;
+}
+
+/**
+ * Start HLS transcoding for a stream without MP4 recording
+ * This function handles only the HLS streaming
  */
 int start_hls_stream(const char *stream_name) {
     stream_handle_t stream = get_stream_by_name(stream_name);
@@ -961,51 +1168,20 @@ int start_hls_stream(const char *stream_name) {
 
     // Create output paths
     config_t *global_config = get_streaming_config();
-    
+
     // Create HLS output path
     snprintf(ctx->output_path, MAX_PATH_LENGTH, "%s/hls/%s",
              global_config->storage_path, stream_name);
-    
-    // Create MP4 output path in recordings directory (one level above HLS)
-    char timestamp_str[32];
-    time_t now = time(NULL);
-    struct tm *tm_info = localtime(&now);
-    strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M%S", tm_info);
-    
-    if (global_config->record_mp4_directly && global_config->mp4_storage_path[0] != '\0') {
-        // Use configured MP4 storage path if available
-        snprintf(ctx->mp4_output_path, MAX_PATH_LENGTH, "%s/%s",
-                global_config->mp4_storage_path, stream_name);
-    } else {
-        // Default to recordings directory at same level as hls
-        snprintf(ctx->mp4_output_path, MAX_PATH_LENGTH, "%s/recordings/%s",
-                global_config->storage_path, stream_name);
-    }
-    
-    // Create MP4 directory if it doesn't exist
-    char mp4_dir_cmd[MAX_PATH_LENGTH * 2];
-    snprintf(mp4_dir_cmd, sizeof(mp4_dir_cmd), "mkdir -p %s", ctx->mp4_output_path);
-    system(mp4_dir_cmd);
-    
-    // Set full permissions for MP4 directory
-    snprintf(mp4_dir_cmd, sizeof(mp4_dir_cmd), "chmod -R 777 %s", ctx->mp4_output_path);
-    system(mp4_dir_cmd);
-    
-    // Complete the MP4 path with filename
-    char mp4_filename[MAX_PATH_LENGTH];
-    snprintf(mp4_filename, sizeof(mp4_filename), "%s/recording_%s.mp4", 
-             ctx->mp4_output_path, timestamp_str);
-    strncpy(ctx->mp4_output_path, mp4_filename, MAX_PATH_LENGTH - 1);
-    ctx->mp4_output_path[MAX_PATH_LENGTH - 1] = '\0';
 
-    // Create directory if it doesn't exist - use more robust method
+    // IMPORTANT: Set mp4_output_path to empty string to indicate no MP4 recording
+    ctx->mp4_output_path[0] = '\0';
+
+    // Create HLS directory if it doesn't exist
     char dir_cmd[MAX_PATH_LENGTH * 2];
-
-    // Create the base directory
     snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s", ctx->output_path);
     int ret = system(dir_cmd);
     if (ret != 0) {
-        log_error("Failed to create directory: %s (return code: %d)", ctx->output_path, ret);
+        log_error("Failed to create HLS directory: %s (return code: %d)", ctx->output_path, ret);
         free(ctx);
         pthread_mutex_unlock(&contexts_mutex);
         return -1;
@@ -1015,7 +1191,7 @@ int start_hls_stream(const char *stream_name) {
     snprintf(dir_cmd, sizeof(dir_cmd), "chmod -R 777 %s", ctx->output_path);
     system(dir_cmd);
 
-    log_info("Created directory with full permissions: %s", ctx->output_path);
+    log_info("Created HLS directory with full permissions: %s", ctx->output_path);
 
     // Check that we can actually write to this directory
     char test_file[MAX_PATH_LENGTH];
@@ -1029,19 +1205,7 @@ int start_hls_stream(const char *stream_name) {
     }
     fclose(test);
     remove(test_file);
-    log_info("Verified directory is writable: %s", ctx->output_path);
-
-    // Start recording if enabled in config
-    if (config.record) {
-        uint64_t recording_id = start_recording(stream_name, ctx->output_path);
-        if (recording_id > 0) {
-            log_info("Started recording for stream %s with ID %llu",
-                    stream_name, (unsigned long long)recording_id);
-        } else {
-            log_warn("Failed to start recording for stream %s", stream_name);
-            // Continue anyway, the HLS stream will still work
-        }
-    }
+    log_info("Verified HLS directory is writable: %s", ctx->output_path);
 
     // Start transcoding thread
     if (pthread_create(&ctx->thread, NULL, stream_transcode_thread, ctx) != 0) {
@@ -1055,7 +1219,13 @@ int start_hls_stream(const char *stream_name) {
     transcode_contexts[slot] = ctx;
     pthread_mutex_unlock(&contexts_mutex);
 
-    log_info("Started HLS stream for %s in slot %d", stream_name, slot);
+    log_info("Started HLS stream for %s in slot %d (no MP4 recording)", stream_name, slot);
+
+    // Start MP4 recording separately if enabled in config
+    if (config.record) {
+        start_mp4_recording(stream_name);
+    }
+
     return 0;
 }
 
@@ -1402,7 +1572,160 @@ void handle_hls_segment(const http_request_t *request, http_response_t *response
 }
 
 /**
- * Handle download request for a recording in a way that supports video streaming
+ * Find MP4 recording for a stream based on timestamp
+ * Returns 1 if found, 0 if not found, -1 on error
+ */
+int find_mp4_recording(const char *stream_name, time_t timestamp, char *mp4_path, size_t path_size) {
+    if (!stream_name || !mp4_path || path_size == 0) {
+        log_error("Invalid parameters for find_mp4_recording");
+        return -1;
+    }
+
+    // Get global config for storage paths
+    config_t *global_config = get_streaming_config();
+    char base_path[256];
+
+    // Try different possible locations for the MP4 file
+
+    // 1. Try main recordings directory with stream subdirectory
+    snprintf(base_path, sizeof(base_path), "%s/recordings/%s",
+            global_config->storage_path, stream_name);
+
+    // Format timestamp for pattern matching
+    char timestamp_str[32];
+    struct tm *tm_info = localtime(&timestamp);
+    strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M", tm_info);
+
+    // Log what we're looking for
+    log_info("Looking for MP4 recording for stream '%s' with timestamp around %s in %s",
+            stream_name, timestamp_str, base_path);
+
+    // Use system command to find matching files
+    char find_cmd[512];
+    snprintf(find_cmd, sizeof(find_cmd),
+            "find %s -type f -name \"recording_%s*.mp4\" | sort",
+            base_path, timestamp_str);
+
+    FILE *cmd_pipe = popen(find_cmd, "r");
+    if (!cmd_pipe) {
+        log_error("Failed to execute find command: %s", find_cmd);
+
+        // Try fallback with ls and grep
+        snprintf(find_cmd, sizeof(find_cmd),
+                "ls -1 %s/recording_%s*.mp4 2>/dev/null | head -1",
+                base_path, timestamp_str);
+
+        cmd_pipe = popen(find_cmd, "r");
+        if (!cmd_pipe) {
+            log_error("Failed to execute fallback find command");
+            return -1;
+        }
+    }
+
+    char found_path[256] = {0};
+    if (fgets(found_path, sizeof(found_path), cmd_pipe)) {
+        // Remove trailing newline
+        size_t len = strlen(found_path);
+        if (len > 0 && found_path[len-1] == '\n') {
+            found_path[len-1] = '\0';
+        }
+
+        // Check if file exists and has content
+        struct stat st;
+        if (stat(found_path, &st) == 0 && st.st_size > 0) {
+            log_info("Found MP4 file: %s (%lld bytes)",
+                    found_path, (long long)st.st_size);
+
+            strncpy(mp4_path, found_path, path_size - 1);
+            mp4_path[path_size - 1] = '\0';
+            pclose(cmd_pipe);
+            return 1;
+        }
+    }
+
+    pclose(cmd_pipe);
+
+    // 2. Try alternative location if MP4 direct storage is configured
+    if (global_config->record_mp4_directly && global_config->mp4_storage_path[0] != '\0') {
+        snprintf(base_path, sizeof(base_path), "%s/%s",
+                global_config->mp4_storage_path, stream_name);
+
+        log_info("Looking in alternative MP4 location: %s", base_path);
+
+        // Same approach with alternative path
+        snprintf(find_cmd, sizeof(find_cmd),
+                "find %s -type f -name \"recording_%s*.mp4\" | sort",
+                base_path, timestamp_str);
+
+        cmd_pipe = popen(find_cmd, "r");
+        if (cmd_pipe) {
+            if (fgets(found_path, sizeof(found_path), cmd_pipe)) {
+                // Remove trailing newline
+                size_t len = strlen(found_path);
+                if (len > 0 && found_path[len-1] == '\n') {
+                    found_path[len-1] = '\0';
+                }
+
+                // Check if file exists and has content
+                struct stat st;
+                if (stat(found_path, &st) == 0 && st.st_size > 0) {
+                    log_info("Found MP4 file in alternative location: %s (%lld bytes)",
+                            found_path, (long long)st.st_size);
+
+                    strncpy(mp4_path, found_path, path_size - 1);
+                    mp4_path[path_size - 1] = '\0';
+                    pclose(cmd_pipe);
+                    return 1;
+                }
+            }
+            pclose(cmd_pipe);
+        }
+    }
+
+    // 3. Try less restrictive search in case the timestamp format is different
+    // This will look for any MP4 with the stream name in various directories
+
+    // Try in the HLS directory itself (sometimes MP4s are stored alongside HLS files)
+    snprintf(base_path, sizeof(base_path), "%s/hls/%s",
+            global_config->storage_path, stream_name);
+
+    log_info("Looking in HLS directory: %s", base_path);
+
+    snprintf(find_cmd, sizeof(find_cmd),
+            "find %s -type f -name \"*.mp4\" | sort", base_path);
+
+    cmd_pipe = popen(find_cmd, "r");
+    if (cmd_pipe) {
+        if (fgets(found_path, sizeof(found_path), cmd_pipe)) {
+            // Remove trailing newline
+            size_t len = strlen(found_path);
+            if (len > 0 && found_path[len-1] == '\n') {
+                found_path[len-1] = '\0';
+            }
+
+            // Check if file exists and has content
+            struct stat st;
+            if (stat(found_path, &st) == 0 && st.st_size > 0) {
+                log_info("Found MP4 file in HLS directory: %s (%lld bytes)",
+                        found_path, (long long)st.st_size);
+
+                strncpy(mp4_path, found_path, path_size - 1);
+                mp4_path[path_size - 1] = '\0';
+                pclose(cmd_pipe);
+                return 1;
+            }
+        }
+        pclose(cmd_pipe);
+    }
+
+    // No MP4 file found
+    log_warn("No matching MP4 recording found for stream '%s' with timestamp around %s",
+            stream_name, timestamp_str);
+    return 0;
+}
+
+/**
+ * Enhanced handle_download_recording function focused on finding existing MP4 files
  */
 void handle_download_recording(const http_request_t *request, http_response_t *response) {
     // Extract recording ID from the URL
@@ -1459,100 +1782,34 @@ void handle_download_recording(const http_request_t *request, http_response_t *r
         return;
     }
 
-    log_info("Found recording in database: ID=%llu, Path=%s",
-            (unsigned long long)id, metadata.file_path);
+    log_info("Found recording in database: ID=%llu, Path=%s, Stream=%s, Time=%lld",
+            (unsigned long long)id, metadata.file_path, metadata.stream_name,
+            (long long)metadata.start_time);
 
-    // Determine if this is an HLS stream (m3u8)
-    const char *ext = strrchr(metadata.file_path, '.');
-    bool is_hls = (ext && strcasecmp(ext, ".m3u8") == 0);
+    // Find the MP4 recording
+    char mp4_path[512] = {0};
+    int mp4_found = find_mp4_recording(metadata.stream_name, metadata.start_time,
+                                      mp4_path, sizeof(mp4_path));
 
-    // Get query parameters
-    bool direct_download = false;
-    char param_value[8];
-    if (get_query_param(request, "direct", param_value, sizeof(param_value)) == 0) {
-        direct_download = (strcmp(param_value, "1") == 0 ||
-                          strcasecmp(param_value, "true") == 0);
+    if (mp4_found > 0) {
+        // Create filename for download
+        char filename[128];
+        snprintf(filename, sizeof(filename), "%s_%lld.mp4",
+               metadata.stream_name, (long long)metadata.start_time);
+
+        // Serve the MP4 file
+        log_info("Serving MP4 file: %s with filename %s", mp4_path, filename);
+        serve_video_file(response, mp4_path, "video/mp4", filename, request);
+        return;
     }
 
-    if (is_hls)
-    {
-        // Get the directory containing the recording
-        char dir_path[256];
-        const char *last_slash = strrchr(metadata.file_path, '/');
-        if (last_slash) {
-            size_t dir_len = last_slash - metadata.file_path;
-            strncpy(dir_path, metadata.file_path, dir_len);
-            dir_path[dir_len] = '\0';
-        } else {
-            // If no slash, use the current directory
-            strcpy(dir_path, ".");
-        }
+    // If we get here, we couldn't find a suitable MP4 file
+    log_error("Could not find MP4 recording for ID=%llu, Stream=%s, Time=%lld",
+             (unsigned long long)id, metadata.stream_name, (long long)metadata.start_time);
 
-        // Check for the direct MP4 recording in the recordings directory
-        config_t *global_config = get_streaming_config();
-        
-        // First try to find MP4 in the configured MP4 storage path
-        char mp4_path[256];
-        char stream_name[MAX_STREAM_NAME];
-        strncpy(stream_name, metadata.stream_name, MAX_STREAM_NAME - 1);
-        stream_name[MAX_STREAM_NAME - 1] = '\0';
-        
-        // Try to find MP4 in recordings directory
-        if (global_config->record_mp4_directly && global_config->mp4_storage_path[0] != '\0') {
-            // Look in configured MP4 storage path
-            snprintf(mp4_path, sizeof(mp4_path), "%s/%s", 
-                    global_config->mp4_storage_path, stream_name);
-        } else {
-            // Look in default recordings directory
-            snprintf(mp4_path, sizeof(mp4_path), "%s/recordings/%s", 
-                    global_config->storage_path, stream_name);
-        }
-        
-        // Get timestamp from metadata to find the right recording
-        char timestamp_str[32];
-        struct tm *tm_info = localtime(&metadata.start_time);
-        strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M", tm_info);
-        
-        // Use glob to find matching MP4 files
-        char glob_pattern[512];
-        snprintf(glob_pattern, sizeof(glob_pattern), 
-                "find %s -name \"recording_%s*.mp4\" | sort", mp4_path, timestamp_str);
-        
-        FILE *glob_result = popen(glob_pattern, "r");
-        char matching_mp4[512] = {0};
-        
-        if (glob_result && fgets(matching_mp4, sizeof(matching_mp4), glob_result)) {
-            // Remove trailing newline
-            size_t len = strlen(matching_mp4);
-            if (len > 0 && matching_mp4[len-1] == '\n') {
-                matching_mp4[len-1] = '\0';
-            }
-            
-            // Check if file exists and has content
-            struct stat mp4_stat;
-            if (stat(matching_mp4, &mp4_stat) == 0 && mp4_stat.st_size > 0) {
-                // Direct MP4 exists, serve it
-                log_info("Found direct MP4 recording: %s (%lld bytes)",
-                       matching_mp4, (long long)mp4_stat.st_size);
-
-                // Create filename for download
-                char filename[128];
-                snprintf(filename, sizeof(filename), "%s_%lld.mp4",
-                       metadata.stream_name, (long long)metadata.start_time);
-
-                // Serve the file
-                serve_video_file(response, matching_mp4, "video/mp4",
-                                 direct_download ? filename : NULL, request);
-                
-                pclose(glob_result);
-                return;
-            }
-        }
-        
-        if (glob_result) {
-            pclose(glob_result);
-        }
-    }
+    create_json_response(response, 404,
+        "{\"error\": \"MP4 recording not found. The system found the recording metadata "
+        "but could not locate the corresponding MP4 file.\"}");
 }
 
 /**
