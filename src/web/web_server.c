@@ -192,7 +192,7 @@ static int remove_pid_file(void);
 // Signal handler
 static void signal_handler(int sig) {
     if (sig == SIGINT || sig == SIGTERM) {
-        log_info("Received signal %d, shutting down...", sig);
+        log_info("Web server received signal %d, shutting down...", sig);
         server_running = 0;
         web_server.running = 0;
 
@@ -201,6 +201,14 @@ static void signal_handler(int sig) {
             shutdown(web_server.server_socket, SHUT_RDWR);
             close(web_server.server_socket);
             web_server.server_socket = -1;
+            server_socket = -1; // Update the global reference
+        }
+
+        // If this is a daemon process, we need to exit here
+        // to prevent the main process from continuing
+        if (web_server.daemon_mode) {
+            log_info("Exiting daemon process");
+            exit(EXIT_SUCCESS);
         }
     }
 }
@@ -324,14 +332,7 @@ int daemonize_web_server(const char *pid_file) {
         web_server.pid_file[MAX_PATH_LENGTH - 1] = '\0';
     }
 
-    // Daemonize is handled in core/daemon.c
-
-    // Write PID file
-    if (write_pid_file() != 0) {
-        log_error("Failed to write PID file");
-        return -1;
-    }
-
+    log_info("Web server running in daemon mode");
     return 0;
 }
 
@@ -373,11 +374,6 @@ void shutdown_web_server(void) {
     if (web_server.thread_pool) {
         thread_pool_shutdown(web_server.thread_pool);
         web_server.thread_pool = NULL;
-    }
-
-    // Remove PID file if in daemon mode
-    if (web_server.daemon_mode) {
-        remove_pid_file();
     }
 
     pthread_mutex_destroy(&web_server.mutex);

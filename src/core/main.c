@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,10 +9,13 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <sys/wait.h>
+#include <sys/time.h>
 
 #include "core/version.h"
 #include "core/config.h"
 #include "core/logger.h"
+#include "core/daemon.h"
 #include "video/stream_manager.h"
 #include "storage/storage_manager.h"
 #include "video/streams.h"
@@ -27,7 +31,10 @@ void init_recordings_system(void);
 #include <fcntl.h>
 
 // Global flag for graceful shutdown
-static volatile bool running = true;
+volatile bool running = true;
+
+// Global flag for daemon mode
+static bool daemon_mode = false;
 
 // Declare a global variable to store the web server socket
 static int web_server_socket = -1;
@@ -37,22 +44,26 @@ void set_web_server_socket(int socket_fd) {
     web_server_socket = socket_fd;
 }
 
-// Modify the signal handler
 static void signal_handler(int sig) {
+    // Only log and set running flag if not in daemon mode
+    // Daemon mode has its own signal handler
     log_info("Received signal %d, shutting down...", sig);
     running = false;
 }
 
 // Function to initialize signal handlers
 static void init_signals() {
-    struct sigaction sa;
-    memset(&sa, 0, sizeof(sa));
-    sa.sa_handler = signal_handler;
-    sigaction(SIGINT, &sa, NULL);
-    sigaction(SIGTERM, &sa, NULL);
-    sigaction(SIGHUP, &sa, NULL);
+    // Only set up signal handlers in non-daemon mode
+    // Daemon mode sets up its own handlers in init_daemon()
+    if (!daemon_mode) {
+        struct sigaction sa;
+        memset(&sa, 0, sizeof(sa));
+        sa.sa_handler = signal_handler;
+        sigaction(SIGINT, &sa, NULL);
+        sigaction(SIGTERM, &sa, NULL);
+        sigaction(SIGHUP, &sa, NULL);
+    }
 }
-
 /**
  * Check if another instance is running and kill it if needed
  */
@@ -149,82 +160,9 @@ static void remove_pid_file(int fd, const char *pid_file) {
 }
 
 // Function to daemonize the process
-static int daemonize() {
-    pid_t pid;
-    
-    // Fork off the parent process
-    pid = fork();
-    if (pid < 0) {
-        log_error("Failed to fork: %s", strerror(errno));
-        return -1;
-    }
-    
-    // If we got a good PID, then we can exit the parent process
-    if (pid > 0) {
-        exit(EXIT_SUCCESS);
-    }
-    
-    // Create a new session ID for the child process
-    if (setsid() < 0) {
-        log_error("Failed to create new session: %s", strerror(errno));
-        return -1;
-    }
-    
-    // Ignore certain signals
-    signal(SIGCHLD, SIG_IGN);
-    signal(SIGHUP, SIG_IGN);
-    
-    // Fork a second time (recommended for daemons)
-    pid = fork();
-    if (pid < 0) {
-        log_error("Failed to fork (second time): %s", strerror(errno));
-        return -1;
-    }
-    
-    if (pid > 0) {
-        exit(EXIT_SUCCESS);
-    }
-    
-    // Set new file permissions
-    umask(0);
-    
-    // Change the current working directory to root (or another safe directory)
-    // Instead of changing to /, change to a more appropriate directory
-    // that will definitely exist and have proper permissions
-    if (chdir("/var/lib/lightnvr") < 0) {
-        // If that fails, try the user's home directory or /tmp
-        if (chdir("/tmp") < 0) {
-            log_error("Failed to change directory: %s", strerror(errno));
-            return -1;
-        }
-    }
-    
-    // Redirect standard file descriptors to /dev/null
-    int null_fd = open("/dev/null", O_RDWR);
-    if (null_fd < 0) {
-        log_error("Failed to open /dev/null: %s", strerror(errno));
-        return -1;
-    }
-    
-    // Close all open file descriptors except for the null descriptor
-    for (int i = 0; i < sysconf(_SC_OPEN_MAX); i++) {
-        if (i != null_fd) {
-            close(i);
-        }
-    }
-    
-    // Redirect stdin, stdout, stderr to /dev/null
-    if (dup2(null_fd, STDIN_FILENO) < 0 ||
-        dup2(null_fd, STDOUT_FILENO) < 0 ||
-        dup2(null_fd, STDERR_FILENO) < 0) {
-        log_error("Failed to redirect standard file descriptors: %s", strerror(errno));
-        close(null_fd);
-        return -1;
-    }
-    
-    close(null_fd);
-    
-    return 0;
+static int daemonize(const char *pid_file) {
+    // Use the daemon.c implementation instead of duplicating code
+    return init_daemon(pid_file);
 }
 
 // Add this to src/core/main.c after initializing the stream manager
@@ -262,7 +200,6 @@ static void load_streams_from_config(const config_t *config) {
 
 int main(int argc, char *argv[]) {
     int pid_fd = -1;
-    bool daemon_mode = false;
     config_t config;
 
     // Print banner
@@ -331,23 +268,23 @@ int main(int argc, char *argv[]) {
     // Daemonize if requested (before creating PID file)
     if (daemon_mode) {
         log_info("Starting in daemon mode");
-        if (daemonize() != 0) {
+        if (daemonize(config.pid_file) != 0) {
             log_error("Failed to daemonize");
             return EXIT_FAILURE;
         }
-    }
+    } else {
+        // In main function, before creating the PID file:
+        if (check_and_kill_existing_instance(config.pid_file) != 0) {
+            log_error("Failed to handle existing instance");
+            return EXIT_FAILURE;
+        }
 
-    // In main function, before creating the PID file:
-    if (check_and_kill_existing_instance(config.pid_file) != 0) {
-        log_error("Failed to handle existing instance");
-        return EXIT_FAILURE;
-    }
-
-    // Create PID file
-    pid_fd = create_pid_file(config.pid_file);
-    if (pid_fd < 0) {
-        log_error("Failed to create PID file");
-        return EXIT_FAILURE;
+        // Create PID file (only for non-daemon mode)
+        pid_fd = create_pid_file(config.pid_file);
+        if (pid_fd < 0) {
+            log_error("Failed to create PID file");
+            return EXIT_FAILURE;
+        }
     }
 
     log_info("LightNVR v%s starting up", LIGHTNVR_VERSION_STRING);

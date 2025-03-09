@@ -34,11 +34,11 @@ int daemon_status(const char *pid_file);
 
 
 /**
-* Remove PID file
+* Remove Daemon PID file
 *
 * @param pid_file Path to PID file
 * @return 0 on success, -1 on error
 */
-int remove_pid_file(const char *pid_file);
+int remove_daemon_pid_file(const char *pid_file);
 
 #endif /* DAEMON_H */

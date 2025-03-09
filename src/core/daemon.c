@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -9,10 +10,14 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <stdbool.h>
+#include <sys/wait.h>
+#include <sys/time.h>
 
 #include "web/web_server.h"
 #include "core/logger.h"
 #include "core/daemon.h"
+
+extern volatile bool running; // Reference to the global variable defined in main.c
 
 // Global variable to store PID file path
 static char pid_file_path[256] = "/var/run/lightnvr.pid";
@@ -58,6 +63,8 @@ int init_daemon(const char *pid_file) {
 
     // Parent process exits
     if (pid > 0) {
+        // Wait briefly to ensure child has time to start
+        usleep(100000); // 100ms
         exit(EXIT_SUCCESS);
     }
 
@@ -70,32 +77,25 @@ int init_daemon(const char *pid_file) {
         return -1;
     }
 
-    // Fork again to ensure we can't reacquire a terminal
-    pid = fork();
-    if (pid < 0) {
-        log_error("Failed to fork daemon process (second fork): %s", strerror(errno));
-        return -1;
-    }
-
-    // First child exits
-    if (pid > 0) {
-        exit(EXIT_SUCCESS);
-    }
-
-    // Second child continues
-
-    // Change working directory to root
-    if (chdir("/") < 0) {
-        log_error("Failed to change working directory: %s", strerror(errno));
-        return -1;
+    // Change working directory to a safe location
+    if (chdir("/var/lib/lightnvr") < 0) {
+        // If that fails, try /tmp as a fallback
+        if (chdir("/tmp") < 0) {
+            log_error("Failed to change working directory: %s", strerror(errno));
+            return -1;
+        }
     }
 
     // Reset file creation mask
     umask(0);
 
-    // Close all open file descriptors
-    for (int i = 0; i < 1024; i++) {
-        close(i);
+    // Close all open file descriptors except for logging
+    int max_fd = sysconf(_SC_OPEN_MAX);
+    for (int i = 0; i < max_fd; i++) {
+        // Skip standard descriptors - we'll redirect them properly
+        if (i != STDIN_FILENO && i != STDOUT_FILENO && i != STDERR_FILENO) {
+            close(i);
+        }
     }
 
     // Redirect standard file descriptors to /dev/null
@@ -129,7 +129,7 @@ int init_daemon(const char *pid_file) {
 // Cleanup daemon resources
 int cleanup_daemon(void) {
     // Remove PID file
-    remove_pid_file(pid_file_path);
+    remove_daemon_pid_file(pid_file_path);
 
     return 0;
 }
@@ -137,27 +137,26 @@ int cleanup_daemon(void) {
 // Signal handler for daemon
 static void daemon_signal_handler(int sig) {
     switch (sig) {
-        case SIGTERM:
-        case SIGINT:
-            log_info("Received signal %d, shutting down daemon...", sig);
+    case SIGTERM:
+    case SIGINT:
+        log_info("Received signal %d, shutting down daemon...", sig);
 
-            // Shutdown the web server
-            shutdown_web_server();
+        // Set global flag to stop main loop instead of exiting immediately
+        extern volatile bool running;
+        running = false;
 
-            // Cleanup daemon resources
-            cleanup_daemon();
+        // Don't exit here, let the main loop handle cleanup
+        // exit(EXIT_SUCCESS);
+        break;
 
-            exit(EXIT_SUCCESS);
-            break;
-
-        case SIGHUP:
-            // Reload configuration
+    case SIGHUP:
+        // Reload configuration
             log_info("Received SIGHUP, reloading configuration...");
-            // TODO: Implement configuration reload
-            break;
+        // TODO: Implement configuration reload
+        break;
 
-        default:
-            break;
+    default:
+        break;
     }
 }
 
@@ -183,7 +182,7 @@ static int write_pid_file(const char *pid_file) {
 }
 
 // Remove PID file
-int remove_pid_file(const char *pid_file) {
+int remove_daemon_pid_file(const char *pid_file) {
     if (unlink(pid_file) != 0 && errno != ENOENT) {
         log_error("Failed to remove PID file %s: %s", pid_file, strerror(errno));
         return -1;
@@ -225,7 +224,7 @@ static int check_running_daemon(const char *pid_file) {
         if (errno == ESRCH) {
             // Process is not running, remove stale PID file
             log_warn("Found stale PID file %s, removing it", pid_file);
-            remove_pid_file(pid_file);
+            remove_daemon_pid_file(pid_file);
             return 0;
         } else {
             log_error("Failed to check process status: %s", strerror(errno));
@@ -267,7 +266,7 @@ int stop_daemon(const char *pid_file) {
     if (kill(pid, SIGTERM) != 0) {
         if (errno == ESRCH) {
             log_warn("No process with PID %d is running, removing stale PID file", pid);
-            remove_pid_file(file_path);
+            remove_daemon_pid_file(file_path);
             return 0;
         } else {
             log_error("Failed to send SIGTERM to process %d: %s", pid, strerror(errno));
@@ -365,7 +364,7 @@ int daemon_status(const char *pid_file) {
         if (errno == ESRCH) {
             // Process is not running, remove stale PID file
             log_warn("Found stale PID file %s, removing it", file_path);
-            remove_pid_file(file_path);
+            remove_daemon_pid_file(file_path);
             return 0;
         } else {
             log_error("Failed to check process status: %s", strerror(errno));
