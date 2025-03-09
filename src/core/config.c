@@ -8,9 +8,9 @@
 #include <libgen.h>
 #include <ctype.h>
 
-#include "../../include/core/config.h"
-#include "../../include/core/logger.h"
-#include "../../include/database/database_manager.h"
+#include "core/config.h"
+#include "core/logger.h"
+#include "database/database_manager.h"
 
 // Default configuration values
 void load_default_config(config_t *config) {

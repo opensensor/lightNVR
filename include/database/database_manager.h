@@ -3,8 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include <time.h>
-#include "../core/config.h"
+#include "core/config.h"
 
 // Event types
 typedef enum {
