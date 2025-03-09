@@ -31,7 +31,7 @@
 #include "video/mp4_writer.h"
 #include "database/database_manager.h"
 
-#define LIGHTNVR_VERSION_STRING "0.1.0"
+#define LIGHTNVR_VERSION_STRING "0.2.0"
 
 // Define a local config variable to work with
 static config_t local_config;
