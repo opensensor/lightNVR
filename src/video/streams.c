@@ -653,6 +653,36 @@ static void *stream_transcode_thread(void *arg) {
 
     // Main packet reading loop
     while (ctx->running) {
+        // Check if we need to rotate the MP4 file based on segment duration
+        time_t current_time = time(NULL);
+        int segment_duration = ctx->config.segment_duration > 0 ? ctx->config.segment_duration : 900; // Default to 15 minutes
+        
+        // If the MP4 file has been open for longer than the segment duration, rotate it
+        if (ctx->mp4_writer && (current_time - ctx->mp4_writer->creation_time) >= segment_duration) {
+            log_info("Rotating MP4 file for stream %s after %d seconds", ctx->config.name, segment_duration);
+            
+            // Close the current MP4 writer
+            mp4_writer_close(ctx->mp4_writer);
+            ctx->mp4_writer = NULL;
+            
+            // Generate new timestamp for the new MP4 file
+            char timestamp_str[32];
+            struct tm *tm_info = localtime(&current_time);
+            strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M%S", tm_info);
+            
+            // Create new MP4 output path with new timestamp
+            snprintf(ctx->mp4_output_path, MAX_PATH_LENGTH, "%s/mp4/%s/recording_%s.mp4",
+                    global_config->storage_path, ctx->config.name, timestamp_str);
+            
+            // Create new MP4 writer
+            ctx->mp4_writer = mp4_writer_create(ctx->mp4_output_path, ctx->config.name);
+            if (!ctx->mp4_writer) {
+                log_error("Failed to create new MP4 writer for stream %s during rotation", ctx->config.name);
+            } else {
+                log_info("Created new MP4 writer for stream %s at %s", ctx->config.name, ctx->mp4_output_path);
+            }
+        }
+        
         ret = av_read_frame(input_ctx, pkt);
 
         if (ret < 0) {
@@ -1069,11 +1099,45 @@ int start_mp4_recording(const char *stream_name) {
     // Create MP4 directory if it doesn't exist
     char dir_cmd[MAX_PATH_LENGTH * 2];
     snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s", mp4_dir);
-    system(dir_cmd);
+    int ret = system(dir_cmd);
+    if (ret != 0) {
+        log_error("Failed to create MP4 directory: %s (return code: %d)", mp4_dir, ret);
+        
+        // Try to create the parent directory first
+        char parent_dir[MAX_PATH_LENGTH];
+        if (global_config->record_mp4_directly && global_config->mp4_storage_path[0] != '\0') {
+            strncpy(parent_dir, global_config->mp4_storage_path, MAX_PATH_LENGTH - 1);
+        } else {
+            snprintf(parent_dir, MAX_PATH_LENGTH, "%s/mp4", global_config->storage_path);
+        }
+        
+        snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s", parent_dir);
+        ret = system(dir_cmd);
+        if (ret != 0) {
+            log_error("Failed to create parent MP4 directory: %s (return code: %d)", parent_dir, ret);
+            return -1;
+        }
+        
+        // Try again to create the stream-specific directory
+        snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s", mp4_dir);
+        ret = system(dir_cmd);
+        if (ret != 0) {
+            log_error("Still failed to create MP4 directory: %s (return code: %d)", mp4_dir, ret);
+            return -1;
+        }
+    }
 
     // Set full permissions for MP4 directory
     snprintf(dir_cmd, sizeof(dir_cmd), "chmod -R 777 %s", mp4_dir);
     system(dir_cmd);
+    
+    // Verify the directory is writable
+    if (access(mp4_dir, W_OK) != 0) {
+        log_error("MP4 directory is not writable: %s (error: %s)", mp4_dir, strerror(errno));
+        return -1;
+    }
+    
+    log_info("Verified MP4 directory is writable: %s", mp4_dir);
 
     // Full path for the MP4 file
     char mp4_path[MAX_PATH_LENGTH];
