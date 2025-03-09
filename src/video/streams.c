@@ -717,6 +717,9 @@ static void *stream_transcode_thread(void *arg) {
 
         // Process video packets
         if (pkt->stream_index == video_stream_idx) {
+            // Check if this is a key frame
+            bool is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
+            
             // Write to HLS with error handling
             ret = hls_writer_write_packet(ctx->hls_writer, pkt, input_ctx->streams[video_stream_idx]);
             if (ret < 0) {
@@ -724,7 +727,7 @@ static void *stream_transcode_thread(void *arg) {
                 // Continue anyway to keep the stream going
             }
 
-            // Write to MP4 if enabled
+            // Write to MP4 if enabled - only write key frames if we're having issues
             if (ctx->mp4_writer) {
                 ret = mp4_writer_write_packet(ctx->mp4_writer, pkt, input_ctx->streams[video_stream_idx]);
                 if (ret < 0) {

@@ -10,6 +10,12 @@
 #include <dirent.h>
 #include <time.h>
 #include <sys/stat.h>
+#include <limits.h>
+
+// Define PATH_MAX if not defined
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
@@ -26,7 +32,6 @@
 
 extern pthread_mutex_t recordings_mutex;
 extern active_recording_t active_recordings[MAX_STREAMS];
-extern pthread_mutex_t recordings_mutex;
 
 
 /**
@@ -192,9 +197,16 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
     AVPacket pkt;
     av_packet_ref(&pkt, in_pkt);
 
-    // Fix timestamps - improved approach to prevent ghosting
+    // Fix timestamps - improved approach to prevent ghosting and ensure correct duration
     if (writer->first_dts == AV_NOPTS_VALUE) {
         // First packet - use its DTS as reference
+        // Only start on a key frame if possible
+        if (!(in_pkt->flags & AV_PKT_FLAG_KEY)) {
+            // If this is not a key frame and we're just starting, we might want to skip it
+            // But for now, we'll accept it to avoid complexity
+            log_debug("First packet for MP4 is not a key frame - this may cause playback issues");
+        }
+        
         writer->first_dts = pkt.dts != AV_NOPTS_VALUE ? pkt.dts : pkt.pts;
         writer->first_pts = pkt.pts != AV_NOPTS_VALUE ? pkt.pts : pkt.dts;
 
@@ -204,6 +216,9 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
         // For the first packet, set timestamps to 0
         pkt.dts = 0;
         pkt.pts = pkt.pts != AV_NOPTS_VALUE ? pkt.pts - writer->first_pts : 0;
+        
+        log_debug("MP4 writer initialized with first_dts=%lld, first_pts=%lld", 
+                 (long long)writer->first_dts, (long long)writer->first_pts);
     } else {
         // Preserve original pts/dts spacing but ensure monotonic increase
 
@@ -388,9 +403,12 @@ void mp4_writer_close(mp4_writer_t *writer) {
                 time_t duration_sec = 0;
                 if (writer->first_dts != AV_NOPTS_VALUE && writer->last_dts != AV_NOPTS_VALUE) {
                     // Convert from stream timebase to seconds
-                    int64_t duration_tb = writer->last_dts - writer->first_dts;
+                    int64_t duration_tb = writer->last_dts;  // last_dts is already relative to first_dts
                     if (writer->time_base.den > 0) {
                         duration_sec = duration_tb * writer->time_base.num / writer->time_base.den;
+                        log_info("MP4 duration calculated: %ld seconds (timebase: %d/%d, ticks: %lld)", 
+                                duration_sec, writer->time_base.num, writer->time_base.den, 
+                                (long long)duration_tb);
                     }
                 }
 
