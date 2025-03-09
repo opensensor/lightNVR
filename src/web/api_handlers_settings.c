@@ -9,6 +9,8 @@
 #include <sys/types.h>
 #include <errno.h>
 #include <unistd.h>
+#include <signal.h>
+#include <libgen.h>
 
 #include "web/api_handlers_settings.h"
 #include "web/api_handlers_common.h"
@@ -17,6 +19,77 @@
 
 // Forward declaration of helper function to get current configuration
 static config_t* get_current_config(void);
+
+// Flag to track if a save operation timed out
+static volatile int save_timeout_occurred = 0;
+
+// Signal handler for save timeout
+static void handle_save_timeout(int sig) {
+    save_timeout_occurred = 1;
+    log_error("Save operation timed out (signal received)");
+}
+
+// Recursive directory creation function
+static int create_directory_recursive(const char *path) {
+    char tmp[MAX_PATH_LENGTH];
+    char *p = NULL;
+    size_t len;
+    
+    if (!path || strlen(path) == 0) {
+        return -1;
+    }
+    
+    snprintf(tmp, sizeof(tmp), "%s", path);
+    len = strlen(tmp);
+    
+    // Remove trailing slash
+    if (tmp[len - 1] == '/') {
+        tmp[len - 1] = 0;
+    }
+    
+    // Check if directory already exists
+    struct stat st = {0};
+    if (stat(tmp, &st) == 0) {
+        if (S_ISDIR(st.st_mode)) {
+            return 0; // Directory exists
+        } else {
+            return -1; // Path exists but is not a directory
+        }
+    }
+    
+    // Create parent directories recursively
+    for (p = tmp + 1; *p; p++) {
+        if (*p == '/') {
+            *p = 0;
+            
+            // Create this directory segment
+            if (stat(tmp, &st) != 0) {
+                if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
+                    log_error("Failed to create directory: %s (error: %s)", tmp, strerror(errno));
+                    return -1;
+                }
+            } else if (!S_ISDIR(st.st_mode)) {
+                log_error("Path exists but is not a directory: %s", tmp);
+                return -1;
+            }
+            
+            *p = '/';
+        }
+    }
+    
+    // Create the final directory
+    if (stat(tmp, &st) != 0) {
+        if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
+            log_error("Failed to create directory: %s (error: %s)", tmp, strerror(errno));
+            return -1;
+        }
+    } else if (!S_ISDIR(st.st_mode)) {
+        log_error("Path exists but is not a directory: %s", tmp);
+        return -1;
+    }
+    
+    return 0;
+}
 
 // Mutex for thread-safe access to configuration
 static pthread_mutex_t config_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -115,18 +188,6 @@ void handle_post_settings(const http_request_t *request, http_response_t *respon
     // Use a local config variable to work with
     config_t local_config;
     
-    // Lock the mutex for thread-safe access
-    pthread_mutex_lock(&config_mutex);
-    
-    // Get the global config
-    config_t *global_config = get_current_config();
-    
-    // Make a copy of the current configuration
-    memcpy(&local_config, global_config, sizeof(config_t));
-    
-    // Unlock the mutex while we process the request
-    pthread_mutex_unlock(&config_mutex);
-    
     // Make a null-terminated copy of the request body
     char *json = malloc(request->content_length + 1);
     if (!json) {
@@ -141,6 +202,35 @@ void handle_post_settings(const http_request_t *request, http_response_t *respon
     log_debug("Received settings JSON: %.*s", 
               request->content_length > 300 ? 300 : request->content_length, 
               request->body);
+    
+    // Lock the mutex for thread-safe access - with timeout protection
+    struct timespec timeout;
+    clock_gettime(CLOCK_REALTIME, &timeout);
+    timeout.tv_sec += 5; // 5 second timeout
+    
+    int lock_result = pthread_mutex_timedlock(&config_mutex, &timeout);
+    if (lock_result != 0) {
+        log_error("Failed to acquire config mutex: %s", strerror(lock_result));
+        free(json);
+        create_json_response(response, 500, "{\"error\": \"Failed to acquire configuration lock\"}");
+        return;
+    }
+    
+    // Get the global config
+    config_t *global_config = get_current_config();
+    if (!global_config) {
+        log_error("Failed to get global config - null pointer returned");
+        pthread_mutex_unlock(&config_mutex);
+        free(json);
+        create_json_response(response, 500, "{\"error\": \"Failed to access global configuration\"}");
+        return;
+    }
+    
+    // Make a copy of the current configuration
+    memcpy(&local_config, global_config, sizeof(config_t));
+    
+    // Unlock the mutex while we process the request
+    pthread_mutex_unlock(&config_mutex);
     
     // Update configuration with new settings
     
@@ -219,16 +309,98 @@ void handle_post_settings(const http_request_t *request, http_response_t *respon
     char config_path[MAX_PATH_LENGTH];
     snprintf(config_path, MAX_PATH_LENGTH, "%s/lightnvr.conf", config_dir);
     
+    // Check if the storage path exists and create it if it doesn't
+    struct stat storage_st = {0};
+    if (stat(local_config.storage_path, &storage_st) == -1) {
+        log_info("Creating storage directory: %s", local_config.storage_path);
+        if (create_directory_recursive(local_config.storage_path) != 0) {
+            log_error("Failed to create storage directory: %s (error: %s)", local_config.storage_path, strerror(errno));
+            create_json_response(response, 500, "{\"error\": \"Failed to create storage directory\"}");
+            return;
+        }
+    }
+    
+    // Create HLS directory inside storage path
+    char hls_dir[MAX_PATH_LENGTH];
+    snprintf(hls_dir, MAX_PATH_LENGTH, "%s/hls", local_config.storage_path);
+    if (stat(hls_dir, &storage_st) == -1) {
+        log_info("Creating HLS directory: %s", hls_dir);
+        if (create_directory_recursive(hls_dir) != 0) {
+            log_error("Failed to create HLS directory: %s (error: %s)", hls_dir, strerror(errno));
+            create_json_response(response, 500, "{\"error\": \"Failed to create HLS directory\"}");
+            return;
+        }
+    }
+    
+    // Create stream-specific directories inside HLS directory
+    // Get the global config to access stream configurations
+    config_t *global_config_for_streams = get_current_config();
+    if (global_config_for_streams) {
+        for (int i = 0; i < global_config_for_streams->max_streams; i++) {
+            if (strlen(global_config_for_streams->streams[i].name) > 0) {
+                char stream_dir[MAX_PATH_LENGTH];
+                snprintf(stream_dir, MAX_PATH_LENGTH, "%s/hls/%s", 
+                         local_config.storage_path, 
+                         global_config_for_streams->streams[i].name);
+                
+                if (stat(stream_dir, &storage_st) == -1) {
+                    log_info("Creating stream HLS directory: %s", stream_dir);
+                    if (create_directory_recursive(stream_dir) != 0) {
+                        log_error("Failed to create stream HLS directory: %s (error: %s)", 
+                                 stream_dir, strerror(errno));
+                        // Continue anyway, don't fail the whole operation
+                    }
+                }
+            }
+        }
+    }
+    
+    // Setup a signal handler for the alarm instead of letting it terminate the process
+    struct sigaction sa;
+    struct sigaction old_sa;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+    sa.sa_handler = handle_save_timeout;
+    sigaction(SIGALRM, &sa, &old_sa);
+    
+    // Set a flag to track if the save operation timed out
+    save_timeout_occurred = 0;
+    
+    // Set a timeout for the save operation
+    alarm(15); // 15 second timeout
+    
     log_info("Saving configuration to: %s", config_path);
-    if (save_config(&local_config, config_path) != 0) {
+    int save_result = save_config(&local_config, config_path);
+    
+    // Cancel the timeout
+    alarm(0);
+    
+    // Restore the original signal handler
+    sigaction(SIGALRM, &old_sa, NULL);
+    
+    if (save_timeout_occurred) {
+        log_error("Save operation timed out");
+        create_json_response(response, 500, "{\"error\": \"Save operation timed out\"}");
+        return;
+    }
+    
+    if (save_result != 0) {
         // Failed to save configuration
         log_error("Failed to save configuration to: %s", config_path);
         create_json_response(response, 500, "{\"error\": \"Failed to save configuration\"}");
         return;
     }
     
-    // Lock the mutex again to update the global configuration
-    pthread_mutex_lock(&config_mutex);
+    // Lock the mutex again to update the global configuration - with timeout protection
+    clock_gettime(CLOCK_REALTIME, &timeout);
+    timeout.tv_sec += 5; // 5 second timeout
+    
+    lock_result = pthread_mutex_timedlock(&config_mutex, &timeout);
+    if (lock_result != 0) {
+        log_error("Failed to acquire config mutex for update: %s", strerror(lock_result));
+        create_json_response(response, 500, "{\"error\": \"Failed to update global configuration\"}");
+        return;
+    }
     
     // Update the global configuration with our local changes
     memcpy(global_config, &local_config, sizeof(config_t));

@@ -309,24 +309,41 @@ int load_stream_configs(config_t *config) {
     return loaded;
 }
 
-// Save stream configurations to database
+// Save stream configurations to database with timeout protection
 int save_stream_configs(const config_t *config) {
     if (!config) return -1;
     
     int saved = 0;
+    int transaction_started = 0;
+    
+    // Set an alarm to prevent hanging
+    alarm(10); // 10 second timeout
     
     // Begin transaction
     if (begin_transaction() != 0) {
         log_error("Failed to begin transaction for saving stream configurations");
+        alarm(0); // Cancel the alarm
         return -1;
     }
+    
+    transaction_started = 1;
     
     // Get existing stream configurations from database
     int count = count_stream_configs();
     if (count < 0) {
         log_error("Failed to count stream configurations in database");
         rollback_transaction();
+        alarm(0); // Cancel the alarm
         return -1;
+    }
+    
+    // Skip stream configuration updates if there are no changes
+    // This is a performance optimization and reduces the chance of locking issues
+    if (count == 0 && config->max_streams == 0) {
+        log_info("No stream configurations to save");
+        commit_transaction();
+        alarm(0); // Cancel the alarm
+        return 0;
     }
     
     if (count > 0) {
@@ -336,7 +353,26 @@ int save_stream_configs(const config_t *config) {
         if (loaded < 0) {
             log_error("Failed to load stream configurations from database");
             rollback_transaction();
+            alarm(0); // Cancel the alarm
             return -1;
+        }
+        
+        // Check if configurations are identical to avoid unnecessary updates
+        int identical = 1;
+        if (loaded == config->max_streams) {
+            for (int i = 0; i < loaded && identical; i++) {
+                if (strlen(config->streams[i].name) == 0 || 
+                    strcmp(config->streams[i].name, db_streams[i].name) != 0) {
+                    identical = 0;
+                }
+            }
+            
+            if (identical) {
+                log_info("Stream configurations unchanged, skipping update");
+                commit_transaction();
+                alarm(0); // Cancel the alarm
+                return loaded;
+            }
         }
         
         // Delete existing stream configurations
@@ -344,6 +380,7 @@ int save_stream_configs(const config_t *config) {
             if (delete_stream_config(db_streams[i].name) != 0) {
                 log_error("Failed to delete stream configuration: %s", db_streams[i].name);
                 rollback_transaction();
+                alarm(0); // Cancel the alarm
                 return -1;
             }
         }
@@ -352,9 +389,11 @@ int save_stream_configs(const config_t *config) {
     // Add stream configurations to database
     for (int i = 0; i < config->max_streams; i++) {
         if (strlen(config->streams[i].name) > 0) {
-            if (add_stream_config(&config->streams[i]) == 0) {
+            uint64_t result = add_stream_config(&config->streams[i]);
+            if (result == 0) {
                 log_error("Failed to add stream configuration: %s", config->streams[i].name);
                 rollback_transaction();
+                alarm(0); // Cancel the alarm
                 return -1;
             }
             saved++;
@@ -364,9 +403,14 @@ int save_stream_configs(const config_t *config) {
     // Commit transaction
     if (commit_transaction() != 0) {
         log_error("Failed to commit transaction for saving stream configurations");
+        // Try to rollback, but don't check the result since we're already in an error state
         rollback_transaction();
+        alarm(0); // Cancel the alarm
         return -1;
     }
+    
+    // Cancel the alarm
+    alarm(0);
     
     log_info("Saved %d stream configurations to database", saved);
     return saved;

@@ -138,16 +138,16 @@ function loadSettings() {
 }
 
 /**
- * Save settings with simplified, reliable approach
+ * Save settings with improved timeout handling and error recovery
  */
 function saveSettings() {
     const settingsContainer = document.querySelector('.settings-container');
     if (!settingsContainer) return;
 
-    // Show simple loading indicator
+    // Show loading indicator with timeout information
     const loadingIndicator = document.createElement('div');
     loadingIndicator.className = 'loading-indicator';
-    loadingIndicator.innerHTML = '<div class="spinner"></div><p>Saving settings...</p>';
+    loadingIndicator.innerHTML = '<div class="spinner"></div><p>Saving settings...</p><div class="timeout-counter">30</div>';
     loadingIndicator.style.position = 'absolute';
     loadingIndicator.style.top = '0';
     loadingIndicator.style.left = '0';
@@ -171,8 +171,60 @@ function saveSettings() {
     spinner.style.animation = 'spin 1s ease-in-out infinite';
     spinner.style.marginBottom = '10px';
     
+    // Style the timeout counter
+    const timeoutCounter = loadingIndicator.querySelector('.timeout-counter');
+    timeoutCounter.style.marginTop = '10px';
+    timeoutCounter.style.fontSize = '14px';
+    timeoutCounter.style.color = '#ccc';
+    
     settingsContainer.style.position = 'relative';
     settingsContainer.appendChild(loadingIndicator);
+    
+    // Set up timeout counter
+    let timeLeft = 30;
+    const countdownInterval = setInterval(() => {
+        timeLeft--;
+        timeoutCounter.textContent = timeLeft;
+        
+        if (timeLeft <= 10) {
+            timeoutCounter.style.color = '#ff6b6b';
+        }
+        
+        if (timeLeft <= 0) {
+            clearInterval(countdownInterval);
+        }
+    }, 1000);
+    
+    // Set up request timeout
+    const timeoutId = setTimeout(() => {
+        clearInterval(countdownInterval);
+        
+        // Show timeout error
+        const statusEl = document.getElementById('settings-status');
+        if (statusEl) {
+            statusEl.textContent = 'Error: Request timed out. The server may still be processing your request.';
+            statusEl.className = 'status-message error';
+            statusEl.style.display = 'block';
+            
+            // Add retry button
+            const retryButton = document.createElement('button');
+            retryButton.textContent = 'Retry';
+            retryButton.className = 'btn-primary';
+            retryButton.style.marginTop = '10px';
+            retryButton.addEventListener('click', () => {
+                statusEl.style.display = 'none';
+                saveSettings();
+            });
+            statusEl.appendChild(retryButton);
+        } else {
+            showStatusMessage('Error: Request timed out', 'error');
+        }
+        
+        // Remove loading indicator
+        if (settingsContainer.contains(loadingIndicator)) {
+            settingsContainer.removeChild(loadingIndicator);
+        }
+    }, 30000); // 30 second timeout
 
     try {
         // Collect all settings from the form with validation
@@ -204,7 +256,7 @@ function saveSettings() {
             throw new Error('Swap size must be at least 32 MB');
         }
 
-        // Send settings to the server with simple error handling
+        // Send settings to the server with improved error handling and timeout
         fetch('/api/settings', {
             method: 'POST',
             headers: {
@@ -228,6 +280,10 @@ function saveSettings() {
         .then(() => {
             console.log('Settings saved successfully');
             
+            // Clear timeout and interval
+            clearTimeout(timeoutId);
+            clearInterval(countdownInterval);
+            
             // Show success message
             const statusEl = document.getElementById('settings-status');
             if (statusEl) {
@@ -245,10 +301,16 @@ function saveSettings() {
             }
             
             // Remove loading indicator
-            settingsContainer.removeChild(loadingIndicator);
+            if (settingsContainer.contains(loadingIndicator)) {
+                settingsContainer.removeChild(loadingIndicator);
+            }
         })
         .catch(error => {
             console.error('Error saving settings:', error);
+            
+            // Clear timeout and interval
+            clearTimeout(timeoutId);
+            clearInterval(countdownInterval);
             
             // Show error message
             const statusEl = document.getElementById('settings-status');
@@ -256,16 +318,33 @@ function saveSettings() {
                 statusEl.textContent = 'Error saving settings: ' + error.message;
                 statusEl.className = 'status-message error';
                 statusEl.style.display = 'block';
+                
+                // Add retry button
+                const retryButton = document.createElement('button');
+                retryButton.textContent = 'Retry';
+                retryButton.className = 'btn-primary';
+                retryButton.style.marginTop = '10px';
+                retryButton.addEventListener('click', () => {
+                    statusEl.style.display = 'none';
+                    saveSettings();
+                });
+                statusEl.appendChild(retryButton);
             } else {
                 // Fallback to the global status message
                 showStatusMessage('Error saving settings: ' + error.message, 'error');
             }
             
             // Remove loading indicator
-            settingsContainer.removeChild(loadingIndicator);
+            if (settingsContainer.contains(loadingIndicator)) {
+                settingsContainer.removeChild(loadingIndicator);
+            }
         });
     } catch (error) {
         console.error('Error preparing settings:', error);
+        
+        // Clear timeout and interval
+        clearTimeout(timeoutId);
+        clearInterval(countdownInterval);
         
         // Show error message
         const statusEl = document.getElementById('settings-status');
@@ -273,12 +352,25 @@ function saveSettings() {
             statusEl.textContent = 'Error: ' + error.message;
             statusEl.className = 'status-message error';
             statusEl.style.display = 'block';
+            
+            // Add retry button
+            const retryButton = document.createElement('button');
+            retryButton.textContent = 'Retry';
+            retryButton.className = 'btn-primary';
+            retryButton.style.marginTop = '10px';
+            retryButton.addEventListener('click', () => {
+                statusEl.style.display = 'none';
+                saveSettings();
+            });
+            statusEl.appendChild(retryButton);
         } else {
             showStatusMessage('Error: ' + error.message, 'error');
         }
         
         // Remove loading indicator
-        settingsContainer.removeChild(loadingIndicator);
+        if (settingsContainer.contains(loadingIndicator)) {
+            settingsContainer.removeChild(loadingIndicator);
+        }
     }
 }
 
