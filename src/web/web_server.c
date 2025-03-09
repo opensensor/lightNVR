@@ -203,6 +203,9 @@ static void signal_handler(int sig) {
             web_server.server_socket = -1;
             server_socket = -1; // Update the global reference
         }
+        
+        // In daemon mode, we don't want to exit here, just let the main loop handle cleanup
+        // This is handled by the running flag in main.c
     }
 }
 

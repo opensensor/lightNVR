@@ -128,8 +128,13 @@ int init_daemon(const char *pid_file) {
 
 // Cleanup daemon resources
 int cleanup_daemon(void) {
+    log_info("Cleaning up daemon resources");
+    
     // Remove PID file
-    remove_daemon_pid_file(pid_file_path);
+    if (remove_daemon_pid_file(pid_file_path) != 0) {
+        log_warn("Failed to remove PID file during cleanup");
+        // Continue anyway, not a fatal error
+    }
 
     return 0;
 }
@@ -142,16 +147,14 @@ static void daemon_signal_handler(int sig) {
         log_info("Received signal %d, shutting down daemon...", sig);
 
         // Set global flag to stop main loop instead of exiting immediately
-        extern volatile bool running;
         running = false;
 
         // Don't exit here, let the main loop handle cleanup
-        // exit(EXIT_SUCCESS);
         break;
 
     case SIGHUP:
         // Reload configuration
-            log_info("Received SIGHUP, reloading configuration...");
+        log_info("Received SIGHUP, reloading configuration...");
         // TODO: Implement configuration reload
         break;
 

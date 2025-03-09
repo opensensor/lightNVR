@@ -162,7 +162,16 @@ static void remove_pid_file(int fd, const char *pid_file) {
 // Function to daemonize the process
 static int daemonize(const char *pid_file) {
     // Use the daemon.c implementation instead of duplicating code
-    return init_daemon(pid_file);
+    int result = init_daemon(pid_file);
+    
+    // If daemon initialization was successful, we're now in the child process
+    // We should not create another PID file or set up duplicate signal handlers
+    if (result == 0) {
+        // Set the running flag to true to ensure the main loop runs
+        running = true;
+    }
+    
+    return result;
 }
 
 // Add this to src/core/main.c after initializing the stream manager
@@ -265,20 +274,21 @@ int main(int argc, char *argv[]) {
     // Initialize signal handlers
     init_signals();
 
-    // Daemonize if requested (before creating PID file)
+    // Check for existing instances and handle PID file
+    if (check_and_kill_existing_instance(config.pid_file) != 0) {
+        log_error("Failed to handle existing instance");
+        return EXIT_FAILURE;
+    }
+
+    // Daemonize if requested
     if (daemon_mode) {
         log_info("Starting in daemon mode");
         if (daemonize(config.pid_file) != 0) {
             log_error("Failed to daemonize");
             return EXIT_FAILURE;
         }
+        // In daemon mode, the PID file is handled by daemon.c
     } else {
-        // In main function, before creating the PID file:
-        if (check_and_kill_existing_instance(config.pid_file) != 0) {
-            log_error("Failed to handle existing instance");
-            return EXIT_FAILURE;
-        }
-
         // Create PID file (only for non-daemon mode)
         pid_fd = create_pid_file(config.pid_file);
         if (pid_fd < 0) {
@@ -332,15 +342,25 @@ int main(int argc, char *argv[]) {
 
     // Cleanup
 cleanup:
+    log_info("Starting cleanup process...");
+    
     shutdown_web_server();
     cleanup_streaming_backend();  // Cleanup FFmpeg streaming
     shutdown_stream_manager();
     shutdown_storage_manager();
     shutdown_database();
 
-    // Remove PID file
-    remove_pid_file(pid_fd, config.pid_file);
+    // Handle PID file cleanup based on mode
+    if (daemon_mode) {
+        // In daemon mode, call cleanup_daemon to handle the PID file
+        cleanup_daemon();
+    } else if (pid_fd >= 0) {
+        // In normal mode, remove the PID file directly
+        remove_pid_file(pid_fd, config.pid_file);
+    }
 
+    log_info("Cleanup complete, shutting down");
+    
     // Shutdown logging
     shutdown_logger();
 
