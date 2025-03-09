@@ -22,7 +22,6 @@ function loadHeader(activePageId) {
                 <li><a href="streams.html" id="nav-streams" ${activePageId === 'nav-streams' ? 'class="active"' : ''}>Streams</a></li>
                 <li><a href="settings.html" id="nav-settings" ${activePageId === 'nav-settings' ? 'class="active"' : ''}>Settings</a></li>
                 <li><a href="system.html" id="nav-system" ${activePageId === 'nav-system' ? 'class="active"' : ''}>System</a></li>
-                <li><a href="debug.html" id="nav-debug" ${activePageId === 'nav-debug' ? 'class="active"' : ''}>Debug</a></li>
             </ul>
         </nav>
         <div class="user-menu">

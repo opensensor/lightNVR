@@ -12,6 +12,7 @@
 
 #include "database/database_manager.h"
 #include "core/logger.h"
+#include "core/config.h"
 
 // Database handle
 static sqlite3 *db = NULL;
@@ -141,10 +142,36 @@ int init_database(const char *db_path) {
         "codec TEXT,"
         "is_complete INTEGER DEFAULT 0"
         ");";
+        
+    // Create streams table for storing stream configurations
+    const char *create_streams_table = 
+        "CREATE TABLE IF NOT EXISTS streams ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "name TEXT NOT NULL UNIQUE,"
+        "url TEXT NOT NULL,"
+        "enabled INTEGER DEFAULT 1,"
+        "width INTEGER DEFAULT 1280,"
+        "height INTEGER DEFAULT 720,"
+        "fps INTEGER DEFAULT 30,"
+        "codec TEXT DEFAULT 'h264',"
+        "priority INTEGER DEFAULT 5,"
+        "record INTEGER DEFAULT 1,"
+        "segment_duration INTEGER DEFAULT 900"
+        ");";
     
     rc = sqlite3_exec(db, create_recordings_table, NULL, NULL, &err_msg);
     if (rc != SQLITE_OK) {
         log_error("Failed to create recordings table: %s", err_msg);
+        sqlite3_free(err_msg);
+        sqlite3_close(db);
+        db = NULL;
+        return -1;
+    }
+    
+    // Create streams table
+    rc = sqlite3_exec(db, create_streams_table, NULL, NULL, &err_msg);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to create streams table: %s", err_msg);
         sqlite3_free(err_msg);
         sqlite3_close(db);
         db = NULL;
@@ -158,7 +185,8 @@ int init_database(const char *db_path) {
         "CREATE INDEX IF NOT EXISTS idx_events_stream ON events (stream_name);"
         "CREATE INDEX IF NOT EXISTS idx_recordings_start_time ON recordings (start_time);"
         "CREATE INDEX IF NOT EXISTS idx_recordings_end_time ON recordings (end_time);"
-        "CREATE INDEX IF NOT EXISTS idx_recordings_stream ON recordings (stream_name);";
+        "CREATE INDEX IF NOT EXISTS idx_recordings_stream ON recordings (stream_name);"
+        "CREATE INDEX IF NOT EXISTS idx_streams_name ON streams (name);";
     
     rc = sqlite3_exec(db, create_indexes, NULL, NULL, &err_msg);
     if (rc != SQLITE_OK) {
@@ -969,4 +997,371 @@ int check_database_integrity(void) {
     pthread_mutex_unlock(&db_mutex);
     
     return result;
+}
+
+/**
+ * Add a stream configuration to the database
+ * 
+ * @param stream Stream configuration to add
+ * @return Stream ID on success, 0 on failure
+ */
+uint64_t add_stream_config(const stream_config_t *stream) {
+    int rc;
+    sqlite3_stmt *stmt;
+    uint64_t stream_id = 0;
+    
+    if (!db) {
+        log_error("Database not initialized");
+        return 0;
+    }
+    
+    if (!stream) {
+        log_error("Stream configuration is required");
+        return 0;
+    }
+    
+    pthread_mutex_lock(&db_mutex);
+    
+    const char *sql = "INSERT INTO streams (name, url, enabled, width, height, fps, codec, priority, record, segment_duration) "
+                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+    
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(&db_mutex);
+        return 0;
+    }
+    
+    // Bind parameters
+    sqlite3_bind_text(stmt, 1, stream->name, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, stream->url, -1, SQLITE_STATIC);
+    sqlite3_bind_int(stmt, 3, stream->enabled ? 1 : 0);
+    sqlite3_bind_int(stmt, 4, stream->width);
+    sqlite3_bind_int(stmt, 5, stream->height);
+    sqlite3_bind_int(stmt, 6, stream->fps);
+    sqlite3_bind_text(stmt, 7, stream->codec, -1, SQLITE_STATIC);
+    sqlite3_bind_int(stmt, 8, stream->priority);
+    sqlite3_bind_int(stmt, 9, stream->record ? 1 : 0);
+    sqlite3_bind_int(stmt, 10, stream->segment_duration);
+    
+    // Execute statement
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE) {
+        log_error("Failed to add stream configuration: %s", sqlite3_errmsg(db));
+    } else {
+        stream_id = (uint64_t)sqlite3_last_insert_rowid(db);
+        log_debug("Added stream configuration with ID %llu", (unsigned long long)stream_id);
+    }
+    
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(&db_mutex);
+    
+    return stream_id;
+}
+
+/**
+ * Update a stream configuration in the database
+ * 
+ * @param name Stream name to update
+ * @param stream Updated stream configuration
+ * @return 0 on success, non-zero on failure
+ */
+int update_stream_config(const char *name, const stream_config_t *stream) {
+    int rc;
+    sqlite3_stmt *stmt;
+    
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+    
+    if (!name || !stream) {
+        log_error("Stream name and configuration are required");
+        return -1;
+    }
+    
+    pthread_mutex_lock(&db_mutex);
+    
+    const char *sql = "UPDATE streams SET "
+                      "name = ?, url = ?, enabled = ?, width = ?, height = ?, "
+                      "fps = ?, codec = ?, priority = ?, record = ?, segment_duration = ? "
+                      "WHERE name = ?;";
+    
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(&db_mutex);
+        return -1;
+    }
+    
+    // Bind parameters
+    sqlite3_bind_text(stmt, 1, stream->name, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, stream->url, -1, SQLITE_STATIC);
+    sqlite3_bind_int(stmt, 3, stream->enabled ? 1 : 0);
+    sqlite3_bind_int(stmt, 4, stream->width);
+    sqlite3_bind_int(stmt, 5, stream->height);
+    sqlite3_bind_int(stmt, 6, stream->fps);
+    sqlite3_bind_text(stmt, 7, stream->codec, -1, SQLITE_STATIC);
+    sqlite3_bind_int(stmt, 8, stream->priority);
+    sqlite3_bind_int(stmt, 9, stream->record ? 1 : 0);
+    sqlite3_bind_int(stmt, 10, stream->segment_duration);
+    sqlite3_bind_text(stmt, 11, name, -1, SQLITE_STATIC);
+    
+    // Execute statement
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE) {
+        log_error("Failed to update stream configuration: %s", sqlite3_errmsg(db));
+        sqlite3_finalize(stmt);
+        pthread_mutex_unlock(&db_mutex);
+        return -1;
+    }
+    
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(&db_mutex);
+    
+    return 0;
+}
+
+/**
+ * Delete a stream configuration from the database
+ * 
+ * @param name Stream name to delete
+ * @return 0 on success, non-zero on failure
+ */
+int delete_stream_config(const char *name) {
+    int rc;
+    sqlite3_stmt *stmt;
+    
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+    
+    if (!name) {
+        log_error("Stream name is required");
+        return -1;
+    }
+    
+    pthread_mutex_lock(&db_mutex);
+    
+    const char *sql = "DELETE FROM streams WHERE name = ?;";
+    
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(&db_mutex);
+        return -1;
+    }
+    
+    // Bind parameters
+    sqlite3_bind_text(stmt, 1, name, -1, SQLITE_STATIC);
+    
+    // Execute statement
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE) {
+        log_error("Failed to delete stream configuration: %s", sqlite3_errmsg(db));
+        sqlite3_finalize(stmt);
+        pthread_mutex_unlock(&db_mutex);
+        return -1;
+    }
+    
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(&db_mutex);
+    
+    return 0;
+}
+
+/**
+ * Get a stream configuration from the database
+ * 
+ * @param name Stream name to get
+ * @param stream Stream configuration to fill
+ * @return 0 on success, non-zero on failure
+ */
+int get_stream_config_by_name(const char *name, stream_config_t *stream) {
+    int rc;
+    sqlite3_stmt *stmt;
+    int result = -1;
+    
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+    
+    if (!name || !stream) {
+        log_error("Stream name and configuration pointer are required");
+        return -1;
+    }
+    
+    pthread_mutex_lock(&db_mutex);
+    
+    const char *sql = "SELECT name, url, enabled, width, height, fps, codec, priority, record, segment_duration "
+                      "FROM streams WHERE name = ?;";
+    
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(&db_mutex);
+        return -1;
+    }
+    
+    // Bind parameters
+    sqlite3_bind_text(stmt, 1, name, -1, SQLITE_STATIC);
+    
+    // Execute query and fetch result
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char *stream_name = (const char *)sqlite3_column_text(stmt, 0);
+        if (stream_name) {
+            strncpy(stream->name, stream_name, MAX_STREAM_NAME - 1);
+            stream->name[MAX_STREAM_NAME - 1] = '\0';
+        } else {
+            stream->name[0] = '\0';
+        }
+        
+        const char *url = (const char *)sqlite3_column_text(stmt, 1);
+        if (url) {
+            strncpy(stream->url, url, MAX_URL_LENGTH - 1);
+            stream->url[MAX_URL_LENGTH - 1] = '\0';
+        } else {
+            stream->url[0] = '\0';
+        }
+        
+        stream->enabled = sqlite3_column_int(stmt, 2) != 0;
+        stream->width = sqlite3_column_int(stmt, 3);
+        stream->height = sqlite3_column_int(stmt, 4);
+        stream->fps = sqlite3_column_int(stmt, 5);
+        
+        const char *codec = (const char *)sqlite3_column_text(stmt, 6);
+        if (codec) {
+            strncpy(stream->codec, codec, sizeof(stream->codec) - 1);
+            stream->codec[sizeof(stream->codec) - 1] = '\0';
+        } else {
+            stream->codec[0] = '\0';
+        }
+        
+        stream->priority = sqlite3_column_int(stmt, 7);
+        stream->record = sqlite3_column_int(stmt, 8) != 0;
+        stream->segment_duration = sqlite3_column_int(stmt, 9);
+        
+        result = 0; // Success
+    }
+    
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(&db_mutex);
+    
+    return result;
+}
+
+/**
+ * Get all stream configurations from the database
+ * 
+ * @param streams Array to fill with stream configurations
+ * @param max_count Maximum number of streams to return
+ * @return Number of streams found, or -1 on error
+ */
+int get_all_stream_configs(stream_config_t *streams, int max_count) {
+    int rc;
+    sqlite3_stmt *stmt;
+    int count = 0;
+    
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+    
+    if (!streams || max_count <= 0) {
+        log_error("Invalid parameters for get_all_stream_configs");
+        return -1;
+    }
+    
+    pthread_mutex_lock(&db_mutex);
+    
+    const char *sql = "SELECT name, url, enabled, width, height, fps, codec, priority, record, segment_duration "
+                      "FROM streams ORDER BY name;";
+    
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(&db_mutex);
+        return -1;
+    }
+    
+    // Execute query and fetch results
+    while (sqlite3_step(stmt) == SQLITE_ROW && count < max_count) {
+        const char *name = (const char *)sqlite3_column_text(stmt, 0);
+        if (name) {
+            strncpy(streams[count].name, name, MAX_STREAM_NAME - 1);
+            streams[count].name[MAX_STREAM_NAME - 1] = '\0';
+        } else {
+            streams[count].name[0] = '\0';
+        }
+        
+        const char *url = (const char *)sqlite3_column_text(stmt, 1);
+        if (url) {
+            strncpy(streams[count].url, url, MAX_URL_LENGTH - 1);
+            streams[count].url[MAX_URL_LENGTH - 1] = '\0';
+        } else {
+            streams[count].url[0] = '\0';
+        }
+        
+        streams[count].enabled = sqlite3_column_int(stmt, 2) != 0;
+        streams[count].width = sqlite3_column_int(stmt, 3);
+        streams[count].height = sqlite3_column_int(stmt, 4);
+        streams[count].fps = sqlite3_column_int(stmt, 5);
+        
+        const char *codec = (const char *)sqlite3_column_text(stmt, 6);
+        if (codec) {
+            strncpy(streams[count].codec, codec, sizeof(streams[count].codec) - 1);
+            streams[count].codec[sizeof(streams[count].codec) - 1] = '\0';
+        } else {
+            streams[count].codec[0] = '\0';
+        }
+        
+        streams[count].priority = sqlite3_column_int(stmt, 7);
+        streams[count].record = sqlite3_column_int(stmt, 8) != 0;
+        streams[count].segment_duration = sqlite3_column_int(stmt, 9);
+        
+        count++;
+    }
+    
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(&db_mutex);
+    
+    return count;
+}
+
+/**
+ * Count the number of stream configurations in the database
+ * 
+ * @return Number of streams, or -1 on error
+ */
+int count_stream_configs(void) {
+    int rc;
+    sqlite3_stmt *stmt;
+    int count = -1;
+    
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+    
+    pthread_mutex_lock(&db_mutex);
+    
+    const char *sql = "SELECT COUNT(*) FROM streams;";
+    
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(&db_mutex);
+        return -1;
+    }
+    
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        count = sqlite3_column_int(stmt, 0);
+    }
+    
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(&db_mutex);
+    
+    return count;
 }

@@ -114,4 +114,20 @@ int validate_config(const config_t *config);
  */
 void print_config(const config_t *config);
 
+/**
+ * Load stream configurations from database
+ * 
+ * @param config Pointer to config structure to fill with stream configurations
+ * @return Number of stream configurations loaded, or -1 on error
+ */
+int load_stream_configs(config_t *config);
+
+/**
+ * Save stream configurations to database
+ * 
+ * @param config Pointer to config structure containing stream configurations to save
+ * @return Number of stream configurations saved, or -1 on error
+ */
+int save_stream_configs(const config_t *config);
+
 #endif // LIGHTNVR_CONFIG_H

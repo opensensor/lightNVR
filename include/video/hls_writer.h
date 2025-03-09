@@ -4,8 +4,9 @@
 #include <time.h>
 #include <libavformat/avformat.h>
 
+#include "core/config.h"
+
 #define MAX_PATH_LENGTH 1024
-#define MAX_STREAM_NAME 128
 
 // Forward declaration for the DTS tracking structure
 typedef struct {

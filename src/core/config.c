@@ -10,6 +10,7 @@
 
 #include "../../include/core/config.h"
 #include "../../include/core/logger.h"
+#include "../../include/database/database_manager.h"
 
 // Default configuration values
 void load_default_config(config_t *config) {
@@ -250,42 +251,113 @@ static int load_config_from_file(const char *filename, config_t *config) {
                 config->hw_accel_enabled = (strcmp(start, "true") == 0 || strcmp(start, "1") == 0);
             } else if (strcmp(key, "hw_accel_device") == 0) {
                 strncpy(config->hw_accel_device, start, 31);
-            } else if (strncmp(key, "stream.", 7) == 0) {
-                // Stream configuration
-                char stream_key[256];
-                int stream_index;
-                
-                if (sscanf(key, "stream.%d.%255s", &stream_index, stream_key) == 2) {
-                    if (stream_index >= 0 && stream_index < MAX_STREAMS) {
-                        if (strcmp(stream_key, "name") == 0) {
-                            strncpy(config->streams[stream_index].name, start, MAX_STREAM_NAME - 1);
-                        } else if (strcmp(stream_key, "url") == 0) {
-                            strncpy(config->streams[stream_index].url, start, MAX_URL_LENGTH - 1);
-                        } else if (strcmp(stream_key, "enabled") == 0) {
-                            config->streams[stream_index].enabled = (strcmp(start, "true") == 0 || strcmp(start, "1") == 0);
-                        } else if (strcmp(stream_key, "width") == 0) {
-                            config->streams[stream_index].width = atoi(start);
-                        } else if (strcmp(stream_key, "height") == 0) {
-                            config->streams[stream_index].height = atoi(start);
-                        } else if (strcmp(stream_key, "fps") == 0) {
-                            config->streams[stream_index].fps = atoi(start);
-                        } else if (strcmp(stream_key, "codec") == 0) {
-                            strncpy(config->streams[stream_index].codec, start, 15);
-                        } else if (strcmp(stream_key, "priority") == 0) {
-                            config->streams[stream_index].priority = atoi(start);
-                        } else if (strcmp(stream_key, "record") == 0) {
-                            config->streams[stream_index].record = (strcmp(start, "true") == 0 || strcmp(start, "1") == 0);
-                        } else if (strcmp(stream_key, "segment_duration") == 0) {
-                            config->streams[stream_index].segment_duration = atoi(start);
-                        }
-                    }
-                }
             }
+            // Note: Stream configurations are now stored in the database
+            // We no longer process stream.X.* entries from the config file
         }
     }
     
     fclose(file);
     return 0;
+}
+
+// Load stream configurations from database
+int load_stream_configs(config_t *config) {
+    if (!config) return -1;
+    
+    // Clear existing stream configurations
+    memset(config->streams, 0, sizeof(stream_config_t) * MAX_STREAMS);
+    
+    // Get stream count from database
+    int count = count_stream_configs();
+    if (count < 0) {
+        log_error("Failed to count stream configurations in database");
+        return -1;
+    }
+    
+    if (count == 0) {
+        log_info("No stream configurations found in database");
+        return 0;
+    }
+    
+    // Get stream configurations from database
+    stream_config_t db_streams[MAX_STREAMS];
+    int loaded = get_all_stream_configs(db_streams, MAX_STREAMS);
+    if (loaded < 0) {
+        log_error("Failed to load stream configurations from database");
+        return -1;
+    }
+    
+    // Copy stream configurations to config
+    for (int i = 0; i < loaded && i < config->max_streams; i++) {
+        memcpy(&config->streams[i], &db_streams[i], sizeof(stream_config_t));
+    }
+    
+    log_info("Loaded %d stream configurations from database", loaded);
+    return loaded;
+}
+
+// Save stream configurations to database
+int save_stream_configs(const config_t *config) {
+    if (!config) return -1;
+    
+    int saved = 0;
+    
+    // Begin transaction
+    if (begin_transaction() != 0) {
+        log_error("Failed to begin transaction for saving stream configurations");
+        return -1;
+    }
+    
+    // Get existing stream configurations from database
+    int count = count_stream_configs();
+    if (count < 0) {
+        log_error("Failed to count stream configurations in database");
+        rollback_transaction();
+        return -1;
+    }
+    
+    if (count > 0) {
+        // Get existing stream names
+        stream_config_t db_streams[MAX_STREAMS];
+        int loaded = get_all_stream_configs(db_streams, MAX_STREAMS);
+        if (loaded < 0) {
+            log_error("Failed to load stream configurations from database");
+            rollback_transaction();
+            return -1;
+        }
+        
+        // Delete existing stream configurations
+        for (int i = 0; i < loaded; i++) {
+            if (delete_stream_config(db_streams[i].name) != 0) {
+                log_error("Failed to delete stream configuration: %s", db_streams[i].name);
+                rollback_transaction();
+                return -1;
+            }
+        }
+    }
+    
+    // Add stream configurations to database
+    for (int i = 0; i < config->max_streams; i++) {
+        if (strlen(config->streams[i].name) > 0) {
+            if (add_stream_config(&config->streams[i]) == 0) {
+                log_error("Failed to add stream configuration: %s", config->streams[i].name);
+                rollback_transaction();
+                return -1;
+            }
+            saved++;
+        }
+    }
+    
+    // Commit transaction
+    if (commit_transaction() != 0) {
+        log_error("Failed to commit transaction for saving stream configurations");
+        rollback_transaction();
+        return -1;
+    }
+    
+    log_info("Saved %d stream configurations to database", saved);
+    return saved;
 }
 
 // Load configuration
@@ -345,6 +417,18 @@ int load_config(config_t *config) {
         return -1;
     }
     
+    // Initialize database
+    if (init_database(config->db_path) != 0) {
+        log_error("Failed to initialize database");
+        return -1;
+    }
+    
+    // Load stream configurations from database
+    if (load_stream_configs(config) < 0) {
+        log_error("Failed to load stream configurations from database");
+        // Continue anyway, we'll use empty stream configurations
+    }
+    
     return 0;
 }
 
@@ -400,25 +484,18 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "hw_accel_enabled=%s\n", config->hw_accel_enabled ? "true" : "false");
     fprintf(file, "hw_accel_device=%s\n", config->hw_accel_device);
     
-    // Write stream configurations
+    // Note: Stream configurations are now stored in the database
     fprintf(file, "\n# Stream Configurations\n");
-    for (int i = 0; i < config->max_streams; i++) {
-        if (strlen(config->streams[i].name) > 0) {
-            fprintf(file, "\n# Stream %d\n", i);
-            fprintf(file, "stream.%d.name=%s\n", i, config->streams[i].name);
-            fprintf(file, "stream.%d.url=%s\n", i, config->streams[i].url);
-            fprintf(file, "stream.%d.enabled=%s\n", i, config->streams[i].enabled ? "true" : "false");
-            fprintf(file, "stream.%d.width=%d\n", i, config->streams[i].width);
-            fprintf(file, "stream.%d.height=%d\n", i, config->streams[i].height);
-            fprintf(file, "stream.%d.fps=%d\n", i, config->streams[i].fps);
-            fprintf(file, "stream.%d.codec=%s\n", i, config->streams[i].codec);
-            fprintf(file, "stream.%d.priority=%d\n", i, config->streams[i].priority);
-            fprintf(file, "stream.%d.record=%s\n", i, config->streams[i].record ? "true" : "false");
-            fprintf(file, "stream.%d.segment_duration=%d\n", i, config->streams[i].segment_duration);
-        }
-    }
+    fprintf(file, "# Note: Stream configurations are now stored in the database\n");
     
     fclose(file);
+    
+    // Save stream configurations to database
+    if (save_stream_configs(config) < 0) {
+        log_error("Failed to save stream configurations to database");
+        return -1;
+    }
+    
     return 0;
 }
 

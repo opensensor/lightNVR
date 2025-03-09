@@ -332,10 +332,25 @@ function playRecording(recordingId) {
     const videoModal = document.getElementById('video-modal');
     const videoPlayer = document.getElementById('video-player');
     const videoTitle = document.getElementById('video-modal-title');
+    const videoCloseBtn = document.getElementById('video-close-btn');
+    const modalCloseBtn = videoModal?.querySelector('.close');
 
     if (!videoModal || !videoPlayer || !videoTitle) {
         console.error('Video modal elements not found');
         return;
+    }
+
+    // Set up close button event handlers
+    if (videoCloseBtn) {
+        videoCloseBtn.onclick = function() {
+            closeVideoModal();
+        };
+    }
+    
+    if (modalCloseBtn) {
+        modalCloseBtn.onclick = function() {
+            closeVideoModal();
+        };
     }
 
     // Show loading state

@@ -7,26 +7,16 @@
 #include <unistd.h>
 #include <ctype.h>
 
-#include "web/api_handlers_streams.h"
-#include "web/api_handlers_common.h"
 #include "core/config.h"
 #include "core/logger.h"
+#include "database/database_manager.h"
 #include "video/stream_manager.h"
 #include "video/streams.h"
 #include "web/request_response.h"
+#include "web/api_handlers_streams.h"
+#include "web/api_handlers_common.h"
 
-// Define a local config variable to work with
-static config_t local_config;
-
-// Forward declaration of helper function to get current configuration
-static config_t* get_current_config(void);
-
-// Helper function to get current configuration
-static config_t* get_current_config(void) {
-    // This should return a reference to the actual global config
-    extern config_t global_config;  // Declared in streams.c
-    return &global_config;
-}
+// Forward declarations of helper functions
 
 // Forward declarations of helper functions
 static char* create_stream_json(const stream_config_t *stream);
@@ -147,8 +137,7 @@ void handle_get_stream(const http_request_t *request, http_response_t *response)
  * and duplicate prevention
  */
 void handle_post_stream(const http_request_t *request, http_response_t *response) {
-    // Copy current config settings from global config
-    memcpy(&local_config, get_current_config(), sizeof(config_t));
+    // No need to copy config settings anymore, using database
 
     // Ensure we have a request body
     if (!request->body || request->content_length == 0) {
@@ -205,32 +194,20 @@ void handle_post_stream(const http_request_t *request, http_response_t *response
     }
 
     // Check if we've reached the maximum number of streams
-    int stream_count = 0;
-    for (int i = 0; i < local_config.max_streams; i++) {
-        if (local_config.streams[i].name[0] != '\0') {
-            stream_count++;
-        }
-    }
-
-    if (stream_count >= local_config.max_streams) {
-        log_error("Maximum number of streams reached (%d)", local_config.max_streams);
-        create_json_response(response, 507, "{\"error\": \"Maximum number of streams reached\"}");
+    int stream_count = count_stream_configs();
+    if (stream_count < 0) {
+        log_error("Failed to count stream configurations");
+        create_json_response(response, 500, "{\"error\": \"Failed to count stream configurations\"}");
         return;
     }
-
-    // Find an empty slot in the configuration
-    int empty_slot = -1;
-    for (int i = 0; i < local_config.max_streams; i++) {
-        if (local_config.streams[i].name[0] == '\0') {
-            empty_slot = i;
-            break;
-        }
-    }
-
-    if (empty_slot == -1) {
-        // This shouldn't happen if we checked stream_count correctly above
-        log_error("No empty slot found in configuration despite count check");
-        create_json_response(response, 500, "{\"error\": \"Internal configuration error\"}");
+    
+    // Get max streams from global config
+    extern config_t global_config;
+    int max_streams = global_config.max_streams;
+    
+    if (stream_count >= max_streams) {
+        log_error("Maximum number of streams reached (%d)", max_streams);
+        create_json_response(response, 507, "{\"error\": \"Maximum number of streams reached\"}");
         return;
     }
 
@@ -242,18 +219,7 @@ void handle_post_stream(const http_request_t *request, http_response_t *response
         return;
     }
 
-    log_info("Stream added successfully: %s (index: %d)", config.name, empty_slot);
-
-    // Now update the configuration
-    memcpy(&local_config.streams[empty_slot], &config, sizeof(stream_config_t));
-
-    // Save configuration to ensure the new stream is persisted
-    if (save_config(&local_config, "/etc/lightnvr/lightnvr.conf") != 0) {
-        log_warn("Failed to save configuration after adding stream");
-        // We won't fail the request, but log the warning
-    } else {
-        log_info("Configuration saved with new stream");
-    }
+    log_info("Stream added successfully: %s", config.name);
 
     // Start the stream if enabled
     if (config.enabled) {
@@ -281,8 +247,8 @@ void handle_post_stream(const http_request_t *request, http_response_t *response
     // Create success response
     char response_json[256];
     snprintf(response_json, sizeof(response_json),
-             "{\"success\": true, \"name\": \"%s\", \"index\": %d}",
-             config.name, empty_slot);
+             "{\"success\": true, \"name\": \"%s\"}",
+             config.name);
     create_json_response(response, 201, response_json);
 
     log_info("Stream creation completed successfully: %s", config.name);
@@ -292,8 +258,7 @@ void handle_post_stream(const http_request_t *request, http_response_t *response
  * Improved handler for updating a stream that correctly handles URL-encoded identifiers
  */
 void handle_put_stream(const http_request_t *request, http_response_t *response) {
-    // Copy current config settings from global config
-    memcpy(&local_config, get_current_config(), sizeof(config_t));
+    // No need to copy config settings anymore, using database
 
     // Extract stream identifier from the URL
     const char *path = request->path;
@@ -407,7 +372,7 @@ void handle_put_stream(const http_request_t *request, http_response_t *response)
 
     // Update the stream configuration
     log_info("Updating stream configuration for: %s", current_config.name);
-    if (update_stream_config(stream, &config) != 0) {
+    if (update_stream_config(current_config.name, &config) != 0) {
         log_error("Failed to update stream configuration");
         create_json_response(response, 500, "{\"error\": \"Failed to update stream configuration\"}");
         return;
@@ -434,40 +399,7 @@ void handle_put_stream(const http_request_t *request, http_response_t *response)
         log_info("Stream is disabled, not starting it: %s", config.name);
     }
 
-    // Update the stream in local_config.streams
-    bool stream_updated_in_config = false;
-    for (int i = 0; i < local_config.max_streams; i++) {
-        if (strcmp(local_config.streams[i].name, current_config.name) == 0) {
-            // Found the stream in config
-            log_info("Updating stream '%s' in configuration at index %d", config.name, i);
-            memcpy(&local_config.streams[i], &config, sizeof(stream_config_t));
-            stream_updated_in_config = true;
-            break;
-        }
-    }
-
-    if (!stream_updated_in_config) {
-        log_warn("Couldn't find stream '%s' in config, checking for empty slot", current_config.name);
-        // If we didn't find the stream in config, try to add it
-        for (int i = 0; i < local_config.max_streams; i++) {
-            if (local_config.streams[i].name[0] == '\0') {
-                log_info("Added missing stream '%s' to configuration at index %d", config.name, i);
-                memcpy(&local_config.streams[i], &config, sizeof(stream_config_t));
-                stream_updated_in_config = true;
-                break;
-            }
-        }
-
-        if (!stream_updated_in_config) {
-            log_warn("Couldn't find stream '%s' or empty slot in configuration", current_config.name);
-        }
-    }
-
-    // Save configuration to ensure the changes are persisted
-    if (save_config(&local_config, "/etc/lightnvr/lightnvr.conf") != 0) {
-        log_warn("Failed to save configuration after updating stream");
-        // Continue anyway, the stream is updated in memory
-    }
+    // Stream configuration is updated in the database by update_stream_config
 
     // Create success response
     char response_json[256];
@@ -483,8 +415,7 @@ void handle_put_stream(const http_request_t *request, http_response_t *response)
  * Improved handler for deleting a stream that correctly handles URL-encoded identifiers
  */
 void handle_delete_stream(const http_request_t *request, http_response_t *response) {
-    // Copy current config settings from global config
-    memcpy(&local_config, get_current_config(), sizeof(config_t));
+    // No need to copy config settings anymore, using database
 
     // Extract stream identifier from the URL
     const char *path = request->path;
@@ -571,27 +502,7 @@ void handle_delete_stream(const http_request_t *request, http_response_t *respon
         return;
     }
 
-    // Remove the stream from local_config.streams
-    bool stream_removed_from_config = false;
-    for (int i = 0; i < local_config.max_streams; i++) {
-        if (strcmp(local_config.streams[i].name, stream_name) == 0) {
-            // Found the stream in config, clear it
-            log_info("Removing stream '%s' from configuration at index %d", stream_name, i);
-            memset(&local_config.streams[i], 0, sizeof(stream_config_t));
-            stream_removed_from_config = true;
-            break;
-        }
-    }
-
-    if (!stream_removed_from_config) {
-        log_warn("Couldn't find stream '%s' in configuration to remove", stream_name);
-    }
-
-    // Save configuration to ensure the changes are persisted
-    if (save_config(&local_config, "/etc/lightnvr/lightnvr.conf") != 0) {
-        log_warn("Failed to save configuration after removing stream");
-        // Continue anyway, the stream is removed from memory
-    }
+    // Stream configuration is removed from the database by remove_stream
 
     // Create success response
     char response_json[256];
@@ -692,12 +603,11 @@ static char* create_stream_json(const stream_config_t *stream) {
  * Create a JSON array of all streams
  */
 static char* create_streams_json_array() {
-    // Copy current config settings from global config
-    memcpy(&local_config, get_current_config(), sizeof(config_t));
+    // Get all stream configurations from database
+    stream_config_t db_streams[MAX_STREAMS];
+    int count = get_all_stream_configs(db_streams, MAX_STREAMS);
     
-    // Determine total size needed
-    int count = get_total_stream_count();
-    if (count == 0) {
+    if (count <= 0) {
         // Return empty array
         char *json = malloc(32);
         if (!json) return NULL;
@@ -713,20 +623,14 @@ static char* create_streams_json_array() {
     int pos = 1;
     
     // Iterate through all streams
-    for (int i = 0; i < local_config.max_streams; i++) {
-        stream_handle_t stream = get_stream_by_index(i);
-        if (!stream) continue;
-        
-        stream_config_t config;
-        if (get_stream_config(stream, &config) != 0) continue;
-        
+    for (int i = 0; i < count; i++) {
         // Add comma if not first element
         if (pos > 1) {
             json[pos++] = ',';
         }
         
         // Create stream JSON
-        char *stream_json = create_stream_json(&config);
+        char *stream_json = create_stream_json(&db_streams[i]);
         if (!stream_json) continue;
         
         // Append to array

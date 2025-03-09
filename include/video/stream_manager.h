@@ -102,15 +102,6 @@ int get_stream_stats(stream_handle_t handle, stream_stats_t *stats);
 int get_stream_config(stream_handle_t handle, stream_config_t *config);
 
 /**
- * Update stream configuration
- * 
- * @param handle Stream handle
- * @param config New stream configuration
- * @return 0 on success, non-zero on failure
- */
-int update_stream_config(stream_handle_t handle, const stream_config_t *config);
-
-/**
  * Get stream by index
  * 
  * @param index Stream index (0-based)

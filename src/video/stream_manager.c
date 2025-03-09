@@ -8,6 +8,7 @@
 #include "video/stream_manager.h"
 #include "core/logger.h"
 #include "storage/storage_manager.h"
+#include "database/database_manager.h"
 
 // Stream handle structure
 struct stream_handle_s {
@@ -38,6 +39,50 @@ static struct {
     .peak_memory = 0
 };
 
+
+// Internal function to add a stream without adding to database
+static stream_handle_t add_stream_internal(const stream_config_t *config) {
+    if (!config) {
+        log_error("Invalid stream configuration");
+        return NULL;
+    }
+
+    pthread_mutex_lock(&stream_manager.mutex);
+
+    // Find an empty slot
+    int slot = -1;
+    for (int i = 0; i < stream_manager.max_streams; i++) {
+        if (stream_manager.streams[i].id == 0) {
+            slot = i;
+            break;
+        }
+    }
+
+    if (slot < 0) {
+        log_error("No available stream slots");
+        pthread_mutex_unlock(&stream_manager.mutex);
+        return NULL;
+    }
+
+    // Initialize stream
+    stream_manager.streams[slot].id = slot + 1;
+    stream_manager.streams[slot].config = *config;
+    stream_manager.streams[slot].status = STREAM_STATUS_STOPPED;
+    memset(&stream_manager.streams[slot].stats, 0, sizeof(stream_stats_t));
+    stream_manager.streams[slot].thread_running = false;
+    stream_manager.streams[slot].recording_handle = NULL;
+
+    stream_manager.total_streams++;
+
+    pthread_mutex_unlock(&stream_manager.mutex);
+
+    // Internal function, no database update
+
+    log_info("Added stream: %s", config->name);
+    return &stream_manager.streams[slot];
+}
+
+
 // Initialize the stream manager
 int init_stream_manager(int max_streams) {
     if (max_streams <= 0) {
@@ -62,6 +107,19 @@ int init_stream_manager(int max_streams) {
     stream_manager.max_streams = max_streams;
     stream_manager.used_memory = max_streams * sizeof(struct stream_handle_s);
     stream_manager.peak_memory = stream_manager.used_memory;
+    
+    // Load stream configurations from database
+    stream_config_t db_streams[MAX_STREAMS];
+    int count = get_all_stream_configs(db_streams, max_streams);
+    if (count > 0) {
+        log_info("Loading %d stream configurations from database", count);
+        for (int i = 0; i < count && i < max_streams; i++) {
+            // Add each stream to the stream manager (internal only, don't add to DB again)
+            add_stream_internal(&db_streams[i]);
+        }
+    } else if (count < 0) {
+        log_warn("Failed to load stream configurations from database");
+    }
     
     log_info("Stream manager initialized with max streams: %d", max_streams);
     return 0;
@@ -98,52 +156,17 @@ void shutdown_stream_manager(void) {
 
 // Add a new stream
 stream_handle_t add_stream(const stream_config_t *config) {
-    if (!config) {
-        log_error("Invalid stream configuration");
-        return NULL;
-    }
+    // Add stream to internal data structure
+    stream_handle_t handle = add_stream_internal(config);
     
-    pthread_mutex_lock(&stream_manager.mutex);
-    
-    // Find an empty slot
-    int slot = -1;
-    for (int i = 0; i < stream_manager.max_streams; i++) {
-        if (stream_manager.streams[i].id == 0) {
-            slot = i;
-            break;
+    if (handle) {
+        // After successfully adding the stream, add it to the database
+        if (add_stream_config(config) == 0) {
+            log_warn("Failed to add stream configuration to database: %s", config->name);
         }
     }
     
-    if (slot < 0) {
-        log_error("No available stream slots");
-        pthread_mutex_unlock(&stream_manager.mutex);
-        return NULL;
-    }
-    
-    // Initialize stream
-    stream_manager.streams[slot].id = slot + 1;
-    stream_manager.streams[slot].config = *config;
-    stream_manager.streams[slot].status = STREAM_STATUS_STOPPED;
-    memset(&stream_manager.streams[slot].stats, 0, sizeof(stream_stats_t));
-    stream_manager.streams[slot].thread_running = false;
-    stream_manager.streams[slot].recording_handle = NULL;
-    
-    stream_manager.total_streams++;
-    
-    pthread_mutex_unlock(&stream_manager.mutex);
-
-    // After successfully adding the stream, update global config
-    extern config_t global_config;
-    for (int i = 0; i < global_config.max_streams; i++) {
-        if (global_config.streams[i].name[0] == '\0') {
-            // Found an empty slot
-            memcpy(&global_config.streams[i], config, sizeof(stream_config_t));
-            break;
-        }
-    }
-    
-    log_info("Added stream: %s", config->name);
-    return &stream_manager.streams[slot];
+    return handle;
 }
 
 // Start a stream
@@ -199,83 +222,6 @@ int get_stream_config(stream_handle_t handle, stream_config_t *config) {
     return 0;
 }
 
-// In src/video/stream_manager.c
-
-// Update stream configuration
-int update_stream_config(stream_handle_t handle, const stream_config_t *config) {
-    if (!handle || !config) {
-        log_error("Invalid parameters for update_stream_config");
-        return -1;
-    }
-
-    pthread_mutex_lock(&stream_manager.mutex);
-
-    // Find the stream slot index
-    int slot = handle->id - 1;
-    if (slot < 0 || slot >= stream_manager.max_streams) {
-        log_error("Invalid stream handle in update_stream_config");
-        pthread_mutex_unlock(&stream_manager.mutex);
-        return -1;
-    }
-
-    // Store old name for comparison
-    char old_name[MAX_STREAM_NAME];
-    strncpy(old_name, handle->config.name, MAX_STREAM_NAME - 1);
-    old_name[MAX_STREAM_NAME - 1] = '\0';
-
-    // Update the stream configuration
-    handle->config = *config;
-
-    // If the stream name changed, update any internal references
-    if (strcmp(old_name, config->name) != 0) {
-        log_info("Stream name changed from '%s' to '%s'", old_name, config->name);
-
-        // Update any internal mappings or references here if needed
-        // For example, if you maintain a name-to-stream map
-    }
-
-    pthread_mutex_unlock(&stream_manager.mutex);
-
-    // Update the global configuration to keep it in sync
-    extern config_t global_config;
-    bool config_updated = false;
-
-    // First look for the existing entry with the old name
-    for (int i = 0; i < global_config.max_streams; i++) {
-        if (strcmp(global_config.streams[i].name, old_name) == 0) {
-            // Found the entry, update it
-            memcpy(&global_config.streams[i], config, sizeof(stream_config_t));
-            config_updated = true;
-            break;
-        }
-    }
-
-    // If we didn't find an entry with the old name (rare case, possible inconsistency)
-    // Look for an empty slot to add the new config
-    if (!config_updated) {
-        for (int i = 0; i < global_config.max_streams; i++) {
-            if (global_config.streams[i].name[0] == '\0') {
-                memcpy(&global_config.streams[i], config, sizeof(stream_config_t));
-                config_updated = true;
-                break;
-            }
-        }
-    }
-
-    if (!config_updated) {
-        log_warn("Could not update stream '%s' in global config - no matching entry or free slot found", config->name);
-    } else {
-        // Save the updated configuration to file
-        // This ensures changes are persisted immediately and not lost if the service crashes
-        if (save_config(&global_config, "/etc/lightnvr/lightnvr.conf") != 0) {
-            log_warn("Failed to save configuration after updating stream");
-        }
-    }
-
-    log_info("Stream configuration updated: %s", config->name);
-    return 0;
-}
-
 // Remove a stream
 int remove_stream(stream_handle_t handle) {
     if (!handle) {
@@ -327,26 +273,9 @@ int remove_stream(stream_handle_t handle) {
 
     pthread_mutex_unlock(&stream_manager.mutex);
 
-    // Update the global configuration by removing the stream entry
-    extern config_t global_config;
-    bool found = false;
-
-    for (int i = 0; i < global_config.max_streams; i++) {
-        if (strcmp(global_config.streams[i].name, stream_name) == 0) {
-            // Found the stream to remove - clear its slot
-            memset(&global_config.streams[i], 0, sizeof(stream_config_t));
-            found = true;
-            break;
-        }
-    }
-
-    if (!found) {
-        log_warn("Stream '%s' not found in global config during removal", stream_name);
-    } else {
-        // Save configuration to persist the removal
-        if (save_config(&global_config, "/etc/lightnvr/lightnvr.conf") != 0) {
-            log_warn("Failed to save configuration after removing stream");
-        }
+    // Delete the stream configuration from the database
+    if (delete_stream_config(stream_name) != 0) {
+        log_warn("Failed to delete stream configuration from database: %s", stream_name);
     }
 
     log_info("Stream removed: %s", stream_name);
@@ -410,6 +339,12 @@ int set_stream_priority(stream_handle_t handle, int priority) {
     }
     
     handle->config.priority = priority;
+    
+    // Update the stream configuration in the database
+    if (update_stream_config(handle->config.name, &handle->config) != 0) {
+        log_warn("Failed to update stream priority in database: %s", handle->config.name);
+    }
+    
     return 0;
 }
 
@@ -420,6 +355,12 @@ int set_stream_recording(stream_handle_t handle, bool enable) {
     }
     
     handle->config.record = enable;
+    
+    // Update the stream configuration in the database
+    if (update_stream_config(handle->config.name, &handle->config) != 0) {
+        log_warn("Failed to update stream recording setting in database: %s", handle->config.name);
+    }
+    
     return 0;
 }
 

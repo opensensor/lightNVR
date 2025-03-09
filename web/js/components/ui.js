@@ -61,41 +61,12 @@ function setupModals() {
         });
     }
 
-    // Debug modal
-    const debugModal = document.getElementById('debug-modal');
-    const debugCloseBtn = document.getElementById('debug-close-btn');
-    const debugModalCloseBtn = debugModal?.querySelector('.close');
-    const debugRefreshBtn = document.getElementById('debug-refresh-btn');
-
-    // Close debug modal when close button is clicked
-    if (debugCloseBtn) {
-        debugCloseBtn.addEventListener('click', function() {
-            debugModal.style.display = 'none';
-        });
-    }
-
-    // Close debug modal when close button is clicked
-    if (debugModalCloseBtn) {
-        debugModalCloseBtn.addEventListener('click', function() {
-            debugModal.style.display = 'none';
-        });
-    }
-
-    // Refresh debug data when refresh button is clicked
-    if (debugRefreshBtn) {
-        debugRefreshBtn.addEventListener('click', function() {
-            refreshDebugData();
-        });
-    }
-
     // Close modals when clicking outside
     window.addEventListener('click', function(e) {
         if (e.target === streamModal) {
             streamModal.style.display = 'none';
         } else if (e.target === videoModal) {
             closeVideoModal();
-        } else if (e.target === debugModal) {
-            debugModal.style.display = 'none';
         }
     });
 }
@@ -119,47 +90,6 @@ function closeVideoModal() {
     if (videoModal) {
         videoModal.style.display = 'none';
     }
-}
-
-/**
- * Open debug modal and load data
- */
-function openDebugModal() {
-    const debugModal = document.getElementById('debug-modal');
-    if (!debugModal) return;
-
-    // Refresh debug data
-    refreshDebugData();
-
-    // Show modal
-    debugModal.style.display = 'block';
-}
-
-/**
- * Refresh debug data
- */
-function refreshDebugData() {
-    const debugOutput = document.getElementById('debug-output');
-    if (!debugOutput) return;
-
-    debugOutput.textContent = 'Loading debug data...';
-
-    // Simulate API call with delay
-    setTimeout(() => {
-        debugOutput.textContent = JSON.stringify({
-            database: {
-                version: '1.0.0',
-                size: '1.2 MB',
-                tables: ['streams', 'recordings', 'settings', 'logs'],
-                records: {
-                    streams: 2,
-                    recordings: 24,
-                    settings: 18,
-                    logs: 156
-                }
-            }
-        }, null, 2);
-    }, 500);
 }
 
 /**
