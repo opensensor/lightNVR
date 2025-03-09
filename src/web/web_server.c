@@ -236,6 +236,12 @@ int init_web_server(int port, const char *web_root) {
         sa.sa_handler = signal_handler;
         sigaction(SIGINT, &sa, NULL);
         sigaction(SIGTERM, &sa, NULL);
+    } else {
+        // In daemon mode, we still need to handle SIGPIPE
+        struct sigaction sa;
+        memset(&sa, 0, sizeof(sa));
+        sa.sa_handler = SIG_IGN;
+        sigaction(SIGPIPE, &sa, NULL);
     }
 
     // Ignore SIGPIPE

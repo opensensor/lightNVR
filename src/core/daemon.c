@@ -44,10 +44,7 @@ int init_daemon(const char *pid_file) {
         return -1;
     }
 
-// Ignore child signals
-signal(SIGCHLD, SIG_IGN);
-
-// Fork the process
+    // Fork the process
     pid_t pid = fork();
     if (pid < 0) {
         log_error("Failed to fork daemon process: %s", strerror(errno));
@@ -84,9 +81,10 @@ signal(SIGCHLD, SIG_IGN);
 
     // Close all open file descriptors except for logging
     int max_fd = sysconf(_SC_OPEN_MAX);
-    for (int i = 0; i < max_fd; i++) {
-        // Skip standard descriptors - we'll redirect them properly
-        if (i != STDIN_FILENO && i != STDOUT_FILENO && i != STDERR_FILENO) {
+    for (int i = 3; i < max_fd; i++) {
+        // Skip the server socket if it's already set up
+        extern int server_socket;  // From web_server.c
+        if (i != server_socket || server_socket < 0) {
             close(i);
         }
     }

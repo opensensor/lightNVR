@@ -113,8 +113,10 @@ After=network.target
 [Service]
 Type=forking
 PIDFile=/var/run/lightnvr.pid
-Environment="LD_LIBRARY_PATH=/usr/local/lib"
-Environment="FFMPEG_DATADIR=/usr/share/ffmpeg"
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="HOME=/root"
+Environment="PWD=/var/lib/lightnvr"
+WorkingDirectory=/var/lib/lightnvr
 ExecStart=/usr/local/bin/lightnvr -c /etc/lightnvr/lightnvr.conf -d
 Restart=on-failure
 RestartSec=5
