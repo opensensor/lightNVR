@@ -14,8 +14,8 @@
  */
 void register_api_handlers(void) {
     // Register settings API handlers
-    register_request_handler("/api/settings", "GET", handle_get_settings);
     register_request_handler("/api/settings", "POST", handle_post_settings);
+    register_request_handler("/api/settings", "GET", handle_get_settings);
 
     // Register stream API handlers
     register_request_handler("/api/streams", "GET", handle_get_streams);

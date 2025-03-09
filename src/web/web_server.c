@@ -831,24 +831,29 @@ int set_connection_timeout(int timeout_seconds) {
     return 0;
 }
 
-// Create a JSON response
+// Create a JSON response with improved error handling and logging
 int create_json_response(http_response_t *response, int status_code, const char *json_data) {
     if (!response || !json_data) {
         log_error("Invalid parameters for create_json_response");
         return -1;
     }
 
+    log_debug("Creating JSON response with status %d: %s", status_code, 
+             strlen(json_data) > 100 ? "data too long to log" : json_data);
+
     response->status_code = status_code;
     strncpy(response->content_type, "application/json", sizeof(response->content_type) - 1);
     response->content_type[sizeof(response->content_type) - 1] = '\0';
 
-    response->body = safe_strdup(json_data);
+    // Use standard strdup instead of safe_strdup if it's causing issues
+    response->body = strdup(json_data);
     if (!response->body) {
         log_error("Failed to allocate memory for response body");
         return -1;
     }
 
     response->body_length = strlen(json_data);
+    log_debug("JSON response created successfully, body length: %zu", response->body_length);
 
     return 0;
 }
