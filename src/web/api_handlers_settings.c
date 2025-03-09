@@ -18,30 +18,77 @@ static config_t* get_current_config(void);
 
 // Helper function to get current configuration
 static config_t* get_current_config(void) {
-    // This should return a reference to the actual global config
-    extern config_t global_config;  // Declared in streams.c
+    // The global config is declared in streams.c
+    extern config_t global_config;
+    
+    // Add defensive checks here
+    log_debug("Accessing global config structure");
+
+    // Make sure the memory is valid
+    if (global_config.web_port == 0) {
+        log_warn("Global config appears to be uninitialized (web_port is 0)");
+    }
+
+    // Could add more validation here if needed
+
+    // Return a pointer to the global config
     return &global_config;
 }
 
-/**
- * Handle GET request for settings
- */
 void handle_get_settings(const http_request_t *request, http_response_t *response) {
+    log_info("Processing settings request...");
+
     // Copy current config settings from global config
-    memcpy(&local_config, get_current_config(), sizeof(config_t));
-    
+    config_t *global_config = get_current_config();
+
+    if (!global_config) {
+        log_error("Failed to get global config - null pointer returned");
+        create_json_response(response, 500, "{\"error\": \"Failed to access global configuration\"}");
+        return;
+    }
+
+    // Safely copy the configuration
+    memset(&local_config, 0, sizeof(config_t));  // Clear first to prevent partial data
+
+    log_debug("Copying %lu bytes from global config to local config", sizeof(config_t));
+    memcpy(&local_config, global_config, sizeof(config_t));
+
+    // Add logging to debug the issue
+    log_debug("Creating JSON for settings: log_level=%d, web_port=%d, storage_path=%s",
+              local_config.log_level, local_config.web_port, local_config.storage_path);
+
     // Create JSON string with settings
     char *json_str = create_json_string(&local_config);
     if (!json_str) {
-        create_json_response(response, 500, "{\"error\": \"Failed to create settings JSON\"}");
+        log_error("Failed to create settings JSON - memory allocation error");
+        create_json_response(response, 500, "{\"error\": \"Failed to serialize settings\"}");
         return;
     }
-    
+
+    // Log a portion of the JSON for debugging (safe truncation)
+    size_t json_len = strlen(json_str);
+    size_t log_len = json_len > 300 ? 300 : json_len;
+    char *debug_json = malloc(log_len + 4);  // +4 for "...\0"
+
+    if (debug_json) {
+        memcpy(debug_json, json_str, log_len);
+        if (json_len > 300) {
+            strcpy(debug_json + log_len, "...");
+        } else {
+            debug_json[log_len] = '\0';
+        }
+
+        log_debug("Settings JSON (may be truncated): %s", debug_json);
+        free(debug_json);
+    }
+
     // Create response
+    log_debug("Creating JSON response, status 200");
     create_json_response(response, 200, json_str);
-    
+
     // Free resources
     free(json_str);
+    log_info("Settings request processed successfully");
 }
 
 /**
@@ -55,7 +102,8 @@ void handle_post_settings(const http_request_t *request, http_response_t *respon
     }
     
     // Copy current config settings from global config
-    memcpy(&local_config, get_current_config(), sizeof(config_t));
+    config_t *global_config = get_current_config();
+    memcpy(&local_config, global_config, sizeof(config_t));
     
     // Make a null-terminated copy of the request body
     char *json = malloc(request->content_length + 1);
@@ -130,6 +178,9 @@ void handle_post_settings(const http_request_t *request, http_response_t *respon
         create_json_response(response, 500, "{\"error\": \"Failed to save configuration\"}");
         return;
     }
+    
+    // Update the global configuration with our local changes
+    memcpy(global_config, &local_config, sizeof(config_t));
     
     // Create success response
     create_json_response(response, 200, "{\"success\": true}");

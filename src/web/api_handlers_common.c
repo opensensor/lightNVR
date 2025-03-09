@@ -10,48 +10,151 @@
 #include "core/config.h"
 #include "core/logger.h"
 
-// Helper function to create a simple JSON string
+/**
+ * Append to a dynamically allocated string
+ * Returns 1 on success, 0 on failure
+ */
+static int append_to_string(char **str, size_t *size, size_t *capacity, const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+
+    // Calculate required space
+    va_list args_copy;
+    va_copy(args_copy, args);
+    int required = vsnprintf(NULL, 0, format, args_copy);
+    va_end(args_copy);
+
+    if (required < 0) {
+        va_end(args);
+        return 0;
+    }
+
+    // Ensure we have space
+    size_t new_size = *size + required + 1;
+    if (new_size > *capacity) {
+        size_t new_capacity = *capacity * 2;
+        if (new_capacity < new_size) {
+            new_capacity = new_size + 256;  // Some extra space
+        }
+
+        char *new_str = realloc(*str, new_capacity);
+        if (!new_str) {
+            va_end(args);
+            return 0;
+        }
+
+        *str = new_str;
+        *capacity = new_capacity;
+    }
+
+    // Append the formatted string
+    int written = vsnprintf(*str + *size, *capacity - *size, format, args);
+    va_end(args);
+
+    if (written < 0) {
+        return 0;
+    }
+
+    *size += written;
+    return 1;
+}
+
+/**
+ * Create a JSON string from a config structure
+ * Returns a dynamically allocated string that must be freed by the caller
+ */
 char* create_json_string(const config_t *config) {
-    char *json = malloc(4096); // Allocate enough space for the JSON
+    if (!config) {
+        return NULL;
+    }
+
+    size_t capacity = 1024;  // Initial capacity
+    size_t size = 0;
+    char *json = malloc(capacity);
+
     if (!json) {
         return NULL;
     }
-    
-    // Format the JSON string manually
-    int len = snprintf(json, 4096,
-        "{\n"
-        "  \"log_level\": %d,\n"
-        "  \"storage_path\": \"%s\",\n"
-        "  \"max_storage\": %lu,\n"
-        "  \"retention\": %d,\n"
-        "  \"auto_delete\": %s,\n"
-        "  \"web_port\": %d,\n"
-        "  \"auth_enabled\": %s,\n"
-        "  \"username\": \"%s\",\n"
-        "  \"password\": \"********\",\n"
-        "  \"buffer_size\": %d,\n"
-        "  \"use_swap\": %s,\n"
-        "  \"swap_size\": %lu\n"
-        "}",
-        config->log_level,
-        config->storage_path,
-        (unsigned long)(config->max_storage_size / (1024 * 1024 * 1024)), // Convert to GB
-        config->retention_days,
-        config->auto_delete_oldest ? "true" : "false",
-        config->web_port,
-        config->web_auth_enabled ? "true" : "false",
-        config->web_username,
-        config->buffer_size,
-        config->use_swap ? "true" : "false",
-        (unsigned long)(config->swap_size / (1024 * 1024)) // Convert to MB
-    );
-    
-    if (len >= 4096) {
-        // Buffer was too small
+
+    // Start the JSON object
+    if (!append_to_string(&json, &size, &capacity, "{\n")) {
         free(json);
         return NULL;
     }
-    
+
+    // Add fields one by one, checking for errors
+    if (!append_to_string(&json, &size, &capacity, "  \"log_level\": %d,\n", config->log_level)) {
+        free(json);
+        return NULL;
+    }
+
+    if (!append_to_string(&json, &size, &capacity, "  \"storage_path\": \"%s\",\n", config->storage_path)) {
+        free(json);
+        return NULL;
+    }
+
+    if (!append_to_string(&json, &size, &capacity, "  \"max_storage\": %lu,\n",
+                         (unsigned long)(config->max_storage_size / (1024 * 1024 * 1024)))) {
+        free(json);
+        return NULL;
+    }
+
+    if (!append_to_string(&json, &size, &capacity, "  \"retention\": %d,\n", config->retention_days)) {
+        free(json);
+        return NULL;
+    }
+
+    if (!append_to_string(&json, &size, &capacity, "  \"auto_delete\": %s,\n",
+                         config->auto_delete_oldest ? "true" : "false")) {
+        free(json);
+        return NULL;
+    }
+
+    if (!append_to_string(&json, &size, &capacity, "  \"web_port\": %d,\n", config->web_port)) {
+        free(json);
+        return NULL;
+    }
+
+    if (!append_to_string(&json, &size, &capacity, "  \"auth_enabled\": %s,\n",
+                         config->web_auth_enabled ? "true" : "false")) {
+        free(json);
+        return NULL;
+    }
+
+    if (!append_to_string(&json, &size, &capacity, "  \"username\": \"%s\",\n", config->web_username)) {
+        free(json);
+        return NULL;
+    }
+
+    if (!append_to_string(&json, &size, &capacity, "  \"password\": \"********\",\n")) {
+        free(json);
+        return NULL;
+    }
+
+    if (!append_to_string(&json, &size, &capacity, "  \"buffer_size\": %d,\n", config->buffer_size)) {
+        free(json);
+        return NULL;
+    }
+
+    if (!append_to_string(&json, &size, &capacity, "  \"use_swap\": %s,\n",
+                         config->use_swap ? "true" : "false")) {
+        free(json);
+        return NULL;
+    }
+
+    // Last field doesn't have a trailing comma
+    if (!append_to_string(&json, &size, &capacity, "  \"swap_size\": %lu\n",
+                         (unsigned long)(config->swap_size / (1024 * 1024)))) {
+        free(json);
+        return NULL;
+    }
+
+    // Close the JSON object
+    if (!append_to_string(&json, &size, &capacity, "}\n")) {
+        free(json);
+        return NULL;
+    }
+
     return json;
 }
 
