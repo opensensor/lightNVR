@@ -71,4 +71,10 @@ void update_recording(const char *stream_name);
 // Stop a recording
 void stop_recording(const char *stream_name);
 
+// Clean up HLS directories during shutdown
+void cleanup_hls_directories(void);
+
+// Close all MP4 writers during shutdown
+void close_all_mp4_writers(void);
+
 #endif /* STREAMS_H */

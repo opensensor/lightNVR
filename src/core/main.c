@@ -356,8 +356,20 @@ int main(int argc, char *argv[]) {
 cleanup:
     log_info("Starting cleanup process...");
     
-    shutdown_web_server();
+    // First stop all streams to ensure proper finalization of recordings
+    log_info("Stopping all active streams...");
     cleanup_streaming_backend();  // Cleanup FFmpeg streaming
+    
+    // Finalize all MP4 recordings
+    log_info("Finalizing all MP4 recordings...");
+    close_all_mp4_writers();
+    
+    // Clean up HLS directories
+    log_info("Cleaning up HLS directories...");
+    cleanup_hls_directories();
+    
+    // Now shut down other components
+    shutdown_web_server();
     shutdown_stream_manager();
     shutdown_storage_manager();
     shutdown_database();

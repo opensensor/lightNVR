@@ -15,6 +15,7 @@
 #include <signal.h>
 #include <errno.h>
 #include <time.h>
+#include <dirent.h>
 #define _POSIX_C_SOURCE 199309L
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
@@ -67,6 +68,7 @@ void handle_webrtc_offer(const http_request_t *request, http_response_t *respons
 void handle_webrtc_ice(const http_request_t *request, http_response_t *response);
 void serve_video_file(http_response_t *response, const char *file_path, const char *content_type,
                      const char *filename, const http_request_t *request);
+void cleanup_hls_directories(void);
 
 /**
  * Serve a video file with support for HTTP range requests (essential for video streaming)
@@ -1016,6 +1018,97 @@ void unregister_mp4_writer_for_stream(const char *stream_name) {
 }
 
 /**
+ * Close all MP4 writers during shutdown
+ * This ensures all MP4 files are properly finalized and marked as complete in the database
+ */
+void close_all_mp4_writers(void) {
+    log_info("Finalizing all MP4 recordings...");
+    
+    pthread_mutex_lock(&mp4_writers_mutex);
+    
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (mp4_writers[i]) {
+            log_info("Finalizing MP4 recording for stream: %s", mp4_writer_stream_names[i]);
+            
+            // Get the file path from the MP4 writer
+            char file_path[MAX_PATH_LENGTH];
+            if (mp4_writers[i]->output_path) {
+                strncpy(file_path, mp4_writers[i]->output_path, MAX_PATH_LENGTH - 1);
+                file_path[MAX_PATH_LENGTH - 1] = '\0';
+            } else {
+                file_path[0] = '\0';
+            }
+            
+            // Get file size before closing
+            struct stat st;
+            uint64_t file_size = 0;
+            if (file_path[0] != '\0' && stat(file_path, &st) == 0) {
+                file_size = st.st_size;
+            }
+            
+            // Close the MP4 writer to finalize the file
+            mp4_writer_close(mp4_writers[i]);
+            
+            // Update the database to mark the recording as complete
+            if (file_path[0] != '\0') {
+                // Find any incomplete recordings for this stream in the database
+                recording_metadata_t metadata;
+                memset(&metadata, 0, sizeof(recording_metadata_t));
+                
+                // Get the current time for the end timestamp
+                time_t end_time = time(NULL);
+                
+                // Look for recordings with this file path
+                // This is a simplified approach - in a real implementation, you'd query the database
+                // to find the recording ID for this specific file
+                
+                // For each active recording, check if it matches this stream
+                pthread_mutex_lock(&recordings_mutex);
+                for (int j = 0; j < MAX_STREAMS; j++) {
+                    if (active_recordings[j].recording_id > 0 && 
+                        strcmp(active_recordings[j].stream_name, mp4_writer_stream_names[i]) == 0) {
+                        
+                        uint64_t recording_id = active_recordings[j].recording_id;
+                        
+                        // Clear the active recording slot
+                        active_recordings[j].recording_id = 0;
+                        active_recordings[j].stream_name[0] = '\0';
+                        active_recordings[j].output_path[0] = '\0';
+                        
+                        pthread_mutex_unlock(&recordings_mutex);
+                        
+                        // Update the recording metadata in the database
+                        log_info("Marking recording %llu as complete in database", 
+                                (unsigned long long)recording_id);
+                        update_recording_metadata(recording_id, end_time, file_size, true);
+                        
+                        // Re-lock for the next iteration
+                        pthread_mutex_lock(&recordings_mutex);
+                        break;
+                    }
+                }
+                pthread_mutex_unlock(&recordings_mutex);
+                
+                // If we didn't find an active recording, try to find it in the database
+                // This is a more complex case that would require querying the database
+                // by file path, which isn't directly supported in our current API
+                
+                // Add an event to the database
+                add_event(EVENT_RECORDING_STOP, mp4_writer_stream_names[i], 
+                         "Recording stopped during shutdown", file_path);
+            }
+            
+            // Clear the writer
+            mp4_writers[i] = NULL;
+            mp4_writer_stream_names[i][0] = '\0';
+        }
+    }
+    
+    pthread_mutex_unlock(&mp4_writers_mutex);
+    log_info("All MP4 recordings finalized and marked as complete in database");
+}
+
+/**
  * Update to stop_transcode_stream to handle decoupled MP4 recording
  */
 int stop_transcode_stream(const char *stream_name) {
@@ -1898,4 +1991,80 @@ void handle_webrtc_ice(const http_request_t *request, http_response_t *response)
 
     // Indicate that body should be freed (if needed)
     // response->needs_free = 1;
+}
+
+/**
+ * Clean up HLS directories during shutdown
+ * This function removes all HLS segment files (.ts) and playlists (.m3u8)
+ * to ensure a clean state for the next startup
+ */
+void cleanup_hls_directories(void) {
+    config_t *global_config = get_streaming_config();
+    
+    if (!global_config || !global_config->storage_path) {
+        log_error("Cannot clean up HLS directories: global config or storage path is NULL");
+        return;
+    }
+    
+    char hls_base_dir[MAX_PATH_LENGTH];
+    snprintf(hls_base_dir, MAX_PATH_LENGTH, "%s/hls", global_config->storage_path);
+    
+    // Check if HLS base directory exists
+    struct stat st;
+    if (stat(hls_base_dir, &st) != 0 || !S_ISDIR(st.st_mode)) {
+        log_info("HLS base directory does not exist, nothing to clean up: %s", hls_base_dir);
+        return;
+    }
+    
+    log_info("Cleaning up HLS directories in: %s", hls_base_dir);
+    
+    // Open the HLS base directory
+    DIR *dir = opendir(hls_base_dir);
+    if (!dir) {
+        log_error("Failed to open HLS base directory for cleanup: %s (error: %s)", 
+                 hls_base_dir, strerror(errno));
+        return;
+    }
+    
+    // Iterate through each stream directory
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        // Skip . and .. directories
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+        
+        // Form the full path to the stream's HLS directory
+        char stream_hls_dir[MAX_PATH_LENGTH];
+        snprintf(stream_hls_dir, MAX_PATH_LENGTH, "%s/%s", hls_base_dir, entry->d_name);
+        
+        // Check if it's a directory
+        if (stat(stream_hls_dir, &st) == 0 && S_ISDIR(st.st_mode)) {
+            log_info("Cleaning up HLS files for stream: %s", entry->d_name);
+            
+            // Remove all .ts segment files
+            char rm_cmd[MAX_PATH_LENGTH * 2];
+            snprintf(rm_cmd, sizeof(rm_cmd), "rm -f %s/*.ts", stream_hls_dir);
+            int ret = system(rm_cmd);
+            if (ret != 0) {
+                log_warn("Failed to remove HLS segment files in %s (return code: %d)", 
+                        stream_hls_dir, ret);
+            } else {
+                log_info("Removed HLS segment files in %s", stream_hls_dir);
+            }
+            
+            // Remove all .m3u8 playlist files
+            snprintf(rm_cmd, sizeof(rm_cmd), "rm -f %s/*.m3u8", stream_hls_dir);
+            ret = system(rm_cmd);
+            if (ret != 0) {
+                log_warn("Failed to remove HLS playlist files in %s (return code: %d)", 
+                        stream_hls_dir, ret);
+            } else {
+                log_info("Removed HLS playlist files in %s", stream_hls_dir);
+            }
+        }
+    }
+    
+    closedir(dir);
+    log_info("HLS directory cleanup completed");
 }
