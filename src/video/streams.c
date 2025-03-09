@@ -10,9 +10,12 @@
 #include <pthread.h>
 #include <ctype.h>
 #include <sys/stat.h>
+#include <sys/types.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <errno.h>
 #include <time.h>
+#define _POSIX_C_SOURCE 199309L
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
@@ -46,6 +49,160 @@ void handle_hls_manifest(const http_request_t *request, http_response_t *respons
 void handle_hls_segment(const http_request_t *request, http_response_t *response);
 void handle_webrtc_offer(const http_request_t *request, http_response_t *response);
 void handle_webrtc_ice(const http_request_t *request, http_response_t *response);
+void serve_video_file(http_response_t *response, const char *file_path, const char *content_type,
+                     const char *filename, const http_request_t *request);
+
+/**
+ * Serve a video file with support for HTTP range requests (essential for video streaming)
+ */
+void serve_video_file(http_response_t *response, const char *file_path, const char *content_type,
+                     const char *filename, const http_request_t *request) {
+    // Verify file exists and is readable
+    struct stat st;
+    if (stat(file_path, &st) != 0) {
+        log_error("Video file not found: %s (error: %s)", file_path, strerror(errno));
+        create_json_response(response, 404, "{\"error\": \"Video file not found\"}");
+        return;
+    }
+
+    if (access(file_path, R_OK) != 0) {
+        log_error("Video file not readable: %s (error: %s)", file_path, strerror(errno));
+        create_json_response(response, 403, "{\"error\": \"Video file not accessible\"}");
+        return;
+    }
+
+    // Check file size
+    if (st.st_size == 0) {
+        log_error("Video file is empty: %s", file_path);
+        create_json_response(response, 500, "{\"error\": \"Video file is empty\"}");
+        return;
+    }
+
+    log_info("Serving video file: %s, size: %lld bytes", file_path, (long long)st.st_size);
+
+    // Open file
+    int fd = open(file_path, O_RDONLY);
+    if (fd < 0) {
+        log_error("Failed to open video file: %s (error: %s)", file_path, strerror(errno));
+        create_json_response(response, 500, "{\"error\": \"Failed to open video file\"}");
+        return;
+    }
+
+    // Parse Range header if present
+    const char *range_header = get_request_header(request, "Range");
+    off_t start_pos = 0;
+    off_t end_pos = st.st_size - 1;
+    bool is_range_request = false;
+
+    if (range_header && strncmp(range_header, "bytes=", 6) == 0) {
+        is_range_request = true;
+        // Parse range header - format is typically "bytes=start-end"
+        char range_value[256];
+        strncpy(range_value, range_header + 6, sizeof(range_value) - 1);
+        range_value[sizeof(range_value) - 1] = '\0';
+
+        char *dash = strchr(range_value, '-');
+        if (dash) {
+            *dash = '\0'; // Split the string at dash
+
+            // Parse start position
+            if (range_value[0] != '\0') {
+                start_pos = atoll(range_value);
+                // Ensure start_pos is within file bounds
+                if (start_pos >= st.st_size) {
+                    start_pos = 0;
+                }
+            }
+
+            // Parse end position if provided
+            if (dash[1] != '\0') {
+                end_pos = atoll(dash + 1);
+                // Ensure end_pos is within file bounds
+                if (end_pos >= st.st_size) {
+                    end_pos = st.st_size - 1;
+                }
+            }
+
+            // Sanity check
+            if (start_pos > end_pos) {
+                start_pos = 0;
+                end_pos = st.st_size - 1;
+                is_range_request = false;
+            }
+        }
+    }
+
+    // Calculate content length
+    size_t content_length = end_pos - start_pos + 1;
+
+    // Set content type header
+    strncpy(response->content_type, content_type, sizeof(response->content_type) - 1);
+    response->content_type[sizeof(response->content_type) - 1] = '\0';
+
+    // Set content length header
+    char content_length_str[32];
+    snprintf(content_length_str, sizeof(content_length_str), "%zu", content_length);
+    set_response_header(response, "Content-Length", content_length_str);
+
+    // Set Accept-Ranges header to indicate range support
+    set_response_header(response, "Accept-Ranges", "bytes");
+
+    // Set disposition header for download if requested
+    if (filename) {
+        char disposition[256];
+        snprintf(disposition, sizeof(disposition), "attachment; filename=\"%s\"", filename);
+        set_response_header(response, "Content-Disposition", disposition);
+    }
+
+    // For range requests, set status code and Content-Range header
+    if (is_range_request) {
+        response->status_code = 206; // Partial Content
+
+        char content_range[64];
+        snprintf(content_range, sizeof(content_range), "bytes %lld-%lld/%lld",
+                 (long long)start_pos, (long long)end_pos, (long long)st.st_size);
+        set_response_header(response, "Content-Range", content_range);
+
+        log_info("Serving range request: %s", content_range);
+    } else {
+        response->status_code = 200; // OK
+    }
+
+    // Seek to start position
+    if (lseek(fd, start_pos, SEEK_SET) == -1) {
+        log_error("Failed to seek in file: %s (error: %s)", file_path, strerror(errno));
+        close(fd);
+        create_json_response(response, 500, "{\"error\": \"Failed to read from video file\"}");
+        return;
+    }
+
+    // Allocate response body to exact content length
+    response->body = malloc(content_length);
+    if (!response->body) {
+        log_error("Failed to allocate response body of size %zu bytes", content_length);
+        close(fd);
+        create_json_response(response, 500, "{\"error\": \"Server memory allocation failed\"}");
+        return;
+    }
+
+    // Read the file content
+    ssize_t bytes_read = read(fd, response->body, content_length);
+    close(fd);
+
+    if (bytes_read != (ssize_t)content_length) {
+        log_error("Failed to read complete file: %s (read %zd of %zu bytes)",
+                file_path, bytes_read, content_length);
+        free(response->body);
+        create_json_response(response, 500, "{\"error\": \"Failed to read complete video file\"}");
+        return;
+    }
+
+    // Set response body length
+    response->body_length = content_length;
+
+    log_info("Successfully prepared video file for response: %s (%zu bytes)",
+            file_path, content_length);
+}
 
 // Forward declarations for MP4 writer
 #include "video/mp4_writer.h"
@@ -164,6 +321,18 @@ void init_streaming_backend(void) {
     log_info("Streaming backend initialized");
 }
 
+// Helper thread function for pthread_join_with_timeout
+static void *join_helper(void *arg) {
+    struct {
+        pthread_t thread;
+        void **retval;
+        int *result;
+    } *data = arg;
+
+    *(data->result) = pthread_join(data->thread, data->retval);
+    return NULL;
+}
+
 // Add this function to implement a thread join with timeout
 static int pthread_join_with_timeout(pthread_t thread, void **retval, int timeout_sec) {
     // Simple approach: use a second thread to join
@@ -177,18 +346,6 @@ static int pthread_join_with_timeout(pthread_t thread, void **retval, int timeou
         void **retval;
         int *result;
     } join_data = {thread, retval, result};
-
-    // Helper thread function
-    void *join_helper(void *arg) {
-        struct {
-            pthread_t thread;
-            void **retval;
-            int *result;
-        } *data = arg;
-
-        *(data->result) = pthread_join(data->thread, data->retval);
-        return NULL;
-    };
 
     // Create helper thread to join the target thread
     if (pthread_create(&timeout_thread, NULL, join_helper, &join_data) != 0) {
@@ -1317,7 +1474,8 @@ void handle_download_recording(const http_request_t *request, http_response_t *r
                           strcasecmp(param_value, "true") == 0);
     }
 
-    if (is_hls) {
+    if (is_hls)
+    {
         // Get the directory containing the recording
         char dir_path[256];
         const char *last_slash = strrchr(metadata.file_path, '/');
@@ -1394,19 +1552,7 @@ void handle_download_recording(const http_request_t *request, http_response_t *r
         if (glob_result) {
             pclose(glob_result);
         }
-        
-        // No direct MP4 found, serve the HLS stream directly
-        log_info("No direct MP4 recording found, serving HLS stream: %s", metadata.file_path);
-        
-        // Create filename for download
-        char filename[128];
-        snprintf(filename, sizeof(filename), "%s_%lld.m3u8",
-               metadata.stream_name, (long long)metadata.start_time);
-        
-        // Serve the HLS manifest
-        serve_video_file(response, metadata.file_path, "application/vnd.apple.mpegurl",
-                       direct_download ? filename : NULL, request);
-
+    }
 }
 
 /**
