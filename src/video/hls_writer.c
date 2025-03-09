@@ -73,7 +73,7 @@ static void cleanup_old_segments(const char *output_dir, int max_segments) {
         }
         
         // Get file stats
-        snprintf(filepath, MAX_PATH_LENGTH, "%s/%s", output_dir, entry->d_name);
+        snprintf(filepath, sizeof(filepath), "%s/%s", output_dir, entry->d_name);
         if (stat(filepath, &st) == 0) {
             strncpy(segments[i].filename, entry->d_name, 255);
             segments[i].filename[255] = '\0';
@@ -99,7 +99,7 @@ static void cleanup_old_segments(const char *output_dir, int max_segments) {
     // Delete oldest segments beyond our limit
     int to_delete = i - max_segments;
     for (int j = 0; j < to_delete; j++) {
-        snprintf(filepath, MAX_PATH_LENGTH, "%s/%s", output_dir, segments[j].filename);
+        snprintf(filepath, sizeof(filepath), "%s/%s", output_dir, segments[j].filename);
         if (unlink(filepath) == 0) {
             log_debug("Deleted old HLS segment: %s", segments[j].filename);
         } else {
