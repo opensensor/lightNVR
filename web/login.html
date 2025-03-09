@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LightNVR - Login</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="icon" href="img/favicon.ico" type="image/x-icon">
+    <script src="/js/components/auth.js"></script>
+    <style>
+        .login-container {
+            max-width: 400px;
+            margin: 100px auto;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .login-header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .login-form {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        .form-group input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        .login-button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        
+        .login-button:hover {
+            background-color: #0069d9;
+        }
+        
+        .error-message {
+            color: #dc3545;
+            margin-bottom: 15px;
+            text-align: center;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-header">
+            <h1>LightNVR</h1>
+            <p>Please log in to continue</p>
+        </div>
+        
+        <div id="error-message" class="error-message">
+            Invalid username or password
+        </div>
+        
+        <form id="login-form" class="login-form">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            
+            <button type="submit" class="login-button">Login</button>
+        </form>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check if there's a login error parameter
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('error') === 'auth') {
+                document.getElementById('error-message').style.display = 'block';
+            }
+            
+            // Handle form submission
+            document.getElementById('login-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const username = document.getElementById('username').value;
+                const password = document.getElementById('password').value;
+                
+                // Create Basic Auth header
+                const credentials = btoa(username + ':' + password);
+                
+                // Try to access a protected resource
+                fetch('/api/settings', {
+                    headers: {
+                        'Authorization': 'Basic ' + credentials
+                    }
+                })
+                .then(response => {
+                    if (response.ok) {
+                        // Store credentials in localStorage
+                        localStorage.setItem('auth', credentials);
+                        
+                        // Redirect to the main page
+                        window.location.href = 'live.html';
+                    } else {
+                        // Show error message
+                        document.getElementById('error-message').style.display = 'block';
+                    }
+                })
+                .catch(error => {
+                    console.error('Login error:', error);
+                    document.getElementById('error-message').style.display = 'block';
+                });
+            });
+        });
+    </script>
+</body>
+</html>

@@ -7,19 +7,8 @@
     <link rel="stylesheet" href="css/styles.css">
     <link rel="icon" href="img/favicon.ico" type="image/x-icon">
     <script>
-        // Redirect to the appropriate page based on the URL
-        document.addEventListener('DOMContentLoaded', function() {
-            // Check if logout parameter is present
-            const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.get('logout') === 'true') {
-                // Handle logout
-                alert('Logout successful');
-                // Redirect to live view after logout
-                window.location.href = 'live.html';
-                return;
-            }
-            
-            // Handle path-based navigation for backward compatibility
+        // Function to handle redirection based on path
+        function handleRedirection() {
             const path = window.location.pathname;
             
             if (path === '/' || path === '/index.html') {
@@ -35,6 +24,41 @@
             } else if (path === '/debug') {
                 window.location.href = 'debug.html';
             }
+        }
+
+        // Redirect to the appropriate page based on the URL
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check if logout parameter is present
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('logout') === 'true') {
+                // Handle logout - clear stored credentials
+                localStorage.removeItem('auth');
+                // Show logout message
+                alert('Logout successful');
+                // Redirect to login page
+                window.location.href = 'login.html';
+                return;
+            }
+            
+            // Check if we need to authenticate
+            fetch('/api/settings')
+                .then(response => {
+                    if (response.status === 401) {
+                        // Authentication required but no credentials stored
+                        if (!localStorage.getItem('auth')) {
+                            window.location.href = 'login.html';
+                            return;
+                        }
+                    }
+                    // If we're here, either no auth required or we have credentials
+                    // Continue with normal redirection
+                    handleRedirection();
+                })
+                .catch(error => {
+                    console.error('Error checking authentication:', error);
+                    // Continue with normal redirection in case of error
+                    handleRedirection();
+                });
         });
     </script>
 </head>

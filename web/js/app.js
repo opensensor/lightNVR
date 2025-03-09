@@ -6,6 +6,9 @@
 // Load core functionality
 document.write('<script src="/js/core.js"></script>');
 
+// Load authentication module
+document.write('<script src="/js/components/auth.js"></script>');
+
 // Load UI components
 document.write('<script src="/js/components/ui.js"></script>');
 
@@ -23,9 +26,6 @@ document.write('<script src="/js/components/settings.js"></script>');
 
 // Load system management
 document.write('<script src="/js/components/system.js"></script>');
-
-// Load debug functionality
-document.write('<script src="/js/components/debug.js"></script>');
 
 // Load page handlers
 document.write('<script src="/js/pages/pages.js"></script>');

@@ -946,8 +946,77 @@ int path_matches(const char *pattern, const char *path) {
 
 // Basic authentication check
 static int basic_auth_check(const http_request_t *request) {
-    // In a real implementation, we would check the Authorization header
-    // For simplicity, we'll just return success
+    // Check if Authorization header exists
+    const char *auth_header = NULL;
+    for (int i = 0; i < request->num_headers; i++) {
+        if (strcasecmp(request->headers[i].name, "Authorization") == 0) {
+            auth_header = request->headers[i].value;
+            break;
+        }
+    }
+    
+    if (!auth_header) {
+        log_debug("No Authorization header found");
+        return -1;
+    }
+    
+    // Check if it's a Basic auth header
+    if (strncasecmp(auth_header, "Basic ", 6) != 0) {
+        log_debug("Not a Basic auth header");
+        return -1;
+    }
+    
+    // Decode the Base64 credentials
+    const char *base64_creds = auth_header + 6;
+    
+    // Skip leading whitespace
+    while (*base64_creds && isspace(*base64_creds)) {
+        base64_creds++;
+    }
+    
+    // Decode Base64 (simplified implementation)
+    char decoded_creds[128];
+    char command[256];
+    memset(decoded_creds, 0, sizeof(decoded_creds));
+    
+    // Create command for Base64 decoding
+    snprintf(command, sizeof(command), "echo -n \"%s\" | base64 -d", base64_creds);
+    
+    // Use a simple Base64 decoding function
+    FILE *pipe = popen(command, "r");
+    if (!pipe) {
+        log_error("Failed to create pipe for Base64 decoding");
+        return -1;
+    }
+    
+    if (fgets(decoded_creds, sizeof(decoded_creds) - 1, pipe) == NULL) {
+        log_error("Failed to read from pipe");
+        pclose(pipe);
+        return -1;
+    }
+    
+    pclose(pipe);
+    
+    // Find the colon separator
+    char *colon = strchr(decoded_creds, ':');
+    if (!colon) {
+        log_debug("Invalid credentials format (no colon)");
+        return -1;
+    }
+    
+    // Split into username and password
+    *colon = '\0';
+    char *username = decoded_creds;
+    char *password = colon + 1;
+    
+    // Check against configured credentials
+    if (strcmp(username, web_server.username) != 0 || 
+        strcmp(password, web_server.password) != 0) {
+        log_debug("Invalid credentials");
+        return -1;
+    }
+    
+    log_debug("Authentication successful for user: %s", username);
     return 0;
 }
 

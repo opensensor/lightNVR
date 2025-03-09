@@ -342,6 +342,17 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
 
+    // Set authentication if enabled in config
+    if (config.web_auth_enabled) {
+        log_info("Enabling web authentication");
+        if (set_authentication(true, config.web_username, config.web_password) != 0) {
+            log_error("Failed to set authentication");
+            // Continue anyway, authentication will be disabled
+        }
+    } else {
+        log_info("Web authentication is disabled");
+    }
+
     // Register streaming API handlers
     register_streaming_api_handlers();
 
