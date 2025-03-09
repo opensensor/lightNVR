@@ -395,17 +395,6 @@ void cleanup_streaming_backend(void) {
             // Mark as not running
             transcode_contexts[i]->running = 0;
 
-            // Clean up resources (even if we can't join the thread)
-            if (transcode_contexts[i]->hls_writer) {
-                hls_writer_close(transcode_contexts[i]->hls_writer);
-                transcode_contexts[i]->hls_writer = NULL;
-            }
-
-            if (transcode_contexts[i]->mp4_writer) {
-                mp4_writer_close(transcode_contexts[i]->mp4_writer);
-                transcode_contexts[i]->mp4_writer = NULL;
-            }
-
             // Attempt to join the thread with a timeout
             pthread_t thread = transcode_contexts[i]->thread;
             pthread_mutex_unlock(&contexts_mutex);
@@ -438,14 +427,29 @@ void cleanup_streaming_backend(void) {
                         stream_name);
             }
 
-            // Stop recording
-            stop_recording(stream_name);
-
             pthread_mutex_lock(&contexts_mutex);
 
-            // Free the context
-            free(transcode_contexts[i]);
-            transcode_contexts[i] = NULL;
+            // Clean up resources AFTER attempting to join the thread
+            if (transcode_contexts[i] && transcode_contexts[i]->hls_writer) {
+                hls_writer_close(transcode_contexts[i]->hls_writer);
+                transcode_contexts[i]->hls_writer = NULL;
+            }
+
+            if (transcode_contexts[i] && transcode_contexts[i]->mp4_writer) {
+                mp4_writer_close(transcode_contexts[i]->mp4_writer);
+                transcode_contexts[i]->mp4_writer = NULL;
+            }
+
+            // Stop recording
+            pthread_mutex_unlock(&contexts_mutex);
+            stop_recording(stream_name);
+            pthread_mutex_lock(&contexts_mutex);
+
+            // Free the context if it still exists
+            if (transcode_contexts[i]) {
+                free(transcode_contexts[i]);
+                transcode_contexts[i] = NULL;
+            }
         }
     }
 
