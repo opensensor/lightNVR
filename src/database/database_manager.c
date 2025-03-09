@@ -571,8 +571,11 @@ int get_recording_metadata(time_t start_time, time_t end_time,
     // Build query based on filters
     char sql[1024];
     strcpy(sql, "SELECT id, stream_name, file_path, start_time, end_time, "
-                "size_bytes, width, height, fps, codec, is_complete "
-                "FROM recordings WHERE 1=1");
+                 "size_bytes, width, height, fps, codec, is_complete "
+                 "FROM recordings WHERE is_complete = 1"); // Only complete recordings
+
+    // And add a debug log before returning the count:
+    log_info("Found %d recordings in database matching criteria", count);
     
     if (start_time > 0) {
         strcat(sql, " AND (end_time >= ? OR end_time IS NULL)");
