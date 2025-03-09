@@ -18,6 +18,7 @@ struct mp4_writer {
  int video_stream_idx;
  int has_audio;
  int64_t first_dts;
+ int64_t first_pts;
  int64_t last_dts;
  AVRational time_base;
  int is_initialized;

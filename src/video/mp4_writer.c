@@ -173,7 +173,7 @@ static int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, cons
 }
 
 /**
- * Write a packet to the MP4 file
+ * Write a packet to the MP4 file with improved timestamp handling
  */
 int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const AVStream *input_stream) {
     if (!writer) {
@@ -192,38 +192,71 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
     AVPacket pkt;
     av_packet_ref(&pkt, in_pkt);
 
-    // Fix timestamps
+    // Fix timestamps - improved approach to prevent ghosting
     if (writer->first_dts == AV_NOPTS_VALUE) {
         // First packet - use its DTS as reference
-        writer->first_dts = pkt.dts;
-        pkt.pts = 0;
+        writer->first_dts = pkt.dts != AV_NOPTS_VALUE ? pkt.dts : pkt.pts;
+        writer->first_pts = pkt.pts != AV_NOPTS_VALUE ? pkt.pts : pkt.dts;
+
+        // Initialize last_dts to avoid comparison with AV_NOPTS_VALUE
+        writer->last_dts = writer->first_dts;
+
+        // For the first packet, set timestamps to 0
         pkt.dts = 0;
+        pkt.pts = pkt.pts != AV_NOPTS_VALUE ? pkt.pts - writer->first_pts : 0;
     } else {
-        // Ensure monotonically increasing timestamp
-        if (pkt.dts <= writer->last_dts) {
-            // If timestamp goes backwards, adjust it to be just after the last one
-            pkt.dts = writer->last_dts + 1;
+        // Preserve original pts/dts spacing but ensure monotonic increase
+
+        // Handle DTS (decoding timestamp)
+        if (pkt.dts != AV_NOPTS_VALUE) {
+            // Calculate proper offset from the first DTS
+            int64_t dts_diff = pkt.dts - writer->first_dts;
+
+            // If DTS goes backwards or is the same, adjust it to be strictly increasing
+            if (dts_diff <= 0 || pkt.dts <= writer->last_dts) {
+                // Increase by at least 1 tick from the last DTS
+                pkt.dts = writer->last_dts + 1;
+            } else {
+                pkt.dts = dts_diff;
+            }
+        } else {
+            // If DTS is not set, derive it from PTS if possible
+            pkt.dts = pkt.pts != AV_NOPTS_VALUE ?
+                      (pkt.pts - writer->first_pts) : (writer->last_dts + 1);
         }
 
-        // Set PTS relative to first DTS
-        int64_t dts_diff = pkt.dts - writer->first_dts;
-        pkt.dts = dts_diff;
-
-        // If PTS is valid, adjust it too
+        // Handle PTS (presentation timestamp)
         if (pkt.pts != AV_NOPTS_VALUE) {
-            int64_t pts_diff = pkt.pts - writer->first_dts;
-            pkt.pts = pts_diff;
+            // Calculate proper offset from the first PTS
+            int64_t pts_diff = pkt.pts - writer->first_pts;
+
+            // PTS can be before DTS for B-frames, but must be >= 0
+            pkt.pts = pts_diff >= 0 ? pts_diff : 0;
+
+            // Ensure PTS is not too far in the future relative to DTS
+            // This helps prevent large PTS-DTS differences that can cause ghosting
+            if (pkt.pts > pkt.dts + (input_stream->time_base.den / input_stream->time_base.num)) {
+                int64_t max_diff = input_stream->time_base.den / input_stream->time_base.num;
+                pkt.pts = pkt.dts + max_diff;
+            }
         } else {
-            // If PTS is invalid, set it to DTS
+            // If PTS is not set, use DTS
             pkt.pts = pkt.dts;
         }
     }
 
-    // Update last DTS
-    writer->last_dts = in_pkt->dts;
+    // Update last DTS to maintain monotonic increase
+    writer->last_dts = pkt.dts;
 
     // Write packet
     pkt.stream_index = writer->video_stream_idx;
+
+    // Log key frame information for debugging
+    if (pkt.flags & AV_PKT_FLAG_KEY) {
+        log_debug("Writing keyframe to MP4: pts=%lld, dts=%lld",
+                 (long long)pkt.pts, (long long)pkt.dts);
+    }
+
     int ret = av_interleaved_write_frame(writer->output_ctx, &pkt);
     if (ret < 0) {
         char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
@@ -239,9 +272,6 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
 
 /**
  * Enhanced close function that creates symlinks to help with discovery
- */
-/**
- * Enhanced close function that ensures database entries and creates symlinks to help with discovery
  */
 void mp4_writer_close(mp4_writer_t *writer) {
     if (!writer) {
