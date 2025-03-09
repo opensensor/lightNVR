@@ -56,8 +56,22 @@ function setupAuthInterceptor() {
 
 // Handle logout
 function logout() {
+    // Clear localStorage
     localStorage.removeItem('auth');
-    window.location.href = 'index.html?logout=true';
+    
+    // Clear browser's basic auth cache by sending a request with invalid credentials
+    // This will trigger a 401 response, causing the browser to forget the cached credentials
+    fetch('/api/settings', {
+        headers: {
+            'Authorization': 'Basic ' + btoa('invalid:credentials')
+        }
+    }).then(() => {
+        // Redirect to logout page
+        window.location.href = 'index.html?logout=true';
+    }).catch(() => {
+        // Redirect even if the request fails
+        window.location.href = 'index.html?logout=true';
+    });
 }
 
 // Initialize authentication
