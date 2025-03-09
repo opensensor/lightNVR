@@ -203,13 +203,6 @@ static void signal_handler(int sig) {
             web_server.server_socket = -1;
             server_socket = -1; // Update the global reference
         }
-
-        // If this is a daemon process, we need to exit here
-        // to prevent the main process from continuing
-        if (web_server.daemon_mode) {
-            log_info("Exiting daemon process");
-            exit(EXIT_SUCCESS);
-        }
     }
 }
 
