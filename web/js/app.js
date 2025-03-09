@@ -1474,25 +1474,22 @@ function playRecording(recordingId) {
             // Set video source
             videoPlayer.innerHTML = '';
             
-            // Create a direct download URL with direct=1 parameter
+            // Create a direct download URL with direct=1 parameter to ensure proper content type
             const videoUrl = `/api/recordings/download/${recordingId}?direct=1`;
             console.log('Video URL:', videoUrl);
             
-            // Create video element with multiple source options for better compatibility
+            // Create video element with source element for better compatibility
             const videoElement = document.createElement('video');
             videoElement.controls = true;
             videoElement.autoplay = true;
             videoElement.style.width = '100%';
             videoElement.style.maxHeight = '70vh';
             
-            // Add multiple source formats for better compatibility
-            const sourceMP4 = document.createElement('source');
-            sourceMP4.src = videoUrl;
-            sourceMP4.type = 'video/mp4';
-            videoElement.appendChild(sourceMP4);
-            
-            // Add fallback text
-            videoElement.innerHTML += 'Your browser does not support the video tag.';
+            // Create source element
+            const sourceElement = document.createElement('source');
+            sourceElement.src = videoUrl;
+            sourceElement.type = 'video/mp4';
+            videoElement.appendChild(sourceElement);
             
             // Add event listeners
             videoElement.addEventListener('loadeddata', () => {
@@ -1526,11 +1523,15 @@ function playRecording(recordingId) {
                     }
                 }
                 
+                // Try alternative approach - direct iframe embedding
                 videoPlayer.innerHTML = `
-                    <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:300px;background:#000;color:#fff;padding:20px;text-align:center;">
-                        <p>Error loading video. The recording may be unavailable or in an unsupported format.</p>
-                        <p>Error details: ${errorDetails}</p>
-                        <p style="margin-top:20px;">You can try downloading the video instead:</p>
+                    <iframe 
+                        src="${videoUrl}" 
+                        style="width:100%;height:400px;border:none;" 
+                        allowfullscreen
+                    ></iframe>
+                    <div style="margin-top:10px;text-align:center;">
+                        <p>If the video doesn't play, you can download it instead:</p>
                         <button id="fallback-download-btn" style="margin-top:10px;padding:8px 16px;background:#1e88e5;color:white;border:none;border-radius:4px;cursor:pointer;">
                             Download Video
                         </button>
