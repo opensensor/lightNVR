@@ -31,6 +31,11 @@ void register_api_handlers(void) {
     // Register system API handlers
     register_request_handler("/api/system/info", "GET", handle_get_system_info);
     register_request_handler("/api/system/logs", "GET", handle_get_system_logs);
+    register_request_handler("/api/system/restart", "POST", handle_post_system_restart);
+    register_request_handler("/api/system/shutdown", "POST", handle_post_system_shutdown);
+    register_request_handler("/api/system/logs/clear", "POST", handle_post_system_clear_logs);
+    register_request_handler("/api/system/backup", "POST", handle_post_system_backup);
+    register_request_handler("/api/system/status", "GET", handle_get_system_status);
 
     // Register recording API handlers
     // IMPORTANT: Register more specific routes first to avoid conflicts

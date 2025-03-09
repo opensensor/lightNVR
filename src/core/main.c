@@ -257,6 +257,17 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
+    // Set log file from configuration
+    if (config.log_file[0] != '\0') {
+        if (set_log_file(config.log_file) != 0) {
+            log_warn("Failed to set log file: %s", config.log_file);
+        } else {
+            log_info("Logging to file: %s", config.log_file);
+            // Disable console logging to avoid double logging
+            set_console_logging(0);
+        }
+    }
+
     // Copy configuration to global streaming config
     extern config_t global_config;  // Declared in streams.c
     memcpy(&global_config, &config, sizeof(config_t));

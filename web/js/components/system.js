@@ -4,6 +4,44 @@
  */
 
 /**
+ * Set up event handlers for system page
+ */
+function setupSystemHandlers() {
+    // Set up refresh button
+    const refreshBtn = document.getElementById('refresh-system-btn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', loadSystemInfo);
+    }
+    
+    // Set up restart button
+    const restartBtn = document.getElementById('restart-btn');
+    if (restartBtn) {
+        restartBtn.addEventListener('click', restartService);
+    }
+    
+    // Set up shutdown button
+    const shutdownBtn = document.getElementById('shutdown-btn');
+    if (shutdownBtn) {
+        shutdownBtn.addEventListener('click', shutdownService);
+    }
+    
+    // Set up clear logs button
+    const clearLogsBtn = document.getElementById('clear-logs-btn');
+    if (clearLogsBtn) {
+        clearLogsBtn.addEventListener('click', clearLogs);
+    }
+    
+    // Set up backup config button
+    const backupConfigBtn = document.getElementById('backup-config-btn');
+    if (backupConfigBtn) {
+        backupConfigBtn.addEventListener('click', backupConfig);
+    }
+    
+    // Set up auto-refresh timer (every 30 seconds)
+    setInterval(loadSystemInfo, 30000);
+}
+
+/**
  * Load system information
  */
 function loadSystemInfo() {
@@ -40,6 +78,9 @@ function loadSystemInfo() {
             document.getElementById('system-recording-streams').textContent = `${data.recording_streams || 0}`;
             document.getElementById('system-received').textContent = `${data.data_received || 0} MB`;
             document.getElementById('system-recorded').textContent = `${data.data_recorded || 0} MB`;
+
+            // Check daemon mode status
+            checkDaemonMode();
 
             // Load logs
             loadSystemLogs();
@@ -294,5 +335,38 @@ function checkSystemStatus() {
             // Error or server not responding, try again
             console.log('Waiting for system to restart...');
             setTimeout(checkSystemStatus, 2000);
+        });
+}
+
+/**
+ * Check if system is running in daemon mode and update UI accordingly
+ */
+function checkDaemonMode() {
+    // Try to restart the service to check if it's running in daemon mode
+    fetch('/api/system/restart', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ check_only: true })
+    })
+        .then(response => {
+            const restartBtn = document.getElementById('restart-btn');
+            if (!restartBtn) return;
+            
+            if (response.status === 403) {
+                // Not running in daemon mode, disable restart button
+                restartBtn.disabled = true;
+                restartBtn.title = 'Restart is only available when running in daemon mode';
+                restartBtn.classList.add('btn-disabled');
+            } else {
+                // Running in daemon mode, enable restart button
+                restartBtn.disabled = false;
+                restartBtn.title = 'Restart the LightNVR service';
+                restartBtn.classList.remove('btn-disabled');
+            }
+        })
+        .catch(error => {
+            console.error('Error checking daemon mode:', error);
         });
 }

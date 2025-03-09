@@ -507,6 +507,13 @@ button:not(.btn-icon):hover {
     background-color: #d32f2f;
 }
 
+.btn-disabled,
+button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
 .btn-icon {
     background-color: transparent;
     border: none;
