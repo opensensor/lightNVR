@@ -407,20 +407,45 @@ function addStreamStyles() {
             left: 0;
             width: 100%;
             height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
+            background-color: rgba(0, 0, 0, 0.6);
             display: flex;
             justify-content: center;
             align-items: center;
             cursor: pointer;
+            z-index: 10;
+            backdrop-filter: blur(2px);
+            -webkit-backdrop-filter: blur(2px);
+            transition: background-color 0.2s ease;
+        }
+        
+        .play-overlay:hover {
+            background-color: rgba(0, 0, 0, 0.5);
         }
         
         .play-button {
+            width: 70px;
+            height: 70px;
+            background-color: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: transform 0.2s ease, background-color 0.2s ease;
+        }
+        
+        .play-button::before {
+            content: '';
             width: 0;
             height: 0;
-            border-top: 20px solid transparent;
-            border-bottom: 20px solid transparent;
-            border-left: 30px solid white;
-            margin-left: 10px;
+            border-top: 15px solid transparent;
+            border-bottom: 15px solid transparent;
+            border-left: 25px solid white;
+            margin-left: 5px;
+        }
+        
+        .play-overlay:hover .play-button {
+            transform: scale(1.1);
+            background-color: rgba(255, 255, 255, 0.3);
         }
     `;
 

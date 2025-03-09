@@ -18,7 +18,7 @@ function updateVideoGrid(streams) {
         placeholder.className = 'placeholder';
         placeholder.innerHTML = `
             <p>No streams configured</p>
-            <a href="/streams" class="btn">Configure Streams</a>
+            <a href="streams.html" class="btn">Configure Streams</a>
         `;
         videoGrid.appendChild(placeholder);
         return;
@@ -35,27 +35,30 @@ function updateVideoGrid(streams) {
         // Ensure we have an ID for the stream (use name as fallback if needed)
         const streamId = stream.id || stream.name;
 
-        const videoContainer = document.createElement('div');
-        videoContainer.className = 'video-item';
+        const videoCell = document.createElement('div');
+        videoCell.className = 'video-cell';
 
-        videoContainer.innerHTML = `
-            <div class="video-header">
+        videoCell.innerHTML = `
+            <div class="stream-info">
                 <span>${stream.name}</span>
-                <div class="video-controls">
-                    <button class="btn-small snapshot" data-id="${streamId}" data-name="${stream.name}">Snapshot</button>
-                    <button class="btn-small fullscreen" data-id="${streamId}" data-name="${stream.name}">Fullscreen</button>
-                </div>
+                <span>${stream.width}x${stream.height} · ${stream.fps}fps</span>
             </div>
-            <div class="video-player" id="player-${stream.name.replace(/\s+/g, '-')}">
-                <video id="video-${stream.name.replace(/\s+/g, '-')}" autoplay muted></video>
-                <div class="loading-overlay">
-                    <div class="spinner"></div>
-                    <p>Connecting to stream...</p>
-                </div>
+            <video id="video-${stream.name.replace(/\s+/g, '-')}" autoplay muted></video>
+            <div class="stream-controls">
+                <button class="snapshot-btn" data-id="${streamId}" data-name="${stream.name}">
+                    <span>📷</span> Snapshot
+                </button>
+                <button class="fullscreen-btn" data-id="${streamId}" data-name="${stream.name}">
+                    <span>⛶</span> Fullscreen
+                </button>
+            </div>
+            <div class="loading-indicator">
+                <div class="loading-spinner"></div>
+                <span>Connecting...</span>
             </div>
         `;
 
-        videoGrid.appendChild(videoContainer);
+        videoGrid.appendChild(videoCell);
     });
 
     // Initialize video players and add event listeners
@@ -66,7 +69,7 @@ function updateVideoGrid(streams) {
         const streamId = stream.id || stream.name;
 
         // Add event listener for snapshot button
-        const snapshotBtn = videoGrid.querySelector(`.snapshot[data-id="${streamId}"]`);
+        const snapshotBtn = videoGrid.querySelector(`.snapshot-btn[data-id="${streamId}"]`);
         if (snapshotBtn) {
             snapshotBtn.addEventListener('click', () => {
                 console.log('Taking snapshot of stream with ID:', streamId);
@@ -75,7 +78,7 @@ function updateVideoGrid(streams) {
         }
 
         // Add event listener for fullscreen button
-        const fullscreenBtn = videoGrid.querySelector(`.fullscreen[data-id="${streamId}"]`);
+        const fullscreenBtn = videoGrid.querySelector(`.fullscreen-btn[data-id="${streamId}"]`);
         if (fullscreenBtn) {
             fullscreenBtn.addEventListener('click', () => {
                 console.log('Toggling fullscreen for stream with ID:', streamId);
@@ -92,15 +95,26 @@ function updateVideoLayout(layout) {
     const videoGrid = document.getElementById('video-grid');
     if (!videoGrid) return;
 
-    // Set grid columns based on layout
-    if (layout === '1') {
-        videoGrid.style.gridTemplateColumns = '1fr';
-    } else if (layout === '4') {
-        videoGrid.style.gridTemplateColumns = 'repeat(2, 1fr)';
-    } else if (layout === '9') {
-        videoGrid.style.gridTemplateColumns = 'repeat(3, 1fr)';
-    } else if (layout === '16') {
-        videoGrid.style.gridTemplateColumns = 'repeat(4, 1fr)';
+    // Remove all layout classes
+    videoGrid.classList.remove('layout-1', 'layout-4', 'layout-9', 'layout-16');
+    
+    // Add selected layout class
+    videoGrid.classList.add(`layout-${layout}`);
+    
+    // Adjust video cells if needed
+    const videoCells = videoGrid.querySelectorAll('.video-cell');
+    if (videoCells.length > 0) {
+        // Force video elements to redraw to adjust to new layout
+        videoCells.forEach(cell => {
+            const video = cell.querySelector('video');
+            if (video) {
+                // Trigger a reflow
+                video.style.display = 'none';
+                setTimeout(() => {
+                    video.style.display = 'block';
+                }, 10);
+            }
+        });
     }
 }
 
@@ -110,13 +124,15 @@ function updateVideoLayout(layout) {
 function initializeVideoPlayer(stream) {
     const videoElementId = `video-${stream.name.replace(/\s+/g, '-')}`;
     const videoElement = document.getElementById(videoElementId);
-    const containerId = `player-${stream.name.replace(/\s+/g, '-')}`;
-    const container = document.getElementById(containerId);
+    const videoCell = videoElement ? videoElement.closest('.video-cell') : null;
 
-    if (!videoElement || !container) return;
+    if (!videoElement || !videoCell) return;
 
     // Show loading state
-    container.classList.add('loading');
+    const loadingIndicator = videoCell.querySelector('.loading-indicator');
+    if (loadingIndicator) {
+        loadingIndicator.style.display = 'flex';
+    }
 
     // Build the HLS stream URL - this would be generated by your backend
     // Your backend needs to convert RTSP to HLS using FFmpeg
@@ -127,7 +143,9 @@ function initializeVideoPlayer(stream) {
         // Native HLS support (Safari)
         videoElement.src = hlsStreamUrl;
         videoElement.addEventListener('loadedmetadata', function() {
-            container.classList.remove('loading');
+            if (loadingIndicator) {
+                loadingIndicator.style.display = 'none';
+            }
         });
 
         videoElement.addEventListener('error', function() {
@@ -147,11 +165,13 @@ function initializeVideoPlayer(stream) {
         hls.attachMedia(videoElement);
 
         hls.on(Hls.Events.MANIFEST_PARSED, function() {
-            container.classList.remove('loading');
+            if (loadingIndicator) {
+                loadingIndicator.style.display = 'none';
+            }
             videoElement.play().catch(error => {
                 console.warn('Auto-play prevented:', error);
                 // Add play button overlay for user interaction
-                addPlayButtonOverlay(container, videoElement);
+                addPlayButtonOverlay(videoCell, videoElement);
             });
         });
 
@@ -164,7 +184,7 @@ function initializeVideoPlayer(stream) {
         });
 
         // Store hls instance for cleanup
-        container.hlsPlayer = hls;
+        videoCell.hlsPlayer = hls;
     }
     // Fallback for unsupported browsers
     else {
@@ -175,11 +195,11 @@ function initializeVideoPlayer(stream) {
 /**
  * Add play button overlay for browsers that block autoplay
  */
-function addPlayButtonOverlay(container, videoElement) {
+function addPlayButtonOverlay(videoCell, videoElement) {
     const playOverlay = document.createElement('div');
     playOverlay.className = 'play-overlay';
     playOverlay.innerHTML = '<div class="play-button"></div>';
-    container.appendChild(playOverlay);
+    videoCell.appendChild(playOverlay);
 
     playOverlay.addEventListener('click', function() {
         videoElement.play()
@@ -196,42 +216,48 @@ function addPlayButtonOverlay(container, videoElement) {
  * Handle video player errors
  */
 function handleVideoError(streamName, message) {
-    const containerId = `player-${streamName.replace(/\s+/g, '-')}`;
-    const container = document.getElementById(containerId);
+    const videoElementId = `video-${streamName.replace(/\s+/g, '-')}`;
+    const videoElement = document.getElementById(videoElementId);
+    const videoCell = videoElement ? videoElement.closest('.video-cell') : null;
 
-    if (!container) return;
+    if (!videoCell) return;
 
-    container.classList.remove('loading');
-    container.classList.add('error');
+    // Hide loading indicator
+    const loadingIndicator = videoCell.querySelector('.loading-indicator');
+    if (loadingIndicator) {
+        loadingIndicator.style.display = 'none';
+    }
 
-    const errorMessage = document.createElement('div');
-    errorMessage.className = 'error-message';
-    errorMessage.innerHTML = `
+    // Create error indicator if it doesn't exist
+    let errorIndicator = videoCell.querySelector('.error-indicator');
+    if (!errorIndicator) {
+        errorIndicator = document.createElement('div');
+        errorIndicator.className = 'error-indicator';
+        videoCell.appendChild(errorIndicator);
+    }
+
+    errorIndicator.innerHTML = `
         <div class="error-icon">!</div>
         <p>${message || 'Stream connection failed'}</p>
         <button class="retry-button">Retry</button>
     `;
 
-    // Remove any existing error message
-    const existingError = container.querySelector('.error-message');
-    if (existingError) {
-        existingError.remove();
-    }
-
-    container.appendChild(errorMessage);
-
     // Add retry button handler
-    const retryButton = errorMessage.querySelector('.retry-button');
+    const retryButton = errorIndicator.querySelector('.retry-button');
     if (retryButton) {
         retryButton.addEventListener('click', function() {
+            // Show loading indicator again
+            if (loadingIndicator) {
+                loadingIndicator.style.display = 'flex';
+            }
+            
+            // Hide error indicator
+            errorIndicator.style.display = 'none';
+            
             // Fetch stream info again and reinitialize
             fetch(`/api/streams/${encodeURIComponent(streamName)}`)
                 .then(response => response.json())
                 .then(streamInfo => {
-                    // Remove error message
-                    errorMessage.remove();
-                    container.classList.remove('error');
-
                     // Cleanup existing player if any
                     cleanupVideoPlayer(streamName);
 
@@ -240,7 +266,18 @@ function handleVideoError(streamName, message) {
                 })
                 .catch(error => {
                     console.error('Error fetching stream info:', error);
-                    alert('Could not reconnect to stream: ' + error.message);
+                    
+                    // Show error indicator again with new message
+                    errorIndicator.style.display = 'flex';
+                    const errorMsg = errorIndicator.querySelector('p');
+                    if (errorMsg) {
+                        errorMsg.textContent = 'Could not reconnect: ' + error.message;
+                    }
+                    
+                    // Hide loading indicator
+                    if (loadingIndicator) {
+                        loadingIndicator.style.display = 'none';
+                    }
                 });
         });
     }
@@ -250,38 +287,39 @@ function handleVideoError(streamName, message) {
  * Cleanup video player resources when switching pages or streams
  */
 function cleanupVideoPlayer(streamName) {
-    const containerId = `player-${streamName.replace(/\s+/g, '-')}`;
-    const container = document.getElementById(containerId);
+    const videoElementId = `video-${streamName.replace(/\s+/g, '-')}`;
+    const videoElement = document.getElementById(videoElementId);
+    const videoCell = videoElement ? videoElement.closest('.video-cell') : null;
 
-    if (!container) return;
+    if (!videoCell) return;
 
     // Destroy HLS instance if exists
-    if (container.hlsPlayer) {
-        container.hlsPlayer.destroy();
-        delete container.hlsPlayer;
+    if (videoCell.hlsPlayer) {
+        videoCell.hlsPlayer.destroy();
+        delete videoCell.hlsPlayer;
     }
 
     // Reset video element
-    const videoElementId = `video-${streamName.replace(/\s+/g, '-')}`;
-    const videoElement = document.getElementById(videoElementId);
-
     if (videoElement) {
         videoElement.pause();
         videoElement.removeAttribute('src');
         videoElement.load();
     }
 
-    // Reset container state
-    container.classList.remove('loading', 'error');
+    // Reset loading indicator
+    const loadingIndicator = videoCell.querySelector('.loading-indicator');
+    if (loadingIndicator) {
+        loadingIndicator.style.display = 'none';
+    }
 
-    // Remove error message if any
-    const errorMessage = container.querySelector('.error-message');
-    if (errorMessage) {
-        errorMessage.remove();
+    // Remove error indicator if any
+    const errorIndicator = videoCell.querySelector('.error-indicator');
+    if (errorIndicator) {
+        errorIndicator.remove();
     }
 
     // Remove play overlay if any
-    const playOverlay = container.querySelector('.play-overlay');
+    const playOverlay = videoCell.querySelector('.play-overlay');
     if (playOverlay) {
         playOverlay.remove();
     }
@@ -291,16 +329,17 @@ function cleanupVideoPlayer(streamName) {
  * Toggle fullscreen for a specific stream
  */
 function toggleStreamFullscreen(streamName) {
-    const containerId = `player-${streamName.replace(/\s+/g, '-')}`;
-    const container = document.getElementById(containerId);
+    const videoElementId = `video-${streamName.replace(/\s+/g, '-')}`;
+    const videoElement = document.getElementById(videoElementId);
+    const videoCell = videoElement ? videoElement.closest('.video-cell') : null;
 
-    if (!container) {
-        alert('Stream not found');
+    if (!videoCell) {
+        console.error('Stream not found:', streamName);
         return;
     }
 
     if (!document.fullscreenElement) {
-        container.requestFullscreen().catch(err => {
+        videoCell.requestFullscreen().catch(err => {
             console.error(`Error attempting to enable fullscreen: ${err.message}`);
             alert(`Could not enable fullscreen mode: ${err.message}`);
         });
