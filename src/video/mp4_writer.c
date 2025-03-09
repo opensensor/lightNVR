@@ -192,43 +192,57 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
     AVPacket pkt;
     av_packet_ref(&pkt, in_pkt);
 
-    // Preserve original pts/dts spacing but ensure monotonic increase
+    // Fix timestamps - improved approach to prevent ghosting
+    if (writer->first_dts == AV_NOPTS_VALUE) {
+        // First packet - use its DTS as reference
+        writer->first_dts = pkt.dts != AV_NOPTS_VALUE ? pkt.dts : pkt.pts;
+        writer->first_pts = pkt.pts != AV_NOPTS_VALUE ? pkt.pts : pkt.dts;
 
-    // Handle DTS (decoding timestamp)
-    if (pkt.dts != AV_NOPTS_VALUE) {
-        // Calculate proper offset from the first DTS
-        int64_t dts_diff = pkt.dts - writer->first_dts;
+        // Initialize last_dts to avoid comparison with AV_NOPTS_VALUE
+        writer->last_dts = writer->first_dts;
 
-        // If DTS goes backwards or is the same, adjust it to be strictly increasing
-        if (dts_diff <= 0 || pkt.dts <= writer->last_dts) {
-            // Increase by at least 1 tick from the last DTS
-            pkt.dts = writer->last_dts + 1;
+        // For the first packet, set timestamps to 0
+        pkt.dts = 0;
+        pkt.pts = pkt.pts != AV_NOPTS_VALUE ? pkt.pts - writer->first_pts : 0;
+    } else {
+        // Preserve original pts/dts spacing but ensure monotonic increase
+
+        // Handle DTS (decoding timestamp)
+        if (pkt.dts != AV_NOPTS_VALUE) {
+            // Calculate proper offset from the first DTS
+            int64_t dts_diff = pkt.dts - writer->first_dts;
+
+            // If DTS goes backwards or is the same, adjust it to be strictly increasing
+            if (dts_diff <= 0 || pkt.dts <= writer->last_dts) {
+                // Increase by at least 1 tick from the last DTS
+                pkt.dts = writer->last_dts + 1;
+            } else {
+                pkt.dts = dts_diff;
+            }
         } else {
-            pkt.dts = dts_diff;
+            // If DTS is not set, derive it from PTS if possible
+            pkt.dts = pkt.pts != AV_NOPTS_VALUE ?
+                      (pkt.pts - writer->first_pts) : (writer->last_dts + 1);
         }
-    } else {
-        // If DTS is not set, derive it from PTS if possible
-        pkt.dts = pkt.pts != AV_NOPTS_VALUE ?
-                  (pkt.pts - writer->first_pts) : (writer->last_dts + 1);
-    }
 
-    // Handle PTS (presentation timestamp)
-    if (pkt.pts != AV_NOPTS_VALUE) {
-        // Calculate proper offset from the first PTS
-        int64_t pts_diff = pkt.pts - writer->first_pts;
+        // Handle PTS (presentation timestamp)
+        if (pkt.pts != AV_NOPTS_VALUE) {
+            // Calculate proper offset from the first PTS
+            int64_t pts_diff = pkt.pts - writer->first_pts;
 
-        // PTS can be before DTS for B-frames, but must be >= 0
-        pkt.pts = pts_diff >= 0 ? pts_diff : 0;
+            // PTS can be before DTS for B-frames, but must be >= 0
+            pkt.pts = pts_diff >= 0 ? pts_diff : 0;
 
-        // Ensure PTS is not too far in the future relative to DTS
-        // This helps prevent large PTS-DTS differences that can cause ghosting
-        if (pkt.pts > pkt.dts + (input_stream->time_base.den / input_stream->time_base.num)) {
-            int64_t max_diff = input_stream->time_base.den / input_stream->time_base.num;
-            pkt.pts = pkt.dts + max_diff;
+            // Ensure PTS is not too far in the future relative to DTS
+            // This helps prevent large PTS-DTS differences that can cause ghosting
+            if (pkt.pts > pkt.dts + (input_stream->time_base.den / input_stream->time_base.num)) {
+                int64_t max_diff = input_stream->time_base.den / input_stream->time_base.num;
+                pkt.pts = pkt.dts + max_diff;
+            }
+        } else {
+            // If PTS is not set, use DTS
+            pkt.pts = pkt.dts;
         }
-    } else {
-        // If PTS is not set, use DTS
-        pkt.pts = pkt.dts;
     }
 
     // Update last DTS to maintain monotonic increase
