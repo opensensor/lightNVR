@@ -50,7 +50,7 @@ LightNVR provides a lightweight yet powerful solution for recording and managing
 1. **Build from source**:
    ```bash
    # Clone the repository
-   git clone https://github.com/yourusername/lightnvr.git
+   git clone https://github.com/opensensor/lightnvr.git
    cd lightnvr
    
    # Build the software

@@ -13,7 +13,7 @@ function loadHeader(activePageId) {
     headerContainer.innerHTML = `
         <div class="logo">
             <h1>LightNVR</h1>
-            <span class="version">v0.2.0</span>
+            <span class="version" id="version-display">Loading...</span>
         </div>
         <nav>
             <ul>
@@ -29,6 +29,9 @@ function loadHeader(activePageId) {
             <a href="index.html?logout=true" id="logout">Logout</a>
         </div>
     `;
+    
+    // Fetch and update the version after header is loaded
+    updateVersionDisplay();
 }
 
 /**
@@ -44,7 +47,33 @@ function loadFooter() {
             <span id="status-text">System running normally</span>
         </div>
         <div class="copyright">
-            &copy; 2025 LightNVR - <a href="https://github.com/yourusername/lightnvr" target="_blank">GitHub</a>
+            &copy; 2025 LightNVR - <a href="https://github.com/opensensor/lightnvr" target="_blank">GitHub</a>
         </div>
     `;
+}
+
+/**
+ * Fetch and update the version display
+ */
+function updateVersionDisplay() {
+    const versionDisplay = document.getElementById('version-display');
+    if (!versionDisplay) return;
+
+    // Fetch system information from API
+    fetch('/api/system/info')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to load system information');
+            }
+            return response.json();
+        })
+        .then(data => {
+            // Update version display with 'v' prefix
+            versionDisplay.textContent = `v${data.version || '0.2.0'}`;
+        })
+        .catch(error => {
+            console.error('Error loading version information:', error);
+            // Use fallback version if API call fails
+            versionDisplay.textContent = 'v0.2.0';
+        });
 }

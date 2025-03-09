@@ -38,7 +38,7 @@ Building from source is the recommended method for most installations, as it ens
 #### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/lightnvr.git
+git clone https://github.com/opensensor/lightnvr.git
 cd lightnvr
 ```
 
@@ -249,7 +249,7 @@ cd ingenic-dependencies
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/lightnvr.git
+git clone https://github.com/opensensor/lightnvr.git
 cd lightnvr
 
 # Build using the cross-compilation script
@@ -296,7 +296,7 @@ sudo apt-get install -y \
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/lightnvr.git
+git clone https://github.com/opensensor/lightnvr.git
 cd lightnvr
 
 # Build with Raspberry Pi optimizations

@@ -59,7 +59,7 @@ LightNVR includes a build script that simplifies the build process. To build the
 
 ```bash
 # Clone the repository (if you haven't already)
-git clone https://github.com/yourusername/lightnvr.git
+git clone https://github.com/opensensor/lightnvr.git
 cd lightnvr
 
 # Build in debug mode (default)
