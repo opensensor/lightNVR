@@ -896,6 +896,8 @@ function updateStreamFilter(streams) {
     const streamFilter = document.getElementById('stream-filter');
     if (!streamFilter) return;
 
+    console.log('Updating stream filter with streams:', streams);
+
     // Clear existing options except "All Streams"
     while (streamFilter.options.length > 1) {
         streamFilter.remove(1);
@@ -906,9 +908,10 @@ function updateStreamFilter(streams) {
         streams.forEach(stream => {
             const streamId = stream.id || stream.name;
             const option = document.createElement('option');
-            option.value = streamId;
+            option.value = stream.name; // Use stream name for filtering
             option.textContent = stream.name;
             streamFilter.appendChild(option);
+            console.log(`Added stream option: ${stream.name}`);
         });
     }
 }
@@ -1452,16 +1455,26 @@ function playRecording(recordingId) {
 
             // Set video source
             videoPlayer.innerHTML = '';
-            const videoElement = document.createElement('video');
-            videoElement.controls = true;
-            videoElement.autoplay = true;
             
-            // Create a direct download URL
+            // Create a direct download URL with direct=1 parameter
             const videoUrl = `/api/recordings/download/${recordingId}?direct=1`;
             console.log('Video URL:', videoUrl);
             
-            // Set the source
-            videoElement.src = videoUrl;
+            // Create video element with multiple source options for better compatibility
+            const videoElement = document.createElement('video');
+            videoElement.controls = true;
+            videoElement.autoplay = true;
+            videoElement.style.width = '100%';
+            videoElement.style.maxHeight = '70vh';
+            
+            // Add multiple source formats for better compatibility
+            const sourceMP4 = document.createElement('source');
+            sourceMP4.src = videoUrl;
+            sourceMP4.type = 'video/mp4';
+            videoElement.appendChild(sourceMP4);
+            
+            // Add fallback text
+            videoElement.innerHTML += 'Your browser does not support the video tag.';
             
             // Add event listeners
             videoElement.addEventListener('loadeddata', () => {
@@ -1473,16 +1486,46 @@ function playRecording(recordingId) {
                 console.log('Video can play');
                 videoModal.classList.remove('loading');
             });
+            
+            videoElement.addEventListener('playing', () => {
+                console.log('Video is playing');
+                videoModal.classList.remove('loading');
+            });
 
             videoElement.addEventListener('error', (e) => {
                 console.error('Video error:', e);
                 videoModal.classList.remove('loading');
+                
+                // Try to get detailed error information
+                let errorDetails = 'Unknown error';
+                if (videoElement.error) {
+                    switch(videoElement.error.code) {
+                        case 1: errorDetails = 'MEDIA_ERR_ABORTED: Fetching process aborted by user'; break;
+                        case 2: errorDetails = 'MEDIA_ERR_NETWORK: Network error while loading media'; break;
+                        case 3: errorDetails = 'MEDIA_ERR_DECODE: Media decoding error'; break;
+                        case 4: errorDetails = 'MEDIA_ERR_SRC_NOT_SUPPORTED: Media format not supported'; break;
+                        default: errorDetails = `Unknown error (${videoElement.error.code})`;
+                    }
+                }
+                
                 videoPlayer.innerHTML = `
-                    <div style="display:flex;justify-content:center;align-items:center;height:300px;background:#000;color:#fff;">
+                    <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:300px;background:#000;color:#fff;padding:20px;text-align:center;">
                         <p>Error loading video. The recording may be unavailable or in an unsupported format.</p>
-                        <p>Error details: ${videoElement.error ? videoElement.error.message : 'Unknown error'}</p>
+                        <p>Error details: ${errorDetails}</p>
+                        <p style="margin-top:20px;">You can try downloading the video instead:</p>
+                        <button id="fallback-download-btn" style="margin-top:10px;padding:8px 16px;background:#1e88e5;color:white;border:none;border-radius:4px;cursor:pointer;">
+                            Download Video
+                        </button>
                     </div>
                 `;
+                
+                // Add event listener to the fallback download button
+                const fallbackDownloadBtn = document.getElementById('fallback-download-btn');
+                if (fallbackDownloadBtn) {
+                    fallbackDownloadBtn.addEventListener('click', () => {
+                        window.location.href = `/api/recordings/download/${recordingId}`;
+                    });
+                }
             });
 
             videoPlayer.appendChild(videoElement);
