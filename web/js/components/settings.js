@@ -4,24 +4,41 @@
  */
 
 /**
- * Load settings
+ * Load settings with improved error handling and progress indication
  */
 function loadSettings() {
     const settingsContainer = document.querySelector('.settings-container');
     if (!settingsContainer) return;
 
-    showLoading(settingsContainer);
+    // Create and show progress indicator
+    const progressContainer = createProgressIndicator(settingsContainer, 'Loading settings');
+    updateProgress(progressContainer, 10, 'Connecting to server...');
 
-    // Fetch settings from the server with error handling
-    fetch('/api/settings')
+    // Set a timeout to detect slow server responses
+    const timeoutId = setTimeout(() => {
+        updateProgress(progressContainer, 30, 'Server is taking longer than expected...');
+    }, 2000);
+
+    // Fetch settings from the server with improved error handling
+    fetch('/api/settings', {
+        method: 'GET',
+        headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+        }
+    })
         .then(response => {
+            updateProgress(progressContainer, 50, 'Received server response...');
+            
             if (!response.ok) {
                 return response.text().then(text => {
                     console.error('Server returned error:', text);
                     throw new Error(`Server error: ${response.status} ${response.statusText}`);
                 });
             }
+            
             return response.text().then(text => {
+                updateProgress(progressContainer, 70, 'Processing data...');
                 try {
                     return JSON.parse(text);
                 } catch (e) {
@@ -31,6 +48,7 @@ function loadSettings() {
             });
         })
         .then(settings => {
+            updateProgress(progressContainer, 80, 'Applying settings...');
             console.log('Received settings:', settings); // Debug log
 
             if (!settings || typeof settings !== 'object') {
@@ -86,6 +104,7 @@ function loadSettings() {
                 if (swapSize) swapSize.value = typeof settings.swap_size === 'number' ?
                     settings.swap_size : 128;
 
+                updateProgress(progressContainer, 100, 'Settings loaded successfully');
                 console.log('Settings loaded successfully');
             } catch (error) {
                 console.error('Error processing settings:', error);
@@ -94,21 +113,40 @@ function loadSettings() {
         })
         .catch(error => {
             console.error('Error loading settings:', error);
+            updateProgress(progressContainer, 100, 'Error: ' + error.message, true);
             showStatusMessage('Error loading settings: ' + error.message, 'error');
+            
+            // Add retry button
+            const retryButton = document.createElement('button');
+            retryButton.textContent = 'Retry';
+            retryButton.className = 'btn-primary';
+            retryButton.style.marginTop = '10px';
+            retryButton.addEventListener('click', () => {
+                removeProgressIndicator(progressContainer);
+                loadSettings();
+            });
+            progressContainer.appendChild(retryButton);
         })
         .finally(() => {
-            hideLoading(settingsContainer);
+            clearTimeout(timeoutId);
+            
+            // Remove progress indicator after a delay
+            setTimeout(() => {
+                removeProgressIndicator(progressContainer);
+            }, 1000);
         });
 }
 
 /**
- * Save settings
+ * Save settings with improved error handling, progress indication, and non-blocking behavior
  */
 function saveSettings() {
     const settingsContainer = document.querySelector('.settings-container');
     if (!settingsContainer) return;
 
-    showLoading(settingsContainer);
+    // Create and show progress indicator
+    const progressContainer = createProgressIndicator(settingsContainer, 'Saving settings');
+    updateProgress(progressContainer, 10, 'Validating settings...');
 
     try {
         // Collect all settings from the form with validation
@@ -140,24 +178,57 @@ function saveSettings() {
             throw new Error('Swap size must be at least 32 MB');
         }
 
-        // Send settings to the server
-        fetch('/api/settings', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(settings)
-        })
+        updateProgress(progressContainer, 20, 'Preparing to send data...');
+
+        // Set a timeout to detect slow server responses
+        const timeoutId = setTimeout(() => {
+            updateProgress(progressContainer, 40, 'Server is taking longer than expected...');
+        }, 2000);
+
+        // Use a longer timeout for the fetch operation
+        const controller = new AbortController();
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => {
+                controller.abort();
+                reject(new Error('Request timed out after 30 seconds'));
+            }, 30000);
+        });
+
+        // Send settings to the server with improved error handling
+        Promise.race([
+            fetch('/api/settings', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(settings),
+                signal: controller.signal
+            }),
+            timeoutPromise
+        ])
             .then(response => {
+                updateProgress(progressContainer, 60, 'Received server response...');
+                clearTimeout(timeoutId);
+                
                 if (!response.ok) {
                     return response.json().then(data => {
                         throw new Error(data.error || 'Failed to save settings');
+                    }).catch(e => {
+                        // If JSON parsing fails, use the response status text
+                        throw new Error(`Server error: ${response.status} ${response.statusText}`);
                     });
                 }
-                return response.json();
+                
+                updateProgress(progressContainer, 80, 'Processing response...');
+                return response.json().catch(() => {
+                    // If JSON parsing fails but response was OK, return a success object
+                    return { success: true };
+                });
             })
             .then(data => {
+                updateProgress(progressContainer, 100, 'Settings saved successfully');
                 console.log('Settings saved successfully:', data);
+                
                 // Show success message in the status element
                 const statusEl = document.getElementById('settings-status');
                 if (statusEl) {
@@ -173,9 +244,15 @@ function saveSettings() {
                     // Fallback to the global status message
                     showStatusMessage('Settings saved successfully');
                 }
+                
+                // Remove progress indicator after a delay
+                setTimeout(() => {
+                    removeProgressIndicator(progressContainer);
+                }, 1000);
             })
             .catch(error => {
                 console.error('Error saving settings:', error);
+                updateProgress(progressContainer, 100, 'Error: ' + error.message, true);
                 
                 // Show error message in the status element
                 const statusEl = document.getElementById('settings-status');
@@ -184,16 +261,161 @@ function saveSettings() {
                     statusEl.className = 'status-message error';
                     statusEl.style.display = 'block';
                 } else {
-                    // Fallback to alert
-                    alert('Error saving settings: ' + error.message);
+                    // Fallback to the global status message
+                    showStatusMessage('Error saving settings: ' + error.message, 'error');
                 }
-            })
-            .finally(() => {
-                hideLoading(settingsContainer);
+                
+                // Add retry button
+                const retryButton = document.createElement('button');
+                retryButton.textContent = 'Retry';
+                retryButton.className = 'btn-primary';
+                retryButton.style.marginTop = '10px';
+                retryButton.addEventListener('click', () => {
+                    removeProgressIndicator(progressContainer);
+                    saveSettings();
+                });
+                progressContainer.appendChild(retryButton);
             });
     } catch (error) {
         console.error('Error preparing settings:', error);
-        alert('Error: ' + error.message);
-        hideLoading(settingsContainer);
+        updateProgress(progressContainer, 100, 'Error: ' + error.message, true);
+        
+        // Show error message
+        const statusEl = document.getElementById('settings-status');
+        if (statusEl) {
+            statusEl.textContent = 'Error: ' + error.message;
+            statusEl.className = 'status-message error';
+            statusEl.style.display = 'block';
+        } else {
+            showStatusMessage('Error: ' + error.message, 'error');
+        }
+        
+        // Remove progress indicator after a delay
+        setTimeout(() => {
+            removeProgressIndicator(progressContainer);
+        }, 3000);
+    }
+}
+
+/**
+ * Create a progress indicator element
+ * @param {HTMLElement} container - The container to append the progress indicator to
+ * @param {string} title - The title of the operation
+ * @returns {HTMLElement} - The progress container element
+ */
+function createProgressIndicator(container, title) {
+    // Create progress container
+    const progressContainer = document.createElement('div');
+    progressContainer.className = 'progress-container';
+    progressContainer.style.position = 'absolute';
+    progressContainer.style.top = '0';
+    progressContainer.style.left = '0';
+    progressContainer.style.width = '100%';
+    progressContainer.style.height = '100%';
+    progressContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+    progressContainer.style.display = 'flex';
+    progressContainer.style.flexDirection = 'column';
+    progressContainer.style.justifyContent = 'center';
+    progressContainer.style.alignItems = 'center';
+    progressContainer.style.zIndex = '1000';
+    progressContainer.style.color = 'white';
+    progressContainer.style.padding = '20px';
+    progressContainer.style.borderRadius = '4px';
+    
+    // Create title
+    const titleElement = document.createElement('h3');
+    titleElement.textContent = title;
+    titleElement.style.marginBottom = '15px';
+    progressContainer.appendChild(titleElement);
+    
+    // Create progress bar container
+    const progressBarContainer = document.createElement('div');
+    progressBarContainer.style.width = '80%';
+    progressBarContainer.style.height = '10px';
+    progressBarContainer.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+    progressBarContainer.style.borderRadius = '5px';
+    progressBarContainer.style.overflow = 'hidden';
+    progressBarContainer.style.marginBottom = '10px';
+    progressContainer.appendChild(progressBarContainer);
+    
+    // Create progress bar
+    const progressBar = document.createElement('div');
+    progressBar.className = 'progress-bar';
+    progressBar.style.width = '0%';
+    progressBar.style.height = '100%';
+    progressBar.style.backgroundColor = '#4CAF50';
+    progressBar.style.transition = 'width 0.3s ease';
+    progressBarContainer.appendChild(progressBar);
+    
+    // Create status text
+    const statusText = document.createElement('div');
+    statusText.className = 'progress-status';
+    statusText.textContent = 'Starting...';
+    statusText.style.marginTop = '10px';
+    statusText.style.textAlign = 'center';
+    progressContainer.appendChild(statusText);
+    
+    // Add to container
+    container.style.position = 'relative';
+    container.appendChild(progressContainer);
+    
+    return progressContainer;
+}
+
+/**
+ * Update the progress indicator
+ * @param {HTMLElement} progressContainer - The progress container element
+ * @param {number} percent - The progress percentage (0-100)
+ * @param {string} status - The status text to display
+ * @param {boolean} isError - Whether this is an error status
+ */
+function updateProgress(progressContainer, percent, status, isError = false) {
+    const progressBar = progressContainer.querySelector('.progress-bar');
+    const statusText = progressContainer.querySelector('.progress-status');
+    
+    if (progressBar) {
+        progressBar.style.width = `${percent}%`;
+        
+        // Change color for error
+        if (isError) {
+            progressBar.style.backgroundColor = '#F44336';
+        }
+    }
+    
+    if (statusText) {
+        statusText.textContent = status;
+        
+        // Change color for error
+        if (isError) {
+            statusText.style.color = '#F44336';
+        }
+    }
+}
+
+/**
+ * Remove the progress indicator
+ * @param {HTMLElement} progressContainer - The progress container element
+ */
+function removeProgressIndicator(progressContainer) {
+    if (progressContainer && progressContainer.parentNode) {
+        // Fade out animation
+        progressContainer.style.transition = 'opacity 0.5s ease';
+        progressContainer.style.opacity = '0';
+        
+        // Remove after animation
+        setTimeout(() => {
+            progressContainer.parentNode.removeChild(progressContainer);
+        }, 500);
+    }
+}
+
+/**
+ * Setup settings page event handlers
+ */
+function setupSettingsHandlers() {
+    // Save button click handler
+    const saveButton = document.getElementById('save-settings-btn');
+    if (saveButton) {
+        saveButton.addEventListener('click', saveSettings);
     }
 }

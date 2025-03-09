@@ -22,6 +22,50 @@
                 </div>
             </div>
             <div id="settings-status" class="status-message" style="display: none;"></div>
+            
+            <!-- Progress indicator styles -->
+            <style>
+                .settings-container {
+                    position: relative;
+                    min-height: 400px;
+                }
+                
+                .progress-container {
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background-color: rgba(0, 0, 0, 0.7);
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                    align-items: center;
+                    z-index: 1000;
+                    color: white;
+                    padding: 20px;
+                    border-radius: 4px;
+                }
+                
+                .status-message {
+                    padding: 10px 15px;
+                    margin-bottom: 15px;
+                    border-radius: 4px;
+                    font-weight: 500;
+                }
+                
+                .status-message.success {
+                    background-color: rgba(76, 175, 80, 0.2);
+                    color: #2e7d32;
+                    border: 1px solid #2e7d32;
+                }
+                
+                .status-message.error {
+                    background-color: rgba(244, 67, 54, 0.2);
+                    color: #c62828;
+                    border: 1px solid #c62828;
+                }
+            </style>
             <div class="settings-container">
                 <div class="settings-group">
                     <h3>General Settings</h3>
