@@ -1450,9 +1450,11 @@ function playRecording(recordingId) {
     const videoModal = document.getElementById('video-modal');
     const videoPlayer = document.getElementById('video-player');
     const videoTitle = document.getElementById('video-modal-title');
-    const videoDownloadBtn = document.getElementById('video-download-btn');
 
-    if (!videoModal || !videoPlayer || !videoTitle) return;
+    if (!videoModal || !videoPlayer || !videoTitle) {
+        console.error('Video modal elements not found');
+        return;
+    }
 
     // Show loading state
     videoModal.classList.add('loading');
@@ -1468,72 +1470,89 @@ function playRecording(recordingId) {
         })
         .then(recording => {
             console.log('Recording details:', recording);
-            
+
             // Set video title
             videoTitle.textContent = `${recording.stream} - ${recording.start_time}`;
 
-            // Clear video player
-            videoPlayer.innerHTML = '';
-            
-            // Base URL for video
+            // Base URLs for video
             const videoUrl = `/api/recordings/download/${recordingId}`;
-            const downloadUrl = `/api/recordings/download/${recordingId}?download=1`;
-            
+            const downloadUrl = `${videoUrl}?download=1`;
+
             console.log('Video URL:', videoUrl);
             console.log('Download URL:', downloadUrl);
 
-            // Create a simple player div
-            videoPlayer.innerHTML = `
-                <iframe 
-                    src="${videoUrl}" 
-                    style="width:100%;height:calc(70vh - 60px);border:none;background:#000;" 
-                    frameborder="0"
-                    allowfullscreen
-                ></iframe>
-                <div style="padding:10px;background:#f8f9fa;border-top:1px solid #dee2e6;text-align:center;">
-                    <p>If the video doesn't play, try downloading it or opening in a new tab.</p>
-                    <div style="margin-top:10px;">
-                        <a href="${downloadUrl}" class="btn btn-primary" style="margin-right:10px;" download>Download Video</a>
-                        <a href="${videoUrl}" class="btn" target="_blank">Open in New Tab</a>
-                    </div>
-                </div>
-            `;
-            
-            // Set direct download URL on the main download button using a regular link
-            if (videoDownloadBtn) {
-                videoDownloadBtn.onclick = null; // Remove any existing click handler
-                videoDownloadBtn.innerHTML = `<a href="${downloadUrl}" download style="color:inherit;text-decoration:none;">Download</a>`;
+            // Reset video player
+            videoPlayer.innerHTML = '';
+            videoPlayer.controls = true;
+
+            // Determine if HLS or MP4
+            if (recording.path.endsWith('.m3u8')) {
+                if (Hls.isSupported()) {
+                    let hls = new Hls();
+                    hls.loadSource(videoUrl);
+                    hls.attachMedia(videoPlayer);
+                    hls.on(Hls.Events.MANIFEST_PARSED, function () {
+                        videoPlayer.play();
+                    });
+                } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
+                    videoPlayer.src = videoUrl;
+                    videoPlayer.play();
+                } else {
+                    console.error('HLS not supported');
+                    videoPlayer.innerHTML = `
+                        <p>HLS playback is not supported in this browser.</p>
+                        <a href="${downloadUrl}" class="btn btn-primary" download>Download Video</a>
+                    `;
+                }
+            } else {
+                // Standard MP4 playback
+                videoPlayer.src = videoUrl;
+                videoPlayer.play();
             }
-            
-            // Hide loading state
+
+            // Update download button
+            const downloadBtn = document.getElementById('video-download-btn');
+            if (downloadBtn) {
+                downloadBtn.onclick = function(e) {
+                    e.preventDefault();
+                    const link = document.createElement('a');
+                    link.href = downloadUrl;
+                    link.download = '';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    return false;
+                };
+            }
+
+            // Remove loading state
             videoModal.classList.remove('loading');
         })
         .catch(error => {
             console.error('Error loading recording:', error);
             videoModal.classList.remove('loading');
             videoPlayer.innerHTML = `
-                <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:300px;background:#000;color:#fff;padding:20px;text-align:center;">
-                    <p>Error: ${error.message}</p>
-                    <p>Cannot load the recording. Please try again later.</p>
-                    <a href="/api/recordings/download/${recordingId}?download=1" class="btn btn-primary" style="margin-top:15px;padding:8px 16px;" download>
-                        Try Direct Download
-                    </a>
+                <div style="height:70vh;display:flex;flex-direction:column;justify-content:center;align-items:center;background:#000;color:#fff;padding:20px;text-align:center;">
+                    <p style="font-size:18px;margin-bottom:10px;">Error: ${error.message}</p>
+                    <p style="margin-bottom:20px;">Cannot load the recording.</p>
+                    <a href="/api/recordings/download/${recordingId}?download=1" class="btn btn-primary" download>Download Video</a>
                 </div>
             `;
         });
 }
 
+
 /**
- * Download recording - Direct link method
+ * Download recording - Reliable approach using link element
  */
 function downloadRecording(recordingId) {
-    // Create a direct download link and click it
-    const a = document.createElement('a');
-    a.href = `/api/recordings/download/${recordingId}?download=1`;
-    a.download = ''; // Let the browser determine the filename
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    // Create and click an anchor element for more reliable download
+    const link = document.createElement('a');
+    link.href = `/api/recordings/download/${recordingId}?download=1`;
+    link.download = '';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 }
 
 /**
