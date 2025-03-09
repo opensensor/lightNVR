@@ -78,6 +78,12 @@
                 <select id="stream-filter">
                     <option value="all">All Streams</option>
                 </select>
+                <select id="page-size">
+                    <option value="10">10 per page</option>
+                    <option value="20" selected>20 per page</option>
+                    <option value="50">50 per page</option>
+                    <option value="100">100 per page</option>
+                </select>
                 <button id="refresh-btn">Refresh</button>
             </div>
         </div>
@@ -98,6 +104,18 @@
                 </tr>
                 </tbody>
             </table>
+            <div class="pagination-controls">
+                <div class="pagination-info">
+                    Showing <span id="pagination-showing">0-0</span> of <span id="pagination-total">0</span> recordings
+                </div>
+                <div class="pagination-buttons">
+                    <button id="pagination-first" title="First Page">«</button>
+                    <button id="pagination-prev" title="Previous Page">‹</button>
+                    <span id="pagination-current">Page 1 of 1</span>
+                    <button id="pagination-next" title="Next Page">›</button>
+                    <button id="pagination-last" title="Last Page">»</button>
+                </div>
+            </div>
         </div>
     </section>
 </template>

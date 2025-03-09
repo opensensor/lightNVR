@@ -237,7 +237,7 @@ function setupRecordingsHandlers() {
     if (datePicker) {
         datePicker.value = new Date().toISOString().substring(0, 10);
         datePicker.addEventListener('change', function() {
-            loadRecordings();
+            loadRecordings(1); // Reset to page 1 when filter changes
         });
     }
 
@@ -245,7 +245,15 @@ function setupRecordingsHandlers() {
     const streamFilter = document.getElementById('stream-filter');
     if (streamFilter) {
         streamFilter.addEventListener('change', function() {
-            loadRecordings();
+            loadRecordings(1); // Reset to page 1 when filter changes
+        });
+    }
+    
+    // Page size selector
+    const pageSizeSelect = document.getElementById('page-size');
+    if (pageSizeSelect) {
+        pageSizeSelect.addEventListener('change', function() {
+            loadRecordings(1); // Reset to page 1 when page size changes
         });
     }
 
@@ -253,7 +261,7 @@ function setupRecordingsHandlers() {
     const refreshBtn = document.getElementById('refresh-btn');
     if (refreshBtn) {
         refreshBtn.addEventListener('click', function() {
-            loadRecordings();
+            loadRecordings(1); // Reset to page 1 when refreshing
         });
     }
 }
@@ -1225,9 +1233,9 @@ function toggleFullscreen() {
 }
 
 /**
- * Load recordings
+ * Load recordings with pagination
  */
-function loadRecordings() {
+function loadRecordings(page = 1) {
     const recordingsTable = document.getElementById('recordings-table');
     if (!recordingsTable) return;
 
@@ -1241,19 +1249,25 @@ function loadRecordings() {
     // Get filter values
     const dateFilter = document.getElementById('date-picker').value;
     const streamFilter = document.getElementById('stream-filter').value;
+    const pageSizeSelect = document.getElementById('page-size');
+    const pageSize = pageSizeSelect ? parseInt(pageSizeSelect.value, 10) : 20;
 
     // Build query string
-    let queryString = '';
+    let queryParams = new URLSearchParams();
+    
     if (dateFilter) {
-        queryString += `date=${encodeURIComponent(dateFilter)}`;
+        queryParams.append('date', dateFilter);
     }
+    
     if (streamFilter && streamFilter !== 'all') {
-        if (queryString) queryString += '&';
-        queryString += `stream=${encodeURIComponent(streamFilter)}`;
+        queryParams.append('stream', streamFilter);
     }
-    if (queryString) {
-        queryString = '?' + queryString;
-    }
+    
+    // Add pagination parameters
+    queryParams.append('page', page);
+    queryParams.append('limit', pageSize);
+    
+    const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
 
     // Fetch recordings from API
     fetch(`/api/recordings${queryString}`)
@@ -1263,16 +1277,22 @@ function loadRecordings() {
             }
             return response.json();
         })
-        .then(recordings => {
+        .then(data => {
             tbody.innerHTML = '';
 
-            if (!recordings || recordings.length === 0) {
+            // Check if we have recordings
+            if (!data.recordings || data.recordings.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="5" class="empty-message">No recordings found</td></tr>';
+                
+                // Update pagination info
+                updatePaginationInfo(0, 0, 0, 1, 1);
+                
                 hideLoading(recordingsTable);
                 return;
             }
 
-            recordings.forEach(recording => {
+            // Render recordings
+            data.recordings.forEach(recording => {
                 const tr = document.createElement('tr');
 
                 tr.innerHTML = `
@@ -1313,14 +1333,86 @@ function loadRecordings() {
                     }
                 });
             });
+
+            // Update pagination info
+            const { pagination } = data;
+            const currentPage = pagination.page;
+            const totalPages = pagination.pages;
+            const totalRecords = pagination.total;
+            const limit = pagination.limit;
+            
+            // Calculate the range of records being displayed
+            const startRecord = (currentPage - 1) * limit + 1;
+            const endRecord = Math.min(startRecord + data.recordings.length - 1, totalRecords);
+            
+            updatePaginationInfo(startRecord, endRecord, totalRecords, currentPage, totalPages);
+            
+            // Setup pagination buttons
+            setupPaginationButtons(currentPage, totalPages);
         })
         .catch(error => {
             console.error('Error loading recordings:', error);
             tbody.innerHTML = '<tr><td colspan="5" class="empty-message">Error loading recordings</td></tr>';
+            
+            // Reset pagination info on error
+            updatePaginationInfo(0, 0, 0, 1, 1);
         })
         .finally(() => {
             hideLoading(recordingsTable);
         });
+}
+
+/**
+ * Update pagination information display
+ */
+function updatePaginationInfo(startRecord, endRecord, totalRecords, currentPage, totalPages) {
+    const showingElement = document.getElementById('pagination-showing');
+    const totalElement = document.getElementById('pagination-total');
+    const currentElement = document.getElementById('pagination-current');
+    
+    if (showingElement) {
+        showingElement.textContent = totalRecords > 0 ? `${startRecord}-${endRecord}` : '0-0';
+    }
+    
+    if (totalElement) {
+        totalElement.textContent = totalRecords;
+    }
+    
+    if (currentElement) {
+        currentElement.textContent = `Page ${currentPage} of ${totalPages}`;
+    }
+}
+
+/**
+ * Setup pagination button event handlers
+ */
+function setupPaginationButtons(currentPage, totalPages) {
+    const firstBtn = document.getElementById('pagination-first');
+    const prevBtn = document.getElementById('pagination-prev');
+    const nextBtn = document.getElementById('pagination-next');
+    const lastBtn = document.getElementById('pagination-last');
+    
+    // Disable first/prev buttons if on first page
+    if (firstBtn) {
+        firstBtn.disabled = currentPage <= 1;
+        firstBtn.onclick = () => loadRecordings(1);
+    }
+    
+    if (prevBtn) {
+        prevBtn.disabled = currentPage <= 1;
+        prevBtn.onclick = () => loadRecordings(currentPage - 1);
+    }
+    
+    // Disable next/last buttons if on last page
+    if (nextBtn) {
+        nextBtn.disabled = currentPage >= totalPages;
+        nextBtn.onclick = () => loadRecordings(currentPage + 1);
+    }
+    
+    if (lastBtn) {
+        lastBtn.disabled = currentPage >= totalPages;
+        lastBtn.onclick = () => loadRecordings(totalPages);
+    }
 }
 
 /**

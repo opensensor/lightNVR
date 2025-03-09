@@ -180,6 +180,60 @@ th {
     padding: 2rem;
 }
 
+/* Pagination styles */
+.pagination-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 0;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.pagination-info {
+    color: var(--secondary-color);
+    font-size: 0.9rem;
+}
+
+.pagination-buttons {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.pagination-buttons button {
+    min-width: 2rem;
+    height: 2rem;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #f0f0f0;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1rem;
+}
+
+.pagination-buttons button:hover {
+    background-color: #e0e0e0;
+}
+
+.pagination-buttons button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.pagination-buttons button.active {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+#pagination-current {
+    padding: 0 0.5rem;
+    font-size: 0.9rem;
+}
+
 /* Status indicators */
 .status-indicator {
     display: inline-block;
