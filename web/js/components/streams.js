@@ -175,10 +175,9 @@ function takeSnapshot(streamId) {
             // Now take the snapshot
             const videoElementId = `video-${stream.name.replace(/\s+/g, '-')}`;
             const videoElement = document.getElementById(videoElementId);
-            const containerId = `player-${stream.name.replace(/\s+/g, '-')}`;
-            const container = document.getElementById(containerId);
+            const videoCell = videoElement ? videoElement.closest('.video-cell') : null;
 
-            if (!videoElement || !container) {
+            if (!videoElement || !videoCell) {
                 // If we're on the streams page, not the live view page
                 // Send a direct request to the API to take a snapshot
                 showStatusMessage('Taking snapshot...');

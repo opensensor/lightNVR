@@ -88,6 +88,13 @@
             height: 100%;
             object-fit: contain;
             background-color: #111;
+            padding-top: 2.5rem; /* Add padding to prevent overlay with stream info */
+            padding-bottom: 4rem;
+        }
+        
+        /* Adjust padding in fullscreen mode for better visibility */
+        .fullscreen-mode .video-cell video {
+            padding: 3rem 1rem 1rem;
         }
         
         .video-cell .stream-info {
