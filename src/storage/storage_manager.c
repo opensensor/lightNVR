@@ -4,9 +4,11 @@
 #include <time.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/statvfs.h>
 #include <dirent.h>
 #include <unistd.h>
 #include <errno.h>
+#include <pthread.h>
 
 #include "storage/storage_manager.h"
 #include "core/logger.h"
@@ -57,11 +59,22 @@ int init_storage_manager(const char *storage_path, uint64_t max_size) {
     }
     
     log_info("Storage manager initialized with path: %s", storage_path);
+    
+    // Start the retention policy thread with a default interval of 1 hour
+    if (start_retention_policy_thread(3600) != 0) {
+        log_warn("Failed to start retention policy thread, retention policy will not be applied automatically");
+    }
+    
     return 0;
 }
 
 // Shutdown the storage manager
 void shutdown_storage_manager(void) {
+    // Stop the retention policy thread
+    if (stop_retention_policy_thread() != 0) {
+        log_warn("Failed to stop retention policy thread");
+    }
+    
     log_info("Storage manager shutdown");
 }
 
@@ -91,13 +104,87 @@ int get_storage_stats(storage_stats_t *stats) {
         return -1;
     }
     
-    // Stub implementation
+    // Initialize stats structure
     memset(stats, 0, sizeof(storage_stats_t));
-    stats->total_space = storage_manager.total_space;
-    stats->used_space = storage_manager.used_space;
-    stats->free_space = storage_manager.total_space > storage_manager.used_space ? 
-                        storage_manager.total_space - storage_manager.used_space : 0;
+    
+    // Get filesystem statistics for the storage path
+    struct statvfs fs_stats;
+    if (statvfs(storage_manager.storage_path, &fs_stats) != 0) {
+        log_error("Failed to get filesystem statistics: %s", strerror(errno));
+        return -1;
+    }
+    
+    // Calculate total, used, and free space
+    uint64_t block_size = fs_stats.f_frsize;
+    stats->total_space = (uint64_t)fs_stats.f_blocks * block_size;
+    stats->free_space = (uint64_t)fs_stats.f_bavail * block_size;
+    stats->used_space = stats->total_space - stats->free_space;
     stats->reserved_space = storage_manager.reserved_space;
+    
+    // Scan the storage directory to get recording statistics
+    DIR *dir = opendir(storage_manager.storage_path);
+    if (dir) {
+        struct dirent *entry;
+        stats->total_recordings = 0;
+        stats->total_recording_bytes = 0;
+        stats->oldest_recording_time = UINT64_MAX;
+        stats->newest_recording_time = 0;
+        
+        while ((entry = readdir(dir)) != NULL) {
+            // Skip . and ..
+            if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+                continue;
+            }
+            
+            // Check if it's a directory (stream directory)
+            char path[512];
+            snprintf(path, sizeof(path), "%s/%s", storage_manager.storage_path, entry->d_name);
+            
+            struct stat st;
+            if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) {
+                // Scan stream directory for recordings
+                DIR *stream_dir = opendir(path);
+                if (stream_dir) {
+                    struct dirent *rec_entry;
+                    
+                    while ((rec_entry = readdir(stream_dir)) != NULL) {
+                        // Skip . and ..
+                        if (strcmp(rec_entry->d_name, ".") == 0 || strcmp(rec_entry->d_name, "..") == 0) {
+                            continue;
+                        }
+                        
+                        // Check if it's a file
+                        char rec_path[768];
+                        snprintf(rec_path, sizeof(rec_path), "%s/%s", path, rec_entry->d_name);
+                        
+                        struct stat rec_st;
+                        if (stat(rec_path, &rec_st) == 0 && S_ISREG(rec_st.st_mode)) {
+                            // Count recording and add size
+                            stats->total_recordings++;
+                            stats->total_recording_bytes += rec_st.st_size;
+                            
+                            // Update oldest/newest recording time
+                            if (rec_st.st_mtime < stats->oldest_recording_time) {
+                                stats->oldest_recording_time = rec_st.st_mtime;
+                            }
+                            if (rec_st.st_mtime > stats->newest_recording_time) {
+                                stats->newest_recording_time = rec_st.st_mtime;
+                            }
+                        }
+                    }
+                    
+                    closedir(stream_dir);
+                }
+            }
+        }
+        
+        closedir(dir);
+        
+        // If no recordings found, reset timestamps
+        if (stats->oldest_recording_time == UINT64_MAX) {
+            stats->oldest_recording_time = 0;
+        }
+    }
     
     return 0;
 }
@@ -137,8 +224,164 @@ int delete_recording(const char *path) {
 
 // Apply retention policy
 int apply_retention_policy(void) {
-    // Stub implementation
-    return 0;
+    log_info("Applying retention policy (max size: %lu bytes, retention days: %d)", 
+             storage_manager.max_size, storage_manager.retention_days);
+    
+    // Get current storage stats
+    storage_stats_t stats;
+    if (get_storage_stats(&stats) != 0) {
+        log_error("Failed to get storage statistics");
+        return -1;
+    }
+    
+    // Check if we need to apply retention policy
+    bool need_cleanup_size = (storage_manager.max_size > 0 && stats.used_space > storage_manager.max_size);
+    bool need_cleanup_days = (storage_manager.retention_days > 0);
+    
+    if (!need_cleanup_size && !need_cleanup_days) {
+        log_debug("No retention policy to apply");
+        return 0;
+    }
+    
+    // Calculate cutoff time for retention days
+    time_t now = time(NULL);
+    time_t cutoff_time = now - (storage_manager.retention_days * 86400); // 86400 seconds in a day
+    
+    // Track deleted files
+    int deleted_count = 0;
+    uint64_t freed_space = 0;
+    
+    // Scan the storage directory
+    DIR *dir = opendir(storage_manager.storage_path);
+    if (!dir) {
+        log_error("Failed to open storage directory: %s", strerror(errno));
+        return -1;
+    }
+    
+    // First pass: collect all recording files with their timestamps and sizes
+    typedef struct {
+        char path[768];
+        time_t mtime;
+        off_t size;
+    } recording_file_t;
+    
+    recording_file_t *files = NULL;
+    int file_count = 0;
+    int file_capacity = 0;
+    
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        // Skip . and ..
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+        
+        // Check if it's a directory (stream directory)
+        char stream_path[512];
+        snprintf(stream_path, sizeof(stream_path), "%s/%s", storage_manager.storage_path, entry->d_name);
+        
+        struct stat st;
+        if (stat(stream_path, &st) == 0 && S_ISDIR(st.st_mode)) {
+            // Scan stream directory for recordings
+            DIR *stream_dir = opendir(stream_path);
+            if (stream_dir) {
+                struct dirent *rec_entry;
+                
+                while ((rec_entry = readdir(stream_dir)) != NULL) {
+                    // Skip . and ..
+                    if (strcmp(rec_entry->d_name, ".") == 0 || strcmp(rec_entry->d_name, "..") == 0) {
+                        continue;
+                    }
+                    
+                    // Check if it's a file
+                    char rec_path[768];
+                    snprintf(rec_path, sizeof(rec_path), "%s/%s", stream_path, rec_entry->d_name);
+                    
+                    struct stat rec_st;
+                    if (stat(rec_path, &rec_st) == 0 && S_ISREG(rec_st.st_mode)) {
+                        // Check if file is older than retention days
+                        if (need_cleanup_days && rec_st.st_mtime < cutoff_time) {
+                            // Delete file directly if it's older than retention days
+                            if (unlink(rec_path) == 0) {
+                                log_debug("Deleted old recording: %s (age: %ld days)", 
+                                         rec_path, (now - rec_st.st_mtime) / 86400);
+                                deleted_count++;
+                                freed_space += rec_st.st_size;
+                            } else {
+                                log_error("Failed to delete old recording: %s (error: %s)", 
+                                         rec_path, strerror(errno));
+                            }
+                        } else if (need_cleanup_size) {
+                            // Add to files array for size-based cleanup
+                            if (file_count >= file_capacity) {
+                                file_capacity = file_capacity == 0 ? 1000 : file_capacity * 2;
+                                recording_file_t *new_files = realloc(files, file_capacity * sizeof(recording_file_t));
+                                if (!new_files) {
+                                    log_error("Memory allocation failed for recording files array");
+                                    free(files);
+                                    closedir(stream_dir);
+                                    closedir(dir);
+                                    return -1;
+                                }
+                                files = new_files;
+                            }
+                            
+                            strncpy(files[file_count].path, rec_path, sizeof(files[file_count].path) - 1);
+                            files[file_count].path[sizeof(files[file_count].path) - 1] = '\0';
+                            files[file_count].mtime = rec_st.st_mtime;
+                            files[file_count].size = rec_st.st_size;
+                            file_count++;
+                        }
+                    }
+                }
+                
+                closedir(stream_dir);
+            }
+        }
+    }
+    
+    closedir(dir);
+    
+    // If we need to clean up by size and we still have too much used space
+    if (need_cleanup_size && stats.used_space - freed_space > storage_manager.max_size && file_count > 0) {
+        log_info("Need to free more space: %lu bytes over limit", 
+                (stats.used_space - freed_space) - storage_manager.max_size);
+        
+        // Sort files by modification time (oldest first)
+        for (int i = 0; i < file_count - 1; i++) {
+            for (int j = 0; j < file_count - i - 1; j++) {
+                if (files[j].mtime > files[j + 1].mtime) {
+                    recording_file_t temp = files[j];
+                    files[j] = files[j + 1];
+                    files[j + 1] = temp;
+                }
+            }
+        }
+        
+        // Delete oldest files until we're under the limit
+        for (int i = 0; i < file_count; i++) {
+            if (stats.used_space - freed_space <= storage_manager.max_size) {
+                break;
+            }
+            
+            if (unlink(files[i].path) == 0) {
+                log_debug("Deleted recording to free space: %s", files[i].path);
+                deleted_count++;
+                freed_space += files[i].size;
+            } else {
+                log_error("Failed to delete recording: %s (error: %s)", 
+                         files[i].path, strerror(errno));
+            }
+        }
+    }
+    
+    // Free memory
+    free(files);
+    
+    log_info("Retention policy applied: deleted %d files, freed %lu bytes", 
+             deleted_count, freed_space);
+    
+    return deleted_count;
 }
 
 // Set maximum storage size
@@ -196,4 +439,101 @@ int create_stream_directory(const char *stream_name) {
 bool ensure_disk_space(uint64_t min_free_bytes) {
     // Stub implementation
     return true;
+}
+
+// Retention policy thread state
+static struct {
+    pthread_t thread;
+    bool running;
+    int interval_seconds;
+    pthread_mutex_t mutex;
+} retention_thread = {
+    .running = false,
+    .interval_seconds = 3600 // Default to 1 hour
+};
+
+// Retention policy thread function
+static void* retention_policy_thread_func(void *arg) {
+    log_info("Retention policy thread started with interval: %d seconds", retention_thread.interval_seconds);
+    
+    while (retention_thread.running) {
+        // Apply retention policy
+        int deleted = apply_retention_policy();
+        if (deleted > 0) {
+            log_info("Retention policy thread deleted %d recordings", deleted);
+        } else if (deleted < 0) {
+            log_error("Retention policy thread encountered an error");
+        }
+        
+        // Sleep for the specified interval
+        for (int i = 0; i < retention_thread.interval_seconds && retention_thread.running; i++) {
+            sleep(1);
+        }
+    }
+    
+    log_info("Retention policy thread exiting");
+    return NULL;
+}
+
+// Start the retention policy thread
+int start_retention_policy_thread(int interval_seconds) {
+    // Initialize mutex if not already initialized
+    static bool mutex_initialized = false;
+    if (!mutex_initialized) {
+        if (pthread_mutex_init(&retention_thread.mutex, NULL) != 0) {
+            log_error("Failed to initialize retention thread mutex");
+            return -1;
+        }
+        mutex_initialized = true;
+    }
+    
+    pthread_mutex_lock(&retention_thread.mutex);
+    
+    // Check if thread is already running
+    if (retention_thread.running) {
+        log_warn("Retention policy thread is already running");
+        pthread_mutex_unlock(&retention_thread.mutex);
+        return 0;
+    }
+    
+    // Set interval (minimum 60 seconds)
+    retention_thread.interval_seconds = (interval_seconds < 60) ? 60 : interval_seconds;
+    retention_thread.running = true;
+    
+    // Create thread
+    if (pthread_create(&retention_thread.thread, NULL, retention_policy_thread_func, NULL) != 0) {
+        log_error("Failed to create retention policy thread: %s", strerror(errno));
+        retention_thread.running = false;
+        pthread_mutex_unlock(&retention_thread.mutex);
+        return -1;
+    }
+    
+    pthread_mutex_unlock(&retention_thread.mutex);
+    log_info("Retention policy thread started with interval: %d seconds", retention_thread.interval_seconds);
+    return 0;
+}
+
+// Stop the retention policy thread
+int stop_retention_policy_thread(void) {
+    pthread_mutex_lock(&retention_thread.mutex);
+    
+    // Check if thread is running
+    if (!retention_thread.running) {
+        log_warn("Retention policy thread is not running");
+        pthread_mutex_unlock(&retention_thread.mutex);
+        return 0;
+    }
+    
+    // Signal thread to stop
+    retention_thread.running = false;
+    pthread_mutex_unlock(&retention_thread.mutex);
+    
+    // Wait for thread to exit
+    if (pthread_join(retention_thread.thread, NULL) != 0) {
+        log_error("Failed to join retention policy thread: %s", strerror(errno));
+        return -1;
+    }
+    
+    log_info("Retention policy thread stopped");
+    return 0;
 }
