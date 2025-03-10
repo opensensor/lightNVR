@@ -255,9 +255,46 @@ void handle_post_settings(const http_request_t *request, http_response_t *respon
     set_max_storage_size(local_config.max_storage_size);
     set_retention_days(local_config.retention_days);
     
+    // Save configuration to disk
+    const char *config_paths[] = {
+        "./lightnvr.conf",
+        "/etc/lightnvr/lightnvr.conf",
+        NULL
+    };
+    
+    // Try to save to the first existing config file
+    int saved = 0;
+    for (int i = 0; config_paths[i] != NULL; i++) {
+        if (access(config_paths[i], F_OK) == 0) {
+            if (save_config(global_config, config_paths[i]) == 0) {
+                log_info("Saved configuration to %s", config_paths[i]);
+                saved = 1;
+                break;
+            } else {
+                log_error("Failed to save configuration to %s", config_paths[i]);
+            }
+        }
+    }
+    
+    // If no existing config file was found, save to the default location
+    if (!saved) {
+        if (save_config(global_config, "/etc/lightnvr/lightnvr.conf") == 0) {
+            log_info("Saved configuration to /etc/lightnvr/lightnvr.conf");
+        } else {
+            log_error("Failed to save configuration to /etc/lightnvr/lightnvr.conf");
+            // Try to save to the current directory as a fallback
+            if (save_config(global_config, "./lightnvr.conf") == 0) {
+                log_info("Saved configuration to ./lightnvr.conf");
+            } else {
+                log_error("Failed to save configuration to ./lightnvr.conf");
+                // Don't return an error to the client, as the in-memory settings were updated
+            }
+        }
+    }
+    
     log_info("Settings updated: log_level=%d, max_storage=%lu GB, retention=%d days", 
              local_config.log_level, 
-             (unsigned long)(local_config.max_storage_size / (1024 * 1024 * 1024)),
+             (unsigned long long)(local_config.max_storage_size / (1024 * 1024 * 1024)),
              local_config.retention_days);
 
     free(json);
