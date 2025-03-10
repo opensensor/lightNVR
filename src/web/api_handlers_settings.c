@@ -16,6 +16,7 @@
 #include "web/api_handlers_common.h"
 #include "core/config.h"
 #include "core/logger.h"
+#include "storage/storage_manager.h"
 
 // Forward declaration of helper function to get current configuration
 static config_t* get_current_config(void);
@@ -168,7 +169,7 @@ void handle_get_settings(const http_request_t *request, http_response_t *respons
 }
 
 void handle_post_settings(const http_request_t *request, http_response_t *response) {
-    log_info("Step 2: Testing handler with config modification");
+    log_info("Processing settings update request");
 
     // Basic request check and JSON parsing
     if (!request->body || request->content_length == 0) {
@@ -197,16 +198,71 @@ void handle_post_settings(const http_request_t *request, http_response_t *respon
     config_t local_config;
     memcpy(&local_config, global_config, sizeof(config_t));
 
-    // Update just one simple setting for testing
-    int log_level = get_json_integer_value(json, "log_level", local_config.log_level);
-    local_config.log_level = log_level;
+    // Update all settings from the JSON request
+    log_debug("Parsing settings from JSON request");
+
+    // General settings
+    local_config.log_level = get_json_integer_value(json, "log_level", local_config.log_level);
+    
+    // Storage settings
+    char *storage_path = get_json_string_value(json, "storage_path");
+    if (storage_path) {
+        strncpy(local_config.storage_path, storage_path, sizeof(local_config.storage_path) - 1);
+        local_config.storage_path[sizeof(local_config.storage_path) - 1] = '\0';
+        free(storage_path);
+    }
+    
+    // Convert max_storage from GB to bytes
+    long long max_storage_gb = get_json_integer_value(json, "max_storage", 
+                                                     local_config.max_storage_size / (1024 * 1024 * 1024));
+    local_config.max_storage_size = max_storage_gb * (uint64_t)(1024 * 1024 * 1024);
+    
+    local_config.retention_days = get_json_integer_value(json, "retention", local_config.retention_days);
+    local_config.auto_delete_oldest = get_json_boolean_value(json, "auto_delete", local_config.auto_delete_oldest);
+    
+    // Web server settings
+    local_config.web_port = get_json_integer_value(json, "web_port", local_config.web_port);
+    local_config.web_auth_enabled = get_json_boolean_value(json, "auth_enabled", local_config.web_auth_enabled);
+    
+    char *username = get_json_string_value(json, "username");
+    if (username) {
+        strncpy(local_config.web_username, username, sizeof(local_config.web_username) - 1);
+        local_config.web_username[sizeof(local_config.web_username) - 1] = '\0';
+        free(username);
+    }
+    
+    char *password = get_json_string_value(json, "password");
+    if (password && strcmp(password, "********") != 0) {
+        // Only update password if it's not the placeholder
+        strncpy(local_config.web_password, password, sizeof(local_config.web_password) - 1);
+        local_config.web_password[sizeof(local_config.web_password) - 1] = '\0';
+        free(password);
+    }
+    
+    // Memory optimization
+    local_config.buffer_size = get_json_integer_value(json, "buffer_size", local_config.buffer_size);
+    local_config.use_swap = get_json_boolean_value(json, "use_swap", local_config.use_swap);
+    
+    // Convert swap_size from MB to bytes
+    long long swap_size_mb = get_json_integer_value(json, "swap_size", 
+                                                  local_config.swap_size / (1024 * 1024));
+    local_config.swap_size = swap_size_mb * (uint64_t)(1024 * 1024);
 
     // Update global config
     memcpy(global_config, &local_config, sizeof(config_t));
+    
+    // Update storage manager with new settings
+    set_max_storage_size(local_config.max_storage_size);
+    set_retention_days(local_config.retention_days);
+    
+    log_info("Settings updated: log_level=%d, max_storage=%lu GB, retention=%d days", 
+             local_config.log_level, 
+             (unsigned long)(local_config.max_storage_size / (1024 * 1024 * 1024)),
+             local_config.retention_days);
 
     free(json);
 
     // Create success response
     create_json_response(response, 200, "{\"success\": true}");
-    log_info("Response with config modification prepared");
+    log_info("Settings update completed successfully");
 }
