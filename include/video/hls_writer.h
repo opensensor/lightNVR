@@ -6,7 +6,8 @@
 
 #include "core/config.h"
 
-#define MAX_PATH_LENGTH 1024
+// Use a different name to avoid conflict with MAX_PATH_LENGTH in config.h
+#define HLS_MAX_PATH_LENGTH 1024
 
 // Forward declaration for the DTS tracking structure
 typedef struct {

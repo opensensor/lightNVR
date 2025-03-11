@@ -4,8 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-// Maximum path length
-#define MAX_PATH_LENGTH 256
+#include "core/config.h"
 
 // Maximum headers in HTTP requests/responses
 #define MAX_HEADERS 50

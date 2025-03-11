@@ -5,9 +5,6 @@
 #include <stdbool.h>
 #include "web/request_response.h"
 
-// Maximum path length
-#define MAX_PATH_LENGTH 256
-
 // External server socket for signal handling
 extern int server_socket;
 

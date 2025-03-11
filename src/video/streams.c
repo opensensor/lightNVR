@@ -16,7 +16,7 @@
 #include <errno.h>
 #include <time.h>
 #include <dirent.h>
-#define _POSIX_C_SOURCE 199309L
+// _POSIX_C_SOURCE is already defined in features.h with a higher value (200809L)
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
@@ -515,14 +515,18 @@ static void *stream_transcode_thread(void *arg) {
         char mkdir_cmd[MAX_PATH_LENGTH * 2];
         snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p %s", ctx->output_path);
 
-        if (system(mkdir_cmd) != 0 || stat(ctx->output_path, &st) != 0 || !S_ISDIR(st.st_mode)) {
-            log_error("Failed to create output directory: %s", ctx->output_path);
+        int ret_mkdir = system(mkdir_cmd);
+        if (ret_mkdir != 0 || stat(ctx->output_path, &st) != 0 || !S_ISDIR(st.st_mode)) {
+            log_error("Failed to create output directory: %s (return code: %d)", ctx->output_path, ret_mkdir);
             goto cleanup;
         }
 
         // Set permissions
         snprintf(mkdir_cmd, sizeof(mkdir_cmd), "chmod -R 777 %s", ctx->output_path);
-        system(mkdir_cmd);
+        int ret_chmod = system(mkdir_cmd);
+        if (ret_chmod != 0) {
+            log_warn("Failed to set permissions on directory: %s (return code: %d)", ctx->output_path, ret_chmod);
+        }
         
         log_info("Successfully created output directory: %s", ctx->output_path);
     }
@@ -534,7 +538,10 @@ static void *stream_transcode_thread(void *arg) {
         // Try to fix permissions
         char chmod_cmd[MAX_PATH_LENGTH * 2];
         snprintf(chmod_cmd, sizeof(chmod_cmd), "chmod -R 777 %s", ctx->output_path);
-        system(chmod_cmd);
+        int ret_chmod = system(chmod_cmd);
+        if (ret_chmod != 0) {
+            log_warn("Failed to set permissions on directory: %s (return code: %d)", ctx->output_path, ret_chmod);
+        }
 
         if (access(ctx->output_path, W_OK) != 0) {
             log_error("Still unable to write to output directory: %s", ctx->output_path);
@@ -568,7 +575,10 @@ static void *stream_transcode_thread(void *arg) {
             char parent_cmd[MAX_PATH_LENGTH * 2];
             snprintf(parent_cmd, sizeof(parent_cmd), "mkdir -p %s && chmod -R 777 %s", 
                     parent_dir, parent_dir);
-            system(parent_cmd);
+            int ret_parent = system(parent_cmd);
+            if (ret_parent != 0) {
+                log_warn("Failed to create parent directory: %s (return code: %d)", parent_dir, ret_parent);
+            }
             
             log_info("Attempted to recreate parent directory with full permissions: %s", parent_dir);
         }
@@ -1210,7 +1220,10 @@ int start_mp4_recording(const char *stream_name) {
 
     // Set full permissions for MP4 directory
     snprintf(dir_cmd, sizeof(dir_cmd), "chmod -R 777 %s", mp4_dir);
-    system(dir_cmd);
+    int ret_chmod = system(dir_cmd);
+    if (ret_chmod != 0) {
+        log_warn("Failed to set permissions on MP4 directory: %s (return code: %d)", mp4_dir, ret_chmod);
+    }
     
     // Verify the directory is writable
     if (access(mp4_dir, W_OK) != 0) {

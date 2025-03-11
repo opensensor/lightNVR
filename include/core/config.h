@@ -5,11 +5,11 @@
 #include <stdbool.h>
 
 // Maximum length for path strings
-#define MAX_PATH_LENGTH 256
+#define MAX_PATH_LENGTH 512
 // Maximum length for stream names
 #define MAX_STREAM_NAME 256
 // Maximum length for URLs
-#define MAX_URL_LENGTH 256
+#define MAX_URL_LENGTH 512
 // Maximum number of streams supported
 #define MAX_STREAMS 16
 

@@ -36,11 +36,8 @@
 // Buffer size for reading requests
 #define REQUEST_BUFFER_SIZE 8192
 
-// Maximum number of headers
-#define MAX_HEADERS 100
-
 // Maximum size of path
-#define MAX_PATH_SIZE 1024
+#define MAX_PATH_SIZE 512
 
 // Make server socket accessible to signal handlers
 int server_socket = -1;

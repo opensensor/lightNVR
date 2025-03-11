@@ -19,7 +19,7 @@ static void cleanup_old_segments(const char *output_dir, int max_segments) {
     DIR *dir;
     struct dirent *entry;
     struct stat st;
-    char filepath[MAX_PATH_LENGTH];
+    char filepath[HLS_MAX_PATH_LENGTH];
 
     // Keep track of segments to delete
     typedef struct {
@@ -136,8 +136,9 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     // Create output directory if it doesn't exist
     char mkdir_cmd[MAX_PATH_LENGTH + 10];
     snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p %s", output_dir);
-    if (system(mkdir_cmd) != 0) {
-        log_warn("Failed to create directory: %s", output_dir);
+    int ret_mkdir = system(mkdir_cmd);
+    if (ret_mkdir != 0) {
+        log_warn("Failed to create directory: %s (return code: %d)", output_dir, ret_mkdir);
     }
 
     // Initialize output format context for HLS
@@ -260,7 +261,10 @@ static int ensure_output_directory(const char *dir_path) {
 
         // Set permissions to ensure FFmpeg can write files
         snprintf(mkdir_cmd, sizeof(mkdir_cmd), "chmod -R 777 %s", dir_path);
-        system(mkdir_cmd);
+        int ret_chmod = system(mkdir_cmd);
+        if (ret_chmod != 0) {
+            log_warn("Failed to set permissions on directory: %s (return code: %d)", dir_path, ret_chmod);
+        }
     }
 
     // Verify directory is writable
@@ -270,7 +274,10 @@ static int ensure_output_directory(const char *dir_path) {
         // Try to fix permissions
         char chmod_cmd[MAX_PATH_LENGTH * 2];
         snprintf(chmod_cmd, sizeof(chmod_cmd), "chmod -R 777 %s", dir_path);
-        system(chmod_cmd);
+        int ret_chmod = system(chmod_cmd);
+        if (ret_chmod != 0) {
+            log_warn("Failed to set permissions on directory: %s (return code: %d)", dir_path, ret_chmod);
+        }
 
         // Check again
         if (access(dir_path, W_OK) != 0) {
