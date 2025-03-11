@@ -4,16 +4,90 @@ This document describes the configuration options for LightNVR.
 
 ## Configuration File
 
-LightNVR uses a simple key-value configuration file format. By default, it looks for a configuration file in the following locations:
+LightNVR supports two configuration file formats:
 
-1. `./lightnvr.conf` (current directory)
-2. `/etc/lightnvr/lightnvr.conf`
+1. **INI format** (recommended): A structured configuration format with sections and key-value pairs.
+2. **Legacy key-value format**: A simple key-value configuration format.
+
+By default, LightNVR looks for a configuration file in the following locations (in order):
+
+1. `./lightnvr.conf.ini` (INI format in current directory)
+2. `/etc/lightnvr/lightnvr.conf.ini` (INI format in system directory)
+3. `./lightnvr.conf` (legacy format in current directory)
+4. `/etc/lightnvr/lightnvr.conf` (legacy format in system directory)
 
 You can specify a different configuration file using the `-c` option:
 
 ```bash
 ./lightnvr -c /path/to/config.conf
 ```
+
+When saving configuration changes through the web interface, LightNVR will prefer to use the INI format.
+
+## INI Format
+
+The INI format is a structured configuration format that organizes settings into sections. Here's an example of the same configuration in INI format:
+
+```ini
+; LightNVR Configuration File (INI format)
+
+[general]
+pid_file = /var/run/lightnvr.pid
+log_file = /var/log/lightnvr.log
+log_level = 2  ; 0=ERROR, 1=WARN, 2=INFO, 3=DEBUG
+
+[storage]
+path = /var/lib/lightnvr/recordings
+max_size = 0  ; 0 means unlimited, otherwise bytes
+retention_days = 30
+auto_delete_oldest = true
+
+[database]
+path = /var/lib/lightnvr/lightnvr.db
+
+[web]
+port = 8080
+root = /var/lib/lightnvr/www
+auth_enabled = true
+username = admin
+password = admin  ; IMPORTANT: Change this default password!
+
+[streams]
+max_streams = 16
+
+; Note: Stream configurations are stored in the database
+; This section is for reference only
+
+; Example stream configuration:
+; [stream_0]
+; name = Front Door
+; url = rtsp://192.168.1.100:554/stream1
+; enabled = true
+; width = 1920
+; height = 1080
+; fps = 15
+; codec = h264
+; priority = 10
+; record = true
+; segment_duration = 900  ; 15 minutes in seconds
+
+[memory]
+buffer_size = 1024  ; Buffer size in KB
+use_swap = true
+swap_file = /var/lib/lightnvr/swap
+swap_size = 134217728  ; 128MB in bytes
+
+[hardware]
+hw_accel_enabled = false
+hw_accel_device = 
+```
+
+The INI format offers several advantages:
+- Simple and widely used format
+- Easy to read and edit
+- Organized into sections
+- Support for comments
+- Lightweight parsing
 
 ## Configuration Options
 

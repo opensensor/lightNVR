@@ -255,8 +255,10 @@ void handle_post_settings(const http_request_t *request, http_response_t *respon
     set_max_storage_size(local_config.max_storage_size);
     set_retention_days(local_config.retention_days);
     
-    // Save configuration to disk
+    // Save configuration to disk - prefer INI format
     const char *config_paths[] = {
+        "./lightnvr.conf.ini",
+        "/etc/lightnvr/lightnvr.conf.ini",
         "./lightnvr.conf",
         "/etc/lightnvr/lightnvr.conf",
         NULL
@@ -276,17 +278,17 @@ void handle_post_settings(const http_request_t *request, http_response_t *respon
         }
     }
     
-    // If no existing config file was found, save to the default location
+    // If no existing config file was found, save to the default location with INI format
     if (!saved) {
-        if (save_config(global_config, "/etc/lightnvr/lightnvr.conf") == 0) {
-            log_info("Saved configuration to /etc/lightnvr/lightnvr.conf");
+        if (save_config(global_config, "/etc/lightnvr/lightnvr.conf.ini") == 0) {
+            log_info("Saved configuration to /etc/lightnvr/lightnvr.conf.ini");
         } else {
-            log_error("Failed to save configuration to /etc/lightnvr/lightnvr.conf");
+            log_error("Failed to save configuration to /etc/lightnvr/lightnvr.conf.ini");
             // Try to save to the current directory as a fallback
-            if (save_config(global_config, "./lightnvr.conf") == 0) {
-                log_info("Saved configuration to ./lightnvr.conf");
+            if (save_config(global_config, "./lightnvr.conf.ini") == 0) {
+                log_info("Saved configuration to ./lightnvr.conf.ini");
             } else {
-                log_error("Failed to save configuration to ./lightnvr.conf");
+                log_error("Failed to save configuration to ./lightnvr.conf.ini");
                 // Don't return an error to the client, as the in-memory settings were updated
             }
         }

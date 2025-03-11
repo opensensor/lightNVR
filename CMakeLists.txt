@@ -25,12 +25,14 @@ pkg_check_modules(SQLITE REQUIRED sqlite3)
 include_directories(
     ${FFMPEG_INCLUDE_DIRS}
     ${SQLITE_INCLUDE_DIRS}
+    ${CMAKE_CURRENT_SOURCE_DIR}/external/inih
 )
 
 # Define source files
 file(GLOB_RECURSE SOURCES 
     "src/*.c"
     "src/*.cpp"
+    "external/inih/ini.c"
 )
 
 # Define the executable

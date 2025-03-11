@@ -8,6 +8,7 @@
 #include <libgen.h>
 #include <ctype.h>
 
+#include "ini.h"
 #include "core/config.h"
 #include "core/logger.h"
 #include "database/database_manager.h"
@@ -190,86 +191,95 @@ int validate_config(const config_t *config) {
     return 0;
 }
 
-// Load configuration from file
+// Handler function for inih
+static int config_ini_handler(void* user, const char* section, const char* name, const char* value) {
+    config_t* config = (config_t*)user;
+    
+    // General settings
+    if (strcmp(section, "general") == 0) {
+        if (strcmp(name, "pid_file") == 0) {
+            strncpy(config->pid_file, value, MAX_PATH_LENGTH - 1);
+        } else if (strcmp(name, "log_file") == 0) {
+            strncpy(config->log_file, value, MAX_PATH_LENGTH - 1);
+        } else if (strcmp(name, "log_level") == 0) {
+            config->log_level = atoi(value);
+        }
+    }
+    // Storage settings
+    else if (strcmp(section, "storage") == 0) {
+        if (strcmp(name, "path") == 0) {
+            strncpy(config->storage_path, value, MAX_PATH_LENGTH - 1);
+        } else if (strcmp(name, "max_size") == 0) {
+            config->max_storage_size = strtoull(value, NULL, 10);
+        } else if (strcmp(name, "retention_days") == 0) {
+            config->retention_days = atoi(value);
+        } else if (strcmp(name, "auto_delete_oldest") == 0) {
+            config->auto_delete_oldest = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        }
+    }
+    // Database settings
+    else if (strcmp(section, "database") == 0) {
+        if (strcmp(name, "path") == 0) {
+            strncpy(config->db_path, value, MAX_PATH_LENGTH - 1);
+        }
+    }
+    // Web server settings
+    else if (strcmp(section, "web") == 0) {
+        if (strcmp(name, "port") == 0) {
+            config->web_port = atoi(value);
+        } else if (strcmp(name, "root") == 0) {
+            strncpy(config->web_root, value, MAX_PATH_LENGTH - 1);
+        } else if (strcmp(name, "auth_enabled") == 0) {
+            config->web_auth_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        } else if (strcmp(name, "username") == 0) {
+            strncpy(config->web_username, value, 31);
+        } else if (strcmp(name, "password") == 0) {
+            strncpy(config->web_password, value, 31);
+        }
+    }
+    // Stream settings
+    else if (strcmp(section, "streams") == 0) {
+        if (strcmp(name, "max_streams") == 0) {
+            config->max_streams = atoi(value);
+        }
+    }
+    // Memory optimization
+    else if (strcmp(section, "memory") == 0) {
+        if (strcmp(name, "buffer_size") == 0) {
+            config->buffer_size = atoi(value);
+        } else if (strcmp(name, "use_swap") == 0) {
+            config->use_swap = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        } else if (strcmp(name, "swap_file") == 0) {
+            strncpy(config->swap_file, value, MAX_PATH_LENGTH - 1);
+        } else if (strcmp(name, "swap_size") == 0) {
+            config->swap_size = strtoull(value, NULL, 10);
+        }
+    }
+    // Hardware acceleration
+    else if (strcmp(section, "hardware") == 0) {
+        if (strcmp(name, "hw_accel_enabled") == 0) {
+            config->hw_accel_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        } else if (strcmp(name, "hw_accel_device") == 0) {
+            strncpy(config->hw_accel_device, value, 31);
+        }
+    }
+    
+    return 1; // Return 1 to continue processing
+}
+
+// Load configuration from file using inih
 static int load_config_from_file(const char *filename, config_t *config) {
-    FILE *file = fopen(filename, "r");
-    if (!file) {
-        log_warn("Could not open config file: %s", filename);
+    // Use inih to parse the INI file
+    int result = ini_parse(filename, config_ini_handler, config);
+    
+    if (result < 0) {
+        log_warn("Could not read config file %s", filename);
+        return -1;
+    } else if (result > 0) {
+        log_warn("Error in config file %s at line %d", filename, result);
         return -1;
     }
     
-    char line[1024];
-    char key[256];
-    char value[768];
-    
-    while (fgets(line, sizeof(line), file)) {
-        // Skip comments and empty lines
-        if (line[0] == '#' || line[0] == '\n') {
-            continue;
-        }
-        
-        // Parse key=value
-        if (sscanf(line, "%255[^=]=%767[^\n]", key, value) == 2) {
-            // Remove trailing whitespace from key
-            char *end = key + strlen(key) - 1;
-            while (end > key && isspace(*end)) {
-                *end-- = '\0';
-            }
-            
-            // Remove leading whitespace from value
-            char *start = value;
-            while (*start && isspace(*start)) {
-                start++;
-            }
-            
-            // Process key-value pair
-            if (strcmp(key, "pid_file") == 0) {
-                strncpy(config->pid_file, start, MAX_PATH_LENGTH - 1);
-            } else if (strcmp(key, "log_file") == 0) {
-                strncpy(config->log_file, start, MAX_PATH_LENGTH - 1);
-            } else if (strcmp(key, "log_level") == 0) {
-                config->log_level = atoi(start);
-            } else if (strcmp(key, "storage_path") == 0) {
-                strncpy(config->storage_path, start, MAX_PATH_LENGTH - 1);
-            } else if (strcmp(key, "max_storage_size") == 0) {
-                config->max_storage_size = strtoull(start, NULL, 10);
-            } else if (strcmp(key, "retention_days") == 0) {
-                config->retention_days = atoi(start);
-            } else if (strcmp(key, "auto_delete_oldest") == 0) {
-                config->auto_delete_oldest = (strcmp(start, "true") == 0 || strcmp(start, "1") == 0);
-            } else if (strcmp(key, "db_path") == 0) {
-                strncpy(config->db_path, start, MAX_PATH_LENGTH - 1);
-            } else if (strcmp(key, "web_port") == 0) {
-                config->web_port = atoi(start);
-            } else if (strcmp(key, "web_root") == 0) {
-                strncpy(config->web_root, start, MAX_PATH_LENGTH - 1);
-            } else if (strcmp(key, "web_auth_enabled") == 0) {
-                config->web_auth_enabled = (strcmp(start, "true") == 0 || strcmp(start, "1") == 0);
-            } else if (strcmp(key, "web_username") == 0) {
-                strncpy(config->web_username, start, 31);
-            } else if (strcmp(key, "web_password") == 0) {
-                strncpy(config->web_password, start, 31);
-            } else if (strcmp(key, "max_streams") == 0) {
-                config->max_streams = atoi(start);
-            } else if (strcmp(key, "buffer_size") == 0) {
-                config->buffer_size = atoi(start);
-            } else if (strcmp(key, "use_swap") == 0) {
-                config->use_swap = (strcmp(start, "true") == 0 || strcmp(start, "1") == 0);
-            } else if (strcmp(key, "swap_file") == 0) {
-                strncpy(config->swap_file, start, MAX_PATH_LENGTH - 1);
-            } else if (strcmp(key, "swap_size") == 0) {
-                config->swap_size = strtoull(start, NULL, 10);
-            } else if (strcmp(key, "hw_accel_enabled") == 0) {
-                config->hw_accel_enabled = (strcmp(start, "true") == 0 || strcmp(start, "1") == 0);
-            } else if (strcmp(key, "hw_accel_device") == 0) {
-                strncpy(config->hw_accel_device, start, 31);
-            }
-            // Note: Stream configurations are now stored in the database
-            // We no longer process stream.X.* entries from the config file
-        }
-    }
-    
-    fclose(file);
     return 0;
 }
 
@@ -412,10 +422,12 @@ int load_config(config_t *config) {
     // Load default configuration
     load_default_config(config);
     
-    // Try to load from config file
+    // Try to load from config file - check both old and new formats
     const char *config_paths[] = {
-        "./lightnvr.conf",
-        "/etc/lightnvr/lightnvr.conf",
+        "./lightnvr.conf.ini", // New INI format
+        "/etc/lightnvr/lightnvr.conf.ini", // New INI format
+        "./lightnvr.conf", // Old format
+        "/etc/lightnvr/lightnvr.conf", // Old format
         NULL
     };
     
@@ -477,61 +489,64 @@ int load_config(config_t *config) {
     return 0;
 }
 
-// Save configuration to file
+// Save configuration to file in INI format
 int save_config(const config_t *config, const char *path) {
     if (!config || !path) return -1;
     
+    log_info("Attempting to save configuration to %s", path);
+    
     FILE *file = fopen(path, "w");
     if (!file) {
-        log_error("Could not open config file for writing: %s", path);
+        log_error("Could not open config file for writing: %s (error: %s)", path, strerror(errno));
         return -1;
     }
     
+    // Write header
+    fprintf(file, "; LightNVR Configuration File (INI format)\n\n");
+    
     // Write general settings
-    fprintf(file, "# LightNVR Configuration File\n\n");
-    fprintf(file, "# General Settings\n");
-    fprintf(file, "pid_file=%s\n", config->pid_file);
-    fprintf(file, "log_file=%s\n", config->log_file);
-    fprintf(file, "log_level=%d\n", config->log_level);
+    fprintf(file, "[general]\n");
+    fprintf(file, "pid_file = %s\n", config->pid_file);
+    fprintf(file, "log_file = %s\n", config->log_file);
+    fprintf(file, "log_level = %d  ; 0=ERROR, 1=WARN, 2=INFO, 3=DEBUG\n\n", config->log_level);
     
     // Write storage settings
-    fprintf(file, "\n# Storage Settings\n");
-    fprintf(file, "storage_path=%s\n", config->storage_path);
-    fprintf(file, "max_storage_size=%llu\n", (unsigned long long)config->max_storage_size);
-    fprintf(file, "retention_days=%d\n", config->retention_days);
-    fprintf(file, "auto_delete_oldest=%s\n", config->auto_delete_oldest ? "true" : "false");
+    fprintf(file, "[storage]\n");
+    fprintf(file, "path = %s\n", config->storage_path);
+    fprintf(file, "max_size = %llu  ; 0 means unlimited, otherwise bytes\n", (unsigned long long)config->max_storage_size);
+    fprintf(file, "retention_days = %d\n", config->retention_days);
+    fprintf(file, "auto_delete_oldest = %s\n\n", config->auto_delete_oldest ? "true" : "false");
     
     // Write database settings
-    fprintf(file, "\n# Database Settings\n");
-    fprintf(file, "db_path=%s\n", config->db_path);
+    fprintf(file, "[database]\n");
+    fprintf(file, "path = %s\n\n", config->db_path);
     
     // Write web server settings
-    fprintf(file, "\n# Web Server Settings\n");
-    fprintf(file, "web_port=%d\n", config->web_port);
-    fprintf(file, "web_root=%s\n", config->web_root);
-    fprintf(file, "web_auth_enabled=%s\n", config->web_auth_enabled ? "true" : "false");
-    fprintf(file, "web_username=%s\n", config->web_username);
-    fprintf(file, "web_password=%s\n", config->web_password);
+    fprintf(file, "[web]\n");
+    fprintf(file, "port = %d\n", config->web_port);
+    fprintf(file, "root = %s\n", config->web_root);
+    fprintf(file, "auth_enabled = %s\n", config->web_auth_enabled ? "true" : "false");
+    fprintf(file, "username = %s\n", config->web_username);
+    fprintf(file, "password = %s  ; IMPORTANT: Change this default password!\n\n", config->web_password);
     
     // Write stream settings
-    fprintf(file, "\n# Stream Settings\n");
-    fprintf(file, "max_streams=%d\n", config->max_streams);
+    fprintf(file, "[streams]\n");
+    fprintf(file, "max_streams = %d\n\n", config->max_streams);
     
     // Write memory optimization settings
-    fprintf(file, "\n# Memory Optimization\n");
-    fprintf(file, "buffer_size=%d\n", config->buffer_size);
-    fprintf(file, "use_swap=%s\n", config->use_swap ? "true" : "false");
-    fprintf(file, "swap_file=%s\n", config->swap_file);
-    fprintf(file, "swap_size=%llu\n", (unsigned long long)config->swap_size);
+    fprintf(file, "[memory]\n");
+    fprintf(file, "buffer_size = %d  ; Buffer size in KB\n", config->buffer_size);
+    fprintf(file, "use_swap = %s\n", config->use_swap ? "true" : "false");
+    fprintf(file, "swap_file = %s\n", config->swap_file);
+    fprintf(file, "swap_size = %llu  ; Size in bytes\n\n", (unsigned long long)config->swap_size);
     
     // Write hardware acceleration settings
-    fprintf(file, "\n# Hardware Acceleration\n");
-    fprintf(file, "hw_accel_enabled=%s\n", config->hw_accel_enabled ? "true" : "false");
-    fprintf(file, "hw_accel_device=%s\n", config->hw_accel_device);
+    fprintf(file, "[hardware]\n");
+    fprintf(file, "hw_accel_enabled = %s\n", config->hw_accel_enabled ? "true" : "false");
+    fprintf(file, "hw_accel_device = %s\n", config->hw_accel_device);
     
-    // Note: Stream configurations are now stored in the database
-    fprintf(file, "\n# Stream Configurations\n");
-    fprintf(file, "# Note: Stream configurations are now stored in the database\n");
+    // Note: Stream configurations are stored in the database
+    fprintf(file, "\n; Note: Stream configurations are stored in the database\n");
     
     fclose(file);
     
