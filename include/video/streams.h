@@ -1,6 +1,7 @@
 #ifndef STREAMS_H
 #define STREAMS_H
 
+#include <pthread.h>
 #include "web/web_server.h"
 #include "core/config.h"
 #include "video/hls_writer.h"
