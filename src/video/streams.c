@@ -502,9 +502,12 @@ static void *stream_transcode_thread(void *arg) {
     struct tm *tm_info = localtime(&start_time);
     strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M%S", tm_info);
 
-    // Create MP4 output path with timestamp
+    // Create MP4 output path with timestamp - ensure it's within our configured storage
     snprintf(ctx->mp4_output_path, MAX_PATH_LENGTH, "%s/mp4/%s/recording_%s.mp4",
             global_config->storage_path, ctx->config.name, timestamp_str);
+    
+    // Log the MP4 output path for debugging
+    log_info("MP4 output path: %s", ctx->mp4_output_path);
 
     // Verify output directory exists and is writable
     struct stat st;

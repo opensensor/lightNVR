@@ -134,7 +134,28 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     writer->dts_tracker.initialized = 0;
 
     // Create output directory if it doesn't exist
+    // Use the configured storage path to avoid writing to overlay
     char mkdir_cmd[MAX_PATH_LENGTH + 10];
+    
+    // Ensure we're using a path within our configured storage
+    extern config_t global_config;
+    char safe_output_dir[MAX_PATH_LENGTH];
+    
+    // If output_dir is absolute and not within storage_path, redirect it
+    if (output_dir[0] == '/' && strncmp(output_dir, global_config.storage_path, strlen(global_config.storage_path)) != 0) {
+        // Create a path within our storage directory instead
+        snprintf(safe_output_dir, sizeof(safe_output_dir), "%s/hls/%s", 
+                global_config.storage_path, stream_name);
+        log_warn("Redirecting HLS output from %s to %s to avoid overlay writes", 
+                output_dir, safe_output_dir);
+        strncpy(writer->output_dir, safe_output_dir, MAX_PATH_LENGTH - 1);
+        writer->output_dir[MAX_PATH_LENGTH - 1] = '\0';
+        output_dir = safe_output_dir;
+    } else {
+        strncpy(safe_output_dir, output_dir, MAX_PATH_LENGTH - 1);
+        safe_output_dir[MAX_PATH_LENGTH - 1] = '\0';
+    }
+    
     snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p %s", output_dir);
     int ret_mkdir = system(mkdir_cmd);
     if (ret_mkdir != 0) {
@@ -243,6 +264,22 @@ int hls_writer_initialize(hls_writer_t *writer, const AVStream *input_stream) {
  */
 static int ensure_output_directory(const char *dir_path) {
     struct stat st;
+    extern config_t global_config;
+    char safe_dir_path[MAX_PATH_LENGTH];
+    
+    // Ensure we're using a path within our configured storage
+    if (dir_path[0] == '/' && strncmp(dir_path, global_config.storage_path, strlen(global_config.storage_path)) != 0) {
+        // Extract stream name from the path (last component)
+        const char *last_slash = strrchr(dir_path, '/');
+        const char *stream_name = last_slash ? last_slash + 1 : dir_path;
+        
+        // Create a path within our storage directory instead
+        snprintf(safe_dir_path, sizeof(safe_dir_path), "%s/hls/%s", 
+                global_config.storage_path, stream_name);
+        log_warn("Redirecting HLS directory from %s to %s to avoid overlay writes", 
+                dir_path, safe_dir_path);
+        dir_path = safe_dir_path;
+    }
 
     // Check if directory exists
     if (stat(dir_path, &st) != 0 || !S_ISDIR(st.st_mode)) {
@@ -260,7 +297,8 @@ static int ensure_output_directory(const char *dir_path) {
         log_info("Created HLS output directory: %s", dir_path);
 
         // Set permissions to ensure FFmpeg can write files
-        snprintf(mkdir_cmd, sizeof(mkdir_cmd), "chmod -R 777 %s", dir_path);
+        // Use 755 instead of 777 for better security
+        snprintf(mkdir_cmd, sizeof(mkdir_cmd), "chmod -R 755 %s", dir_path);
         int ret_chmod = system(mkdir_cmd);
         if (ret_chmod != 0) {
             log_warn("Failed to set permissions on directory: %s (return code: %d)", dir_path, ret_chmod);

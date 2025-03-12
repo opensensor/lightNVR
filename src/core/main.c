@@ -277,13 +277,55 @@ int main(int argc, char *argv[]) {
     if (stat(config.web_root, &st) != 0 || !S_ISDIR(st.st_mode)) {
         log_error("Web root directory %s does not exist or is not a directory", config.web_root);
 
-        // Try to create it
-        if (mkdir(config.web_root, 0755) != 0) {
-            log_error("Failed to create web root directory: %s", strerror(errno));
-            return EXIT_FAILURE;
+        // Check if this is a path in /var or another system directory
+        if (strncmp(config.web_root, "/var/", 5) == 0 || 
+            strncmp(config.web_root, "/tmp/", 5) == 0 ||
+            strncmp(config.web_root, "/run/", 5) == 0) {
+            
+            // Create a symlink from the system directory to our storage path
+            char storage_web_path[MAX_PATH_LENGTH];
+            snprintf(storage_web_path, sizeof(storage_web_path), "%s/web", config.storage_path);
+            
+            log_warn("Web root is in system directory (%s), redirecting to storage path (%s)",
+                    config.web_root, storage_web_path);
+            
+            // Create the directory in our storage path
+            if (mkdir(storage_web_path, 0755) != 0 && errno != EEXIST) {
+                log_error("Failed to create web root in storage path: %s", strerror(errno));
+                return EXIT_FAILURE;
+            }
+            
+            // Create parent directory for symlink if needed
+            char parent_dir[MAX_PATH_LENGTH];
+            strncpy(parent_dir, config.web_root, sizeof(parent_dir) - 1);
+            char *last_slash = strrchr(parent_dir, '/');
+            if (last_slash) {
+                *last_slash = '\0';
+                if (mkdir(parent_dir, 0755) != 0 && errno != EEXIST) {
+                    log_warn("Failed to create parent directory for web root symlink: %s", strerror(errno));
+                }
+            }
+            
+            // Create the symlink
+            if (symlink(storage_web_path, config.web_root) != 0) {
+                log_error("Failed to create symlink from %s to %s: %s", 
+                        config.web_root, storage_web_path, strerror(errno));
+                
+                // Fall back to using the storage path directly
+                strncpy(config.web_root, storage_web_path, MAX_PATH_LENGTH - 1);
+                log_warn("Using storage path directly for web root: %s", config.web_root);
+            } else {
+                log_info("Created symlink from %s to %s", config.web_root, storage_web_path);
+            }
+        } else {
+            // Try to create it directly
+            if (mkdir(config.web_root, 0755) != 0) {
+                log_error("Failed to create web root directory: %s", strerror(errno));
+                return EXIT_FAILURE;
+            }
+            
+            log_info("Created web root directory: %s", config.web_root);
         }
-
-        log_info("Created web root directory: %s", config.web_root);
     }
 
     // Initialize signal handlers
