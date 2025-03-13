@@ -191,6 +191,7 @@ int init_database(const char *db_path) {
         "CREATE INDEX IF NOT EXISTS idx_recordings_start_time ON recordings (start_time);"
         "CREATE INDEX IF NOT EXISTS idx_recordings_end_time ON recordings (end_time);"
         "CREATE INDEX IF NOT EXISTS idx_recordings_stream ON recordings (stream_name);"
+        "CREATE INDEX IF NOT EXISTS idx_recordings_complete_stream_start ON recordings (is_complete, stream_name, start_time);"
         "CREATE INDEX IF NOT EXISTS idx_streams_name ON streams (name);";
     
     rc = sqlite3_exec(db, create_indexes, NULL, NULL, &err_msg);
@@ -1395,4 +1396,43 @@ int count_stream_configs(void) {
     pthread_mutex_unlock(&db_mutex);
     
     return count;
+}
+
+/**
+ * Execute a SQL query and get the results
+ * 
+ * @param sql SQL query to execute
+ * @param result Pointer to store the result set
+ * @param rows Pointer to store the number of rows
+ * @param cols Pointer to store the number of columns
+ * @return 0 on success, non-zero on failure
+ */
+int database_execute_query(const char *sql, void **result, int *rows, int *cols) {
+    int rc;
+    char *err_msg = NULL;
+    
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+    
+    if (!sql || !result || !rows || !cols) {
+        log_error("Invalid parameters for database_execute_query");
+        return -1;
+    }
+    
+    pthread_mutex_lock(&db_mutex);
+    
+    // Execute the query and get results as a table
+    rc = sqlite3_get_table(db, sql, (char ***)result, rows, cols, &err_msg);
+    
+    if (rc != SQLITE_OK) {
+        log_error("SQL error: %s", err_msg);
+        sqlite3_free(err_msg);
+        pthread_mutex_unlock(&db_mutex);
+        return -1;
+    }
+    
+    pthread_mutex_unlock(&db_mutex);
+    return 0;
 }

@@ -13,6 +13,8 @@
 #include <fcntl.h>
 #include <glob.h>
 #include <dirent.h>
+#include <sqlite3.h>
+#include <pthread.h>
 
 #include "web/api_handlers_recordings.h"
 #include "web/api_handlers_common.h"
@@ -21,6 +23,89 @@
 #include "database/database_manager.h"
 #include "storage/storage_manager.h"
 #include "web/request_response.h"
+
+/* If MAX_CODEC_LENGTH is not defined, define it */
+#ifndef MAX_CODEC_LENGTH
+#define MAX_CODEC_LENGTH 32
+#endif
+
+extern config_t config;
+
+/**
+ * Get the total count of recordings matching given filters
+ * This function performs a lightweight COUNT query against the database
+ *
+ * @param start_time    Start time filter (0 for no filter)
+ * @param end_time      End time filter (0 for no filter)
+ * @param stream_name   Stream name filter (NULL for all streams)
+ *
+ * @return Total number of matching recordings, or -1 on error
+ */
+int get_recording_count(time_t start_time, time_t end_time, const char *stream_name) {
+    char sql[256] = {0};
+    int sql_len = 0;
+
+    /* Build SQL query with COUNT function */
+    sql_len = snprintf(sql, sizeof(sql), "SELECT COUNT(*) FROM recordings WHERE 1=1");
+
+    /* Add time filters if specified */
+    if (start_time > 0 && end_time > 0) {
+        sql_len += snprintf(sql + sql_len, sizeof(sql) - sql_len,
+                 " AND start_time >= %lld AND end_time <= %lld",
+                 (long long)start_time, (long long)end_time);
+    }
+
+    /* Add stream filter if specified */
+    if (stream_name && stream_name[0] != '\0') {
+        sql_len += snprintf(sql + sql_len, sizeof(sql) - sql_len,
+                 " AND stream_name = '%s'", stream_name);
+    }
+
+    log_debug("Count query: %s", sql);
+
+    sqlite3 *db = NULL;
+    int rc = SQLITE_OK;
+
+    /* Get path to database file */
+    const char *db_path = config.db_path;
+    if (!db_path) {
+        log_error("Failed to get database file path from config");
+        return -1;
+    }
+
+    /* Open database */
+    rc = sqlite3_open(db_path, &db);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to open database: %s", sqlite3_errmsg(db));
+        sqlite3_close(db);
+        return -1;
+    }
+
+    sqlite3_stmt *stmt = NULL;
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare count statement: %s", sqlite3_errmsg(db));
+        sqlite3_close(db);
+        return -1;
+    }
+
+    int count = -1;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        count = sqlite3_column_int(stmt, 0);
+    } else {
+        log_error("Failed to get count from database: %s", sqlite3_errmsg(db));
+    }
+
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+
+    log_debug("Recording count: %d (filters: start=%lld, end=%lld, stream=%s)",
+             count, (long long)start_time, (long long)end_time,
+             stream_name ? stream_name : "all");
+
+    return count;
+}
+
 
 /**
  * Get paginated recording metadata from the database
@@ -62,41 +147,11 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time, const c
 }
 
 /**
- * Get the total count of recordings matching given filters
- * A more memory-efficient function that only returns the count without loading records
- */
-int get_recording_count(time_t start_time, time_t end_time, const char *stream_name) {
-    // Implement a lightweight count query against the database
-    // This should NOT load all recording data, just get the count
-
-    // This would need to be implemented in the database layer
-    // For now, assume it returns a valid count or -1 on error
-
-    // Example implementation:
-    // return db_get_recording_count(start_time, end_time, stream_name);
-
-    // Temporary fallback using the existing function (should be replaced):
-    const int max_records = 10;  // Small buffer just to get count
-    recording_metadata_t temp_buffer[max_records];
-    int count = 0;
-    int total_count = 0;
-
-    // Loop through pages of records to get the total count
-    do {
-        count = get_recording_metadata_paginated(start_time, end_time, stream_name, total_count, max_records, temp_buffer);
-        if (count < 0) return -1;
-        total_count += count;
-    } while (count == max_records);
-
-    return total_count;
-}
-
-/**
  * Handle GET request for recordings with pagination
- * Uses dynamic allocation with pre-calculated buffer sizes to avoid stack overflow and reallocation on embedded devices
+ * Optimized for embedded devices with minimal memory usage and efficient resource handling
  */
 void handle_get_recordings(const http_request_t *request, http_response_t *response) {
-    // Get query parameters
+    // Get query parameters with bounds checking
     char date_str[32] = {0};
     char stream_name[MAX_STREAM_NAME] = {0};
     char page_str[16] = {0};
@@ -108,9 +163,14 @@ void handle_get_recordings(const http_request_t *request, http_response_t *respo
 
     // Get date filter if provided
     if (get_query_param(request, "date", date_str, sizeof(date_str)) == 0) {
-        // Parse date string (format: YYYY-MM-DD)
-        struct tm tm = {0};
-        if (strptime(date_str, "%Y-%m-%d", &tm) != NULL) {
+        // Parse date string efficiently (format: YYYY-MM-DD)
+        int year = 0, month = 0, day = 0;
+        if (sscanf(date_str, "%d-%d-%d", &year, &month, &day) == 3) {
+            struct tm tm = {0};
+            tm.tm_year = year - 1900;
+            tm.tm_mon = month - 1;
+            tm.tm_mday = day;
+
             // Set start time to beginning of day
             tm.tm_hour = 0;
             tm.tm_min = 0;
@@ -123,7 +183,7 @@ void handle_get_recordings(const http_request_t *request, http_response_t *respo
             tm.tm_sec = 59;
             end_time = mktime(&tm);
         } else {
-            log_warn("Invalid date format: %s", date_str);
+            log_warn("Invalid date format: %s (expected YYYY-MM-DD)", date_str);
         }
     }
 
@@ -149,15 +209,17 @@ void handle_get_recordings(const http_request_t *request, http_response_t *respo
         int parsed_limit = atoi(limit_str);
         if (parsed_limit > 0 && parsed_limit <= 100) {
             limit = parsed_limit;
+        } else if (parsed_limit > 100) {
+            // Cap the limit to prevent excessive memory usage
+            limit = 100;
+            log_info("Requested limit %d exceeds maximum, capped to 100", parsed_limit);
         }
     }
 
-    log_debug("Fetching recordings with pagination: page=%d, limit=%d", page, limit);
+    log_info("Fetching recordings with pagination: page=%d, limit=%d", page, limit);
 
-    // First, get total count from database directly without loading all records
-    // This is a more memory-efficient approach
+    // First, get total count using the optimized count function
     int total_count = get_recording_count(start_time, end_time, stream_name[0] ? stream_name : NULL);
-
     if (total_count < 0) {
         log_error("Failed to get recordings count from database");
         create_json_response(response, 500, "{\"error\": \"Failed to get recordings count\"}");
@@ -167,50 +229,54 @@ void handle_get_recordings(const http_request_t *request, http_response_t *respo
     // Calculate pagination values
     int total_pages = (total_count + limit - 1) / limit; // Ceiling division
     if (total_pages == 0) total_pages = 1;
-    if (page > total_pages) page = total_pages;
+
+    // Validate page number
+    if (page > total_pages) {
+        page = total_pages;
+    }
 
     // Calculate offset
     int offset = (page - 1) * limit;
 
-    // Calculate how many records we actually need for this page
+    // Calculate actual limit for the current page
     int actual_limit = (offset + limit <= total_count) ? limit : (total_count - offset);
-    if (actual_limit <= 0) actual_limit = 0;
+    if (actual_limit < 0) actual_limit = 0;
 
-    // Now get only the records we need directly with pagination parameters
+    // Only allocate memory and fetch recordings if there are any to fetch
     recording_metadata_t *recordings = NULL;
     if (actual_limit > 0) {
-        recordings = (recording_metadata_t*)malloc(actual_limit * sizeof(recording_metadata_t));
+        // Allocate only what we need for this page using calloc
+        recordings = (recording_metadata_t*)calloc(actual_limit, sizeof(recording_metadata_t));
         if (!recordings) {
             log_error("Failed to allocate memory for recordings");
             create_json_response(response, 500, "{\"error\": \"Memory allocation failed\"}");
             return;
         }
 
-        // Get paginated recordings directly from the database
-        int count = get_recording_metadata_paginated(start_time, end_time,
-                                                  stream_name[0] ? stream_name : NULL,
-                                                  offset, actual_limit, recordings);
+        // Get paginated recordings directly using the optimized function
+        int count = get_recording_metadata_paginated(
+            start_time, end_time,
+            stream_name[0] ? stream_name : NULL,
+            offset, actual_limit, recordings
+        );
 
-        if (count < 0 || count != actual_limit) {
-            log_error("Failed to get paginated recordings: expected %d, got %d", actual_limit, count);
+        if (count < 0) {
             free(recordings);
+            log_error("Failed to get paginated recordings from database");
             create_json_response(response, 500, "{\"error\": \"Failed to get recordings\"}");
             return;
         }
+
+        if (count != actual_limit) {
+            log_warn("Expected %d records but got %d", actual_limit, count);
+            actual_limit = count; // Adjust to actual count received
+        }
     }
 
-    // Estimate JSON size for accurate allocation
-    // Base size for pagination, array brackets, and other fixed elements
-    size_t json_size_estimate = 256;
-
-    // Add estimated size for each recording (500 bytes per record is generous)
-    json_size_estimate += actual_limit * 500;
-
-    // Add 10% buffer for safety
-    json_size_estimate += json_size_estimate / 10;
-
-    // Allocate JSON buffer with the estimated size
-    char *json = malloc(json_size_estimate);
+    // Create a buffer for the JSON response with a reasonable initial size
+    // Base size + estimated size per recording + pagination info
+    size_t json_capacity = 256 + (actual_limit * 512);
+    char *json = (char*)malloc(json_capacity);
     if (!json) {
         if (recordings) free(recordings);
         log_error("Failed to allocate memory for JSON response");
@@ -218,28 +284,41 @@ void handle_get_recordings(const http_request_t *request, http_response_t *respo
         return;
     }
 
-    // Start with pagination metadata
-    int pos = snprintf(json, json_size_estimate,
-                     "{"
-                     "\"pagination\": {"
-                     "\"total\": %d,"
-                     "\"page\": %d,"
-                     "\"limit\": %d,"
-                     "\"pages\": %d"
-                     "},"
-                     "\"recordings\": [",
-                     total_count, page, limit, total_pages);
+    // Start building the JSON response with pagination metadata
+    int pos = snprintf(json, json_capacity,
+                "{"
+                "\"pagination\": {"
+                "\"total\": %d,"
+                "\"page\": %d,"
+                "\"limit\": %d,"
+                "\"pages\": %d"
+                "},"
+                "\"recordings\": [",
+                total_count, page, limit, total_pages);
 
     // Add each recording to the JSON array
     for (int i = 0; i < actual_limit; i++) {
         // Format start and end times
         char start_time_str[32];
         char end_time_str[32];
-        strftime(start_time_str, sizeof(start_time_str), "%Y-%m-%d %H:%M:%S", localtime(&recordings[i].start_time));
-        strftime(end_time_str, sizeof(end_time_str), "%Y-%m-%d %H:%M:%S", localtime(&recordings[i].end_time));
+
+        // Use localtime with error checking
+        struct tm tm_start_buf, tm_end_buf;
+        struct tm *tm_start = localtime_r(&recordings[i].start_time, &tm_start_buf);
+        struct tm *tm_end = localtime_r(&recordings[i].end_time, &tm_end_buf);
+
+        if (tm_start && tm_end) {
+            strftime(start_time_str, sizeof(start_time_str), "%Y-%m-%d %H:%M:%S", tm_start);
+            strftime(end_time_str, sizeof(end_time_str), "%Y-%m-%d %H:%M:%S", tm_end);
+        } else {
+            // Fallback if localtime fails
+            snprintf(start_time_str, sizeof(start_time_str), "%lld", (long long)recordings[i].start_time);
+            snprintf(end_time_str, sizeof(end_time_str), "%lld", (long long)recordings[i].end_time);
+        }
 
         // Calculate duration in seconds
         int duration_sec = recordings[i].end_time - recordings[i].start_time;
+        if (duration_sec < 0) duration_sec = 0;
 
         // Format duration as HH:MM:SS
         char duration_str[16];
@@ -260,60 +339,78 @@ void handle_get_recordings(const http_request_t *request, http_response_t *respo
             snprintf(size_str, sizeof(size_str), "%.1f GB", (float)recordings[i].size_bytes / (1024 * 1024 * 1024));
         }
 
-        // Add comma if not first element
-        if (i > 0) {
-            if (pos < json_size_estimate - 1) json[pos++] = ',';
+        // Check if we need more space
+        if (pos + 512 >= json_capacity) {
+            // Double the buffer size
+            size_t new_capacity = json_capacity * 2;
+            char *new_json = (char*)realloc(json, new_capacity);
+            if (!new_json) {
+                free(json);
+                free(recordings);
+                log_error("Failed to resize JSON buffer");
+                create_json_response(response, 500, "{\"error\": \"Memory allocation failed\"}");
+                return;
+            }
+            json = new_json;
+            json_capacity = new_capacity;
         }
 
-        // Verify we have enough space remaining
-        if (pos + 400 >= json_size_estimate) {  // Safe estimate for a single recording JSON
-            log_error("JSON buffer insufficient - estimated incorrectly");
+        // Add comma if not the first item
+        if (i > 0) {
+            json[pos++] = ',';
+        }
+
+        // Format recording JSON
+        int written = snprintf(json + pos, json_capacity - pos,
+                "{"
+                "\"id\": %llu,"
+                "\"stream\": \"%s\","
+                "\"start_time\": \"%s\","
+                "\"end_time\": \"%s\","
+                "\"duration\": \"%s\","
+                "\"size\": \"%s\","
+                "\"path\": \"%s\","
+                "\"width\": %d,"
+                "\"height\": %d,"
+                "\"fps\": %d,"
+                "\"codec\": \"%s\","
+                "\"complete\": %s"
+                "}",
+                (unsigned long long)recordings[i].id,
+                recordings[i].stream_name,
+                start_time_str,
+                end_time_str,
+                duration_str,
+                size_str,
+                recordings[i].file_path,
+                recordings[i].width,
+                recordings[i].height,
+                recordings[i].fps,
+                recordings[i].codec,
+                recordings[i].is_complete ? "true" : "false");
+
+        if (written > 0) {
+            pos += written;
+        }
+    }
+
+    // Check if we need more space for closing
+    if (pos + 4 >= json_capacity) {
+        size_t new_capacity = json_capacity + 8;
+        char *new_json = (char*)realloc(json, new_capacity);
+        if (!new_json) {
             free(json);
-            free(recordings);
-            create_json_response(response, 500, "{\"error\": \"Internal buffer error\"}");
+            if (recordings) free(recordings);
+            log_error("Failed to resize JSON buffer for closing");
+            create_json_response(response, 500, "{\"error\": \"Memory allocation failed\"}");
             return;
         }
-
-        // Format and append the recording JSON
-        pos += snprintf(json + pos, json_size_estimate - pos,
-                 "{"
-                 "\"id\": %llu,"
-                 "\"stream\": \"%s\","
-                 "\"start_time\": \"%s\","
-                 "\"end_time\": \"%s\","
-                 "\"duration\": \"%s\","
-                 "\"size\": \"%s\","
-                 "\"path\": \"%s\","
-                 "\"width\": %d,"
-                 "\"height\": %d,"
-                 "\"fps\": %d,"
-                 "\"codec\": \"%s\","
-                 "\"complete\": %s"
-                 "}",
-                 (unsigned long long)recordings[i].id,
-                 recordings[i].stream_name,
-                 start_time_str,
-                 end_time_str,
-                 duration_str,
-                 size_str,
-                 recordings[i].file_path,
-                 recordings[i].width,
-                 recordings[i].height,
-                 recordings[i].fps,
-                 recordings[i].codec,
-                 recordings[i].is_complete ? "true" : "false");
+        json = new_json;
+        json_capacity = new_capacity;
     }
 
     // Close array and object
-    if (pos + 3 < json_size_estimate) {
-        pos += snprintf(json + pos, json_size_estimate - pos, "]}");
-    } else {
-        log_error("JSON buffer overflow when closing array");
-        free(json);
-        if (recordings) free(recordings);
-        create_json_response(response, 500, "{\"error\": \"Internal buffer error\"}");
-        return;
-    }
+    pos += snprintf(json + pos, json_capacity - pos, "]}");
 
     // Create response
     create_json_response(response, 200, json);
@@ -357,14 +454,32 @@ void handle_get_recording(const http_request_t *request, http_response_t *respon
         return;
     }
     
-    // Format start and end times
+    // Format start and end times with error checking
     char start_time_str[32];
     char end_time_str[32];
-    strftime(start_time_str, sizeof(start_time_str), "%Y-%m-%d %H:%M:%S", localtime(&metadata.start_time));
-    strftime(end_time_str, sizeof(end_time_str), "%Y-%m-%d %H:%M:%S", localtime(&metadata.end_time));
+    
+    // Use localtime with error checking
+    struct tm tm_start_buf, tm_end_buf;
+    struct tm *tm_start = localtime_r(&metadata.start_time, &tm_start_buf);
+    struct tm *tm_end = localtime_r(&metadata.end_time, &tm_end_buf);
+    
+    if (tm_start) {
+        strftime(start_time_str, sizeof(start_time_str), "%Y-%m-%d %H:%M:%S", tm_start);
+    } else {
+        // Fallback if localtime fails
+        snprintf(start_time_str, sizeof(start_time_str), "%lld", (long long)metadata.start_time);
+    }
+    
+    if (tm_end) {
+        strftime(end_time_str, sizeof(end_time_str), "%Y-%m-%d %H:%M:%S", tm_end);
+    } else {
+        // Fallback if localtime fails
+        snprintf(end_time_str, sizeof(end_time_str), "%lld", (long long)metadata.end_time);
+    }
     
     // Calculate duration in seconds
     int duration_sec = metadata.end_time - metadata.start_time;
+    if (duration_sec < 0) duration_sec = 0;
     
     // Format duration as HH:MM:SS
     char duration_str[16];
@@ -385,9 +500,20 @@ void handle_get_recording(const http_request_t *request, http_response_t *respon
         snprintf(size_str, sizeof(size_str), "%.1f GB", (float)metadata.size_bytes / (1024 * 1024 * 1024));
     }
     
-    // Create JSON response
-    char json[1024];
-    snprintf(json, sizeof(json),
+    // Create JSON response with dynamic allocation
+    // Estimate the size needed for the JSON response
+    size_t json_capacity = 512 + strlen(metadata.stream_name) + strlen(metadata.file_path) + 
+                          strlen(start_time_str) + strlen(end_time_str) + 
+                          strlen(duration_str) + strlen(size_str) + strlen(metadata.codec);
+    
+    char *json = (char*)malloc(json_capacity);
+    if (!json) {
+        log_error("Failed to allocate memory for JSON response");
+        create_json_response(response, 500, "{\"error\": \"Memory allocation failed\"}");
+        return;
+    }
+    
+    int written = snprintf(json, json_capacity,
              "{"
              "\"id\": %llu,"
              "\"stream\": \"%s\","
@@ -417,8 +543,16 @@ void handle_get_recording(const http_request_t *request, http_response_t *respon
              metadata.is_complete ? "true" : "false",
              (unsigned long long)metadata.id);
     
+    if (written >= json_capacity) {
+        log_warn("JSON response was truncated (needed %d bytes, had %zu)", 
+                written, json_capacity);
+    }
+    
     // Create response
     create_json_response(response, 200, json);
+    
+    // Free allocated memory
+    free(json);
 }
 
 /**
@@ -562,13 +696,26 @@ void handle_delete_recording(const http_request_t *request, http_response_t *res
         return;
     }
     
-    // Create success response
-    char json[256];
-    snprintf(json, sizeof(json), 
-             "{\"success\": true, \"id\": %llu, \"message\": \"Recording deleted successfully\"}", 
-             (unsigned long long)id);
+    // Create success response with dynamic allocation
+    char *json = malloc(256); // Allocate enough space for the response
+    if (!json) {
+        log_error("Failed to allocate memory for JSON response");
+        create_json_response(response, 500, "{\"error\": \"Memory allocation failed\"}");
+        return;
+    }
+    
+    int written = snprintf(json, 256, 
+                          "{\"success\": true, \"id\": %llu, \"message\": \"Recording deleted successfully\"}", 
+                          (unsigned long long)id);
+    
+    if (written >= 256) {
+        log_warn("JSON response was truncated (needed %d bytes, had 256)", written);
+    }
     
     create_json_response(response, 200, json);
+    
+    // Free allocated memory
+    free(json);
     
     log_info("Recording deleted successfully: ID=%llu, Path=%s", (unsigned long long)id, metadata.file_path);
 }
@@ -587,34 +734,59 @@ void handle_get_debug_recordings(const http_request_t *request, http_response_t 
         return;
     }
 
-    // Create a detailed debug response
-    char *debug_json = malloc(10000); // Allocate a large buffer
+    // Cap count to prevent buffer overflows
+    if (count > 100) {
+        log_warn("DEBUG: Limiting recordings count from %d to 100", count);
+        count = 100;
+    }
+
+    // Create a detailed debug response with dynamic allocation
+    // Base size + estimated size per recording
+    size_t json_capacity = 256 + (count * 512);
+    char *debug_json = malloc(json_capacity);
     if (!debug_json) {
         create_json_response(response, 500, "{\"error\": \"Memory allocation failed\"}");
         return;
     }
 
     // Start building JSON
-    int pos = sprintf(debug_json,
+    int pos = snprintf(debug_json, json_capacity,
         "{\n"
         "  \"count\": %d,\n"
         "  \"recordings\": [\n", count);
 
     for (int i = 0; i < count; i++) {
+        // Check if we need more space
+        if (pos + 512 >= json_capacity) {
+            // Double the buffer size
+            size_t new_capacity = json_capacity * 2;
+            char *new_json = (char*)realloc(debug_json, new_capacity);
+            if (!new_json) {
+                free(debug_json);
+                log_error("Failed to resize debug JSON buffer");
+                create_json_response(response, 500, "{\"error\": \"Memory allocation failed\"}");
+                return;
+            }
+            debug_json = new_json;
+            json_capacity = new_capacity;
+        }
+
         // Add a comma between items (but not before the first item)
         if (i > 0) {
-            pos += sprintf(debug_json + pos, ",\n");
+            pos += snprintf(debug_json + pos, json_capacity - pos, ",\n");
         }
 
         char path_status[32] = "unknown";
         struct stat st;
         if (stat(recordings[i].file_path, &st) == 0) {
-            strcpy(path_status, "exists");
+            strncpy(path_status, "exists", sizeof(path_status) - 1);
+            path_status[sizeof(path_status) - 1] = '\0';
         } else {
-            strcpy(path_status, "missing");
+            strncpy(path_status, "missing", sizeof(path_status) - 1);
+            path_status[sizeof(path_status) - 1] = '\0';
         }
 
-        pos += sprintf(debug_json + pos,
+        int written = snprintf(debug_json + pos, json_capacity - pos,
             "    {\n"
             "      \"id\": %llu,\n"
             "      \"stream\": \"%s\",\n"
@@ -633,10 +805,32 @@ void handle_get_debug_recordings(const http_request_t *request, http_response_t 
             (unsigned long long)recordings[i].start_time,
             (unsigned long long)recordings[i].end_time,
             recordings[i].is_complete ? "true" : "false");
+            
+        if (written > 0) {
+            pos += written;
+        } else {
+            log_error("Failed to format recording JSON for ID %llu", 
+                     (unsigned long long)recordings[i].id);
+            break;
+        }
+    }
+
+    // Check if we need more space for closing
+    if (pos + 8 >= json_capacity) {
+        size_t new_capacity = json_capacity + 16;
+        char *new_json = (char*)realloc(debug_json, new_capacity);
+        if (!new_json) {
+            free(debug_json);
+            log_error("Failed to resize debug JSON buffer for closing");
+            create_json_response(response, 500, "{\"error\": \"Memory allocation failed\"}");
+            return;
+        }
+        debug_json = new_json;
+        json_capacity = new_capacity;
     }
 
     // Close JSON
-    pos += sprintf(debug_json + pos, "\n  ]\n}");
+    pos += snprintf(debug_json + pos, json_capacity - pos, "\n  ]\n}");
 
     // Create response
     create_json_response(response, 200, debug_json);

@@ -39,6 +39,9 @@ bool daemon_mode = false;
 // Declare a global variable to store the web server socket
 static int web_server_socket = -1;
 
+// global config
+config_t config;
+
 // Function to set the web server socket
 void set_web_server_socket(int socket_fd) {
     web_server_socket = socket_fd;
@@ -213,7 +216,6 @@ static void load_streams_from_config(const config_t *config) {
 
 int main(int argc, char *argv[]) {
     int pid_fd = -1;
-    config_t config;
 
     // Print banner
     printf("LightNVR v%s - Lightweight NVR for Ingenic A1\n", LIGHTNVR_VERSION_STRING);
