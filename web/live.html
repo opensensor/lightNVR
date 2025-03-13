@@ -88,18 +88,16 @@
             height: 100%;
             object-fit: contain;
             background-color: #111;
-            padding-top: 2.5rem; /* Add padding to prevent overlay with stream info */
-            padding-bottom: 4rem;
         }
         
         /* Adjust padding in fullscreen mode for better visibility */
         .fullscreen-mode .video-cell video {
-            padding: 3rem 1rem 1rem;
+            padding: 0;
         }
         
         .video-cell .stream-info {
             position: absolute;
-            top: 0;
+            bottom: 0;
             left: 0;
             right: 0;
             padding: 0.75rem;
@@ -110,7 +108,7 @@
             justify-content: space-between;
             align-items: center;
             opacity: 0;
-            transform: translateY(-100%);
+            transform: translateY(100%);
             transition: all var(--transition-speed) ease;
             backdrop-filter: blur(4px);
             -webkit-backdrop-filter: blur(4px);
@@ -122,25 +120,10 @@
         }
         
         .video-cell .stream-controls {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            padding: 0.75rem;
-            background-color: var(--overlay-bg);
             display: flex;
             justify-content: center;
             gap: 1rem;
-            opacity: 0;
-            transform: translateY(100%);
-            transition: all var(--transition-speed) ease;
-            backdrop-filter: blur(4px);
-            -webkit-backdrop-filter: blur(4px);
-        }
-        
-        .video-cell:hover .stream-controls {
-            opacity: 1;
-            transform: translateY(0);
+            margin-left: auto;
         }
         
         .video-cell .stream-controls button {
@@ -342,6 +325,9 @@
                         <option value="9">3x3 Grid</option>
                         <option value="16">4x4 Grid</option>
                     </select>
+                    <select id="stream-selector" style="display: none;">
+                        <!-- Will be populated with streams -->
+                    </select>
                     <button id="fullscreen-btn">Fullscreen</button>
                 </div>
             </div>
@@ -405,6 +391,16 @@
         if (layoutSelector) {
             layoutSelector.addEventListener('change', function() {
                 updateVideoLayout(this.value);
+                
+                // If switching to single view, make sure the stream selector works
+                if (this.value === '1') {
+                    const streamSelector = document.getElementById('stream-selector');
+                    if (streamSelector && streamSelector.value) {
+                        // Trigger the change event on the stream selector
+                        const event = new Event('change');
+                        streamSelector.dispatchEvent(event);
+                    }
+                }
             });
         }
         
