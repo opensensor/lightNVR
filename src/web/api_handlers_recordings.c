@@ -322,31 +322,77 @@ void handle_get_recordings(const http_request_t *request, http_response_t *respo
 
     // Get start time if provided (overrides date parameter)
     if (get_query_param(request, "start", start_str, sizeof(start_str)) == 0) {
+        // URL decode the string first (replace %3A with :, etc.)
+        char decoded_start[32] = {0};
+        int j = 0;
+        for (int i = 0; i < strlen(start_str) && j < sizeof(decoded_start) - 1; i++) {
+            if (start_str[i] == '%' && i + 2 < strlen(start_str)) {
+                // Handle URL encoded characters
+                if (start_str[i+1] == '3' && start_str[i+2] == 'A') {
+                    // %3A -> :
+                    decoded_start[j++] = ':';
+                } else if (start_str[i+1] == '2' && start_str[i+2] == '0') {
+                    // %20 -> space
+                    decoded_start[j++] = ' ';
+                } else {
+                    // Copy as-is if not recognized
+                    decoded_start[j++] = start_str[i];
+                    continue;
+                }
+                i += 2; // Skip the next two characters
+            } else {
+                decoded_start[j++] = start_str[i];
+            }
+        }
+        
         // Parse ISO 8601 date-time format (YYYY-MM-DDTHH:MM:SS)
         struct tm tm = {0};
-        char *result = strptime(start_str, "%Y-%m-%dT%H:%M:%S", &tm);
+        char *result = strptime(decoded_start, "%Y-%m-%dT%H:%M:%S", &tm);
         
         if (result) {
             start_time = mktime(&tm);
-            log_debug("Using start time filter: %s (%lld)", 
-                     start_str, (long long)start_time);
+            log_debug("Using start time filter: %s -> %s (%lld)", 
+                     start_str, decoded_start, (long long)start_time);
         } else {
-            log_warn("Invalid start time format: %s (expected YYYY-MM-DDTHH:MM:SS)", start_str);
+            log_warn("Invalid start time format: %s (expected YYYY-MM-DDTHH:MM:SS)", decoded_start);
         }
     }
 
     // Get end time if provided (overrides date parameter)
     if (get_query_param(request, "end", end_str, sizeof(end_str)) == 0) {
+        // URL decode the string first (replace %3A with :, etc.)
+        char decoded_end[32] = {0};
+        int j = 0;
+        for (int i = 0; i < strlen(end_str) && j < sizeof(decoded_end) - 1; i++) {
+            if (end_str[i] == '%' && i + 2 < strlen(end_str)) {
+                // Handle URL encoded characters
+                if (end_str[i+1] == '3' && end_str[i+2] == 'A') {
+                    // %3A -> :
+                    decoded_end[j++] = ':';
+                } else if (end_str[i+1] == '2' && end_str[i+2] == '0') {
+                    // %20 -> space
+                    decoded_end[j++] = ' ';
+                } else {
+                    // Copy as-is if not recognized
+                    decoded_end[j++] = end_str[i];
+                    continue;
+                }
+                i += 2; // Skip the next two characters
+            } else {
+                decoded_end[j++] = end_str[i];
+            }
+        }
+        
         // Parse ISO 8601 date-time format (YYYY-MM-DDTHH:MM:SS)
         struct tm tm = {0};
-        char *result = strptime(end_str, "%Y-%m-%dT%H:%M:%S", &tm);
+        char *result = strptime(decoded_end, "%Y-%m-%dT%H:%M:%S", &tm);
         
         if (result) {
             end_time = mktime(&tm);
-            log_debug("Using end time filter: %s (%lld)", 
-                     end_str, (long long)end_time);
+            log_debug("Using end time filter: %s -> %s (%lld)", 
+                     end_str, decoded_end, (long long)end_time);
         } else {
-            log_warn("Invalid end time format: %s (expected YYYY-MM-DDTHH:MM:SS)", end_str);
+            log_warn("Invalid end time format: %s (expected YYYY-MM-DDTHH:MM:SS)", decoded_end);
         }
     }
 
