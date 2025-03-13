@@ -42,17 +42,21 @@ extern config_t config;
  * @return Total number of matching recordings, or -1 on error
  */
 int get_recording_count(time_t start_time, time_t end_time, const char *stream_name) {
-    char sql[256] = {0};
+    char sql[512] = {0};
     int sql_len = 0;
 
     /* Build SQL query with COUNT function */
     sql_len = snprintf(sql, sizeof(sql), "SELECT COUNT(*) FROM recordings WHERE 1=1");
 
     /* Add time filters if specified */
-    if (start_time > 0 && end_time > 0) {
+    if (start_time > 0) {
         sql_len += snprintf(sql + sql_len, sizeof(sql) - sql_len,
-                 " AND start_time >= %lld AND start_time <= %lld",
-                 (long long)start_time, (long long)end_time);
+                 " AND start_time >= %lld", (long long)start_time);
+    }
+    
+    if (end_time > 0) {
+        sql_len += snprintf(sql + sql_len, sizeof(sql) - sql_len,
+                 " AND start_time <= %lld", (long long)end_time);
     }
 
     /* Add stream filter if specified */
@@ -108,42 +112,164 @@ int get_recording_count(time_t start_time, time_t end_time, const char *stream_n
 
 
 /**
- * Get paginated recording metadata from the database
- * This function should be implemented to fetch only the specified page of results
+ * Get paginated recording metadata from the database with sorting
+ * This function fetches only the specified page of results with the given sort order
  */
 int get_recording_metadata_paginated(time_t start_time, time_t end_time, const char *stream_name,
-                                   int offset, int limit, recording_metadata_t *recordings) {
-    // This would be a new database function that supports pagination directly
-    // It should only fetch the specified limit of records starting at offset
-
-    // For now, implement a fallback using the existing function:
-
-    // Allocate a temporary buffer for all records up to offset+limit
-    recording_metadata_t *temp_buffer = malloc((offset + limit) * sizeof(recording_metadata_t));
-    if (!temp_buffer) return -1;
-
-    // Get recordings
-    int total_count = get_recording_metadata(start_time, end_time, stream_name, temp_buffer, offset + limit);
-
-    // Check for errors
-    if (total_count < 0) {
-        free(temp_buffer);
+                                   int offset, int limit, recording_metadata_t *recordings,
+                                   const char *sort_field, const char *sort_order) {
+    int rc;
+    sqlite3_stmt *stmt;
+    int count = 0;
+    
+    if (!recordings || limit <= 0) {
+        log_error("Invalid parameters for get_recording_metadata_paginated");
         return -1;
     }
-
-    // Calculate how many records we can actually copy
-    int available = total_count - offset;
-    int to_copy = (available > 0) ? (available < limit ? available : limit) : 0;
-
-    // Copy the requested page of records
-    if (to_copy > 0) {
-        memcpy(recordings, temp_buffer + offset, to_copy * sizeof(recording_metadata_t));
+    
+    // Get path to database file
+    const char *db_path = config.db_path;
+    if (!db_path) {
+        log_error("Failed to get database file path from config");
+        return -1;
     }
-
-    // Free temporary buffer
-    free(temp_buffer);
-
-    return to_copy;
+    
+    // Open database
+    sqlite3 *db = NULL;
+    rc = sqlite3_open(db_path, &db);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to open database: %s", sqlite3_errmsg(db));
+        sqlite3_close(db);
+        return -1;
+    }
+    
+    // Build query based on filters
+    char sql[1024];
+    strcpy(sql, "SELECT id, stream_name, file_path, start_time, end_time, "
+                 "size_bytes, width, height, fps, codec, is_complete "
+                 "FROM recordings WHERE is_complete = 1"); // Only complete recordings
+    
+    if (start_time > 0) {
+        strcat(sql, " AND start_time >= ?");
+    }
+    
+    if (end_time > 0) {
+        strcat(sql, " AND start_time <= ?");
+    }
+    
+    if (stream_name && stream_name[0] != '\0') {
+        strcat(sql, " AND stream_name = ?");
+    }
+    
+    // Add ORDER BY clause based on sort parameters
+    if (sort_field && sort_field[0] != '\0') {
+        // Validate sort field to prevent SQL injection
+        if (strcmp(sort_field, "start_time") == 0 || 
+            strcmp(sort_field, "end_time") == 0 || 
+            strcmp(sort_field, "stream_name") == 0 || 
+            strcmp(sort_field, "size_bytes") == 0) {
+            
+            strcat(sql, " ORDER BY ");
+            strcat(sql, sort_field);
+            
+            // Add sort order if specified
+            if (sort_order && (strcmp(sort_order, "asc") == 0 || strcmp(sort_order, "desc") == 0)) {
+                strcat(sql, " ");
+                strcat(sql, sort_order);
+            } else {
+                // Default to descending order
+                strcat(sql, " DESC");
+            }
+        } else {
+            // Invalid sort field, default to start_time DESC
+            strcat(sql, " ORDER BY start_time DESC");
+        }
+    } else {
+        // Default sort order
+        strcat(sql, " ORDER BY start_time DESC");
+    }
+    
+    // Add LIMIT and OFFSET
+    strcat(sql, " LIMIT ? OFFSET ?");
+    
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        sqlite3_close(db);
+        return -1;
+    }
+    
+    // Bind parameters
+    int param_index = 1;
+    
+    if (start_time > 0) {
+        sqlite3_bind_int64(stmt, param_index++, (sqlite3_int64)start_time);
+    }
+    
+    if (end_time > 0) {
+        sqlite3_bind_int64(stmt, param_index++, (sqlite3_int64)end_time);
+    }
+    
+    if (stream_name && stream_name[0] != '\0') {
+        sqlite3_bind_text(stmt, param_index++, stream_name, -1, SQLITE_STATIC);
+    }
+    
+    sqlite3_bind_int(stmt, param_index++, limit);
+    sqlite3_bind_int(stmt, param_index, offset);
+    
+    log_debug("Executing paginated query: %s (limit=%d, offset=%d)", sql, limit, offset);
+    
+    // Execute query and fetch results
+    while (sqlite3_step(stmt) == SQLITE_ROW && count < limit) {
+        recordings[count].id = (uint64_t)sqlite3_column_int64(stmt, 0);
+        
+        const char *stream = (const char *)sqlite3_column_text(stmt, 1);
+        if (stream) {
+            strncpy(recordings[count].stream_name, stream, sizeof(recordings[count].stream_name) - 1);
+            recordings[count].stream_name[sizeof(recordings[count].stream_name) - 1] = '\0';
+        } else {
+            recordings[count].stream_name[0] = '\0';
+        }
+        
+        const char *path = (const char *)sqlite3_column_text(stmt, 2);
+        if (path) {
+            strncpy(recordings[count].file_path, path, sizeof(recordings[count].file_path) - 1);
+            recordings[count].file_path[sizeof(recordings[count].file_path) - 1] = '\0';
+        } else {
+            recordings[count].file_path[0] = '\0';
+        }
+        
+        recordings[count].start_time = (time_t)sqlite3_column_int64(stmt, 3);
+        
+        if (sqlite3_column_type(stmt, 4) != SQLITE_NULL) {
+            recordings[count].end_time = (time_t)sqlite3_column_int64(stmt, 4);
+        } else {
+            recordings[count].end_time = 0;
+        }
+        
+        recordings[count].size_bytes = (uint64_t)sqlite3_column_int64(stmt, 5);
+        recordings[count].width = sqlite3_column_int(stmt, 6);
+        recordings[count].height = sqlite3_column_int(stmt, 7);
+        recordings[count].fps = sqlite3_column_int(stmt, 8);
+        
+        const char *codec = (const char *)sqlite3_column_text(stmt, 9);
+        if (codec) {
+            strncpy(recordings[count].codec, codec, sizeof(recordings[count].codec) - 1);
+            recordings[count].codec[sizeof(recordings[count].codec) - 1] = '\0';
+        } else {
+            recordings[count].codec[0] = '\0';
+        }
+        
+        recordings[count].is_complete = sqlite3_column_int(stmt, 10) != 0;
+        
+        count++;
+    }
+    
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+    
+    log_info("Found %d recordings in database matching criteria (paginated)", count);
+    return count;
 }
 
 /**
@@ -156,12 +282,16 @@ void handle_get_recordings(const http_request_t *request, http_response_t *respo
     char stream_name[MAX_STREAM_NAME] = {0};
     char page_str[16] = {0};
     char limit_str[16] = {0};
+    char start_str[32] = {0};
+    char end_str[32] = {0};
+    char sort_field[32] = {0};
+    char sort_order[8] = {0};
     time_t start_time = 0;
     time_t end_time = 0;
     int page = 1;
     int limit = 20;
 
-    // Get date filter if provided
+    // Get date filter if provided (legacy parameter)
     if (get_query_param(request, "date", date_str, sizeof(date_str)) == 0) {
         // Parse date string efficiently (format: YYYY-MM-DD)
         int year = 0, month = 0, day = 0;
@@ -182,8 +312,41 @@ void handle_get_recordings(const http_request_t *request, http_response_t *respo
             tm.tm_min = 59;
             tm.tm_sec = 59;
             end_time = mktime(&tm);
+            
+            log_debug("Using date filter: %s (start=%lld, end=%lld)",
+                     date_str, (long long)start_time, (long long)end_time);
         } else {
             log_warn("Invalid date format: %s (expected YYYY-MM-DD)", date_str);
+        }
+    }
+
+    // Get start time if provided (overrides date parameter)
+    if (get_query_param(request, "start", start_str, sizeof(start_str)) == 0) {
+        // Parse ISO 8601 date-time format (YYYY-MM-DDTHH:MM:SS)
+        struct tm tm = {0};
+        char *result = strptime(start_str, "%Y-%m-%dT%H:%M:%S", &tm);
+        
+        if (result) {
+            start_time = mktime(&tm);
+            log_debug("Using start time filter: %s (%lld)", 
+                     start_str, (long long)start_time);
+        } else {
+            log_warn("Invalid start time format: %s (expected YYYY-MM-DDTHH:MM:SS)", start_str);
+        }
+    }
+
+    // Get end time if provided (overrides date parameter)
+    if (get_query_param(request, "end", end_str, sizeof(end_str)) == 0) {
+        // Parse ISO 8601 date-time format (YYYY-MM-DDTHH:MM:SS)
+        struct tm tm = {0};
+        char *result = strptime(end_str, "%Y-%m-%dT%H:%M:%S", &tm);
+        
+        if (result) {
+            end_time = mktime(&tm);
+            log_debug("Using end time filter: %s (%lld)", 
+                     end_str, (long long)end_time);
+        } else {
+            log_warn("Invalid end time format: %s (expected YYYY-MM-DDTHH:MM:SS)", end_str);
         }
     }
 
@@ -196,6 +359,46 @@ void handle_get_recordings(const http_request_t *request, http_response_t *respo
     }
 
     log_debug("Filtering recordings by stream: %s", stream_name[0] ? stream_name : "all streams");
+
+    // Get sort field if provided
+    get_query_param(request, "sort", sort_field, sizeof(sort_field));
+    
+    // Validate sort field
+    if (sort_field[0] != '\0' && 
+        strcmp(sort_field, "start_time") != 0 && 
+        strcmp(sort_field, "end_time") != 0 && 
+        strcmp(sort_field, "stream_name") != 0 && 
+        strcmp(sort_field, "size_bytes") != 0) {
+        
+        // Invalid sort field, default to start_time
+        log_warn("Invalid sort field: %s (using default 'start_time')", sort_field);
+        strcpy(sort_field, "start_time");
+    }
+    
+    // If no sort field specified, default to start_time
+    if (sort_field[0] == '\0') {
+        strcpy(sort_field, "start_time");
+    }
+    
+    // Get sort order if provided
+    get_query_param(request, "order", sort_order, sizeof(sort_order));
+    
+    // Validate sort order
+    if (sort_order[0] != '\0' && 
+        strcmp(sort_order, "asc") != 0 && 
+        strcmp(sort_order, "desc") != 0) {
+        
+        // Invalid sort order, default to desc
+        log_warn("Invalid sort order: %s (using default 'desc')", sort_order);
+        strcpy(sort_order, "desc");
+    }
+    
+    // If no sort order specified, default to desc
+    if (sort_order[0] == '\0') {
+        strcpy(sort_order, "desc");
+    }
+    
+    log_debug("Sorting recordings by %s %s", sort_field, sort_order);
 
     // Get pagination parameters if provided
     if (get_query_param(request, "page", page_str, sizeof(page_str)) == 0) {
@@ -216,7 +419,8 @@ void handle_get_recordings(const http_request_t *request, http_response_t *respo
         }
     }
 
-    log_info("Fetching recordings with pagination: page=%d, limit=%d", page, limit);
+    log_info("Fetching recordings with pagination: page=%d, limit=%d, sort=%s %s", 
+             page, limit, sort_field, sort_order);
 
     // First, get total count using the optimized count function
     int total_count = get_recording_count(start_time, end_time, stream_name[0] ? stream_name : NULL);
@@ -253,11 +457,12 @@ void handle_get_recordings(const http_request_t *request, http_response_t *respo
             return;
         }
 
-        // Get paginated recordings directly using the optimized function
+        // Get paginated recordings directly using the optimized function with sorting
         int count = get_recording_metadata_paginated(
             start_time, end_time,
             stream_name[0] ? stream_name : NULL,
-            offset, actual_limit, recordings
+            offset, actual_limit, recordings,
+            sort_field, sort_order
         );
 
         if (count < 0) {

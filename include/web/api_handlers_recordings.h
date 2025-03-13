@@ -7,6 +7,26 @@
 #include "database/database_manager.h"  /* for recording_metadata_t */
 
 /**
+ * Get the total count of recordings matching given filters
+ * This function performs a lightweight COUNT query against the database
+ *
+ * @param start_time    Start time filter (0 for no filter)
+ * @param end_time      End time filter (0 for no filter)
+ * @param stream_name   Stream name filter (NULL for all streams)
+ *
+ * @return Total number of matching recordings, or -1 on error
+ */
+int get_recording_count(time_t start_time, time_t end_time, const char *stream_name);
+
+/**
+ * Get paginated recording metadata from the database with sorting
+ * This function fetches only the specified page of results with the given sort order
+ */
+int get_recording_metadata_paginated(time_t start_time, time_t end_time, const char *stream_name,
+                                   int offset, int limit, recording_metadata_t *recordings,
+                                   const char *sort_field, const char *sort_order);
+
+/**
  * Handle GET request for recordings
  */
 void handle_get_recordings(const http_request_t *request, http_response_t *response);
