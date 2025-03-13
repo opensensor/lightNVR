@@ -40,7 +40,6 @@ void register_api_handlers(void) {
     // Register recording API handlers
     // IMPORTANT: Register more specific routes first to avoid conflicts
     register_request_handler("/api/recordings/download/*", "GET", handle_download_recording);
-    register_request_handler("/api/debug/recordings", "GET", handle_get_debug_recordings);
     register_request_handler("/api/recordings", "GET", handle_get_recordings);
     
     // These must come last as they're more general patterns

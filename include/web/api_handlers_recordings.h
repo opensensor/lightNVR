@@ -27,11 +27,6 @@ void handle_delete_recording(const http_request_t *request, http_response_t *res
 void handle_download_recording(const http_request_t *request, http_response_t *response);
 
 /**
- * Handle GET request for debug database info
- */
-void handle_get_debug_recordings(const http_request_t *request, http_response_t *response);
-
-/**
  * Serve an MP4 file with proper headers for download
  */
 void serve_mp4_file(http_response_t *response, const char *file_path, const char *filename);

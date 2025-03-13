@@ -4,9 +4,10 @@
  */
 
 /**
- * Load recordings with pagination
+ * Load recordings with pagination and advanced filtering
+ * Supports date range filtering with timestamps and URL parameters
  */
-function loadRecordings(page = 1) {
+function loadRecordings(page = 1, updateUrl = true) {
     const recordingsTable = document.getElementById('recordings-table');
     if (!recordingsTable) return;
 
@@ -18,27 +19,125 @@ function loadRecordings(page = 1) {
     tbody.innerHTML = '<tr><td colspan="5" class="empty-message">Loading recordings...</td></tr>';
 
     // Get filter values
-    const dateFilter = document.getElementById('date-picker').value;
-    const streamFilter = document.getElementById('stream-filter').value;
+    const dateRangeSelect = document.getElementById('date-range-select');
+    const startDate = document.getElementById('start-date');
+    const startTime = document.getElementById('start-time');
+    const endDate = document.getElementById('end-date');
+    const endTime = document.getElementById('end-time');
+    const streamFilter = document.getElementById('stream-filter');
     const pageSizeSelect = document.getElementById('page-size');
+    
+    // Get values with defaults
+    const dateRangeType = dateRangeSelect ? dateRangeSelect.value : 'today';
+    const streamValue = streamFilter ? streamFilter.value : 'all';
     const pageSize = pageSizeSelect ? parseInt(pageSizeSelect.value, 10) : 20;
 
+    // Get current sort parameters
+    const currentSort = document.querySelector('th.sort-asc, th.sort-desc');
+    let sortBy = currentSort ? currentSort.getAttribute('data-sort') : 'start_time';
+    let sortOrder = currentSort && currentSort.classList.contains('sort-asc') ? 'asc' : 'desc';
+    
+    // Debug log for sorting parameters
+    console.log(`Sorting by: ${sortBy}, order: ${sortOrder}`);
+    
+    // Ensure sortBy matches the database column names
+    // No need to map 'stream' to 'stream_name' as the HTML already uses 'stream_name'
+    
     // Build query string
     let queryParams = new URLSearchParams();
     
-    if (dateFilter) {
-        queryParams.append('date', dateFilter);
+    // Add sort parameters
+    if (sortBy) {
+        queryParams.append('sort', sortBy);
+        queryParams.append('order', sortOrder);
     }
     
-    if (streamFilter && streamFilter !== 'all') {
-        queryParams.append('stream', streamFilter);
+    // Add date range parameters based on selection
+    if (dateRangeType === 'custom' && startDate && startDate.value) {
+        // For custom range, use the start and end date/time inputs
+        let startDateTime = startDate.value;
+        if (startTime && startTime.value) {
+            startDateTime += `T${startTime.value}:00`;
+        } else {
+            startDateTime += 'T00:00:00';
+        }
+        queryParams.append('start', startDateTime);
+        
+        // End date (default to start date if not provided)
+        let endDateTime = endDate && endDate.value ? endDate.value : startDate.value;
+        if (endTime && endTime.value) {
+            endDateTime += `T${endTime.value}:59`;
+        } else {
+            endDateTime += 'T23:59:59';
+        }
+        queryParams.append('end', endDateTime);
+    } else {
+        // For preset ranges, calculate the appropriate dates
+        const now = new Date();
+        let startDateTime, endDateTime;
+        
+        switch (dateRangeType) {
+            case 'today':
+                startDateTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+                endDateTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+                break;
+            case 'yesterday':
+                // Create a new date object for yesterday and set to midnight-to-midnight
+                const yesterday = new Date(now);
+                yesterday.setDate(yesterday.getDate() - 1);
+                // Set to beginning of day (00:00:00)
+                startDateTime = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 0, 0, 0);
+                // Set to end of day (23:59:59)
+                endDateTime = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 23, 59, 59);
+                break;
+            case 'last7days':
+                // Create a date for 7 days ago
+                const sevenDaysAgo = new Date(now);
+                sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+                startDateTime = new Date(sevenDaysAgo.getFullYear(), sevenDaysAgo.getMonth(), sevenDaysAgo.getDate(), 0, 0, 0);
+                endDateTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+                break;
+            case 'last30days':
+                // Create a date for 30 days ago
+                const thirtyDaysAgo = new Date(now);
+                thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
+                startDateTime = new Date(thirtyDaysAgo.getFullYear(), thirtyDaysAgo.getMonth(), thirtyDaysAgo.getDate(), 0, 0, 0);
+                endDateTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+                break;
+            default:
+                startDateTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+                endDateTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+        }
+        
+        // Format dates for API
+        const formatDate = (date) => {
+            return date.toISOString().split('.')[0]; // Remove milliseconds
+        };
+        
+        queryParams.append('start', formatDate(startDateTime));
+        queryParams.append('end', formatDate(endDateTime));
+    }
+    
+    // Add stream filter if not "all"
+    if (streamValue && streamValue !== 'all') {
+        queryParams.append('stream', streamValue);
     }
     
     // Add pagination parameters
     queryParams.append('page', page);
     queryParams.append('limit', pageSize);
     
+    // Create the query string
     const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
+    
+    // Update URL if requested (for bookmarking and sharing)
+    if (updateUrl) {
+        const newUrl = `${window.location.pathname}${queryString}`;
+        window.history.pushState({ path: newUrl }, '', newUrl);
+        
+        // Update active filters display
+        updateActiveFilters(queryParams);
+    }
 
     // Fetch recordings from API
     fetch(`/api/recordings${queryString}`)
@@ -131,6 +230,279 @@ function loadRecordings(page = 1) {
         .finally(() => {
             hideLoading(recordingsTable);
         });
+}
+
+/**
+ * Update the active filters display
+ */
+function updateActiveFilters(queryParams) {
+    const activeFiltersContainer = document.getElementById('active-filters');
+    if (!activeFiltersContainer) return;
+    
+    // Clear existing filters
+    activeFiltersContainer.innerHTML = '';
+    
+    // If no filters, hide the container
+    if (!queryParams || queryParams.toString() === '') {
+        activeFiltersContainer.style.display = 'none';
+        return;
+    }
+    
+    // Show the container
+    activeFiltersContainer.style.display = 'flex';
+    
+    // Add date range filter tag
+    if (queryParams.has('start') || queryParams.has('end')) {
+        let dateRangeText = '';
+        
+        if (queryParams.has('start') && queryParams.has('end')) {
+            // Format dates for display
+            const startDate = new Date(queryParams.get('start'));
+            const endDate = new Date(queryParams.get('end'));
+            
+            const formatDateForDisplay = (date) => {
+                return date.toLocaleString(undefined, {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            };
+            
+            dateRangeText = `${formatDateForDisplay(startDate)} - ${formatDateForDisplay(endDate)}`;
+        } else if (queryParams.has('start')) {
+            const startDate = new Date(queryParams.get('start'));
+            dateRangeText = `From ${startDate.toLocaleString()}`;
+        } else if (queryParams.has('end')) {
+            const endDate = new Date(queryParams.get('end'));
+            dateRangeText = `Until ${endDate.toLocaleString()}`;
+        }
+        
+        const dateFilterTag = document.createElement('div');
+        dateFilterTag.className = 'filter-tag';
+        dateFilterTag.innerHTML = `
+            <span>Date: ${dateRangeText}</span>
+            <span class="remove-filter" data-filter="date">×</span>
+        `;
+        activeFiltersContainer.appendChild(dateFilterTag);
+    }
+    
+    // Add stream filter tag
+    if (queryParams.has('stream')) {
+        const streamFilterTag = document.createElement('div');
+        streamFilterTag.className = 'filter-tag';
+        streamFilterTag.innerHTML = `
+            <span>Stream: ${queryParams.get('stream')}</span>
+            <span class="remove-filter" data-filter="stream">×</span>
+        `;
+        activeFiltersContainer.appendChild(streamFilterTag);
+    }
+    
+    // Add event listeners to remove filter buttons
+    document.querySelectorAll('.remove-filter').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const filterType = this.getAttribute('data-filter');
+            
+            // Get current URL parameters
+            const currentParams = new URLSearchParams(window.location.search);
+            
+            // Remove the appropriate parameters
+            if (filterType === 'date') {
+                currentParams.delete('start');
+                currentParams.delete('end');
+                
+                // Reset date inputs
+                const dateRangeSelect = document.getElementById('date-range-select');
+                if (dateRangeSelect) dateRangeSelect.value = 'today';
+                
+                const startDate = document.getElementById('start-date');
+                if (startDate) startDate.value = '';
+                
+                const startTime = document.getElementById('start-time');
+                if (startTime) startTime.value = '';
+                
+                const endDate = document.getElementById('end-date');
+                if (endDate) endDate.value = '';
+                
+                const endTime = document.getElementById('end-time');
+                if (endTime) endTime.value = '';
+                
+                // Hide custom date range if it was showing
+                toggleCustomDateRange();
+            } else if (filterType === 'stream') {
+                currentParams.delete('stream');
+                
+                // Reset stream filter
+                const streamFilter = document.getElementById('stream-filter');
+                if (streamFilter) streamFilter.value = 'all';
+            }
+            
+            // Reload with new parameters
+            loadRecordings(1);
+        });
+    });
+}
+
+/**
+ * Toggle the custom date range inputs based on the date range select value
+ */
+function toggleCustomDateRange() {
+    const dateRangeSelect = document.getElementById('date-range-select');
+    const customDateRange = document.getElementById('custom-date-range');
+    
+    if (!dateRangeSelect || !customDateRange) return;
+    
+    if (dateRangeSelect.value === 'custom') {
+        customDateRange.style.display = 'block';
+    } else {
+        customDateRange.style.display = 'none';
+    }
+}
+
+/**
+ * Toggle the filters sidebar on mobile
+ */
+function toggleFiltersSidebar() {
+    const sidebar = document.getElementById('filters-sidebar');
+    if (!sidebar) return;
+    
+    sidebar.classList.toggle('collapsed');
+}
+
+/**
+ * Reset all filters to default values
+ */
+function resetFilters() {
+    // Reset date range
+    const dateRangeSelect = document.getElementById('date-range-select');
+    if (dateRangeSelect) dateRangeSelect.value = 'today';
+    
+    // Reset date inputs
+    const startDate = document.getElementById('start-date');
+    if (startDate) startDate.value = '';
+    
+    const startTime = document.getElementById('start-time');
+    if (startTime) startTime.value = '';
+    
+    const endDate = document.getElementById('end-date');
+    if (endDate) endDate.value = '';
+    
+    const endTime = document.getElementById('end-time');
+    if (endTime) endTime.value = '';
+    
+    // Reset stream filter
+    const streamFilter = document.getElementById('stream-filter');
+    if (streamFilter) streamFilter.value = 'all';
+    
+    // Reset page size
+    const pageSizeSelect = document.getElementById('page-size');
+    if (pageSizeSelect) pageSizeSelect.value = '20';
+    
+    // Hide custom date range
+    toggleCustomDateRange();
+    
+    // Load recordings with default filters
+    loadRecordings(1);
+}
+
+/**
+ * Initialize the page with URL parameters if present
+ */
+function initializeFromUrl() {
+    const urlParams = new URLSearchParams(window.location.search);
+    
+    // Set sort parameters if present
+    if (urlParams.has('sort') && urlParams.has('order')) {
+        const sortBy = urlParams.get('sort');
+        const sortOrder = urlParams.get('order');
+        
+        // Find the header with the matching data-sort attribute
+        const header = document.querySelector(`th[data-sort="${sortBy}"]`);
+        if (header) {
+            // Remove sort classes from all headers
+            document.querySelectorAll('th.sortable').forEach(th => {
+                th.classList.remove('sort-asc', 'sort-desc');
+                th.querySelector('.sort-icon').textContent = '';
+            });
+            
+            // Set the sort class and icon
+            if (sortOrder === 'asc') {
+                header.classList.add('sort-asc');
+                header.querySelector('.sort-icon').textContent = '▲';
+            } else {
+                header.classList.add('sort-desc');
+                header.querySelector('.sort-icon').textContent = '▼';
+            }
+        }
+    }
+    
+    // Set date range
+    if (urlParams.has('start') || urlParams.has('end')) {
+        const dateRangeSelect = document.getElementById('date-range-select');
+        if (dateRangeSelect) dateRangeSelect.value = 'custom';
+        
+        // Set start date and time if present
+        if (urlParams.has('start')) {
+            const startDateTime = new Date(urlParams.get('start'));
+            
+            const startDate = document.getElementById('start-date');
+            if (startDate) {
+                const year = startDateTime.getFullYear();
+                const month = String(startDateTime.getMonth() + 1).padStart(2, '0');
+                const day = String(startDateTime.getDate()).padStart(2, '0');
+                startDate.value = `${year}-${month}-${day}`;
+            }
+            
+            const startTime = document.getElementById('start-time');
+            if (startTime) {
+                const hours = String(startDateTime.getHours()).padStart(2, '0');
+                const minutes = String(startDateTime.getMinutes()).padStart(2, '0');
+                startTime.value = `${hours}:${minutes}`;
+            }
+        }
+        
+        // Set end date and time if present
+        if (urlParams.has('end')) {
+            const endDateTime = new Date(urlParams.get('end'));
+            
+            const endDate = document.getElementById('end-date');
+            if (endDate) {
+                const year = endDateTime.getFullYear();
+                const month = String(endDateTime.getMonth() + 1).padStart(2, '0');
+                const day = String(endDateTime.getDate()).padStart(2, '0');
+                endDate.value = `${year}-${month}-${day}`;
+            }
+            
+            const endTime = document.getElementById('end-time');
+            if (endTime) {
+                const hours = String(endDateTime.getHours()).padStart(2, '0');
+                const minutes = String(endDateTime.getMinutes()).padStart(2, '0');
+                endTime.value = `${hours}:${minutes}`;
+            }
+        }
+        
+        // Show custom date range
+        toggleCustomDateRange();
+    }
+    
+    // Set stream filter
+    if (urlParams.has('stream')) {
+        const streamFilter = document.getElementById('stream-filter');
+        if (streamFilter) streamFilter.value = urlParams.get('stream');
+    }
+    
+    // Set page size
+    if (urlParams.has('limit')) {
+        const pageSizeSelect = document.getElementById('page-size');
+        if (pageSizeSelect) pageSizeSelect.value = urlParams.get('limit');
+    }
+    
+    // Set page number
+    const page = urlParams.has('page') ? parseInt(urlParams.get('page'), 10) : 1;
+    
+    // Load recordings with URL parameters
+    loadRecordings(page, false);
 }
 
 /**
@@ -237,4 +609,81 @@ function deleteRecording(recordingId) {
                 hideLoading(recordingsTable);
             }
         });
+}
+
+/**
+ * Play recording in modal
+ */
+function playRecording(recordingId) {
+    // Get the modal elements
+    const modal = document.getElementById('video-modal');
+    const videoPlayer = document.getElementById('video-player');
+    const videoTitle = document.getElementById('video-modal-title');
+    const downloadBtn = document.getElementById('video-download-btn');
+    
+    if (!modal || !videoPlayer) {
+        console.error('Video modal elements not found');
+        return;
+    }
+    
+    // Show loading state
+    videoTitle.textContent = 'Loading Recording...';
+    videoPlayer.src = '';
+    modal.style.display = 'block';
+    
+    // Fetch recording details
+    fetch(`/api/recordings/${recordingId}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to load recording details');
+            }
+            return response.json();
+        })
+        .then(data => {
+            // Update modal title
+            videoTitle.textContent = `${data.stream} - ${data.start_time}`;
+            
+            // Set video source
+            videoPlayer.src = `/api/recordings/download/${recordingId}`;
+            
+            // Setup download button
+            if (downloadBtn) {
+                downloadBtn.onclick = () => downloadRecording(recordingId);
+            }
+            
+            // Play video
+            videoPlayer.load();
+            videoPlayer.play().catch(e => console.error('Error playing video:', e));
+        })
+        .catch(error => {
+            console.error('Error loading recording details:', error);
+            videoTitle.textContent = 'Error Loading Recording';
+        });
+}
+
+/**
+ * Update stream filter dropdown with available streams
+ */
+function updateStreamFilter(streams) {
+    const streamFilter = document.getElementById('stream-filter');
+    if (!streamFilter) return;
+    
+    // Keep the "All Streams" option
+    streamFilter.innerHTML = '<option value="all">All Streams</option>';
+    
+    // Add each stream as an option
+    if (streams && streams.length > 0) {
+        streams.forEach(stream => {
+            const option = document.createElement('option');
+            option.value = stream.name;
+            option.textContent = stream.name;
+            streamFilter.appendChild(option);
+        });
+    }
+    
+    // If URL has a stream parameter, select it
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('stream')) {
+        streamFilter.value = urlParams.get('stream');
+    }
 }

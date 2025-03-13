@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Recordings - LightNVR</title>
     <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/recordings.css">
     <link rel="icon" href="img/favicon.ico" type="image/x-icon">
 </head>
 <body>
@@ -17,47 +18,111 @@
         <section id="recordings-page" class="page">
             <div class="page-header">
                 <h2>Recordings</h2>
-                <div class="controls">
-                    <input type="date" id="date-picker">
-                    <select id="stream-filter">
-                        <option value="all">All Streams</option>
-                    </select>
-                    <select id="page-size">
-                        <option value="10">10 per page</option>
-                        <option value="20" selected>20 per page</option>
-                        <option value="50">50 per page</option>
-                        <option value="100">100 per page</option>
-                    </select>
-                    <button id="refresh-btn">Refresh</button>
-                </div>
+                <button id="toggle-filters-btn" class="btn-icon" title="Toggle Filters">
+                    <span class="icon">☰</span>
+                </button>
             </div>
-            <div class="recordings-container">
-                <table id="recordings-table">
-                    <thead>
-                    <tr>
-                        <th>Stream</th>
-                        <th>Start Time</th>
-                        <th>Duration</th>
-                        <th>Size</th>
-                        <th>Actions</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    <tr>
-                        <td colspan="5" class="empty-message">No recordings found</td>
-                    </tr>
-                    </tbody>
-                </table>
-                <div class="pagination-controls">
-                    <div class="pagination-info">
-                        Showing <span id="pagination-showing">0-0</span> of <span id="pagination-total">0</span> recordings
+            
+            <div class="recordings-layout">
+                <!-- Sidebar for filters -->
+                <aside id="filters-sidebar" class="filters-sidebar">
+                    <div class="filter-group">
+                        <h3>Date Range</h3>
+                        <div class="filter-option">
+                            <label for="date-range-select">Quick Select:</label>
+                            <select id="date-range-select">
+                                <option value="today">Today</option>
+                                <option value="yesterday">Yesterday</option>
+                                <option value="last7days">Last 7 Days</option>
+                                <option value="last30days">Last 30 Days</option>
+                                <option value="custom">Custom Range</option>
+                            </select>
+                        </div>
+                        
+                        <div id="custom-date-range" class="filter-option">
+                            <div class="date-time-picker">
+                                <label for="start-date">Start Date:</label>
+                                <input type="date" id="start-date">
+                                <div class="time-picker">
+                                    <label for="start-time">Time:</label>
+                                    <input type="time" id="start-time">
+                                </div>
+                            </div>
+                            
+                            <div class="date-time-picker">
+                                <label for="end-date">End Date:</label>
+                                <input type="date" id="end-date">
+                                <div class="time-picker">
+                                    <label for="end-time">Time:</label>
+                                    <input type="time" id="end-time">
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="pagination-buttons">
-                        <button id="pagination-first" title="First Page">«</button>
-                        <button id="pagination-prev" title="Previous Page">‹</button>
-                        <span id="pagination-current">Page 1 of 1</span>
-                        <button id="pagination-next" title="Next Page">›</button>
-                        <button id="pagination-last" title="Last Page">»</button>
+                    
+                    <div class="filter-group">
+                        <h3>Stream</h3>
+                        <div class="filter-option">
+                            <select id="stream-filter">
+                                <option value="all">All Streams</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <h3>Display Options</h3>
+                        <div class="filter-option">
+                            <label for="page-size">Items per page:</label>
+                            <select id="page-size">
+                                <option value="10">10</option>
+                                <option value="20" selected>20</option>
+                                <option value="50">50</option>
+                                <option value="100">100</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="filter-actions">
+                        <button id="apply-filters-btn" class="btn btn-primary">Apply Filters</button>
+                        <button id="reset-filters-btn" class="btn">Reset</button>
+                    </div>
+                </aside>
+                
+                <!-- Main content area -->
+                <div class="recordings-content">
+                    <div class="active-filters" id="active-filters">
+                        <!-- Active filters will be displayed here -->
+                    </div>
+                    
+                    <div class="recordings-container">
+                        <table id="recordings-table">
+                            <thead>
+                            <tr>
+                                <th data-sort="stream_name" class="sortable">Stream <span class="sort-icon"></span></th>
+                                <th data-sort="start_time" class="sortable sort-desc">Start Time <span class="sort-icon">▼</span></th>
+                                <th>Duration</th>
+                                <th data-sort="size_bytes" class="sortable">Size <span class="sort-icon"></span></th>
+                                <th>Actions</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr>
+                                <td colspan="5" class="empty-message">No recordings found</td>
+                            </tr>
+                            </tbody>
+                        </table>
+                        <div class="pagination-controls">
+                            <div class="pagination-info">
+                                Showing <span id="pagination-showing">0-0</span> of <span id="pagination-total">0</span> recordings
+                            </div>
+                            <div class="pagination-buttons">
+                                <button id="pagination-first" title="First Page">«</button>
+                                <button id="pagination-prev" title="Previous Page">‹</button>
+                                <span id="pagination-current">Page 1 of 1</span>
+                                <button id="pagination-next" title="Next Page">›</button>
+                                <button id="pagination-last" title="Last Page">»</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

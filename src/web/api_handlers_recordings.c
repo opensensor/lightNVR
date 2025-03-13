@@ -51,7 +51,7 @@ int get_recording_count(time_t start_time, time_t end_time, const char *stream_n
     /* Add time filters if specified */
     if (start_time > 0 && end_time > 0) {
         sql_len += snprintf(sql + sql_len, sizeof(sql) - sql_len,
-                 " AND start_time >= %lld AND end_time <= %lld",
+                 " AND start_time >= %lld AND start_time <= %lld",
                  (long long)start_time, (long long)end_time);
     }
 
@@ -718,125 +718,6 @@ void handle_delete_recording(const http_request_t *request, http_response_t *res
     free(json);
     
     log_info("Recording deleted successfully: ID=%llu, Path=%s", (unsigned long long)id, metadata.file_path);
-}
-
-/**
- * Handle GET request for debug database info
- */
-void handle_get_debug_recordings(const http_request_t *request, http_response_t *response) {
-    // Get recordings from database with no filters
-    recording_metadata_t recordings[100]; // Limit to 100 recordings
-    int count = get_recording_metadata(0, 0, NULL, recordings, 100);
-
-    if (count < 0) {
-        log_error("DEBUG: Failed to get recordings from database");
-        create_json_response(response, 500, "{\"error\": \"Failed to get recordings\", \"count\": -1}");
-        return;
-    }
-
-    // Cap count to prevent buffer overflows
-    if (count > 100) {
-        log_warn("DEBUG: Limiting recordings count from %d to 100", count);
-        count = 100;
-    }
-
-    // Create a detailed debug response with dynamic allocation
-    // Base size + estimated size per recording
-    size_t json_capacity = 256 + (count * 512);
-    char *debug_json = malloc(json_capacity);
-    if (!debug_json) {
-        create_json_response(response, 500, "{\"error\": \"Memory allocation failed\"}");
-        return;
-    }
-
-    // Start building JSON
-    int pos = snprintf(debug_json, json_capacity,
-        "{\n"
-        "  \"count\": %d,\n"
-        "  \"recordings\": [\n", count);
-
-    for (int i = 0; i < count; i++) {
-        // Check if we need more space
-        if (pos + 512 >= json_capacity) {
-            // Double the buffer size
-            size_t new_capacity = json_capacity * 2;
-            char *new_json = (char*)realloc(debug_json, new_capacity);
-            if (!new_json) {
-                free(debug_json);
-                log_error("Failed to resize debug JSON buffer");
-                create_json_response(response, 500, "{\"error\": \"Memory allocation failed\"}");
-                return;
-            }
-            debug_json = new_json;
-            json_capacity = new_capacity;
-        }
-
-        // Add a comma between items (but not before the first item)
-        if (i > 0) {
-            pos += snprintf(debug_json + pos, json_capacity - pos, ",\n");
-        }
-
-        char path_status[32] = "unknown";
-        struct stat st;
-        if (stat(recordings[i].file_path, &st) == 0) {
-            strncpy(path_status, "exists", sizeof(path_status) - 1);
-            path_status[sizeof(path_status) - 1] = '\0';
-        } else {
-            strncpy(path_status, "missing", sizeof(path_status) - 1);
-            path_status[sizeof(path_status) - 1] = '\0';
-        }
-
-        int written = snprintf(debug_json + pos, json_capacity - pos,
-            "    {\n"
-            "      \"id\": %llu,\n"
-            "      \"stream\": \"%s\",\n"
-            "      \"path\": \"%s\",\n"
-            "      \"path_status\": \"%s\",\n"
-            "      \"size\": %llu,\n"
-            "      \"start_time\": %llu,\n"
-            "      \"end_time\": %llu,\n"
-            "      \"complete\": %s\n"
-            "    }",
-            (unsigned long long)recordings[i].id,
-            recordings[i].stream_name,
-            recordings[i].file_path,
-            path_status,
-            (unsigned long long)recordings[i].size_bytes,
-            (unsigned long long)recordings[i].start_time,
-            (unsigned long long)recordings[i].end_time,
-            recordings[i].is_complete ? "true" : "false");
-            
-        if (written > 0) {
-            pos += written;
-        } else {
-            log_error("Failed to format recording JSON for ID %llu", 
-                     (unsigned long long)recordings[i].id);
-            break;
-        }
-    }
-
-    // Check if we need more space for closing
-    if (pos + 8 >= json_capacity) {
-        size_t new_capacity = json_capacity + 16;
-        char *new_json = (char*)realloc(debug_json, new_capacity);
-        if (!new_json) {
-            free(debug_json);
-            log_error("Failed to resize debug JSON buffer for closing");
-            create_json_response(response, 500, "{\"error\": \"Memory allocation failed\"}");
-            return;
-        }
-        debug_json = new_json;
-        json_capacity = new_capacity;
-    }
-
-    // Close JSON
-    pos += snprintf(debug_json + pos, json_capacity - pos, "\n  ]\n}");
-
-    // Create response
-    create_json_response(response, 200, debug_json);
-
-    // Free resources
-    free(debug_json);
 }
 
 /**

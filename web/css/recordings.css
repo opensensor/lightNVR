@@ -1,0 +1,204 @@
+/* Recordings Page Specific Styles */
+
+/* Sortable table headers */
+.sortable {
+    cursor: pointer;
+    position: relative;
+    user-select: none;
+}
+
+.sortable:hover {
+    background-color: #f0f0f0;
+}
+
+.sort-icon {
+    display: inline-block;
+    width: 10px;
+    margin-left: 5px;
+    opacity: 0.5;
+}
+
+.sort-asc .sort-icon {
+    opacity: 1;
+}
+
+.sort-desc .sort-icon {
+    opacity: 1;
+}
+
+/* Layout for recordings page with sidebar */
+.recordings-layout {
+    display: flex;
+    flex-direction: row;
+    gap: 1rem;
+    position: relative;
+}
+
+/* Sidebar styles */
+.filters-sidebar {
+    width: 280px;
+    background-color: #f9f9f9;
+    border-radius: 6px;
+    padding: 1rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    flex-shrink: 0;
+    transition: transform 0.3s ease, opacity 0.3s ease, width 0.3s ease;
+}
+
+/* Filter groups */
+.filter-group {
+    margin-bottom: 1.5rem;
+}
+
+.filter-group h3 {
+    font-size: 1rem;
+    margin-top: 0;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--secondary-color);
+}
+
+.filter-option {
+    margin-bottom: 1rem;
+}
+
+.filter-option label {
+    display: block;
+    margin-bottom: 0.25rem;
+    font-size: 0.9rem;
+    color: var(--text-color);
+}
+
+.filter-option select,
+.filter-option input {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 0.9rem;
+    background-color: white;
+}
+
+/* Date-time picker styles */
+.date-time-picker {
+    margin-bottom: 0.75rem;
+}
+
+.time-picker {
+    margin-top: 0.5rem;
+}
+
+/* Filter actions */
+.filter-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1.5rem;
+}
+
+/* Main content area */
+.recordings-content {
+    flex: 1;
+    min-width: 0; /* Prevent flex item from overflowing */
+}
+
+/* Active filters display */
+.active-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    padding: 0.5rem 0;
+}
+
+.filter-tag {
+    display: inline-flex;
+    align-items: center;
+    background-color: #e3f2fd;
+    border-radius: 16px;
+    padding: 0.25rem 0.75rem;
+    font-size: 0.85rem;
+    color: var(--primary-color);
+}
+
+.filter-tag .remove-filter {
+    margin-left: 0.5rem;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 1rem;
+    line-height: 1;
+}
+
+/* Toggle filters button (mobile) */
+#toggle-filters-btn {
+    display: none;
+}
+
+/* Responsive styles */
+@media (max-width: 992px) {
+    .recordings-layout {
+        flex-direction: column;
+    }
+    
+    .filters-sidebar {
+        width: 100%;
+        margin-bottom: 1rem;
+    }
+    
+    /* Show toggle button on smaller screens */
+    #toggle-filters-btn {
+        display: inline-flex;
+    }
+    
+    /* Hide sidebar by default on mobile */
+    .filters-sidebar.collapsed {
+        max-height: 0;
+        overflow: hidden;
+        padding-top: 0;
+        padding-bottom: 0;
+        margin-bottom: 0;
+        opacity: 0;
+    }
+}
+
+@media (max-width: 768px) {
+    .page-header {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .filter-actions {
+        flex-direction: column;
+    }
+    
+    .filter-actions button {
+        width: 100%;
+    }
+    
+    .pagination-controls {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .pagination-buttons {
+        margin-top: 0.5rem;
+        width: 100%;
+        justify-content: space-between;
+    }
+}
+
+@media (max-width: 576px) {
+    .recordings-container {
+        overflow-x: auto;
+    }
+    
+    #recordings-table {
+        min-width: 500px; /* Ensure table doesn't get too compressed */
+    }
+    
+    .date-time-picker {
+        display: flex;
+        flex-direction: column;
+    }
+}
