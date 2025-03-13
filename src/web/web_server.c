@@ -891,6 +891,12 @@ int create_json_response(http_response_t *response, int status_code, const char 
     strncpy(response->content_type, "application/json", sizeof(response->content_type) - 1);
     response->content_type[sizeof(response->content_type) - 1] = '\0';
 
+    // Free any existing response body to prevent memory leaks
+    if (response->body) {
+        free(response->body);
+        response->body = NULL;
+    }
+
     // Use standard strdup instead of safe_strdup if it's causing issues
     response->body = strdup(json_data);
     if (!response->body) {
@@ -928,6 +934,12 @@ int create_file_response(http_response_t *response, int status_code,
         log_error("Invalid file size for %s: %ld", file_path, file_size);
         fclose(file);
         return -1;
+    }
+
+    // Free any existing response body to prevent memory leaks
+    if (response->body) {
+        free(response->body);
+        response->body = NULL;
     }
 
     // Allocate memory for file content
@@ -1136,6 +1148,12 @@ int create_text_response(http_response_t *response, int status_code,
         response->content_type[sizeof(response->content_type) - 1] = '\0';
     }
 
+    // Free any existing response body to prevent memory leaks
+    if (response->body) {
+        free(response->body);
+        response->body = NULL;
+    }
+
     response->body = strdup(text);
     if (!response->body) {
         log_error("Failed to allocate memory for response body");
@@ -1162,6 +1180,12 @@ int create_redirect_response(http_response_t *response, int status_code, const c
     response->status_code = status_code;
     strncpy(response->content_type, "text/html", sizeof(response->content_type) - 1);
     response->content_type[sizeof(response->content_type) - 1] = '\0';
+
+    // Free any existing response body to prevent memory leaks
+    if (response->body) {
+        free(response->body);
+        response->body = NULL;
+    }
 
     // Create a simple HTML body with the redirect
     char *body = malloc(1024);
