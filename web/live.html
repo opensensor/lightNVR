@@ -409,6 +409,16 @@
         if (fullscreenBtn) {
             fullscreenBtn.addEventListener('click', toggleFullscreen);
         }
+        
+        // Set up Escape key to exit fullscreen mode
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                const livePage = document.getElementById('live-page');
+                if (livePage && livePage.classList.contains('fullscreen-mode')) {
+                    toggleFullscreen();
+                }
+            }
+        });
     });
     
     // Toggle fullscreen mode
