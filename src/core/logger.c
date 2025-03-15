@@ -67,8 +67,19 @@ void shutdown_logger(void) {
 void set_log_level(log_level_t level) {
     if (level >= LOG_LEVEL_ERROR && level <= LOG_LEVEL_DEBUG) {
         pthread_mutex_lock(&logger.mutex);
+        // Store old level for logging
+        log_level_t old_level = logger.log_level;
         logger.log_level = level;
         pthread_mutex_unlock(&logger.mutex);
+        
+        // Log the change - but only if we're not setting the initial level
+        // This avoids a potential recursive call during initialization
+        if (old_level != LOG_LEVEL_ERROR || level != LOG_LEVEL_ERROR) {
+            // Use fprintf directly to avoid potential recursion with log_* functions
+            fprintf(stderr, "[LOG LEVEL CHANGE] %s -> %s\n", 
+                    log_level_strings[old_level], 
+                    log_level_strings[level]);
+        }
     }
 }
 
@@ -205,6 +216,8 @@ void log_message(log_level_t level, const char *format, ...) {
 
 // Log a message at the specified level with va_list
 void log_message_v(log_level_t level, const char *format, va_list args) {
+    // Only log messages at or below the configured log level
+    // For example, if log_level is INFO (2), we log ERROR (0), WARN (1), and INFO (2), but not DEBUG (3)
     if (level > logger.log_level) {
         return;
     }
@@ -238,6 +251,14 @@ void log_message_v(log_level_t level, const char *format, va_list args) {
     }
     
     pthread_mutex_unlock(&logger.mutex);
+}
+
+// Get the string representation of a log level
+const char *get_log_level_string(log_level_t level) {
+    if (level >= LOG_LEVEL_ERROR && level <= LOG_LEVEL_DEBUG) {
+        return log_level_strings[level];
+    }
+    return "UNKNOWN";
 }
 
 // Rotate log files if they exceed a certain size

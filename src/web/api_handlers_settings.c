@@ -269,6 +269,9 @@ void handle_post_settings(const http_request_t *request, http_response_t *respon
     // Update global config directly first
     memcpy(global_config, &local_config, sizeof(config_t));
     
+    // Apply log level setting to the logger
+    set_log_level(global_config->log_level);
+    
     // Update storage manager with new settings
     set_max_storage_size(global_config->max_storage_size);
     set_retention_days(global_config->retention_days);

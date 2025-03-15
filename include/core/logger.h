@@ -106,4 +106,12 @@ void log_message_v(log_level_t level, const char *format, va_list args);
  */
 int log_rotate(size_t max_size, int max_files);
 
+/**
+ * Get the string representation of a log level
+ * 
+ * @param level The log level
+ * @return String representation of the log level, or "UNKNOWN" if invalid
+ */
+const char *get_log_level_string(log_level_t level);
+
 #endif // LIGHTNVR_LOGGER_H

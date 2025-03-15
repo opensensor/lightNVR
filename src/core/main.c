@@ -269,6 +269,14 @@ int main(int argc, char *argv[]) {
             set_console_logging(0);
         }
     }
+    
+    // Set log level from configuration
+    fprintf(stderr, "Setting log level from config: %d\n", config.log_level);
+    set_log_level(config.log_level);
+    
+    // Use log_error instead of log_info to ensure this message is always logged
+    // regardless of the configured log level
+    log_error("Log level set to %d (%s)", config.log_level, get_log_level_string(config.log_level));
 
     // Copy configuration to global streaming config
     extern config_t global_config;  // Declared in streams.c
