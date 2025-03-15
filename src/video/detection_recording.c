@@ -20,6 +20,14 @@
 #include "database/database_manager.h"
 #include "web/api_handlers_detection_results.h"
 
+// Define model types (same as in detection_integration.c)
+#define MODEL_TYPE_SOD "sod"
+#define MODEL_TYPE_SOD_REALNET "sod_realnet"
+#define MODEL_TYPE_TFLITE "tflite"
+
+// Forward declaration of model type detection function
+extern const char* detect_model_type(const char *model_path);
+
 // Structure to track detection-based recording state
 typedef struct {
     char stream_name[MAX_STREAM_NAME];
@@ -74,6 +82,21 @@ void shutdown_detection_recording_system(void) {
     pthread_mutex_unlock(&detection_recordings_mutex);
     
     log_info("Detection-based recording system shutdown");
+}
+
+/**
+ * Get the appropriate threshold for a model type if not specified
+ */
+float get_default_threshold_for_model(const char *model_path) {
+    const char *model_type = detect_model_type(model_path);
+    
+    if (strcmp(model_type, MODEL_TYPE_SOD_REALNET) == 0) {
+        return 5.0f; // RealNet models typically use 5.0
+    } else if (strcmp(model_type, MODEL_TYPE_SOD) == 0) {
+        return 0.3f; // CNN models typically use 0.3
+    } else {
+        return 0.5f; // Default for other models
+    }
 }
 
 /**
@@ -146,6 +169,13 @@ int start_detection_recording(const char *stream_name, const char *model_path, f
     if (detection_recordings[slot].model) {
         unload_detection_model(detection_recordings[slot].model);
         detection_recordings[slot].model = NULL;
+    }
+    
+    // Determine appropriate threshold if not specified
+    if (threshold <= 0.0f) {
+        threshold = get_default_threshold_for_model(full_model_path);
+        log_info("Using default threshold of %.1f for model type %s", 
+                 threshold, detect_model_type(full_model_path));
     }
     
     // Load the detection model
@@ -284,14 +314,22 @@ int process_frame_for_detection(const char *stream_name, const unsigned char *fr
     
     // Run detection on the frame
     detection_result_t result;
-    log_info("Running detection for stream %s with model at %s (frame dimensions: %dx%d, channels: %d)", 
-             stream_name, detection_recordings[slot].model_path, width, height, channels);
+    const char *model_type = detect_model_type(detection_recordings[slot].model_path);
+    log_info("Running detection for stream %s with model type %s at %s (frame dimensions: %dx%d, channels: %d)", 
+             stream_name, model_type, detection_recordings[slot].model_path, width, height, channels);
     
     // Debug: Check the first few bytes of the frame data to ensure it's valid
     log_info("Frame data first 12 bytes: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
              frame_data[0], frame_data[1], frame_data[2], frame_data[3], 
              frame_data[4], frame_data[5], frame_data[6], frame_data[7],
              frame_data[8], frame_data[9], frame_data[10], frame_data[11]);
+    
+    // Verify channels match expected format for model type
+    if (strcmp(model_type, MODEL_TYPE_SOD_REALNET) == 0 && channels != 1) {
+        log_warn("Warning: RealNet model expects grayscale (1 channel) but received %d channels", channels);
+    } else if (strcmp(model_type, MODEL_TYPE_SOD) == 0 && channels != 3) {
+        log_warn("Warning: SOD CNN model expects RGB (3 channels) but received %d channels", channels);
+    }
     
     int ret = detect_objects(detection_recordings[slot].model, frame_data, width, height, channels, &result);
     if (ret != 0) {

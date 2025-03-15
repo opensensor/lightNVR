@@ -268,39 +268,59 @@ static detection_model_t load_sod_model(const char *model_path, float threshold)
         log_error("SOD library not available");
         return NULL;
     }
-    
+
     // Load the model using SOD API
     void *sod_model = NULL;
     const char *err_msg = NULL;
-    
+
     // Create CNN model
     int rc;
-    
-    // Check if this is a face detection model based on filename
+
+    // Check if this is a face detection model based on filename or path
     const char *arch = "default";
-    if (strstr(model_path, "face") != NULL || strstr(model_path, "Face") != NULL) {
+    if (strstr(model_path, "face") != NULL ||
+        strstr(model_path, "Face") != NULL ||
+        strstr(model_path, "FACE") != NULL) {
         arch = ":face";
         log_info("Using :face architecture for CNN model: %s", model_path);
     }
-    
+
+    // If the model file has the same name as the one in the spec, force face architecture
+    const char *filename = strrchr(model_path, '/');
+    if (filename) {
+        filename++; // Skip the '/'
+    } else {
+        filename = model_path; // No '/' in the path
+    }
+
+    if (strcmp(filename, "face_cnn.sod") == 0) {
+        arch = ":face";
+        log_info("Detected face_cnn.sod, forcing :face architecture");
+    }
+
     #ifdef SOD_ENABLED
     rc = sod_cnn_create((sod_cnn**)&sod_model, arch, model_path, &err_msg);
     #else
     rc = sod_funcs.sod_cnn_create(&sod_model, arch, model_path, &err_msg);
     #endif
-    
+
     if (rc != 0 || !sod_model) {  // SOD_OK is 0
         log_error("Failed to load SOD model: %s - %s", model_path, err_msg ? err_msg : "Unknown error");
         return NULL;
     }
-    
-    // Set detection threshold
+
+    // Set detection threshold - use same threshold as spec if not specified
+    if (threshold <= 0.0f) {
+        threshold = 0.3f; // Default threshold from spec
+        log_info("Using default threshold of 0.3 for model %s", model_path);
+    }
+
     #ifdef SOD_ENABLED
     sod_cnn_config(sod_model, SOD_CNN_DETECTION_THRESHOLD, threshold);
     #else
     sod_funcs.sod_cnn_config(sod_model, 2 /* SOD_CNN_DETECTION_THRESHOLD */, threshold);
     #endif
-    
+
     // Create model structure
     model_t *model = (model_t *)malloc(sizeof(model_t));
     if (!model) {
@@ -312,13 +332,13 @@ static detection_model_t load_sod_model(const char *model_path, float threshold)
         #endif
         return NULL;
     }
-    
+
     // Initialize model structure
     strncpy(model->type, MODEL_TYPE_SOD, sizeof(model->type) - 1);
     model->sod.model = sod_model;
     model->sod.threshold = threshold;
-    
-    log_info("SOD model loaded: %s", model_path);
+
+    log_info("SOD model loaded: %s with threshold %.2f", model_path, threshold);
     return model;
 }
 
@@ -426,10 +446,10 @@ detection_model_t load_detection_model(const char *model_path, float threshold) 
         log_error("Invalid model path");
         return NULL;
     }
-    
+
     // Get model type
     const char *model_type = get_model_type(model_path);
-    
+
     // Load appropriate model type
     if (strcmp(model_type, MODEL_TYPE_SOD_REALNET) == 0) {
         return load_sod_realnet_model_internal(model_path, threshold);
@@ -473,36 +493,35 @@ void unload_detection_model(detection_model_t model) {
     
     free(m);
 }
-
 /**
  * Run detection on a frame
  */
-int detect_objects(detection_model_t model, const unsigned char *frame_data, 
+int detect_objects(detection_model_t model, const unsigned char *frame_data,
                   int width, int height, int channels, detection_result_t *result) {
     if (!model || !frame_data || !result) {
         log_error("Invalid parameters for detect_objects");
         return -1;
     }
-    
+
     model_t *m = (model_t *)model;
-    
-    log_info("Detecting objects using model type: %s (dimensions: %dx%d, channels: %d)", 
+
+    log_info("Detecting objects using model type: %s (dimensions: %dx%d, channels: %d)",
              m->type, width, height, channels);
-    
+
     // Initialize result
     result->count = 0;
-    
+
     // Run detection based on model type
     if (strcmp(m->type, MODEL_TYPE_SOD) == 0) {
         if (!sod_available) {
             log_error("SOD library not available");
             return -1;
         }
-        
+
         // Run SOD detection
         void *boxes = NULL;
         int count = 0;
-        
+
         // Create a sod_img from the frame data
         #ifdef SOD_ENABLED
         sod_img img = sod_make_image(width, height, channels);
@@ -510,28 +529,46 @@ int detect_objects(detection_model_t model, const unsigned char *frame_data,
             log_error("Failed to create image for SOD detection");
             return -1;
         }
+
+        // Copy frame data to SOD image - assuming input is already in RGB format
+        // from detection_integration.c
+        for (int i = 0; i < height * width; i++) {
+            int idx = i * channels;
+            // Direct copy without swapping channels
+            img.data[idx] = frame_data[idx] / 255.0f;     // R
+            if (channels > 1) {
+                img.data[idx + 1] = frame_data[idx + 1] / 255.0f; // G
+                if (channels > 2) {
+                    img.data[idx + 2] = frame_data[idx + 2] / 255.0f; // B
+                }
+            }
+        }
         #else
         void *img = sod_funcs.sod_make_image(width, height, channels);
         if (!img) {
             log_error("Failed to create image for SOD detection");
             return -1;
         }
-        #endif
-        
-        // Convert frame data to float and copy to image
-        #ifdef SOD_ENABLED
-        for (int i = 0; i < width * height * channels; i++) {
-            img.data[i] = frame_data[i] / 255.0f;
-        }
-        #else
+
         // For dynamic loading, we need to access the data field differently
         // This assumes the sod_img structure has the same layout as in the header
         float *img_data = ((float**)img)[0]; // Assuming data is the first field
-        for (int i = 0; i < width * height * channels; i++) {
-            img_data[i] = frame_data[i] / 255.0f;
+
+        // Copy frame data to SOD image - assuming input is already in RGB format
+        // from detection_integration.c
+        for (int i = 0; i < height * width; i++) {
+            int idx = i * channels;
+            // Direct copy without swapping channels
+            img_data[idx] = frame_data[idx] / 255.0f;     // R
+            if (channels > 1) {
+                img_data[idx + 1] = frame_data[idx + 1] / 255.0f; // G
+                if (channels > 2) {
+                    img_data[idx + 2] = frame_data[idx + 2] / 255.0f; // B
+                }
+            }
         }
         #endif
-        
+
         // Prepare image for CNN
         float *prepared_data;
         #ifdef SOD_ENABLED
@@ -539,19 +576,19 @@ int detect_objects(detection_model_t model, const unsigned char *frame_data,
         #else
         prepared_data = sod_funcs.sod_cnn_prepare_image(m->sod.model, img);
         #endif
-        
+
         // Free the image since we have the prepared data
         #ifdef SOD_ENABLED
         sod_free_image(img);
         #else
         sod_funcs.sod_free_image(img);
         #endif
-        
+
         if (!prepared_data) {
             log_error("Failed to prepare image for SOD detection");
             return -1;
         }
-        
+
         // Run detection
         int rc;
         #ifdef SOD_ENABLED
@@ -559,36 +596,36 @@ int detect_objects(detection_model_t model, const unsigned char *frame_data,
         #else
         rc = sod_funcs.sod_cnn_predict(m->sod.model, prepared_data, (void***)&boxes, &count);
         #endif
-        
+
         if (rc != 0) { // SOD_OK is 0
             log_error("SOD detection failed: %d", rc);
             return -1;
         }
-        
+
         // Process detections
         int valid_count = 0;
         for (int i = 0; i < count && valid_count < MAX_DETECTIONS; i++) {
             // Copy detection data regardless of threshold for logging
             char label[MAX_LABEL_LENGTH];
-            
+
             #ifdef SOD_ENABLED
             sod_box *box_array = (sod_box*)boxes;
             strncpy(label, box_array[i].zName ? box_array[i].zName : "object", MAX_LABEL_LENGTH - 1);
-            
+
             float confidence = box_array[i].score;
             if (confidence > 1.0f) {
                 confidence = 1.0f;
             }
-            
+
             // Normalize coordinates to 0.0-1.0 range
             float x = (float)box_array[i].x / width;
             float y = (float)box_array[i].y / height;
             float w = (float)box_array[i].w / width;
             float h = (float)box_array[i].h / height;
-            
+
             // Apply threshold
             if (box_array[i].score < m->sod.threshold) {
-                log_info("SOD raw detection %d below threshold: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f] - threshold: %.2f", 
+                log_info("SOD raw detection %d below threshold: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f] - threshold: %.2f",
                         i, label, confidence * 100.0f, x, y, w, h, m->sod.threshold);
                 continue;
             }
@@ -596,28 +633,28 @@ int detect_objects(detection_model_t model, const unsigned char *frame_data,
             // For dynamic loading, we need to access the box array differently
             sod_box_dynamic **box_array = (sod_box_dynamic**)boxes;
             strncpy(label, box_array[i]->zName ? box_array[i]->zName : "object", MAX_LABEL_LENGTH - 1);
-            
+
             float confidence = box_array[i]->score;
             if (confidence > 1.0f) {
                 confidence = 1.0f;
             }
-            
+
             // Normalize coordinates to 0.0-1.0 range
             float x = (float)box_array[i]->x / width;
             float y = (float)box_array[i]->y / height;
             float w = (float)box_array[i]->w / width;
             float h = (float)box_array[i]->h / height;
-            
+
             // Apply threshold
             if (box_array[i]->score < m->sod.threshold) {
-                log_info("SOD raw detection %d below threshold: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f] - threshold: %.2f", 
+                log_info("SOD raw detection %d below threshold: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f] - threshold: %.2f",
                         i, label, confidence * 100.0f, x, y, w, h, m->sod.threshold);
                 continue;
             }
             #endif
-            
+
             label[MAX_LABEL_LENGTH - 1] = '\0';
-            
+
             // Copy to result for valid detections
             strncpy(result->detections[valid_count].label, label, MAX_LABEL_LENGTH - 1);
             result->detections[valid_count].confidence = confidence;
@@ -625,24 +662,24 @@ int detect_objects(detection_model_t model, const unsigned char *frame_data,
             result->detections[valid_count].y = y;
             result->detections[valid_count].width = w;
             result->detections[valid_count].height = h;
-            
-            log_info("SOD valid detection %d: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]", 
-                    valid_count, result->detections[valid_count].label, 
+
+            log_info("SOD valid detection %d: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]",
+                    valid_count, result->detections[valid_count].label,
                     result->detections[valid_count].confidence * 100.0f,
                     result->detections[valid_count].x, result->detections[valid_count].y,
                     result->detections[valid_count].width, result->detections[valid_count].height);
-            
+
             valid_count++;
         }
-        
+
         result->count = valid_count;
         log_info("SOD detection found %d valid objects out of %d total detections", valid_count, count);
-        
+
         // If no detections at all, log that too
         if (count == 0) {
             log_info("SOD detection found no objects in the frame");
         }
-        
+
         return 0;
     } else if (strcmp(m->type, MODEL_TYPE_SOD_REALNET) == 0) {
         // Run SOD RealNet detection using the external implementation
@@ -650,13 +687,13 @@ int detect_objects(detection_model_t model, const unsigned char *frame_data,
     } else if (strcmp(m->type, MODEL_TYPE_TFLITE) == 0) {
         // Run TFLite detection
         int count = 0;
-        void *detections = m->tflite.detect(m->tflite.model, frame_data, width, height, channels, 
+        void *detections = m->tflite.detect(m->tflite.model, frame_data, width, height, channels,
                                            &count, m->tflite.threshold);
-        
+
         // Process detections
         // This is a simplified example - actual implementation would depend on TFLite API
         // and would extract label, confidence, and bounding box for each detection
-        
+
         // For now, just set a dummy detection
         if (count > 0 && count <= MAX_DETECTIONS) {
             result->count = count;
@@ -669,9 +706,9 @@ int detect_objects(detection_model_t model, const unsigned char *frame_data,
                 result->detections[i].height = 0.2f;
             }
         }
-        
+
         return 0;
     }
-    
+
     return -1;
 }

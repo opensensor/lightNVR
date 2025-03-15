@@ -44,7 +44,6 @@ if(ENABLE_SOD)
     )
 
     # Link libraries
-
     target_link_libraries(test_sod_unified
         ${FFMPEG_LIBRARIES}
         ${SQLITE_LIBRARIES}
