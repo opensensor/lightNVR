@@ -155,6 +155,8 @@ function loadDetectionModels() {
     const modelSelect = document.getElementById('stream-detection-model');
     if (!modelSelect) return;
     
+    console.log('Loading detection models...');
+    
     // Clear existing options
     modelSelect.innerHTML = '<option value="">Loading models...</option>';
     
@@ -182,6 +184,15 @@ function loadDetectionModels() {
                 });
                 
                 console.log(`Loaded ${data.models.length} detection models`);
+                
+                // Make sure detection options are visible if checkbox is checked
+                const detectionEnabled = document.getElementById('stream-detection-enabled');
+                if (detectionEnabled && detectionEnabled.checked) {
+                    const detectionOptions = document.querySelectorAll('.detection-options');
+                    detectionOptions.forEach(el => {
+                        el.style.display = 'block';
+                    });
+                }
             } else {
                 // No models found
                 const option = document.createElement('option');
@@ -336,8 +347,28 @@ function saveStream() {
         if (detectionEnabled.checked) {
             // Only include detection options if detection is enabled
             const modelSelect = document.getElementById('stream-detection-model');
-            if (modelSelect && modelSelect.value) {
-                streamData.detection_model = modelSelect.value;
+            
+            // Check if model select exists and has options
+            if (modelSelect) {
+                console.log('Model select found, options count:', modelSelect.options.length);
+                
+                // If there are no options other than the default "Select a model", try loading models again
+                if (modelSelect.options.length <= 1) {
+                    console.log('No model options found, loading models again...');
+                    loadDetectionModels();
+                    
+                    // Show alert and return
+                    alert('No detection models available. Please make sure models are installed in the models directory.');
+                    hideLoading(streamModal);
+                    return;
+                }
+                
+                if (modelSelect.value) {
+                    streamData.detection_model = modelSelect.value;
+                    console.log('Selected model:', streamData.detection_model);
+                }
+            } else {
+                console.error('Model select element not found');
             }
             
             const thresholdSlider = document.getElementById('stream-detection-threshold');
@@ -370,7 +401,20 @@ function saveStream() {
     // Validate detection options
     if (streamData.detection_based_recording) {
         if (!streamData.detection_model) {
-            alert('Please select a detection model');
+            // Check if models are available
+            const modelSelect = document.getElementById('stream-detection-model');
+            if (modelSelect && modelSelect.options.length <= 1) {
+                alert('No detection models available. Please make sure models are installed in the models directory.');
+            } else {
+                alert('Please select a detection model');
+            }
+            
+            // Make sure detection options are visible
+            const detectionOptions = document.querySelectorAll('.detection-options');
+            detectionOptions.forEach(el => {
+                el.style.display = 'block';
+            });
+            
             hideLoading(streamModal);
             return;
         }
@@ -538,6 +582,9 @@ function testStream() {
  * Setup streams page event handlers
  */
 function setupStreamsHandlers() {
+    // Load detection models when page loads
+    loadDetectionModels();
+    
     // Add stream button click handler
     const addButton = document.getElementById('add-stream-btn');
     if (addButton) {
@@ -607,9 +654,17 @@ function setupStreamsHandlers() {
                 el.style.display = this.checked ? 'block' : 'none';
             });
             
-            // Load detection models when checkbox is checked
+            // Always load detection models when checkbox is toggled
+            loadDetectionModels();
+            
+            // If checked, make sure the model dropdown is visible and populated
             if (this.checked) {
-                loadDetectionModels();
+                console.log('Detection enabled, ensuring models are loaded');
+                
+                // Force display of detection options
+                detectionOptions.forEach(el => {
+                    el.style.display = 'block';
+                });
             }
         });
     }

@@ -24,7 +24,7 @@ typedef struct {
 } detection_settings_t;
 
 static detection_settings_t detection_settings = {
-    .models_path = "",
+    .models_path = "/var/lib/lightnvr/models",
     .default_threshold = 0.5f,
     .default_pre_buffer = 5,
     .default_post_buffer = 10
@@ -35,7 +35,15 @@ static detection_settings_t detection_settings = {
  */
 void init_detection_settings(void) {
     // Set default values
-    strncpy(detection_settings.models_path, "/var/lib/lightnvr/models", MAX_PATH_LENGTH - 1);
+    char cwd[MAX_PATH_LENGTH];
+    if (getcwd(cwd, sizeof(cwd)) != NULL) {
+        snprintf(detection_settings.models_path, MAX_PATH_LENGTH - 1, "%s/models", cwd);
+    } else {
+        // Fallback to absolute path if getcwd fails
+        strncpy(detection_settings.models_path, "/var/lib/lightnvr/models", MAX_PATH_LENGTH - 1);
+    }
+    log_info("Using models directory: %s", detection_settings.models_path);
+    
     detection_settings.default_threshold = 0.5f;
     detection_settings.default_pre_buffer = 5;
     detection_settings.default_post_buffer = 10;
