@@ -19,7 +19,7 @@ static void cleanup_old_segments(const char *output_dir, int max_segments) {
     DIR *dir;
     struct dirent *entry;
     struct stat st;
-    char filepath[MAX_PATH_LENGTH];
+    char filepath[HLS_MAX_PATH_LENGTH];
 
     // Keep track of segments to delete
     typedef struct {
@@ -134,10 +134,32 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     writer->dts_tracker.initialized = 0;
 
     // Create output directory if it doesn't exist
+    // Use the configured storage path to avoid writing to overlay
     char mkdir_cmd[MAX_PATH_LENGTH + 10];
+    
+    // Ensure we're using a path within our configured storage
+    extern config_t global_config;
+    char safe_output_dir[MAX_PATH_LENGTH];
+    
+    // If output_dir is absolute and not within storage_path, redirect it
+    if (output_dir[0] == '/' && strncmp(output_dir, global_config.storage_path, strlen(global_config.storage_path)) != 0) {
+        // Create a path within our storage directory instead
+        snprintf(safe_output_dir, sizeof(safe_output_dir), "%s/hls/%s", 
+                global_config.storage_path, stream_name);
+        log_warn("Redirecting HLS output from %s to %s to avoid overlay writes", 
+                output_dir, safe_output_dir);
+        strncpy(writer->output_dir, safe_output_dir, MAX_PATH_LENGTH - 1);
+        writer->output_dir[MAX_PATH_LENGTH - 1] = '\0';
+        output_dir = safe_output_dir;
+    } else {
+        strncpy(safe_output_dir, output_dir, MAX_PATH_LENGTH - 1);
+        safe_output_dir[MAX_PATH_LENGTH - 1] = '\0';
+    }
+    
     snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p %s", output_dir);
-    if (system(mkdir_cmd) != 0) {
-        log_warn("Failed to create directory: %s", output_dir);
+    int ret_mkdir = system(mkdir_cmd);
+    if (ret_mkdir != 0) {
+        log_warn("Failed to create directory: %s (return code: %d)", output_dir, ret_mkdir);
     }
 
     // Initialize output format context for HLS
@@ -162,7 +184,10 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     snprintf(hls_time, sizeof(hls_time), "%d", segment_duration);
 
     av_dict_set(&options, "hls_time", hls_time, 0);
-    av_dict_set(&options, "hls_list_size", "10", 0);
+    av_dict_set(&options, "hls_list_size", "15", 0);  // Increased from 10 to 15
+    av_dict_set(&options, "hls_flags", "delete_segments+append_list+discont_start+split_by_time", 0);
+    av_dict_set(&options, "hls_allow_cache", "1", 0);  // Allow caching to improve playback
+    av_dict_set(&options, "hls_segment_type", "mpegts", 0);  // Ensure MPEG-TS segments for better compatibility
 
     // Remove the delete_segments flag to prevent FFmpeg from automatically deleting segments
     // This will help prevent issues with the index.m3u8.tmp file not being able to be renamed
@@ -242,6 +267,22 @@ int hls_writer_initialize(hls_writer_t *writer, const AVStream *input_stream) {
  */
 static int ensure_output_directory(const char *dir_path) {
     struct stat st;
+    extern config_t global_config;
+    char safe_dir_path[MAX_PATH_LENGTH];
+    
+    // Ensure we're using a path within our configured storage
+    if (dir_path[0] == '/' && strncmp(dir_path, global_config.storage_path, strlen(global_config.storage_path)) != 0) {
+        // Extract stream name from the path (last component)
+        const char *last_slash = strrchr(dir_path, '/');
+        const char *stream_name = last_slash ? last_slash + 1 : dir_path;
+        
+        // Create a path within our storage directory instead
+        snprintf(safe_dir_path, sizeof(safe_dir_path), "%s/hls/%s", 
+                global_config.storage_path, stream_name);
+        log_warn("Redirecting HLS directory from %s to %s to avoid overlay writes", 
+                dir_path, safe_dir_path);
+        dir_path = safe_dir_path;
+    }
 
     // Check if directory exists
     if (stat(dir_path, &st) != 0 || !S_ISDIR(st.st_mode)) {
@@ -259,8 +300,12 @@ static int ensure_output_directory(const char *dir_path) {
         log_info("Created HLS output directory: %s", dir_path);
 
         // Set permissions to ensure FFmpeg can write files
-        snprintf(mkdir_cmd, sizeof(mkdir_cmd), "chmod -R 777 %s", dir_path);
-        system(mkdir_cmd);
+        // Use 755 instead of 777 for better security
+        snprintf(mkdir_cmd, sizeof(mkdir_cmd), "chmod -R 755 %s", dir_path);
+        int ret_chmod = system(mkdir_cmd);
+        if (ret_chmod != 0) {
+            log_warn("Failed to set permissions on directory: %s (return code: %d)", dir_path, ret_chmod);
+        }
     }
 
     // Verify directory is writable
@@ -270,7 +315,10 @@ static int ensure_output_directory(const char *dir_path) {
         // Try to fix permissions
         char chmod_cmd[MAX_PATH_LENGTH * 2];
         snprintf(chmod_cmd, sizeof(chmod_cmd), "chmod -R 777 %s", dir_path);
-        system(chmod_cmd);
+        int ret_chmod = system(chmod_cmd);
+        if (ret_chmod != 0) {
+            log_warn("Failed to set permissions on directory: %s (return code: %d)", dir_path, ret_chmod);
+        }
 
         // Check again
         if (access(dir_path, W_OK) != 0) {
@@ -396,11 +444,11 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
         return ret;
     }
 
-    // Periodically clean up old segments (every 60 seconds)
-    if (now - writer->last_cleanup_time >= 60) {
+    // Periodically clean up old segments (every 120 seconds)
+    if (now - writer->last_cleanup_time >= 120) {
         // Keep twice the number of segments in the playlist to ensure smooth playback
         // while still cleaning up old segments
-        int max_segments_to_keep = 20; // Default to 20 segments (2x the default hls_list_size of 10)
+        int max_segments_to_keep = 30; // Default to 30 segments (2x the default hls_list_size of 15)
         cleanup_old_segments(writer->output_dir, max_segments_to_keep);
         writer->last_cleanup_time = now;
     }

@@ -191,6 +191,7 @@ int init_database(const char *db_path) {
         "CREATE INDEX IF NOT EXISTS idx_recordings_start_time ON recordings (start_time);"
         "CREATE INDEX IF NOT EXISTS idx_recordings_end_time ON recordings (end_time);"
         "CREATE INDEX IF NOT EXISTS idx_recordings_stream ON recordings (stream_name);"
+        "CREATE INDEX IF NOT EXISTS idx_recordings_complete_stream_start ON recordings (is_complete, stream_name, start_time);"
         "CREATE INDEX IF NOT EXISTS idx_streams_name ON streams (name);";
     
     rc = sqlite3_exec(db, create_indexes, NULL, NULL, &err_msg);
@@ -388,6 +389,7 @@ int get_events(time_t start_time, time_t end_time, int type,
     sqlite3_finalize(stmt);
     pthread_mutex_unlock(&db_mutex);
     
+    log_info("Found %d recordings in database matching criteria", count);
     return count;
 }
 
@@ -606,9 +608,6 @@ int get_recording_metadata(time_t start_time, time_t end_time,
     strcpy(sql, "SELECT id, stream_name, file_path, start_time, end_time, "
                  "size_bytes, width, height, fps, codec, is_complete "
                  "FROM recordings WHERE is_complete = 1"); // Only complete recordings
-
-    // And add a debug log before returning the count:
-    log_info("Found %d recordings in database matching criteria", count);
     
     if (start_time > 0) {
         strcat(sql, " AND (end_time >= ? OR end_time IS NULL)");
@@ -649,54 +648,63 @@ int get_recording_metadata(time_t start_time, time_t end_time,
     sqlite3_bind_int(stmt, param_index, max_count);
     
     // Execute query and fetch results
-    while (sqlite3_step(stmt) == SQLITE_ROW && count < max_count) {
-        metadata[count].id = (uint64_t)sqlite3_column_int64(stmt, 0);
-        
-        const char *stream = (const char *)sqlite3_column_text(stmt, 1);
-        if (stream) {
-            strncpy(metadata[count].stream_name, stream, sizeof(metadata[count].stream_name) - 1);
-            metadata[count].stream_name[sizeof(metadata[count].stream_name) - 1] = '\0';
-        } else {
-            metadata[count].stream_name[0] = '\0';
+    int rc_step;
+    while ((rc_step = sqlite3_step(stmt)) == SQLITE_ROW && count < max_count) {
+        // Safely copy data to metadata structure
+        if (count < max_count) {
+            metadata[count].id = (uint64_t)sqlite3_column_int64(stmt, 0);
+            
+            const char *stream = (const char *)sqlite3_column_text(stmt, 1);
+            if (stream) {
+                strncpy(metadata[count].stream_name, stream, sizeof(metadata[count].stream_name) - 1);
+                metadata[count].stream_name[sizeof(metadata[count].stream_name) - 1] = '\0';
+            } else {
+                metadata[count].stream_name[0] = '\0';
+            }
+            
+            const char *path = (const char *)sqlite3_column_text(stmt, 2);
+            if (path) {
+                strncpy(metadata[count].file_path, path, sizeof(metadata[count].file_path) - 1);
+                metadata[count].file_path[sizeof(metadata[count].file_path) - 1] = '\0';
+            } else {
+                metadata[count].file_path[0] = '\0';
+            }
+            
+            metadata[count].start_time = (time_t)sqlite3_column_int64(stmt, 3);
+            
+            if (sqlite3_column_type(stmt, 4) != SQLITE_NULL) {
+                metadata[count].end_time = (time_t)sqlite3_column_int64(stmt, 4);
+            } else {
+                metadata[count].end_time = 0;
+            }
+            
+            metadata[count].size_bytes = (uint64_t)sqlite3_column_int64(stmt, 5);
+            metadata[count].width = sqlite3_column_int(stmt, 6);
+            metadata[count].height = sqlite3_column_int(stmt, 7);
+            metadata[count].fps = sqlite3_column_int(stmt, 8);
+            
+            const char *codec = (const char *)sqlite3_column_text(stmt, 9);
+            if (codec) {
+                strncpy(metadata[count].codec, codec, sizeof(metadata[count].codec) - 1);
+                metadata[count].codec[sizeof(metadata[count].codec) - 1] = '\0';
+            } else {
+                metadata[count].codec[0] = '\0';
+            }
+            
+            metadata[count].is_complete = sqlite3_column_int(stmt, 10) != 0;
+            
+            count++;
         }
-        
-        const char *path = (const char *)sqlite3_column_text(stmt, 2);
-        if (path) {
-            strncpy(metadata[count].file_path, path, sizeof(metadata[count].file_path) - 1);
-            metadata[count].file_path[sizeof(metadata[count].file_path) - 1] = '\0';
-        } else {
-            metadata[count].file_path[0] = '\0';
-        }
-        
-        metadata[count].start_time = (time_t)sqlite3_column_int64(stmt, 3);
-        
-        if (sqlite3_column_type(stmt, 4) != SQLITE_NULL) {
-            metadata[count].end_time = (time_t)sqlite3_column_int64(stmt, 4);
-        } else {
-            metadata[count].end_time = 0;
-        }
-        
-        metadata[count].size_bytes = (uint64_t)sqlite3_column_int64(stmt, 5);
-        metadata[count].width = sqlite3_column_int(stmt, 6);
-        metadata[count].height = sqlite3_column_int(stmt, 7);
-        metadata[count].fps = sqlite3_column_int(stmt, 8);
-        
-        const char *codec = (const char *)sqlite3_column_text(stmt, 9);
-        if (codec) {
-            strncpy(metadata[count].codec, codec, sizeof(metadata[count].codec) - 1);
-            metadata[count].codec[sizeof(metadata[count].codec) - 1] = '\0';
-        } else {
-            metadata[count].codec[0] = '\0';
-        }
-        
-        metadata[count].is_complete = sqlite3_column_int(stmt, 10) != 0;
-        
-        count++;
+    }
+    
+    if (rc_step != SQLITE_DONE && rc_step != SQLITE_ROW) {
+        log_error("Error while fetching recordings: %s", sqlite3_errmsg(db));
     }
     
     sqlite3_finalize(stmt);
     pthread_mutex_unlock(&db_mutex);
     
+    log_info("Found %d recordings in database matching criteria", count);
     return count;
 }
 
@@ -1388,4 +1396,43 @@ int count_stream_configs(void) {
     pthread_mutex_unlock(&db_mutex);
     
     return count;
+}
+
+/**
+ * Execute a SQL query and get the results
+ * 
+ * @param sql SQL query to execute
+ * @param result Pointer to store the result set
+ * @param rows Pointer to store the number of rows
+ * @param cols Pointer to store the number of columns
+ * @return 0 on success, non-zero on failure
+ */
+int database_execute_query(const char *sql, void **result, int *rows, int *cols) {
+    int rc;
+    char *err_msg = NULL;
+    
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+    
+    if (!sql || !result || !rows || !cols) {
+        log_error("Invalid parameters for database_execute_query");
+        return -1;
+    }
+    
+    pthread_mutex_lock(&db_mutex);
+    
+    // Execute the query and get results as a table
+    rc = sqlite3_get_table(db, sql, (char ***)result, rows, cols, &err_msg);
+    
+    if (rc != SQLITE_OK) {
+        log_error("SQL error: %s", err_msg);
+        sqlite3_free(err_msg);
+        pthread_mutex_unlock(&db_mutex);
+        return -1;
+    }
+    
+    pthread_mutex_unlock(&db_mutex);
+    return 0;
 }

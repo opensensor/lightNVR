@@ -142,6 +142,67 @@ If streams disconnect frequently:
 3. Verify that the camera isn't overloaded with too many connections
 4. Check if the camera has a limit on concurrent RTSP connections
 
+### Live Stream Video Timeouts
+
+If you experience frequent video timeouts in the live stream:
+
+1. **Adjust HLS.js buffer settings** in `web/js/components/video.js`:
+   ```javascript
+   const hls = new Hls({
+       maxBufferLength: 60,            // Increase for more buffering (default: 30)
+       maxMaxBufferLength: 120,        // Maximum buffer size in seconds (default: 60)
+       liveSyncDurationCount: 5,       // Number of segments to sync (default: 3)
+       fragLoadingTimeOut: 20000,      // Fragment loading timeout in ms (default: 8000)
+       manifestLoadingTimeOut: 15000,  // Manifest loading timeout in ms (default: 10000)
+       levelLoadingTimeOut: 15000      // Level loading timeout in ms (default: 10000)
+   });
+   ```
+
+2. **Increase server-side timeouts** in `src/web/api_handlers_streaming.c`:
+   - For manifest files: Increase the number of attempts and/or the wait time between attempts
+   - For segment files: Increase the number of attempts and/or the wait time between attempts
+
+3. **Adjust HLS segment settings** in `src/video/hls_writer.c`:
+   - Increase `hls_list_size` for more segments in the playlist
+   - Add additional HLS flags to improve streaming reliability
+
+4. **Network and hardware considerations**:
+   - Ensure your network has sufficient bandwidth for the configured stream quality
+   - If running on limited hardware (like Ingenic A1), reduce stream resolution and framerate
+   - Consider enabling hardware acceleration if available
+
+### Stale Stream Data in Live View
+
+If you notice the live stream showing outdated video (stale data):
+
+1. **Prevent browser caching**:
+   - Add cache control headers to HLS responses in `src/web/api_handlers_streaming.c`:
+     ```c
+     set_response_header(response, "Cache-Control", "no-cache, no-store, must-revalidate");
+     set_response_header(response, "Pragma", "no-cache");
+     set_response_header(response, "Expires", "0");
+     ```
+
+2. **Add cache-busting to HLS URLs** in `web/js/components/video.js`:
+   ```javascript
+   const timestamp = Date.now();
+   const hlsStreamUrl = `/api/streaming/${encodeURIComponent(stream.name)}/hls/index.m3u8?_t=${timestamp}`;
+   ```
+
+3. **Implement periodic stream refresh**:
+   ```javascript
+   const refreshInterval = 60000; // 60 seconds
+   const refreshTimer = setInterval(() => {
+       if (videoCell && videoCell.hlsPlayer) {
+           const newTimestamp = Date.now();
+           const newUrl = `/api/streaming/${encodeURIComponent(stream.name)}/hls/index.m3u8?_t=${newTimestamp}`;
+           videoCell.hlsPlayer.loadSource(newUrl);
+       }
+   }, refreshInterval);
+   ```
+
+4. **Manual refresh**: If you still see stale data, refreshing the browser page will force a complete reload of the stream.
+
 ## Recording Problems
 
 ### Recordings Not Being Created

@@ -246,4 +246,15 @@ int get_all_stream_configs(stream_config_t *streams, int max_count);
  */
 int count_stream_configs(void);
 
+/**
+ * Execute a SQL query and get the results
+ * 
+ * @param sql SQL query to execute
+ * @param result Pointer to store the result set
+ * @param rows Pointer to store the number of rows
+ * @param cols Pointer to store the number of columns
+ * @return 0 on success, non-zero on failure
+ */
+int database_execute_query(const char *sql, void **result, int *rows, int *cols);
+
 #endif // LIGHTNVR_DATABASE_MANAGER_H

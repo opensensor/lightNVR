@@ -12,6 +12,9 @@
 #include <sys/types.h>
 #include <fcntl.h>
 #include <glob.h>
+#include <dirent.h>
+#include <sqlite3.h>
+#include <pthread.h>
 
 #include "web/api_handlers_recordings.h"
 #include "web/api_handlers_common.h"
@@ -21,51 +24,428 @@
 #include "storage/storage_manager.h"
 #include "web/request_response.h"
 
+/* If MAX_CODEC_LENGTH is not defined, define it */
+#ifndef MAX_CODEC_LENGTH
+#define MAX_CODEC_LENGTH 32
+#endif
+
+extern config_t config;
+
+/**
+ * Get the total count of recordings matching given filters
+ * This function performs a lightweight COUNT query against the database
+ *
+ * @param start_time    Start time filter (0 for no filter)
+ * @param end_time      End time filter (0 for no filter)
+ * @param stream_name   Stream name filter (NULL for all streams)
+ *
+ * @return Total number of matching recordings, or -1 on error
+ */
+int get_recording_count(time_t start_time, time_t end_time, const char *stream_name) {
+    char sql[512] = {0};
+    int sql_len = 0;
+
+    /* Build SQL query with COUNT function */
+    sql_len = snprintf(sql, sizeof(sql), "SELECT COUNT(*) FROM recordings WHERE 1=1");
+
+    /* Add time filters if specified */
+    if (start_time > 0) {
+        sql_len += snprintf(sql + sql_len, sizeof(sql) - sql_len,
+                 " AND start_time >= %lld", (long long)start_time);
+    }
+    
+    if (end_time > 0) {
+        sql_len += snprintf(sql + sql_len, sizeof(sql) - sql_len,
+                 " AND start_time <= %lld", (long long)end_time);
+    }
+
+    /* Add stream filter if specified */
+    if (stream_name && stream_name[0] != '\0') {
+        sql_len += snprintf(sql + sql_len, sizeof(sql) - sql_len,
+                 " AND stream_name = '%s'", stream_name);
+    }
+
+    log_debug("Count query: %s", sql);
+
+    sqlite3 *db = NULL;
+    int rc = SQLITE_OK;
+
+    /* Get path to database file */
+    const char *db_path = config.db_path;
+    if (!db_path) {
+        log_error("Failed to get database file path from config");
+        return -1;
+    }
+
+    /* Open database */
+    rc = sqlite3_open(db_path, &db);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to open database: %s", sqlite3_errmsg(db));
+        sqlite3_close(db);
+        return -1;
+    }
+
+    sqlite3_stmt *stmt = NULL;
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare count statement: %s", sqlite3_errmsg(db));
+        sqlite3_close(db);
+        return -1;
+    }
+
+    int count = -1;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        count = sqlite3_column_int(stmt, 0);
+    } else {
+        log_error("Failed to get count from database: %s", sqlite3_errmsg(db));
+    }
+
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+
+    log_debug("Recording count: %d (filters: start=%lld, end=%lld, stream=%s)",
+             count, (long long)start_time, (long long)end_time,
+             stream_name ? stream_name : "all");
+
+    return count;
+}
+
+
+/**
+ * Get paginated recording metadata from the database with sorting
+ * This function fetches only the specified page of results with the given sort order
+ */
+int get_recording_metadata_paginated(time_t start_time, time_t end_time, const char *stream_name,
+                                   int offset, int limit, recording_metadata_t *recordings,
+                                   const char *sort_field, const char *sort_order) {
+    int rc;
+    sqlite3_stmt *stmt;
+    int count = 0;
+    
+    if (!recordings || limit <= 0) {
+        log_error("Invalid parameters for get_recording_metadata_paginated");
+        return -1;
+    }
+    
+    // Get path to database file
+    const char *db_path = config.db_path;
+    if (!db_path) {
+        log_error("Failed to get database file path from config");
+        return -1;
+    }
+    
+    // Open database
+    sqlite3 *db = NULL;
+    rc = sqlite3_open(db_path, &db);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to open database: %s", sqlite3_errmsg(db));
+        sqlite3_close(db);
+        return -1;
+    }
+    
+    // Build query based on filters
+    char sql[1024];
+    strcpy(sql, "SELECT id, stream_name, file_path, start_time, end_time, "
+                 "size_bytes, width, height, fps, codec, is_complete "
+                 "FROM recordings WHERE is_complete = 1"); // Only complete recordings
+    
+    if (start_time > 0) {
+        strcat(sql, " AND start_time >= ?");
+    }
+    
+    if (end_time > 0) {
+        strcat(sql, " AND start_time <= ?");
+    }
+    
+    if (stream_name && stream_name[0] != '\0') {
+        strcat(sql, " AND stream_name = ?");
+    }
+    
+    // Add ORDER BY clause based on sort parameters
+    if (sort_field && sort_field[0] != '\0') {
+        // Validate sort field to prevent SQL injection
+        if (strcmp(sort_field, "start_time") == 0 || 
+            strcmp(sort_field, "end_time") == 0 || 
+            strcmp(sort_field, "stream_name") == 0 || 
+            strcmp(sort_field, "size_bytes") == 0) {
+            
+            strcat(sql, " ORDER BY ");
+            strcat(sql, sort_field);
+            
+            // Add sort order if specified
+            if (sort_order && (strcmp(sort_order, "asc") == 0 || strcmp(sort_order, "desc") == 0)) {
+                strcat(sql, " ");
+                strcat(sql, sort_order);
+            } else {
+                // Default to descending order
+                strcat(sql, " DESC");
+            }
+        } else {
+            // Invalid sort field, default to start_time DESC
+            strcat(sql, " ORDER BY start_time DESC");
+        }
+    } else {
+        // Default sort order
+        strcat(sql, " ORDER BY start_time DESC");
+    }
+    
+    // Add LIMIT and OFFSET
+    strcat(sql, " LIMIT ? OFFSET ?");
+    
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        sqlite3_close(db);
+        return -1;
+    }
+    
+    // Bind parameters
+    int param_index = 1;
+    
+    if (start_time > 0) {
+        sqlite3_bind_int64(stmt, param_index++, (sqlite3_int64)start_time);
+    }
+    
+    if (end_time > 0) {
+        sqlite3_bind_int64(stmt, param_index++, (sqlite3_int64)end_time);
+    }
+    
+    if (stream_name && stream_name[0] != '\0') {
+        sqlite3_bind_text(stmt, param_index++, stream_name, -1, SQLITE_STATIC);
+    }
+    
+    sqlite3_bind_int(stmt, param_index++, limit);
+    sqlite3_bind_int(stmt, param_index, offset);
+    
+    log_debug("Executing paginated query: %s (limit=%d, offset=%d)", sql, limit, offset);
+    
+    // Execute query and fetch results
+    while (sqlite3_step(stmt) == SQLITE_ROW && count < limit) {
+        recordings[count].id = (uint64_t)sqlite3_column_int64(stmt, 0);
+        
+        const char *stream = (const char *)sqlite3_column_text(stmt, 1);
+        if (stream) {
+            strncpy(recordings[count].stream_name, stream, sizeof(recordings[count].stream_name) - 1);
+            recordings[count].stream_name[sizeof(recordings[count].stream_name) - 1] = '\0';
+        } else {
+            recordings[count].stream_name[0] = '\0';
+        }
+        
+        const char *path = (const char *)sqlite3_column_text(stmt, 2);
+        if (path) {
+            strncpy(recordings[count].file_path, path, sizeof(recordings[count].file_path) - 1);
+            recordings[count].file_path[sizeof(recordings[count].file_path) - 1] = '\0';
+        } else {
+            recordings[count].file_path[0] = '\0';
+        }
+        
+        recordings[count].start_time = (time_t)sqlite3_column_int64(stmt, 3);
+        
+        if (sqlite3_column_type(stmt, 4) != SQLITE_NULL) {
+            recordings[count].end_time = (time_t)sqlite3_column_int64(stmt, 4);
+        } else {
+            recordings[count].end_time = 0;
+        }
+        
+        recordings[count].size_bytes = (uint64_t)sqlite3_column_int64(stmt, 5);
+        recordings[count].width = sqlite3_column_int(stmt, 6);
+        recordings[count].height = sqlite3_column_int(stmt, 7);
+        recordings[count].fps = sqlite3_column_int(stmt, 8);
+        
+        const char *codec = (const char *)sqlite3_column_text(stmt, 9);
+        if (codec) {
+            strncpy(recordings[count].codec, codec, sizeof(recordings[count].codec) - 1);
+            recordings[count].codec[sizeof(recordings[count].codec) - 1] = '\0';
+        } else {
+            recordings[count].codec[0] = '\0';
+        }
+        
+        recordings[count].is_complete = sqlite3_column_int(stmt, 10) != 0;
+        
+        count++;
+    }
+    
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+    
+    log_info("Found %d recordings in database matching criteria (paginated)", count);
+    return count;
+}
+
 /**
  * Handle GET request for recordings with pagination
+ * Optimized for embedded devices with minimal memory usage and efficient resource handling
  */
 void handle_get_recordings(const http_request_t *request, http_response_t *response) {
-    // Get query parameters
+    // Get query parameters with bounds checking
     char date_str[32] = {0};
     char stream_name[MAX_STREAM_NAME] = {0};
     char page_str[16] = {0};
     char limit_str[16] = {0};
+    char start_str[32] = {0};
+    char end_str[32] = {0};
+    char sort_field[32] = {0};
+    char sort_order[8] = {0};
     time_t start_time = 0;
     time_t end_time = 0;
     int page = 1;
     int limit = 20;
-    
-    // Get date filter if provided
+
+    // Get date filter if provided (legacy parameter)
     if (get_query_param(request, "date", date_str, sizeof(date_str)) == 0) {
-        // Parse date string (format: YYYY-MM-DD)
-        struct tm tm = {0};
-        if (strptime(date_str, "%Y-%m-%d", &tm) != NULL) {
+        // Parse date string efficiently (format: YYYY-MM-DD)
+        int year = 0, month = 0, day = 0;
+        if (sscanf(date_str, "%d-%d-%d", &year, &month, &day) == 3) {
+            struct tm tm = {0};
+            tm.tm_year = year - 1900;
+            tm.tm_mon = month - 1;
+            tm.tm_mday = day;
+
             // Set start time to beginning of day
             tm.tm_hour = 0;
             tm.tm_min = 0;
             tm.tm_sec = 0;
             start_time = mktime(&tm);
-            
+
             // Set end time to end of day
             tm.tm_hour = 23;
             tm.tm_min = 59;
             tm.tm_sec = 59;
             end_time = mktime(&tm);
+            
+            log_debug("Using date filter: %s (start=%lld, end=%lld)",
+                     date_str, (long long)start_time, (long long)end_time);
         } else {
-            log_warn("Invalid date format: %s", date_str);
+            log_warn("Invalid date format: %s (expected YYYY-MM-DD)", date_str);
         }
     }
-    
+
+    // Get start time if provided (overrides date parameter)
+    if (get_query_param(request, "start", start_str, sizeof(start_str)) == 0) {
+        // URL decode the string first (replace %3A with :, etc.)
+        char decoded_start[32] = {0};
+        int j = 0;
+        for (int i = 0; i < strlen(start_str) && j < sizeof(decoded_start) - 1; i++) {
+            if (start_str[i] == '%' && i + 2 < strlen(start_str)) {
+                // Handle URL encoded characters
+                if (start_str[i+1] == '3' && start_str[i+2] == 'A') {
+                    // %3A -> :
+                    decoded_start[j++] = ':';
+                } else if (start_str[i+1] == '2' && start_str[i+2] == '0') {
+                    // %20 -> space
+                    decoded_start[j++] = ' ';
+                } else {
+                    // Copy as-is if not recognized
+                    decoded_start[j++] = start_str[i];
+                    continue;
+                }
+                i += 2; // Skip the next two characters
+            } else {
+                decoded_start[j++] = start_str[i];
+            }
+        }
+        
+        // Parse ISO 8601 date-time format (YYYY-MM-DDTHH:MM:SS)
+        struct tm tm = {0};
+        char *result = strptime(decoded_start, "%Y-%m-%dT%H:%M:%S", &tm);
+        
+        if (result) {
+            start_time = mktime(&tm);
+            log_debug("Using start time filter: %s -> %s (%lld)", 
+                     start_str, decoded_start, (long long)start_time);
+        } else {
+            log_warn("Invalid start time format: %s (expected YYYY-MM-DDTHH:MM:SS)", decoded_start);
+        }
+    }
+
+    // Get end time if provided (overrides date parameter)
+    if (get_query_param(request, "end", end_str, sizeof(end_str)) == 0) {
+        // URL decode the string first (replace %3A with :, etc.)
+        char decoded_end[32] = {0};
+        int j = 0;
+        for (int i = 0; i < strlen(end_str) && j < sizeof(decoded_end) - 1; i++) {
+            if (end_str[i] == '%' && i + 2 < strlen(end_str)) {
+                // Handle URL encoded characters
+                if (end_str[i+1] == '3' && end_str[i+2] == 'A') {
+                    // %3A -> :
+                    decoded_end[j++] = ':';
+                } else if (end_str[i+1] == '2' && end_str[i+2] == '0') {
+                    // %20 -> space
+                    decoded_end[j++] = ' ';
+                } else {
+                    // Copy as-is if not recognized
+                    decoded_end[j++] = end_str[i];
+                    continue;
+                }
+                i += 2; // Skip the next two characters
+            } else {
+                decoded_end[j++] = end_str[i];
+            }
+        }
+        
+        // Parse ISO 8601 date-time format (YYYY-MM-DDTHH:MM:SS)
+        struct tm tm = {0};
+        char *result = strptime(decoded_end, "%Y-%m-%dT%H:%M:%S", &tm);
+        
+        if (result) {
+            end_time = mktime(&tm);
+            log_debug("Using end time filter: %s -> %s (%lld)", 
+                     end_str, decoded_end, (long long)end_time);
+        } else {
+            log_warn("Invalid end time format: %s (expected YYYY-MM-DDTHH:MM:SS)", decoded_end);
+        }
+    }
+
     // Get stream filter if provided
     get_query_param(request, "stream", stream_name, sizeof(stream_name));
-    
+
     // If no stream name provided or "all" specified, set to NULL for all streams
     if (stream_name[0] == '\0' || strcmp(stream_name, "all") == 0) {
         stream_name[0] = '\0';
     }
-    
+
     log_debug("Filtering recordings by stream: %s", stream_name[0] ? stream_name : "all streams");
+
+    // Get sort field if provided
+    get_query_param(request, "sort", sort_field, sizeof(sort_field));
     
+    // Validate sort field
+    if (sort_field[0] != '\0' && 
+        strcmp(sort_field, "start_time") != 0 && 
+        strcmp(sort_field, "end_time") != 0 && 
+        strcmp(sort_field, "stream_name") != 0 && 
+        strcmp(sort_field, "size_bytes") != 0) {
+        
+        // Invalid sort field, default to start_time
+        log_warn("Invalid sort field: %s (using default 'start_time')", sort_field);
+        strcpy(sort_field, "start_time");
+    }
+    
+    // If no sort field specified, default to start_time
+    if (sort_field[0] == '\0') {
+        strcpy(sort_field, "start_time");
+    }
+    
+    // Get sort order if provided
+    get_query_param(request, "order", sort_order, sizeof(sort_order));
+    
+    // Validate sort order
+    if (sort_order[0] != '\0' && 
+        strcmp(sort_order, "asc") != 0 && 
+        strcmp(sort_order, "desc") != 0) {
+        
+        // Invalid sort order, default to desc
+        log_warn("Invalid sort order: %s (using default 'desc')", sort_order);
+        strcpy(sort_order, "desc");
+    }
+    
+    // If no sort order specified, default to desc
+    if (sort_order[0] == '\0') {
+        strcpy(sort_order, "desc");
+    }
+    
+    log_debug("Sorting recordings by %s %s", sort_field, sort_order);
+
     // Get pagination parameters if provided
     if (get_query_param(request, "page", page_str, sizeof(page_str)) == 0) {
         int parsed_page = atoi(page_str);
@@ -73,86 +453,131 @@ void handle_get_recordings(const http_request_t *request, http_response_t *respo
             page = parsed_page;
         }
     }
-    
+
     if (get_query_param(request, "limit", limit_str, sizeof(limit_str)) == 0) {
         int parsed_limit = atoi(limit_str);
         if (parsed_limit > 0 && parsed_limit <= 100) {
             limit = parsed_limit;
+        } else if (parsed_limit > 100) {
+            // Cap the limit to prevent excessive memory usage
+            limit = 100;
+            log_info("Requested limit %d exceeds maximum, capped to 100", parsed_limit);
         }
     }
-    
-    log_debug("Fetching recordings with pagination: page=%d, limit=%d", page, limit);
-    
-    // First, get total count of recordings matching the filters
-    // We'll use a larger buffer to get all recordings, then count them
-    recording_metadata_t all_recordings[500]; // Temporary buffer for counting
-    int total_count = get_recording_metadata(start_time, end_time, 
-                                          stream_name[0] ? stream_name : NULL, 
-                                          all_recordings, 500);
-    
+
+    log_info("Fetching recordings with pagination: page=%d, limit=%d, sort=%s %s", 
+             page, limit, sort_field, sort_order);
+
+    // First, get total count using the optimized count function
+    int total_count = get_recording_count(start_time, end_time, stream_name[0] ? stream_name : NULL);
     if (total_count < 0) {
+        log_error("Failed to get recordings count from database");
         create_json_response(response, 500, "{\"error\": \"Failed to get recordings count\"}");
         return;
     }
-    
+
     // Calculate pagination values
     int total_pages = (total_count + limit - 1) / limit; // Ceiling division
     if (total_pages == 0) total_pages = 1;
-    if (page > total_pages) page = total_pages;
-    
+
+    // Validate page number
+    if (page > total_pages) {
+        page = total_pages;
+    }
+
     // Calculate offset
     int offset = (page - 1) * limit;
-    
-    // Get paginated recordings from database
-    recording_metadata_t recordings[100]; // Limit to 100 recordings max
+
+    // Calculate actual limit for the current page
     int actual_limit = (offset + limit <= total_count) ? limit : (total_count - offset);
-    if (actual_limit <= 0) actual_limit = 0;
-    
-    // Copy the relevant slice from our all_recordings buffer
-    int count = 0;
-    for (int i = offset; i < offset + actual_limit && i < total_count; i++) {
-        memcpy(&recordings[count], &all_recordings[i], sizeof(recording_metadata_t));
-        count++;
+    if (actual_limit < 0) actual_limit = 0;
+
+    // Only allocate memory and fetch recordings if there are any to fetch
+    recording_metadata_t *recordings = NULL;
+    if (actual_limit > 0) {
+        // Allocate only what we need for this page using calloc
+        recordings = (recording_metadata_t*)calloc(actual_limit, sizeof(recording_metadata_t));
+        if (!recordings) {
+            log_error("Failed to allocate memory for recordings");
+            create_json_response(response, 500, "{\"error\": \"Memory allocation failed\"}");
+            return;
+        }
+
+        // Get paginated recordings directly using the optimized function with sorting
+        int count = get_recording_metadata_paginated(
+            start_time, end_time,
+            stream_name[0] ? stream_name : NULL,
+            offset, actual_limit, recordings,
+            sort_field, sort_order
+        );
+
+        if (count < 0) {
+            free(recordings);
+            log_error("Failed to get paginated recordings from database");
+            create_json_response(response, 500, "{\"error\": \"Failed to get recordings\"}");
+            return;
+        }
+
+        if (count != actual_limit) {
+            log_warn("Expected %d records but got %d", actual_limit, count);
+            actual_limit = count; // Adjust to actual count received
+        }
     }
-    
-    // Build JSON response with pagination metadata
-    char *json = malloc(count * 512 + 256); // Allocate enough space for all recordings + pagination metadata
+
+    // Create a buffer for the JSON response with a reasonable initial size
+    // Base size + estimated size per recording + pagination info
+    size_t json_capacity = 256 + (actual_limit * 512);
+    char *json = (char*)malloc(json_capacity);
     if (!json) {
+        if (recordings) free(recordings);
+        log_error("Failed to allocate memory for JSON response");
         create_json_response(response, 500, "{\"error\": \"Memory allocation failed\"}");
         return;
     }
-    
-    // Start with pagination metadata
-    int pos = sprintf(json, 
-                     "{"
-                     "\"pagination\": {"
-                     "\"total\": %d,"
-                     "\"page\": %d,"
-                     "\"limit\": %d,"
-                     "\"pages\": %d"
-                     "},"
-                     "\"recordings\": [",
-                     total_count, page, limit, total_pages);
-    
-    for (int i = 0; i < count; i++) {
-        char recording_json[512];
-        
+
+    // Start building the JSON response with pagination metadata
+    int pos = snprintf(json, json_capacity,
+                "{"
+                "\"pagination\": {"
+                "\"total\": %d,"
+                "\"page\": %d,"
+                "\"limit\": %d,"
+                "\"pages\": %d"
+                "},"
+                "\"recordings\": [",
+                total_count, page, limit, total_pages);
+
+    // Add each recording to the JSON array
+    for (int i = 0; i < actual_limit; i++) {
         // Format start and end times
         char start_time_str[32];
         char end_time_str[32];
-        strftime(start_time_str, sizeof(start_time_str), "%Y-%m-%d %H:%M:%S", localtime(&recordings[i].start_time));
-        strftime(end_time_str, sizeof(end_time_str), "%Y-%m-%d %H:%M:%S", localtime(&recordings[i].end_time));
-        
+
+        // Use localtime with error checking
+        struct tm tm_start_buf, tm_end_buf;
+        struct tm *tm_start = localtime_r(&recordings[i].start_time, &tm_start_buf);
+        struct tm *tm_end = localtime_r(&recordings[i].end_time, &tm_end_buf);
+
+        if (tm_start && tm_end) {
+            strftime(start_time_str, sizeof(start_time_str), "%Y-%m-%d %H:%M:%S", tm_start);
+            strftime(end_time_str, sizeof(end_time_str), "%Y-%m-%d %H:%M:%S", tm_end);
+        } else {
+            // Fallback if localtime fails
+            snprintf(start_time_str, sizeof(start_time_str), "%lld", (long long)recordings[i].start_time);
+            snprintf(end_time_str, sizeof(end_time_str), "%lld", (long long)recordings[i].end_time);
+        }
+
         // Calculate duration in seconds
         int duration_sec = recordings[i].end_time - recordings[i].start_time;
-        
+        if (duration_sec < 0) duration_sec = 0;
+
         // Format duration as HH:MM:SS
         char duration_str[16];
         int hours = duration_sec / 3600;
         int minutes = (duration_sec % 3600) / 60;
         int seconds = duration_sec % 60;
         snprintf(duration_str, sizeof(duration_str), "%02d:%02d:%02d", hours, minutes, seconds);
-        
+
         // Format size in human-readable format
         char size_str[16];
         if (recordings[i].size_bytes < 1024) {
@@ -164,56 +589,88 @@ void handle_get_recordings(const http_request_t *request, http_response_t *respo
         } else {
             snprintf(size_str, sizeof(size_str), "%.1f GB", (float)recordings[i].size_bytes / (1024 * 1024 * 1024));
         }
-        
-        // Create JSON for this recording
-        snprintf(recording_json, sizeof(recording_json),
-                 "{"
-                 "\"id\": %llu,"
-                 "\"stream\": \"%s\","
-                 "\"start_time\": \"%s\","
-                 "\"end_time\": \"%s\","
-                 "\"duration\": \"%s\","
-                 "\"size\": \"%s\","
-                 "\"path\": \"%s\","
-                 "\"width\": %d,"
-                 "\"height\": %d,"
-                 "\"fps\": %d,"
-                 "\"codec\": \"%s\","
-                 "\"complete\": %s"
-                 "}",
-                 (unsigned long long)recordings[i].id,
-                 recordings[i].stream_name,
-                 start_time_str,
-                 end_time_str,
-                 duration_str,
-                 size_str,
-                 recordings[i].file_path,
-                 recordings[i].width,
-                 recordings[i].height,
-                 recordings[i].fps,
-                 recordings[i].codec,
-                 recordings[i].is_complete ? "true" : "false");
-        
-        // Add comma if not first element
+
+        // Check if we need more space
+        if (pos + 512 >= json_capacity) {
+            // Double the buffer size
+            size_t new_capacity = json_capacity * 2;
+            char *new_json = (char*)realloc(json, new_capacity);
+            if (!new_json) {
+                free(json);
+                free(recordings);
+                log_error("Failed to resize JSON buffer");
+                create_json_response(response, 500, "{\"error\": \"Memory allocation failed\"}");
+                return;
+            }
+            json = new_json;
+            json_capacity = new_capacity;
+        }
+
+        // Add comma if not the first item
         if (i > 0) {
             json[pos++] = ',';
         }
-        
-        // Append to JSON array
-        strcpy(json + pos, recording_json);
-        pos += strlen(recording_json);
+
+        // Format recording JSON
+        int written = snprintf(json + pos, json_capacity - pos,
+                "{"
+                "\"id\": %llu,"
+                "\"stream\": \"%s\","
+                "\"start_time\": \"%s\","
+                "\"end_time\": \"%s\","
+                "\"duration\": \"%s\","
+                "\"size\": \"%s\","
+                "\"path\": \"%s\","
+                "\"width\": %d,"
+                "\"height\": %d,"
+                "\"fps\": %d,"
+                "\"codec\": \"%s\","
+                "\"complete\": %s"
+                "}",
+                (unsigned long long)recordings[i].id,
+                recordings[i].stream_name,
+                start_time_str,
+                end_time_str,
+                duration_str,
+                size_str,
+                recordings[i].file_path,
+                recordings[i].width,
+                recordings[i].height,
+                recordings[i].fps,
+                recordings[i].codec,
+                recordings[i].is_complete ? "true" : "false");
+
+        if (written > 0) {
+            pos += written;
+        }
     }
-    
+
+    // Check if we need more space for closing
+    if (pos + 4 >= json_capacity) {
+        size_t new_capacity = json_capacity + 8;
+        char *new_json = (char*)realloc(json, new_capacity);
+        if (!new_json) {
+            free(json);
+            if (recordings) free(recordings);
+            log_error("Failed to resize JSON buffer for closing");
+            create_json_response(response, 500, "{\"error\": \"Memory allocation failed\"}");
+            return;
+        }
+        json = new_json;
+        json_capacity = new_capacity;
+    }
+
     // Close array and object
-    pos += sprintf(json + pos, "]}");
-    
+    pos += snprintf(json + pos, json_capacity - pos, "]}");
+
     // Create response
     create_json_response(response, 200, json);
-    
+
     // Free resources
     free(json);
-    
-    log_info("Served recordings page %d of %d (limit: %d, total: %d)", 
+    if (recordings) free(recordings);
+
+    log_info("Served recordings page %d of %d (limit: %d, total: %d)",
              page, total_pages, limit, total_count);
 }
 
@@ -248,14 +705,32 @@ void handle_get_recording(const http_request_t *request, http_response_t *respon
         return;
     }
     
-    // Format start and end times
+    // Format start and end times with error checking
     char start_time_str[32];
     char end_time_str[32];
-    strftime(start_time_str, sizeof(start_time_str), "%Y-%m-%d %H:%M:%S", localtime(&metadata.start_time));
-    strftime(end_time_str, sizeof(end_time_str), "%Y-%m-%d %H:%M:%S", localtime(&metadata.end_time));
+    
+    // Use localtime with error checking
+    struct tm tm_start_buf, tm_end_buf;
+    struct tm *tm_start = localtime_r(&metadata.start_time, &tm_start_buf);
+    struct tm *tm_end = localtime_r(&metadata.end_time, &tm_end_buf);
+    
+    if (tm_start) {
+        strftime(start_time_str, sizeof(start_time_str), "%Y-%m-%d %H:%M:%S", tm_start);
+    } else {
+        // Fallback if localtime fails
+        snprintf(start_time_str, sizeof(start_time_str), "%lld", (long long)metadata.start_time);
+    }
+    
+    if (tm_end) {
+        strftime(end_time_str, sizeof(end_time_str), "%Y-%m-%d %H:%M:%S", tm_end);
+    } else {
+        // Fallback if localtime fails
+        snprintf(end_time_str, sizeof(end_time_str), "%lld", (long long)metadata.end_time);
+    }
     
     // Calculate duration in seconds
     int duration_sec = metadata.end_time - metadata.start_time;
+    if (duration_sec < 0) duration_sec = 0;
     
     // Format duration as HH:MM:SS
     char duration_str[16];
@@ -276,9 +751,20 @@ void handle_get_recording(const http_request_t *request, http_response_t *respon
         snprintf(size_str, sizeof(size_str), "%.1f GB", (float)metadata.size_bytes / (1024 * 1024 * 1024));
     }
     
-    // Create JSON response
-    char json[1024];
-    snprintf(json, sizeof(json),
+    // Create JSON response with dynamic allocation
+    // Estimate the size needed for the JSON response
+    size_t json_capacity = 512 + strlen(metadata.stream_name) + strlen(metadata.file_path) + 
+                          strlen(start_time_str) + strlen(end_time_str) + 
+                          strlen(duration_str) + strlen(size_str) + strlen(metadata.codec);
+    
+    char *json = (char*)malloc(json_capacity);
+    if (!json) {
+        log_error("Failed to allocate memory for JSON response");
+        create_json_response(response, 500, "{\"error\": \"Memory allocation failed\"}");
+        return;
+    }
+    
+    int written = snprintf(json, json_capacity,
              "{"
              "\"id\": %llu,"
              "\"stream\": \"%s\","
@@ -308,8 +794,16 @@ void handle_get_recording(const http_request_t *request, http_response_t *respon
              metadata.is_complete ? "true" : "false",
              (unsigned long long)metadata.id);
     
+    if (written >= json_capacity) {
+        log_warn("JSON response was truncated (needed %d bytes, had %zu)", 
+                written, json_capacity);
+    }
+    
     // Create response
     create_json_response(response, 200, json);
+    
+    // Free allocated memory
+    free(json);
 }
 
 /**
@@ -357,16 +851,51 @@ void handle_delete_recording(const http_request_t *request, http_response_t *res
         dir_path[dir_len] = '\0';
         log_info("Recording directory: %s", dir_path);
 
-        // Delete all TS segment files in this directory
-        char delete_cmd[MAX_PATH_LENGTH + 50];
-        snprintf(delete_cmd, sizeof(delete_cmd), "rm -f %s*.ts %s*.mp4 %s*.m3u8",
-                dir_path, dir_path, dir_path);
-        log_info("Executing cleanup command: %s", delete_cmd);
-        system(delete_cmd); // Ignore result - we'll continue with metadata deletion anyway
+        // Delete all TS segment files in this directory using direct file operations
+        DIR *dir = opendir(dir_path);
+        if (dir) {
+            struct dirent *entry;
+            while ((entry = readdir(dir)) != NULL) {
+                // Skip . and .. directories
+                if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+                    continue;
+                }
+                
+                // Check if file has .ts, .mp4, or .m3u8 extension
+                const char *ext = strrchr(entry->d_name, '.');
+                if (ext && (strcasecmp(ext, ".ts") == 0 || 
+                           strcasecmp(ext, ".mp4") == 0 || 
+                           strcasecmp(ext, ".m3u8") == 0)) {
+                    
+                    char full_path[MAX_PATH_LENGTH];
+                    snprintf(full_path, sizeof(full_path), "%s%s", dir_path, entry->d_name);
+                    
+                    // Close any open file handles before deletion
+                    // This is a best-effort approach - we can't know all open handles
+                    // but we can sync to ensure data is written to disk
+                    sync();
+                    
+                    // Delete the file
+                    if (unlink(full_path) != 0) {
+                        log_warn("Failed to delete file: %s (error: %s)",
+                                full_path, strerror(errno));
+                    } else {
+                        log_info("Successfully deleted file: %s", full_path);
+                    }
+                }
+            }
+            closedir(dir);
+        } else {
+            log_warn("Failed to open directory: %s (error: %s)",
+                    dir_path, strerror(errno));
+        }
     }
 
     // Explicitly try to delete the main file
     if (access(metadata.file_path, F_OK) == 0) {
+        // Sync to ensure data is written to disk
+        sync();
+        
         if (unlink(metadata.file_path) != 0) {
             log_warn("Failed to delete recording file: %s (error: %s)",
                     metadata.file_path, strerror(errno));
@@ -378,21 +907,37 @@ void handle_delete_recording(const http_request_t *request, http_response_t *res
         log_warn("Recording file not found on disk: %s", metadata.file_path);
     }
 
-    // Delete MP4 recordings if they exist
-    char mp4_path[MAX_PATH_LENGTH];
-    snprintf(mp4_path, sizeof(mp4_path), "%srecording*.mp4", dir_path);
-
-    // Use glob to find MP4 files - this requires including glob.h
-    glob_t glob_result;
-    if (glob(mp4_path, GLOB_NOSORT, NULL, &glob_result) == 0) {
-        for (size_t i = 0; i < glob_result.gl_pathc; i++) {
-            log_info("Deleting MP4 file: %s", glob_result.gl_pathv[i]);
-            if (unlink(glob_result.gl_pathv[i]) != 0) {
-                log_warn("Failed to delete MP4 file: %s (error: %s)",
-                       glob_result.gl_pathv[i], strerror(errno));
+    // Delete MP4 recordings if they exist - using direct file operations instead of glob
+    DIR *dir = opendir(dir_path);
+    if (dir) {
+        struct dirent *entry;
+        while ((entry = readdir(dir)) != NULL) {
+            // Skip . and .. directories
+            if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+                continue;
+            }
+            
+            // Check if file is a recording*.mp4 file
+            if (strncmp(entry->d_name, "recording", 9) == 0) {
+                const char *ext = strrchr(entry->d_name, '.');
+                if (ext && strcasecmp(ext, ".mp4") == 0) {
+                    char full_path[MAX_PATH_LENGTH];
+                    snprintf(full_path, sizeof(full_path), "%s%s", dir_path, entry->d_name);
+                    
+                    // Sync to ensure data is written to disk
+                    sync();
+                    
+                    // Delete the file
+                    if (unlink(full_path) != 0) {
+                        log_warn("Failed to delete MP4 file: %s (error: %s)",
+                                full_path, strerror(errno));
+                    } else {
+                        log_info("Successfully deleted MP4 file: %s", full_path);
+                    }
+                }
             }
         }
-        globfree(&glob_result);
+        closedir(dir);
     }
 
     // Delete the recording metadata from database
@@ -402,491 +947,28 @@ void handle_delete_recording(const http_request_t *request, http_response_t *res
         return;
     }
     
-    // Create success response
-    char json[256];
-    snprintf(json, sizeof(json), 
-             "{\"success\": true, \"id\": %llu, \"message\": \"Recording deleted successfully\"}", 
-             (unsigned long long)id);
-    
-    create_json_response(response, 200, json);
-    
-    log_info("Recording deleted successfully: ID=%llu, Path=%s", (unsigned long long)id, metadata.file_path);
-}
-
-/**
- * Serve an MP4 file with proper headers for download
- */
-void serve_mp4_file(http_response_t *response, const char *file_path, const char *filename) {
-    // Verify file exists and is readable
-    struct stat st;
-    if (stat(file_path, &st) != 0 || access(file_path, R_OK) != 0) {
-        log_error("MP4 file not accessible: %s (error: %s)", file_path, strerror(errno));
-        create_json_response(response, 404, "{\"error\": \"Recording file not found\"}");
-        return;
-    }
-
-    // Check file size
-    if (st.st_size == 0) {
-        log_error("MP4 file is empty: %s", file_path);
-        create_json_response(response, 500, "{\"error\": \"Recording file is empty\"}");
-        return;
-    }
-
-    log_info("Serving MP4 file: %s, size: %lld bytes", file_path, (long long)st.st_size);
-
-    // Set content type header
-    set_response_header(response, "Content-Type", "video/mp4");
-
-    // Set content length header
-    char content_length[32];
-    snprintf(content_length, sizeof(content_length), "%lld", (long long)st.st_size);
-    set_response_header(response, "Content-Length", content_length);
-
-    // Set disposition header for download
-    char disposition[256];
-    snprintf(disposition, sizeof(disposition), "attachment; filename=\"%s\"", filename);
-    set_response_header(response, "Content-Disposition", disposition);
-
-    // Set status code
-    response->status_code = 200;
-
-    // Open file for reading
-    int fd = open(file_path, O_RDONLY);
-    if (fd < 0) {
-        log_error("Failed to open MP4 file: %s (error: %s)", file_path, strerror(errno));
-        create_json_response(response, 500, "{\"error\": \"Failed to read recording file\"}");
-        return;
-    }
-
-    // Allocate response body
-    response->body = malloc(st.st_size);
-    if (!response->body) {
-        log_error("Failed to allocate memory for response body");
-        close(fd);
-        create_json_response(response, 500, "{\"error\": \"Server memory allocation failed\"}");
-        return;
-    }
-
-    // Read file content into response body
-    ssize_t bytes_read = read(fd, response->body, st.st_size);
-    close(fd);
-
-    if (bytes_read != st.st_size) {
-        log_error("Failed to read complete file: %s (read %zd of %lld bytes)",
-                file_path, bytes_read, (long long)st.st_size);
-        free(response->body);
-        create_json_response(response, 500, "{\"error\": \"Failed to read complete recording file\"}");
-        return;
-    }
-
-    // Set response body length
-    response->body_length = st.st_size;
-
-    log_info("Successfully read MP4 file into response: %s (%lld bytes)",
-            file_path, (long long)st.st_size);
-}
-
-/**
- * Serve a file for download with proper headers to force browser download
- */
-void serve_file_for_download(http_response_t *response, const char *file_path, const char *filename, off_t file_size) {
-    // Open the file for reading
-    int fd = open(file_path, O_RDONLY);
-    if (fd < 0) {
-        log_error("Failed to open file for download: %s (error: %s)",
-                file_path, strerror(errno));
-        create_json_response(response, 500, "{\"error\": \"Failed to read file\"}");
-        return;
-    }
-
-    // Set response status
-    response->status_code = 200;
-
-    // Set headers to force download
-    set_response_header(response, "Content-Type", "application/octet-stream");
-
-    // Set content length
-    char content_length[32];
-    snprintf(content_length, sizeof(content_length), "%lld", (long long)file_size);
-    set_response_header(response, "Content-Length", content_length);
-
-    // Force download with Content-Disposition
-    char disposition[256];
-    snprintf(disposition, sizeof(disposition), "attachment; filename=\"%s\"", filename);
-    set_response_header(response, "Content-Disposition", disposition);
-
-    // Prevent caching
-    set_response_header(response, "Cache-Control", "no-cache, no-store, must-revalidate");
-    set_response_header(response, "Pragma", "no-cache");
-    set_response_header(response, "Expires", "0");
-
-    log_info("Serving file for download: %s, size: %lld bytes", file_path, (long long)file_size);
-
-    // Allocate memory for the file content
-    response->body = malloc(file_size);
-    if (!response->body) {
-        log_error("Failed to allocate memory for file: %s (size: %lld bytes)",
-                file_path, (long long)file_size);
-        close(fd);
-        create_json_response(response, 500, "{\"error\": \"Server memory allocation failed\"}");
-        return;
-    }
-
-    // Read the file content
-    ssize_t bytes_read = read(fd, response->body, file_size);
-    close(fd);
-
-    if (bytes_read != file_size) {
-        log_error("Failed to read complete file: %s (read %zd of %lld bytes)",
-                file_path, bytes_read, (long long)file_size);
-        free(response->body);
-        create_json_response(response, 500, "{\"error\": \"Failed to read complete file\"}");
-        return;
-    }
-
-    // Set response body length
-    response->body_length = file_size;
-
-    log_info("File prepared for download: %s (%lld bytes)", file_path, (long long)file_size);
-}
-
-/**
- * Serve the direct file download
- */
-void serve_direct_download(http_response_t *response, uint64_t id, recording_metadata_t *metadata) {
-    // Determine if this is an HLS stream (m3u8)
-    const char *ext = strrchr(metadata->file_path, '.');
-    bool is_hls = (ext && strcasecmp(ext, ".m3u8") == 0);
-
-    if (is_hls) {
-        // Check if a direct MP4 recording already exists in the same directory
-        char dir_path[256];
-        const char *last_slash = strrchr(metadata->file_path, '/');
-        if (last_slash) {
-            size_t dir_len = last_slash - metadata->file_path;
-            strncpy(dir_path, metadata->file_path, dir_len);
-            dir_path[dir_len] = '\0';
-        } else {
-            // If no slash, use the current directory
-            strcpy(dir_path, ".");
-        }
-
-        // Check for an existing MP4 file
-        char mp4_path[256];
-        snprintf(mp4_path, sizeof(mp4_path), "%s/recording.mp4", dir_path);
-
-        struct stat mp4_stat;
-        if (stat(mp4_path, &mp4_stat) == 0 && mp4_stat.st_size > 0) {
-            // Direct MP4 exists, serve it
-            log_info("Found direct MP4 recording: %s (%lld bytes)",
-                   mp4_path, (long long)mp4_stat.st_size);
-
-            // Create filename for download
-            char filename[128];
-            snprintf(filename, sizeof(filename), "%s_%lld.mp4",
-                   metadata->stream_name, (long long)metadata->start_time);
-
-            // Set necessary headers
-            set_response_header(response, "Content-Type", "application/octet-stream");
-            char content_length[32];
-            snprintf(content_length, sizeof(content_length), "%lld", (long long)mp4_stat.st_size);
-            set_response_header(response, "Content-Length", content_length);
-            char disposition[256];
-            snprintf(disposition, sizeof(disposition), "attachment; filename=\"%s\"", filename);
-            set_response_header(response, "Content-Disposition", disposition);
-
-            log_info("Serving direct MP4 recording for download: %s", mp4_path);
-
-            // Use existing file serving mechanism
-            int result = create_file_response(response, 200, mp4_path, "application/octet-stream");
-            if (result != 0) {
-                log_error("Failed to create file response: %s", mp4_path);
-                create_json_response(response, 500, "{\"error\": \"Failed to serve recording file\"}");
-                return;
-            }
-
-            log_info("Direct MP4 recording download started: ID=%llu, Path=%s, Filename=%s",
-                   (unsigned long long)id, mp4_path, filename);
-            return;
-        }
-
-        // No direct MP4 found, create one
-        char output_path[256];
-        snprintf(output_path, sizeof(output_path), "%s/download_%llu.mp4",
-                dir_path, (unsigned long long)id);
-
-        log_info("Converting HLS stream to MP4: %s -> %s", metadata->file_path, output_path);
-
-        // Create a more robust FFmpeg command
-        char ffmpeg_cmd[512];
-        snprintf(ffmpeg_cmd, sizeof(ffmpeg_cmd),
-                "ffmpeg -y -i %s -c copy -bsf:a aac_adtstoasc -movflags +faststart %s 2>/dev/null",
-                metadata->file_path, output_path);
-
-        log_info("Running FFmpeg command: %s", ffmpeg_cmd);
-
-        // Execute FFmpeg command
-        int cmd_result = system(ffmpeg_cmd);
-        if (cmd_result != 0) {
-            log_error("FFmpeg command failed with status %d", cmd_result);
-
-            // Try alternative approach with TS files directly
-            log_info("Trying alternative conversion method with TS files");
-            snprintf(ffmpeg_cmd, sizeof(ffmpeg_cmd),
-                    "cd %s && ffmpeg -y -pattern_type glob -i \"*.ts\" -c copy -bsf:a aac_adtstoasc -movflags +faststart %s 2>/dev/null",
-                    dir_path, output_path);
-
-            log_info("Running alternative FFmpeg command: %s", ffmpeg_cmd);
-
-            cmd_result = system(ffmpeg_cmd);
-            if (cmd_result != 0) {
-                log_error("Alternative FFmpeg command failed with status %d", cmd_result);
-                create_json_response(response, 500, "{\"error\": \"Failed to convert recording\"}");
-                return;
-            }
-        }
-
-        // Verify the output file was created and has content
-        struct stat st;
-        if (stat(output_path, &st) != 0 || st.st_size == 0) {
-            log_error("Converted MP4 file not found or empty: %s", output_path);
-            create_json_response(response, 500, "{\"error\": \"Failed to convert recording\"}");
-            return;
-        }
-
-        log_info("Successfully converted HLS to MP4: %s (%lld bytes)",
-                output_path, (long long)st.st_size);
-
-        // Create filename for download
-        char filename[128];
-        snprintf(filename, sizeof(filename), "%s_%lld.mp4",
-               metadata->stream_name, (long long)metadata->start_time);
-
-        // Set necessary headers
-        set_response_header(response, "Content-Type", "application/octet-stream");
-        char content_length[32];
-        snprintf(content_length, sizeof(content_length), "%lld", (long long)st.st_size);
-        set_response_header(response, "Content-Length", content_length);
-        char disposition[256];
-        snprintf(disposition, sizeof(disposition), "attachment; filename=\"%s\"", filename);
-        set_response_header(response, "Content-Disposition", disposition);
-
-        // Serve the converted file
-        int result = create_file_response(response, 200, output_path, "application/octet-stream");
-        if (result != 0) {
-            log_error("Failed to create file response: %s", output_path);
-            create_json_response(response, 500, "{\"error\": \"Failed to serve converted MP4 file\"}");
-            return;
-        }
-
-        log_info("Converted MP4 download started: ID=%llu, Path=%s, Filename=%s",
-               (unsigned long long)id, output_path, filename);
-    } else {
-        // For non-HLS files, serve directly
-        // Create filename for download
-        char filename[128];
-        snprintf(filename, sizeof(filename), "%s_%lld%s",
-               metadata->stream_name, (long long)metadata->start_time,
-               ext ? ext : ".mp4");
-
-        // Get file size
-        struct stat st;
-        if (stat(metadata->file_path, &st) != 0) {
-            log_error("Failed to stat file: %s", metadata->file_path);
-            create_json_response(response, 500, "{\"error\": \"Failed to access recording file\"}");
-            return;
-        }
-
-        // Set necessary headers
-        set_response_header(response, "Content-Type", "application/octet-stream");
-        char content_length[32];
-        snprintf(content_length, sizeof(content_length), "%lld", (long long)st.st_size);
-        set_response_header(response, "Content-Length", content_length);
-        char disposition[256];
-        snprintf(disposition, sizeof(disposition), "attachment; filename=\"%s\"", filename);
-        set_response_header(response, "Content-Disposition", disposition);
-
-        // Serve the file
-        int result = create_file_response(response, 200, metadata->file_path, "application/octet-stream");
-        if (result != 0) {
-            log_error("Failed to create file response: %s", metadata->file_path);
-            create_json_response(response, 500, "{\"error\": \"Failed to serve recording file\"}");
-            return;
-        }
-
-        log_info("Original file download started: ID=%llu, Path=%s, Filename=%s",
-               (unsigned long long)id, metadata->file_path, filename);
-    }
-}
-
-/**
- * Serve a file for download with proper headers
- */
-void serve_download_file(http_response_t *response, const char *file_path, const char *content_type,
-                       const char *stream_name, time_t timestamp) {
-    // Verify file exists and is readable
-    struct stat st;
-    if (stat(file_path, &st) != 0) {
-        log_error("File not found: %s", file_path);
-        create_json_response(response, 404, "{\"error\": \"Recording file not found\"}");
-        return;
-    }
-
-    if (access(file_path, R_OK) != 0) {
-        log_error("File not readable: %s", file_path);
-        create_json_response(response, 403, "{\"error\": \"Recording file not readable\"}");
-        return;
-    }
-
-    if (st.st_size == 0) {
-        log_error("File is empty: %s", file_path);
-        create_json_response(response, 500, "{\"error\": \"Recording file is empty\"}");
-        return;
-    }
-
-    // Generate filename for download
-    char filename[128];
-    char *file_ext = strrchr(file_path, '.');
-    if (!file_ext) {
-        // Default to .mp4 if no extension
-        file_ext = ".mp4";
-    }
-
-    snprintf(filename, sizeof(filename), "%s_%lld%s",
-           stream_name, (long long)timestamp, file_ext);
-
-    // Set response headers for download
-    set_response_header(response, "Content-Type", "application/octet-stream");
-
-    // Set Content-Disposition to force download
-    char disposition[256];
-    snprintf(disposition, sizeof(disposition), "attachment; filename=\"%s\"", filename);
-    set_response_header(response, "Content-Disposition", disposition);
-
-    // Set Cache-Control
-    set_response_header(response, "Cache-Control", "no-cache, no-store, must-revalidate");
-    set_response_header(response, "Pragma", "no-cache");
-    set_response_header(response, "Expires", "0");
-
-    // Log the download attempt
-    log_info("Serving file for download: %s, size: %lld bytes, type: %s",
-           file_path, (long long)st.st_size, content_type);
-
-    // Serve the file - use your existing file serving function
-    int result = create_file_response(response, 200, file_path, "application/octet-stream");
-    if (result != 0) {
-        log_error("Failed to serve file: %s", file_path);
-        create_json_response(response, 500, "{\"error\": \"Failed to serve recording file\"}");
-        return;
-    }
-
-    log_info("Download started: Path=%s, Filename=%s", file_path, filename);
-}
-
-/**
- * Schedule a file for deletion after it has been served
- * This function should be customized based on your application's architecture
- */
-void schedule_file_deletion(const char *file_path) {
-    // Simple implementation: create a background task to delete the file after a delay
-    char delete_cmd[512];
-
-    // Wait 5 minutes before deleting to ensure the file has been fully downloaded
-    snprintf(delete_cmd, sizeof(delete_cmd),
-            "(sleep 300 && rm -f %s) > /dev/null 2>&1 &",
-            file_path);
-
-    system(delete_cmd);
-    log_info("Scheduled temporary file for deletion: %s", file_path);
-}
-
-/**
- * Callback to remove temporary files after they've been sent
- */
-void remove_temp_file_callback(void *data) {
-    if (!data) return;
-
-    char *temp_file_path = (char *)data;
-    log_info("Removing temporary file: %s", temp_file_path);
-
-    if (remove(temp_file_path) != 0) {
-        log_warn("Failed to remove temporary file: %s (error: %s)",
-               temp_file_path, strerror(errno));
-    }
-
-    free(temp_file_path);
-}
-
-/**
- * Handle GET request for debug database info
- */
-void handle_get_debug_recordings(const http_request_t *request, http_response_t *response) {
-    // Get recordings from database with no filters
-    recording_metadata_t recordings[100]; // Limit to 100 recordings
-    int count = get_recording_metadata(0, 0, NULL, recordings, 100);
-
-    if (count < 0) {
-        log_error("DEBUG: Failed to get recordings from database");
-        create_json_response(response, 500, "{\"error\": \"Failed to get recordings\", \"count\": -1}");
-        return;
-    }
-
-    // Create a detailed debug response
-    char *debug_json = malloc(10000); // Allocate a large buffer
-    if (!debug_json) {
+    // Create success response with dynamic allocation
+    char *json = malloc(256); // Allocate enough space for the response
+    if (!json) {
+        log_error("Failed to allocate memory for JSON response");
         create_json_response(response, 500, "{\"error\": \"Memory allocation failed\"}");
         return;
     }
-
-    // Start building JSON
-    int pos = sprintf(debug_json,
-        "{\n"
-        "  \"count\": %d,\n"
-        "  \"recordings\": [\n", count);
-
-    for (int i = 0; i < count; i++) {
-        // Add a comma between items (but not before the first item)
-        if (i > 0) {
-            pos += sprintf(debug_json + pos, ",\n");
-        }
-
-        char path_status[32] = "unknown";
-        struct stat st;
-        if (stat(recordings[i].file_path, &st) == 0) {
-            strcpy(path_status, "exists");
-        } else {
-            strcpy(path_status, "missing");
-        }
-
-        pos += sprintf(debug_json + pos,
-            "    {\n"
-            "      \"id\": %llu,\n"
-            "      \"stream\": \"%s\",\n"
-            "      \"path\": \"%s\",\n"
-            "      \"path_status\": \"%s\",\n"
-            "      \"size\": %llu,\n"
-            "      \"start_time\": %llu,\n"
-            "      \"end_time\": %llu,\n"
-            "      \"complete\": %s\n"
-            "    }",
-            (unsigned long long)recordings[i].id,
-            recordings[i].stream_name,
-            recordings[i].file_path,
-            path_status,
-            (unsigned long long)recordings[i].size_bytes,
-            (unsigned long long)recordings[i].start_time,
-            (unsigned long long)recordings[i].end_time,
-            recordings[i].is_complete ? "true" : "false");
+    
+    int written = snprintf(json, 256, 
+                          "{\"success\": true, \"id\": %llu, \"message\": \"Recording deleted successfully\"}", 
+                          (unsigned long long)id);
+    
+    if (written >= 256) {
+        log_warn("JSON response was truncated (needed %d bytes, had 256)", written);
     }
-
-    // Close JSON
-    pos += sprintf(debug_json + pos, "\n  ]\n}");
-
-    // Create response
-    create_json_response(response, 200, debug_json);
-
-    // Free resources
-    free(debug_json);
+    
+    create_json_response(response, 200, json);
+    
+    // Free allocated memory
+    free(json);
+    
+    log_info("Recording deleted successfully: ID=%llu, Path=%s", (unsigned long long)id, metadata.file_path);
 }
 
 /**

@@ -3,96 +3,13 @@
  * Contains functionality for video playback, layout, fullscreen
  */
 
-/**
- * Update video grid with streams
- */
-function updateVideoGrid(streams) {
-    const videoGrid = document.getElementById('video-grid');
-    if (!videoGrid) return;
-
-    // Clear existing content
-    videoGrid.innerHTML = '';
-
-    if (!streams || streams.length === 0) {
-        const placeholder = document.createElement('div');
-        placeholder.className = 'placeholder';
-        placeholder.innerHTML = `
-            <p>No streams configured</p>
-            <a href="streams.html" class="btn">Configure Streams</a>
-        `;
-        videoGrid.appendChild(placeholder);
-        return;
-    }
-
-    // Get layout
-    const layout = document.getElementById('layout-selector').value;
-
-    // Update video layout
-    updateVideoLayout(layout);
-
-    // Add video elements for each stream
-    streams.forEach(stream => {
-        // Ensure we have an ID for the stream (use name as fallback if needed)
-        const streamId = stream.id || stream.name;
-
-        const videoCell = document.createElement('div');
-        videoCell.className = 'video-cell';
-
-        videoCell.innerHTML = `
-            <div class="stream-info">
-                <span>${stream.name}</span>
-                <span>${stream.width}x${stream.height} · ${stream.fps}fps</span>
-            </div>
-            <video id="video-${stream.name.replace(/\s+/g, '-')}" autoplay muted></video>
-            <div class="stream-controls">
-                <button class="snapshot-btn" data-id="${streamId}" data-name="${stream.name}">
-                    <span>📷</span> Snapshot
-                </button>
-                <button class="fullscreen-btn" data-id="${streamId}" data-name="${stream.name}">
-                    <span>⛶</span> Fullscreen
-                </button>
-            </div>
-            <div class="loading-indicator">
-                <div class="loading-spinner"></div>
-                <span>Connecting...</span>
-            </div>
-        `;
-
-        videoGrid.appendChild(videoCell);
-    });
-
-    // Initialize video players and add event listeners
-    streams.forEach(stream => {
-        initializeVideoPlayer(stream);
-
-        // Ensure we have an ID for the stream (use name as fallback if needed)
-        const streamId = stream.id || stream.name;
-
-        // Add event listener for snapshot button
-        const snapshotBtn = videoGrid.querySelector(`.snapshot-btn[data-id="${streamId}"]`);
-        if (snapshotBtn) {
-            snapshotBtn.addEventListener('click', () => {
-                console.log('Taking snapshot of stream with ID:', streamId);
-                takeSnapshot(streamId);
-            });
-        }
-
-        // Add event listener for fullscreen button
-        const fullscreenBtn = videoGrid.querySelector(`.fullscreen-btn[data-id="${streamId}"]`);
-        if (fullscreenBtn) {
-            fullscreenBtn.addEventListener('click', () => {
-                console.log('Toggling fullscreen for stream with ID:', streamId);
-                toggleStreamFullscreen(stream.name);
-            });
-        }
-    });
-}
 
 /**
  * Update video layout
  */
 function updateVideoLayout(layout) {
     const videoGrid = document.getElementById('video-grid');
+    const streamSelector = document.getElementById('stream-selector');
     if (!videoGrid) return;
 
     // Remove all layout classes
@@ -100,6 +17,51 @@ function updateVideoLayout(layout) {
     
     // Add selected layout class
     videoGrid.classList.add(`layout-${layout}`);
+    
+    // Show/hide stream selector based on layout
+    if (layout === '1' && streamSelector) {
+        streamSelector.style.display = 'inline-block';
+        
+        // If we're switching to single view, show only the selected stream
+        // or the first stream if none is selected
+        const selectedStreamName = streamSelector.value;
+        const videoCells = videoGrid.querySelectorAll('.video-cell');
+        
+        if (videoCells.length > 0) {
+            videoCells.forEach(cell => {
+                const streamName = cell.querySelector('.stream-info span').textContent;
+                if (selectedStreamName && streamName !== selectedStreamName) {
+                    cell.style.display = 'none';
+                } else {
+                    cell.style.display = 'flex';
+                }
+            });
+            
+            // If no stream is selected or the selected stream is not found,
+            // show the first stream and update the selector
+            if (!selectedStreamName || !Array.from(videoCells).some(cell => 
+                cell.querySelector('.stream-info span').textContent === selectedStreamName && 
+                cell.style.display !== 'none')) {
+                
+                const firstCell = videoCells[0];
+                if (firstCell) {
+                    firstCell.style.display = 'flex';
+                    const firstStreamName = firstCell.querySelector('.stream-info span').textContent;
+                    if (streamSelector.querySelector(`option[value="${firstStreamName}"]`)) {
+                        streamSelector.value = firstStreamName;
+                    }
+                }
+            }
+        }
+    } else if (streamSelector) {
+        streamSelector.style.display = 'none';
+        
+        // Show all streams in grid view
+        const videoCells = videoGrid.querySelectorAll('.video-cell');
+        videoCells.forEach(cell => {
+            cell.style.display = 'flex';
+        });
+    }
     
     // Adjust video cells if needed
     const videoCells = videoGrid.querySelectorAll('.video-cell');
@@ -134,9 +96,10 @@ function initializeVideoPlayer(stream) {
         loadingIndicator.style.display = 'flex';
     }
 
-    // Build the HLS stream URL - this would be generated by your backend
+    // Build the HLS stream URL with cache-busting timestamp to prevent stale data
     // Your backend needs to convert RTSP to HLS using FFmpeg
-    const hlsStreamUrl = `/api/streaming/${encodeURIComponent(stream.name)}/hls/index.m3u8`;
+    const timestamp = Date.now();
+    const hlsStreamUrl = `/api/streaming/${encodeURIComponent(stream.name)}/hls/index.m3u8?_t=${timestamp}`;
 
     // Check if HLS is supported natively
     if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
@@ -155,10 +118,13 @@ function initializeVideoPlayer(stream) {
     // Use HLS.js for browsers that don't support HLS natively
     else if (Hls && Hls.isSupported()) {
         const hls = new Hls({
-            maxBufferLength: 30,
-            maxMaxBufferLength: 60,
-            liveSyncDurationCount: 3,
-            enableWorker: true
+            maxBufferLength: 60,            // Increased from 30 to 60 seconds
+            maxMaxBufferLength: 120,        // Increased from 60 to 120 seconds
+            liveSyncDurationCount: 5,       // Increased from 3 to 5 segments
+            enableWorker: true,
+            fragLoadingTimeOut: 20000,      // 20 seconds timeout for fragment loading (default is 8000ms)
+            manifestLoadingTimeOut: 15000,  // 15 seconds timeout for manifest loading (default is 10000ms)
+            levelLoadingTimeOut: 15000      // 15 seconds timeout for level loading (default is 10000ms)
         });
 
         hls.loadSource(hlsStreamUrl);
@@ -183,8 +149,23 @@ function initializeVideoPlayer(stream) {
             }
         });
 
-        // Store hls instance for cleanup
+        // Set up periodic refresh to prevent stale data
+        const refreshInterval = 60000; // 60 seconds
+        const refreshTimer = setInterval(() => {
+            if (videoCell && videoCell.hlsPlayer) {
+                console.log(`Refreshing HLS stream for ${stream.name}`);
+                const newTimestamp = Date.now();
+                const newUrl = `/api/streaming/${encodeURIComponent(stream.name)}/hls/index.m3u8?_t=${newTimestamp}`;
+                videoCell.hlsPlayer.loadSource(newUrl);
+            } else {
+                // Clear interval if video cell or player no longer exists
+                clearInterval(refreshTimer);
+            }
+        }, refreshInterval);
+        
+        // Store hls instance and timer for cleanup
         videoCell.hlsPlayer = hls;
+        videoCell.refreshTimer = refreshTimer;
     }
     // Fallback for unsupported browsers
     else {
@@ -293,10 +274,15 @@ function cleanupVideoPlayer(streamName) {
 
     if (!videoCell) return;
 
-    // Destroy HLS instance if exists
+    // Destroy HLS instance and clear refresh timer if they exist
     if (videoCell.hlsPlayer) {
         videoCell.hlsPlayer.destroy();
         delete videoCell.hlsPlayer;
+    }
+    
+    if (videoCell.refreshTimer) {
+        clearInterval(videoCell.refreshTimer);
+        delete videoCell.refreshTimer;
     }
 
     // Reset video element
@@ -361,6 +347,60 @@ function toggleFullscreen() {
         });
     } else {
         document.exitFullscreen();
+    }
+}
+
+/**
+ * Take a snapshot of the current video frame
+ */
+function takeSnapshot(streamId) {
+    // Find the stream by ID or name
+    const streamElement = document.querySelector(`.snapshot-btn[data-id="${streamId}"]`);
+    if (!streamElement) {
+        console.error('Stream element not found for ID:', streamId);
+        return;
+    }
+
+    // Get the stream name from the data attribute
+    const streamName = streamElement.getAttribute('data-name');
+    if (!streamName) {
+        console.error('Stream name not found for ID:', streamId);
+        return;
+    }
+
+    // Find the video element
+    const videoElementId = `video-${streamName.replace(/\s+/g, '-')}`;
+    const videoElement = document.getElementById(videoElementId);
+    if (!videoElement) {
+        console.error('Video element not found for stream:', streamName);
+        return;
+    }
+
+    // Create a canvas element to capture the frame
+    const canvas = document.createElement('canvas');
+    canvas.width = videoElement.videoWidth;
+    canvas.height = videoElement.videoHeight;
+
+    // Check if we have valid dimensions
+    if (canvas.width === 0 || canvas.height === 0) {
+        console.error('Invalid video dimensions:', canvas.width, canvas.height);
+        alert('Cannot take snapshot: Video not loaded or has invalid dimensions');
+        return;
+    }
+
+    // Draw the current frame to the canvas
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+
+    try {
+        // Convert the canvas to a data URL (JPEG image)
+        const imageData = canvas.toDataURL('image/jpeg', 0.95);
+        
+        // Show the snapshot in the preview modal
+        showSnapshotPreview(imageData, streamName);
+    } catch (error) {
+        console.error('Error creating snapshot:', error);
+        alert('Failed to create snapshot: ' + error.message);
     }
 }
 
@@ -475,4 +515,139 @@ function playRecording(recordingId) {
                 </div>
             `;
         });
+}
+
+/**
+ * Update video grid with streams
+ */
+function updateVideoGrid(streams) {
+    const videoGrid = document.getElementById('video-grid');
+    const streamSelector = document.getElementById('stream-selector');
+    if (!videoGrid) return;
+
+    // Clear existing content
+    videoGrid.innerHTML = '';
+
+    if (!streams || streams.length === 0) {
+        const placeholder = document.createElement('div');
+        placeholder.className = 'placeholder';
+        placeholder.innerHTML = `
+            <p>No streams configured</p>
+            <a href="streams.html" class="btn">Configure Streams</a>
+        `;
+        videoGrid.appendChild(placeholder);
+        return;
+    }
+
+    // Get layout
+    const layout = document.getElementById('layout-selector').value;
+
+    // Update stream selector dropdown
+    if (streamSelector) {
+        // Clear existing options
+        streamSelector.innerHTML = '';
+        
+        // Add options for each stream
+        streams.forEach(stream => {
+            const option = document.createElement('option');
+            option.value = stream.name;
+            option.textContent = stream.name;
+            streamSelector.appendChild(option);
+        });
+        
+        // Remove existing event listeners by cloning and replacing the element
+        const newStreamSelector = streamSelector.cloneNode(true);
+        streamSelector.parentNode.replaceChild(newStreamSelector, streamSelector);
+        
+        // Get the new reference to the stream selector
+        const updatedStreamSelector = document.getElementById('stream-selector');
+        
+        // Add change event listener
+        updatedStreamSelector.addEventListener('change', function() {
+            // Get the current layout
+            const currentLayout = document.getElementById('layout-selector').value;
+            
+            if (currentLayout === '1') {
+                // Show only the selected stream in single view mode
+                const selectedStreamName = this.value;
+                const videoCells = videoGrid.querySelectorAll('.video-cell');
+                
+                videoCells.forEach(cell => {
+                    const streamName = cell.querySelector('.stream-info span').textContent;
+                    cell.style.display = (streamName === selectedStreamName) ? 'flex' : 'none';
+                });
+            }
+        });
+    }
+
+    // Add video elements for each stream
+    streams.forEach(stream => {
+        // Ensure we have an ID for the stream (use name as fallback if needed)
+        const streamId = stream.id || stream.name;
+
+        const videoCell = document.createElement('div');
+        videoCell.className = 'video-cell';
+
+        videoCell.innerHTML = `
+            <video id="video-${stream.name.replace(/\s+/g, '-')}" autoplay muted></video>
+            <div class="stream-info">
+                <span>${stream.name}</span>
+                <span>${stream.width}x${stream.height} · ${stream.fps}fps</span>
+                <div class="stream-controls">
+                    <button class="snapshot-btn" data-id="${streamId}" data-name="${stream.name}">
+                        <span>📷</span> Snapshot
+                    </button>
+                    <button class="fullscreen-btn" data-id="${streamId}" data-name="${stream.name}">
+                        <span>⛶</span> Fullscreen
+                    </button>
+                </div>
+            </div>
+            <div class="loading-indicator">
+                <div class="loading-spinner"></div>
+                <span>Connecting...</span>
+            </div>
+        `;
+
+        videoGrid.appendChild(videoCell);
+    });
+
+    // Initialize video players and add event listeners
+    streams.forEach(stream => {
+        initializeVideoPlayer(stream);
+
+        // Ensure we have an ID for the stream (use name as fallback if needed)
+        const streamId = stream.id || stream.name;
+
+        // Add event listener for snapshot button
+        const snapshotBtn = videoGrid.querySelector(`.snapshot-btn[data-id="${streamId}"]`);
+        if (snapshotBtn) {
+            snapshotBtn.addEventListener('click', () => {
+                console.log('Taking snapshot of stream with ID:', streamId);
+                
+                // Exit fullscreen if active before taking snapshot
+                if (document.fullscreenElement) {
+                    document.exitFullscreen().then(() => {
+                        setTimeout(() => takeSnapshot(streamId), 100);
+                    }).catch(err => {
+                        console.error(`Error exiting fullscreen: ${err.message}`);
+                        takeSnapshot(streamId);
+                    });
+                } else {
+                    takeSnapshot(streamId);
+                }
+            });
+        }
+
+        // Add event listener for fullscreen button
+        const fullscreenBtn = videoGrid.querySelector(`.fullscreen-btn[data-id="${streamId}"]`);
+        if (fullscreenBtn) {
+            fullscreenBtn.addEventListener('click', () => {
+                console.log('Toggling fullscreen for stream with ID:', streamId);
+                toggleStreamFullscreen(stream.name);
+            });
+        }
+    });
+    
+    // Update video layout
+    updateVideoLayout(layout);
 }

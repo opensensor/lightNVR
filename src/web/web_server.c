@@ -36,11 +36,8 @@
 // Buffer size for reading requests
 #define REQUEST_BUFFER_SIZE 8192
 
-// Maximum number of headers
-#define MAX_HEADERS 100
-
 // Maximum size of path
-#define MAX_PATH_SIZE 1024
+#define MAX_PATH_SIZE 512
 
 // Make server socket accessible to signal handlers
 int server_socket = -1;
@@ -276,6 +273,19 @@ int init_web_server(int port, const char *web_root) {
     }
 #endif
 
+    // Set server socket to non-blocking mode for better signal handling
+    int flags = fcntl(web_server.server_socket, F_GETFL, 0);
+    if (flags == -1) {
+        log_error("Failed to get socket flags: %s", strerror(errno));
+    } else {
+        if (fcntl(web_server.server_socket, F_SETFL, flags | O_NONBLOCK) == -1) {
+            log_error("Failed to set socket to non-blocking mode: %s", strerror(errno));
+            // Continue anyway, we'll handle it with timeouts
+        } else {
+            log_debug("Server socket set to non-blocking mode");
+        }
+    }
+
     // Bind socket to port
     struct sockaddr_in server_addr;
     memset(&server_addr, 0, sizeof(server_addr));
@@ -395,70 +405,106 @@ if (join_result != 0) {
     log_info("Web server shutdown complete");
 }
 
-// Server thread function
+// Server thread function with improved signal handling for older Linux kernels
 static void *server_thread_func(void *arg) {
     // Set thread name for debugging
     pthread_setname_np(pthread_self(), "web-server");
 
-    // Setup socket timeout
+    // Use select() with timeout to wait for connections
+    fd_set read_fds;
     struct timeval tv;
-    tv.tv_sec = 1;  // 1 second timeout
-    tv.tv_usec = 0;
-    setsockopt(web_server.server_socket, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
     while (server_running) {
-        // Accept a new connection
-        struct sockaddr_in client_addr;
-        socklen_t client_len = sizeof(client_addr);
-        int client_socket = accept(web_server.server_socket, (struct sockaddr *)&client_addr, &client_len);
+        // Clear the set and add server socket
+        FD_ZERO(&read_fds);
+        FD_SET(web_server.server_socket, &read_fds);
 
-        if (client_socket < 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
-                // Timeout or interrupted - normal condition when checking server_running
+        // Set timeout to 1 second
+        tv.tv_sec = 1;
+        tv.tv_usec = 0;
+
+        // Wait for activity on the socket
+        int activity = select(web_server.server_socket + 1, &read_fds, NULL, NULL, &tv);
+
+        // Check if we should continue running
+        if (!server_running) {
+            log_debug("Server thread detected shutdown flag");
+            break;
+        }
+
+        if (activity < 0) {
+            if (errno == EINTR) {
+                // Interrupted by signal, check if we should continue
+                log_debug("select() interrupted by signal");
                 continue;
             } else {
-                log_error("Failed to accept connection: %s", strerror(errno));
-                // Continue accepting connections - don't exit the loop
+                log_error("select() error: %s", strerror(errno));
                 sleep(1); // Brief pause to prevent high CPU in error state
                 continue;
             }
-        }
-
-        // Set socket timeout for client
-        struct timeval client_tv;
-        client_tv.tv_sec = web_server.connection_timeout;
-        client_tv.tv_usec = 0;
-        setsockopt(client_socket, SOL_SOCKET, SO_RCVTIMEO, &client_tv, sizeof(client_tv));
-        setsockopt(client_socket, SOL_SOCKET, SO_SNDTIMEO, &client_tv, sizeof(client_tv));
-
-        // Update statistics
-        pthread_mutex_lock(&web_server.mutex);
-        web_server.active_connections++;
-        pthread_mutex_unlock(&web_server.mutex);
-
-        // Create a heap-allocated int to pass the socket to the thread pool
-        int *client_socket_ptr = malloc(sizeof(int));
-        if (!client_socket_ptr) {
-            log_error("Failed to allocate memory for client socket");
-            close(client_socket);
-
-            pthread_mutex_lock(&web_server.mutex);
-            web_server.active_connections--;
-            pthread_mutex_unlock(&web_server.mutex);
+        } else if (activity == 0) {
+            // Timeout, just loop again
             continue;
         }
 
-        *client_socket_ptr = client_socket;
+        // Check if server socket has activity
+        if (FD_ISSET(web_server.server_socket, &read_fds)) {
+            // Accept a new connection
+            struct sockaddr_in client_addr;
+            socklen_t client_len = sizeof(client_addr);
+            int client_socket = accept(web_server.server_socket, (struct sockaddr *)&client_addr, &client_len);
 
-        // Add task to thread pool
-        if (!thread_pool_add_task(web_server.thread_pool, handle_client, client_socket_ptr)) {
-            log_error("Failed to add client task to thread pool");
-            free(client_socket_ptr);
-            close(client_socket);
+            if (client_socket < 0) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    // No connection available, just continue
+                    continue;
+                } else if (errno == EINTR) {
+                    // Interrupted by signal
+                    log_debug("accept() interrupted by signal");
+                    continue;
+                } else {
+                    log_error("Failed to accept connection: %s", strerror(errno));
+                    sleep(1); // Brief pause to prevent high CPU in error state
+                    continue;
+                }
+            }
 
+            // Set socket timeout for client
+            struct timeval client_tv;
+            client_tv.tv_sec = web_server.connection_timeout;
+            client_tv.tv_usec = 0;
+            setsockopt(client_socket, SOL_SOCKET, SO_RCVTIMEO, &client_tv, sizeof(client_tv));
+            setsockopt(client_socket, SOL_SOCKET, SO_SNDTIMEO, &client_tv, sizeof(client_tv));
+
+            // Update statistics
             pthread_mutex_lock(&web_server.mutex);
-            web_server.active_connections--;
+            web_server.active_connections++;
             pthread_mutex_unlock(&web_server.mutex);
+
+            // Create a heap-allocated int to pass the socket to the thread pool
+            int *client_socket_ptr = malloc(sizeof(int));
+            if (!client_socket_ptr) {
+                log_error("Failed to allocate memory for client socket");
+                close(client_socket);
+
+                pthread_mutex_lock(&web_server.mutex);
+                web_server.active_connections--;
+                pthread_mutex_unlock(&web_server.mutex);
+                continue;
+            }
+
+            *client_socket_ptr = client_socket;
+
+            // Add task to thread pool
+            if (!thread_pool_add_task(web_server.thread_pool, handle_client, client_socket_ptr)) {
+                log_error("Failed to add client task to thread pool");
+                free(client_socket_ptr);
+                close(client_socket);
+
+                pthread_mutex_lock(&web_server.mutex);
+                web_server.active_connections--;
+                pthread_mutex_unlock(&web_server.mutex);
+            }
         }
     }
 
@@ -845,6 +891,12 @@ int create_json_response(http_response_t *response, int status_code, const char 
     strncpy(response->content_type, "application/json", sizeof(response->content_type) - 1);
     response->content_type[sizeof(response->content_type) - 1] = '\0';
 
+    // Free any existing response body to prevent memory leaks
+    if (response->body) {
+        free(response->body);
+        response->body = NULL;
+    }
+
     // Use standard strdup instead of safe_strdup if it's causing issues
     response->body = strdup(json_data);
     if (!response->body) {
@@ -882,6 +934,12 @@ int create_file_response(http_response_t *response, int status_code,
         log_error("Invalid file size for %s: %ld", file_path, file_size);
         fclose(file);
         return -1;
+    }
+
+    // Free any existing response body to prevent memory leaks
+    if (response->body) {
+        free(response->body);
+        response->body = NULL;
     }
 
     // Allocate memory for file content
@@ -1090,6 +1148,12 @@ int create_text_response(http_response_t *response, int status_code,
         response->content_type[sizeof(response->content_type) - 1] = '\0';
     }
 
+    // Free any existing response body to prevent memory leaks
+    if (response->body) {
+        free(response->body);
+        response->body = NULL;
+    }
+
     response->body = strdup(text);
     if (!response->body) {
         log_error("Failed to allocate memory for response body");
@@ -1116,6 +1180,12 @@ int create_redirect_response(http_response_t *response, int status_code, const c
     response->status_code = status_code;
     strncpy(response->content_type, "text/html", sizeof(response->content_type) - 1);
     response->content_type[sizeof(response->content_type) - 1] = '\0';
+
+    // Free any existing response body to prevent memory leaks
+    if (response->body) {
+        free(response->body);
+        response->body = NULL;
+    }
 
     // Create a simple HTML body with the redirect
     char *body = malloc(1024);

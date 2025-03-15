@@ -69,6 +69,25 @@ function setupModals() {
             closeVideoModal();
         }
     });
+    
+    // Close modals when Escape key is pressed
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            // Close any open modals
+            if (streamModal && streamModal.style.display === 'block') {
+                streamModal.style.display = 'none';
+            }
+            if (videoModal && videoModal.style.display === 'block') {
+                closeVideoModal();
+            }
+            
+            // Also close snapshot modal if it exists and is open
+            const snapshotModal = document.getElementById('snapshot-preview-modal');
+            if (snapshotModal && snapshotModal.style.display === 'block') {
+                snapshotModal.style.display = 'none';
+            }
+        }
+    });
 }
 
 /**
@@ -136,6 +155,8 @@ function setupSnapshotModal() {
             modal.style.display = 'none';
         }
     });
+    
+    // Note: Escape key handling is now in setupModals() to handle all modals consistently
 }
 
 /**
