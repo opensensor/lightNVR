@@ -603,24 +603,24 @@ static char* create_stream_json(const stream_config_t *stream) {
              "\"detection_based_recording\": %s",
              stream->detection_based_recording ? "true" : "false");
     
-    // Only include detection model and parameters if detection-based recording is enabled
-    if (stream->detection_based_recording) {
-        // Convert threshold from 0.0-1.0 to percentage (0-100)
-        int threshold_percent = (int)(stream->detection_threshold * 100.0f);
-        
-        pos += snprintf(json + pos, 2048 - pos,
-                 ","
-                 "\"detection_model\": \"%s\","
-                 "\"detection_threshold\": %d,"
-                 "\"detection_interval\": %d,"
-                 "\"pre_detection_buffer\": %d,"
-                 "\"post_detection_buffer\": %d",
-                 stream->detection_model,
-                 threshold_percent,
-                 stream->detection_interval,
-                 stream->pre_detection_buffer,
-                 stream->post_detection_buffer);
-    }
+    // Always include detection model and parameters, even when detection-based recording is disabled
+    // This ensures the frontend always has access to these settings
+    
+    // Convert threshold from 0.0-1.0 to percentage (0-100)
+    int threshold_percent = (int)(stream->detection_threshold * 100.0f);
+    
+    pos += snprintf(json + pos, 2048 - pos,
+             ","
+             "\"detection_model\": \"%s\","
+             "\"detection_threshold\": %d,"
+             "\"detection_interval\": %d,"
+             "\"pre_detection_buffer\": %d,"
+             "\"post_detection_buffer\": %d",
+             stream->detection_model,
+             threshold_percent,
+             stream->detection_interval,
+             stream->pre_detection_buffer,
+             stream->post_detection_buffer);
     
     // Close the JSON object
     pos += snprintf(json + pos, 2048 - pos, "}");
@@ -728,26 +728,41 @@ static int parse_stream_json(const char *json, stream_config_t *stream) {
     // Parse detection-based recording options
     stream->detection_based_recording = get_json_boolean_value(json, "detection_based_recording", false);
     
-    if (stream->detection_based_recording) {
-        // Only parse detection options if detection-based recording is enabled
-        char *detection_model = get_json_string_value(json, "detection_model");
-        if (detection_model) {
-            strncpy(stream->detection_model, detection_model, MAX_PATH_LENGTH - 1);
-            stream->detection_model[MAX_PATH_LENGTH - 1] = '\0';
-            free(detection_model);
-        }
-        
-        // Parse detection threshold (convert from percentage to 0.0-1.0 range)
+    // Always parse detection options, even if detection-based recording is disabled
+    // This ensures we preserve the detection settings even when detection is temporarily disabled
+    char *detection_model = get_json_string_value(json, "detection_model");
+    if (detection_model) {
+        strncpy(stream->detection_model, detection_model, MAX_PATH_LENGTH - 1);
+        stream->detection_model[MAX_PATH_LENGTH - 1] = '\0';
+        free(detection_model);
+    }
+    
+    // Parse detection threshold (convert from percentage to 0.0-1.0 range)
+    if (get_json_has_key(json, "detection_threshold")) {
         int threshold_percent = get_json_integer_value(json, "detection_threshold", 50);
         stream->detection_threshold = (float)threshold_percent / 100.0f;
-        
-        // Parse detection interval
+    }
+    
+    // Parse detection interval
+    if (get_json_has_key(json, "detection_interval")) {
         stream->detection_interval = get_json_integer_value(json, "detection_interval", 10);
-        
-        // Parse pre/post detection buffers
+    }
+    
+    // Parse pre/post detection buffers
+    if (get_json_has_key(json, "pre_detection_buffer")) {
         stream->pre_detection_buffer = get_json_integer_value(json, "pre_detection_buffer", 5);
+    }
+    
+    if (get_json_has_key(json, "post_detection_buffer")) {
         stream->post_detection_buffer = get_json_integer_value(json, "post_detection_buffer", 10);
-        
+    }
+    
+    log_info("Stream config parsed: name=%s, enabled=%s, detection=%s", 
+            stream->name, 
+            stream->enabled ? "true" : "false",
+            stream->detection_based_recording ? "true" : "false");
+    
+    if (detection_model || get_json_has_key(json, "detection_threshold")) {
         log_info("Detection options parsed: model=%s, threshold=%.2f, interval=%d, pre_buffer=%d, post_buffer=%d",
                 stream->detection_model, stream->detection_threshold, stream->detection_interval,
                 stream->pre_detection_buffer, stream->post_detection_buffer);

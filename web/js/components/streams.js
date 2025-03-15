@@ -256,15 +256,23 @@ function editStream(streamId) {
                 el.style.display = detectionEnabled.checked ? 'block' : 'none';
             });
             
-            // If detection is enabled, make sure models are loaded
+            // If detection is enabled, make sure models are loaded immediately
             if (detectionEnabled.checked) {
                 loadDetectionModels();
+                
+                // Force display of detection options
+                detectionOptions.forEach(el => {
+                    el.style.display = 'block';
+                });
             }
             }
             
             // Set detection model if available
             if (stream.detection_model) {
-                // Wait a bit for models to load
+                // Load models immediately and then set the selected model
+                loadDetectionModels();
+                
+                // Wait a bit for models to load, but use a longer timeout to ensure they're loaded
                 setTimeout(() => {
                     const modelSelect = document.getElementById('stream-detection-model');
                     if (modelSelect) {
@@ -276,7 +284,7 @@ function editStream(streamId) {
                             }
                         }
                     }
-                }, 500);
+                }, 1000);
             }
             
             // Set detection threshold
