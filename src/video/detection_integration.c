@@ -27,22 +27,50 @@ extern int process_frame_for_detection(const char *stream_name, const unsigned c
                                      int width, int height, int channels, time_t frame_time);
 
 /**
- * Process a video packet for detection
- * This function should be called from the HLS streaming code
+ * Process a decoded frame for detection
+ * This function should be called from the HLS streaming code with already decoded frames
+ * 
+ * @param stream_name The name of the stream
+ * @param frame The decoded AVFrame
+ * @param detection_interval How often to process frames (e.g., every 10 frames)
+ * @return 0 on success, -1 on error
  */
-int process_packet_for_detection(const char *stream_name, AVPacket *pkt, AVStream *stream, int detection_interval) {
-    static int frame_counter = 0;
+int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame, int detection_interval) {
+    static int frame_counters[MAX_STREAMS] = {0};
+    static char stream_names[MAX_STREAMS][MAX_STREAM_NAME] = {{0}};
     
-    // Only process every Nth frame based on detection_interval
-    frame_counter++;
-    log_info("Processing frame %d for detection (interval: %d)", frame_counter, detection_interval);
-    
-    if (frame_counter % detection_interval != 0) {
-        log_info("Skipping frame %d (not on interval)", frame_counter);
-        return 0;
+    // Find the stream's frame counter
+    int stream_idx = -1;
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (stream_names[i][0] == '\0') {
+            // Empty slot, use it for this stream
+            if (stream_idx == -1) {
+                stream_idx = i;
+                strncpy(stream_names[i], stream_name, MAX_STREAM_NAME - 1);
+                stream_names[i][MAX_STREAM_NAME - 1] = '\0';
+            }
+        } else if (strcmp(stream_names[i], stream_name) == 0) {
+            // Found existing stream
+            stream_idx = i;
+            break;
+        }
     }
     
-    log_info("Frame %d is on interval, processing for detection", frame_counter);
+    if (stream_idx == -1) {
+        log_error("Too many streams for frame counters");
+        return -1;
+    }
+    
+    // Increment frame counter for this stream
+    frame_counters[stream_idx]++;
+    int frame_counter = frame_counters[stream_idx];
+    
+    // Reset counter if it gets too large to prevent overflow
+    if (frame_counter > 1000000) {
+        frame_counters[stream_idx] = 0;
+    }
+    
+    log_info("Processing decoded frame %d for stream %s (interval: %d)", frame_counter, stream_name, detection_interval);
     
     // Get stream configuration
     stream_handle_t stream_handle = get_stream_by_name(stream_name);
@@ -64,6 +92,74 @@ int process_packet_for_detection(const char *stream_name, AVPacket *pkt, AVStrea
     }
     
     log_info("Detection enabled for stream %s with model %s", stream_name, config.detection_model);
+    
+    // Convert frame to RGB format for detection
+    struct SwsContext *sws_ctx = sws_getContext(
+        frame->width, frame->height, frame->format,
+        frame->width, frame->height, AV_PIX_FMT_RGB24,
+        SWS_BILINEAR, NULL, NULL, NULL);
+    
+    if (!sws_ctx) {
+        log_error("Failed to create SwsContext for stream %s", stream_name);
+        return -1;
+    }
+    
+    // Allocate RGB frame
+    AVFrame *rgb_frame = av_frame_alloc();
+    if (!rgb_frame) {
+        log_error("Failed to allocate RGB frame for stream %s", stream_name);
+        sws_freeContext(sws_ctx);
+        return -1;
+    }
+    
+    // Allocate buffer for RGB frame
+    int buffer_size = av_image_get_buffer_size(AV_PIX_FMT_RGB24, frame->width, frame->height, 1);
+    uint8_t *buffer = (uint8_t *)av_malloc(buffer_size);
+    if (!buffer) {
+        log_error("Failed to allocate buffer for RGB frame for stream %s", stream_name);
+        av_frame_free(&rgb_frame);
+        sws_freeContext(sws_ctx);
+        return -1;
+    }
+    
+    // Setup RGB frame
+    av_image_fill_arrays(rgb_frame->data, rgb_frame->linesize, buffer,
+                        AV_PIX_FMT_RGB24, frame->width, frame->height, 1);
+    
+    // Convert frame to RGB
+    sws_scale(sws_ctx, (const uint8_t * const *)frame->data, frame->linesize, 0,
+             frame->height, rgb_frame->data, rgb_frame->linesize);
+    
+    log_info("Converted frame to RGB for stream %s", stream_name);
+    
+    // Process frame for detection
+    time_t frame_time = time(NULL);
+    log_info("Calling process_frame_for_detection for stream %s", stream_name);
+    process_frame_for_detection(stream_name, rgb_frame->data[0], frame->width, frame->height, 3, frame_time);
+    
+    // Cleanup
+    av_free(buffer);
+    av_frame_free(&rgb_frame);
+    sws_freeContext(sws_ctx);
+    
+    log_info("Finished processing frame %d for detection", frame_counter);
+    return 0;
+}
+
+/**
+ * Process a video packet for detection
+ * This function is kept for backward compatibility but now delegates to process_decoded_frame_for_detection
+ * when a frame is available
+ * 
+ * @param stream_name The name of the stream
+ * @param pkt The AVPacket to process
+ * @param stream The AVStream the packet belongs to
+ * @param detection_interval How often to process frames (e.g., every 10 frames)
+ * @return 0 on success, -1 on error
+ */
+int process_packet_for_detection(const char *stream_name, AVPacket *pkt, AVStream *stream, int detection_interval) {
+    log_info("process_packet_for_detection called for stream %s - this function is deprecated", stream_name);
+    log_info("Use process_decoded_frame_for_detection instead for better performance");
     
     // Get codec parameters
     AVCodecParameters *codecpar = stream->codecpar;
@@ -127,65 +223,12 @@ int process_packet_for_detection(const char *stream_name, AVPacket *pkt, AVStrea
         return 0;
     }
     
-    log_info("Received frame for stream %s: %dx%d", stream_name, frame->width, frame->height);
-    
-    // Convert frame to RGB format for detection
-    struct SwsContext *sws_ctx = sws_getContext(
-        frame->width, frame->height, codec_ctx->pix_fmt,
-        frame->width, frame->height, AV_PIX_FMT_RGB24,
-        SWS_BILINEAR, NULL, NULL, NULL);
-    
-    if (!sws_ctx) {
-        log_error("Failed to create SwsContext for stream %s", stream_name);
-        av_frame_free(&frame);
-        avcodec_free_context(&codec_ctx);
-        return -1;
-    }
-    
-    // Allocate RGB frame
-    AVFrame *rgb_frame = av_frame_alloc();
-    if (!rgb_frame) {
-        log_error("Failed to allocate RGB frame for stream %s", stream_name);
-        sws_freeContext(sws_ctx);
-        av_frame_free(&frame);
-        avcodec_free_context(&codec_ctx);
-        return -1;
-    }
-    
-    // Allocate buffer for RGB frame
-    int buffer_size = av_image_get_buffer_size(AV_PIX_FMT_RGB24, frame->width, frame->height, 1);
-    uint8_t *buffer = (uint8_t *)av_malloc(buffer_size);
-    if (!buffer) {
-        log_error("Failed to allocate buffer for RGB frame for stream %s", stream_name);
-        av_frame_free(&rgb_frame);
-        sws_freeContext(sws_ctx);
-        av_frame_free(&frame);
-        avcodec_free_context(&codec_ctx);
-        return -1;
-    }
-    
-    // Setup RGB frame
-    av_image_fill_arrays(rgb_frame->data, rgb_frame->linesize, buffer,
-                        AV_PIX_FMT_RGB24, frame->width, frame->height, 1);
-    
-    // Convert frame to RGB
-    sws_scale(sws_ctx, (const uint8_t * const *)frame->data, frame->linesize, 0,
-             frame->height, rgb_frame->data, rgb_frame->linesize);
-    
-    log_info("Converted frame to RGB for stream %s", stream_name);
-    
-    // Process frame for detection
-    time_t frame_time = time(NULL);
-    log_info("Calling process_frame_for_detection for stream %s", stream_name);
-    process_frame_for_detection(stream_name, rgb_frame->data[0], frame->width, frame->height, 3, frame_time);
+    // Process the decoded frame
+    ret = process_decoded_frame_for_detection(stream_name, frame, detection_interval);
     
     // Cleanup
-    av_free(buffer);
-    av_frame_free(&rgb_frame);
-    sws_freeContext(sws_ctx);
     av_frame_free(&frame);
     avcodec_free_context(&codec_ctx);
     
-    log_info("Finished processing frame %d for detection", frame_counter);
-    return 0;
+    return ret;
 }

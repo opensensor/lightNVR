@@ -301,11 +301,22 @@ int process_frame_for_detection(const char *stream_name, const unsigned char *fr
     for (int i = 0; i < result.count; i++) {
         if (result.detections[i].confidence >= detection_recordings[slot].threshold) {
             detection_triggered = true;
-            log_info("Detection triggered for stream %s: %s (%.2f%%)", 
+            log_info("Detection triggered for stream %s: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]", 
                     stream_name, result.detections[i].label, 
-                    result.detections[i].confidence * 100.0f);
-            break;
+                    result.detections[i].confidence * 100.0f,
+                    result.detections[i].x, result.detections[i].y,
+                    result.detections[i].width, result.detections[i].height);
+        } else {
+            log_info("Detection below threshold for stream %s: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]", 
+                    stream_name, result.detections[i].label, 
+                    result.detections[i].confidence * 100.0f,
+                    result.detections[i].x, result.detections[i].y,
+                    result.detections[i].width, result.detections[i].height);
         }
+    }
+    
+    if (result.count == 0) {
+        log_info("No objects detected for stream %s", stream_name);
     }
     
     // Update last detection time if triggered
