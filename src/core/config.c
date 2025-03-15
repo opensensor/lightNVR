@@ -422,12 +422,10 @@ int load_config(config_t *config) {
     // Load default configuration
     load_default_config(config);
     
-    // Try to load from config file - check both old and new formats
+    // Try to load from config file - ONLY use INI format
     const char *config_paths[] = {
-        "./lightnvr.conf.ini", // New INI format
-        "/etc/lightnvr/lightnvr.conf.ini", // New INI format
-        "./lightnvr.conf", // Old format
-        "/etc/lightnvr/lightnvr.conf", // Old format
+        "./lightnvr.ini", // Current directory INI format
+        "/etc/lightnvr/lightnvr.ini", // System directory INI format
         NULL
     };
     
@@ -442,11 +440,47 @@ int load_config(config_t *config) {
         }
     }
     
+    // If no INI config file was found, check for old format and convert if found
+    if (!loaded) {
+        const char *old_config_paths[] = {
+            "./lightnvr.conf", // Old format
+            "/etc/lightnvr/lightnvr.conf", // Old format
+            NULL
+        };
+        
+        for (int i = 0; old_config_paths[i] != NULL; i++) {
+            if (access(old_config_paths[i], R_OK) == 0) {
+                log_warn("Found old format configuration file: %s", old_config_paths[i]);
+                log_info("Converting to INI format...");
+                
+                // Load the old format config
+                if (load_config_from_file(old_config_paths[i], config) == 0) {
+                    // Save in INI format
+                    const char *ini_path = "./lightnvr.ini";
+                    
+                    // Check if /etc/lightnvr exists and is writable
+                    struct stat st;
+                    if (stat("/etc/lightnvr", &st) == 0 && S_ISDIR(st.st_mode) && access("/etc/lightnvr", W_OK) == 0) {
+                        ini_path = "/etc/lightnvr/lightnvr.ini";
+                    }
+                    
+                    if (save_config(config, ini_path) == 0) {
+                        log_info("Successfully converted configuration to INI format: %s", ini_path);
+                        loaded = 1;
+                        break;
+                    } else {
+                        log_error("Failed to save converted configuration to INI format");
+                    }
+                }
+            }
+        }
+    }
+    
     if (!loaded) {
         log_warn("No configuration file found, using defaults");
     }
 
-    // In load_config() or wherever you're setting up config:
+    // Set default web root if not specified
     if (strlen(config->web_root) == 0) {
         // Set a default web root path
         strcpy(config->web_root, "/var/www/lightnvr");  // or another appropriate default
@@ -489,12 +523,97 @@ int load_config(config_t *config) {
     return 0;
 }
 
+/**
+ * Reload configuration from disk
+ * This is used to refresh the global config after settings changes
+ * 
+ * @param config Pointer to config structure to fill
+ * @return 0 on success, non-zero on failure
+ */
+int reload_config(config_t *config) {
+    if (!config) return -1;
+    
+    log_info("Reloading configuration from disk");
+    
+    // Save a copy of the current config for comparison
+    config_t old_config;
+    memcpy(&old_config, config, sizeof(config_t));
+    
+    // Load the configuration
+    int result = load_config(config);
+    if (result != 0) {
+        log_error("Failed to reload configuration");
+        return result;
+    }
+    
+    // Log changes
+    if (old_config.log_level != config->log_level) {
+        log_info("Log level changed: %d -> %d", old_config.log_level, config->log_level);
+    }
+    
+    if (old_config.web_port != config->web_port) {
+        log_info("Web port changed: %d -> %d", old_config.web_port, config->web_port);
+        log_warn("Web port change requires restart to take effect");
+    }
+    
+    if (strcmp(old_config.storage_path, config->storage_path) != 0) {
+        log_info("Storage path changed: %s -> %s", old_config.storage_path, config->storage_path);
+    }
+    
+    if (old_config.max_storage_size != config->max_storage_size) {
+        log_info("Max storage size changed: %lu -> %lu bytes", 
+                (unsigned long)old_config.max_storage_size, 
+                (unsigned long)config->max_storage_size);
+    }
+    
+    if (old_config.retention_days != config->retention_days) {
+        log_info("Retention days changed: %d -> %d", old_config.retention_days, config->retention_days);
+    }
+    
+    log_info("Configuration reloaded successfully");
+    return 0;
+}
+
 // Save configuration to file in INI format
 int save_config(const config_t *config, const char *path) {
-    if (!config || !path) return -1;
+    if (!config || !path) {
+        log_error("Invalid parameters for save_config: config=%p, path=%p", config, path);
+        return -1;
+    }
     
     log_info("Attempting to save configuration to %s", path);
     
+    // Check if directory exists and is writable
+    char dir_path[MAX_PATH_LENGTH];
+    strncpy(dir_path, path, MAX_PATH_LENGTH - 1);
+    dir_path[MAX_PATH_LENGTH - 1] = '\0';
+    
+    // Get directory part
+    char *last_slash = strrchr(dir_path, '/');
+    if (last_slash) {
+        *last_slash = '\0'; // Truncate at last slash to get directory
+        
+        // Check if directory exists
+        struct stat st;
+        if (stat(dir_path, &st) != 0) {
+            log_warn("Directory %s does not exist, attempting to create it", dir_path);
+            if (create_directory(dir_path) != 0) {
+                log_error("Failed to create directory %s: %s", dir_path, strerror(errno));
+                return -1;
+            }
+        } else if (!S_ISDIR(st.st_mode)) {
+            log_error("Path %s exists but is not a directory", dir_path);
+            return -1;
+        }
+        
+        // Check if directory is writable
+        if (access(dir_path, W_OK) != 0) {
+            log_error("Directory %s is not writable: %s", dir_path, strerror(errno));
+            return -1;
+        }
+    }
+    
+    // Try to open the file for writing
     FILE *file = fopen(path, "w");
     if (!file) {
         log_error("Could not open config file for writing: %s (error: %s)", path, strerror(errno));

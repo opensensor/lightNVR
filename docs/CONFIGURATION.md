@@ -11,8 +11,8 @@ LightNVR supports two configuration file formats:
 
 By default, LightNVR looks for a configuration file in the following locations (in order):
 
-1. `./lightnvr.conf.ini` (INI format in current directory)
-2. `/etc/lightnvr/lightnvr.conf.ini` (INI format in system directory)
+1. `./lightnvr.ini` (INI format in current directory)
+2. `/etc/lightnvr/lightnvr.ini` (INI format in system directory)
 3. `./lightnvr.conf` (legacy format in current directory)
 4. `/etc/lightnvr/lightnvr.conf` (legacy format in system directory)
 

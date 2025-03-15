@@ -144,87 +144,9 @@ function saveSettings() {
     const settingsContainer = document.querySelector('.settings-container');
     if (!settingsContainer) return;
 
-    // Show loading indicator with timeout information
-    const loadingIndicator = document.createElement('div');
-    loadingIndicator.className = 'loading-indicator';
-    loadingIndicator.innerHTML = '<div class="spinner"></div><p>Saving settings...</p><div class="timeout-counter">30</div>';
-    loadingIndicator.style.position = 'absolute';
-    loadingIndicator.style.top = '0';
-    loadingIndicator.style.left = '0';
-    loadingIndicator.style.width = '100%';
-    loadingIndicator.style.height = '100%';
-    loadingIndicator.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
-    loadingIndicator.style.display = 'flex';
-    loadingIndicator.style.flexDirection = 'column';
-    loadingIndicator.style.justifyContent = 'center';
-    loadingIndicator.style.alignItems = 'center';
-    loadingIndicator.style.zIndex = '1000';
-    loadingIndicator.style.color = 'white';
-    
-    // Add spinner style
-    const spinner = loadingIndicator.querySelector('.spinner');
-    spinner.style.width = '40px';
-    spinner.style.height = '40px';
-    spinner.style.border = '4px solid rgba(255, 255, 255, 0.3)';
-    spinner.style.borderRadius = '50%';
-    spinner.style.borderTopColor = 'white';
-    spinner.style.animation = 'spin 1s ease-in-out infinite';
-    spinner.style.marginBottom = '10px';
-    
-    // Style the timeout counter
-    const timeoutCounter = loadingIndicator.querySelector('.timeout-counter');
-    timeoutCounter.style.marginTop = '10px';
-    timeoutCounter.style.fontSize = '14px';
-    timeoutCounter.style.color = '#ccc';
-    
-    settingsContainer.style.position = 'relative';
-    settingsContainer.appendChild(loadingIndicator);
-    
-    // Set up timeout counter
-    let timeLeft = 30;
-    const countdownInterval = setInterval(() => {
-        timeLeft--;
-        timeoutCounter.textContent = timeLeft;
-        
-        if (timeLeft <= 10) {
-            timeoutCounter.style.color = '#ff6b6b';
-        }
-        
-        if (timeLeft <= 0) {
-            clearInterval(countdownInterval);
-        }
-    }, 1000);
-    
-    // Set up request timeout
-    const timeoutId = setTimeout(() => {
-        clearInterval(countdownInterval);
-        
-        // Show timeout error
-        const statusEl = document.getElementById('settings-status');
-        if (statusEl) {
-            statusEl.textContent = 'Error: Request timed out. The server may still be processing your request.';
-            statusEl.className = 'status-message error';
-            statusEl.style.display = 'block';
-            
-            // Add retry button
-            const retryButton = document.createElement('button');
-            retryButton.textContent = 'Retry';
-            retryButton.className = 'btn-primary';
-            retryButton.style.marginTop = '10px';
-            retryButton.addEventListener('click', () => {
-                statusEl.style.display = 'none';
-                saveSettings();
-            });
-            statusEl.appendChild(retryButton);
-        } else {
-            showStatusMessage('Error: Request timed out', 'error');
-        }
-        
-        // Remove loading indicator
-        if (settingsContainer.contains(loadingIndicator)) {
-            settingsContainer.removeChild(loadingIndicator);
-        }
-    }, 30000); // 30 second timeout
+    // Create and show progress indicator
+    const progressContainer = createProgressIndicator(settingsContainer, 'Saving settings...');
+    updateProgress(progressContainer, 10, 'Preparing settings data...');
 
     try {
         // Collect all settings from the form with validation
@@ -256,33 +178,68 @@ function saveSettings() {
             throw new Error('Swap size must be at least 32 MB');
         }
 
+        updateProgress(progressContainer, 30, 'Sending settings to server...');
+
+        // Set up a timeout for the fetch operation
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+
+        console.log('Sending settings to server:', settings);
+        
+        // Log the settings we're about to send
+        console.log('Settings to save:', JSON.stringify(settings, null, 2));
+        
+        // Try to save to a local file first as a fallback
+        try {
+            // Store settings in localStorage as a backup
+            localStorage.setItem('lightnvr_settings_backup', JSON.stringify(settings));
+            console.log('Settings backup saved to localStorage');
+        } catch (e) {
+            console.warn('Failed to save settings backup to localStorage:', e);
+        }
+        
         // Send settings to the server with improved error handling and timeout
         fetch('/api/settings', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache'
             },
-            body: JSON.stringify(settings)
+            body: JSON.stringify(settings),
+            signal: controller.signal
         })
         .then(response => {
-            if (!response.ok) {
-                return response.text().then(text => {
+            console.log('Received response from server:', response.status, response.statusText);
+            updateProgress(progressContainer, 70, 'Processing server response...');
+            
+            // Log the raw response for debugging
+            return response.text().then(text => {
+                console.log('Raw response text:', text);
+                
+                if (!response.ok) {
                     try {
                         const data = JSON.parse(text);
                         throw new Error(data.error || 'Failed to save settings');
                     } catch (e) {
                         throw new Error(`Server error: ${response.status} ${response.statusText}`);
                     }
-                });
-            }
-            return { success: true };
+                }
+                
+                try {
+                    return JSON.parse(text);
+                } catch (e) {
+                    console.warn('Server returned non-JSON response:', text);
+                    // If the server returned a non-JSON response but status was OK,
+                    // we'll assume success
+                    return { success: true };
+                }
+            });
         })
-        .then(() => {
-            console.log('Settings saved successfully');
-            
-            // Clear timeout and interval
+        .then(data => {
             clearTimeout(timeoutId);
-            clearInterval(countdownInterval);
+            console.log('Settings saved successfully:', data);
+            updateProgress(progressContainer, 100, 'Settings saved successfully!');
             
             // Show success message
             const statusEl = document.getElementById('settings-status');
@@ -300,22 +257,31 @@ function saveSettings() {
                 showStatusMessage('Settings saved successfully');
             }
             
-            // Remove loading indicator
-            if (settingsContainer.contains(loadingIndicator)) {
-                settingsContainer.removeChild(loadingIndicator);
-            }
+            // Reload settings to ensure we have the latest values
+            setTimeout(() => {
+                loadSettings();
+            }, 1000);
+            
+            // Remove progress indicator after a delay
+            setTimeout(() => {
+                removeProgressIndicator(progressContainer);
+            }, 1500);
         })
         .catch(error => {
+            clearTimeout(timeoutId);
             console.error('Error saving settings:', error);
             
-            // Clear timeout and interval
-            clearTimeout(timeoutId);
-            clearInterval(countdownInterval);
+            let errorMessage = error.message;
+            if (error.name === 'AbortError') {
+                errorMessage = 'Request timed out. The server may still be processing your request.';
+            }
+            
+            updateProgress(progressContainer, 100, 'Error: ' + errorMessage, true);
             
             // Show error message
             const statusEl = document.getElementById('settings-status');
             if (statusEl) {
-                statusEl.textContent = 'Error saving settings: ' + error.message;
+                statusEl.textContent = 'Error saving settings: ' + errorMessage;
                 statusEl.className = 'status-message error';
                 statusEl.style.display = 'block';
                 
@@ -326,25 +292,20 @@ function saveSettings() {
                 retryButton.style.marginTop = '10px';
                 retryButton.addEventListener('click', () => {
                     statusEl.style.display = 'none';
+                    removeProgressIndicator(progressContainer);
                     saveSettings();
                 });
                 statusEl.appendChild(retryButton);
             } else {
                 // Fallback to the global status message
-                showStatusMessage('Error saving settings: ' + error.message, 'error');
+                showStatusMessage('Error saving settings: ' + errorMessage, 'error');
             }
             
-            // Remove loading indicator
-            if (settingsContainer.contains(loadingIndicator)) {
-                settingsContainer.removeChild(loadingIndicator);
-            }
+            // Keep the progress indicator visible with the error
         });
     } catch (error) {
         console.error('Error preparing settings:', error);
-        
-        // Clear timeout and interval
-        clearTimeout(timeoutId);
-        clearInterval(countdownInterval);
+        updateProgress(progressContainer, 100, 'Error: ' + error.message, true);
         
         // Show error message
         const statusEl = document.getElementById('settings-status');
@@ -360,16 +321,12 @@ function saveSettings() {
             retryButton.style.marginTop = '10px';
             retryButton.addEventListener('click', () => {
                 statusEl.style.display = 'none';
+                removeProgressIndicator(progressContainer);
                 saveSettings();
             });
             statusEl.appendChild(retryButton);
         } else {
             showStatusMessage('Error: ' + error.message, 'error');
-        }
-        
-        // Remove loading indicator
-        if (settingsContainer.contains(loadingIndicator)) {
-            settingsContainer.removeChild(loadingIndicator);
         }
     }
 }

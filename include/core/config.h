@@ -74,14 +74,23 @@ typedef struct {
 /**
  * Load configuration from default locations
  * Searches in this order:
- * 1. Command line specified path
- * 2. ./lightnvr.conf
- * 3. /etc/lightnvr/lightnvr.conf
+ * 1. ./lightnvr.ini
+ * 2. /etc/lightnvr/lightnvr.ini
+ * 3. If not found, looks for old format and converts it
  * 
  * @param config Pointer to config structure to fill
  * @return 0 on success, non-zero on failure
  */
 int load_config(config_t *config);
+
+/**
+ * Reload configuration from disk
+ * This is used to refresh the global config after settings changes
+ * 
+ * @param config Pointer to config structure to fill
+ * @return 0 on success, non-zero on failure
+ */
+int reload_config(config_t *config);
 
 /**
  * Save configuration to specified file
