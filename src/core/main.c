@@ -20,8 +20,9 @@
 #include "storage/storage_manager.h"
 #include "video/streams.h"
 
-// External function declaration
+// External function declarations
 void init_recordings_system(void);
+void register_detection_api_handlers(void);
 #include "database/database_manager.h"
 #include "web/web_server.h"
 #include "video/streams.h"
@@ -407,6 +408,9 @@ int main(int argc, char *argv[]) {
 
     // Register streaming API handlers
     register_streaming_api_handlers();
+    
+    // Register detection API handlers
+    register_detection_api_handlers();
 
     log_info("LightNVR initialized successfully");
 

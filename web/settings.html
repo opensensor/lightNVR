@@ -133,6 +133,36 @@
                         <input type="number" id="setting-swap-size" value="128" min="32">
                     </div>
                 </div>
+                
+                <div class="settings-group">
+                    <h3>Detection-Based Recording</h3>
+                    <div class="setting">
+                        <p class="setting-description">
+                            Configure detection-based recording for streams. When enabled, recordings will only be saved when objects are detected.
+                        </p>
+                    </div>
+                    <div class="setting">
+                        <label for="setting-detection-models-path">Detection Models Path</label>
+                        <input type="text" id="setting-detection-models-path" placeholder="/var/lib/lightnvr/models">
+                        <span class="hint">Directory where detection models are stored</span>
+                    </div>
+                    <div class="setting">
+                        <label for="setting-default-detection-threshold">Default Detection Threshold</label>
+                        <input type="range" id="setting-default-detection-threshold" min="0" max="100" value="50" step="5">
+                        <span id="threshold-value">50%</span>
+                        <span class="hint">Confidence threshold for detection (0-100%)</span>
+                    </div>
+                    <div class="setting">
+                        <label for="setting-default-pre-buffer">Default Pre-detection Buffer (seconds)</label>
+                        <input type="number" id="setting-default-pre-buffer" value="5" min="0" max="60">
+                        <span class="hint">Seconds of video to keep before detection</span>
+                    </div>
+                    <div class="setting">
+                        <label for="setting-default-post-buffer">Default Post-detection Buffer (seconds)</label>
+                        <input type="number" id="setting-default-post-buffer" value="10" min="0" max="300">
+                        <span class="hint">Seconds of video to keep after detection</span>
+                    </div>
+                </div>
             </div>
         </section>
     </main>

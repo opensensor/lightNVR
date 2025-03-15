@@ -149,7 +149,58 @@ function updateStreamFilter(streams) {
 }
 
 /**
- * Edit stream - Fixed implementation
+ * Load detection models for stream configuration
+ */
+function loadDetectionModels() {
+    const modelSelect = document.getElementById('stream-detection-model');
+    if (!modelSelect) return;
+    
+    // Clear existing options
+    modelSelect.innerHTML = '<option value="">Loading models...</option>';
+    
+    // Fetch models from API
+    fetch('/api/detection/models')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to load detection models');
+            }
+            return response.json();
+        })
+        .then(data => {
+            // Clear loading option
+            modelSelect.innerHTML = '<option value="">Select a model</option>';
+            
+            if (data.models && data.models.length > 0) {
+                // Add model options
+                data.models.forEach(model => {
+                    if (model.supported) {
+                        const option = document.createElement('option');
+                        option.value = model.name;
+                        option.textContent = `${model.name} (${model.type})`;
+                        modelSelect.appendChild(option);
+                    }
+                });
+                
+                console.log(`Loaded ${data.models.length} detection models`);
+            } else {
+                // No models found
+                const option = document.createElement('option');
+                option.value = "";
+                option.textContent = "No models available";
+                option.disabled = true;
+                modelSelect.appendChild(option);
+                
+                console.warn('No detection models found');
+            }
+        })
+        .catch(error => {
+            console.error('Error loading detection models:', error);
+            modelSelect.innerHTML = '<option value="">Error loading models</option>';
+        });
+}
+
+/**
+ * Edit stream - Updated implementation with detection options
  */
 function editStream(streamId) {
     console.log('Editing stream:', streamId);
@@ -157,6 +208,9 @@ function editStream(streamId) {
     if (!streamModal) return;
 
     showLoading(streamModal);
+    
+    // Load detection models
+    loadDetectionModels();
 
     // Fetch stream details from API
     fetch(`/api/streams/${encodeURIComponent(streamId)}`)
@@ -179,6 +233,57 @@ function editStream(streamId) {
             document.getElementById('stream-priority').value = stream.priority || 5;
             document.getElementById('stream-record').checked = stream.record !== false; // Default to true if not specified
             document.getElementById('stream-segment').value = stream.segment_duration || 900;
+            
+            // Fill detection-based recording options
+            const detectionEnabled = document.getElementById('stream-detection-enabled');
+            if (detectionEnabled) {
+                detectionEnabled.checked = stream.detection_based_recording === true;
+                
+                // Show/hide detection options based on checkbox
+                const detectionOptions = document.querySelectorAll('.detection-options');
+                detectionOptions.forEach(el => {
+                    el.style.display = detectionEnabled.checked ? 'block' : 'none';
+                });
+            }
+            
+            // Set detection model if available
+            if (stream.detection_model) {
+                // Wait a bit for models to load
+                setTimeout(() => {
+                    const modelSelect = document.getElementById('stream-detection-model');
+                    if (modelSelect) {
+                        // Try to find the model by name
+                        for (let i = 0; i < modelSelect.options.length; i++) {
+                            if (modelSelect.options[i].value === stream.detection_model) {
+                                modelSelect.selectedIndex = i;
+                                break;
+                            }
+                        }
+                    }
+                }, 500);
+            }
+            
+            // Set detection threshold
+            const thresholdSlider = document.getElementById('stream-detection-threshold');
+            const thresholdValue = document.getElementById('stream-threshold-value');
+            if (thresholdSlider && typeof stream.detection_threshold === 'number') {
+                const thresholdPercent = Math.round(stream.detection_threshold * 100);
+                thresholdSlider.value = thresholdPercent;
+                if (thresholdValue) {
+                    thresholdValue.textContent = thresholdPercent + '%';
+                }
+            }
+            
+            // Set pre/post detection buffers
+            const preBuffer = document.getElementById('stream-pre-buffer');
+            if (preBuffer && typeof stream.pre_detection_buffer === 'number') {
+                preBuffer.value = stream.pre_detection_buffer;
+            }
+            
+            const postBuffer = document.getElementById('stream-post-buffer');
+            if (postBuffer && typeof stream.post_detection_buffer === 'number') {
+                postBuffer.value = stream.post_detection_buffer;
+            }
 
             // Store original stream ID for later comparison
             streamModal.dataset.streamId = streamId;
@@ -196,7 +301,7 @@ function editStream(streamId) {
 }
 
 /**
- * Save stream - Fixed implementation
+ * Save stream - Updated implementation with detection options
  */
 function saveStream() {
     const streamModal = document.getElementById('stream-modal');
@@ -217,12 +322,53 @@ function saveStream() {
         record: document.getElementById('stream-record').checked,
         segment_duration: parseInt(document.getElementById('stream-segment').value, 10)
     };
+    
+    // Add detection-based recording options
+    const detectionEnabled = document.getElementById('stream-detection-enabled');
+    if (detectionEnabled) {
+        streamData.detection_based_recording = detectionEnabled.checked;
+        
+        if (detectionEnabled.checked) {
+            // Only include detection options if detection is enabled
+            const modelSelect = document.getElementById('stream-detection-model');
+            if (modelSelect && modelSelect.value) {
+                streamData.detection_model = modelSelect.value;
+            }
+            
+            const thresholdSlider = document.getElementById('stream-detection-threshold');
+            if (thresholdSlider) {
+                streamData.detection_threshold = parseInt(thresholdSlider.value, 10) / 100;
+            }
+            
+            const preBuffer = document.getElementById('stream-pre-buffer');
+            if (preBuffer) {
+                streamData.pre_detection_buffer = parseInt(preBuffer.value, 10);
+            }
+            
+            const postBuffer = document.getElementById('stream-post-buffer');
+            if (postBuffer) {
+                streamData.post_detection_buffer = parseInt(postBuffer.value, 10);
+            }
+            
+            // Set a default detection interval if not already set
+            streamData.detection_interval = 10; // Check every 10 frames
+        }
+    }
 
     // Validate required fields
     if (!streamData.name || !streamData.url) {
         alert('Name and URL are required');
         hideLoading(streamModal);
         return;
+    }
+    
+    // Validate detection options
+    if (streamData.detection_based_recording) {
+        if (!streamData.detection_model) {
+            alert('Please select a detection model');
+            hideLoading(streamModal);
+            return;
+        }
     }
 
     // Check if this is a new stream or an update
@@ -381,4 +527,98 @@ function testStream() {
         .finally(() => {
             hideLoading(streamModal);
         });
+}
+
+/**
+ * Setup streams page event handlers
+ */
+function setupStreamsHandlers() {
+    // Add stream button click handler
+    const addButton = document.getElementById('add-stream-btn');
+    if (addButton) {
+        addButton.addEventListener('click', function() {
+            // Reset form
+            const streamForm = document.getElementById('stream-form');
+            if (streamForm) {
+                streamForm.reset();
+            }
+            
+            // Clear stream ID
+            const streamModal = document.getElementById('stream-modal');
+            if (streamModal) {
+                delete streamModal.dataset.streamId;
+            }
+            
+            // Load detection models
+            loadDetectionModels();
+            
+            // Show modal
+            if (streamModal) {
+                streamModal.style.display = 'block';
+            }
+        });
+    }
+    
+    // Save button click handler
+    const saveButton = document.getElementById('stream-save-btn');
+    if (saveButton) {
+        saveButton.addEventListener('click', saveStream);
+    }
+    
+    // Cancel button click handler
+    const cancelButton = document.getElementById('stream-cancel-btn');
+    if (cancelButton) {
+        cancelButton.addEventListener('click', function() {
+            const streamModal = document.getElementById('stream-modal');
+            if (streamModal) {
+                streamModal.style.display = 'none';
+            }
+        });
+    }
+    
+    // Test button click handler
+    const testButton = document.getElementById('stream-test-btn');
+    if (testButton) {
+        testButton.addEventListener('click', testStream);
+    }
+    
+    // Close button click handler
+    const closeButton = document.querySelector('#stream-modal .close');
+    if (closeButton) {
+        closeButton.addEventListener('click', function() {
+            const streamModal = document.getElementById('stream-modal');
+            if (streamModal) {
+                streamModal.style.display = 'none';
+            }
+        });
+    }
+    
+    // Detection checkbox change handler
+    const detectionEnabled = document.getElementById('stream-detection-enabled');
+    if (detectionEnabled) {
+        detectionEnabled.addEventListener('change', function() {
+            const detectionOptions = document.querySelectorAll('.detection-options');
+            detectionOptions.forEach(el => {
+                el.style.display = this.checked ? 'block' : 'none';
+            });
+        });
+    }
+    
+    // Detection threshold slider value display
+    const thresholdSlider = document.getElementById('stream-detection-threshold');
+    const thresholdValue = document.getElementById('stream-threshold-value');
+    if (thresholdSlider && thresholdValue) {
+        thresholdSlider.addEventListener('input', function() {
+            thresholdValue.textContent = this.value + '%';
+        });
+    }
+    
+    // Refresh models button click handler
+    const refreshButton = document.getElementById('refresh-models-btn');
+    if (refreshButton) {
+        refreshButton.addEventListener('click', function(e) {
+            e.preventDefault();
+            loadDetectionModels();
+        });
+    }
 }

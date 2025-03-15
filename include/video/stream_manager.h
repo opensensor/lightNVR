@@ -150,6 +150,29 @@ int set_stream_priority(stream_handle_t handle, int priority);
 int set_stream_recording(stream_handle_t handle, bool enable);
 
 /**
+ * Enable/disable detection-based recording for a stream
+ * 
+ * @param handle Stream handle
+ * @param enable True to enable detection-based recording, false to disable
+ * @param model_path Path to the detection model file
+ * @return 0 on success, non-zero on failure
+ */
+int set_stream_detection_recording(stream_handle_t handle, bool enable, const char *model_path);
+
+/**
+ * Set detection parameters for a stream
+ * 
+ * @param handle Stream handle
+ * @param interval Number of frames between detection checks
+ * @param threshold Confidence threshold for detection (0.0-1.0)
+ * @param pre_buffer Seconds to keep before detection
+ * @param post_buffer Seconds to keep after detection
+ * @return 0 on success, non-zero on failure
+ */
+int set_stream_detection_params(stream_handle_t handle, int interval, float threshold, 
+                               int pre_buffer, int post_buffer);
+
+/**
  * Get a snapshot from the stream
  * 
  * @param handle Stream handle
