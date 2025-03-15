@@ -117,10 +117,13 @@ function initializeVideoPlayer(stream) {
     // Use HLS.js for browsers that don't support HLS natively
     else if (Hls && Hls.isSupported()) {
         const hls = new Hls({
-            maxBufferLength: 30,
-            maxMaxBufferLength: 60,
-            liveSyncDurationCount: 3,
-            enableWorker: true
+            maxBufferLength: 60,            // Increased from 30 to 60 seconds
+            maxMaxBufferLength: 120,        // Increased from 60 to 120 seconds
+            liveSyncDurationCount: 5,       // Increased from 3 to 5 segments
+            enableWorker: true,
+            fragLoadingTimeOut: 20000,      // 20 seconds timeout for fragment loading (default is 8000ms)
+            manifestLoadingTimeOut: 15000,  // 15 seconds timeout for manifest loading (default is 10000ms)
+            levelLoadingTimeOut: 15000      // 15 seconds timeout for level loading (default is 10000ms)
         });
 
         hls.loadSource(hlsStreamUrl);

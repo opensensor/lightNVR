@@ -115,9 +115,9 @@ void handle_hls_manifest(const http_request_t *request, http_response_t *respons
              global_config->storage_path, stream_name);
 
     // Wait longer for the manifest file to be created
-    // Try up to 30 times with 100ms between attempts (3 seconds total)
+    // Try up to 60 times with 200ms between attempts (12 seconds total)
     bool manifest_exists = false;
-    for (int i = 0; i < 30; i++) {
+    for (int i = 0; i < 60; i++) {
         // Check for the final manifest file
         if (access(manifest_path, F_OK) == 0) {
             manifest_exists = true;
@@ -132,8 +132,8 @@ void handle_hls_manifest(const http_request_t *request, http_response_t *respons
             // Continue waiting for the final file
         }
 
-        log_debug("Waiting for manifest file to be created (attempt %d/30)", i+1);
-        usleep(100000);  // 100ms
+        log_debug("Waiting for manifest file to be created (attempt %d/60)", i+1);
+        usleep(200000);  // 200ms
     }
 
     if (!manifest_exists) {
@@ -241,15 +241,15 @@ void handle_hls_segment(const http_request_t *request, http_response_t *response
 
         // Wait longer for it to be created - HLS segments might still be generating
         bool segment_exists = false;
-        for (int i = 0; i < 20; i++) {  // Try for 2 seconds total
+        for (int i = 0; i < 40; i++) {  // Try for 8 seconds total
             if (access(segment_path, F_OK) == 0) {
                 log_info("Segment file found after waiting: %s (attempt %d)", segment_path, i+1);
                 segment_exists = true;
                 break;
             }
 
-            log_debug("Waiting for segment file to be created: %s (attempt %d/20)", segment_path, i+1);
-            usleep(100000);  // 100ms
+            log_debug("Waiting for segment file to be created: %s (attempt %d/40)", segment_path, i+1);
+            usleep(200000);  // 200ms
         }
 
         if (!segment_exists) {
