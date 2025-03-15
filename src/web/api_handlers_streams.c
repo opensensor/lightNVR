@@ -219,6 +219,15 @@ void handle_post_stream(const http_request_t *request, http_response_t *response
         return;
     }
 
+    // Also add to database
+    uint64_t stream_id = add_stream_config(&config);
+    if (stream_id == 0) {
+        log_error("Failed to add stream to database: %s", config.name);
+        // Continue anyway, the stream is added to memory
+    } else {
+        log_info("Stream added to database with ID %llu: %s", (unsigned long long)stream_id, config.name);
+    }
+
     log_info("Stream added successfully: %s", config.name);
 
     // Start the stream if enabled
@@ -502,7 +511,13 @@ void handle_delete_stream(const http_request_t *request, http_response_t *respon
         return;
     }
 
-    // Stream configuration is removed from the database by remove_stream
+    // Also remove from database
+    if (delete_stream_config(stream_name) != 0) {
+        log_error("Failed to remove stream from database: %s", stream_name);
+        // Continue anyway, the stream is removed from memory
+    } else {
+        log_info("Stream removed from database: %s", stream_name);
+    }
 
     // Create success response
     char response_json[256];
@@ -741,6 +756,8 @@ static int parse_stream_json(const char *json, stream_config_t *stream) {
     if (get_json_has_key(json, "detection_threshold")) {
         int threshold_percent = get_json_integer_value(json, "detection_threshold", 50);
         stream->detection_threshold = (float)threshold_percent / 100.0f;
+        log_info("Setting stream detection threshold to %.2f (from %d%%)", 
+                stream->detection_threshold, threshold_percent);
     }
     
     // Parse detection interval

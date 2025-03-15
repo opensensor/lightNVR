@@ -415,7 +415,7 @@ saveSettings = function() {
     // Then save detection settings
     const detectionSettings = {
         models_path: document.getElementById('setting-detection-models-path')?.value || '',
-        default_threshold: (parseInt(document.getElementById('setting-default-detection-threshold')?.value || '50', 10) / 100),
+        default_threshold: parseInt(document.getElementById('setting-default-detection-threshold')?.value || '50', 10),
         default_pre_buffer: parseInt(document.getElementById('setting-default-pre-buffer')?.value || '5', 10),
         default_post_buffer: parseInt(document.getElementById('setting-default-post-buffer')?.value || '10', 10)
     };

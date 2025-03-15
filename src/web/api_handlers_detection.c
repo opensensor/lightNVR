@@ -24,7 +24,7 @@ typedef struct {
 } detection_settings_t;
 
 static detection_settings_t detection_settings = {
-    .models_path = "/var/lib/lightnvr/models",
+    .models_path = "",
     .default_threshold = 0.5f,
     .default_pre_buffer = 5,
     .default_post_buffer = 10
@@ -115,6 +115,8 @@ void handle_post_detection_settings(const http_request_t *request, http_response
     }
     
     threshold = (float)get_json_integer_value(request->body, "default_threshold", 50) / 100.0f;
+    log_info("Setting detection threshold to %.2f (from %lld%%)", 
+             threshold, get_json_integer_value(request->body, "default_threshold", 50));
     pre_buffer = (int)get_json_integer_value(request->body, "default_pre_buffer", 5);
     post_buffer = (int)get_json_integer_value(request->body, "default_post_buffer", 10);
     

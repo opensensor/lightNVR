@@ -386,7 +386,7 @@ function saveStream() {
         
         const thresholdSlider = document.getElementById('stream-detection-threshold');
         if (thresholdSlider) {
-            streamData.detection_threshold = parseInt(thresholdSlider.value, 10) / 100;
+            streamData.detection_threshold = parseInt(thresholdSlider.value, 10);
         }
         
         const preBuffer = document.getElementById('stream-pre-buffer');
