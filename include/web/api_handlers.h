@@ -10,6 +10,8 @@
 #include "web/api_handlers_system.h"
 #include "web/api_handlers_recordings.h"
 #include "web/api_handlers_streaming.h"
+#include "web/api_handlers_detection.h"
+#include "web/api_handlers_detection_results.h"
 
 /**
  * Register all API handlers

@@ -89,6 +89,37 @@ function initializeVideoPlayer(stream) {
     const videoCell = videoElement ? videoElement.closest('.video-cell') : null;
 
     if (!videoElement || !videoCell) return;
+    
+    // Create canvas overlay for detection bounding boxes
+    const canvasId = `canvas-${stream.name.replace(/\s+/g, '-')}`;
+    let canvasOverlay = document.getElementById(canvasId);
+    
+    if (!canvasOverlay) {
+        canvasOverlay = document.createElement('canvas');
+        canvasOverlay.id = canvasId;
+        canvasOverlay.className = 'detection-overlay';
+        canvasOverlay.style.position = 'absolute';
+        canvasOverlay.style.top = '0';
+        canvasOverlay.style.left = '0';
+        canvasOverlay.style.width = '100%';
+        canvasOverlay.style.height = '100%';
+        canvasOverlay.style.pointerEvents = 'none'; // Allow clicks to pass through
+        videoCell.appendChild(canvasOverlay);
+    }
+    
+    // Start detection polling if detection is enabled for this stream
+    console.log(`Stream ${stream.name} detection settings:`, {
+        detection_based_recording: stream.detection_based_recording,
+        detection_model: stream.detection_model,
+        detection_threshold: stream.detection_threshold
+    });
+    
+    if (stream.detection_based_recording && stream.detection_model) {
+        console.log(`Starting detection polling for stream ${stream.name}`);
+        startDetectionPolling(stream.name, canvasOverlay, videoElement);
+    } else {
+        console.log(`Detection not enabled for stream ${stream.name}`);
+    }
 
     // Show loading state
     const loadingIndicator = videoCell.querySelector('.loading-indicator');
@@ -309,6 +340,14 @@ function cleanupVideoPlayer(streamName) {
     if (playOverlay) {
         playOverlay.remove();
     }
+    
+    // Clean up detection polling if active
+    const canvasId = `canvas-${streamName.replace(/\s+/g, '-')}`;
+    const canvasOverlay = document.getElementById(canvasId);
+    if (canvasOverlay && canvasOverlay.detectionInterval) {
+        clearInterval(canvasOverlay.detectionInterval);
+        delete canvasOverlay.detectionInterval;
+    }
 }
 
 /**
@@ -515,6 +554,96 @@ function playRecording(recordingId) {
                 </div>
             `;
         });
+}
+
+/**
+ * Start polling for detection results and draw bounding boxes
+ */
+function startDetectionPolling(streamName, canvasOverlay, videoElement) {
+    // Store the polling interval ID on the canvas element for cleanup
+    if (canvasOverlay.detectionInterval) {
+        clearInterval(canvasOverlay.detectionInterval);
+    }
+    
+    // Function to draw bounding boxes
+    function drawDetectionBoxes(detections) {
+        const canvas = canvasOverlay;
+        const ctx = canvas.getContext('2d');
+        
+        // Set canvas dimensions to match video
+        canvas.width = videoElement.clientWidth;
+        canvas.height = videoElement.clientHeight;
+        
+        // Clear previous drawings
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // No detections, just return
+        if (!detections || detections.length === 0) {
+            return;
+        }
+        
+        // Draw each detection
+        detections.forEach(detection => {
+            // Calculate pixel coordinates based on normalized values (0-1)
+            const x = detection.x * canvas.width;
+            const y = detection.y * canvas.height;
+            const width = detection.width * canvas.width;
+            const height = detection.height * canvas.height;
+            
+            // Draw bounding box
+            ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(x, y, width, height);
+            
+            // Draw label background
+            const label = `${detection.label} (${Math.round(detection.confidence * 100)}%)`;
+            ctx.font = '14px Arial';
+            const textWidth = ctx.measureText(label).width;
+            ctx.fillStyle = 'rgba(255, 0, 0, 0.7)';
+            ctx.fillRect(x, y - 20, textWidth + 10, 20);
+            
+            // Draw label text
+            ctx.fillStyle = 'white';
+            ctx.fillText(label, x + 5, y - 5);
+        });
+    }
+    
+    // Poll for detection results every 500ms
+    canvasOverlay.detectionInterval = setInterval(() => {
+        if (!videoElement.videoWidth) {
+            // Video not loaded yet, skip this cycle
+            return;
+        }
+        
+        // Log the API call we're about to make
+        console.log(`Fetching detection results for stream ${streamName}`);
+        
+        // Fetch detection results from API
+        fetch(`/api/detection/results/${encodeURIComponent(streamName)}`)
+            .then(response => {
+                console.log(`Detection API response status for ${streamName}:`, response.status);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch detection results: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log(`Detection results for ${streamName}:`, data);
+                // Draw bounding boxes if we have detections
+                if (data && data.detections) {
+                    console.log(`Drawing ${data.detections.length} detection boxes for ${streamName}`);
+                    drawDetectionBoxes(data.detections);
+                } else {
+                    console.log(`No detections found for ${streamName}`);
+                }
+            })
+            .catch(error => {
+                console.error(`Error fetching detection results for ${streamName}:`, error);
+                // Clear canvas on error
+                const ctx = canvasOverlay.getContext('2d');
+                ctx.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height);
+            });
+    }, 500);
 }
 
 /**

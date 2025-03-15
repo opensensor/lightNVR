@@ -18,7 +18,7 @@ include_directories(
 
 # Find required packages
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(FFMPEG REQUIRED libavcodec libavformat libavutil)
+pkg_check_modules(FFMPEG REQUIRED libavcodec libavformat libavutil libswscale)
 pkg_check_modules(SQLITE REQUIRED sqlite3)
 
 # Add include directories for dependencies

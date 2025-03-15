@@ -23,8 +23,29 @@ function loadStreams(forLiveView = false) {
                 return response.json();
             })
             .then(streams => {
+                // For live view, we need to fetch full details for each stream
+                // to get detection settings
+                const streamPromises = streams.map(stream => {
+                    return fetch(`/api/streams/${encodeURIComponent(stream.id || stream.name)}`)
+                        .then(response => {
+                            if (!response.ok) {
+                                throw new Error(`Failed to load details for stream ${stream.name}`);
+                            }
+                            return response.json();
+                        })
+                        .catch(error => {
+                            console.error(`Error loading details for stream ${stream.name}:`, error);
+                            // Return the basic stream info if we can't get details
+                            return stream;
+                        });
+                });
+                
+                return Promise.all(streamPromises);
+            })
+            .then(detailedStreams => {
                 hideLoading(videoGrid);
-                updateVideoGrid(streams);
+                console.log('Loaded detailed streams for live view:', detailedStreams);
+                updateVideoGrid(detailedStreams);
             })
             .catch(error => {
                 console.error('Error loading streams for live view:', error);

@@ -18,6 +18,7 @@
 #include "video/detection.h"
 #include "video/detection_result.h"
 #include "database/database_manager.h"
+#include "web/api_handlers_detection_results.h"
 
 // Structure to track detection-based recording state
 typedef struct {
@@ -92,9 +93,28 @@ int start_detection_recording(const char *stream_name, const char *model_path, f
         return -1;
     }
     
+    // Check if model_path is a relative path (doesn't start with /)
+    char full_model_path[MAX_PATH_LENGTH];
+    if (model_path[0] != '/') {
+        // Get current working directory
+        char cwd[MAX_PATH_LENGTH];
+        if (getcwd(cwd, sizeof(cwd)) != NULL) {
+            // Construct full path: CWD/models/model_path
+            snprintf(full_model_path, MAX_PATH_LENGTH, "%s/models/%s", cwd, model_path);
+        } else {
+            // Fallback to absolute path if getcwd fails
+            snprintf(full_model_path, MAX_PATH_LENGTH, "/var/lib/lightnvr/models/%s", model_path);
+        }
+        log_info("Using full model path: %s", full_model_path);
+    } else {
+        // Already an absolute path
+        strncpy(full_model_path, model_path, MAX_PATH_LENGTH - 1);
+        full_model_path[MAX_PATH_LENGTH - 1] = '\0';
+    }
+    
     // Verify model file exists and is supported
-    if (!is_model_supported(model_path)) {
-        log_error("Detection model %s is not supported", model_path);
+    if (!is_model_supported(full_model_path)) {
+        log_error("Detection model %s is not supported", full_model_path);
         return -1;
     }
     
@@ -129,9 +149,9 @@ int start_detection_recording(const char *stream_name, const char *model_path, f
     }
     
     // Load the detection model
-    detection_model_t model = load_detection_model(model_path, threshold);
+    detection_model_t model = load_detection_model(full_model_path, threshold);
     if (!model) {
-        log_error("Failed to load detection model %s", model_path);
+        log_error("Failed to load detection model %s", full_model_path);
         pthread_mutex_unlock(&detection_recordings[slot].mutex);
         pthread_mutex_unlock(&detection_recordings_mutex);
         return -1;
@@ -139,7 +159,7 @@ int start_detection_recording(const char *stream_name, const char *model_path, f
     
     // Initialize detection recording state
     strncpy(detection_recordings[slot].stream_name, stream_name, MAX_STREAM_NAME - 1);
-    strncpy(detection_recordings[slot].model_path, model_path, MAX_PATH_LENGTH - 1);
+    strncpy(detection_recordings[slot].model_path, full_model_path, MAX_PATH_LENGTH - 1);
     detection_recordings[slot].model = model;
     detection_recordings[slot].threshold = threshold;
     detection_recordings[slot].pre_buffer = pre_buffer;
@@ -151,6 +171,7 @@ int start_detection_recording(const char *stream_name, const char *model_path, f
     pthread_mutex_unlock(&detection_recordings_mutex);
     
     // Update stream configuration to enable detection-based recording
+    // Keep the original model_path in the configuration for simplicity
     set_stream_detection_recording(stream, true, model_path);
     set_stream_detection_params(stream, 10, threshold, pre_buffer, post_buffer);
     
@@ -263,11 +284,17 @@ int process_frame_for_detection(const char *stream_name, const unsigned char *fr
     
     // Run detection on the frame
     detection_result_t result;
+    log_info("Running detection for stream %s with model at %s", stream_name, detection_recordings[slot].model_path);
     if (detect_objects(detection_recordings[slot].model, frame_data, width, height, channels, &result) != 0) {
         log_error("Failed to run detection on frame for stream %s", stream_name);
         pthread_mutex_unlock(&detection_recordings[slot].mutex);
         return -1;
     }
+    
+    log_info("Detection completed for stream %s, found %d objects", stream_name, result.count);
+    
+    // Store detection results for frontend visualization
+    store_detection_result(stream_name, &result);
     
     // Check if any objects were detected
     bool detection_triggered = false;

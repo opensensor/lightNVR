@@ -8,6 +8,7 @@
 #include "web/api_handlers.h"
 #include "web/web_server.h"
 #include "core/logger.h"
+#include "web/api_handlers_detection_results.h"
 
 /**
  * Register fixed API handlers to ensure proper URL handling
@@ -48,6 +49,9 @@ void register_api_handlers(void) {
 
     // Register streaming API handlers
     register_streaming_api_handlers();
+    
+    // Register detection results API handlers
+    register_detection_results_api_handlers();
 
     log_info("API handlers registered with improved URL handling and route priority");
 }

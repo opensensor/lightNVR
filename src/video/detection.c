@@ -358,10 +358,13 @@ void unload_detection_model(detection_model_t model) {
 int detect_objects(detection_model_t model, const unsigned char *frame_data, 
                   int width, int height, int channels, detection_result_t *result) {
     if (!model || !frame_data || !result) {
+        log_error("Invalid parameters for detect_objects");
         return -1;
     }
     
     model_t *m = (model_t *)model;
+    
+    log_info("Detecting objects using model type: %s", m->type);
     
     // Initialize result
     result->count = 0;
@@ -407,6 +410,7 @@ int detect_objects(detection_model_t model, const unsigned char *frame_data,
         for (int i = 0; i < count && valid_count < MAX_DETECTIONS; i++) {
             // Apply threshold
             if (boxes[i].score < m->sod.threshold) {
+                log_info("Detection %d below threshold: %f < %f", i, boxes[i].score, m->sod.threshold);
                 continue;
             }
             
@@ -426,10 +430,17 @@ int detect_objects(detection_model_t model, const unsigned char *frame_data,
             result->detections[valid_count].width = (float)boxes[i].w / width;
             result->detections[valid_count].height = (float)boxes[i].h / height;
             
+            log_info("Valid detection %d: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]", 
+                    valid_count, result->detections[valid_count].label, 
+                    result->detections[valid_count].confidence * 100.0f,
+                    result->detections[valid_count].x, result->detections[valid_count].y,
+                    result->detections[valid_count].width, result->detections[valid_count].height);
+            
             valid_count++;
         }
         
         result->count = valid_count;
+        log_info("SOD detection found %d valid objects out of %d total detections", valid_count, count);
         
         return 0;
     } else if (strcmp(m->type, MODEL_TYPE_SOD_REALNET) == 0) {

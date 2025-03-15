@@ -28,6 +28,7 @@
 #include "video/streams.h"
 #include "video/hls_writer.h"
 #include "video/mp4_writer.h"
+#include "video/detection_integration.h"
 #include "database/database_manager.h"
 
 // Hash map for tracking running transcode contexts
@@ -358,6 +359,13 @@ static void *stream_transcode_thread(void *arg) {
             if (ret < 0) {
                 log_error("Failed to write packet to HLS for stream %s: %d", ctx->config.name, ret);
                 // Continue anyway to keep the stream going
+            }
+            
+            // Process packet for detection if detection is enabled
+            if (ctx->config.detection_based_recording && ctx->config.detection_model[0] != '\0') {
+                // Use the detection interval from config, or default to 10 if not set
+                int detection_interval = ctx->config.detection_interval > 0 ? ctx->config.detection_interval : 10;
+                process_packet_for_detection(ctx->config.name, pkt, input_ctx->streams[video_stream_idx], detection_interval);
             }
 
             // Write to MP4 if enabled - only write key frames if we're having issues
