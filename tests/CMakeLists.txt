@@ -35,16 +35,17 @@ if(ENABLE_SOD)
     add_definitions(-DSOD_ENABLED)
 endif()
 
-# Only build SOD RealNet test if SOD is enabled
+# Only build SOD tests if SOD is enabled
 if(ENABLE_SOD)
     # Define test executables
-    add_executable(test_sod_realnet
-        test_sod_realnet.c
+    add_executable(test_sod_unified
+        test_sod_unified.c
         ${DETECTION_SOURCES}
     )
 
     # Link libraries
-    target_link_libraries(test_sod_realnet
+
+    target_link_libraries(test_sod_unified
         ${FFMPEG_LIBRARIES}
         ${SQLITE_LIBRARIES}
         pthread
@@ -52,12 +53,12 @@ if(ENABLE_SOD)
         sod
     )
 
-    # Add test to CTest
-    add_test(NAME test_sod_realnet COMMAND test_sod_realnet)
+    # Add tests to CTest
+    add_test(NAME test_sod_unified COMMAND test_sod_unified)
 
-    message(STATUS "Building SOD RealNet test")
+    message(STATUS "Building SOD tests")
 else()
-    message(STATUS "Skipping SOD RealNet test (SOD disabled)")
+    message(STATUS "Skipping SOD tests (SOD disabled)")
 endif()
 
 # Output binary to a 'bin' directory

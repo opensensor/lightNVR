@@ -134,3 +134,29 @@ The following detection model types are supported:
 
 SOD and SOD RealNet models require SOD to be available (either built-in or dynamically loaded).
 TensorFlow Lite models require the TensorFlow Lite library to be available.
+
+## Unified Detection Interface
+
+LightNVR now includes a unified detection interface that supports both RealNet and CNN model architectures. This allows you to use either model type with the same API, making it easy to switch between models based on your requirements.
+
+For more information, see [SOD Unified Detection](SOD_UNIFIED_DETECTION.md).
+
+### Test Programs
+
+Two test programs are provided to demonstrate SOD integration:
+
+1. `test_sod_realnet` - Tests SOD RealNet face detection
+   ```bash
+   ./test_sod_realnet test.jpg face.realnet.sod output.jpg
+   ```
+
+2. `test_sod_unified` - Tests both RealNet and CNN face detection with auto-detection of model type
+   ```bash
+   # For RealNet models
+   ./test_sod_unified test.jpg face.realnet.sod output.jpg
+   
+   # For CNN models
+   ./test_sod_unified test.jpg face_cnn.sod output.jpg
+   ```
+
+These test programs are built automatically when SOD support is enabled.
