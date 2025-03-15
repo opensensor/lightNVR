@@ -83,12 +83,12 @@ install -m 755 build/Release/lightnvr "$PREFIX/bin/lightnvr"
 
 # Install configuration files
 echo "Installing configuration files..."
-if [ ! -f "$CONFIG_DIR/lightnvr.conf" ]; then
-    install -m 644 config/lightnvr.conf.default "$CONFIG_DIR/lightnvr.conf"
-    echo "Installed default configuration to $CONFIG_DIR/lightnvr.conf"
+if [ ! -f "$CONFIG_DIR/lightnvr.ini" ]; then
+    install -m 644 config/lightnvr.ini "$CONFIG_DIR/lightnvr.ini"
+    echo "Installed default configuration to $CONFIG_DIR/lightnvr.ini"
 else
     echo "Configuration file already exists, not overwriting"
-    install -m 644 config/lightnvr.conf.default "$CONFIG_DIR/lightnvr.conf.default"
+    install -m 644 config/lightnvr.ini "$CONFIG_DIR/lightnvr.ini.default"
 fi
 
 # Install web interface files
@@ -117,7 +117,7 @@ Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 Environment="HOME=/root"
 Environment="PWD=/var/lib/lightnvr"
 WorkingDirectory=/var/lib/lightnvr
-ExecStart=/usr/local/bin/lightnvr -c /etc/lightnvr/lightnvr.conf -d
+ExecStart=/usr/local/bin/lightnvr -c /etc/lightnvr/lightnvr.ini -d
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
@@ -142,6 +142,6 @@ echo ""
 echo "To check LightNVR status:"
 echo "  systemctl status lightnvr"
 echo ""
-echo "Configuration file: $CONFIG_DIR/lightnvr.conf"
+echo "Configuration file: $CONFIG_DIR/lightnvr.ini"
 echo "Log file: $LOG_DIR/lightnvr.log"
 echo "Web interface: http://localhost:8080 (default port)"

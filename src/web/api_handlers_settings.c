@@ -16,6 +16,7 @@
 #include "web/api_handlers_common.h"
 #include "core/config.h"
 #include "core/logger.h"
+#include "storage/storage_manager.h"
 
 // Forward declaration of helper function to get current configuration
 static config_t* get_current_config(void);
@@ -168,17 +169,30 @@ void handle_get_settings(const http_request_t *request, http_response_t *respons
 }
 
 void handle_post_settings(const http_request_t *request, http_response_t *response) {
-    log_info("Step 2: Testing handler with config modification");
+    log_info("Processing settings update request");
 
     // Basic request check and JSON parsing
     if (!request->body || request->content_length == 0) {
-        create_json_response(response, 400, "{\"error\": \"Empty request body\"}");
+        response->status_code = 400;
+        strncpy(response->content_type, "application/json", sizeof(response->content_type) - 1);
+        response->content_type[sizeof(response->content_type) - 1] = '\0';
+        response->body = strdup("{\"error\": \"Empty request body\"}");
+        response->body_length = strlen(response->body);
         return;
     }
 
+    // Log the request body for debugging
+    log_debug("Received settings request body: %.*s", 
+              (int)request->content_length > 1000 ? 1000 : (int)request->content_length, 
+              (char*)request->body);
+
     char *json = malloc(request->content_length + 1);
     if (!json) {
-        create_json_response(response, 500, "{\"error\": \"Memory allocation failed\"}");
+        response->status_code = 500;
+        strncpy(response->content_type, "application/json", sizeof(response->content_type) - 1);
+        response->content_type[sizeof(response->content_type) - 1] = '\0';
+        response->body = strdup("{\"error\": \"Memory allocation failed\"}");
+        response->body_length = strlen(response->body);
         return;
     }
 
@@ -190,23 +204,117 @@ void handle_post_settings(const http_request_t *request, http_response_t *respon
     if (!global_config) {
         log_error("Failed to get global config");
         free(json);
-        create_json_response(response, 500, "{\"error\": \"Failed to access global configuration\"}");
+        response->status_code = 500;
+        strncpy(response->content_type, "application/json", sizeof(response->content_type) - 1);
+        response->content_type[sizeof(response->content_type) - 1] = '\0';
+        response->body = strdup("{\"error\": \"Failed to access global configuration\"}");
+        response->body_length = strlen(response->body);
         return;
     }
 
+    // Create a local copy of the config to work with
     config_t local_config;
     memcpy(&local_config, global_config, sizeof(config_t));
 
-    // Update just one simple setting for testing
-    int log_level = get_json_integer_value(json, "log_level", local_config.log_level);
-    local_config.log_level = log_level;
+    // Update all settings from the JSON request
+    log_debug("Parsing settings from JSON request");
 
-    // Update global config
+    // General settings
+    local_config.log_level = get_json_integer_value(json, "log_level", local_config.log_level);
+    
+    // Storage settings
+    char *storage_path = get_json_string_value(json, "storage_path");
+    if (storage_path) {
+        strncpy(local_config.storage_path, storage_path, sizeof(local_config.storage_path) - 1);
+        local_config.storage_path[sizeof(local_config.storage_path) - 1] = '\0';
+        free(storage_path);
+    }
+    
+    // Convert max_storage from GB to bytes
+    long long max_storage_gb = get_json_integer_value(json, "max_storage", 
+                                                     local_config.max_storage_size / (1024 * 1024 * 1024));
+    local_config.max_storage_size = max_storage_gb * (uint64_t)(1024 * 1024 * 1024);
+    
+    local_config.retention_days = get_json_integer_value(json, "retention", local_config.retention_days);
+    local_config.auto_delete_oldest = get_json_boolean_value(json, "auto_delete", local_config.auto_delete_oldest);
+    
+    // Web server settings
+    local_config.web_port = get_json_integer_value(json, "web_port", local_config.web_port);
+    local_config.web_auth_enabled = get_json_boolean_value(json, "auth_enabled", local_config.web_auth_enabled);
+    
+    char *username = get_json_string_value(json, "username");
+    if (username) {
+        strncpy(local_config.web_username, username, sizeof(local_config.web_username) - 1);
+        local_config.web_username[sizeof(local_config.web_username) - 1] = '\0';
+        free(username);
+    }
+    
+    char *password = get_json_string_value(json, "password");
+    if (password && strcmp(password, "********") != 0) {
+        // Only update password if it's not the placeholder
+        strncpy(local_config.web_password, password, sizeof(local_config.web_password) - 1);
+        local_config.web_password[sizeof(local_config.web_password) - 1] = '\0';
+        free(password);
+    }
+    
+    // Memory optimization
+    local_config.buffer_size = get_json_integer_value(json, "buffer_size", local_config.buffer_size);
+    local_config.use_swap = get_json_boolean_value(json, "use_swap", local_config.use_swap);
+    
+    // Convert swap_size from MB to bytes
+    long long swap_size_mb = get_json_integer_value(json, "swap_size", 
+                                                  local_config.swap_size / (1024 * 1024));
+    local_config.swap_size = swap_size_mb * (uint64_t)(1024 * 1024);
+
+    // Update global config directly first
     memcpy(global_config, &local_config, sizeof(config_t));
-
+    
+    // Apply log level setting to the logger
+    set_log_level(global_config->log_level);
+    
+    // Update storage manager with new settings
+    set_max_storage_size(global_config->max_storage_size);
+    set_retention_days(global_config->retention_days);
+    
+    // Save configuration to disk - ONLY use INI format
+    const char *config_path = "./lightnvr.ini";  // Default path in current directory
+    
+    // Try to save the configuration
+    int save_result = save_config(&local_config, config_path);
+    if (save_result != 0) {
+        log_warn("Failed to save configuration to %s, but settings were applied in memory", config_path);
+    } else {
+        log_info("Configuration saved to %s", config_path);
+    }
+    
+    // Log the updated settings
+    log_info("Settings updated: log_level=%d, max_storage=%lu GB, retention=%d days", 
+            global_config->log_level, 
+            (unsigned long long)(global_config->max_storage_size / (1024 * 1024 * 1024)),
+            global_config->retention_days);
+    
     free(json);
-
+    
     // Create success response
-    create_json_response(response, 200, "{\"success\": true}");
-    log_info("Response with config modification prepared");
+    response->status_code = 200;
+    strncpy(response->content_type, "application/json", sizeof(response->content_type) - 1);
+    response->content_type[sizeof(response->content_type) - 1] = '\0';
+    
+    // Free any existing response body to prevent memory leaks
+    if (response->body) {
+        free(response->body);
+        response->body = NULL;
+    }
+    
+    // Simple success response
+    response->body = strdup("{\"success\": true}");
+    if (!response->body) {
+        log_error("Failed to allocate memory for response body");
+        response->status_code = 500;
+        response->body = strdup("{\"error\": \"Memory allocation failed\"}");
+    }
+    
+    response->body_length = strlen(response->body);
+    log_debug("Response body set: %s", response->body);
+    log_info("Settings update completed successfully");
 }

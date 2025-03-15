@@ -505,6 +505,73 @@ function hideLoading(element) {
 }
 
 /**
+ * Create a progress indicator
+ */
+function createProgressIndicator(container, message) {
+    const progressContainer = document.createElement('div');
+    progressContainer.className = 'progress-container';
+    
+    const spinner = document.createElement('div');
+    spinner.className = 'spinner';
+    progressContainer.appendChild(spinner);
+    
+    const messageElement = document.createElement('p');
+    messageElement.textContent = message || 'Loading...';
+    progressContainer.appendChild(messageElement);
+    
+    const progressElement = document.createElement('div');
+    progressElement.className = 'progress-bar';
+    progressElement.innerHTML = '<div class="progress-fill" style="width: 0%"></div>';
+    progressContainer.appendChild(progressElement);
+    
+    container.appendChild(progressContainer);
+    return progressContainer;
+}
+
+/**
+ * Update progress indicator
+ */
+function updateProgress(progressContainer, percent, message, isError = false) {
+    if (!progressContainer) return;
+    
+    const progressFill = progressContainer.querySelector('.progress-fill');
+    if (progressFill) {
+        progressFill.style.width = `${percent}%`;
+        
+        if (isError) {
+            progressFill.style.backgroundColor = '#f44336';
+        }
+    }
+    
+    const messageElement = progressContainer.querySelector('p');
+    if (messageElement && message) {
+        messageElement.textContent = message;
+        
+        if (isError) {
+            messageElement.style.color = '#f44336';
+        }
+    }
+}
+
+/**
+ * Remove progress indicator
+ */
+function removeProgressIndicator(progressContainer) {
+    if (!progressContainer) return;
+    
+    // Add fade-out animation
+    progressContainer.style.opacity = '0';
+    progressContainer.style.transition = 'opacity 0.5s ease';
+    
+    // Remove after animation completes
+    setTimeout(() => {
+        if (progressContainer.parentNode) {
+            progressContainer.parentNode.removeChild(progressContainer);
+        }
+    }, 500);
+}
+
+/**
  * Handle API errors
  */
 function handleApiError(error, fallbackMessage) {

@@ -229,7 +229,8 @@ void handle_get_system_info(const http_request_t *request, http_response_t *resp
              "\"max_streams\": %d,"
              "\"recording_streams\": %d,"
              "\"data_received\": %lu,"
-             "\"data_recorded\": %lu"
+             "\"data_recorded\": %lu,"
+             "\"daemon_mode\": %s"
              "}",
              LIGHTNVR_VERSION_STRING,
              uptime,
@@ -242,7 +243,8 @@ void handle_get_system_info(const http_request_t *request, http_response_t *resp
              local_config.max_streams,
              recording_streams,
              (unsigned long)data_received,
-             (unsigned long)data_recorded);
+             (unsigned long)data_recorded,
+             daemon_mode ? "true" : "false");
     
     create_json_response(response, 200, json);
 }

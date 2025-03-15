@@ -164,4 +164,22 @@ int create_stream_directory(const char *stream_name);
  */
 bool ensure_disk_space(uint64_t min_free_bytes);
 
+/**
+ * Start the retention policy thread
+ * 
+ * This thread periodically checks storage usage and applies the retention policy
+ * to delete old recordings based on age and storage limits.
+ * 
+ * @param interval_seconds How often to check retention policy (in seconds)
+ * @return 0 on success, non-zero on failure
+ */
+int start_retention_policy_thread(int interval_seconds);
+
+/**
+ * Stop the retention policy thread
+ * 
+ * @return 0 on success, non-zero on failure
+ */
+int stop_retention_policy_thread(void);
+
 #endif // LIGHTNVR_STORAGE_MANAGER_H

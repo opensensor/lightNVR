@@ -79,8 +79,8 @@ function loadSystemInfo() {
             document.getElementById('system-received').textContent = `${data.data_received || 0} MB`;
             document.getElementById('system-recorded').textContent = `${data.data_recorded || 0} MB`;
 
-            // Check daemon mode status
-            checkDaemonMode();
+            // Check daemon mode status using the daemon_mode property from system info
+            checkDaemonMode(data.daemon_mode);
 
             // Load logs
             loadSystemLogs();
@@ -340,33 +340,21 @@ function checkSystemStatus() {
 
 /**
  * Check if system is running in daemon mode and update UI accordingly
+ * Uses the daemon_mode property from system info instead of making a separate request
  */
-function checkDaemonMode() {
-    // Try to restart the service to check if it's running in daemon mode
-    fetch('/api/system/restart', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ check_only: true })
-    })
-        .then(response => {
-            const restartBtn = document.getElementById('restart-btn');
-            if (!restartBtn) return;
-            
-            if (response.status === 403) {
-                // Not running in daemon mode, disable restart button
-                restartBtn.disabled = true;
-                restartBtn.title = 'Restart is only available when running in daemon mode';
-                restartBtn.classList.add('btn-disabled');
-            } else {
-                // Running in daemon mode, enable restart button
-                restartBtn.disabled = false;
-                restartBtn.title = 'Restart the LightNVR service';
-                restartBtn.classList.remove('btn-disabled');
-            }
-        })
-        .catch(error => {
-            console.error('Error checking daemon mode:', error);
-        });
+function checkDaemonMode(daemonMode) {
+    const restartBtn = document.getElementById('restart-btn');
+    if (!restartBtn) return;
+    
+    if (!daemonMode) {
+        // Not running in daemon mode, disable restart button
+        restartBtn.disabled = true;
+        restartBtn.title = 'Restart is only available when running in daemon mode';
+        restartBtn.classList.add('btn-disabled');
+    } else {
+        // Running in daemon mode, enable restart button
+        restartBtn.disabled = false;
+        restartBtn.title = 'Restart the LightNVR service';
+        restartBtn.classList.remove('btn-disabled');
+    }
 }
