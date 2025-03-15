@@ -118,6 +118,7 @@ int init_daemon(const char *pid_file) {
     sigaction(SIGTERM, &sa, NULL);
     sigaction(SIGINT, &sa, NULL);
     sigaction(SIGHUP, &sa, NULL);
+    sigaction(SIGALRM, &sa, NULL); // Add alarm signal handler for Linux 4.4 compatibility
 
     // Write PID file
     if (write_pid_file(pid_file_path) != 0) {
@@ -154,16 +155,36 @@ static void daemon_signal_handler(int sig) {
         // Also signal the web server to shut down
         extern int server_socket;
         if (server_socket >= 0) {
-            shutdown(server_socket, SHUT_RDWR);
-            close(server_socket);
+            // Use a more robust approach for Linux 4.4 embedded systems
+            // First try to shutdown the socket
+            if (shutdown(server_socket, SHUT_RDWR) != 0) {
+                log_warn("Failed to shutdown server socket: %s", strerror(errno));
+            }
+            
+            // Then close it
+            if (close(server_socket) != 0) {
+                log_warn("Failed to close server socket: %s", strerror(errno));
+            }
+            
             server_socket = -1; // Update the global reference
         }
+        
+        // On Linux 4.4 embedded, we might need to force exit if signals aren't handled well
+        // This is a fallback mechanism to ensure the daemon actually stops
+        log_info("Setting up fallback exit timer for Linux 4.4 compatibility");
+        alarm(5); // Set an alarm to force exit after 5 seconds if normal shutdown fails
         break;
 
     case SIGHUP:
         // Reload configuration
-            log_info("Received SIGHUP, reloading configuration...");
+        log_info("Received SIGHUP, reloading configuration...");
         // TODO: Implement configuration reload
+        break;
+        
+    case SIGALRM:
+        // Handle the alarm signal (fallback for Linux 4.4)
+        log_warn("Alarm triggered - forcing daemon exit for Linux 4.4 compatibility");
+        _exit(EXIT_SUCCESS); // Use _exit instead of exit to avoid calling atexit handlers
         break;
 
     default:
@@ -273,13 +294,43 @@ int stop_daemon(const char *pid_file) {
 
     fclose(fp);
 
-    // Send SIGKILL directly since SIGTERM doesn't work reliably
-    log_info("Sending SIGKILL to process %d", pid);
+    // First try SIGTERM for a graceful shutdown
+    log_info("Sending SIGTERM to process %d", pid);
+    if (kill(pid, SIGTERM) != 0) {
+        if (errno == ESRCH) {
+            // Process has already terminated
+            log_info("Process %d has already terminated", pid);
+            remove_daemon_pid_file(file_path);
+            return 0;
+        } else {
+            log_warn("Failed to send SIGTERM to process %d: %s", pid, strerror(errno));
+            // Continue to try SIGKILL
+        }
+    } else {
+        // Wait for process to terminate after SIGTERM
+        for (int i = 0; i < 30; i++) {
+            if (kill(pid, 0) != 0) {
+                if (errno == ESRCH) {
+                    // Process has terminated
+                    log_info("Process %d has terminated after SIGTERM", pid);
+                    remove_daemon_pid_file(file_path);
+                    return 0;
+                }
+            }
+            // Sleep for 100ms
+            usleep(100000);
+        }
+        
+        log_warn("Process did not terminate after SIGTERM, trying SIGKILL");
+    }
 
+    // If SIGTERM didn't work or timed out, use SIGKILL
+    log_info("Sending SIGKILL to process %d", pid);
     if (kill(pid, SIGKILL) != 0) {
         if (errno == ESRCH) {
             // Process has terminated
             log_info("Process %d has terminated", pid);
+            remove_daemon_pid_file(file_path);
             return 0;
         } else {
             log_error("Failed to send SIGKILL to process %d: %s", pid, strerror(errno));
@@ -293,10 +344,10 @@ int stop_daemon(const char *pid_file) {
             if (errno == ESRCH) {
                 // Process has terminated
                 log_info("Process %d has terminated after SIGKILL", pid);
+                remove_daemon_pid_file(file_path);
                 return 0;
             }
         }
-
         // Sleep for 100ms
         usleep(100000);
     }
