@@ -135,7 +135,52 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     // Process frame for detection
     time_t frame_time = time(NULL);
     log_info("Calling process_frame_for_detection for stream %s", stream_name);
-    process_frame_for_detection(stream_name, rgb_frame->data[0], frame->width, frame->height, 3, frame_time);
+    
+    // Debug the frame data
+    log_info("RGB frame data pointers: %p, %p, %p", 
+             (void*)rgb_frame->data[0], (void*)rgb_frame->data[1], (void*)rgb_frame->data[2]);
+    log_info("RGB frame linesize: %d, %d, %d", 
+             rgb_frame->linesize[0], rgb_frame->linesize[1], rgb_frame->linesize[2]);
+    
+    // For RGB24 format, all data is in data[0] but we need to handle stride correctly
+    // If the linesize is equal to width*3, we can use the buffer directly
+    if (rgb_frame->linesize[0] == frame->width * 3) {
+        log_info("RGB frame has no stride padding, using buffer directly");
+        int ret = process_frame_for_detection(stream_name, rgb_frame->data[0], frame->width, frame->height, 3, frame_time);
+        log_info("process_frame_for_detection returned: %d", ret);
+    } else {
+        // Otherwise, we need to create a new buffer without stride padding
+        log_info("RGB frame has stride padding (linesize: %d, expected: %d), creating a new buffer", 
+                 rgb_frame->linesize[0], frame->width * 3);
+        uint8_t *packed_buffer = (uint8_t *)malloc(frame->width * frame->height * 3);
+        if (!packed_buffer) {
+            log_error("Failed to allocate packed buffer for RGB frame");
+            av_free(buffer);
+            av_frame_free(&rgb_frame);
+            sws_freeContext(sws_ctx);
+            return -1;
+        }
+        
+        // Copy each row, skipping the stride padding
+        for (int y = 0; y < frame->height; y++) {
+            memcpy(packed_buffer + y * frame->width * 3, 
+                   rgb_frame->data[0] + y * rgb_frame->linesize[0], 
+                   frame->width * 3);
+        }
+        
+        // Debug: Check the first few bytes of the packed buffer
+        log_info("Packed buffer first 12 bytes: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+                 packed_buffer[0], packed_buffer[1], packed_buffer[2], packed_buffer[3], 
+                 packed_buffer[4], packed_buffer[5], packed_buffer[6], packed_buffer[7],
+                 packed_buffer[8], packed_buffer[9], packed_buffer[10], packed_buffer[11]);
+        
+        // Process the packed buffer
+        int ret = process_frame_for_detection(stream_name, packed_buffer, frame->width, frame->height, 3, frame_time);
+        log_info("process_frame_for_detection returned: %d", ret);
+        
+        // Free the packed buffer
+        free(packed_buffer);
+    }
     
     // Cleanup
     av_free(buffer);

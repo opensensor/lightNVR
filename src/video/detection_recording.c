@@ -284,13 +284,30 @@ int process_frame_for_detection(const char *stream_name, const unsigned char *fr
     
     // Run detection on the frame
     detection_result_t result;
-    log_info("Running detection for stream %s with model at %s", stream_name, detection_recordings[slot].model_path);
-    if (detect_objects(detection_recordings[slot].model, frame_data, width, height, channels, &result) != 0) {
-        log_error("Failed to run detection on frame for stream %s", stream_name);
+    log_info("Running detection for stream %s with model at %s (frame dimensions: %dx%d, channels: %d)", 
+             stream_name, detection_recordings[slot].model_path, width, height, channels);
+    
+    // Debug: Check the first few bytes of the frame data to ensure it's valid
+    log_info("Frame data first 12 bytes: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+             frame_data[0], frame_data[1], frame_data[2], frame_data[3], 
+             frame_data[4], frame_data[5], frame_data[6], frame_data[7],
+             frame_data[8], frame_data[9], frame_data[10], frame_data[11]);
+    
+    int ret = detect_objects(detection_recordings[slot].model, frame_data, width, height, channels, &result);
+    if (ret != 0) {
+        log_error("Failed to run detection on frame for stream %s (error code: %d)", stream_name, ret);
         pthread_mutex_unlock(&detection_recordings[slot].mutex);
         return -1;
     }
-    
+    // In process_frame_for_detection, after detect_objects call:
+log_info("Detection result for stream %s: %d objects found", stream_name, result.count);
+for (int i = 0; i < result.count; i++) {
+    log_info("  Object %d: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]",
+             i, result.detections[i].label,
+             result.detections[i].confidence * 100.0f,
+             result.detections[i].x, result.detections[i].y,
+             result.detections[i].width, result.detections[i].height);
+}
     log_info("Detection completed for stream %s, found %d objects", stream_name, result.count);
     
     // Store detection results for frontend visualization

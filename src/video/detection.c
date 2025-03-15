@@ -276,10 +276,17 @@ static detection_model_t load_sod_model(const char *model_path, float threshold)
     // Create CNN model
     int rc;
     
+    // Check if this is a face detection model based on filename
+    const char *arch = "default";
+    if (strstr(model_path, "face") != NULL || strstr(model_path, "Face") != NULL) {
+        arch = ":face";
+        log_info("Using :face architecture for CNN model: %s", model_path);
+    }
+    
     #ifdef SOD_ENABLED
-    rc = sod_cnn_create((sod_cnn**)&sod_model, "default", model_path, &err_msg);
+    rc = sod_cnn_create((sod_cnn**)&sod_model, arch, model_path, &err_msg);
     #else
-    rc = sod_funcs.sod_cnn_create(&sod_model, "default", model_path, &err_msg);
+    rc = sod_funcs.sod_cnn_create(&sod_model, arch, model_path, &err_msg);
     #endif
     
     if (rc != 0 || !sod_model) {  // SOD_OK is 0
@@ -479,7 +486,8 @@ int detect_objects(detection_model_t model, const unsigned char *frame_data,
     
     model_t *m = (model_t *)model;
     
-    log_info("Detecting objects using model type: %s", m->type);
+    log_info("Detecting objects using model type: %s (dimensions: %dx%d, channels: %d)", 
+             m->type, width, height, channels);
     
     // Initialize result
     result->count = 0;
