@@ -7,10 +7,13 @@
 #include <unistd.h>
 
 #include "video/detection.h"
+#include "video/sod_realnet.h"
 #include "core/logger.h"
+#include "sod/sod.h"
 
 // Define model types
 #define MODEL_TYPE_SOD "sod"
+#define MODEL_TYPE_SOD_REALNET "sod_realnet"
 #define MODEL_TYPE_TFLITE "tflite"
 
 // SOD model structure
@@ -22,6 +25,11 @@ typedef struct {
     void (*free_model)(void *);  // Function pointer for freeing model
     void *(*detect)(void *, const unsigned char *, int, int, int, int *, float); // Function pointer for detection
 } sod_model_t;
+
+// SOD RealNet model structure (wrapper for external implementation)
+typedef struct {
+    void *model;                 // SOD RealNet model handle
+} sod_realnet_model_t;
 
 // TFLite model structure
 typedef struct {
@@ -35,9 +43,10 @@ typedef struct {
 
 // Generic model structure
 typedef struct {
-    char type[16];               // Model type (sod, tflite)
+    char type[16];               // Model type (sod, sod_realnet, tflite)
     union {
         sod_model_t sod;
+        sod_realnet_model_t sod_realnet;
         tflite_model_t tflite;
     };
 } model_t;
@@ -56,14 +65,11 @@ int init_detection_system(void) {
     
     pthread_mutex_lock(&detection_mutex);
     
-    // Check for SOD library
-    void *sod_handle = dlopen("libsod.so", RTLD_LAZY);
-    if (sod_handle) {
-        log_info("SOD library found and loaded");
-        dlclose(sod_handle);
-    } else {
-        log_warn("SOD library not found: %s", dlerror());
-    }
+    // SOD is now directly linked, no need to check for library
+    log_info("SOD library directly linked");
+    
+    // Check for RealNet support
+    log_info("SOD RealNet support available");
     
     // Check for TFLite library
     void *tflite_handle = dlopen("libtensorflowlite.so", RTLD_LAZY);
@@ -110,14 +116,14 @@ bool is_model_supported(const char *model_path) {
         return false;
     }
     
-    // Check for SOD models
+    // Check for SOD RealNet models
+    if (strstr(model_path, ".realnet.sod") != NULL) {
+        return true;
+    }
+    
+    // Check for regular SOD models
     if (strcasecmp(ext, ".sod") == 0) {
-        void *handle = dlopen("libsod.so", RTLD_LAZY);
-        if (handle) {
-            dlclose(handle);
-            return true;
-        }
-        return false;
+        return true;
     }
     
     // Check for TFLite models
@@ -147,7 +153,12 @@ const char* get_model_type(const char *model_path) {
         return "unknown";
     }
     
-    // Check for SOD models
+    // Check for SOD RealNet models
+    if (strstr(model_path, ".realnet.sod") != NULL) {
+        return MODEL_TYPE_SOD_REALNET;
+    }
+    
+    // Check for regular SOD models
     if (strcasecmp(ext, ".sod") == 0) {
         return MODEL_TYPE_SOD;
     }
@@ -164,69 +175,60 @@ const char* get_model_type(const char *model_path) {
  * Load a SOD model
  */
 static detection_model_t load_sod_model(const char *model_path, float threshold) {
-    // Open SOD library
-    void *handle = dlopen("libsod.so", RTLD_LAZY);
-    if (!handle) {
-        log_error("Failed to load SOD library: %s", dlerror());
+    // Load the model using SOD API
+    sod_cnn *sod_model = NULL;
+    const char *err_msg = NULL;
+    
+    // Create CNN model
+    int rc = sod_cnn_create(&sod_model, "default", model_path, &err_msg);
+    if (rc != SOD_OK || !sod_model) {
+        log_error("Failed to load SOD model: %s - %s", model_path, err_msg ? err_msg : "Unknown error");
         return NULL;
     }
     
-    // Clear any existing error
-    dlerror();
+    // Set detection threshold
+    sod_cnn_config(sod_model, SOD_CNN_DETECTION_THRESHOLD, threshold);
     
-    // Load SOD functions
-    void *(*sod_load_model)(const char *) = dlsym(handle, "sod_load_model");
-    const char *dlsym_error = dlerror();
-    if (dlsym_error) {
-        log_error("Failed to load SOD function 'sod_load_model': %s", dlsym_error);
-        dlclose(handle);
+    // Create model structure
+    model_t *model = (model_t *)malloc(sizeof(model_t));
+    if (!model) {
+        log_error("Failed to allocate memory for model structure");
+        sod_cnn_destroy(sod_model);
         return NULL;
     }
     
-    void (*sod_free_model)(void *) = dlsym(handle, "sod_free_model");
-    dlsym_error = dlerror();
-    if (dlsym_error) {
-        log_error("Failed to load SOD function 'sod_free_model': %s", dlsym_error);
-        dlclose(handle);
-        return NULL;
-    }
+    // Initialize model structure
+    strncpy(model->type, MODEL_TYPE_SOD, sizeof(model->type) - 1);
+    model->sod.model = sod_model;
+    model->sod.threshold = threshold;
     
-    void *(*sod_detect)(void *, const unsigned char *, int, int, int, int *, float) = 
-        dlsym(handle, "sod_detect");
-    dlsym_error = dlerror();
-    if (dlsym_error) {
-        log_error("Failed to load SOD function 'sod_detect': %s", dlsym_error);
-        dlclose(handle);
-        return NULL;
-    }
-    
-    // Load the model
-    void *sod_model = sod_load_model(model_path);
-    if (!sod_model) {
-        log_error("Failed to load SOD model: %s", model_path);
-        dlclose(handle);
+    log_info("SOD model loaded: %s", model_path);
+    return model;
+}
+
+/**
+ * Load a SOD RealNet model
+ */
+static detection_model_t load_sod_realnet_model_internal(const char *model_path, float threshold) {
+    // Load the model using the external implementation
+    void *realnet_model = load_sod_realnet_model(model_path, threshold);
+    if (!realnet_model) {
         return NULL;
     }
     
     // Create model structure
     model_t *model = (model_t *)malloc(sizeof(model_t));
     if (!model) {
-        log_error("Failed to allocate memory for model structure");
-        sod_free_model(sod_model);
-        dlclose(handle);
+        log_error("Failed to allocate memory for SOD RealNet model structure");
+        free_sod_realnet_model(realnet_model);
         return NULL;
     }
     
     // Initialize model structure
-    strncpy(model->type, MODEL_TYPE_SOD, sizeof(model->type) - 1);
-    model->sod.handle = handle;
-    model->sod.model = sod_model;
-    model->sod.threshold = threshold;
-    model->sod.load_model = sod_load_model;
-    model->sod.free_model = sod_free_model;
-    model->sod.detect = sod_detect;
+    strncpy(model->type, MODEL_TYPE_SOD_REALNET, sizeof(model->type) - 1);
+    model->sod_realnet.model = realnet_model;
     
-    log_info("SOD model loaded: %s", model_path);
+    log_info("SOD RealNet model loaded: %s", model_path);
     return model;
 }
 
@@ -309,20 +311,18 @@ detection_model_t load_detection_model(const char *model_path, float threshold) 
         return NULL;
     }
     
-    // Check file extension
-    const char *ext = strrchr(model_path, '.');
-    if (!ext) {
-        log_error("Invalid model file: %s", model_path);
-        return NULL;
-    }
+    // Get model type
+    const char *model_type = get_model_type(model_path);
     
     // Load appropriate model type
-    if (strcasecmp(ext, ".sod") == 0) {
+    if (strcmp(model_type, MODEL_TYPE_SOD_REALNET) == 0) {
+        return load_sod_realnet_model_internal(model_path, threshold);
+    } else if (strcmp(model_type, MODEL_TYPE_SOD) == 0) {
         return load_sod_model(model_path, threshold);
-    } else if (strcasecmp(ext, ".tflite") == 0) {
+    } else if (strcmp(model_type, MODEL_TYPE_TFLITE) == 0) {
         return load_tflite_model(model_path, threshold);
     } else {
-        log_error("Unsupported model type: %s", ext);
+        log_error("Unsupported model type: %s", model_type);
         return NULL;
     }
 }
@@ -339,8 +339,10 @@ void unload_detection_model(detection_model_t model) {
     
     if (strcmp(m->type, MODEL_TYPE_SOD) == 0) {
         // Unload SOD model
-        m->sod.free_model(m->sod.model);
-        dlclose(m->sod.handle);
+        sod_cnn_destroy(m->sod.model);
+    } else if (strcmp(m->type, MODEL_TYPE_SOD_REALNET) == 0) {
+        // Unload SOD RealNet model
+        free_sod_realnet_model(m->sod_realnet.model);
     } else if (strcmp(m->type, MODEL_TYPE_TFLITE) == 0) {
         // Unload TFLite model
         m->tflite.free_model(m->tflite.model);
@@ -367,28 +369,72 @@ int detect_objects(detection_model_t model, const unsigned char *frame_data,
     // Run detection based on model type
     if (strcmp(m->type, MODEL_TYPE_SOD) == 0) {
         // Run SOD detection
+        sod_box *boxes = NULL;
         int count = 0;
-        void *detections = m->sod.detect(m->sod.model, frame_data, width, height, channels, 
-                                        &count, m->sod.threshold);
         
-        // Process detections
-        // This is a simplified example - actual implementation would depend on SOD API
-        // and would extract label, confidence, and bounding box for each detection
-        
-        // For now, just set a dummy detection
-        if (count > 0 && count <= MAX_DETECTIONS) {
-            result->count = count;
-            for (int i = 0; i < count; i++) {
-                strncpy(result->detections[i].label, "object", MAX_LABEL_LENGTH - 1);
-                result->detections[i].confidence = 0.9f;
-                result->detections[i].x = 0.5f;
-                result->detections[i].y = 0.5f;
-                result->detections[i].width = 0.2f;
-                result->detections[i].height = 0.2f;
-            }
+        // Create a sod_img from the frame data
+        sod_img img = sod_make_image(width, height, channels);
+        if (!img.data) {
+            log_error("Failed to create image for SOD detection");
+            return -1;
         }
         
+        // Convert frame data to float and copy to image
+        for (int i = 0; i < width * height * channels; i++) {
+            img.data[i] = frame_data[i] / 255.0f;
+        }
+        
+        // Prepare image for CNN
+        float *prepared_data = sod_cnn_prepare_image(m->sod.model, img);
+        
+        // Free the image since we have the prepared data
+        sod_free_image(img);
+        
+        if (!prepared_data) {
+            log_error("Failed to prepare image for SOD detection");
+            return -1;
+        }
+        
+        // Run detection
+        int rc = sod_cnn_predict(m->sod.model, prepared_data, &boxes, &count);
+        if (rc != SOD_OK) {
+            log_error("SOD detection failed: %d", rc);
+            return -1;
+        }
+        
+        // Process detections
+        int valid_count = 0;
+        for (int i = 0; i < count && valid_count < MAX_DETECTIONS; i++) {
+            // Apply threshold
+            if (boxes[i].score < m->sod.threshold) {
+                continue;
+            }
+            
+            // Copy detection data
+            strncpy(result->detections[valid_count].label, 
+                    boxes[i].zName ? boxes[i].zName : "object", 
+                    MAX_LABEL_LENGTH - 1);
+            
+            result->detections[valid_count].confidence = boxes[i].score;
+            if (result->detections[valid_count].confidence > 1.0f) {
+                result->detections[valid_count].confidence = 1.0f;
+            }
+            
+            // Normalize coordinates to 0.0-1.0 range
+            result->detections[valid_count].x = (float)boxes[i].x / width;
+            result->detections[valid_count].y = (float)boxes[i].y / height;
+            result->detections[valid_count].width = (float)boxes[i].w / width;
+            result->detections[valid_count].height = (float)boxes[i].h / height;
+            
+            valid_count++;
+        }
+        
+        result->count = valid_count;
+        
         return 0;
+    } else if (strcmp(m->type, MODEL_TYPE_SOD_REALNET) == 0) {
+        // Run SOD RealNet detection using the external implementation
+        return detect_with_sod_realnet(m->sod_realnet.model, frame_data, width, height, channels, result);
     } else if (strcmp(m->type, MODEL_TYPE_TFLITE) == 0) {
         // Run TFLite detection
         int count = 0;

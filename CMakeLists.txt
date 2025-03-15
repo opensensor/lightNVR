@@ -44,6 +44,7 @@ target_link_libraries(lightnvr
     ${SQLITE_LIBRARIES}
     pthread
     dl
+    m
 )
 
 # Install targets
