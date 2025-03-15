@@ -177,6 +177,12 @@ void handle_hls_manifest(const http_request_t *request, http_response_t *respons
     response->status_code = 200;
     strncpy(response->content_type, "application/vnd.apple.mpegurl", sizeof(response->content_type) - 1);
     response->content_type[sizeof(response->content_type) - 1] = '\0';
+    
+    // Add cache control headers to prevent caching of HLS manifests
+    set_response_header(response, "Cache-Control", "no-cache, no-store, must-revalidate");
+    set_response_header(response, "Pragma", "no-cache");
+    set_response_header(response, "Expires", "0");
+    
     response->body = content;
     response->body_length = file_size;
 }
@@ -298,6 +304,12 @@ void handle_hls_segment(const http_request_t *request, http_response_t *response
     response->status_code = 200;
     strncpy(response->content_type, "video/mp2t", sizeof(response->content_type) - 1);
     response->content_type[sizeof(response->content_type) - 1] = '\0';
+    
+    // Add cache control headers to prevent caching of HLS segments
+    set_response_header(response, "Cache-Control", "no-cache, no-store, must-revalidate");
+    set_response_header(response, "Pragma", "no-cache");
+    set_response_header(response, "Expires", "0");
+    
     response->body = content;
     response->body_length = file_size;
 

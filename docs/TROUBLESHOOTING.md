@@ -171,6 +171,38 @@ If you experience frequent video timeouts in the live stream:
    - If running on limited hardware (like Ingenic A1), reduce stream resolution and framerate
    - Consider enabling hardware acceleration if available
 
+### Stale Stream Data in Live View
+
+If you notice the live stream showing outdated video (stale data):
+
+1. **Prevent browser caching**:
+   - Add cache control headers to HLS responses in `src/web/api_handlers_streaming.c`:
+     ```c
+     set_response_header(response, "Cache-Control", "no-cache, no-store, must-revalidate");
+     set_response_header(response, "Pragma", "no-cache");
+     set_response_header(response, "Expires", "0");
+     ```
+
+2. **Add cache-busting to HLS URLs** in `web/js/components/video.js`:
+   ```javascript
+   const timestamp = Date.now();
+   const hlsStreamUrl = `/api/streaming/${encodeURIComponent(stream.name)}/hls/index.m3u8?_t=${timestamp}`;
+   ```
+
+3. **Implement periodic stream refresh**:
+   ```javascript
+   const refreshInterval = 60000; // 60 seconds
+   const refreshTimer = setInterval(() => {
+       if (videoCell && videoCell.hlsPlayer) {
+           const newTimestamp = Date.now();
+           const newUrl = `/api/streaming/${encodeURIComponent(stream.name)}/hls/index.m3u8?_t=${newTimestamp}`;
+           videoCell.hlsPlayer.loadSource(newUrl);
+       }
+   }, refreshInterval);
+   ```
+
+4. **Manual refresh**: If you still see stale data, refreshing the browser page will force a complete reload of the stream.
+
 ## Recording Problems
 
 ### Recordings Not Being Created
