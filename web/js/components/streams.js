@@ -239,11 +239,16 @@ function editStream(streamId) {
             if (detectionEnabled) {
                 detectionEnabled.checked = stream.detection_based_recording === true;
                 
-                // Show/hide detection options based on checkbox
-                const detectionOptions = document.querySelectorAll('.detection-options');
-                detectionOptions.forEach(el => {
-                    el.style.display = detectionEnabled.checked ? 'block' : 'none';
-                });
+            // Show/hide detection options based on checkbox
+            const detectionOptions = document.querySelectorAll('.detection-options');
+            detectionOptions.forEach(el => {
+                el.style.display = detectionEnabled.checked ? 'block' : 'none';
+            });
+            
+            // If detection is enabled, make sure models are loaded
+            if (detectionEnabled.checked) {
+                loadDetectionModels();
+            }
             }
             
             // Set detection model if available
@@ -601,6 +606,11 @@ function setupStreamsHandlers() {
             detectionOptions.forEach(el => {
                 el.style.display = this.checked ? 'block' : 'none';
             });
+            
+            // Load detection models when checkbox is checked
+            if (this.checked) {
+                loadDetectionModels();
+            }
         });
     }
     
