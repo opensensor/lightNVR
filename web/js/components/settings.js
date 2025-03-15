@@ -155,13 +155,13 @@ function saveSettings() {
             storage_path: document.getElementById('setting-storage-path')?.value || '/var/lib/lightnvr/recordings',
             max_storage: parseInt(document.getElementById('setting-max-storage')?.value || '0', 10),
             retention: parseInt(document.getElementById('setting-retention')?.value || '30', 10),
-            auto_delete: document.getElementById('setting-auto-delete')?.checked || true,
+            auto_delete: document.getElementById('setting-auto-delete') ? document.getElementById('setting-auto-delete').checked : true,
             web_port: parseInt(document.getElementById('setting-web-port')?.value || '8080', 10),
-            auth_enabled: document.getElementById('setting-auth-enabled')?.checked || true,
+            auth_enabled: document.getElementById('setting-auth-enabled') ? document.getElementById('setting-auth-enabled').checked : true,
             username: document.getElementById('setting-username')?.value || 'admin',
             password: document.getElementById('setting-password')?.value || '********',
             buffer_size: parseInt(document.getElementById('setting-buffer-size')?.value || '1024', 10),
-            use_swap: document.getElementById('setting-use-swap')?.checked || true,
+            use_swap: document.getElementById('setting-use-swap') ? document.getElementById('setting-use-swap').checked : true,
             swap_size: parseInt(document.getElementById('setting-swap-size')?.value || '128', 10)
         };
 
