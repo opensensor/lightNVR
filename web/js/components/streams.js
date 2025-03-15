@@ -265,6 +265,9 @@ function editStream(streamId) {
                     el.style.display = 'block';
                 });
             }
+            
+            // Always include detection model in the form, even if detection is disabled
+            // This ensures the model is preserved when toggling detection on/off
             }
             
             // Set detection model if available
@@ -352,51 +355,52 @@ function saveStream() {
     if (detectionEnabled) {
         streamData.detection_based_recording = detectionEnabled.checked;
         
-        if (detectionEnabled.checked) {
-            // Only include detection options if detection is enabled
-            const modelSelect = document.getElementById('stream-detection-model');
+        // Always include detection options, even if detection is disabled
+        // This ensures settings are preserved when toggling detection on/off
+        const modelSelect = document.getElementById('stream-detection-model');
+        
+        // Check if model select exists and has options
+        if (modelSelect) {
+            console.log('Model select found, options count:', modelSelect.options.length);
             
-            // Check if model select exists and has options
-            if (modelSelect) {
-                console.log('Model select found, options count:', modelSelect.options.length);
+            // If there are no options other than the default "Select a model", try loading models again
+            if (modelSelect.options.length <= 1) {
+                console.log('No model options found, loading models again...');
+                loadDetectionModels();
                 
-                // If there are no options other than the default "Select a model", try loading models again
-                if (modelSelect.options.length <= 1) {
-                    console.log('No model options found, loading models again...');
-                    loadDetectionModels();
-                    
-                    // Show alert and return
+                // Only show alert and return if detection is enabled
+                if (detectionEnabled.checked) {
                     alert('No detection models available. Please make sure models are installed in the models directory.');
                     hideLoading(streamModal);
                     return;
                 }
-                
-                if (modelSelect.value) {
-                    streamData.detection_model = modelSelect.value;
-                    console.log('Selected model:', streamData.detection_model);
-                }
-            } else {
-                console.error('Model select element not found');
             }
             
-            const thresholdSlider = document.getElementById('stream-detection-threshold');
-            if (thresholdSlider) {
-                streamData.detection_threshold = parseInt(thresholdSlider.value, 10) / 100;
+            if (modelSelect.value) {
+                streamData.detection_model = modelSelect.value;
+                console.log('Selected model:', streamData.detection_model);
             }
-            
-            const preBuffer = document.getElementById('stream-pre-buffer');
-            if (preBuffer) {
-                streamData.pre_detection_buffer = parseInt(preBuffer.value, 10);
-            }
-            
-            const postBuffer = document.getElementById('stream-post-buffer');
-            if (postBuffer) {
-                streamData.post_detection_buffer = parseInt(postBuffer.value, 10);
-            }
-            
-            // Set a default detection interval if not already set
-            streamData.detection_interval = 10; // Check every 10 frames
+        } else {
+            console.error('Model select element not found');
         }
+        
+        const thresholdSlider = document.getElementById('stream-detection-threshold');
+        if (thresholdSlider) {
+            streamData.detection_threshold = parseInt(thresholdSlider.value, 10) / 100;
+        }
+        
+        const preBuffer = document.getElementById('stream-pre-buffer');
+        if (preBuffer) {
+            streamData.pre_detection_buffer = parseInt(preBuffer.value, 10);
+        }
+        
+        const postBuffer = document.getElementById('stream-post-buffer');
+        if (postBuffer) {
+            streamData.post_detection_buffer = parseInt(postBuffer.value, 10);
+        }
+        
+        // Set a default detection interval if not already set
+        streamData.detection_interval = 10; // Check every 10 frames
     }
 
     // Validate required fields
