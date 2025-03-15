@@ -299,15 +299,7 @@ int process_frame_for_detection(const char *stream_name, const unsigned char *fr
         pthread_mutex_unlock(&detection_recordings[slot].mutex);
         return -1;
     }
-    // In process_frame_for_detection, after detect_objects call:
-log_info("Detection result for stream %s: %d objects found", stream_name, result.count);
-for (int i = 0; i < result.count; i++) {
-    log_info("  Object %d: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]",
-             i, result.detections[i].label,
-             result.detections[i].confidence * 100.0f,
-             result.detections[i].x, result.detections[i].y,
-             result.detections[i].width, result.detections[i].height);
-}
+
     log_info("Detection completed for stream %s, found %d objects", stream_name, result.count);
     
     // Store detection results for frontend visualization
