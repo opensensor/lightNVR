@@ -72,6 +72,22 @@ cd lightnvr
 ./scripts/build.sh --clean
 ```
 
+### Building with or without SOD
+
+LightNVR can be built with or without SOD (an embedded computer vision & machine learning library) support. By default, SOD is enabled.
+
+```bash
+# Build with SOD support (default)
+./scripts/build_with_sod.sh
+
+# Build without SOD support
+./scripts/build_without_sod.sh
+```
+
+When built without SOD, LightNVR will still function normally but will not have object detection capabilities unless the SOD library is installed separately and available at runtime.
+
+For more information about SOD integration, see [SOD Integration](SOD_INTEGRATION.md).
+
 The build script will:
 1. Check for required dependencies
 2. Configure the build using CMake
@@ -87,8 +103,11 @@ If you prefer to build manually without using the build script:
 mkdir -p build/Release
 cd build/Release
 
-# Configure
-cmake -DCMAKE_BUILD_TYPE=Release ../..
+# Configure (with SOD enabled)
+cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_SOD=ON ../..
+
+# Or configure without SOD
+# cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_SOD=OFF ../..
 
 # Build
 cmake --build . -- -j$(nproc)

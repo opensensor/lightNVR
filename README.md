@@ -17,6 +17,7 @@ LightNVR provides a lightweight yet powerful solution for recording and managing
 - **Stream Support**: Handle up to 16 video streams (with memory-optimized buffering)
 - **Protocol Support**: RTSP and ONVIF (basic profile)
 - **Codec Support**: H.264 (primary), H.265 (if resources permit)
+- **Object Detection**: Optional SOD integration for motion and object detection
 - **Resolution Support**: Up to 1080p per stream (configurable lower resolutions)
 - **Frame Rate Control**: Configurable from 1-15 FPS per stream to reduce resource usage
 - **Standard Formats**: Records in standard MP4/MKV containers with proper indexing
@@ -94,6 +95,7 @@ docker run -d \
 - [API Documentation](docs/API.md)
 - [Troubleshooting Guide](docs/TROUBLESHOOTING.md)
 - [Architecture Overview](docs/ARCHITECTURE.md)
+- [SOD Integration](docs/SOD_INTEGRATION.md)
 
 ## Project Structure
 

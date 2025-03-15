@@ -6,6 +6,9 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Option to enable/disable SOD
+option(ENABLE_SOD "Enable SOD library for object detection" ON)
+
 # Compiler flags for optimization and memory usage
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O2 -ffunction-sections -fdata-sections -Wl,--gc-sections -pthread")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -ffunction-sections -fdata-sections -Wl,--gc-sections -pthread")
@@ -21,6 +24,12 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(FFMPEG REQUIRED libavcodec libavformat libavutil libswscale)
 pkg_check_modules(SQLITE REQUIRED sqlite3)
 
+# Add SOD subdirectory if enabled
+if(ENABLE_SOD)
+    add_subdirectory(src/sod)
+    add_definitions(-DSOD_ENABLED)
+endif()
+
 # Add include directories for dependencies
 include_directories(
     ${FFMPEG_INCLUDE_DIRS}
@@ -28,9 +37,14 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/external/inih
 )
 
-# Define source files
+# Define source files, excluding SOD sources which are built separately
 file(GLOB_RECURSE SOURCES 
-    "src/*.c"
+    "src/core/*.c"
+    "src/database/*.c"
+    "src/storage/*.c"
+    "src/utils/*.c"
+    "src/video/*.c"
+    "src/web/*.c"
     "src/*.cpp"
     "external/inih/ini.c"
 )
@@ -46,6 +60,11 @@ target_link_libraries(lightnvr
     dl
     m
 )
+
+# Link SOD library if enabled
+if(ENABLE_SOD)
+    target_link_libraries(lightnvr sod)
+endif()
 
 # Install targets
 install(TARGETS lightnvr DESTINATION bin)

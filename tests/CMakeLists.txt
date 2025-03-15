@@ -1,5 +1,10 @@
 # Tests CMakeLists.txt
 
+# Get the ENABLE_SOD option from parent
+if(NOT DEFINED ENABLE_SOD)
+    option(ENABLE_SOD "Enable SOD library for object detection" ON)
+endif()
+
 # Include directories
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -10,10 +15,6 @@ include_directories(
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(FFMPEG REQUIRED libavcodec libavformat libavutil)
 pkg_check_modules(SQLITE REQUIRED sqlite3)
-
-# Find SOD library
-find_library(SOD_LIBRARY NAMES sod REQUIRED)
-message(STATUS "SOD library found for tests: ${SOD_LIBRARY}")
 
 # Add include directories for dependencies
 include_directories(
@@ -29,23 +30,35 @@ set(DETECTION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/logger.c
 )
 
-# Define test executables
-add_executable(test_sod_realnet 
-    test_sod_realnet.c
-    ${DETECTION_SOURCES}
-)
+# Add SOD definition if enabled
+if(ENABLE_SOD)
+    add_definitions(-DSOD_ENABLED)
+endif()
 
-# Link libraries
-target_link_libraries(test_sod_realnet
-    ${FFMPEG_LIBRARIES}
-    ${SQLITE_LIBRARIES}
-    ${SOD_LIBRARY}
-    pthread
-    dl
-)
+# Only build SOD RealNet test if SOD is enabled
+if(ENABLE_SOD)
+    # Define test executables
+    add_executable(test_sod_realnet
+        test_sod_realnet.c
+        ${DETECTION_SOURCES}
+    )
 
-# Add test to CTest
-add_test(NAME test_sod_realnet COMMAND test_sod_realnet)
+    # Link libraries
+    target_link_libraries(test_sod_realnet
+        ${FFMPEG_LIBRARIES}
+        ${SQLITE_LIBRARIES}
+        pthread
+        dl
+        sod
+    )
+
+    # Add test to CTest
+    add_test(NAME test_sod_realnet COMMAND test_sod_realnet)
+
+    message(STATUS "Building SOD RealNet test")
+else()
+    message(STATUS "Skipping SOD RealNet test (SOD disabled)")
+endif()
 
 # Output binary to a 'bin' directory
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)

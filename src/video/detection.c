@@ -9,12 +9,40 @@
 #include "video/detection.h"
 #include "video/sod_realnet.h"
 #include "core/logger.h"
+
+// Include SOD header if SOD is enabled at compile time
+#ifdef SOD_ENABLED
 #include "sod/sod.h"
+#endif
 
 // Define model types
 #define MODEL_TYPE_SOD "sod"
 #define MODEL_TYPE_SOD_REALNET "sod_realnet"
 #define MODEL_TYPE_TFLITE "tflite"
+
+// SOD library function pointers for dynamic loading
+typedef struct {
+    void *handle;
+    int (*sod_cnn_create)(void **ppOut, const char *zArch, const char *zModelPath, const char **pzErr);
+    int (*sod_cnn_config)(void *pNet, int conf, ...);
+    int (*sod_cnn_predict)(void *pNet, float *pInput, void ***paBox, int *pnBox);
+    void (*sod_cnn_destroy)(void *pNet);
+    float * (*sod_cnn_prepare_image)(void *pNet, void *in);
+    int (*sod_cnn_get_network_size)(void *pNet, int *pWidth, int *pHeight, int *pChannels);
+    void * (*sod_make_image)(int w, int h, int c);
+    void (*sod_free_image)(void *m);
+    
+    // RealNet functions
+    int (*sod_realnet_create)(void **ppOut);
+    int (*sod_realnet_load_model_from_mem)(void *pNet, const void *pModel, unsigned int nBytes, unsigned int *pOutHandle);
+    int (*sod_realnet_model_config)(void *pNet, unsigned int handle, int conf, ...);
+    int (*sod_realnet_detect)(void *pNet, const unsigned char *zGrayImg, int width, int height, void ***apBox, int *pnBox);
+    void (*sod_realnet_destroy)(void *pNet);
+} sod_functions_t;
+
+// Global SOD functions
+static sod_functions_t sod_funcs = {0};
+static bool sod_available = false;
 
 // SOD model structure
 typedef struct {
@@ -25,6 +53,17 @@ typedef struct {
     void (*free_model)(void *);  // Function pointer for freeing model
     void *(*detect)(void *, const unsigned char *, int, int, int, int *, float); // Function pointer for detection
 } sod_model_t;
+
+// SOD box structure (for dynamic loading)
+typedef struct {
+    int x;
+    int y;
+    int w;
+    int h;
+    float score;
+    const char *zName;
+    void *pUserData;
+} sod_box_dynamic;
 
 // SOD RealNet model structure (wrapper for external implementation)
 typedef struct {
@@ -65,11 +104,51 @@ int init_detection_system(void) {
     
     pthread_mutex_lock(&detection_mutex);
     
-    // SOD is now directly linked, no need to check for library
+    // Check for SOD library
+    #ifdef SOD_ENABLED
+    // SOD is directly linked
     log_info("SOD library directly linked");
+    sod_available = true;
     
     // Check for RealNet support
     log_info("SOD RealNet support available");
+    #else
+    // Try to dynamically load SOD library
+    sod_funcs.handle = dlopen("libsod.so", RTLD_LAZY);
+    if (sod_funcs.handle) {
+        // Load SOD functions
+        sod_funcs.sod_cnn_create = dlsym(sod_funcs.handle, "sod_cnn_create");
+        sod_funcs.sod_cnn_config = dlsym(sod_funcs.handle, "sod_cnn_config");
+        sod_funcs.sod_cnn_predict = dlsym(sod_funcs.handle, "sod_cnn_predict");
+        sod_funcs.sod_cnn_destroy = dlsym(sod_funcs.handle, "sod_cnn_destroy");
+        sod_funcs.sod_cnn_prepare_image = dlsym(sod_funcs.handle, "sod_cnn_prepare_image");
+        sod_funcs.sod_cnn_get_network_size = dlsym(sod_funcs.handle, "sod_cnn_get_network_size");
+        sod_funcs.sod_make_image = dlsym(sod_funcs.handle, "sod_make_image");
+        sod_funcs.sod_free_image = dlsym(sod_funcs.handle, "sod_free_image");
+        
+        // Load RealNet functions
+        sod_funcs.sod_realnet_create = dlsym(sod_funcs.handle, "sod_realnet_create");
+        sod_funcs.sod_realnet_load_model_from_mem = dlsym(sod_funcs.handle, "sod_realnet_load_model_from_mem");
+        sod_funcs.sod_realnet_model_config = dlsym(sod_funcs.handle, "sod_realnet_model_config");
+        sod_funcs.sod_realnet_detect = dlsym(sod_funcs.handle, "sod_realnet_detect");
+        sod_funcs.sod_realnet_destroy = dlsym(sod_funcs.handle, "sod_realnet_destroy");
+        
+        // Check if all required functions were loaded
+        if (sod_funcs.sod_cnn_create && sod_funcs.sod_cnn_config && 
+            sod_funcs.sod_cnn_predict && sod_funcs.sod_cnn_destroy && 
+            sod_funcs.sod_cnn_prepare_image && sod_funcs.sod_make_image && 
+            sod_funcs.sod_free_image) {
+            log_info("SOD library dynamically loaded");
+            sod_available = true;
+        } else {
+            log_warn("SOD library found but missing required functions");
+            dlclose(sod_funcs.handle);
+            sod_funcs.handle = NULL;
+        }
+    } else {
+        log_warn("SOD library not found: %s", dlerror());
+    }
+    #endif
     
     // Check for TFLite library
     void *tflite_handle = dlopen("libtensorflowlite.so", RTLD_LAZY);
@@ -96,7 +175,17 @@ void shutdown_detection_system(void) {
     }
     
     pthread_mutex_lock(&detection_mutex);
+    
+    // Close dynamically loaded SOD library if needed
+    #ifndef SOD_ENABLED
+    if (sod_funcs.handle) {
+        dlclose(sod_funcs.handle);
+        sod_funcs.handle = NULL;
+    }
+    #endif
+    
     initialized = false;
+    sod_available = false;
     pthread_mutex_unlock(&detection_mutex);
     
     log_info("Detection system shutdown");
@@ -118,12 +207,12 @@ bool is_model_supported(const char *model_path) {
     
     // Check for SOD RealNet models
     if (strstr(model_path, ".realnet.sod") != NULL) {
-        return true;
+        return sod_available;
     }
     
     // Check for regular SOD models
     if (strcasecmp(ext, ".sod") == 0) {
-        return true;
+        return sod_available;
     }
     
     // Check for TFLite models
@@ -155,12 +244,12 @@ const char* get_model_type(const char *model_path) {
     
     // Check for SOD RealNet models
     if (strstr(model_path, ".realnet.sod") != NULL) {
-        return MODEL_TYPE_SOD_REALNET;
+        return sod_available ? MODEL_TYPE_SOD_REALNET : "unknown";
     }
     
     // Check for regular SOD models
     if (strcasecmp(ext, ".sod") == 0) {
-        return MODEL_TYPE_SOD;
+        return sod_available ? MODEL_TYPE_SOD : "unknown";
     }
     
     // Check for TFLite models
@@ -175,25 +264,45 @@ const char* get_model_type(const char *model_path) {
  * Load a SOD model
  */
 static detection_model_t load_sod_model(const char *model_path, float threshold) {
+    if (!sod_available) {
+        log_error("SOD library not available");
+        return NULL;
+    }
+    
     // Load the model using SOD API
-    sod_cnn *sod_model = NULL;
+    void *sod_model = NULL;
     const char *err_msg = NULL;
     
     // Create CNN model
-    int rc = sod_cnn_create(&sod_model, "default", model_path, &err_msg);
-    if (rc != SOD_OK || !sod_model) {
+    int rc;
+    
+    #ifdef SOD_ENABLED
+    rc = sod_cnn_create((sod_cnn**)&sod_model, "default", model_path, &err_msg);
+    #else
+    rc = sod_funcs.sod_cnn_create(&sod_model, "default", model_path, &err_msg);
+    #endif
+    
+    if (rc != 0 || !sod_model) {  // SOD_OK is 0
         log_error("Failed to load SOD model: %s - %s", model_path, err_msg ? err_msg : "Unknown error");
         return NULL;
     }
     
     // Set detection threshold
+    #ifdef SOD_ENABLED
     sod_cnn_config(sod_model, SOD_CNN_DETECTION_THRESHOLD, threshold);
+    #else
+    sod_funcs.sod_cnn_config(sod_model, 2 /* SOD_CNN_DETECTION_THRESHOLD */, threshold);
+    #endif
     
     // Create model structure
     model_t *model = (model_t *)malloc(sizeof(model_t));
     if (!model) {
         log_error("Failed to allocate memory for model structure");
+        #ifdef SOD_ENABLED
         sod_cnn_destroy(sod_model);
+        #else
+        sod_funcs.sod_cnn_destroy(sod_model);
+        #endif
         return NULL;
     }
     
@@ -339,7 +448,13 @@ void unload_detection_model(detection_model_t model) {
     
     if (strcmp(m->type, MODEL_TYPE_SOD) == 0) {
         // Unload SOD model
+        #ifdef SOD_ENABLED
         sod_cnn_destroy(m->sod.model);
+        #else
+        if (sod_funcs.sod_cnn_destroy) {
+            sod_funcs.sod_cnn_destroy(m->sod.model);
+        }
+        #endif
     } else if (strcmp(m->type, MODEL_TYPE_SOD_REALNET) == 0) {
         // Unload SOD RealNet model
         free_sod_realnet_model(m->sod_realnet.model);
@@ -371,27 +486,58 @@ int detect_objects(detection_model_t model, const unsigned char *frame_data,
     
     // Run detection based on model type
     if (strcmp(m->type, MODEL_TYPE_SOD) == 0) {
-        // Run SOD detection
-        sod_box *boxes = NULL;
-        int count = 0;
-        
-        // Create a sod_img from the frame data
-        sod_img img = sod_make_image(width, height, channels);
-        if (!img.data) {
-            log_error("Failed to create image for SOD detection");
+        if (!sod_available) {
+            log_error("SOD library not available");
             return -1;
         }
         
+        // Run SOD detection
+        void *boxes = NULL;
+        int count = 0;
+        
+        // Create a sod_img from the frame data
+        #ifdef SOD_ENABLED
+        sod_img img = sod_make_image(width, height, channels);
+        if (SOD_IS_EMPTY_IMG(img)) {
+            log_error("Failed to create image for SOD detection");
+            return -1;
+        }
+        #else
+        void *img = sod_funcs.sod_make_image(width, height, channels);
+        if (!img) {
+            log_error("Failed to create image for SOD detection");
+            return -1;
+        }
+        #endif
+        
         // Convert frame data to float and copy to image
+        #ifdef SOD_ENABLED
         for (int i = 0; i < width * height * channels; i++) {
             img.data[i] = frame_data[i] / 255.0f;
         }
+        #else
+        // For dynamic loading, we need to access the data field differently
+        // This assumes the sod_img structure has the same layout as in the header
+        float *img_data = ((float**)img)[0]; // Assuming data is the first field
+        for (int i = 0; i < width * height * channels; i++) {
+            img_data[i] = frame_data[i] / 255.0f;
+        }
+        #endif
         
         // Prepare image for CNN
-        float *prepared_data = sod_cnn_prepare_image(m->sod.model, img);
+        float *prepared_data;
+        #ifdef SOD_ENABLED
+        prepared_data = sod_cnn_prepare_image(m->sod.model, img);
+        #else
+        prepared_data = sod_funcs.sod_cnn_prepare_image(m->sod.model, img);
+        #endif
         
         // Free the image since we have the prepared data
+        #ifdef SOD_ENABLED
         sod_free_image(img);
+        #else
+        sod_funcs.sod_free_image(img);
+        #endif
         
         if (!prepared_data) {
             log_error("Failed to prepare image for SOD detection");
@@ -399,8 +545,14 @@ int detect_objects(detection_model_t model, const unsigned char *frame_data,
         }
         
         // Run detection
-        int rc = sod_cnn_predict(m->sod.model, prepared_data, &boxes, &count);
-        if (rc != SOD_OK) {
+        int rc;
+        #ifdef SOD_ENABLED
+        rc = sod_cnn_predict(m->sod.model, prepared_data, (sod_box**)&boxes, &count);
+        #else
+        rc = sod_funcs.sod_cnn_predict(m->sod.model, prepared_data, (void***)&boxes, &count);
+        #endif
+        
+        if (rc != 0) { // SOD_OK is 0
             log_error("SOD detection failed: %d", rc);
             return -1;
         }
@@ -408,29 +560,65 @@ int detect_objects(detection_model_t model, const unsigned char *frame_data,
         // Process detections
         int valid_count = 0;
         for (int i = 0; i < count && valid_count < MAX_DETECTIONS; i++) {
-            // Apply threshold
-            if (boxes[i].score < m->sod.threshold) {
-                log_info("Detection %d below threshold: %f < %f", i, boxes[i].score, m->sod.threshold);
-                continue;
-            }
+            // Copy detection data regardless of threshold for logging
+            char label[MAX_LABEL_LENGTH];
             
-            // Copy detection data
-            strncpy(result->detections[valid_count].label, 
-                    boxes[i].zName ? boxes[i].zName : "object", 
-                    MAX_LABEL_LENGTH - 1);
+            #ifdef SOD_ENABLED
+            sod_box *box_array = (sod_box*)boxes;
+            strncpy(label, box_array[i].zName ? box_array[i].zName : "object", MAX_LABEL_LENGTH - 1);
             
-            result->detections[valid_count].confidence = boxes[i].score;
-            if (result->detections[valid_count].confidence > 1.0f) {
-                result->detections[valid_count].confidence = 1.0f;
+            float confidence = box_array[i].score;
+            if (confidence > 1.0f) {
+                confidence = 1.0f;
             }
             
             // Normalize coordinates to 0.0-1.0 range
-            result->detections[valid_count].x = (float)boxes[i].x / width;
-            result->detections[valid_count].y = (float)boxes[i].y / height;
-            result->detections[valid_count].width = (float)boxes[i].w / width;
-            result->detections[valid_count].height = (float)boxes[i].h / height;
+            float x = (float)box_array[i].x / width;
+            float y = (float)box_array[i].y / height;
+            float w = (float)box_array[i].w / width;
+            float h = (float)box_array[i].h / height;
             
-            log_info("Valid detection %d: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]", 
+            // Apply threshold
+            if (box_array[i].score < m->sod.threshold) {
+                log_info("SOD raw detection %d below threshold: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f] - threshold: %.2f", 
+                        i, label, confidence * 100.0f, x, y, w, h, m->sod.threshold);
+                continue;
+            }
+            #else
+            // For dynamic loading, we need to access the box array differently
+            sod_box_dynamic **box_array = (sod_box_dynamic**)boxes;
+            strncpy(label, box_array[i]->zName ? box_array[i]->zName : "object", MAX_LABEL_LENGTH - 1);
+            
+            float confidence = box_array[i]->score;
+            if (confidence > 1.0f) {
+                confidence = 1.0f;
+            }
+            
+            // Normalize coordinates to 0.0-1.0 range
+            float x = (float)box_array[i]->x / width;
+            float y = (float)box_array[i]->y / height;
+            float w = (float)box_array[i]->w / width;
+            float h = (float)box_array[i]->h / height;
+            
+            // Apply threshold
+            if (box_array[i]->score < m->sod.threshold) {
+                log_info("SOD raw detection %d below threshold: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f] - threshold: %.2f", 
+                        i, label, confidence * 100.0f, x, y, w, h, m->sod.threshold);
+                continue;
+            }
+            #endif
+            
+            label[MAX_LABEL_LENGTH - 1] = '\0';
+            
+            // Copy to result for valid detections
+            strncpy(result->detections[valid_count].label, label, MAX_LABEL_LENGTH - 1);
+            result->detections[valid_count].confidence = confidence;
+            result->detections[valid_count].x = x;
+            result->detections[valid_count].y = y;
+            result->detections[valid_count].width = w;
+            result->detections[valid_count].height = h;
+            
+            log_info("SOD valid detection %d: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]", 
                     valid_count, result->detections[valid_count].label, 
                     result->detections[valid_count].confidence * 100.0f,
                     result->detections[valid_count].x, result->detections[valid_count].y,
@@ -441,6 +629,11 @@ int detect_objects(detection_model_t model, const unsigned char *frame_data,
         
         result->count = valid_count;
         log_info("SOD detection found %d valid objects out of %d total detections", valid_count, count);
+        
+        // If no detections at all, log that too
+        if (count == 0) {
+            log_info("SOD detection found no objects in the frame");
+        }
         
         return 0;
     } else if (strcmp(m->type, MODEL_TYPE_SOD_REALNET) == 0) {
