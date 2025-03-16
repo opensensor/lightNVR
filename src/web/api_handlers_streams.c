@@ -379,12 +379,30 @@ void handle_put_stream(const http_request_t *request, http_response_t *response)
         }
     }
 
-    // Update the stream configuration
-    log_info("Updating stream configuration for: %s", current_config.name);
+    // Update the stream configuration in database
+    log_info("Updating stream configuration in database for: %s", current_config.name);
     if (update_stream_config(current_config.name, &config) != 0) {
-        log_error("Failed to update stream configuration");
+        log_error("Failed to update stream configuration in database");
         create_json_response(response, 500, "{\"error\": \"Failed to update stream configuration\"}");
         return;
+    }
+    
+    // Also update the in-memory stream configuration
+    log_info("Updating in-memory stream configuration for: %s", current_config.name);
+    
+    // Update detection parameters in memory
+    if (config.detection_based_recording) {
+        log_info("Updating detection parameters: threshold=%.2f, interval=%d", 
+                config.detection_threshold, config.detection_interval);
+        
+        set_stream_detection_recording(stream, true, config.detection_model);
+        set_stream_detection_params(stream, config.detection_interval, 
+                                   config.detection_threshold, 
+                                   config.pre_detection_buffer, 
+                                   config.post_detection_buffer);
+    } else {
+        // Disable detection-based recording
+        set_stream_detection_recording(stream, false, NULL);
     }
 
     // Start the stream if enabled

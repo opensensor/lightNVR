@@ -335,10 +335,13 @@ int process_frame_for_recording(const char *stream_name, const unsigned char *fr
     // Get detection parameters from stream config
     float threshold = config.detection_threshold;
     
-    // Ensure threshold is at least 50% for tracking detections
+    // Log the threshold value for debugging
+    log_info("Detection threshold from config: %.2f for stream %s", threshold, stream_name);
+    
+    // Ensure threshold is at least 0.5 (50%) for tracking detections
     if (threshold < 0.5f) {
         threshold = 0.5f;
-        log_info("Adjusted detection threshold to minimum 50%% for stream %s", stream_name);
+        log_info("Adjusted detection threshold to minimum 0.5 (50%%) for stream %s", stream_name);
     }
     
     // Get stream index for frame counter

@@ -315,7 +315,16 @@ function editStream(streamId) {
             const thresholdSlider = document.getElementById('stream-detection-threshold');
             const thresholdValue = document.getElementById('stream-threshold-value');
             if (thresholdSlider && typeof stream.detection_threshold === 'number') {
-                const thresholdPercent = Math.round(stream.detection_threshold * 100);
+                // The API returns the threshold as an integer percentage (0-100)
+                let thresholdPercent = stream.detection_threshold;
+                
+                // Sanity check to prevent extreme values
+                if (thresholdPercent > 100) {
+                    console.warn(`Threshold value too high (${thresholdPercent}), capping at 100%`);
+                    thresholdPercent = 100;
+                }
+                
+                console.log(`Setting threshold slider to ${thresholdPercent}%`);
                 thresholdSlider.value = thresholdPercent;
                 if (thresholdValue) {
                     thresholdValue.textContent = thresholdPercent + '%';
@@ -413,7 +422,12 @@ function saveStream() {
         
         const thresholdSlider = document.getElementById('stream-detection-threshold');
         if (thresholdSlider) {
-            streamData.detection_threshold = parseInt(thresholdSlider.value, 10);
+            // Ensure the threshold is between 0 and 100
+            let thresholdValue = parseInt(thresholdSlider.value, 10);
+            if (thresholdValue < 0) thresholdValue = 0;
+            if (thresholdValue > 100) thresholdValue = 100;
+            streamData.detection_threshold = thresholdValue;
+            console.log('Setting detection threshold to:', thresholdValue);
         }
         
         const preBuffer = document.getElementById('stream-pre-buffer');
