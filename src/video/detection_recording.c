@@ -497,23 +497,6 @@ int process_frame_for_recording(const char *stream_name, const unsigned char *fr
             snprintf(output_path, MAX_PATH_LENGTH, "%s/recordings/%s/%s",
                     global_config->storage_path, stream_name, timestamp_str);
 
-            // Ensure the directory exists
-            char dir_path[MAX_PATH_LENGTH];
-            snprintf(dir_path, MAX_PATH_LENGTH, "%s/recordings/%s",
-                    global_config->storage_path, stream_name);
-
-            // Create directory if it doesn't exist
-            DIR* dir = opendir(dir_path);
-            if (dir) {
-                closedir(dir);
-            } else if (ENOENT == errno) {
-                // Directory doesn't exist, create it
-                if (mkdir(dir_path, 0755) != 0) {
-                    log_error("Failed to create directory for recording: %s (error: %s)",
-                             dir_path, strerror(errno));
-                }
-            }
-
             // Start recording
             int recording_id = start_recording(stream_name, output_path);
             if (recording_id > 0) {
