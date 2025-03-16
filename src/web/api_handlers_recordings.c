@@ -38,10 +38,11 @@ extern config_t config;
  * @param start_time    Start time filter (0 for no filter)
  * @param end_time      End time filter (0 for no filter)
  * @param stream_name   Stream name filter (NULL for all streams)
+ * @param detection_only Filter to only include recordings with detection events
  *
  * @return Total number of matching recordings, or -1 on error
  */
-int get_recording_count(time_t start_time, time_t end_time, const char *stream_name) {
+int get_recording_count(time_t start_time, time_t end_time, const char *stream_name, int detection_only) {
     char sql[512] = {0};
     int sql_len = 0;
 
@@ -63,6 +64,12 @@ int get_recording_count(time_t start_time, time_t end_time, const char *stream_n
     if (stream_name && stream_name[0] != '\0') {
         sql_len += snprintf(sql + sql_len, sizeof(sql) - sql_len,
                  " AND stream_name = '%s'", stream_name);
+    }
+    
+    /* Add detection filter if requested */
+    if (detection_only) {
+        sql_len += snprintf(sql + sql_len, sizeof(sql) - sql_len,
+                 " AND EXISTS (SELECT 1 FROM detection_events WHERE detection_events.recording_id = recordings.id)");
     }
 
     log_debug("Count query: %s", sql);
@@ -117,7 +124,7 @@ int get_recording_count(time_t start_time, time_t end_time, const char *stream_n
  */
 int get_recording_metadata_paginated(time_t start_time, time_t end_time, const char *stream_name,
                                    int offset, int limit, recording_metadata_t *recordings,
-                                   const char *sort_field, const char *sort_order) {
+                                   const char *sort_field, const char *sort_order, int detection_only) {
     int rc;
     sqlite3_stmt *stmt;
     int count = 0;
@@ -159,6 +166,11 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time, const c
     
     if (stream_name && stream_name[0] != '\0') {
         strcat(sql, " AND stream_name = ?");
+    }
+    
+    // Add detection filter if requested
+    if (detection_only) {
+        strcat(sql, " AND EXISTS (SELECT 1 FROM detection_events WHERE detection_events.recording_id = recordings.id)");
     }
     
     // Add ORDER BY clause based on sort parameters
@@ -286,10 +298,12 @@ void handle_get_recordings(const http_request_t *request, http_response_t *respo
     char end_str[32] = {0};
     char sort_field[32] = {0};
     char sort_order[8] = {0};
+    char detection_str[8] = {0};
     time_t start_time = 0;
     time_t end_time = 0;
     int page = 1;
     int limit = 20;
+    int detection_only = 0;
 
     // Get date filter if provided (legacy parameter)
     if (get_query_param(request, "date", date_str, sizeof(date_str)) == 0) {
@@ -405,6 +419,15 @@ void handle_get_recordings(const http_request_t *request, http_response_t *respo
     }
 
     log_debug("Filtering recordings by stream: %s", stream_name[0] ? stream_name : "all streams");
+    
+    // Get detection filter if provided
+    if (get_query_param(request, "detection", detection_str, sizeof(detection_str)) == 0) {
+        // Check if the parameter is set to "1" or "true"
+        if (strcmp(detection_str, "1") == 0 || strcmp(detection_str, "true") == 0) {
+            detection_only = 1;
+            log_info("Filtering recordings by detection events only");
+        }
+    }
 
     // Get sort field if provided
     get_query_param(request, "sort", sort_field, sizeof(sort_field));
@@ -469,7 +492,7 @@ void handle_get_recordings(const http_request_t *request, http_response_t *respo
              page, limit, sort_field, sort_order);
 
     // First, get total count using the optimized count function
-    int total_count = get_recording_count(start_time, end_time, stream_name[0] ? stream_name : NULL);
+    int total_count = get_recording_count(start_time, end_time, stream_name[0] ? stream_name : NULL, detection_only);
     if (total_count < 0) {
         log_error("Failed to get recordings count from database");
         create_json_response(response, 500, "{\"error\": \"Failed to get recordings count\"}");
@@ -508,7 +531,8 @@ void handle_get_recordings(const http_request_t *request, http_response_t *respo
             start_time, end_time,
             stream_name[0] ? stream_name : NULL,
             offset, actual_limit, recordings,
-            sort_field, sort_order
+            sort_field, sort_order,
+            detection_only
         );
 
         if (count < 0) {

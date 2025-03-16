@@ -13,18 +13,31 @@
  * @param start_time    Start time filter (0 for no filter)
  * @param end_time      End time filter (0 for no filter)
  * @param stream_name   Stream name filter (NULL for all streams)
+ * @param detection_only Filter to only include recordings with detection events
  *
  * @return Total number of matching recordings, or -1 on error
  */
-int get_recording_count(time_t start_time, time_t end_time, const char *stream_name);
+int get_recording_count(time_t start_time, time_t end_time, const char *stream_name, int detection_only);
 
 /**
  * Get paginated recording metadata from the database with sorting
  * This function fetches only the specified page of results with the given sort order
+ * 
+ * @param start_time    Start time filter (0 for no filter)
+ * @param end_time      End time filter (0 for no filter)
+ * @param stream_name   Stream name filter (NULL for all streams)
+ * @param offset        Offset for pagination
+ * @param limit         Limit for pagination
+ * @param recordings    Array to store the results
+ * @param sort_field    Field to sort by
+ * @param sort_order    Sort order (asc or desc)
+ * @param detection_only Filter to only include recordings with detection events
+ * 
+ * @return Number of recordings fetched, or -1 on error
  */
 int get_recording_metadata_paginated(time_t start_time, time_t end_time, const char *stream_name,
                                    int offset, int limit, recording_metadata_t *recordings,
-                                   const char *sort_field, const char *sort_order);
+                                   const char *sort_field, const char *sort_order, int detection_only);
 
 /**
  * Handle GET request for recordings
