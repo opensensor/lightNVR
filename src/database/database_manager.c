@@ -72,6 +72,17 @@ int init_database(const char *db_path) {
     int rc;
     char *err_msg = NULL;
     
+    log_info("Initializing database at path: %s", db_path);
+    
+    // Check if database already exists
+    FILE *test_file = fopen(db_path, "r");
+    if (test_file) {
+        log_info("Database file already exists");
+        fclose(test_file);
+    } else {
+        log_info("Database file does not exist, will be created");
+    }
+    
     // Initialize mutex
     if (pthread_mutex_init(&db_mutex, NULL) != 0) {
         log_error("Failed to initialize database mutex");
@@ -86,6 +97,7 @@ int init_database(const char *db_path) {
     }
     
     char *dir = dirname(dir_path);
+    log_info("Creating database directory if needed: %s", dir);
     if (create_directory(dir) != 0) {
         log_error("Failed to create database directory: %s", dir);
         free(dir_path);
@@ -93,13 +105,44 @@ int init_database(const char *db_path) {
     }
     free(dir_path);
     
+    // Check directory permissions
+    struct stat st;
+    if (stat(dir, &st) == 0) {
+        log_info("Database directory permissions: %o", st.st_mode & 0777);
+        if ((st.st_mode & 0200) == 0) {
+            log_warn("Database directory is not writable");
+        }
+    }
+    
     // Open database
+    log_info("Opening database at: %s", db_path);
     rc = sqlite3_open(db_path, &db);
     if (rc != SQLITE_OK) {
         log_error("Failed to open database: %s", sqlite3_errmsg(db));
         sqlite3_close(db);
         db = NULL;
         return -1;
+    }
+    
+    // Check if we can write to the database
+    log_info("Testing database write capability");
+    rc = sqlite3_exec(db, "CREATE TABLE IF NOT EXISTS test_table (id INTEGER);", NULL, NULL, &err_msg);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to create test table: %s", err_msg);
+        sqlite3_free(err_msg);
+        sqlite3_close(db);
+        db = NULL;
+        return -1;
+    }
+    
+    // Drop test table
+    rc = sqlite3_exec(db, "DROP TABLE test_table;", NULL, NULL, &err_msg);
+    if (rc != SQLITE_OK) {
+        log_warn("Failed to drop test table: %s", err_msg);
+        sqlite3_free(err_msg);
+        // Continue anyway
+    } else {
+        log_info("Database write test successful");
     }
     
     // Enable foreign keys
@@ -875,12 +918,13 @@ int store_detections_in_db(const char *stream_name, const detection_result_t *re
     sqlite3_stmt *stmt;
     
     if (!db) {
-        log_error("Database not initialized");
+        log_error("Database not initialized when trying to store detections");
         return -1;
     }
     
     if (!stream_name || !result) {
-        log_error("Invalid parameters for store_detections_in_db");
+        log_error("Invalid parameters for store_detections_in_db: stream_name=%p, result=%p", 
+                 stream_name, result);
         return -1;
     }
     
@@ -889,10 +933,79 @@ int store_detections_in_db(const char *stream_name, const detection_result_t *re
         timestamp = time(NULL);
     }
     
+    log_info("Storing %d detections in database for stream %s", result->count, stream_name);
+    
+    // Log the first detection for debugging
+    if (result->count > 0) {
+        log_info("First detection: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]",
+                result->detections[0].label,
+                result->detections[0].confidence * 100.0f,
+                result->detections[0].x,
+                result->detections[0].y,
+                result->detections[0].width,
+                result->detections[0].height);
+    }
+    
     pthread_mutex_lock(&db_mutex);
     
-    // Begin transaction for better performance when inserting multiple detections
+    // Check if detections table exists
     char *err_msg = NULL;
+    char **query_result;
+    int rows, cols;
+    rc = sqlite3_get_table(db, 
+                          "SELECT name FROM sqlite_master WHERE type='table' AND name='detections';", 
+                          &query_result, &rows, &cols, &err_msg);
+    
+    if (rc != SQLITE_OK) {
+        log_error("Failed to check if detections table exists: %s", err_msg);
+        sqlite3_free(err_msg);
+        pthread_mutex_unlock(&db_mutex);
+        return -1;
+    }
+    
+    if (rows == 0) {
+        log_error("Detections table does not exist, recreating it");
+        sqlite3_free_table(query_result);
+        
+        // Create detections table
+        const char *create_detections_table = 
+            "CREATE TABLE IF NOT EXISTS detections ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "stream_name TEXT NOT NULL,"
+            "timestamp INTEGER NOT NULL,"
+            "label TEXT NOT NULL,"
+            "confidence REAL NOT NULL,"
+            "x REAL NOT NULL,"
+            "y REAL NOT NULL,"
+            "width REAL NOT NULL,"
+            "height REAL NOT NULL"
+            ");";
+        
+        rc = sqlite3_exec(db, create_detections_table, NULL, NULL, &err_msg);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to create detections table: %s", err_msg);
+            sqlite3_free(err_msg);
+            pthread_mutex_unlock(&db_mutex);
+            return -1;
+        }
+        
+        // Create indexes
+        const char *create_indexes = 
+            "CREATE INDEX IF NOT EXISTS idx_detections_stream_timestamp ON detections (stream_name, timestamp);"
+            "CREATE INDEX IF NOT EXISTS idx_detections_timestamp ON detections (timestamp);";
+        
+        rc = sqlite3_exec(db, create_indexes, NULL, NULL, &err_msg);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to create indexes: %s", err_msg);
+            sqlite3_free(err_msg);
+            pthread_mutex_unlock(&db_mutex);
+            return -1;
+        }
+    } else {
+        sqlite3_free_table(query_result);
+    }
+    
+    // Begin transaction for better performance when inserting multiple detections
     rc = sqlite3_exec(db, "BEGIN TRANSACTION;", NULL, NULL, &err_msg);
     if (rc != SQLITE_OK) {
         log_error("Failed to begin transaction: %s", err_msg);
@@ -927,7 +1040,7 @@ int store_detections_in_db(const char *stream_name, const detection_result_t *re
         // Execute statement
         rc = sqlite3_step(stmt);
         if (rc != SQLITE_DONE) {
-            log_error("Failed to insert detection: %s", sqlite3_errmsg(db));
+            log_error("Failed to insert detection %d: %s", i, sqlite3_errmsg(db));
             sqlite3_finalize(stmt);
             sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
             pthread_mutex_unlock(&db_mutex);
@@ -950,9 +1063,25 @@ int store_detections_in_db(const char *stream_name, const detection_result_t *re
         return -1;
     }
     
+    // Verify the detections were stored
+    char verify_sql[256];
+    snprintf(verify_sql, sizeof(verify_sql), 
+            "SELECT COUNT(*) FROM detections WHERE stream_name = '%s' AND timestamp = %lld;",
+            stream_name, (long long)timestamp);
+    
+    rc = sqlite3_get_table(db, verify_sql, &query_result, &rows, &cols, &err_msg);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to verify detections were stored: %s", err_msg);
+        sqlite3_free(err_msg);
+    } else if (rows > 0 && cols > 0) {
+        int count = atoi(query_result[1]); // First row, first column
+        log_info("Verified %d detections were stored in database for stream %s", count, stream_name);
+        sqlite3_free_table(query_result);
+    }
+    
     pthread_mutex_unlock(&db_mutex);
     
-    log_info("Stored %d detections in database for stream %s", result->count, stream_name);
+    log_info("Successfully stored %d detections in database for stream %s", result->count, stream_name);
     return 0;
 }
 
