@@ -27,6 +27,7 @@ include_directories(
 set(DETECTION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/detection.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/sod_realnet.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/motion_detection.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/logger.c
 )
 

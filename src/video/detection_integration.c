@@ -306,7 +306,7 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     // If the model is "motion", enable motion detection
     if (is_motion_model && !use_motion_detection) {
         // Configure with default settings
-        configure_motion_detection(stream_name, 0.15f, 0.01f, 3);
+        configure_motion_detection(stream_name, 0.25f, 0.01f, 3);
         set_motion_detection_enabled(stream_name, true);
         use_motion_detection = true;
         log_info("Automatically enabled motion detection for stream %s based on model setting", stream_name);

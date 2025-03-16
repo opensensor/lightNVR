@@ -12,7 +12,7 @@
 #include "video/detection_result.h"
 
 #define MAX_MOTION_STREAMS MAX_STREAMS
-#define DEFAULT_SENSITIVITY 0.15f
+#define DEFAULT_SENSITIVITY 0.25f
 #define DEFAULT_MIN_MOTION_AREA 0.01f
 #define DEFAULT_COOLDOWN_TIME 3
 #define MOTION_LABEL "motion"

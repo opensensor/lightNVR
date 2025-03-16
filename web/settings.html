@@ -140,6 +140,10 @@
                         <p class="setting-description">
                             Configure detection-based recording for streams. When enabled, recordings will only be saved when objects are detected.
                         </p>
+                        <p class="setting-description">
+                            <strong>Motion Detection:</strong> Built-in motion detection is available without requiring any external models. 
+                            Select "motion" as the detection model in stream settings to use this feature.
+                        </p>
                     </div>
                     <div class="setting">
                         <label for="setting-detection-models-path">Detection Models Path</label>
@@ -148,7 +152,7 @@
                     </div>
                     <div class="setting">
                         <label for="setting-default-detection-threshold">Default Detection Threshold</label>
-                        <input type="range" id="setting-default-detection-threshold" min="0" max="100" value="50" step="5">
+                        <input type="range" id="setting-default-detection-threshold" min="0" max="100" value="50" step="1">
                         <span id="threshold-value">50%</span>
                         <span class="hint">Confidence threshold for detection (0-100%)</span>
                     </div>
