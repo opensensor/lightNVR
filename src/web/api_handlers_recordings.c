@@ -69,7 +69,7 @@ int get_recording_count(time_t start_time, time_t end_time, const char *stream_n
     /* Add detection filter if requested */
     if (detection_only) {
         sql_len += snprintf(sql + sql_len, sizeof(sql) - sql_len,
-                 " AND EXISTS (SELECT 1 FROM detection_events WHERE detection_events.recording_id = recordings.id)");
+                 " AND EXISTS (SELECT 1 FROM detections WHERE detections.timestamp BETWEEN recordings.start_time AND recordings.end_time AND detections.stream_name = recordings.stream_name)");
     }
 
     log_debug("Count query: %s", sql);
@@ -170,7 +170,7 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time, const c
     
     // Add detection filter if requested
     if (detection_only) {
-        strcat(sql, " AND EXISTS (SELECT 1 FROM detection_events WHERE detection_events.recording_id = recordings.id)");
+        strcat(sql, " AND EXISTS (SELECT 1 FROM detections WHERE detections.timestamp BETWEEN recordings.start_time AND recordings.end_time AND detections.stream_name = recordings.stream_name)");
     }
     
     // Add ORDER BY clause based on sort parameters
