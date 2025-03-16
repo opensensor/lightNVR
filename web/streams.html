@@ -128,6 +128,11 @@
                     <span id="stream-threshold-value">50%</span>
                 </div>
                 <div class="form-group detection-options" style="display: none;">
+                    <label for="stream-detection-interval">Detection Interval (frames)</label>
+                    <input type="number" id="stream-detection-interval" value="10" min="1" max="100">
+                    <span class="hint">Detect on every Nth frame (1 = every frame)</span>
+                </div>
+                <div class="form-group detection-options" style="display: none;">
                     <label for="stream-pre-buffer">Pre-detection Buffer (seconds)</label>
                     <input type="number" id="stream-pre-buffer" value="5" min="0" max="60">
                     <span class="hint">Seconds to keep before detection</span>

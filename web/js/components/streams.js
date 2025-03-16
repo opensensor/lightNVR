@@ -322,6 +322,12 @@ function editStream(streamId) {
                 }
             }
             
+            // Set detection interval
+            const detectionInterval = document.getElementById('stream-detection-interval');
+            if (detectionInterval && typeof stream.detection_interval === 'number') {
+                detectionInterval.value = stream.detection_interval;
+            }
+            
             // Set pre/post detection buffers
             const preBuffer = document.getElementById('stream-pre-buffer');
             if (preBuffer && typeof stream.pre_detection_buffer === 'number') {
@@ -420,8 +426,13 @@ function saveStream() {
             streamData.post_detection_buffer = parseInt(postBuffer.value, 10);
         }
         
-        // Set a default detection interval if not already set
-        streamData.detection_interval = 10; // Check every 10 frames
+        // Get detection interval from form
+        const detectionInterval = document.getElementById('stream-detection-interval');
+        if (detectionInterval) {
+            streamData.detection_interval = parseInt(detectionInterval.value, 10);
+        } else {
+            streamData.detection_interval = 10; // Default to 10 if field not found
+        }
     }
 
     // Validate required fields

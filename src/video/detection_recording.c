@@ -375,14 +375,22 @@ int process_frame_for_recording(const char *stream_name, const unsigned char *fr
     
     // Check if we should process this frame based on detection interval
     bool should_process = false;
-    frame_counters[stream_index]++;
     
-    // Process frame if counter reaches the interval or it's the first frame
-    if (frame_counters[stream_index] >= config.detection_interval || frame_counters[stream_index] == 1) {
+    // If interval is 1, process every frame
+    if (config.detection_interval <= 1) {
         should_process = true;
-        frame_counters[stream_index] = 0; // Reset counter
-        log_info("Processing frame for detection on stream %s (interval: %d)", 
-                stream_name, config.detection_interval);
+        log_info("Processing every frame for detection on stream %s", stream_name);
+    } else {
+        // Otherwise, use the counter
+        frame_counters[stream_index]++;
+        
+        // Process frame if counter reaches the interval or it's the first frame
+        if (frame_counters[stream_index] >= config.detection_interval || frame_counters[stream_index] == 1) {
+            should_process = true;
+            frame_counters[stream_index] = 0; // Reset counter
+            log_info("Processing frame for detection on stream %s (interval: %d)", 
+                    stream_name, config.detection_interval);
+        }
     }
     pthread_mutex_unlock(&frame_counters_mutex);
     
