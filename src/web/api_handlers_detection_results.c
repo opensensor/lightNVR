@@ -21,6 +21,8 @@
 
 // Maximum age of detections to return (in seconds)
 #define MAX_DETECTION_AGE 60
+// Default detection confidence threshold
+#define MIN_DETECTION_CONFIDENCE 0.5f
 
 /**
  * Initialize detection results storage
@@ -145,9 +147,17 @@ void handle_get_detection_results(const http_request_t *request, http_response_t
     // Add detections array
     strcat(json, "\"detections\":[");
     
-    // Add each detection
+    // Add each detection (only include those with confidence >= MIN_DETECTION_CONFIDENCE)
+    int valid_count = 0;
     for (int i = 0; i < result.count; i++) {
-        if (i > 0) {
+        // Skip detections with confidence below threshold
+        if (result.detections[i].confidence < MIN_DETECTION_CONFIDENCE) {
+            log_info("Skipping detection with confidence %.2f%% (below threshold of %.2f%%)",
+                    result.detections[i].confidence * 100.0f, MIN_DETECTION_CONFIDENCE * 100.0f);
+            continue;
+        }
+        
+        if (valid_count > 0) {
             strcat(json, ",");
         }
         
@@ -162,6 +172,7 @@ void handle_get_detection_results(const http_request_t *request, http_response_t
                 result.detections[i].height);
         
         strcat(json, detection_json);
+        valid_count++;
     }
     
     // Close JSON

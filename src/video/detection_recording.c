@@ -202,7 +202,15 @@ int start_detection_recording(const char *stream_name, const char *model_path, f
     // Update stream configuration to enable detection-based recording
     // Keep the original model_path in the configuration for simplicity
     set_stream_detection_recording(stream, true, model_path);
-    set_stream_detection_params(stream, 10, threshold, pre_buffer, post_buffer);
+    
+    // Use the provided detection interval or default to 10 if not specified
+    int detection_interval = 10;
+    stream_config_t config;
+    if (get_stream_config(stream, &config) == 0) {
+        detection_interval = config.detection_interval;
+    }
+    
+    set_stream_detection_params(stream, detection_interval, threshold, pre_buffer, post_buffer);
     
     log_info("Started detection-based recording for stream %s with model %s", 
              stream_name, model_path);
@@ -287,6 +295,11 @@ int stop_detection_recording(const char *stream_name) {
  * @param result Detection results from detect_objects call
  * @return 0 on success, -1 on error
  */
+// Static counter to track frames for each stream
+static int frame_counters[MAX_STREAMS] = {0};
+static char frame_counter_stream_names[MAX_STREAMS][MAX_STREAM_NAME] = {{0}};
+static pthread_mutex_t frame_counters_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 int process_frame_for_recording(const char *stream_name, const unsigned char *frame_data,
                                int width, int height, int channels, time_t frame_time,
                                detection_result_t *result) {
@@ -316,7 +329,63 @@ int process_frame_for_recording(const char *stream_name, const unsigned char *fr
 
     // Get detection parameters from stream config
     float threshold = config.detection_threshold;
-
+    
+    // Ensure threshold is at least 50% for tracking detections
+    if (threshold < 0.5f) {
+        threshold = 0.5f;
+        log_info("Adjusted detection threshold to minimum 50%% for stream %s", stream_name);
+    }
+    
+    // Get stream index for frame counter
+    int stream_index = -1;
+    pthread_mutex_lock(&frame_counters_mutex);
+    
+    // Look for existing stream entry
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (frame_counter_stream_names[i][0] != '\0' && 
+            strcmp(frame_counter_stream_names[i], stream_name) == 0) {
+            stream_index = i;
+            break;
+        }
+    }
+    
+    // If stream not found, find first empty slot
+    if (stream_index == -1) {
+        for (int i = 0; i < MAX_STREAMS; i++) {
+            if (frame_counter_stream_names[i][0] == '\0') {
+                stream_index = i;
+                strncpy(frame_counter_stream_names[i], stream_name, MAX_STREAM_NAME - 1);
+                frame_counter_stream_names[i][MAX_STREAM_NAME - 1] = '\0';
+                frame_counters[i] = 0;
+                break;
+            }
+        }
+    }
+    
+    // If still no slot found, use a default index (not ideal but prevents crashes)
+    if (stream_index == -1) {
+        stream_index = 0;
+        log_warn("No slot found for stream %s frame counter, using default", stream_name);
+    }
+    
+    // Check if we should process this frame based on detection interval
+    bool should_process = false;
+    frame_counters[stream_index]++;
+    
+    // Process frame if counter reaches the interval or it's the first frame
+    if (frame_counters[stream_index] >= config.detection_interval || frame_counters[stream_index] == 1) {
+        should_process = true;
+        frame_counters[stream_index] = 0; // Reset counter
+        log_info("Processing frame for detection on stream %s (interval: %d)", 
+                stream_name, config.detection_interval);
+    }
+    pthread_mutex_unlock(&frame_counters_mutex);
+    
+    // Skip processing if not at the right interval
+    if (!should_process) {
+        return 0;
+    }
+    
     // Store with the original stream name
     log_info("Storing detection results with original stream name: %s", stream_name);
 

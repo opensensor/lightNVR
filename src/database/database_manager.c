@@ -1114,17 +1114,17 @@ int get_detections_from_db(const char *stream_name, detection_result_t *result, 
     pthread_mutex_lock(&db_mutex);
     
     // Build query based on max_age
+    // Modified to only return the latest detection timestamp
     char sql[512];
     if (max_age > 0) {
         // Calculate cutoff time
         time_t cutoff_time = time(NULL) - max_age;
         
+        // First get the latest timestamp
         snprintf(sql, sizeof(sql), 
-                "SELECT label, confidence, x, y, width, height "
+                "SELECT MAX(timestamp) "
                 "FROM detections "
-                "WHERE stream_name = ? AND timestamp >= ? "
-                "ORDER BY timestamp DESC "
-                "LIMIT ?;");
+                "WHERE stream_name = ? AND timestamp >= ?;");
         
         rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
         if (rc != SQLITE_OK) {
@@ -1136,9 +1136,45 @@ int get_detections_from_db(const char *stream_name, detection_result_t *result, 
         // Bind parameters
         sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
         sqlite3_bind_int64(stmt, 2, (sqlite3_int64)cutoff_time);
+        
+        // Execute query to get latest timestamp
+        time_t latest_timestamp = 0;
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            latest_timestamp = (time_t)sqlite3_column_int64(stmt, 0);
+        }
+        
+        sqlite3_finalize(stmt);
+        
+        // If no timestamp found, return empty result
+        if (latest_timestamp == 0) {
+            pthread_mutex_unlock(&db_mutex);
+            log_info("No recent detections found for stream %s", stream_name);
+            return 0;
+        }
+        
+        // Now get all detections at that timestamp
+        snprintf(sql, sizeof(sql), 
+                "SELECT label, confidence, x, y, width, height "
+                "FROM detections "
+                "WHERE stream_name = ? AND timestamp = ? "
+                "LIMIT ?;");
+        
+        rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+            pthread_mutex_unlock(&db_mutex);
+            return -1;
+        }
+        
+        // Bind parameters
+        sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 2, (sqlite3_int64)latest_timestamp);
         sqlite3_bind_int(stmt, 3, MAX_DETECTIONS);
+        
+        log_info("Getting latest detections for stream %s at timestamp %lld", 
+                stream_name, (long long)latest_timestamp);
     } else {
-        // No age filter
+        // No age filter, just get the latest timestamp
         snprintf(sql, sizeof(sql), 
                 "SELECT label, confidence, x, y, width, height "
                 "FROM detections "
