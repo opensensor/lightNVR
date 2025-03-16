@@ -172,12 +172,10 @@ int start_detection_recording(const char *stream_name, const char *model_path, f
     }
     
     // Determine appropriate threshold if not specified
-    if (threshold <= 0.0f) {
-        threshold = get_default_threshold_for_model(full_model_path);
-        log_info("Using default threshold of %.1f for model type %s", 
-                 threshold, detect_model_type(full_model_path));
-    }
-    
+    threshold = get_default_threshold_for_model(full_model_path);
+    log_info("Using default threshold of %.1f for model type %s",
+             threshold, detect_model_type(full_model_path));
+
     // Load the detection model
     detection_model_t model = load_detection_model(full_model_path, threshold);
     if (!model) {

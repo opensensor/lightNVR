@@ -17,6 +17,11 @@
 #include <libavformat/avformat.h>
 #include <libavutil/opt.h>
 
+// Include SOD header if SOD is enabled at compile time
+#ifdef SOD_ENABLED
+#include "sod/sod.h"
+#endif
+
 #include "core/logger.h"
 #include "core/config.h"
 #include "video/stream_manager.h"
@@ -329,78 +334,141 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                         // Set codec parameters
                         jpeg_ctx->width = frame->width;
                         jpeg_ctx->height = frame->height;
-                        jpeg_ctx->pix_fmt = AV_PIX_FMT_RGB24;
+                        jpeg_ctx->pix_fmt = AV_PIX_FMT_YUVJ420P;  // Use YUVJ420P which is better supported
                         jpeg_ctx->time_base.num = 1;
                         jpeg_ctx->time_base.den = 25;
+                        jpeg_ctx->strict_std_compliance = FF_COMPLIANCE_VERY_STRICT;
                         
                         // Set JPEG quality (1-31, lower is higher quality)
                         av_opt_set_int(jpeg_ctx, "qscale", 3, 0);  // High quality
                         
-                        // Open codec
-                        int ret = avcodec_open2(jpeg_ctx, jpeg_codec, NULL);
-                        if (ret < 0) {
-                            char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
-                            av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-                            log_error("DEBUG: Failed to open JPEG codec: %s", error_buf);
+                        // Check if the pixel format is supported
+                        if (jpeg_codec->pix_fmts) {
+                            const enum AVPixelFormat *p = jpeg_codec->pix_fmts;
+                            bool format_supported = false;
+                            
+                            log_info("DEBUG: Supported pixel formats for JPEG codec:");
+                            while (*p != AV_PIX_FMT_NONE) {
+                                log_info("DEBUG:   - %s", av_get_pix_fmt_name(*p));
+                                if (*p == jpeg_ctx->pix_fmt) {
+                                    format_supported = true;
+                                }
+                                p++;
+                            }
+                            
+                            if (!format_supported) {
+                                log_warn("DEBUG: Pixel format %s not supported by JPEG codec, trying YUVJ420P", 
+                                        av_get_pix_fmt_name(jpeg_ctx->pix_fmt));
+                                jpeg_ctx->pix_fmt = AV_PIX_FMT_YUVJ420P;
+                            }
+                        }
+                        
+                        // Convert RGB frame to the format needed by the JPEG encoder
+                        AVFrame *yuv_frame = av_frame_alloc();
+                        if (!yuv_frame) {
+                            log_error("DEBUG: Failed to allocate YUV frame");
                         } else {
-                            // Allocate packet
-                            AVPacket *pkt = av_packet_alloc();
-                            if (!pkt) {
-                                log_error("DEBUG: Failed to allocate packet");
+                            // Allocate buffer for YUV frame
+                            int yuv_buffer_size = av_image_get_buffer_size(jpeg_ctx->pix_fmt, frame->width, frame->height, 1);
+                            uint8_t *yuv_buffer = (uint8_t *)av_malloc(yuv_buffer_size);
+                            if (!yuv_buffer) {
+                                log_error("DEBUG: Failed to allocate YUV buffer");
+                                av_frame_free(&yuv_frame);
                             } else {
-                                // Set frame properties
-                                rgb_frame->pts = 0;
-                                rgb_frame->width = frame->width;
-                                rgb_frame->height = frame->height;
-                                rgb_frame->format = AV_PIX_FMT_RGB24;
+                                // Setup YUV frame
+                                av_image_fill_arrays(yuv_frame->data, yuv_frame->linesize, yuv_buffer,
+                                                   jpeg_ctx->pix_fmt, frame->width, frame->height, 1);
                                 
-                                // Send frame to encoder
-                                ret = avcodec_send_frame(jpeg_ctx, rgb_frame);
-                                if (ret < 0) {
-                                    char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
-                                    av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-                                    log_error("DEBUG: Error sending frame to JPEG encoder: %s", error_buf);
+                                // Convert RGB to YUV
+                                struct SwsContext *rgb_to_yuv = sws_getContext(
+                                    frame->width, frame->height, AV_PIX_FMT_RGB24,
+                                    frame->width, frame->height, jpeg_ctx->pix_fmt,
+                                    SWS_BILINEAR, NULL, NULL, NULL);
+                                
+                                if (!rgb_to_yuv) {
+                                    log_error("DEBUG: Failed to create RGB to YUV conversion context");
+                                    av_free(yuv_buffer);
+                                    av_frame_free(&yuv_frame);
                                 } else {
-                                    // Receive encoded packet
-                                    ret = avcodec_receive_packet(jpeg_ctx, pkt);
+                                    // Convert RGB to YUV
+                                    sws_scale(rgb_to_yuv, (const uint8_t * const *)rgb_frame->data, rgb_frame->linesize, 0,
+                                             frame->height, yuv_frame->data, yuv_frame->linesize);
+                                    
+                                    sws_freeContext(rgb_to_yuv);
+                                    
+                                    // Set frame properties
+                                    yuv_frame->pts = 0;
+                                    yuv_frame->width = frame->width;
+                                    yuv_frame->height = frame->height;
+                                    yuv_frame->format = jpeg_ctx->pix_fmt;
+                                    
+                                    // Open codec
+                                    int ret = avcodec_open2(jpeg_ctx, jpeg_codec, NULL);
                                     if (ret < 0) {
                                         char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
                                         av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-                                        log_error("DEBUG: Error receiving packet from JPEG encoder: %s", error_buf);
+                                        log_error("DEBUG: Failed to open JPEG codec: %s", error_buf);
                                     } else {
-                                        // Write JPEG to file
-                                        FILE *f = fopen(filename, "wb");
-                                        if (!f) {
-                                            log_error("DEBUG: Failed to open debug image file: %s (Error: %s)", 
-                                                     filename, strerror(errno));
+                                        // Allocate packet
+                                        AVPacket *pkt = av_packet_alloc();
+                                        if (!pkt) {
+                                            log_error("DEBUG: Failed to allocate packet");
                                         } else {
-                                            size_t bytes_written = fwrite(pkt->data, 1, pkt->size, f);
-                                            fclose(f);
-                                            
-                                            if (bytes_written != pkt->size) {
-                                                log_error("DEBUG: Failed to write all data. Wrote %zu of %d bytes", 
-                                                         bytes_written, pkt->size);
+                                            // Send frame to encoder
+                                            ret = avcodec_send_frame(jpeg_ctx, yuv_frame);
+                                            if (ret < 0) {
+                                                char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+                                                av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+                                                log_error("DEBUG: Error sending frame to JPEG encoder: %s", error_buf);
                                             } else {
-                                                log_info("DEBUG: Saved frame to %s (%d bytes)", filename, pkt->size);
-                                                
-                                                // Verify the file was actually created
-                                                if (file_exists(filename)) {
-                                                    log_info("DEBUG: Verified file exists: %s", filename);
+                                                // Receive encoded packet
+                                                ret = avcodec_receive_packet(jpeg_ctx, pkt);
+                                                if (ret < 0) {
+                                                    char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+                                                    av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+                                                    log_error("DEBUG: Error receiving packet from JPEG encoder: %s", error_buf);
                                                 } else {
-                                                    log_error("DEBUG: File was not created despite successful write: %s", filename);
+                                                    // Write JPEG to file
+                                                    FILE *f = fopen(filename, "wb");
+                                                    if (!f) {
+                                                        log_error("DEBUG: Failed to open debug image file: %s (Error: %s)", 
+                                                                 filename, strerror(errno));
+                                                    } else {
+                                                        size_t bytes_written = fwrite(pkt->data, 1, pkt->size, f);
+                                                        fclose(f);
+                                                        
+                                                        if (bytes_written != pkt->size) {
+                                                            log_error("DEBUG: Failed to write all data. Wrote %zu of %d bytes", 
+                                                                     bytes_written, pkt->size);
+                                                        } else {
+                                                            log_info("DEBUG: Saved frame to %s (%d bytes)", filename, pkt->size);
+                                                            
+                                                            // Verify the file was actually created
+                                                            if (file_exists(filename)) {
+                                                                log_info("DEBUG: Verified file exists: %s", filename);
+                                                            } else {
+                                                                log_error("DEBUG: File was not created despite successful write: %s", filename);
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             }
+                                            
+                                            // Free packet
+                                            av_packet_free(&pkt);
                                         }
                                     }
+                                    
+                                    // Free YUV buffer
+                                    av_free(yuv_buffer);
                                 }
                                 
-                                // Free packet
-                                av_packet_free(&pkt);
+                                // Free YUV frame
+                                av_frame_free(&yuv_frame);
                             }
-                            
-                            // Close codec
-                            avcodec_close(jpeg_ctx);
                         }
+                        // Close codec
+                        avcodec_close(jpeg_ctx);
                         
                         // Free codec context
                         avcodec_free_context(&jpeg_ctx);
@@ -462,9 +530,155 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
         }
     }
 
-    // Process the frame
-    int ret = process_frame_for_detection(stream_name, packed_buffer, frame->width, frame->height, channels, frame_time);
-    log_info("process_frame_for_detection returned: %d", ret);
+    // Get the appropriate threshold for the model type
+    float threshold = 0.3f; // Default for CNN models
+    if (strcmp(model_type, MODEL_TYPE_SOD_REALNET) == 0) {
+        threshold = 5.0f; // RealNet models typically use 5.0
+        log_info("Using threshold of 5.0 for RealNet model");
+    } else {
+        log_info("Using threshold of 0.3 for CNN model");
+    }
+    
+    // Directly run detection on the packed buffer with the correct threshold
+    log_info("Running direct detection on packed buffer with threshold %.1f", threshold);
+    
+    // Create a detection result structure
+    detection_result_t result;
+    memset(&result, 0, sizeof(detection_result_t));
+    
+    // Check if model_path is a relative path (doesn't start with /)
+    char full_model_path[MAX_PATH_LENGTH];
+    if (config.detection_model[0] != '/') {
+        // Get current working directory
+        char cwd[MAX_PATH_LENGTH];
+        if (getcwd(cwd, sizeof(cwd)) != NULL) {
+            // Construct full path: CWD/models/model_path
+            snprintf(full_model_path, MAX_PATH_LENGTH, "%s/models/%s", cwd, config.detection_model);
+            
+            // Check if the models directory exists
+            char models_dir[MAX_PATH_LENGTH];
+            snprintf(models_dir, MAX_PATH_LENGTH, "%s/models", cwd);
+            DIR *dir = opendir(models_dir);
+            if (dir) {
+                log_info("Models directory exists: %s", models_dir);
+                closedir(dir);
+                
+                // List files in the models directory
+                log_info("Listing files in models directory:");
+                dir = opendir(models_dir);
+                if (dir) {
+                    struct dirent *entry;
+                    while ((entry = readdir(dir)) != NULL) {
+                        if (entry->d_type == DT_REG) { // Regular file
+                            log_info("  - %s", entry->d_name);
+                        }
+                    }
+                    closedir(dir);
+                }
+            } else {
+                log_error("Models directory does not exist: %s (Error: %s)", models_dir, strerror(errno));
+                
+                // Try to create the models directory
+                if (mkdir(models_dir, 0755) == 0) {
+                    log_info("Created models directory: %s", models_dir);
+                } else {
+                    log_error("Failed to create models directory: %s (Error: %s)", models_dir, strerror(errno));
+                }
+            }
+        } else {
+            // Fallback to absolute path if getcwd fails
+            snprintf(full_model_path, MAX_PATH_LENGTH, "/var/lib/lightnvr/models/%s", config.detection_model);
+        }
+        log_info("Using full model path: %s", full_model_path);
+    } else {
+        // Already an absolute path
+        strncpy(full_model_path, config.detection_model, MAX_PATH_LENGTH - 1);
+        full_model_path[MAX_PATH_LENGTH - 1] = '\0';
+    }
+    
+    // Check if the model file exists
+    if (file_exists(full_model_path)) {
+        log_info("Model file exists: %s", full_model_path);
+    } else {
+        log_error("Model file does not exist: %s", full_model_path);
+        
+        // Try to find the model in other locations
+        char alt_path[MAX_PATH_LENGTH];
+        
+        // Try in the current directory
+        snprintf(alt_path, MAX_PATH_LENGTH, "./%s", config.detection_model);
+        if (file_exists(alt_path)) {
+            log_info("Found model in current directory: %s", alt_path);
+            strncpy(full_model_path, alt_path, MAX_PATH_LENGTH - 1);
+        } else {
+            // Try in the build directory
+            snprintf(alt_path, MAX_PATH_LENGTH, "./build/models/%s", config.detection_model);
+            if (file_exists(alt_path)) {
+                log_info("Found model in build directory: %s", alt_path);
+                strncpy(full_model_path, alt_path, MAX_PATH_LENGTH - 1);
+            } else {
+                // Try in the parent directory
+                snprintf(alt_path, MAX_PATH_LENGTH, "../models/%s", config.detection_model);
+                if (file_exists(alt_path)) {
+                    log_info("Found model in parent directory: %s", alt_path);
+                    strncpy(full_model_path, alt_path, MAX_PATH_LENGTH - 1);
+                }
+            }
+        }
+    }
+    
+    // Load the detection model with the correct threshold
+    detection_model_t model = load_detection_model(full_model_path, threshold);
+    if (!model) {
+        log_error("Failed to load detection model: %s", full_model_path);
+    } else {
+        // Run detection on the packed buffer
+        int detect_ret = detect_objects(model, packed_buffer, frame->width, frame->height, channels, &result);
+        
+        if (detect_ret == 0) {
+            log_info("Direct detection found %d objects", result.count);
+            
+            // Process results
+            for (int i = 0; i < result.count; i++) {
+                log_info("Detection %d: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]",
+                        i+1, result.detections[i].label,
+                        result.detections[i].confidence * 100.0f,
+                        result.detections[i].x, result.detections[i].y,
+                        result.detections[i].width, result.detections[i].height);
+            }
+            
+            // If objects were detected, trigger recording
+            if (result.count > 0) {
+                log_info("Objects detected, triggering recording");
+                process_frame_for_detection(stream_name, packed_buffer, frame->width, frame->height, channels, frame_time);
+            } else {
+                log_info("No objects detected");
+            }
+        } else {
+            log_error("Direct detection failed (error code: %d)", detect_ret);
+            
+            // Fall back to using the standard detection method
+            log_info("Falling back to standard detection method");
+            int ret = process_frame_for_detection(stream_name, packed_buffer, frame->width, frame->height, channels, frame_time);
+            log_info("process_frame_for_detection returned: %d", ret);
+        }
+        
+        // Unload the model
+        unload_detection_model(model);
+    }
+    
+    // Clean up any saved JPEG files
+    char jpeg_filename[256];
+    snprintf(jpeg_filename, sizeof(jpeg_filename), "/tmp/frame_%s_%ld.jpg", stream_name, frame_time);
+    
+    // Remove the JPEG file if it exists (we don't need it anymore)
+    if (file_exists(jpeg_filename)) {
+        if (remove(jpeg_filename) == 0) {
+            log_info("Removed JPEG file %s after detection", jpeg_filename);
+        } else {
+            log_warn("Failed to remove JPEG file %s: %s", jpeg_filename, strerror(errno));
+        }
+    }
 
     // Free the packed buffer
     free(packed_buffer);
