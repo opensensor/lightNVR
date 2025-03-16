@@ -276,6 +276,8 @@ int stop_detection_recording(const char *stream_name) {
 /**
  * Process a frame for detection-based recording
  * This function is called for each frame of a stream
+ * 
+ * Modified to use the database as the source of truth for detection state
  */
 int process_frame_for_detection(const char *stream_name, const unsigned char *frame_data, 
                                int width, int height, int channels, time_t frame_time) {
@@ -373,7 +375,7 @@ int process_frame_for_detection(const char *stream_name, const unsigned char *fr
     // Clean up old detections (older than 1 day)
     delete_old_detections(86400);
     
-    // Check if any objects were detected
+    // Check if any objects were detected above threshold
     bool detection_triggered = false;
     for (int i = 0; i < result.count; i++) {
         if (result.detections[i].confidence >= detection_recordings[slot].threshold) {
@@ -401,11 +403,35 @@ int process_frame_for_detection(const char *stream_name, const unsigned char *fr
         detection_recordings[slot].last_detection_time = frame_time;
     }
     
+    // Query the database for recent detections to determine if we should be recording
+    // This makes the database the source of truth for detection state
+    detection_result_t db_result;
+    int post_buffer = detection_recordings[slot].post_buffer;
+    time_t cutoff_time = frame_time - post_buffer;
+    
+    // Get detections from database since cutoff time
+    int db_count = get_detections_from_db(stream_name, &db_result, post_buffer);
+    
+    // Check if we have any recent detections in the database
+    bool should_be_recording = false;
+    if (db_count > 0) {
+        // Check if any detections are above threshold
+        for (int i = 0; i < db_result.count; i++) {
+            if (db_result.detections[i].confidence >= detection_recordings[slot].threshold) {
+                should_be_recording = true;
+                log_info("Recent detection found in database for stream %s: %s (%.2f%%)", 
+                        stream_name, db_result.detections[i].label, 
+                        db_result.detections[i].confidence * 100.0f);
+                break;
+            }
+        }
+    }
+    
+    // Also consider current detection
+    should_be_recording = should_be_recording || detection_triggered;
+    
     // Check if we should start or continue recording
-    if (detection_triggered || 
-        (detection_recordings[slot].last_detection_time > 0 && 
-         frame_time - detection_recordings[slot].last_detection_time <= detection_recordings[slot].post_buffer)) {
-        
+    if (should_be_recording) {
         // If not already recording, start recording
         if (!detection_recordings[slot].recording_active) {
             // Create output path for recording
@@ -431,15 +457,10 @@ int process_frame_for_detection(const char *stream_name, const unsigned char *fr
             }
         }
     } else if (detection_recordings[slot].recording_active) {
-        // If recording and post-buffer has expired, stop recording
-        if (detection_recordings[slot].last_detection_time > 0 && 
-            frame_time - detection_recordings[slot].last_detection_time > detection_recordings[slot].post_buffer) {
-            
-            // Stop recording
-            stop_recording(stream_name);
-            detection_recordings[slot].recording_active = false;
-            log_info("Stopped detection-based recording for stream %s after post-buffer", stream_name);
-        }
+        // If recording and no recent detections, stop recording
+        stop_recording(stream_name);
+        detection_recordings[slot].recording_active = false;
+        log_info("Stopped detection-based recording for stream %s (no recent detections)", stream_name);
     }
     
     pthread_mutex_unlock(&detection_recordings[slot].mutex);

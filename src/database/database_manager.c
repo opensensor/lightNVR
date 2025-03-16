@@ -1047,8 +1047,9 @@ int store_detections_in_db(const char *stream_name, const detection_result_t *re
             return -1;
         }
         
-        // Reset statement for next detection
+        // Reset statement and clear bindings for next detection
         sqlite3_reset(stmt);
+        sqlite3_clear_bindings(stmt);
     }
     
     sqlite3_finalize(stmt);
