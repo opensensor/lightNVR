@@ -18,6 +18,7 @@ typedef struct {
     pthread_mutex_t mutex;
     bool recording_enabled;
     bool detection_recording_enabled;
+    time_t last_detection_time;  // Added for detection-based recording
 } stream_t;
 
 // Global array of streams
@@ -587,5 +588,25 @@ int set_stream_recording(stream_handle_t handle, bool enable) {
     }
     
     log_info("Set recording for stream '%s' to %s", s->config.name, enable ? "enabled" : "disabled");
+    return 0;
+}
+
+/**
+ * Set the last detection time for a stream
+ */
+int set_stream_last_detection_time(stream_handle_t handle, time_t time) {
+    if (!handle || !initialized) {
+        return -1;
+    }
+    
+    stream_t *s = (stream_t *)handle;
+    
+    pthread_mutex_lock(&s->mutex);
+    // Assuming there's a last_detection_time field in the stream structure
+    // If not, you might need to add it to the stream_t structure
+    s->last_detection_time = time;
+    pthread_mutex_unlock(&s->mutex);
+    
+    log_info("Set last detection time for stream '%s' to %ld", s->config.name, (long)time);
     return 0;
 }

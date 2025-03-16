@@ -68,6 +68,7 @@ int register_mp4_writer_for_stream(const char *stream_name, mp4_writer_t *writer
 mp4_writer_t *get_mp4_writer_for_stream(const char *stream_name);
 void unregister_mp4_writer_for_stream(const char *stream_name);
 int find_mp4_recording(const char *stream_name, time_t timestamp, char *mp4_path, size_t path_size);
+int get_recording_state(const char *stream_name);
 
 // Detection-based recording functions
 int start_detection_recording(const char *stream_name, const char *model_path, float threshold,

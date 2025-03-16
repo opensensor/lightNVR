@@ -458,6 +458,31 @@ int start_mp4_recording(const char *stream_name) {
 }
 
 /**
+ * Get the recording state for a stream
+ * Returns 1 if recording is active, 0 if not, -1 on error
+ */
+int get_recording_state(const char *stream_name) {
+    if (!stream_name) {
+        log_error("Invalid stream name for get_recording_state");
+        return -1;
+    }
+    
+    pthread_mutex_lock(&recordings_mutex);
+    
+    // Find the active recording for this stream
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (active_recordings[i].recording_id > 0 && 
+            strcmp(active_recordings[i].stream_name, stream_name) == 0) {
+            pthread_mutex_unlock(&recordings_mutex);
+            return 1; // Recording is active
+        }
+    }
+    
+    pthread_mutex_unlock(&recordings_mutex);
+    return 0; // No active recording
+}
+
+/**
  * Find MP4 recording for a stream based on timestamp
  * Returns 1 if found, 0 if not found, -1 on error
  */

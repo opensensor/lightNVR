@@ -173,6 +173,15 @@ int set_stream_detection_params(stream_handle_t handle, int interval, float thre
                                int pre_buffer, int post_buffer);
 
 /**
+ * Set the last detection time for a stream
+ * 
+ * @param handle Stream handle
+ * @param time Timestamp of the last detection
+ * @return 0 on success, non-zero on failure
+ */
+int set_stream_last_detection_time(stream_handle_t handle, time_t time);
+
+/**
  * Get a snapshot from the stream
  * 
  * @param handle Stream handle
