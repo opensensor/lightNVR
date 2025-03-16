@@ -260,8 +260,9 @@ int stop_detection_recording(const char *stream_name) {
     
     // If recording is active, stop it
     if (detection_recordings[slot].recording_active) {
-        // Stop the recording
+        // Stop the recording - this will also unregister any MP4 writer
         stop_recording(stream_name);
+        
         detection_recordings[slot].recording_active = false;
     }
     
@@ -479,33 +480,26 @@ int process_frame_for_recording(const char *stream_name, const unsigned char *fr
 
         // If not already recording, start recording
         if (!recording_active) {
-            // Create output path for recording
-            char output_path[MAX_PATH_LENGTH];
-            config_t *global_config = get_streaming_config();
-            if (!global_config) {
-                log_error("Failed to get streaming config for stream %s", stream_name);
-                return -1;
-            }
-
-            // Format timestamp for recording directory
-            char timestamp_str[32];
-            struct tm *tm_info = localtime(&frame_time);
-            strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M%S", tm_info);
-
-            // Create output path - store detection recordings in the same way as regular recordings
-            // without the "detection_" prefix to maintain consistency
-            snprintf(output_path, MAX_PATH_LENGTH, "%s/recordings/%s/%s",
-                    global_config->storage_path, stream_name, timestamp_str);
-
-            // Start recording
-            int recording_id = start_recording(stream_name, output_path);
-            if (recording_id > 0) {
-                // Recording successfully started
-                log_info("Started detection-based recording for stream %s at %s (recording ID: %d)",
-                        stream_name, output_path, recording_id);
+            // Start MP4 recording directly, using the same file rotation settings as regular recordings
+            int mp4_result = start_mp4_recording(stream_name);
+            if (mp4_result == 0) {
+                log_info("Started MP4 recording for detection event on stream %s", stream_name);
+                
+                // Update the recording_active flag in the detection_recordings array
+                pthread_mutex_lock(&detection_recordings_mutex);
+                for (int i = 0; i < MAX_STREAMS; i++) {
+                    if (detection_recordings[i].stream_name[0] != '\0' && 
+                        strcmp(detection_recordings[i].stream_name, stream_name) == 0) {
+                        pthread_mutex_lock(&detection_recordings[i].mutex);
+                        detection_recordings[i].recording_active = true;
+                        pthread_mutex_unlock(&detection_recordings[i].mutex);
+                        break;
+                    }
+                }
+                pthread_mutex_unlock(&detection_recordings_mutex);
             } else {
-                log_error("Failed to start detection-based recording for stream %s (error code: %d)",
-                         stream_name, recording_id);
+                log_error("Failed to start MP4 recording for detection event on stream %s (error code: %d)",
+                        stream_name, mp4_result);
             }
         } else {
             log_info("Continuing detection-based recording for stream %s", stream_name);
@@ -531,6 +525,7 @@ int get_detection_recording_state(const char *stream_name, bool *recording_activ
         return -1;
     }
     
+    // First check if detection is enabled for this stream
     pthread_mutex_lock(&detection_recordings_mutex);
     
     // Find the detection recording for this stream
@@ -550,11 +545,11 @@ int get_detection_recording_state(const char *stream_name, bool *recording_activ
         return 0;
     }
     
-    pthread_mutex_lock(&detection_recordings[slot].mutex);
-    *recording_active = detection_recordings[slot].recording_active;
-    pthread_mutex_unlock(&detection_recordings[slot].mutex);
-    
     pthread_mutex_unlock(&detection_recordings_mutex);
+    
+    // Now check if there's an active recording using get_recording_state
+    int recording_state = get_recording_state(stream_name);
+    *recording_active = (recording_state > 0);
     
     return 1;
 }

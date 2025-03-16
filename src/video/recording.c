@@ -336,6 +336,9 @@ void stop_recording(const char *stream_name) {
             time_t end_time = time(NULL);
             update_recording_metadata(recording_id, end_time, total_size, true);
 
+            // Also unregister any MP4 writer for this stream to ensure proper cleanup
+            unregister_mp4_writer_for_stream(stream_name);
+
             log_info("Completed recording %llu for stream %s, duration: %ld seconds, size: %llu bytes", 
                     (unsigned long long)recording_id, stream_name, 
                     (long)(end_time - start_time), 
@@ -467,6 +470,7 @@ int get_recording_state(const char *stream_name) {
         return -1;
     }
     
+    // First check if there's an active recording in the active_recordings array
     pthread_mutex_lock(&recordings_mutex);
     
     // Find the active recording for this stream
@@ -479,6 +483,19 @@ int get_recording_state(const char *stream_name) {
     }
     
     pthread_mutex_unlock(&recordings_mutex);
+    
+    // If no active recording found in active_recordings, check if there's an active MP4 writer
+    pthread_mutex_lock(&mp4_writers_mutex);
+    
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (mp4_writers[i] && strcmp(mp4_writer_stream_names[i], stream_name) == 0) {
+            pthread_mutex_unlock(&mp4_writers_mutex);
+            return 1; // MP4 recording is active
+        }
+    }
+    
+    pthread_mutex_unlock(&mp4_writers_mutex);
+    
     return 0; // No active recording
 }
 
