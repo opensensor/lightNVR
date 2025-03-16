@@ -271,24 +271,24 @@ function editStream(streamId) {
             if (detectionEnabled) {
                 detectionEnabled.checked = stream.detection_based_recording === true;
                 
-            // Show/hide detection options based on checkbox
-            const detectionOptions = document.querySelectorAll('.detection-options');
-            detectionOptions.forEach(el => {
-                el.style.display = detectionEnabled.checked ? 'block' : 'none';
-            });
-            
-            // If detection is enabled, make sure models are loaded immediately
-            if (detectionEnabled.checked) {
-                loadDetectionModels();
-                
-                // Force display of detection options
+                // Show/hide detection options based on checkbox
+                const detectionOptions = document.querySelectorAll('.detection-options');
                 detectionOptions.forEach(el => {
-                    el.style.display = 'block';
+                    el.style.display = detectionEnabled.checked ? 'block' : 'none';
                 });
-            }
-            
-            // Always include detection model in the form, even if detection is disabled
-            // This ensures the model is preserved when toggling detection on/off
+                
+                // If detection is enabled, make sure models are loaded immediately
+                if (detectionEnabled.checked) {
+                    loadDetectionModels();
+                    
+                    // Force display of detection options
+                    detectionOptions.forEach(el => {
+                        el.style.display = 'block';
+                    });
+                }
+                
+                // Always include detection model in the form, even if detection is disabled
+                // This ensures the model is preserved when toggling detection on/off
             }
             
             // Set detection model if available
@@ -313,7 +313,6 @@ function editStream(streamId) {
             
             // Set detection threshold
             const thresholdSlider = document.getElementById('stream-detection-threshold');
-            const thresholdValue = document.getElementById('stream-threshold-value');
             if (thresholdSlider && typeof stream.detection_threshold === 'number') {
                 // The API returns the threshold as an integer percentage (0-100)
                 let thresholdPercent = stream.detection_threshold;
@@ -325,10 +324,16 @@ function editStream(streamId) {
                 }
                 
                 console.log(`Setting threshold slider to ${thresholdPercent}%`);
+                
+                // Set the slider value
                 thresholdSlider.value = thresholdPercent;
-                if (thresholdValue) {
-                    thresholdValue.textContent = thresholdPercent + '%';
-                }
+                
+                // Trigger the oninput event to update the display
+                // Create and dispatch an input event
+                const event = new Event('input', { bubbles: true });
+                thresholdSlider.dispatchEvent(event);
+                
+                console.log('Triggered input event on slider to update display');
             }
             
             // Set detection interval
@@ -662,6 +667,15 @@ function setupStreamsHandlers() {
             // Load detection models
             loadDetectionModels();
             
+            // Update threshold slider value display to match the reset slider value
+            const thresholdSlider = document.getElementById('stream-detection-threshold');
+            if (thresholdSlider) {
+                // Trigger the oninput event to update the display
+                const event = new Event('input', { bubbles: true });
+                thresholdSlider.dispatchEvent(event);
+                console.log('Reset threshold display via input event');
+            }
+            
             // Show modal
             if (streamModal) {
                 streamModal.style.display = 'block';
@@ -723,16 +737,16 @@ function setupStreamsHandlers() {
                 detectionOptions.forEach(el => {
                     el.style.display = 'block';
                 });
+                
+                // Update threshold slider value display to match the current slider value
+                const thresholdSlider = document.getElementById('stream-detection-threshold');
+                if (thresholdSlider) {
+                    // Trigger the oninput event to update the display
+                    const event = new Event('input', { bubbles: true });
+                    thresholdSlider.dispatchEvent(event);
+                    console.log('Updated threshold display via input event on checkbox toggle');
+                }
             }
-        });
-    }
-    
-    // Detection threshold slider value display
-    const thresholdSlider = document.getElementById('stream-detection-threshold');
-    const thresholdValue = document.getElementById('stream-threshold-value');
-    if (thresholdSlider && thresholdValue) {
-        thresholdSlider.addEventListener('input', function() {
-            thresholdValue.textContent = this.value + '%';
         });
     }
     

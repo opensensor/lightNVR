@@ -21,8 +21,8 @@
 
 // Maximum age of detections to return (in seconds)
 #define MAX_DETECTION_AGE 60
-// Default detection confidence threshold
-#define MIN_DETECTION_CONFIDENCE 0.5f
+// We no longer use a hardcoded minimum detection confidence threshold
+// Instead, we use the user's configured threshold for each stream
 
 /**
  * Initialize detection results storage
@@ -147,13 +147,26 @@ void handle_get_detection_results(const http_request_t *request, http_response_t
     // Add detections array
     strcat(json, "\"detections\":[");
     
-    // Add each detection (only include those with confidence >= MIN_DETECTION_CONFIDENCE)
+    // Get the stream's configured detection threshold
+    stream_config_t stream_config;
+    float threshold = 0.5f; // Default fallback threshold
+    
+    if (get_stream_config(stream, &stream_config) == 0) {
+        threshold = stream_config.detection_threshold;
+        log_info("Using stream's configured threshold: %.2f (%.0f%%)", 
+                threshold, threshold * 100.0f);
+    } else {
+        log_warn("Failed to get stream config, using default threshold: %.2f (%.0f%%)",
+                threshold, threshold * 100.0f);
+    }
+    
+    // Add each detection (only include those with confidence >= threshold)
     int valid_count = 0;
     for (int i = 0; i < result.count; i++) {
         // Skip detections with confidence below threshold
-        if (result.detections[i].confidence < MIN_DETECTION_CONFIDENCE) {
+        if (result.detections[i].confidence < threshold) {
             log_info("Skipping detection with confidence %.2f%% (below threshold of %.2f%%)",
-                    result.detections[i].confidence * 100.0f, MIN_DETECTION_CONFIDENCE * 100.0f);
+                    result.detections[i].confidence * 100.0f, threshold * 100.0f);
             continue;
         }
         
