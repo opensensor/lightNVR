@@ -354,7 +354,7 @@ int process_frame_for_detection(const char *stream_name, const unsigned char *fr
         }
     }
     
-    // Store with the frontend stream name
+    // Store with the frontend stream name in the database
     store_detection_result(frontend_stream_name, &result);
     
     // Also store with the original stream name for completeness
@@ -365,6 +365,9 @@ int process_frame_for_detection(const char *stream_name, const unsigned char *fr
     // Debug: Dump all detection results to help diagnose API issues
     extern void debug_dump_detection_results(void);
     debug_dump_detection_results();
+    
+    // Clean up old detections (older than 1 day)
+    delete_old_detections(86400);
     
     // Check if any objects were detected
     bool detection_triggered = false;

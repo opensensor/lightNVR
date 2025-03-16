@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <time.h>
 #include "core/config.h"
+#include "video/detection_result.h"
 
 // Event types
 typedef enum {
@@ -153,6 +154,34 @@ int delete_old_events(uint64_t max_age);
  * @return Number of recordings deleted, or -1 on error
  */
 int delete_old_recording_metadata(uint64_t max_age);
+
+/**
+ * Store detection results in the database
+ * 
+ * @param stream_name Stream name
+ * @param result Detection results
+ * @param timestamp Timestamp of the detection (0 for current time)
+ * @return 0 on success, non-zero on failure
+ */
+int store_detections_in_db(const char *stream_name, const detection_result_t *result, time_t timestamp);
+
+/**
+ * Get detection results from the database
+ * 
+ * @param stream_name Stream name
+ * @param result Detection results to fill
+ * @param max_age Maximum age in seconds (0 for all)
+ * @return Number of detections found, or -1 on error
+ */
+int get_detections_from_db(const char *stream_name, detection_result_t *result, uint64_t max_age);
+
+/**
+ * Delete old detections from the database
+ * 
+ * @param max_age Maximum age in seconds
+ * @return Number of detections deleted, or -1 on error
+ */
+int delete_old_detections(uint64_t max_age);
 
 /**
  * Begin a database transaction

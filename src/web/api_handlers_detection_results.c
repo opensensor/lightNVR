@@ -17,112 +17,51 @@
 #include "video/detection.h"
 #include "video/detection_result.h"
 #include "video/stream_manager.h"
+#include "database/database_manager.h"
 
-// Structure to store detection results for each stream
-typedef struct {
-    char stream_name[MAX_STREAM_NAME];
-    detection_result_t result;
-    time_t timestamp;
-    pthread_mutex_t mutex;
-} stream_detection_result_t;
-
-// Array to store detection results for all streams
-static stream_detection_result_t detection_results[MAX_STREAMS];
-static pthread_mutex_t detection_results_mutex = PTHREAD_MUTEX_INITIALIZER;
-static bool detection_results_initialized = false;
+// Maximum age of detections to return (in seconds)
+#define MAX_DETECTION_AGE 60
 
 /**
  * Initialize detection results storage
  */
 void init_detection_results(void) {
-    if (detection_results_initialized) {
-        return;
-    }
-    
-    pthread_mutex_lock(&detection_results_mutex);
-    
-    for (int i = 0; i < MAX_STREAMS; i++) {
-        memset(&detection_results[i], 0, sizeof(stream_detection_result_t));
-        pthread_mutex_init(&detection_results[i].mutex, NULL);
-    }
-    
-    detection_results_initialized = true;
-    pthread_mutex_unlock(&detection_results_mutex);
-    
-    log_info("Detection results storage initialized");
+    // No initialization needed for database storage
+    log_info("Detection results storage initialized (using database)");
 }
 
 /**
  * Store detection result for a stream
  */
 void store_detection_result(const char *stream_name, const detection_result_t *result) {
-    if (!stream_name || !result || !detection_results_initialized) {
-        log_error("Invalid parameters for store_detection_result: stream_name=%p, result=%p, initialized=%d",
-                 stream_name, result, detection_results_initialized);
+    if (!stream_name || !result) {
+        log_error("Invalid parameters for store_detection_result: stream_name=%p, result=%p",
+                 stream_name, result);
         return;
     }
     
     log_info("Storing detection results for stream '%s': %d detections", stream_name, result->count);
     
-    // Force initialization if not already done
-    if (!detection_results_initialized) {
-        log_warn("Detection results not initialized, initializing now");
-        init_detection_results();
-    }
+    // Store in database
+    int ret = store_detections_in_db(stream_name, result, 0); // 0 = use current time
     
-    pthread_mutex_lock(&detection_results_mutex);
-    
-    // Find the slot for this stream or an empty slot
-    int slot = -1;
-    for (int i = 0; i < MAX_STREAMS; i++) {
-        if (detection_results[i].stream_name[0] == '\0') {
-            if (slot == -1) {
-                slot = i;
-            }
-        } else if (strcmp(detection_results[i].stream_name, stream_name) == 0) {
-            slot = i;
-            break;
-        }
-    }
-    
-    if (slot == -1) {
-        // No available slots
-        pthread_mutex_unlock(&detection_results_mutex);
-        log_error("No available slots for detection results");
+    if (ret != 0) {
+        log_error("Failed to store detections in database for stream '%s'", stream_name);
         return;
     }
     
-    pthread_mutex_lock(&detection_results[slot].mutex);
-    
-    // Store stream name if this is a new entry
-    if (detection_results[slot].stream_name[0] == '\0') {
-        strncpy(detection_results[slot].stream_name, stream_name, MAX_STREAM_NAME - 1);
-        detection_results[slot].stream_name[MAX_STREAM_NAME - 1] = '\0';
-        log_info("Created new detection results slot %d for stream '%s'", slot, stream_name);
-    }
-    
-    // Store detection result
-    memcpy(&detection_results[slot].result, result, sizeof(detection_result_t));
-    
-    // Update timestamp
-    detection_results[slot].timestamp = time(NULL);
-    
     // Log the stored detections
-    log_info("Stored %d detections for stream '%s' in slot %d", 
-             detection_results[slot].result.count, stream_name, slot);
-    
-    for (int i = 0; i < detection_results[slot].result.count; i++) {
+    for (int i = 0; i < result->count; i++) {
         log_info("  Detection %d: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]",
-                i, detection_results[slot].result.detections[i].label,
-                detection_results[slot].result.detections[i].confidence * 100.0f,
-                detection_results[slot].result.detections[i].x,
-                detection_results[slot].result.detections[i].y,
-                detection_results[slot].result.detections[i].width,
-                detection_results[slot].result.detections[i].height);
+                i, result->detections[i].label,
+                result->detections[i].confidence * 100.0f,
+                result->detections[i].x,
+                result->detections[i].y,
+                result->detections[i].width,
+                result->detections[i].height);
     }
     
-    pthread_mutex_unlock(&detection_results[slot].mutex);
-    pthread_mutex_unlock(&detection_results_mutex);
+    log_info("Successfully stored %d detections in database for stream '%s'", result->count, stream_name);
 }
 
 /**
@@ -160,63 +99,34 @@ void handle_get_detection_results(const http_request_t *request, http_response_t
         return;
     }
     
-    // Find detection results for this stream
-    pthread_mutex_lock(&detection_results_mutex);
-    
-    // Dump all detection results to help diagnose the issue
-    log_info("API: Dumping all detection results before search:");
-    for (int i = 0; i < MAX_STREAMS; i++) {
-        if (detection_results[i].stream_name[0] != '\0') {
-            log_info("  Slot %d: Stream '%s', %d detections", 
-                     i, detection_results[i].stream_name, detection_results[i].result.count);
-        }
-    }
-    
-    int slot = -1;
-    int newest_slot = -1;
-    time_t newest_time = 0;
-    
-    // First try to find an exact match
-    for (int i = 0; i < MAX_STREAMS; i++) {
-        if (detection_results[i].stream_name[0] != '\0') {
-            // Keep track of the newest detection result for fallback
-            if (detection_results[i].timestamp > newest_time && detection_results[i].result.count > 0) {
-                newest_time = detection_results[i].timestamp;
-                newest_slot = i;
-            }
-            
-            // Check for exact match
-            if (strcmp(detection_results[i].stream_name, stream_name) == 0) {
-                slot = i;
-                break;
-            }
-        }
-    }
+    // Get detection results from database
+    detection_result_t result;
+    memset(&result, 0, sizeof(detection_result_t));
     
     // Debug logging to help diagnose the issue
-    log_info("API: Looking for detection results for stream '%s', found: %s (slot: %d)", 
-             stream_name, (slot != -1) ? "yes" : "no", slot);
+    log_info("API: Looking for detection results for stream '%s'", stream_name);
     
-    // If no exact match but we have a recent detection with results, use that as fallback
-    if (slot == -1 && newest_slot != -1) {
-        log_warn("API: No exact match for stream '%s', using newest detection from stream '%s' as fallback",
-                stream_name, detection_results[newest_slot].stream_name);
-        slot = newest_slot;
-    }
+    int count = get_detections_from_db(stream_name, &result, MAX_DETECTION_AGE);
     
-    if (slot == -1) {
-        // No detection results for this stream
-        pthread_mutex_unlock(&detection_results_mutex);
+    if (count < 0) {
+        log_error("Failed to get detections from database for stream '%s'", stream_name);
         
         // Create empty response JSON
+        char json[256];
+        snprintf(json, sizeof(json), "{\"stream\":\"%s\",\"detections\":[],\"timestamp\":0}", stream_name);
+        create_json_response(response, 200, json);
+        log_warn("API: Error getting detection results for stream '%s', returning empty array", stream_name);
+        return;
+    }
+    
+    if (count == 0) {
+        // No detection results for this stream
         char json[256];
         snprintf(json, sizeof(json), "{\"stream\":\"%s\",\"detections\":[],\"timestamp\":0}", stream_name);
         create_json_response(response, 200, json);
         log_warn("API: No detection results found for stream '%s', returning empty array", stream_name);
         return;
     }
-    
-    pthread_mutex_lock(&detection_results[slot].mutex);
     
     // Build JSON response with detection results
     char json[4096] = "{";
@@ -226,17 +136,17 @@ void handle_get_detection_results(const http_request_t *request, http_response_t
     snprintf(stream_json, sizeof(stream_json), "\"stream\":\"%s\",", stream_name);
     strcat(json, stream_json);
     
-    // Add timestamp
+    // Add timestamp (use current time since we're getting recent detections)
     char timestamp_json[64];
     snprintf(timestamp_json, sizeof(timestamp_json), "\"timestamp\":%lld,", 
-             (long long)detection_results[slot].timestamp);
+             (long long)time(NULL));
     strcat(json, timestamp_json);
     
     // Add detections array
     strcat(json, "\"detections\":[");
     
     // Add each detection
-    for (int i = 0; i < detection_results[slot].result.count; i++) {
+    for (int i = 0; i < result.count; i++) {
         if (i > 0) {
             strcat(json, ",");
         }
@@ -244,12 +154,12 @@ void handle_get_detection_results(const http_request_t *request, http_response_t
         char detection_json[512];
         snprintf(detection_json, sizeof(detection_json),
                 "{\"label\":\"%s\",\"confidence\":%.2f,\"x\":%.4f,\"y\":%.4f,\"width\":%.4f,\"height\":%.4f}",
-                detection_results[slot].result.detections[i].label,
-                detection_results[slot].result.detections[i].confidence,
-                detection_results[slot].result.detections[i].x,
-                detection_results[slot].result.detections[i].y,
-                detection_results[slot].result.detections[i].width,
-                detection_results[slot].result.detections[i].height);
+                result.detections[i].label,
+                result.detections[i].confidence,
+                result.detections[i].x,
+                result.detections[i].y,
+                result.detections[i].width,
+                result.detections[i].height);
         
         strcat(json, detection_json);
     }
@@ -257,10 +167,8 @@ void handle_get_detection_results(const http_request_t *request, http_response_t
     // Close JSON
     strcat(json, "]}");
     
-    pthread_mutex_unlock(&detection_results[slot].mutex);
-    pthread_mutex_unlock(&detection_results_mutex);
-    
     // Create response
+    log_debug("Creating JSON response with status 200: %s", json);
     create_json_response(response, 200, json);
 }
 
@@ -274,6 +182,9 @@ void register_detection_results_api_handlers(void) {
     // Register API handlers
     register_request_handler("/api/detection/results/*", "GET", handle_get_detection_results);
     
+    // Clean up old detections (older than 1 hour)
+    delete_old_detections(3600);
+    
     log_info("Detection results API handlers registered");
 }
 
@@ -281,38 +192,44 @@ void register_detection_results_api_handlers(void) {
  * Debug function to dump current detection results
  */
 void debug_dump_detection_results(void) {
-    pthread_mutex_lock(&detection_results_mutex);
+    log_info("DEBUG: Current detection results (from database):");
     
-    log_info("DEBUG: Current detection results:");
-    int active_slots = 0;
+    // Get all stream names
+    stream_config_t streams[MAX_STREAMS];
+    int stream_count = get_all_stream_configs(streams, MAX_STREAMS);
     
-    for (int i = 0; i < MAX_STREAMS; i++) {
-        if (detection_results[i].stream_name[0] != '\0') {
-            active_slots++;
-            pthread_mutex_lock(&detection_results[i].mutex);
+    if (stream_count <= 0) {
+        log_info("  No streams found");
+        return;
+    }
+    
+    int active_streams = 0;
+    
+    // For each stream, get detections
+    for (int i = 0; i < stream_count; i++) {
+        detection_result_t result;
+        memset(&result, 0, sizeof(detection_result_t));
+        
+        int count = get_detections_from_db(streams[i].name, &result, MAX_DETECTION_AGE);
+        
+        if (count > 0) {
+            active_streams++;
             
-            log_info("  Slot %d: Stream '%s', %d detections, timestamp: %lld",
-                     i, detection_results[i].stream_name,
-                     detection_results[i].result.count,
-                     (long long)detection_results[i].timestamp);
+            log_info("  Stream '%s', %d detections", streams[i].name, result.count);
             
-            for (int j = 0; j < detection_results[i].result.count; j++) {
+            for (int j = 0; j < result.count; j++) {
                 log_info("    Detection %d: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]",
-                         j, detection_results[i].result.detections[j].label,
-                         detection_results[i].result.detections[j].confidence * 100.0f,
-                         detection_results[i].result.detections[j].x,
-                         detection_results[i].result.detections[j].y,
-                         detection_results[i].result.detections[j].width,
-                         detection_results[i].result.detections[j].height);
+                         j, result.detections[j].label,
+                         result.detections[j].confidence * 100.0f,
+                         result.detections[j].x,
+                         result.detections[j].y,
+                         result.detections[j].width,
+                         result.detections[j].height);
             }
-            
-            pthread_mutex_unlock(&detection_results[i].mutex);
         }
     }
     
-    if (active_slots == 0) {
+    if (active_streams == 0) {
         log_info("  No active detection results found");
     }
-    
-    pthread_mutex_unlock(&detection_results_mutex);
 }
