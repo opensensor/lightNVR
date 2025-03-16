@@ -53,6 +53,16 @@ void load_default_config(config_t *config) {
     // Hardware acceleration
     config->hw_accel_enabled = false;
     memset(config->hw_accel_device, 0, 32);
+    
+    // Initialize default values for detection-based recording in streams
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        config->streams[i].detection_based_recording = false;
+        config->streams[i].detection_model[0] = '\0';
+        config->streams[i].detection_interval = 10; // Check every 10 frames
+        config->streams[i].detection_threshold = 0.5f; // 50% confidence threshold
+        config->streams[i].pre_detection_buffer = 5; // 5 seconds before detection
+        config->streams[i].post_detection_buffer = 10; // 10 seconds after detection
+    }
 }
 
 // Create directory if it doesn't exist
@@ -241,6 +251,42 @@ static int config_ini_handler(void* user, const char* section, const char* name,
     else if (strcmp(section, "streams") == 0) {
         if (strcmp(name, "max_streams") == 0) {
             config->max_streams = atoi(value);
+        }
+    }
+    // Stream-specific settings (format: stream_name.setting)
+    else if (strstr(section, "stream.") == section) {
+        // Extract stream name from section (after "stream.")
+        const char *stream_name = section + 7; // Skip "stream."
+        
+        // Find the stream with this name
+        int stream_idx = -1;
+        for (int i = 0; i < config->max_streams; i++) {
+            if (strcmp(config->streams[i].name, stream_name) == 0) {
+                stream_idx = i;
+                break;
+            }
+        }
+        
+        // If stream not found, log warning and skip
+        if (stream_idx == -1) {
+            log_warn("Configuration for unknown stream: %s", stream_name);
+            return 1; // Continue processing
+        }
+        
+        // Parse stream-specific settings
+        if (strcmp(name, "detection_based_recording") == 0) {
+            config->streams[stream_idx].detection_based_recording = 
+                (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        } else if (strcmp(name, "detection_model") == 0) {
+            strncpy(config->streams[stream_idx].detection_model, value, MAX_PATH_LENGTH - 1);
+        } else if (strcmp(name, "detection_interval") == 0) {
+            config->streams[stream_idx].detection_interval = atoi(value);
+        } else if (strcmp(name, "detection_threshold") == 0) {
+            config->streams[stream_idx].detection_threshold = atof(value);
+        } else if (strcmp(name, "pre_detection_buffer") == 0) {
+            config->streams[stream_idx].pre_detection_buffer = atoi(value);
+        } else if (strcmp(name, "post_detection_buffer") == 0) {
+            config->streams[stream_idx].post_detection_buffer = atoi(value);
         }
     }
     // Memory optimization
@@ -664,6 +710,24 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "hw_accel_enabled = %s\n", config->hw_accel_enabled ? "true" : "false");
     fprintf(file, "hw_accel_device = %s\n", config->hw_accel_device);
     
+    // Write stream-specific detection settings
+    for (int i = 0; i < config->max_streams; i++) {
+        if (strlen(config->streams[i].name) > 0 && config->streams[i].detection_based_recording) {
+            fprintf(file, "\n[stream.%s]\n", config->streams[i].name);
+            fprintf(file, "detection_based_recording = %s\n", 
+                    config->streams[i].detection_based_recording ? "true" : "false");
+            
+            if (config->streams[i].detection_model[0] != '\0') {
+                fprintf(file, "detection_model = %s\n", config->streams[i].detection_model);
+            }
+            
+            fprintf(file, "detection_interval = %d\n", config->streams[i].detection_interval);
+            fprintf(file, "detection_threshold = %.2f\n", config->streams[i].detection_threshold);
+            fprintf(file, "pre_detection_buffer = %d\n", config->streams[i].pre_detection_buffer);
+            fprintf(file, "post_detection_buffer = %d\n", config->streams[i].post_detection_buffer);
+        }
+    }
+    
     // Note: Stream configurations are stored in the database
     fprintf(file, "\n; Note: Stream configurations are stored in the database\n");
     
@@ -730,6 +794,17 @@ void print_config(const config_t *config) {
             printf("      Priority: %d\n", config->streams[i].priority);
             printf("      Record: %s\n", config->streams[i].record ? "true" : "false");
             printf("      Segment Duration: %d seconds\n", config->streams[i].segment_duration);
+            printf("      Detection-based Recording: %s\n", 
+                   config->streams[i].detection_based_recording ? "true" : "false");
+            
+            if (config->streams[i].detection_based_recording) {
+                printf("      Detection Model: %s\n", 
+                       config->streams[i].detection_model[0] ? config->streams[i].detection_model : "None");
+                printf("      Detection Interval: %d frames\n", config->streams[i].detection_interval);
+                printf("      Detection Threshold: %.2f\n", config->streams[i].detection_threshold);
+                printf("      Pre-detection Buffer: %d seconds\n", config->streams[i].pre_detection_buffer);
+                printf("      Post-detection Buffer: %d seconds\n", config->streams[i].post_detection_buffer);
+            }
         }
     }
 }

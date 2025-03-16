@@ -105,6 +105,43 @@
                     <label for="stream-segment">Segment Duration (seconds)</label>
                     <input type="number" id="stream-segment" value="900" min="60" max="3600">
                 </div>
+                
+                <!-- Detection-based recording options -->
+                <div class="form-group-header">
+                    <h4>Detection-Based Recording</h4>
+                </div>
+                <div class="form-group">
+                    <label for="stream-detection-enabled">Enable Detection-Based Recording</label>
+                    <input type="checkbox" id="stream-detection-enabled">
+                    <span class="hint">Only record when objects are detected</span>
+                </div>
+                <div class="form-group detection-options" style="display: none;">
+                    <label for="stream-detection-model">Detection Model</label>
+                    <select id="stream-detection-model">
+                        <option value="">Loading models...</option>
+                    </select>
+                    <button id="refresh-models-btn" class="btn-icon" title="Refresh Models"><span class="icon">↻</span></button>
+                </div>
+                <div class="form-group detection-options" style="display: none;">
+                    <label for="stream-detection-threshold">Detection Threshold</label>
+                    <input type="range" id="stream-detection-threshold" min="0" max="100" value="50" step="5" oninput="document.getElementById('stream-threshold-value').textContent = this.value + '%'">
+                    <span id="stream-threshold-value" style="margin-left: 10px; font-weight: bold; color: #007bff;">50%</span>
+                </div>
+                <div class="form-group detection-options" style="display: none;">
+                    <label for="stream-detection-interval">Detection Interval (frames)</label>
+                    <input type="number" id="stream-detection-interval" value="10" min="1" max="100">
+                    <span class="hint">Detect on every Nth frame (1 = every frame)</span>
+                </div>
+                <div class="form-group detection-options" style="display: none;">
+                    <label for="stream-pre-buffer">Pre-detection Buffer (seconds)</label>
+                    <input type="number" id="stream-pre-buffer" value="5" min="0" max="60">
+                    <span class="hint">Seconds to keep before detection</span>
+                </div>
+                <div class="form-group detection-options" style="display: none;">
+                    <label for="stream-post-buffer">Post-detection Buffer (seconds)</label>
+                    <input type="number" id="stream-post-buffer" value="10" min="0" max="300">
+                    <span class="hint">Seconds to keep after detection</span>
+                </div>
             </form>
         </div>
         <div class="modal-footer">

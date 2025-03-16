@@ -72,6 +72,17 @@ int init_database(const char *db_path) {
     int rc;
     char *err_msg = NULL;
     
+    log_info("Initializing database at path: %s", db_path);
+    
+    // Check if database already exists
+    FILE *test_file = fopen(db_path, "r");
+    if (test_file) {
+        log_info("Database file already exists");
+        fclose(test_file);
+    } else {
+        log_info("Database file does not exist, will be created");
+    }
+    
     // Initialize mutex
     if (pthread_mutex_init(&db_mutex, NULL) != 0) {
         log_error("Failed to initialize database mutex");
@@ -86,6 +97,7 @@ int init_database(const char *db_path) {
     }
     
     char *dir = dirname(dir_path);
+    log_info("Creating database directory if needed: %s", dir);
     if (create_directory(dir) != 0) {
         log_error("Failed to create database directory: %s", dir);
         free(dir_path);
@@ -93,13 +105,44 @@ int init_database(const char *db_path) {
     }
     free(dir_path);
     
+    // Check directory permissions
+    struct stat st;
+    if (stat(dir, &st) == 0) {
+        log_info("Database directory permissions: %o", st.st_mode & 0777);
+        if ((st.st_mode & 0200) == 0) {
+            log_warn("Database directory is not writable");
+        }
+    }
+    
     // Open database
+    log_info("Opening database at: %s", db_path);
     rc = sqlite3_open(db_path, &db);
     if (rc != SQLITE_OK) {
         log_error("Failed to open database: %s", sqlite3_errmsg(db));
         sqlite3_close(db);
         db = NULL;
         return -1;
+    }
+    
+    // Check if we can write to the database
+    log_info("Testing database write capability");
+    rc = sqlite3_exec(db, "CREATE TABLE IF NOT EXISTS test_table (id INTEGER);", NULL, NULL, &err_msg);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to create test table: %s", err_msg);
+        sqlite3_free(err_msg);
+        sqlite3_close(db);
+        db = NULL;
+        return -1;
+    }
+    
+    // Drop test table
+    rc = sqlite3_exec(db, "DROP TABLE test_table;", NULL, NULL, &err_msg);
+    if (rc != SQLITE_OK) {
+        log_warn("Failed to drop test table: %s", err_msg);
+        sqlite3_free(err_msg);
+        // Continue anyway
+    } else {
+        log_info("Database write test successful");
     }
     
     // Enable foreign keys
@@ -126,6 +169,29 @@ int init_database(const char *db_path) {
     rc = sqlite3_exec(db, create_events_table, NULL, NULL, &err_msg);
     if (rc != SQLITE_OK) {
         log_error("Failed to create events table: %s", err_msg);
+        sqlite3_free(err_msg);
+        sqlite3_close(db);
+        db = NULL;
+        return -1;
+    }
+    
+    // Create detections table
+    const char *create_detections_table = 
+        "CREATE TABLE IF NOT EXISTS detections ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "stream_name TEXT NOT NULL,"
+        "timestamp INTEGER NOT NULL,"
+        "label TEXT NOT NULL,"
+        "confidence REAL NOT NULL,"
+        "x REAL NOT NULL,"
+        "y REAL NOT NULL,"
+        "width REAL NOT NULL,"
+        "height REAL NOT NULL"
+        ");";
+    
+    rc = sqlite3_exec(db, create_detections_table, NULL, NULL, &err_msg);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to create detections table: %s", err_msg);
         sqlite3_free(err_msg);
         sqlite3_close(db);
         db = NULL;
@@ -192,7 +258,9 @@ int init_database(const char *db_path) {
         "CREATE INDEX IF NOT EXISTS idx_recordings_end_time ON recordings (end_time);"
         "CREATE INDEX IF NOT EXISTS idx_recordings_stream ON recordings (stream_name);"
         "CREATE INDEX IF NOT EXISTS idx_recordings_complete_stream_start ON recordings (is_complete, stream_name, start_time);"
-        "CREATE INDEX IF NOT EXISTS idx_streams_name ON streams (name);";
+        "CREATE INDEX IF NOT EXISTS idx_streams_name ON streams (name);"
+        "CREATE INDEX IF NOT EXISTS idx_detections_stream_timestamp ON detections (stream_name, timestamp);"
+        "CREATE INDEX IF NOT EXISTS idx_detections_timestamp ON detections (timestamp);";
     
     rc = sqlite3_exec(db, create_indexes, NULL, NULL, &err_msg);
     if (rc != SQLITE_OK) {
@@ -837,6 +905,383 @@ int delete_old_recording_metadata(uint64_t max_age) {
     return deleted_count;
 }
 
+/**
+ * Store detection results in the database
+ * 
+ * @param stream_name Stream name
+ * @param result Detection results
+ * @param timestamp Timestamp of the detection (0 for current time)
+ * @return 0 on success, non-zero on failure
+ */
+int store_detections_in_db(const char *stream_name, const detection_result_t *result, time_t timestamp) {
+    int rc;
+    sqlite3_stmt *stmt;
+    
+    if (!db) {
+        log_error("Database not initialized when trying to store detections");
+        return -1;
+    }
+    
+    if (!stream_name || !result) {
+        log_error("Invalid parameters for store_detections_in_db: stream_name=%p, result=%p", 
+                 stream_name, result);
+        return -1;
+    }
+    
+    // Use current time if timestamp is 0
+    if (timestamp == 0) {
+        timestamp = time(NULL);
+    }
+    
+    log_info("Storing %d detections in database for stream %s", result->count, stream_name);
+    
+    // Log the first detection for debugging
+    if (result->count > 0) {
+        log_info("First detection: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]",
+                result->detections[0].label,
+                result->detections[0].confidence * 100.0f,
+                result->detections[0].x,
+                result->detections[0].y,
+                result->detections[0].width,
+                result->detections[0].height);
+    }
+    
+    pthread_mutex_lock(&db_mutex);
+    
+    // Check if detections table exists
+    char *err_msg = NULL;
+    char **query_result;
+    int rows, cols;
+    rc = sqlite3_get_table(db, 
+                          "SELECT name FROM sqlite_master WHERE type='table' AND name='detections';", 
+                          &query_result, &rows, &cols, &err_msg);
+    
+    if (rc != SQLITE_OK) {
+        log_error("Failed to check if detections table exists: %s", err_msg);
+        sqlite3_free(err_msg);
+        pthread_mutex_unlock(&db_mutex);
+        return -1;
+    }
+    
+    if (rows == 0) {
+        log_error("Detections table does not exist, recreating it");
+        sqlite3_free_table(query_result);
+        
+        // Create detections table
+        const char *create_detections_table = 
+            "CREATE TABLE IF NOT EXISTS detections ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "stream_name TEXT NOT NULL,"
+            "timestamp INTEGER NOT NULL,"
+            "label TEXT NOT NULL,"
+            "confidence REAL NOT NULL,"
+            "x REAL NOT NULL,"
+            "y REAL NOT NULL,"
+            "width REAL NOT NULL,"
+            "height REAL NOT NULL"
+            ");";
+        
+        rc = sqlite3_exec(db, create_detections_table, NULL, NULL, &err_msg);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to create detections table: %s", err_msg);
+            sqlite3_free(err_msg);
+            pthread_mutex_unlock(&db_mutex);
+            return -1;
+        }
+        
+        // Create indexes
+        const char *create_indexes = 
+            "CREATE INDEX IF NOT EXISTS idx_detections_stream_timestamp ON detections (stream_name, timestamp);"
+            "CREATE INDEX IF NOT EXISTS idx_detections_timestamp ON detections (timestamp);";
+        
+        rc = sqlite3_exec(db, create_indexes, NULL, NULL, &err_msg);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to create indexes: %s", err_msg);
+            sqlite3_free(err_msg);
+            pthread_mutex_unlock(&db_mutex);
+            return -1;
+        }
+    } else {
+        sqlite3_free_table(query_result);
+    }
+    
+    // Begin transaction for better performance when inserting multiple detections
+    rc = sqlite3_exec(db, "BEGIN TRANSACTION;", NULL, NULL, &err_msg);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to begin transaction: %s", err_msg);
+        sqlite3_free(err_msg);
+        pthread_mutex_unlock(&db_mutex);
+        return -1;
+    }
+    
+    const char *sql = "INSERT INTO detections (stream_name, timestamp, label, confidence, x, y, width, height) "
+                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?);";
+    
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+        pthread_mutex_unlock(&db_mutex);
+        return -1;
+    }
+    
+    // Insert each detection
+    for (int i = 0; i < result->count; i++) {
+        // Bind parameters
+        sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 2, (sqlite3_int64)timestamp);
+        sqlite3_bind_text(stmt, 3, result->detections[i].label, -1, SQLITE_STATIC);
+        sqlite3_bind_double(stmt, 4, result->detections[i].confidence);
+        sqlite3_bind_double(stmt, 5, result->detections[i].x);
+        sqlite3_bind_double(stmt, 6, result->detections[i].y);
+        sqlite3_bind_double(stmt, 7, result->detections[i].width);
+        sqlite3_bind_double(stmt, 8, result->detections[i].height);
+        
+        // Execute statement
+        rc = sqlite3_step(stmt);
+        if (rc != SQLITE_DONE) {
+            log_error("Failed to insert detection %d: %s", i, sqlite3_errmsg(db));
+            sqlite3_finalize(stmt);
+            sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+            pthread_mutex_unlock(&db_mutex);
+            return -1;
+        }
+        
+        // Reset statement and clear bindings for next detection
+        sqlite3_reset(stmt);
+        sqlite3_clear_bindings(stmt);
+    }
+    
+    sqlite3_finalize(stmt);
+    
+    // Commit transaction
+    rc = sqlite3_exec(db, "COMMIT;", NULL, NULL, &err_msg);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to commit transaction: %s", err_msg);
+        sqlite3_free(err_msg);
+        sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+        pthread_mutex_unlock(&db_mutex);
+        return -1;
+    }
+    
+    // Verify the detections were stored
+    char verify_sql[256];
+    snprintf(verify_sql, sizeof(verify_sql), 
+            "SELECT COUNT(*) FROM detections WHERE stream_name = '%s' AND timestamp = %lld;",
+            stream_name, (long long)timestamp);
+    
+    rc = sqlite3_get_table(db, verify_sql, &query_result, &rows, &cols, &err_msg);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to verify detections were stored: %s", err_msg);
+        sqlite3_free(err_msg);
+    } else if (rows > 0 && cols > 0) {
+        int count = atoi(query_result[1]); // First row, first column
+        log_info("Verified %d detections were stored in database for stream %s", count, stream_name);
+        sqlite3_free_table(query_result);
+    }
+    
+    pthread_mutex_unlock(&db_mutex);
+    
+    log_info("Successfully stored %d detections in database for stream %s", result->count, stream_name);
+    return 0;
+}
+
+/**
+ * Get detection results from the database
+ * 
+ * @param stream_name Stream name
+ * @param result Detection results to fill
+ * @param max_age Maximum age in seconds (0 for all)
+ * @return Number of detections found, or -1 on error
+ */
+int get_detections_from_db(const char *stream_name, detection_result_t *result, uint64_t max_age) {
+    int rc;
+    sqlite3_stmt *stmt;
+    
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+    
+    if (!stream_name || !result) {
+        log_error("Invalid parameters for get_detections_from_db");
+        return -1;
+    }
+    
+    // Initialize result
+    memset(result, 0, sizeof(detection_result_t));
+    
+    pthread_mutex_lock(&db_mutex);
+    
+    // Build query based on max_age
+    // Modified to only return the latest detection timestamp
+    char sql[512];
+    if (max_age > 0) {
+        // Calculate cutoff time
+        time_t cutoff_time = time(NULL) - max_age;
+        
+        // First get the latest timestamp
+        snprintf(sql, sizeof(sql), 
+                "SELECT MAX(timestamp) "
+                "FROM detections "
+                "WHERE stream_name = ? AND timestamp >= ?;");
+        
+        rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+            pthread_mutex_unlock(&db_mutex);
+            return -1;
+        }
+        
+        // Bind parameters
+        sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 2, (sqlite3_int64)cutoff_time);
+        
+        // Execute query to get latest timestamp
+        time_t latest_timestamp = 0;
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            latest_timestamp = (time_t)sqlite3_column_int64(stmt, 0);
+        }
+        
+        sqlite3_finalize(stmt);
+        
+        // If no timestamp found, return empty result
+        if (latest_timestamp == 0) {
+            pthread_mutex_unlock(&db_mutex);
+            log_info("No recent detections found for stream %s", stream_name);
+            return 0;
+        }
+        
+        // Now get all detections at that timestamp
+        snprintf(sql, sizeof(sql), 
+                "SELECT label, confidence, x, y, width, height "
+                "FROM detections "
+                "WHERE stream_name = ? AND timestamp = ? "
+                "LIMIT ?;");
+        
+        rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+            pthread_mutex_unlock(&db_mutex);
+            return -1;
+        }
+        
+        // Bind parameters
+        sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 2, (sqlite3_int64)latest_timestamp);
+        sqlite3_bind_int(stmt, 3, MAX_DETECTIONS);
+        
+        log_info("Getting latest detections for stream %s at timestamp %lld", 
+                stream_name, (long long)latest_timestamp);
+    } else {
+        // No age filter, just get the latest timestamp
+        snprintf(sql, sizeof(sql), 
+                "SELECT label, confidence, x, y, width, height "
+                "FROM detections "
+                "WHERE stream_name = ? "
+                "ORDER BY timestamp DESC "
+                "LIMIT ?;");
+        
+        rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+            pthread_mutex_unlock(&db_mutex);
+            return -1;
+        }
+        
+        // Bind parameters
+        sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
+        sqlite3_bind_int(stmt, 2, MAX_DETECTIONS);
+    }
+    
+    // Execute query and fetch results
+    int count = 0;
+    while (sqlite3_step(stmt) == SQLITE_ROW && count < MAX_DETECTIONS) {
+        // Get detection data
+        const char *label = (const char *)sqlite3_column_text(stmt, 0);
+        float confidence = (float)sqlite3_column_double(stmt, 1);
+        float x = (float)sqlite3_column_double(stmt, 2);
+        float y = (float)sqlite3_column_double(stmt, 3);
+        float width = (float)sqlite3_column_double(stmt, 4);
+        float height = (float)sqlite3_column_double(stmt, 5);
+        
+        // Store in result
+        if (label) {
+            strncpy(result->detections[count].label, label, MAX_LABEL_LENGTH - 1);
+            result->detections[count].label[MAX_LABEL_LENGTH - 1] = '\0';
+        } else {
+            strncpy(result->detections[count].label, "unknown", MAX_LABEL_LENGTH - 1);
+        }
+        
+        result->detections[count].confidence = confidence;
+        result->detections[count].x = x;
+        result->detections[count].y = y;
+        result->detections[count].width = width;
+        result->detections[count].height = height;
+        
+        count++;
+    }
+    
+    result->count = count;
+    
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(&db_mutex);
+    
+    log_info("Found %d detections in database for stream %s", count, stream_name);
+    return count;
+}
+
+/**
+ * Delete old detections from the database
+ * 
+ * @param max_age Maximum age in seconds
+ * @return Number of detections deleted, or -1 on error
+ */
+int delete_old_detections(uint64_t max_age) {
+    int rc;
+    sqlite3_stmt *stmt;
+    int deleted_count = 0;
+    
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+    
+    pthread_mutex_lock(&db_mutex);
+    
+    const char *sql = "DELETE FROM detections WHERE timestamp < ?;";
+    
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(&db_mutex);
+        return -1;
+    }
+    
+    // Calculate cutoff time
+    time_t cutoff_time = time(NULL) - max_age;
+    
+    // Bind parameters
+    sqlite3_bind_int64(stmt, 1, (sqlite3_int64)cutoff_time);
+    
+    // Execute statement
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE) {
+        log_error("Failed to delete old detections: %s", sqlite3_errmsg(db));
+        sqlite3_finalize(stmt);
+        pthread_mutex_unlock(&db_mutex);
+        return -1;
+    }
+    
+    deleted_count = sqlite3_changes(db);
+    
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(&db_mutex);
+    
+    log_info("Deleted %d old detections from database", deleted_count);
+    return deleted_count;
+}
+
 // Begin a database transaction with improved error handling
 int begin_transaction(void) {
     int rc;
@@ -1054,8 +1499,57 @@ uint64_t add_stream_config(const stream_config_t *stream) {
     
     pthread_mutex_lock(&db_mutex);
     
-    const char *sql = "INSERT INTO streams (name, url, enabled, width, height, fps, codec, priority, record, segment_duration) "
-                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+    // First, check if we need to alter the table to add detection columns
+    const char *check_column_sql = "PRAGMA table_info(streams);";
+    sqlite3_stmt *check_stmt;
+    
+    rc = sqlite3_prepare_v2(db, check_column_sql, -1, &check_stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(&db_mutex);
+        return 0;
+    }
+    
+    bool has_detection_columns = false;
+    while (sqlite3_step(check_stmt) == SQLITE_ROW) {
+        const char *column_name = (const char *)sqlite3_column_text(check_stmt, 1);
+        if (column_name && strcmp(column_name, "detection_based_recording") == 0) {
+            has_detection_columns = true;
+            break;
+        }
+    }
+    
+    sqlite3_finalize(check_stmt);
+    
+    // If detection columns don't exist, add them
+    if (!has_detection_columns) {
+        log_info("Adding detection columns to streams table");
+        
+        const char *alter_table_sql[] = {
+            "ALTER TABLE streams ADD COLUMN detection_based_recording INTEGER DEFAULT 0;",
+            "ALTER TABLE streams ADD COLUMN detection_model TEXT DEFAULT '';",
+            "ALTER TABLE streams ADD COLUMN detection_threshold REAL DEFAULT 0.5;",
+            "ALTER TABLE streams ADD COLUMN detection_interval INTEGER DEFAULT 10;",
+            "ALTER TABLE streams ADD COLUMN pre_detection_buffer INTEGER DEFAULT 5;",
+            "ALTER TABLE streams ADD COLUMN post_detection_buffer INTEGER DEFAULT 10;"
+        };
+        
+        for (int i = 0; i < 6; i++) {
+            char *err_msg = NULL;
+            rc = sqlite3_exec(db, alter_table_sql[i], NULL, NULL, &err_msg);
+            if (rc != SQLITE_OK) {
+                log_error("Failed to alter table: %s", err_msg);
+                sqlite3_free(err_msg);
+                // Continue anyway, the column might already exist
+            }
+        }
+    }
+    
+    // Now insert the stream with all fields including detection settings
+    const char *sql = "INSERT INTO streams (name, url, enabled, width, height, fps, codec, priority, record, segment_duration, "
+                      "detection_based_recording, detection_model, detection_threshold, detection_interval, "
+                      "pre_detection_buffer, post_detection_buffer) "
+                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
     
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -1064,7 +1558,7 @@ uint64_t add_stream_config(const stream_config_t *stream) {
         return 0;
     }
     
-    // Bind parameters
+    // Bind parameters for basic stream settings
     sqlite3_bind_text(stmt, 1, stream->name, -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 2, stream->url, -1, SQLITE_STATIC);
     sqlite3_bind_int(stmt, 3, stream->enabled ? 1 : 0);
@@ -1076,6 +1570,14 @@ uint64_t add_stream_config(const stream_config_t *stream) {
     sqlite3_bind_int(stmt, 9, stream->record ? 1 : 0);
     sqlite3_bind_int(stmt, 10, stream->segment_duration);
     
+    // Bind parameters for detection settings
+    sqlite3_bind_int(stmt, 11, stream->detection_based_recording ? 1 : 0);
+    sqlite3_bind_text(stmt, 12, stream->detection_model, -1, SQLITE_STATIC);
+    sqlite3_bind_double(stmt, 13, stream->detection_threshold);
+    sqlite3_bind_int(stmt, 14, stream->detection_interval);
+    sqlite3_bind_int(stmt, 15, stream->pre_detection_buffer);
+    sqlite3_bind_int(stmt, 16, stream->post_detection_buffer);
+    
     // Execute statement
     rc = sqlite3_step(stmt);
     if (rc != SQLITE_DONE) {
@@ -1083,6 +1585,13 @@ uint64_t add_stream_config(const stream_config_t *stream) {
     } else {
         stream_id = (uint64_t)sqlite3_last_insert_rowid(db);
         log_debug("Added stream configuration with ID %llu", (unsigned long long)stream_id);
+        
+        // Log the addition
+        log_info("Added stream configuration: name=%s, enabled=%s, detection=%s, model=%s", 
+                stream->name, 
+                stream->enabled ? "true" : "false",
+                stream->detection_based_recording ? "true" : "false",
+                stream->detection_model);
     }
     
     sqlite3_finalize(stmt);
@@ -1114,9 +1623,58 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
     
     pthread_mutex_lock(&db_mutex);
     
+    // First, check if we need to alter the table to add detection columns
+    const char *check_column_sql = "PRAGMA table_info(streams);";
+    sqlite3_stmt *check_stmt;
+    
+    rc = sqlite3_prepare_v2(db, check_column_sql, -1, &check_stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(&db_mutex);
+        return -1;
+    }
+    
+    bool has_detection_columns = false;
+    while (sqlite3_step(check_stmt) == SQLITE_ROW) {
+        const char *column_name = (const char *)sqlite3_column_text(check_stmt, 1);
+        if (column_name && strcmp(column_name, "detection_based_recording") == 0) {
+            has_detection_columns = true;
+            break;
+        }
+    }
+    
+    sqlite3_finalize(check_stmt);
+    
+    // If detection columns don't exist, add them
+    if (!has_detection_columns) {
+        log_info("Adding detection columns to streams table");
+        
+        const char *alter_table_sql[] = {
+            "ALTER TABLE streams ADD COLUMN detection_based_recording INTEGER DEFAULT 0;",
+            "ALTER TABLE streams ADD COLUMN detection_model TEXT DEFAULT '';",
+            "ALTER TABLE streams ADD COLUMN detection_threshold REAL DEFAULT 0.5;",
+            "ALTER TABLE streams ADD COLUMN detection_interval INTEGER DEFAULT 10;",
+            "ALTER TABLE streams ADD COLUMN pre_detection_buffer INTEGER DEFAULT 5;",
+            "ALTER TABLE streams ADD COLUMN post_detection_buffer INTEGER DEFAULT 10;"
+        };
+        
+        for (int i = 0; i < 6; i++) {
+            char *err_msg = NULL;
+            rc = sqlite3_exec(db, alter_table_sql[i], NULL, NULL, &err_msg);
+            if (rc != SQLITE_OK) {
+                log_error("Failed to alter table: %s", err_msg);
+                sqlite3_free(err_msg);
+                // Continue anyway, the column might already exist
+            }
+        }
+    }
+    
+    // Now update the stream with all fields including detection settings
     const char *sql = "UPDATE streams SET "
                       "name = ?, url = ?, enabled = ?, width = ?, height = ?, "
-                      "fps = ?, codec = ?, priority = ?, record = ?, segment_duration = ? "
+                      "fps = ?, codec = ?, priority = ?, record = ?, segment_duration = ?, "
+                      "detection_based_recording = ?, detection_model = ?, detection_threshold = ?, "
+                      "detection_interval = ?, pre_detection_buffer = ?, post_detection_buffer = ? "
                       "WHERE name = ?;";
     
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -1126,7 +1684,7 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
         return -1;
     }
     
-    // Bind parameters
+    // Bind parameters for basic stream settings
     sqlite3_bind_text(stmt, 1, stream->name, -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 2, stream->url, -1, SQLITE_STATIC);
     sqlite3_bind_int(stmt, 3, stream->enabled ? 1 : 0);
@@ -1137,7 +1695,17 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
     sqlite3_bind_int(stmt, 8, stream->priority);
     sqlite3_bind_int(stmt, 9, stream->record ? 1 : 0);
     sqlite3_bind_int(stmt, 10, stream->segment_duration);
-    sqlite3_bind_text(stmt, 11, name, -1, SQLITE_STATIC);
+    
+    // Bind parameters for detection settings
+    sqlite3_bind_int(stmt, 11, stream->detection_based_recording ? 1 : 0);
+    sqlite3_bind_text(stmt, 12, stream->detection_model, -1, SQLITE_STATIC);
+    sqlite3_bind_double(stmt, 13, stream->detection_threshold);
+    sqlite3_bind_int(stmt, 14, stream->detection_interval);
+    sqlite3_bind_int(stmt, 15, stream->pre_detection_buffer);
+    sqlite3_bind_int(stmt, 16, stream->post_detection_buffer);
+    
+    // Bind the WHERE clause parameter
+    sqlite3_bind_text(stmt, 17, name, -1, SQLITE_STATIC);
     
     // Execute statement
     rc = sqlite3_step(stmt);
@@ -1149,6 +1717,14 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
     }
     
     sqlite3_finalize(stmt);
+    
+    // Log the update
+    log_info("Updated stream configuration for %s: enabled=%s, detection=%s, model=%s", 
+             stream->name, 
+             stream->enabled ? "true" : "false",
+             stream->detection_based_recording ? "true" : "false",
+             stream->detection_model);
+    
     pthread_mutex_unlock(&db_mutex);
     
     return 0;
@@ -1227,8 +1803,39 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
     
     pthread_mutex_lock(&db_mutex);
     
-    const char *sql = "SELECT name, url, enabled, width, height, fps, codec, priority, record, segment_duration "
-                      "FROM streams WHERE name = ?;";
+    // First, check if detection columns exist
+    const char *check_column_sql = "PRAGMA table_info(streams);";
+    sqlite3_stmt *check_stmt;
+    
+    rc = sqlite3_prepare_v2(db, check_column_sql, -1, &check_stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(&db_mutex);
+        return -1;
+    }
+    
+    bool has_detection_columns = false;
+    while (sqlite3_step(check_stmt) == SQLITE_ROW) {
+        const char *column_name = (const char *)sqlite3_column_text(check_stmt, 1);
+        if (column_name && strcmp(column_name, "detection_based_recording") == 0) {
+            has_detection_columns = true;
+            break;
+        }
+    }
+    
+    sqlite3_finalize(check_stmt);
+    
+    // Prepare SQL based on whether detection columns exist
+    const char *sql;
+    if (has_detection_columns) {
+        sql = "SELECT name, url, enabled, width, height, fps, codec, priority, record, segment_duration, "
+              "detection_based_recording, detection_model, detection_threshold, detection_interval, "
+              "pre_detection_buffer, post_detection_buffer "
+              "FROM streams WHERE name = ?;";
+    } else {
+        sql = "SELECT name, url, enabled, width, height, fps, codec, priority, record, segment_duration "
+              "FROM streams WHERE name = ?;";
+    }
     
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -1242,20 +1849,26 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
     
     // Execute query and fetch result
     if (sqlite3_step(stmt) == SQLITE_ROW) {
+        // Initialize stream with default values
+        memset(stream, 0, sizeof(stream_config_t));
+        
+        // Set default values for detection settings
+        stream->detection_threshold = 0.5f;
+        stream->detection_interval = 10;
+        stream->pre_detection_buffer = 5;
+        stream->post_detection_buffer = 10;
+        
+        // Parse basic stream settings
         const char *stream_name = (const char *)sqlite3_column_text(stmt, 0);
         if (stream_name) {
             strncpy(stream->name, stream_name, MAX_STREAM_NAME - 1);
             stream->name[MAX_STREAM_NAME - 1] = '\0';
-        } else {
-            stream->name[0] = '\0';
         }
         
         const char *url = (const char *)sqlite3_column_text(stmt, 1);
         if (url) {
             strncpy(stream->url, url, MAX_URL_LENGTH - 1);
             stream->url[MAX_URL_LENGTH - 1] = '\0';
-        } else {
-            stream->url[0] = '\0';
         }
         
         stream->enabled = sqlite3_column_int(stmt, 2) != 0;
@@ -1267,13 +1880,38 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
         if (codec) {
             strncpy(stream->codec, codec, sizeof(stream->codec) - 1);
             stream->codec[sizeof(stream->codec) - 1] = '\0';
-        } else {
-            stream->codec[0] = '\0';
         }
         
         stream->priority = sqlite3_column_int(stmt, 7);
         stream->record = sqlite3_column_int(stmt, 8) != 0;
         stream->segment_duration = sqlite3_column_int(stmt, 9);
+        
+        // Parse detection settings if columns exist
+        if (has_detection_columns && sqlite3_column_count(stmt) > 10) {
+            stream->detection_based_recording = sqlite3_column_int(stmt, 10) != 0;
+            
+            const char *detection_model = (const char *)sqlite3_column_text(stmt, 11);
+            if (detection_model) {
+                strncpy(stream->detection_model, detection_model, MAX_PATH_LENGTH - 1);
+                stream->detection_model[MAX_PATH_LENGTH - 1] = '\0';
+            }
+            
+            if (sqlite3_column_type(stmt, 12) != SQLITE_NULL) {
+                stream->detection_threshold = (float)sqlite3_column_double(stmt, 12);
+            }
+            
+            if (sqlite3_column_type(stmt, 13) != SQLITE_NULL) {
+                stream->detection_interval = sqlite3_column_int(stmt, 13);
+            }
+            
+            if (sqlite3_column_type(stmt, 14) != SQLITE_NULL) {
+                stream->pre_detection_buffer = sqlite3_column_int(stmt, 14);
+            }
+            
+            if (sqlite3_column_type(stmt, 15) != SQLITE_NULL) {
+                stream->post_detection_buffer = sqlite3_column_int(stmt, 15);
+            }
+        }
         
         result = 0; // Success
     }
@@ -1308,8 +1946,39 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
     
     pthread_mutex_lock(&db_mutex);
     
-    const char *sql = "SELECT name, url, enabled, width, height, fps, codec, priority, record, segment_duration "
-                      "FROM streams ORDER BY name;";
+    // First, check if detection columns exist
+    const char *check_column_sql = "PRAGMA table_info(streams);";
+    sqlite3_stmt *check_stmt;
+    
+    rc = sqlite3_prepare_v2(db, check_column_sql, -1, &check_stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(&db_mutex);
+        return -1;
+    }
+    
+    bool has_detection_columns = false;
+    while (sqlite3_step(check_stmt) == SQLITE_ROW) {
+        const char *column_name = (const char *)sqlite3_column_text(check_stmt, 1);
+        if (column_name && strcmp(column_name, "detection_based_recording") == 0) {
+            has_detection_columns = true;
+            break;
+        }
+    }
+    
+    sqlite3_finalize(check_stmt);
+    
+    // Prepare SQL based on whether detection columns exist
+    const char *sql;
+    if (has_detection_columns) {
+        sql = "SELECT name, url, enabled, width, height, fps, codec, priority, record, segment_duration, "
+              "detection_based_recording, detection_model, detection_threshold, detection_interval, "
+              "pre_detection_buffer, post_detection_buffer "
+              "FROM streams ORDER BY name;";
+    } else {
+        sql = "SELECT name, url, enabled, width, height, fps, codec, priority, record, segment_duration "
+              "FROM streams ORDER BY name;";
+    }
     
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -1320,20 +1989,26 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
     
     // Execute query and fetch results
     while (sqlite3_step(stmt) == SQLITE_ROW && count < max_count) {
+        // Initialize stream with default values
+        memset(&streams[count], 0, sizeof(stream_config_t));
+        
+        // Set default values for detection settings
+        streams[count].detection_threshold = 0.5f;
+        streams[count].detection_interval = 10;
+        streams[count].pre_detection_buffer = 5;
+        streams[count].post_detection_buffer = 10;
+        
+        // Parse basic stream settings
         const char *name = (const char *)sqlite3_column_text(stmt, 0);
         if (name) {
             strncpy(streams[count].name, name, MAX_STREAM_NAME - 1);
             streams[count].name[MAX_STREAM_NAME - 1] = '\0';
-        } else {
-            streams[count].name[0] = '\0';
         }
         
         const char *url = (const char *)sqlite3_column_text(stmt, 1);
         if (url) {
             strncpy(streams[count].url, url, MAX_URL_LENGTH - 1);
             streams[count].url[MAX_URL_LENGTH - 1] = '\0';
-        } else {
-            streams[count].url[0] = '\0';
         }
         
         streams[count].enabled = sqlite3_column_int(stmt, 2) != 0;
@@ -1345,13 +2020,38 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
         if (codec) {
             strncpy(streams[count].codec, codec, sizeof(streams[count].codec) - 1);
             streams[count].codec[sizeof(streams[count].codec) - 1] = '\0';
-        } else {
-            streams[count].codec[0] = '\0';
         }
         
         streams[count].priority = sqlite3_column_int(stmt, 7);
         streams[count].record = sqlite3_column_int(stmt, 8) != 0;
         streams[count].segment_duration = sqlite3_column_int(stmt, 9);
+        
+        // Parse detection settings if columns exist
+        if (has_detection_columns && sqlite3_column_count(stmt) > 10) {
+            streams[count].detection_based_recording = sqlite3_column_int(stmt, 10) != 0;
+            
+            const char *detection_model = (const char *)sqlite3_column_text(stmt, 11);
+            if (detection_model) {
+                strncpy(streams[count].detection_model, detection_model, MAX_PATH_LENGTH - 1);
+                streams[count].detection_model[MAX_PATH_LENGTH - 1] = '\0';
+            }
+            
+            if (sqlite3_column_type(stmt, 12) != SQLITE_NULL) {
+                streams[count].detection_threshold = (float)sqlite3_column_double(stmt, 12);
+            }
+            
+            if (sqlite3_column_type(stmt, 13) != SQLITE_NULL) {
+                streams[count].detection_interval = sqlite3_column_int(stmt, 13);
+            }
+            
+            if (sqlite3_column_type(stmt, 14) != SQLITE_NULL) {
+                streams[count].pre_detection_buffer = sqlite3_column_int(stmt, 14);
+            }
+            
+            if (sqlite3_column_type(stmt, 15) != SQLITE_NULL) {
+                streams[count].post_detection_buffer = sqlite3_column_int(stmt, 15);
+            }
+        }
         
         count++;
     }

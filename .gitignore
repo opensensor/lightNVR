@@ -71,3 +71,7 @@ Makefile
 
 # Swap files
 /swap
+
+# Models
+/models
+*.so*

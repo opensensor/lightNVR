@@ -1,404 +1,612 @@
-#define _GNU_SOURCE  // For pthread_timedjoin_np
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
 #include <unistd.h>
-#include <time.h>
-#include <errno.h>  // For ETIMEDOUT
-#include <signal.h> // For pthread_kill
 
 #include "video/stream_manager.h"
 #include "core/logger.h"
-#include "storage/storage_manager.h"
-#include "database/database_manager.h"
+#include "core/config.h"
+#include "video/streams.h"
+#include "video/detection.h"
 
-// Stream handle structure
-struct stream_handle_s {
-    int id;
+// Stream structure
+typedef struct {
     stream_config_t config;
     stream_status_t status;
     stream_stats_t stats;
-    pthread_t thread;
-    bool thread_running;
-    void *recording_handle;
-};
-
-// Stream manager state
-static struct {
-    int max_streams;
-    int active_streams;
-    int total_streams;
-    struct stream_handle_s *streams;
     pthread_mutex_t mutex;
-    uint64_t used_memory;
-    uint64_t peak_memory;
-} stream_manager = {
-    .max_streams = 0,
-    .active_streams = 0,
-    .total_streams = 0,
-    .streams = NULL,
-    .used_memory = 0,
-    .peak_memory = 0
-};
+    bool recording_enabled;
+    bool detection_recording_enabled;
+    time_t last_detection_time;  // Added for detection-based recording
+} stream_t;
 
+// Global array of streams
+static stream_t streams[MAX_STREAMS];
+static pthread_mutex_t streams_mutex = PTHREAD_MUTEX_INITIALIZER;
+static bool initialized = false;
 
-// Internal function to add a stream without adding to database
-static stream_handle_t add_stream_internal(const stream_config_t *config) {
-    if (!config) {
-        log_error("Invalid stream configuration");
+/**
+ * Initialize stream manager
+ */
+int init_stream_manager(int max_streams) {
+    if (initialized) {
+        return 0;  // Already initialized
+    }
+    
+    pthread_mutex_lock(&streams_mutex);
+    
+    // Initialize streams array
+    memset(streams, 0, sizeof(streams));
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        pthread_mutex_init(&streams[i].mutex, NULL);
+        streams[i].status = STREAM_STATUS_STOPPED;
+        memset(&streams[i].stats, 0, sizeof(stream_stats_t));
+        streams[i].recording_enabled = false;
+        streams[i].detection_recording_enabled = false;
+    }
+    
+    // Load stream configurations from config
+    config_t *config = get_streaming_config();
+    if (config) {
+        for (int i = 0; i < config->max_streams && i < MAX_STREAMS; i++) {
+            if (config->streams[i].name[0] != '\0') {
+                memcpy(&streams[i].config, &config->streams[i], sizeof(stream_config_t));
+            }
+        }
+    }
+    
+    initialized = true;
+    pthread_mutex_unlock(&streams_mutex);
+    
+    log_info("Stream manager initialized");
+    return 0;
+}
+
+/**
+ * Shutdown stream manager
+ */
+void shutdown_stream_manager(void) {
+    if (!initialized) {
+        return;
+    }
+    
+    pthread_mutex_lock(&streams_mutex);
+    
+    // Stop all streams
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (streams[i].config.name[0] != '\0' && streams[i].status == STREAM_STATUS_RUNNING) {
+            pthread_mutex_unlock(&streams_mutex);
+            stop_hls_stream(streams[i].config.name);
+            pthread_mutex_lock(&streams_mutex);
+            streams[i].status = STREAM_STATUS_STOPPED;
+        }
+    }
+    
+    // Destroy mutexes
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        pthread_mutex_destroy(&streams[i].mutex);
+    }
+    
+    initialized = false;
+    pthread_mutex_unlock(&streams_mutex);
+    
+    log_info("Stream manager shutdown");
+}
+
+/**
+ * Get stream by name
+ */
+stream_handle_t get_stream_by_name(const char *name) {
+    if (!name || !initialized) {
         return NULL;
     }
+    
+    pthread_mutex_lock(&streams_mutex);
+    
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (streams[i].config.name[0] != '\0' && strcmp(streams[i].config.name, name) == 0) {
+            pthread_mutex_unlock(&streams_mutex);
+            return (stream_handle_t)&streams[i];
+        }
+    }
+    
+    pthread_mutex_unlock(&streams_mutex);
+    return NULL;
+}
 
-    pthread_mutex_lock(&stream_manager.mutex);
+/**
+ * Get stream configuration
+ */
+int get_stream_config(stream_handle_t stream, stream_config_t *config) {
+    if (!stream || !config) {
+        return -1;
+    }
+    
+    stream_t *s = (stream_t *)stream;
+    
+    pthread_mutex_lock(&s->mutex);
+    memcpy(config, &s->config, sizeof(stream_config_t));
+    pthread_mutex_unlock(&s->mutex);
+    
+    return 0;
+}
 
+/**
+ * Get stream status
+ */
+stream_status_t get_stream_status(stream_handle_t stream) {
+    if (!stream) {
+        return STREAM_STATUS_STOPPED; // Return STOPPED instead of UNKNOWN
+    }
+    
+    stream_t *s = (stream_t *)stream;
+    
+    pthread_mutex_lock(&s->mutex);
+    stream_status_t status = s->status;
+    pthread_mutex_unlock(&s->mutex);
+    
+    return status;
+}
+
+/**
+ * Set stream detection recording
+ */
+int set_stream_detection_recording(stream_handle_t stream, bool enabled, const char *model_path) {
+    if (!stream) {
+        return -1;
+    }
+    
+    stream_t *s = (stream_t *)stream;
+    
+    pthread_mutex_lock(&s->mutex);
+    
+    // Update configuration
+    s->config.detection_based_recording = enabled;
+    
+    if (model_path) {
+        strncpy(s->config.detection_model, model_path, MAX_PATH_LENGTH - 1);
+        s->config.detection_model[MAX_PATH_LENGTH - 1] = '\0';
+    }
+    
+    pthread_mutex_unlock(&s->mutex);
+    
+    // Save configuration to config file
+    config_t *config = get_streaming_config();
+    if (config) {
+        for (int i = 0; i < config->max_streams && i < MAX_STREAMS; i++) {
+            if (strcmp(config->streams[i].name, s->config.name) == 0) {
+                pthread_mutex_lock(&s->mutex);
+                memcpy(&config->streams[i], &s->config, sizeof(stream_config_t));
+                pthread_mutex_unlock(&s->mutex);
+                break;
+            }
+        }
+    }
+    
+    log_info("Set detection recording for stream %s: enabled=%s, model=%s", 
+             s->config.name, enabled ? "true" : "false", model_path ? model_path : "none");
+    
+    return 0;
+}
+
+/**
+ * Set stream detection parameters
+ */
+int set_stream_detection_params(stream_handle_t stream, int interval, float threshold, 
+                               int pre_buffer, int post_buffer) {
+    if (!stream) {
+        return -1;
+    }
+    
+    stream_t *s = (stream_t *)stream;
+    
+    pthread_mutex_lock(&s->mutex);
+    
+    // Update configuration
+    if (interval > 0) {
+        s->config.detection_interval = interval;
+    }
+    
+    if (threshold >= 0.0f && threshold <= 1.0f) {
+        s->config.detection_threshold = threshold;
+    }
+    
+    if (pre_buffer >= 0) {
+        s->config.pre_detection_buffer = pre_buffer;
+    }
+    
+    if (post_buffer >= 0) {
+        s->config.post_detection_buffer = post_buffer;
+    }
+    
+    pthread_mutex_unlock(&s->mutex);
+    
+    // Save configuration to config file
+    config_t *config = get_streaming_config();
+    if (config) {
+        for (int i = 0; i < config->max_streams && i < MAX_STREAMS; i++) {
+            if (strcmp(config->streams[i].name, s->config.name) == 0) {
+                pthread_mutex_lock(&s->mutex);
+                memcpy(&config->streams[i], &s->config, sizeof(stream_config_t));
+                pthread_mutex_unlock(&s->mutex);
+                break;
+            }
+        }
+    }
+    
+    log_info("Set detection parameters for stream %s", s->config.name);
+    
+    return 0;
+}
+
+/**
+ * Add a new stream
+ */
+stream_handle_t add_stream(const stream_config_t *config) {
+    if (!config || !initialized) {
+        return NULL;
+    }
+    
+    pthread_mutex_lock(&streams_mutex);
+    
     // Find an empty slot
     int slot = -1;
-    for (int i = 0; i < stream_manager.max_streams; i++) {
-        if (stream_manager.streams[i].id == 0) {
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (streams[i].config.name[0] == '\0') {
             slot = i;
             break;
         }
     }
-
-    if (slot < 0) {
-        log_error("No available stream slots");
-        pthread_mutex_unlock(&stream_manager.mutex);
+    
+    if (slot == -1) {
+        log_error("No available slots for new stream");
+        pthread_mutex_unlock(&streams_mutex);
         return NULL;
     }
-
-    // Initialize stream
-    stream_manager.streams[slot].id = slot + 1;
-    stream_manager.streams[slot].config = *config;
-    stream_manager.streams[slot].status = STREAM_STATUS_STOPPED;
-    memset(&stream_manager.streams[slot].stats, 0, sizeof(stream_stats_t));
-    stream_manager.streams[slot].thread_running = false;
-    stream_manager.streams[slot].recording_handle = NULL;
-
-    stream_manager.total_streams++;
-
-    pthread_mutex_unlock(&stream_manager.mutex);
-
-    // Internal function, no database update
-
-    log_info("Added stream: %s", config->name);
-    return &stream_manager.streams[slot];
-}
-
-
-// Initialize the stream manager
-int init_stream_manager(int max_streams) {
-    if (max_streams <= 0) {
-        log_error("Invalid maximum streams: %d", max_streams);
-        return -1;
-    }
     
-    // Initialize mutex
-    if (pthread_mutex_init(&stream_manager.mutex, NULL) != 0) {
-        log_error("Failed to initialize stream manager mutex");
-        return -1;
-    }
-    
-    // Allocate streams array
-    stream_manager.streams = calloc(max_streams, sizeof(struct stream_handle_s));
-    if (!stream_manager.streams) {
-        log_error("Failed to allocate memory for streams");
-        pthread_mutex_destroy(&stream_manager.mutex);
-        return -1;
-    }
-    
-    stream_manager.max_streams = max_streams;
-    stream_manager.used_memory = max_streams * sizeof(struct stream_handle_s);
-    stream_manager.peak_memory = stream_manager.used_memory;
-    
-    // Load stream configurations from database
-    stream_config_t db_streams[MAX_STREAMS];
-    int count = get_all_stream_configs(db_streams, max_streams);
-    if (count > 0) {
-        log_info("Loading %d stream configurations from database", count);
-        for (int i = 0; i < count && i < max_streams; i++) {
-            // Add each stream to the stream manager (internal only, don't add to DB again)
-            add_stream_internal(&db_streams[i]);
+    // Check if stream with same name already exists
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (i != slot && streams[i].config.name[0] != '\0' && 
+            strcmp(streams[i].config.name, config->name) == 0) {
+            log_error("Stream with name '%s' already exists", config->name);
+            pthread_mutex_unlock(&streams_mutex);
+            return NULL;
         }
-    } else if (count < 0) {
-        log_warn("Failed to load stream configurations from database");
     }
     
-    log_info("Stream manager initialized with max streams: %d", max_streams);
-    return 0;
-}
-
-// Shutdown the stream manager
-void shutdown_stream_manager(void) {
-    log_info("Shutting down stream manager...");
-    pthread_mutex_lock(&stream_manager.mutex);
+    // Initialize the stream
+    pthread_mutex_lock(&streams[slot].mutex);
+    memcpy(&streams[slot].config, config, sizeof(stream_config_t));
+    streams[slot].status = STREAM_STATUS_STOPPED;
+    memset(&streams[slot].stats, 0, sizeof(stream_stats_t));
+    streams[slot].recording_enabled = config->record;
+    streams[slot].detection_recording_enabled = config->detection_based_recording;
+    pthread_mutex_unlock(&streams[slot].mutex);
     
-    // Stop all streams with timeout
-    for (int i = 0; i < stream_manager.max_streams; i++) {
-        if (stream_manager.streams[i].thread_running) {
-            // Signal thread to stop
-            stream_manager.streams[i].thread_running = false;
-            
-            // Unlock mutex while waiting for thread to exit
-            pthread_mutex_unlock(&stream_manager.mutex);
-            
-            // Join with timeout
-            struct timespec ts;
-            clock_gettime(CLOCK_REALTIME, &ts);
-            ts.tv_sec += 30; // 30 second timeout
-            
-            int join_result = pthread_timedjoin_np(stream_manager.streams[i].thread, NULL, &ts);
-            if (join_result != 0) {
-                if (join_result == ETIMEDOUT) {
-                    log_warn("Stream thread join timed out after 30 seconds for stream %s, forcefully terminating thread", 
-                             stream_manager.streams[i].config.name);
-                    pthread_cancel(stream_manager.streams[i].thread);
-                } else {
-                    log_warn("Failed to join stream thread for %s: %s", 
-                             stream_manager.streams[i].config.name, strerror(join_result));
-                }
+    // Save to config
+    config_t *global_config = get_streaming_config();
+    if (global_config) {
+        for (int i = 0; i < global_config->max_streams && i < MAX_STREAMS; i++) {
+            if (global_config->streams[i].name[0] == '\0') {
+                memcpy(&global_config->streams[i], config, sizeof(stream_config_t));
+                break;
             }
-            
-            pthread_mutex_lock(&stream_manager.mutex);
         }
     }
     
-    // Free streams array
-    free(stream_manager.streams);
-    stream_manager.streams = NULL;
+    log_info("Added stream '%s' in slot %d", config->name, slot);
+    pthread_mutex_unlock(&streams_mutex);
     
-    pthread_mutex_unlock(&stream_manager.mutex);
-    
-    // Destroy mutex
-    pthread_mutex_destroy(&stream_manager.mutex);
-    
-    log_info("Stream manager shutdown complete");
+    return (stream_handle_t)&streams[slot];
 }
 
-// Add a new stream
-stream_handle_t add_stream(const stream_config_t *config) {
-    // Add stream to internal data structure
-    stream_handle_t handle = add_stream_internal(config);
-    
-    if (handle) {
-        // After successfully adding the stream, add it to the database
-        if (add_stream_config(config) == 0) {
-            log_warn("Failed to add stream configuration to database: %s", config->name);
-        }
-    }
-    
-    return handle;
-}
-
-// Start a stream
-int start_stream(stream_handle_t handle) {
-    // Stub implementation
-    if (!handle) {
-        return -1;
-    }
-    
-    log_info("Starting stream: %s", handle->config.name);
-    handle->status = STREAM_STATUS_RUNNING;
-    return 0;
-}
-
-// Stop a stream
-int stop_stream(stream_handle_t handle) {
-    // Stub implementation
-    if (!handle) {
-        return -1;
-    }
-    
-    log_info("Stopping stream: %s", handle->config.name);
-    handle->status = STREAM_STATUS_STOPPED;
-    return 0;
-}
-
-// Get stream status
-stream_status_t get_stream_status(stream_handle_t handle) {
-    if (!handle) {
-        return STREAM_STATUS_ERROR;
-    }
-    
-    return handle->status;
-}
-
-// Get stream statistics
-int get_stream_stats(stream_handle_t handle, stream_stats_t *stats) {
-    if (!handle || !stats) {
-        return -1;
-    }
-    
-    *stats = handle->stats;
-    return 0;
-}
-
-// Get stream configuration
-int get_stream_config(stream_handle_t handle, stream_config_t *config) {
-    if (!handle || !config) {
-        return -1;
-    }
-    
-    *config = handle->config;
-    return 0;
-}
-
-// Remove a stream
+/**
+ * Remove a stream
+ */
 int remove_stream(stream_handle_t handle) {
-    if (!handle) {
-        log_error("Invalid stream handle in remove_stream");
+    if (!handle || !initialized) {
         return -1;
     }
-
-    pthread_mutex_lock(&stream_manager.mutex);
-
-    // Check if stream is valid
-    int slot = handle->id - 1;
-    if (slot < 0 || slot >= stream_manager.max_streams || stream_manager.streams[slot].id == 0) {
-        pthread_mutex_unlock(&stream_manager.mutex);
-        log_error("Invalid stream slot in remove_stream: %d", slot);
-        return -1;
-    }
-
-    // Get stream name for logging and config updates
-    char stream_name[MAX_STREAM_NAME];
-    strncpy(stream_name, handle->config.name, MAX_STREAM_NAME - 1);
-    stream_name[MAX_STREAM_NAME - 1] = '\0';
-
-    // Stop stream if running
-    if (stream_manager.streams[slot].thread_running) {
-        // Signal thread to stop
-        stream_manager.streams[slot].thread_running = false;
-
-        // Unlock mutex while waiting for thread to exit
-        pthread_mutex_unlock(&stream_manager.mutex);
-        pthread_join(stream_manager.streams[slot].thread, NULL);
-        pthread_mutex_lock(&stream_manager.mutex);
-    }
-
-    // Clean up any associated resources
-    if (stream_manager.streams[slot].recording_handle) {
-        // Close recording if active
-        // In a real implementation, you would call your close_recording function here
-        stream_manager.streams[slot].recording_handle = NULL;
-    }
-
-    // Clear stream slot
-    memset(&stream_manager.streams[slot], 0, sizeof(struct stream_handle_s));
-
-    // Update stream count
-    stream_manager.total_streams--;
-    if (stream_manager.active_streams > 0) {
-        stream_manager.active_streams--;
-    }
-
-    pthread_mutex_unlock(&stream_manager.mutex);
-
-    // Delete the stream configuration from the database
-    if (delete_stream_config(stream_name) != 0) {
-        log_warn("Failed to delete stream configuration from database: %s", stream_name);
-    }
-
-    log_info("Stream removed: %s", stream_name);
-    return 0;
-}
-
-// Get stream by index
-stream_handle_t get_stream_by_index(int index) {
-    if (index < 0 || index >= stream_manager.max_streams) {
-        return NULL;
+    
+    stream_t *s = (stream_t *)handle;
+    
+    // First stop the stream if it's running
+    if (s->status == STREAM_STATUS_RUNNING) {
+        stop_stream(handle);
     }
     
-    pthread_mutex_lock(&stream_manager.mutex);
+    pthread_mutex_lock(&streams_mutex);
     
-    stream_handle_t handle = NULL;
-    if (stream_manager.streams[index].id != 0) {
-        handle = &stream_manager.streams[index];
-    }
-    
-    pthread_mutex_unlock(&stream_manager.mutex);
-    
-    return handle;
-}
-
-// Get stream by name
-stream_handle_t get_stream_by_name(const char *name) {
-    if (!name) {
-        return NULL;
-    }
-    
-    pthread_mutex_lock(&stream_manager.mutex);
-    
-    stream_handle_t handle = NULL;
-    for (int i = 0; i < stream_manager.max_streams; i++) {
-        if (stream_manager.streams[i].id != 0 && 
-            strcmp(stream_manager.streams[i].config.name, name) == 0) {
-            handle = &stream_manager.streams[i];
+    // Find the stream in the array
+    int slot = -1;
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (&streams[i] == s) {
+            slot = i;
             break;
         }
     }
     
-    pthread_mutex_unlock(&stream_manager.mutex);
+    if (slot == -1) {
+        log_error("Stream not found in array");
+        pthread_mutex_unlock(&streams_mutex);
+        return -1;
+    }
     
-    return handle;
+    // Save stream name for logging
+    char stream_name[MAX_STREAM_NAME];
+    strncpy(stream_name, s->config.name, MAX_STREAM_NAME - 1);
+    stream_name[MAX_STREAM_NAME - 1] = '\0';
+    
+    // Clear the stream slot
+    pthread_mutex_lock(&s->mutex);
+    memset(&s->config, 0, sizeof(stream_config_t));
+    s->status = STREAM_STATUS_STOPPED;
+    memset(&s->stats, 0, sizeof(stream_stats_t));
+    s->recording_enabled = false;
+    s->detection_recording_enabled = false;
+    pthread_mutex_unlock(&s->mutex);
+    
+    // Remove from config
+    config_t *global_config = get_streaming_config();
+    if (global_config) {
+        for (int i = 0; i < global_config->max_streams && i < MAX_STREAMS; i++) {
+            if (strcmp(global_config->streams[i].name, stream_name) == 0) {
+                memset(&global_config->streams[i], 0, sizeof(stream_config_t));
+                break;
+            }
+        }
+    }
+    
+    log_info("Removed stream '%s' from slot %d", stream_name, slot);
+    pthread_mutex_unlock(&streams_mutex);
+    
+    return 0;
 }
 
-// Get number of active streams
+/**
+ * Start a stream
+ */
+int start_stream(stream_handle_t handle) {
+    if (!handle || !initialized) {
+        return -1;
+    }
+    
+    stream_t *s = (stream_t *)handle;
+    
+    pthread_mutex_lock(&s->mutex);
+    
+    // Check if already running
+    if (s->status == STREAM_STATUS_RUNNING) {
+        pthread_mutex_unlock(&s->mutex);
+        log_info("Stream '%s' is already running", s->config.name);
+        return 0;
+    }
+    
+    // Update status to starting
+    s->status = STREAM_STATUS_STARTING;
+    
+    // Get stream name for logging
+    char stream_name[MAX_STREAM_NAME];
+    strncpy(stream_name, s->config.name, MAX_STREAM_NAME - 1);
+    stream_name[MAX_STREAM_NAME - 1] = '\0';
+    
+    pthread_mutex_unlock(&s->mutex);
+    
+    // Start HLS stream
+    int result = start_hls_stream(stream_name);
+    if (result != 0) {
+        pthread_mutex_lock(&s->mutex);
+        s->status = STREAM_STATUS_ERROR;
+        pthread_mutex_unlock(&s->mutex);
+        log_error("Failed to start HLS stream '%s'", stream_name);
+        return -1;
+    }
+    
+    // Update status to running
+    pthread_mutex_lock(&s->mutex);
+    s->status = STREAM_STATUS_RUNNING;
+    pthread_mutex_unlock(&s->mutex);
+    
+    log_info("Started stream '%s'", stream_name);
+    return 0;
+}
+
+/**
+ * Stop a stream
+ */
+int stop_stream(stream_handle_t handle) {
+    if (!handle || !initialized) {
+        return -1;
+    }
+    
+    stream_t *s = (stream_t *)handle;
+    
+    pthread_mutex_lock(&s->mutex);
+    
+    // Check if already stopped
+    if (s->status == STREAM_STATUS_STOPPED) {
+        pthread_mutex_unlock(&s->mutex);
+        log_info("Stream '%s' is already stopped", s->config.name);
+        return 0;
+    }
+    
+    // Get stream name for logging
+    char stream_name[MAX_STREAM_NAME];
+    strncpy(stream_name, s->config.name, MAX_STREAM_NAME - 1);
+    stream_name[MAX_STREAM_NAME - 1] = '\0';
+    
+    pthread_mutex_unlock(&s->mutex);
+    
+    // Stop HLS stream
+    int result = stop_hls_stream(stream_name);
+    if (result != 0) {
+        log_warn("Failed to stop HLS stream '%s'", stream_name);
+        // Continue anyway
+    }
+    
+    // Update status to stopped
+    pthread_mutex_lock(&s->mutex);
+    s->status = STREAM_STATUS_STOPPED;
+    pthread_mutex_unlock(&s->mutex);
+    
+    log_info("Stopped stream '%s'", stream_name);
+    return 0;
+}
+
+/**
+ * Get stream by index
+ */
+stream_handle_t get_stream_by_index(int index) {
+    if (index < 0 || index >= MAX_STREAMS || !initialized) {
+        return NULL;
+    }
+    
+    pthread_mutex_lock(&streams_mutex);
+    
+    if (streams[index].config.name[0] == '\0') {
+        pthread_mutex_unlock(&streams_mutex);
+        return NULL;
+    }
+    
+    pthread_mutex_unlock(&streams_mutex);
+    return (stream_handle_t)&streams[index];
+}
+
+/**
+ * Get number of active streams
+ */
 int get_active_stream_count(void) {
-    return stream_manager.active_streams;
+    if (!initialized) {
+        return 0;
+    }
+    
+    pthread_mutex_lock(&streams_mutex);
+    
+    int count = 0;
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (streams[i].config.name[0] != '\0' && streams[i].status == STREAM_STATUS_RUNNING) {
+            count++;
+        }
+    }
+    
+    pthread_mutex_unlock(&streams_mutex);
+    return count;
 }
 
-// Get total number of streams
+/**
+ * Get total number of streams
+ */
 int get_total_stream_count(void) {
-    return stream_manager.total_streams;
+    if (!initialized) {
+        return 0;
+    }
+    
+    pthread_mutex_lock(&streams_mutex);
+    
+    int count = 0;
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (streams[i].config.name[0] != '\0') {
+            count++;
+        }
+    }
+    
+    pthread_mutex_unlock(&streams_mutex);
+    return count;
 }
 
-// Set stream priority
+/**
+ * Get stream statistics
+ */
+int get_stream_stats(stream_handle_t handle, stream_stats_t *stats) {
+    if (!handle || !stats || !initialized) {
+        return -1;
+    }
+    
+    stream_t *s = (stream_t *)handle;
+    
+    pthread_mutex_lock(&s->mutex);
+    memcpy(stats, &s->stats, sizeof(stream_stats_t));
+    pthread_mutex_unlock(&s->mutex);
+    
+    return 0;
+}
+
+/**
+ * Set stream priority
+ */
 int set_stream_priority(stream_handle_t handle, int priority) {
-    if (!handle || priority < 1 || priority > 10) {
+    if (!handle || !initialized) {
         return -1;
     }
     
-    handle->config.priority = priority;
+    stream_t *s = (stream_t *)handle;
     
-    // Update the stream configuration in the database
-    if (update_stream_config(handle->config.name, &handle->config) != 0) {
-        log_warn("Failed to update stream priority in database: %s", handle->config.name);
+    pthread_mutex_lock(&s->mutex);
+    s->config.priority = priority;
+    pthread_mutex_unlock(&s->mutex);
+    
+    // Update config
+    config_t *global_config = get_streaming_config();
+    if (global_config) {
+        for (int i = 0; i < global_config->max_streams && i < MAX_STREAMS; i++) {
+            if (strcmp(global_config->streams[i].name, s->config.name) == 0) {
+                global_config->streams[i].priority = priority;
+                break;
+            }
+        }
     }
     
+    log_info("Set priority for stream '%s' to %d", s->config.name, priority);
     return 0;
 }
 
-// Enable/disable recording for a stream
+/**
+ * Enable/disable recording for a stream
+ */
 int set_stream_recording(stream_handle_t handle, bool enable) {
-    if (!handle) {
+    if (!handle || !initialized) {
         return -1;
     }
     
-    handle->config.record = enable;
+    stream_t *s = (stream_t *)handle;
     
-    // Update the stream configuration in the database
-    if (update_stream_config(handle->config.name, &handle->config) != 0) {
-        log_warn("Failed to update stream recording setting in database: %s", handle->config.name);
+    pthread_mutex_lock(&s->mutex);
+    s->config.record = enable;
+    s->recording_enabled = enable;
+    pthread_mutex_unlock(&s->mutex);
+    
+    // Update config
+    config_t *global_config = get_streaming_config();
+    if (global_config) {
+        for (int i = 0; i < global_config->max_streams && i < MAX_STREAMS; i++) {
+            if (strcmp(global_config->streams[i].name, s->config.name) == 0) {
+                global_config->streams[i].record = enable;
+                break;
+            }
+        }
     }
     
+    log_info("Set recording for stream '%s' to %s", s->config.name, enable ? "enabled" : "disabled");
     return 0;
 }
 
-// Get a snapshot from the stream
-int get_stream_snapshot(stream_handle_t handle, const char *path) {
-    // Stub implementation
-    return -1;
-}
-
-// Get memory usage statistics for the stream manager
-int get_stream_manager_memory_usage(uint64_t *used_memory, uint64_t *peak_memory) {
-    if (!used_memory || !peak_memory) {
+/**
+ * Set the last detection time for a stream
+ */
+int set_stream_last_detection_time(stream_handle_t handle, time_t time) {
+    if (!handle || !initialized) {
         return -1;
     }
     
-    *used_memory = stream_manager.used_memory;
-    *peak_memory = stream_manager.peak_memory;
+    stream_t *s = (stream_t *)handle;
     
+    pthread_mutex_lock(&s->mutex);
+    // Assuming there's a last_detection_time field in the stream structure
+    // If not, you might need to add it to the stream_t structure
+    s->last_detection_time = time;
+    pthread_mutex_unlock(&s->mutex);
+    
+    log_info("Set last detection time for stream '%s' to %ld", s->config.name, (long)time);
     return 0;
 }

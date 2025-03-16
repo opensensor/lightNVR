@@ -20,6 +20,11 @@ char* get_json_string_value(const char *json, const char *key);
 int get_json_boolean_value(const char *json, const char *key, int default_value);
 
 /**
+ * Helper function to check if a key exists in JSON
+ */
+int get_json_has_key(const char *json, const char *key);
+
+/**
  * Helper function to get an integer value from JSON
  */
 long long get_json_integer_value(const char *json, const char *key, long long default_value);

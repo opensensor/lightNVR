@@ -341,4 +341,109 @@ function setupSettingsHandlers() {
     if (saveButton) {
         saveButton.addEventListener('click', saveSettings);
     }
+    
+    // Detection threshold slider value display
+    const thresholdSlider = document.getElementById('setting-default-detection-threshold');
+    const thresholdValue = document.getElementById('threshold-value');
+    if (thresholdSlider && thresholdValue) {
+        thresholdSlider.addEventListener('input', function() {
+            thresholdValue.textContent = this.value + '%';
+        });
+    }
 }
+
+/**
+ * Update the loadSettings function to handle detection settings
+ */
+const originalLoadSettings = loadSettings;
+loadSettings = function() {
+    originalLoadSettings();
+    
+    // Add additional handling for detection settings
+    fetch('/api/detection/settings', {
+        method: 'GET',
+        headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            console.warn('Detection settings not available, using defaults');
+            return null;
+        }
+        return response.json();
+    })
+    .then(settings => {
+        if (!settings) return;
+        
+        console.log('Received detection settings:', settings);
+        
+        // Update form fields with detection settings
+        const modelsPath = document.getElementById('setting-detection-models-path');
+        if (modelsPath) modelsPath.value = settings.models_path || '';
+        
+        const threshold = document.getElementById('setting-default-detection-threshold');
+        if (threshold) {
+            const thresholdPercent = Math.round((settings.default_threshold || 0.5) * 100);
+            threshold.value = thresholdPercent;
+            
+            // Update the displayed value
+            const thresholdValue = document.getElementById('threshold-value');
+            if (thresholdValue) thresholdValue.textContent = thresholdPercent + '%';
+        }
+        
+        const preBuffer = document.getElementById('setting-default-pre-buffer');
+        if (preBuffer) preBuffer.value = settings.default_pre_buffer || 5;
+        
+        const postBuffer = document.getElementById('setting-default-post-buffer');
+        if (postBuffer) postBuffer.value = settings.default_post_buffer || 10;
+    })
+    .catch(error => {
+        console.error('Error loading detection settings:', error);
+    });
+};
+
+/**
+ * Update the saveSettings function to handle detection settings
+ */
+const originalSaveSettings = saveSettings;
+saveSettings = function() {
+    // Call the original function first
+    originalSaveSettings();
+    
+    // Then save detection settings
+    const detectionSettings = {
+        models_path: document.getElementById('setting-detection-models-path')?.value || '',
+        default_threshold: parseInt(document.getElementById('setting-default-detection-threshold')?.value || '50', 10),
+        default_pre_buffer: parseInt(document.getElementById('setting-default-pre-buffer')?.value || '5', 10),
+        default_post_buffer: parseInt(document.getElementById('setting-default-post-buffer')?.value || '10', 10)
+    };
+    
+    console.log('Saving detection settings:', detectionSettings);
+    
+    fetch('/api/detection/settings', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+        },
+        body: JSON.stringify(detectionSettings)
+    })
+    .then(response => {
+        if (!response.ok) {
+            console.warn('Failed to save detection settings, status:', response.status);
+            return null;
+        }
+        return response.json();
+    })
+    .then(result => {
+        if (result) {
+            console.log('Detection settings saved successfully:', result);
+        }
+    })
+    .catch(error => {
+        console.error('Error saving detection settings:', error);
+    });
+};

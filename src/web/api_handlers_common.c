@@ -227,6 +227,15 @@ int get_json_boolean_value(const char *json, const char *key, int default_value)
     return default_value;
 }
 
+// Helper function to check if a key exists in JSON
+int get_json_has_key(const char *json, const char *key) {
+    char search_key[256];
+    snprintf(search_key, sizeof(search_key), "\"%s\"", key);
+    
+    char *key_pos = strstr(json, search_key);
+    return (key_pos != NULL);
+}
+
 // Helper function to get an integer value from JSON
 long long get_json_integer_value(const char *json, const char *key, long long default_value) {
     char search_key[256];

@@ -23,8 +23,29 @@ function loadStreams(forLiveView = false) {
                 return response.json();
             })
             .then(streams => {
+                // For live view, we need to fetch full details for each stream
+                // to get detection settings
+                const streamPromises = streams.map(stream => {
+                    return fetch(`/api/streams/${encodeURIComponent(stream.id || stream.name)}`)
+                        .then(response => {
+                            if (!response.ok) {
+                                throw new Error(`Failed to load details for stream ${stream.name}`);
+                            }
+                            return response.json();
+                        })
+                        .catch(error => {
+                            console.error(`Error loading details for stream ${stream.name}:`, error);
+                            // Return the basic stream info if we can't get details
+                            return stream;
+                        });
+                });
+                
+                return Promise.all(streamPromises);
+            })
+            .then(detailedStreams => {
                 hideLoading(videoGrid);
-                updateVideoGrid(streams);
+                console.log('Loaded detailed streams for live view:', detailedStreams);
+                updateVideoGrid(detailedStreams);
             })
             .catch(error => {
                 console.error('Error loading streams for live view:', error);
@@ -149,7 +170,69 @@ function updateStreamFilter(streams) {
 }
 
 /**
- * Edit stream - Fixed implementation
+ * Load detection models for stream configuration
+ */
+function loadDetectionModels() {
+    const modelSelect = document.getElementById('stream-detection-model');
+    if (!modelSelect) return;
+    
+    console.log('Loading detection models...');
+    
+    // Clear existing options
+    modelSelect.innerHTML = '<option value="">Loading models...</option>';
+    
+    // Fetch models from API
+    fetch('/api/detection/models')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to load detection models');
+            }
+            return response.json();
+        })
+        .then(data => {
+            // Clear loading option
+            modelSelect.innerHTML = '<option value="">Select a model</option>';
+            
+            if (data.models && data.models.length > 0) {
+                // Add model options
+                data.models.forEach(model => {
+                    if (model.supported) {
+                        const option = document.createElement('option');
+                        option.value = model.name;
+                        option.textContent = `${model.name} (${model.type})`;
+                        modelSelect.appendChild(option);
+                    }
+                });
+                
+                console.log(`Loaded ${data.models.length} detection models`);
+                
+                // Make sure detection options are visible if checkbox is checked
+                const detectionEnabled = document.getElementById('stream-detection-enabled');
+                if (detectionEnabled && detectionEnabled.checked) {
+                    const detectionOptions = document.querySelectorAll('.detection-options');
+                    detectionOptions.forEach(el => {
+                        el.style.display = 'block';
+                    });
+                }
+            } else {
+                // No models found
+                const option = document.createElement('option');
+                option.value = "";
+                option.textContent = "No models available";
+                option.disabled = true;
+                modelSelect.appendChild(option);
+                
+                console.warn('No detection models found');
+            }
+        })
+        .catch(error => {
+            console.error('Error loading detection models:', error);
+            modelSelect.innerHTML = '<option value="">Error loading models</option>';
+        });
+}
+
+/**
+ * Edit stream - Updated implementation with detection options
  */
 function editStream(streamId) {
     console.log('Editing stream:', streamId);
@@ -157,6 +240,9 @@ function editStream(streamId) {
     if (!streamModal) return;
 
     showLoading(streamModal);
+    
+    // Load detection models
+    loadDetectionModels();
 
     // Fetch stream details from API
     fetch(`/api/streams/${encodeURIComponent(streamId)}`)
@@ -179,6 +265,93 @@ function editStream(streamId) {
             document.getElementById('stream-priority').value = stream.priority || 5;
             document.getElementById('stream-record').checked = stream.record !== false; // Default to true if not specified
             document.getElementById('stream-segment').value = stream.segment_duration || 900;
+            
+            // Fill detection-based recording options
+            const detectionEnabled = document.getElementById('stream-detection-enabled');
+            if (detectionEnabled) {
+                detectionEnabled.checked = stream.detection_based_recording === true;
+                
+                // Show/hide detection options based on checkbox
+                const detectionOptions = document.querySelectorAll('.detection-options');
+                detectionOptions.forEach(el => {
+                    el.style.display = detectionEnabled.checked ? 'block' : 'none';
+                });
+                
+                // If detection is enabled, make sure models are loaded immediately
+                if (detectionEnabled.checked) {
+                    loadDetectionModels();
+                    
+                    // Force display of detection options
+                    detectionOptions.forEach(el => {
+                        el.style.display = 'block';
+                    });
+                }
+                
+                // Always include detection model in the form, even if detection is disabled
+                // This ensures the model is preserved when toggling detection on/off
+            }
+            
+            // Set detection model if available
+            if (stream.detection_model) {
+                // Load models immediately and then set the selected model
+                loadDetectionModels();
+                
+                // Wait a bit for models to load, but use a longer timeout to ensure they're loaded
+                setTimeout(() => {
+                    const modelSelect = document.getElementById('stream-detection-model');
+                    if (modelSelect) {
+                        // Try to find the model by name
+                        for (let i = 0; i < modelSelect.options.length; i++) {
+                            if (modelSelect.options[i].value === stream.detection_model) {
+                                modelSelect.selectedIndex = i;
+                                break;
+                            }
+                        }
+                    }
+                }, 1000);
+            }
+            
+            // Set detection threshold
+            const thresholdSlider = document.getElementById('stream-detection-threshold');
+            if (thresholdSlider && typeof stream.detection_threshold === 'number') {
+                // The API returns the threshold as an integer percentage (0-100)
+                let thresholdPercent = stream.detection_threshold;
+                
+                // Sanity check to prevent extreme values
+                if (thresholdPercent > 100) {
+                    console.warn(`Threshold value too high (${thresholdPercent}), capping at 100%`);
+                    thresholdPercent = 100;
+                }
+                
+                console.log(`Setting threshold slider to ${thresholdPercent}%`);
+                
+                // Set the slider value
+                thresholdSlider.value = thresholdPercent;
+                
+                // Trigger the oninput event to update the display
+                // Create and dispatch an input event
+                const event = new Event('input', { bubbles: true });
+                thresholdSlider.dispatchEvent(event);
+                
+                console.log('Triggered input event on slider to update display');
+            }
+            
+            // Set detection interval
+            const detectionInterval = document.getElementById('stream-detection-interval');
+            if (detectionInterval && typeof stream.detection_interval === 'number') {
+                detectionInterval.value = stream.detection_interval;
+            }
+            
+            // Set pre/post detection buffers
+            const preBuffer = document.getElementById('stream-pre-buffer');
+            if (preBuffer && typeof stream.pre_detection_buffer === 'number') {
+                preBuffer.value = stream.pre_detection_buffer;
+            }
+            
+            const postBuffer = document.getElementById('stream-post-buffer');
+            if (postBuffer && typeof stream.post_detection_buffer === 'number') {
+                postBuffer.value = stream.post_detection_buffer;
+            }
 
             // Store original stream ID for later comparison
             streamModal.dataset.streamId = streamId;
@@ -196,7 +369,7 @@ function editStream(streamId) {
 }
 
 /**
- * Save stream - Fixed implementation
+ * Save stream - Updated implementation with detection options
  */
 function saveStream() {
     const streamModal = document.getElementById('stream-modal');
@@ -217,12 +390,97 @@ function saveStream() {
         record: document.getElementById('stream-record').checked,
         segment_duration: parseInt(document.getElementById('stream-segment').value, 10)
     };
+    
+    // Add detection-based recording options
+    const detectionEnabled = document.getElementById('stream-detection-enabled');
+    if (detectionEnabled) {
+        streamData.detection_based_recording = detectionEnabled.checked;
+        
+        // Always include detection options, even if detection is disabled
+        // This ensures settings are preserved when toggling detection on/off
+        const modelSelect = document.getElementById('stream-detection-model');
+        
+        // Check if model select exists and has options
+        if (modelSelect) {
+            console.log('Model select found, options count:', modelSelect.options.length);
+            
+            // If there are no options other than the default "Select a model", try loading models again
+            if (modelSelect.options.length <= 1) {
+                console.log('No model options found, loading models again...');
+                loadDetectionModels();
+                
+                // Only show alert and return if detection is enabled
+                if (detectionEnabled.checked) {
+                    alert('No detection models available. Please make sure models are installed in the models directory.');
+                    hideLoading(streamModal);
+                    return;
+                }
+            }
+            
+            if (modelSelect.value) {
+                streamData.detection_model = modelSelect.value;
+                console.log('Selected model:', streamData.detection_model);
+            }
+        } else {
+            console.error('Model select element not found');
+        }
+        
+        const thresholdSlider = document.getElementById('stream-detection-threshold');
+        if (thresholdSlider) {
+            // Ensure the threshold is between 0 and 100
+            let thresholdValue = parseInt(thresholdSlider.value, 10);
+            if (thresholdValue < 0) thresholdValue = 0;
+            if (thresholdValue > 100) thresholdValue = 100;
+            streamData.detection_threshold = thresholdValue;
+            console.log('Setting detection threshold to:', thresholdValue);
+        }
+        
+        const preBuffer = document.getElementById('stream-pre-buffer');
+        if (preBuffer) {
+            streamData.pre_detection_buffer = parseInt(preBuffer.value, 10);
+        }
+        
+        const postBuffer = document.getElementById('stream-post-buffer');
+        if (postBuffer) {
+            streamData.post_detection_buffer = parseInt(postBuffer.value, 10);
+        }
+        
+        // Get detection interval from form
+        const detectionInterval = document.getElementById('stream-detection-interval');
+        if (detectionInterval) {
+            streamData.detection_interval = parseInt(detectionInterval.value, 10);
+        } else {
+            streamData.detection_interval = 10; // Default to 10 if field not found
+        }
+    }
 
     // Validate required fields
     if (!streamData.name || !streamData.url) {
         alert('Name and URL are required');
         hideLoading(streamModal);
         return;
+    }
+    
+    // Validate detection options
+    if (streamData.detection_based_recording) {
+        if (!streamData.detection_model) {
+            // Check if models are available
+            const modelSelect = document.getElementById('stream-detection-model');
+            if (modelSelect && modelSelect.options.length <= 1) {
+                alert('No detection models available. Please make sure models are installed in the models directory.');
+            } else {
+                alert('Please select a detection model');
+            }
+            
+            // Make sure detection options are visible
+            const detectionOptions = document.querySelectorAll('.detection-options');
+            detectionOptions.forEach(el => {
+                el.style.display = 'block';
+            });
+            
+            hideLoading(streamModal);
+            return;
+        }
     }
 
     // Check if this is a new stream or an update
@@ -381,4 +639,123 @@ function testStream() {
         .finally(() => {
             hideLoading(streamModal);
         });
+}
+
+/**
+ * Setup streams page event handlers
+ */
+function setupStreamsHandlers() {
+    // Load detection models when page loads
+    loadDetectionModels();
+    
+    // Add stream button click handler
+    const addButton = document.getElementById('add-stream-btn');
+    if (addButton) {
+        addButton.addEventListener('click', function() {
+            // Reset form
+            const streamForm = document.getElementById('stream-form');
+            if (streamForm) {
+                streamForm.reset();
+            }
+            
+            // Clear stream ID
+            const streamModal = document.getElementById('stream-modal');
+            if (streamModal) {
+                delete streamModal.dataset.streamId;
+            }
+            
+            // Load detection models
+            loadDetectionModels();
+            
+            // Update threshold slider value display to match the reset slider value
+            const thresholdSlider = document.getElementById('stream-detection-threshold');
+            if (thresholdSlider) {
+                // Trigger the oninput event to update the display
+                const event = new Event('input', { bubbles: true });
+                thresholdSlider.dispatchEvent(event);
+                console.log('Reset threshold display via input event');
+            }
+            
+            // Show modal
+            if (streamModal) {
+                streamModal.style.display = 'block';
+            }
+        });
+    }
+    
+    // Save button click handler
+    const saveButton = document.getElementById('stream-save-btn');
+    if (saveButton) {
+        saveButton.addEventListener('click', saveStream);
+    }
+    
+    // Cancel button click handler
+    const cancelButton = document.getElementById('stream-cancel-btn');
+    if (cancelButton) {
+        cancelButton.addEventListener('click', function() {
+            const streamModal = document.getElementById('stream-modal');
+            if (streamModal) {
+                streamModal.style.display = 'none';
+            }
+        });
+    }
+    
+    // Test button click handler
+    const testButton = document.getElementById('stream-test-btn');
+    if (testButton) {
+        testButton.addEventListener('click', testStream);
+    }
+    
+    // Close button click handler
+    const closeButton = document.querySelector('#stream-modal .close');
+    if (closeButton) {
+        closeButton.addEventListener('click', function() {
+            const streamModal = document.getElementById('stream-modal');
+            if (streamModal) {
+                streamModal.style.display = 'none';
+            }
+        });
+    }
+    
+    // Detection checkbox change handler
+    const detectionEnabled = document.getElementById('stream-detection-enabled');
+    if (detectionEnabled) {
+        detectionEnabled.addEventListener('change', function() {
+            const detectionOptions = document.querySelectorAll('.detection-options');
+            detectionOptions.forEach(el => {
+                el.style.display = this.checked ? 'block' : 'none';
+            });
+            
+            // Always load detection models when checkbox is toggled
+            loadDetectionModels();
+            
+            // If checked, make sure the model dropdown is visible and populated
+            if (this.checked) {
+                console.log('Detection enabled, ensuring models are loaded');
+                
+                // Force display of detection options
+                detectionOptions.forEach(el => {
+                    el.style.display = 'block';
+                });
+                
+                // Update threshold slider value display to match the current slider value
+                const thresholdSlider = document.getElementById('stream-detection-threshold');
+                if (thresholdSlider) {
+                    // Trigger the oninput event to update the display
+                    const event = new Event('input', { bubbles: true });
+                    thresholdSlider.dispatchEvent(event);
+                    console.log('Updated threshold display via input event on checkbox toggle');
+                }
+            }
+        });
+    }
+    
+    // Refresh models button click handler
+    const refreshButton = document.getElementById('refresh-models-btn');
+    if (refreshButton) {
+        refreshButton.addEventListener('click', function(e) {
+            e.preventDefault();
+            loadDetectionModels();
+        });
+    }
 }

@@ -25,6 +25,12 @@ typedef struct {
     int priority; // 1-10, higher number = higher priority
     bool record;
     int segment_duration; // in seconds
+    bool detection_based_recording; // Only record when detection occurs
+    char detection_model[MAX_PATH_LENGTH]; // Path to detection model file
+    int detection_interval; // Frames between detection checks
+    float detection_threshold; // Confidence threshold for detection
+    int pre_detection_buffer; // Seconds to keep before detection
+    int post_detection_buffer; // Seconds to keep after detection
 } stream_config_t;
 
 // Main configuration structure

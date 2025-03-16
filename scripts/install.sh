@@ -11,6 +11,7 @@ CONFIG_DIR="/etc/lightnvr"
 DATA_DIR="/var/lib/lightnvr"
 LOG_DIR="/var/log/lightnvr"
 RUN_DIR="/var/run/lightnvr"
+INSTALL_SOD=1
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -36,6 +37,14 @@ while [[ $# -gt 0 ]]; do
             RUN_DIR="${key#*=}"
             shift
             ;;
+        --with-sod)
+            INSTALL_SOD=1
+            shift
+            ;;
+        --without-sod)
+            INSTALL_SOD=0
+            shift
+            ;;
         --help)
             echo "Usage: $0 [options]"
             echo "Options:"
@@ -44,6 +53,8 @@ while [[ $# -gt 0 ]]; do
             echo "  --data-dir=DIR     Data directory (default: /var/lib/lightnvr)"
             echo "  --log-dir=DIR      Log directory (default: /var/log/lightnvr)"
             echo "  --run-dir=DIR      Run directory (default: /var/run/lightnvr)"
+            echo "  --with-sod         Install with SOD support (default)"
+            echo "  --without-sod      Install without SOD support"
             echo "  --help             Show this help message"
             exit 0
             ;;
@@ -61,16 +72,55 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
-# Check if the binary exists
-if [ ! -f "build/Release/lightnvr" ]; then
+# Find the lightnvr binary and SOD library
+if [ -f "build/Release/lightnvr" ]; then
+    BINARY_PATH="build/Release/lightnvr"
+    if [ -f "build/Release/src/sod/libsod.so.1.1.9" ]; then
+        LIB_PATH="build/Release/src/sod"
+    fi
+elif [ -f "build/Debug/lightnvr" ]; then
+    BINARY_PATH="build/Debug/lightnvr"
+    if [ -f "build/Debug/src/sod/libsod.so.1.1.9" ]; then
+        LIB_PATH="build/Debug/src/sod"
+    fi
+# Also check the original expected paths
+elif [ -f "build/Release/bin/lightnvr" ]; then
+    BINARY_PATH="build/Release/bin/lightnvr"
+    if [ -f "build/Release/lib/libsod.so.1.1.9" ]; then
+        LIB_PATH="build/Release/lib"
+    elif [ -f "build/Release/src/sod/libsod.so.1.1.9" ]; then
+        LIB_PATH="build/Release/src/sod"
+    fi
+elif [ -f "build/Debug/bin/lightnvr" ]; then
+    BINARY_PATH="build/Debug/bin/lightnvr"
+    if [ -f "build/Debug/lib/libsod.so.1.1.9" ]; then
+        LIB_PATH="build/Debug/lib"
+    elif [ -f "build/Debug/src/sod/libsod.so.1.1.9" ]; then
+        LIB_PATH="build/Debug/src/sod"
+    fi
+else
     echo "Binary not found. Please build the project first:"
     echo "./scripts/build.sh --release"
     exit 1
 fi
 
+# Check if we found the SOD library
+if [ "$INSTALL_SOD" -eq 1 ] && [ -z "$LIB_PATH" ]; then
+    echo "SOD library not found. Did you build with SOD support?"
+    echo "Try running: ./scripts/build.sh --release --with-sod"
+    exit 1
+fi
+
+# Print paths for debugging
+echo "Using binary: $BINARY_PATH"
+if [ "$INSTALL_SOD" -eq 1 ]; then
+    echo "Using SOD library: $LIB_PATH/libsod.so.1.1.9"
+fi
+
 # Create directories
 echo "Creating directories..."
 mkdir -p "$PREFIX/bin"
+mkdir -p "$PREFIX/lib"
 mkdir -p "$CONFIG_DIR"
 mkdir -p "$DATA_DIR/recordings"
 mkdir -p "$DATA_DIR/www"
@@ -79,7 +129,28 @@ mkdir -p "$RUN_DIR"
 
 # Install binary
 echo "Installing binary..."
-install -m 755 build/Release/lightnvr "$PREFIX/bin/lightnvr"
+install -m 755 "$BINARY_PATH" "$PREFIX/bin/lightnvr"
+
+# Install SOD library if enabled
+if [ "$INSTALL_SOD" -eq 1 ]; then
+    echo "Installing SOD library..."
+    if [ -f "$LIB_PATH/libsod.so.1.1.9" ]; then
+        install -m 755 "$LIB_PATH/libsod.so.1.1.9" "$PREFIX/lib/libsod.so.1.1.9"
+        ln -sf "$PREFIX/lib/libsod.so.1.1.9" "$PREFIX/lib/libsod.so.1"
+        ln -sf "$PREFIX/lib/libsod.so.1" "$PREFIX/lib/libsod.so"
+
+        # Run ldconfig to update the shared library cache
+        ldconfig
+
+        echo "SOD library installed to $PREFIX/lib/libsod.so.1.1.9"
+    else
+        echo "SOD library not found. Did you build with SOD support?"
+        echo "Try running: ./scripts/build.sh --release --with-sod"
+        exit 1
+    fi
+else
+    echo "Skipping SOD library installation (SOD support disabled)"
+fi
 
 # Install configuration files
 echo "Installing configuration files..."
@@ -117,7 +188,7 @@ Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 Environment="HOME=/root"
 Environment="PWD=/var/lib/lightnvr"
 WorkingDirectory=/var/lib/lightnvr
-ExecStart=/usr/local/bin/lightnvr -c /etc/lightnvr/lightnvr.ini -d
+ExecStart=$PREFIX/bin/lightnvr -c $CONFIG_DIR/lightnvr.ini -d
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
@@ -145,3 +216,14 @@ echo ""
 echo "Configuration file: $CONFIG_DIR/lightnvr.ini"
 echo "Log file: $LOG_DIR/lightnvr.log"
 echo "Web interface: http://localhost:8080 (default port)"
+
+if [ "$INSTALL_SOD" -eq 1 ]; then
+    echo ""
+    echo "SOD library installed: $PREFIX/lib/libsod.so"
+    echo "Object detection is enabled"
+else
+    echo ""
+    echo "SOD library not installed"
+    echo "Object detection will be disabled unless SOD is installed separately"
+    echo "See docs/SOD_INTEGRATION.md for more information"
+fi

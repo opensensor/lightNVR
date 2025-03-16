@@ -219,6 +219,15 @@ void handle_post_stream(const http_request_t *request, http_response_t *response
         return;
     }
 
+    // Also add to database
+    uint64_t stream_id = add_stream_config(&config);
+    if (stream_id == 0) {
+        log_error("Failed to add stream to database: %s", config.name);
+        // Continue anyway, the stream is added to memory
+    } else {
+        log_info("Stream added to database with ID %llu: %s", (unsigned long long)stream_id, config.name);
+    }
+
     log_info("Stream added successfully: %s", config.name);
 
     // Start the stream if enabled
@@ -370,12 +379,30 @@ void handle_put_stream(const http_request_t *request, http_response_t *response)
         }
     }
 
-    // Update the stream configuration
-    log_info("Updating stream configuration for: %s", current_config.name);
+    // Update the stream configuration in database
+    log_info("Updating stream configuration in database for: %s", current_config.name);
     if (update_stream_config(current_config.name, &config) != 0) {
-        log_error("Failed to update stream configuration");
+        log_error("Failed to update stream configuration in database");
         create_json_response(response, 500, "{\"error\": \"Failed to update stream configuration\"}");
         return;
+    }
+    
+    // Also update the in-memory stream configuration
+    log_info("Updating in-memory stream configuration for: %s", current_config.name);
+    
+    // Update detection parameters in memory
+    if (config.detection_based_recording) {
+        log_info("Updating detection parameters: threshold=%.2f, interval=%d", 
+                config.detection_threshold, config.detection_interval);
+        
+        set_stream_detection_recording(stream, true, config.detection_model);
+        set_stream_detection_params(stream, config.detection_interval, 
+                                   config.detection_threshold, 
+                                   config.pre_detection_buffer, 
+                                   config.post_detection_buffer);
+    } else {
+        // Disable detection-based recording
+        set_stream_detection_recording(stream, false, NULL);
     }
 
     // Start the stream if enabled
@@ -502,7 +529,13 @@ void handle_delete_stream(const http_request_t *request, http_response_t *respon
         return;
     }
 
-    // Stream configuration is removed from the database by remove_stream
+    // Also remove from database
+    if (delete_stream_config(stream_name) != 0) {
+        log_error("Failed to remove stream from database: %s", stream_name);
+        // Continue anyway, the stream is removed from memory
+    } else {
+        log_info("Stream removed from database: %s", stream_name);
+    }
 
     // Create success response
     char response_json[256];
@@ -567,10 +600,12 @@ void handle_test_stream(const http_request_t *request, http_response_t *response
 static char* create_stream_json(const stream_config_t *stream) {
     if (!stream) return NULL;
     
-    char *json = malloc(1024);
+    // Allocate more space for the JSON to accommodate detection settings
+    char *json = malloc(2048);
     if (!json) return NULL;
     
-    snprintf(json, 1024,
+    // Start with the basic stream configuration
+    int pos = snprintf(json, 2048,
              "{"
              "\"name\": \"%s\","
              "\"url\": \"%s\","
@@ -582,8 +617,7 @@ static char* create_stream_json(const stream_config_t *stream) {
              "\"priority\": %d,"
              "\"record\": %s,"
              "\"segment_duration\": %d,"
-             "\"status\": \"%s\""
-             "}",
+             "\"status\": \"%s\"",
              stream->name,
              stream->url,
              stream->enabled ? "true" : "false",
@@ -595,6 +629,34 @@ static char* create_stream_json(const stream_config_t *stream) {
              stream->record ? "true" : "false",
              stream->segment_duration,
              "Running"); // In a real implementation, we would get the actual status
+    
+    // Add detection-based recording settings
+    pos += snprintf(json + pos, 2048 - pos,
+             ","
+             "\"detection_based_recording\": %s",
+             stream->detection_based_recording ? "true" : "false");
+    
+    // Always include detection model and parameters, even when detection-based recording is disabled
+    // This ensures the frontend always has access to these settings
+    
+    // Convert threshold from 0.0-1.0 to percentage (0-100)
+    int threshold_percent = (int)(stream->detection_threshold * 100.0f);
+    
+    pos += snprintf(json + pos, 2048 - pos,
+             ","
+             "\"detection_model\": \"%s\","
+             "\"detection_threshold\": %d,"
+             "\"detection_interval\": %d,"
+             "\"pre_detection_buffer\": %d,"
+             "\"post_detection_buffer\": %d",
+             stream->detection_model,
+             threshold_percent,
+             stream->detection_interval,
+             stream->pre_detection_buffer,
+             stream->post_detection_buffer);
+    
+    // Close the JSON object
+    pos += snprintf(json + pos, 2048 - pos, "}");
     
     return json;
 }
@@ -695,6 +757,51 @@ static int parse_stream_json(const char *json, stream_config_t *stream) {
     stream->priority = get_json_integer_value(json, "priority", 5);
     stream->record = get_json_boolean_value(json, "record", true);
     stream->segment_duration = get_json_integer_value(json, "segment_duration", 900);
+
+    // Parse detection-based recording options
+    stream->detection_based_recording = get_json_boolean_value(json, "detection_based_recording", false);
+    
+    // Always parse detection options, even if detection-based recording is disabled
+    // This ensures we preserve the detection settings even when detection is temporarily disabled
+    char *detection_model = get_json_string_value(json, "detection_model");
+    if (detection_model) {
+        strncpy(stream->detection_model, detection_model, MAX_PATH_LENGTH - 1);
+        stream->detection_model[MAX_PATH_LENGTH - 1] = '\0';
+        free(detection_model);
+    }
+    
+    // Parse detection threshold (convert from percentage to 0.0-1.0 range)
+    if (get_json_has_key(json, "detection_threshold")) {
+        int threshold_percent = get_json_integer_value(json, "detection_threshold", 50);
+        stream->detection_threshold = (float)threshold_percent / 100.0f;
+        log_info("Setting stream detection threshold to %.2f (from %d%%)", 
+                stream->detection_threshold, threshold_percent);
+    }
+    
+    // Parse detection interval
+    if (get_json_has_key(json, "detection_interval")) {
+        stream->detection_interval = get_json_integer_value(json, "detection_interval", 10);
+    }
+    
+    // Parse pre/post detection buffers
+    if (get_json_has_key(json, "pre_detection_buffer")) {
+        stream->pre_detection_buffer = get_json_integer_value(json, "pre_detection_buffer", 5);
+    }
+    
+    if (get_json_has_key(json, "post_detection_buffer")) {
+        stream->post_detection_buffer = get_json_integer_value(json, "post_detection_buffer", 10);
+    }
+    
+    log_info("Stream config parsed: name=%s, enabled=%s, detection=%s", 
+            stream->name, 
+            stream->enabled ? "true" : "false",
+            stream->detection_based_recording ? "true" : "false");
+    
+    if (detection_model || get_json_has_key(json, "detection_threshold")) {
+        log_info("Detection options parsed: model=%s, threshold=%.2f, interval=%d, pre_buffer=%d, post_buffer=%d",
+                stream->detection_model, stream->detection_threshold, stream->detection_interval,
+                stream->pre_detection_buffer, stream->post_detection_buffer);
+    }
 
     return 0;
 }
