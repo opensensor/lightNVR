@@ -360,55 +360,6 @@ static void *stream_transcode_thread(void *arg) {
                 log_error("Failed to write packet to HLS for stream %s: %d", ctx->config.name, ret);
                 // Continue anyway to keep the stream going
             }
-            
-            // Process packet for detection if detection is enabled
-            if (ctx->config.detection_based_recording && ctx->config.detection_model[0] != '\0') {
-                // Use the detection interval from config, or default to 10 if not set
-                int detection_interval = ctx->config.detection_interval > 0 ? ctx->config.detection_interval : 10;
-                
-                // Decode the frame for detection
-                AVCodecContext *codec_ctx = NULL;
-                AVFrame *frame = NULL;
-                
-                // Find decoder
-                AVCodec *codec = avcodec_find_decoder(input_ctx->streams[video_stream_idx]->codecpar->codec_id);
-                if (codec) {
-                    // Create codec context
-                    codec_ctx = avcodec_alloc_context3(codec);
-                    if (codec_ctx) {
-                        // Copy codec parameters to codec context
-                        if (avcodec_parameters_to_context(codec_ctx, input_ctx->streams[video_stream_idx]->codecpar) >= 0) {
-                            // Open codec
-                            if (avcodec_open2(codec_ctx, codec, NULL) >= 0) {
-                                // Allocate frame
-                                frame = av_frame_alloc();
-                                if (frame) {
-                                    // Send packet to decoder
-                                    AVPacket pkt_copy;
-                                    if (av_packet_ref(&pkt_copy, pkt) >= 0) {
-                                        if (avcodec_send_packet(codec_ctx, &pkt_copy) >= 0) {
-                                            // Receive frame from decoder
-                                            if (avcodec_receive_frame(codec_ctx, frame) >= 0) {
-                                                // Process the decoded frame for detection
-                                                process_decoded_frame_for_detection(ctx->config.name, frame, detection_interval);
-                                            }
-                                        }
-                                        av_packet_unref(&pkt_copy);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                // Cleanup
-                if (frame) {
-                    av_frame_free(&frame);
-                }
-                if (codec_ctx) {
-                    avcodec_free_context(&codec_ctx);
-                }
-            }
 
             // Write to MP4 if enabled - only write key frames if we're having issues
             if (ctx->mp4_writer) {
