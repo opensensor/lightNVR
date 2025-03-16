@@ -17,6 +17,7 @@
 #include "video/mp4_writer.h"
 #include "video/detection.h"
 #include "video/detection_result.h"
+#include "video/motion_detection.h"
 #include "database/database_manager.h"
 #include "web/api_handlers_detection_results.h"
 
@@ -136,8 +137,11 @@ int start_detection_recording(const char *stream_name, const char *model_path, f
         full_model_path[MAX_PATH_LENGTH - 1] = '\0';
     }
     
-    // Verify model file exists and is supported
-    if (!is_model_supported(full_model_path)) {
+    // Special case for motion detection
+    bool is_motion_detection = (strcmp(model_path, "motion") == 0);
+    
+    // Verify model file exists and is supported (unless it's motion detection)
+    if (!is_motion_detection && !is_model_supported(full_model_path)) {
         log_error("Detection model %s is not supported", full_model_path);
         return -1;
     }
@@ -182,13 +186,18 @@ int start_detection_recording(const char *stream_name, const char *model_path, f
                 threshold, stream_name);
     }
 
-    // Load the detection model
-    detection_model_t model = load_detection_model(full_model_path, threshold);
-    if (!model) {
-        log_error("Failed to load detection model %s", full_model_path);
-        pthread_mutex_unlock(&detection_recordings[slot].mutex);
-        pthread_mutex_unlock(&detection_recordings_mutex);
-        return -1;
+    // Load the detection model (unless it's motion detection)
+    detection_model_t model = NULL;
+    if (!is_motion_detection) {
+        model = load_detection_model(full_model_path, threshold);
+        if (!model) {
+            log_error("Failed to load detection model %s", full_model_path);
+            pthread_mutex_unlock(&detection_recordings[slot].mutex);
+            pthread_mutex_unlock(&detection_recordings_mutex);
+            return -1;
+        }
+    } else {
+        log_info("Using motion detection instead of a model for stream %s", stream_name);
     }
     
     // Initialize detection recording state

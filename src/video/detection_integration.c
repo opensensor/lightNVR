@@ -28,6 +28,7 @@
 #include "video/streams.h"
 #include "video/detection.h"
 #include "video/detection_result.h"
+#include "video/motion_detection.h"
 
 // Define model types
 #define MODEL_TYPE_SOD "sod"
@@ -294,45 +295,96 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     detection_result_t result;
     memset(&result, 0, sizeof(detection_result_t));
 
-    // Load the detection model
-    log_info("Loading detection model: %s with threshold: %.2f", full_model_path, threshold);
-    detection_model_t model = load_detection_model(full_model_path, threshold);
-
-    int detect_ret = -1;
+    // Get current time for frame timestamp
     time_t frame_time = time(NULL);
-
-    if (!model) {
-        log_error("Failed to load detection model: %s", full_model_path);
-    } else {
-        // Use our improved detect_objects function for ALL model types
-        log_info("Running detection with unified detect_objects function");
-        detect_ret = detect_objects(model, packed_buffer, frame->width, frame->height, channels, &result);
-
-        if (detect_ret != 0) {
-            log_error("Detection failed (error code: %d)", detect_ret);
-        } else {
-            log_info("Detection completed successfully, found %d objects", result.count);
-
-            // Log detection results
-            for (int i = 0; i < result.count; i++) {
-                log_info("Detection %d: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]",
-                         i+1, result.detections[i].label,
-                         result.detections[i].confidence * 100.0f,
-                         result.detections[i].x, result.detections[i].y,
-                         result.detections[i].width, result.detections[i].height);
-            }
-
-            // Pass detection results to process_frame_for_recording - avoiding duplicate detection
+    
+    // Check if we should use motion detection
+    bool use_motion_detection = is_motion_detection_enabled(stream_name);
+    bool is_motion_model = (strcmp(config.detection_model, "motion") == 0);
+    bool use_model_detection = !is_motion_model;
+    
+    // If the model is "motion", enable motion detection
+    if (is_motion_model && !use_motion_detection) {
+        // Configure with default settings
+        configure_motion_detection(stream_name, 0.15f, 0.01f, 3);
+        set_motion_detection_enabled(stream_name, true);
+        use_motion_detection = true;
+        log_info("Automatically enabled motion detection for stream %s based on model setting", stream_name);
+    }
+    int detect_ret = -1;
+    
+    // If motion detection is enabled, run it first
+    if (use_motion_detection) {
+        log_info("Running motion detection for stream %s", stream_name);
+        
+        // Create a separate result for motion detection
+        detection_result_t motion_result;
+        memset(&motion_result, 0, sizeof(detection_result_t));
+        
+        // Run motion detection
+        int motion_ret = detect_motion(stream_name, packed_buffer, frame->width, frame->height, 
+                                      channels, frame_time, &motion_result);
+        
+        if (motion_ret == 0 && motion_result.count > 0) {
+            log_info("Motion detected in stream %s: confidence=%.2f", 
+                    stream_name, motion_result.detections[0].confidence);
+            
+            // Pass motion detection results to process_frame_for_recording
             int ret = process_frame_for_recording(stream_name, packed_buffer, frame->width,
-                                                  frame->height, channels, frame_time, &result);
-
+                                                 frame->height, channels, frame_time, &motion_result);
+            
             if (ret != 0) {
-                log_error("Failed to process detection results for recording (error code: %d)", ret);
+                log_error("Failed to process motion detection results for recording (error code: %d)", ret);
             }
+            
+            // If we're only using motion detection (no model), we're done
+            if (!use_model_detection) {
+                detect_ret = 0;
+            }
+        } else if (motion_ret != 0) {
+            log_error("Motion detection failed (error code: %d)", motion_ret);
         }
-
-        // Unload the model
-        unload_detection_model(model);
+    }
+    
+    // If we're using a model-based detection (not just motion), run it
+    if (use_model_detection) {
+        // Load the detection model
+        log_info("Loading detection model: %s with threshold: %.2f", full_model_path, threshold);
+        detection_model_t model = load_detection_model(full_model_path, threshold);
+        
+        if (!model) {
+            log_error("Failed to load detection model: %s", full_model_path);
+        } else {
+            // Use our improved detect_objects function for ALL model types
+            log_info("Running detection with unified detect_objects function");
+            detect_ret = detect_objects(model, packed_buffer, frame->width, frame->height, channels, &result);
+            
+            if (detect_ret != 0) {
+                log_error("Detection failed (error code: %d)", detect_ret);
+            } else {
+                log_info("Detection completed successfully, found %d objects", result.count);
+                
+                // Log detection results
+                for (int i = 0; i < result.count; i++) {
+                    log_info("Detection %d: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]",
+                             i+1, result.detections[i].label,
+                             result.detections[i].confidence * 100.0f,
+                             result.detections[i].x, result.detections[i].y,
+                             result.detections[i].width, result.detections[i].height);
+                }
+                
+                // Pass detection results to process_frame_for_recording
+                int ret = process_frame_for_recording(stream_name, packed_buffer, frame->width,
+                                                     frame->height, channels, frame_time, &result);
+                
+                if (ret != 0) {
+                    log_error("Failed to process detection results for recording (error code: %d)", ret);
+                }
+            }
+            
+            // Unload the model
+            unload_detection_model(model);
+        }
     }
 
     // Cleanup

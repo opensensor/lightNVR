@@ -8,6 +8,7 @@
 
 #include "video/detection.h"
 #include "video/sod_realnet.h"
+#include "video/motion_detection.h"
 #include "core/logger.h"
 
 // Include SOD header if SOD is enabled at compile time
@@ -159,6 +160,14 @@ int init_detection_system(void) {
         log_warn("TensorFlow Lite library not found: %s", dlerror());
     }
     
+    // Initialize motion detection system
+    int motion_ret = init_motion_detection_system();
+    if (motion_ret != 0) {
+        log_error("Failed to initialize motion detection system");
+    } else {
+        log_info("Motion detection system initialized");
+    }
+    
     initialized = true;
     pthread_mutex_unlock(&detection_mutex);
     
@@ -183,6 +192,9 @@ void shutdown_detection_system(void) {
         sod_funcs.handle = NULL;
     }
     #endif
+    
+    // Shutdown motion detection system
+    shutdown_motion_detection_system();
     
     initialized = false;
     sod_available = false;

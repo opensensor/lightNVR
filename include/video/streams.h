@@ -8,6 +8,7 @@
 #include "video/mp4_writer.h"
 #include "video/detection.h"
 #include "video/detection_result.h"
+#include "video/motion_detection.h"
 
 
 // Structure for stream transcoding context
@@ -80,5 +81,9 @@ int process_frame_for_recording(const char *stream_name, const unsigned char *fr
 int get_detection_recording_state(const char *stream_name, bool *recording_active);
 void init_detection_recording_system(void);
 void shutdown_detection_recording_system(void);
+
+// Motion detection functions
+int enable_motion_detection(const char *stream_name, float sensitivity, float min_motion_area, int cooldown_time);
+int disable_motion_detection(const char *stream_name);
 
 #endif /* STREAMS_H */
