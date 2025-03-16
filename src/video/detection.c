@@ -519,6 +519,7 @@ int detect_objects(detection_model_t model, const unsigned char *frame_data,
             return -1;
         }
 
+#ifdef SOD_ENABLED
         // Create a color image from the frame data
         // IMPORTANT: Follow the exact approach used in sod_img_load_from_file()
         log_info("Creating SOD image: %dx%d with %d channels", width, height, channels);
@@ -628,6 +629,140 @@ int detect_objects(detection_model_t model, const unsigned char *frame_data,
 
         result->count = valid_count;
         log_info("Detection found %d valid objects out of %d total", valid_count, count);
+#else
+        // When SOD is not directly linked, use function pointers
+        if (!sod_funcs.sod_make_image || !sod_funcs.sod_cnn_prepare_image || 
+            !sod_funcs.sod_cnn_predict || !sod_funcs.sod_free_image) {
+            log_error("Required SOD functions not available");
+            return -1;
+        }
+
+        // Create a struct to hold image data
+        typedef struct {
+            int h;
+            int w;
+            int c;
+            float* data;
+        } sod_img_dynamic;
+
+        // Create a color image from the frame data
+        log_info("Creating SOD image: %dx%d with %d channels", width, height, channels);
+        sod_img_dynamic sod_image;
+        void *img_ptr = sod_funcs.sod_make_image(width, height, channels);
+        if (!img_ptr) {
+            log_error("Failed to create SOD image for detection");
+            return -1;
+        }
+        
+        // Cast the void pointer to our dynamic structure
+        sod_image.h = height;
+        sod_image.w = width;
+        sod_image.c = channels;
+        sod_image.data = (float*)img_ptr;
+
+        // Convert pixel data with the SAME algorithm as sod_img_load_from_file()
+        // This converts from interleaved (RGB RGB) to planar (RRR GGG BBB) format
+        log_info("Converting frame data to SOD image format (planar)");
+        for (int c_idx = 0; c_idx < channels; c_idx++) {
+            for (int y = 0; y < height; y++) {
+                for (int x = 0; x < width; x++) {
+                    // Destination index in planar format (RRR..., GGG..., BBB...)
+                    int dst_index = x + width * y + width * height * c_idx;
+
+                    // Source index in interleaved format (RGB, RGB, RGB...)
+                    int src_index = c_idx + channels * x + channels * width * y;
+
+                    // Normalize to 0-1 range like SOD does
+                    ((float*)img_ptr)[dst_index] = (float)frame_data[src_index] / 255.0f;
+                }
+            }
+        }
+
+        // Debug: log a sample of pixels to verify format
+        log_info("Sample of normalized image data (first 5 pixels):");
+        for (int i = 0; i < 5 && i < width; i++) {
+            if (channels >= 3) {
+                // In planar format, R values are first, then G, then B
+                int r_idx = i;                          // First part of the buffer has all R values
+                int g_idx = i + width * height;         // Second part has all G values
+                int b_idx = i + 2 * width * height;     // Third part has all B values
+
+                log_info("Pixel %d: R=%.3f, G=%.3f, B=%.3f",
+                        i, ((float*)img_ptr)[r_idx], ((float*)img_ptr)[g_idx], ((float*)img_ptr)[b_idx]);
+            } else {
+                log_info("Pixel %d: %.3f", i, ((float*)img_ptr)[i]);
+            }
+        }
+
+        // Prepare for CNN detection
+        log_info("Preparing image for CNN detection");
+        float *prepared_data = sod_funcs.sod_cnn_prepare_image(m->sod.model, img_ptr);
+        if (!prepared_data) {
+            log_error("Failed to prepare image for CNN detection");
+            sod_funcs.sod_free_image(img_ptr);
+            return -1;
+        }
+
+        log_info("Successfully prepared image for CNN detection");
+
+        // Free SOD image as it's no longer needed after prepare
+        sod_funcs.sod_free_image(img_ptr);
+
+        // Run detection
+        log_info("Running CNN detection");
+        int count = 0;
+        void **boxes_ptr = NULL;
+        int rc = sod_funcs.sod_cnn_predict(m->sod.model, prepared_data, &boxes_ptr, &count);
+        if (rc != 0) { // SOD_OK is 0
+            log_error("CNN detection failed with error code: %d", rc);
+            return -1;
+        }
+
+        log_info("CNN detection found %d boxes", count);
+
+        // Process detection results
+        int valid_count = 0;
+        for (int i = 0; i < count && valid_count < MAX_DETECTIONS; i++) {
+            // Get detection data from the dynamic box structure
+            sod_box_dynamic *box = (sod_box_dynamic*)boxes_ptr[i];
+            
+            char label[MAX_LABEL_LENGTH];
+            strncpy(label, box->zName ? box->zName : "face", MAX_LABEL_LENGTH - 1);
+            label[MAX_LABEL_LENGTH - 1] = '\0';
+
+            float confidence = box->score;
+            if (confidence > 1.0f) confidence = 1.0f;
+
+            // Convert pixel coordinates to normalized 0-1 range
+            float x = (float)box->x / width;
+            float y = (float)box->y / height;
+            float w = (float)box->w / width;
+            float h = (float)box->h / height;
+
+            // Apply threshold
+            if (confidence < m->sod.threshold) {
+                log_info("Detection %d below threshold: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]",
+                       i, label, confidence * 100.0f, x, y, w, h);
+                continue;
+            }
+
+            // Add valid detection to result
+            strncpy(result->detections[valid_count].label, label, MAX_LABEL_LENGTH - 1);
+            result->detections[valid_count].confidence = confidence;
+            result->detections[valid_count].x = x;
+            result->detections[valid_count].y = y;
+            result->detections[valid_count].width = w;
+            result->detections[valid_count].height = h;
+
+            log_info("Valid detection %d: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]",
+                   valid_count, label, confidence * 100.0f, x, y, w, h);
+
+            valid_count++;
+        }
+
+        result->count = valid_count;
+        log_info("Detection found %d valid objects out of %d total", valid_count, count);
+#endif
         return 0;
     }
     else if (strcmp(m->type, MODEL_TYPE_SOD_REALNET) == 0) {
