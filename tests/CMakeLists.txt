@@ -52,6 +52,12 @@ if(ENABLE_SOD)
         sod
     )
 
+    # Set output directory for test binaries
+    set_target_properties(test_sod_unified
+        PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+    )
+
     # Add tests to CTest
     add_test(NAME test_sod_unified COMMAND test_sod_unified)
 
