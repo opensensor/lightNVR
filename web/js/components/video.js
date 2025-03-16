@@ -570,7 +570,7 @@ function startDetectionPolling(streamName, canvasOverlay, videoElement) {
         const canvas = canvasOverlay;
         const ctx = canvas.getContext('2d');
         
-        // Set canvas dimensions to match video
+        // Set canvas dimensions to match the displayed video element
         canvas.width = videoElement.clientWidth;
         canvas.height = videoElement.clientHeight;
         
@@ -582,13 +582,46 @@ function startDetectionPolling(streamName, canvasOverlay, videoElement) {
             return;
         }
         
+        // Get the actual video dimensions
+        const videoWidth = videoElement.videoWidth;
+        const videoHeight = videoElement.videoHeight;
+        
+        // If video dimensions aren't available yet, skip drawing
+        if (!videoWidth || !videoHeight) {
+            console.log('Video dimensions not available yet, skipping detection drawing');
+            return;
+        }
+        
+        // Calculate the scaling and positioning to maintain aspect ratio
+        const videoAspect = videoWidth / videoHeight;
+        const canvasAspect = canvas.width / canvas.height;
+        
+        let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
+        
+        if (videoAspect > canvasAspect) {
+            // Video is wider than canvas (letterboxing - black bars on top and bottom)
+            drawWidth = canvas.width;
+            drawHeight = canvas.width / videoAspect;
+            offsetY = (canvas.height - drawHeight) / 2;
+        } else {
+            // Video is taller than canvas (pillarboxing - black bars on sides)
+            drawHeight = canvas.height;
+            drawWidth = canvas.height * videoAspect;
+            offsetX = (canvas.width - drawWidth) / 2;
+        }
+        
+        // Log dimensions for debugging
+        console.log(`Canvas: ${canvas.width}x${canvas.height}, Video: ${videoWidth}x${videoHeight}`);
+        console.log(`Draw area: ${drawWidth}x${drawHeight} with offset (${offsetX}, ${offsetY})`);
+        
         // Draw each detection
         detections.forEach(detection => {
             // Calculate pixel coordinates based on normalized values (0-1)
-            const x = detection.x * canvas.width;
-            const y = detection.y * canvas.height;
-            const width = detection.width * canvas.width;
-            const height = detection.height * canvas.height;
+            // and adjust for the actual display area
+            const x = (detection.x * drawWidth) + offsetX;
+            const y = (detection.y * drawHeight) + offsetY;
+            const width = detection.width * drawWidth;
+            const height = detection.height * drawHeight;
             
             // Draw bounding box
             ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
