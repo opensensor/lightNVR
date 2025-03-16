@@ -492,8 +492,9 @@ int process_frame_for_recording(const char *stream_name, const unsigned char *fr
             struct tm *tm_info = localtime(&frame_time);
             strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M%S", tm_info);
 
-            // Create output path
-            snprintf(output_path, MAX_PATH_LENGTH, "%s/recordings/%s/detection_%s",
+            // Create output path - store detection recordings in the same way as regular recordings
+            // without the "detection_" prefix to maintain consistency
+            snprintf(output_path, MAX_PATH_LENGTH, "%s/recordings/%s/%s",
                     global_config->storage_path, stream_name, timestamp_str);
 
             // Ensure the directory exists
