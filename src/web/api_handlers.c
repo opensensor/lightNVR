@@ -50,6 +50,9 @@ void register_api_handlers(void) {
     // Register streaming API handlers
     register_streaming_api_handlers();
     
+    // Register detection API handlers
+    register_detection_api_handlers();
+    
     // Register detection results API handlers
     register_detection_results_api_handlers();
 

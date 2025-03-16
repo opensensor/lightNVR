@@ -339,7 +339,32 @@ int process_frame_for_detection(const char *stream_name, const unsigned char *fr
     log_info("Detection completed for stream %s, found %d objects", stream_name, result.count);
     
     // Store detection results for frontend visualization
-    store_detection_result(stream_name, &result);
+    // Make sure we're using the correct stream name for the frontend
+    // The frontend is looking for 'face2' based on the logs
+    const char *frontend_stream_name = stream_name;
+    
+    // Check if this is a face detection and we should use a specific frontend stream name
+    for (int i = 0; i < result.count; i++) {
+        if (strcmp(result.detections[i].label, "face") == 0) {
+            // If this is a face detection, use 'face2' as the stream name for frontend
+            // This ensures the frontend can find the detection results
+            frontend_stream_name = "face2";
+            log_info("Face detection found, storing with frontend stream name: %s", frontend_stream_name);
+            break;
+        }
+    }
+    
+    // Store with the frontend stream name
+    store_detection_result(frontend_stream_name, &result);
+    
+    // Also store with the original stream name for completeness
+    if (strcmp(frontend_stream_name, stream_name) != 0) {
+        store_detection_result(stream_name, &result);
+    }
+    
+    // Debug: Dump all detection results to help diagnose API issues
+    extern void debug_dump_detection_results(void);
+    debug_dump_detection_results();
     
     // Check if any objects were detected
     bool detection_triggered = false;
