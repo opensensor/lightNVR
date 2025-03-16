@@ -47,10 +47,6 @@ static int file_exists(const char *filename) {
     return 0;
 }
 
-// Forward declaration of the process_frame_for_detection function
-extern int process_frame_for_detection(const char *stream_name, const unsigned char *frame_data, 
-                                     int width, int height, int channels, time_t frame_time);
-
 /**
  * Detect model type based on file name
  * 
@@ -85,7 +81,7 @@ const char* detect_model_type(const char *model_path) {
  * Process a decoded frame for detection
  * This function should be called from the HLS streaming code with already decoded frames
  *
- * Revised to use the unified detect_objects function for all model types
+ * Revised to perform detection and pass results to process_frame_for_detection
  *
  * @param stream_name The name of the stream
  * @param frame The decoded AVFrame
@@ -238,49 +234,18 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
             packed_buffer[4], packed_buffer[5], packed_buffer[6], packed_buffer[7],
             packed_buffer[8], packed_buffer[9], packed_buffer[10], packed_buffer[11]);
 
-    // Save frame to disk for debugging if enabled
-    time_t frame_time = time(NULL);
-    if (save_frames_for_debug) {
-        // Debug code for saving frames
-        log_info("DEBUG: Attempting to save frame to disk for stream %s", stream_name);
-
-        // First, try to write a simple test file to verify permissions
-        const char *test_file = "/tmp/lightnvr_debug_test.txt";
-        FILE *tf = fopen(test_file, "w");
-        if (!tf) {
-            log_error("DEBUG: Cannot write to /tmp! Error: %s", strerror(errno));
-        } else {
-            fprintf(tf, "Debug test file from LightNVR\n");
-            fclose(tf);
-            log_info("DEBUG: Successfully wrote test file to %s", test_file);
-        }
-
-        // Save as JPEG for debug purposes
-        char filename[256];
-        snprintf(filename, sizeof(filename), "/tmp/frame_%s_%ld.jpg", stream_name, frame_time);
-        log_info("DEBUG: Will try to save frame to %s", filename);
-
-        // Save model info to a text file for reference
-        char model_info[512];
-        snprintf(model_info, sizeof(model_info), "/tmp/model_info_%s.txt", stream_name);
-        FILE *mf = fopen(model_info, "w");
-        if (mf) {
-            fprintf(mf, "Model: %s\nType: %s\nChannels: %d\n",
-                    config.detection_model,
-                    detect_model_type(config.detection_model),
-                    channels);
-            fclose(mf);
-            log_info("DEBUG: Saved model info to %s", model_info);
-        }
-    }
-
     // Get the appropriate threshold for the model type
-    float threshold = 0.3f; // Default for CNN models
-    if (strcmp(model_type, MODEL_TYPE_SOD_REALNET) == 0) {
-        threshold = 5.0f; // RealNet models typically use 5.0
-        log_info("Using threshold of 5.0 for RealNet model");
+    float threshold = config.detection_threshold;
+    if (threshold <= 0.0f) {
+        if (strcmp(model_type, MODEL_TYPE_SOD_REALNET) == 0) {
+            threshold = 5.0f; // RealNet models typically use 5.0
+            log_info("Using default threshold of 5.0 for RealNet model");
+        } else {
+            threshold = 0.3f; // CNN models typically use 0.3
+            log_info("Using default threshold of 0.3 for CNN model");
+        }
     } else {
-        log_info("Using threshold of 0.3 for CNN model");
+        log_info("Using configured threshold of %.2f for model", threshold);
     }
 
     // Check if model_path is a relative path
@@ -329,53 +294,45 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     detection_result_t result;
     memset(&result, 0, sizeof(detection_result_t));
 
-    // -------------------------------------------------------------------------
-    // UNIFIED DETECTION APPROACH - Use detect_objects for all model types
-    // -------------------------------------------------------------------------
     // Load the detection model
     log_info("Loading detection model: %s with threshold: %.2f", full_model_path, threshold);
     detection_model_t model = load_detection_model(full_model_path, threshold);
+
+    int detect_ret = -1;
+    time_t frame_time = time(NULL);
 
     if (!model) {
         log_error("Failed to load detection model: %s", full_model_path);
     } else {
         // Use our improved detect_objects function for ALL model types
-        // This function now properly handles face detection models with planar format conversion
         log_info("Running detection with unified detect_objects function");
-        int detect_ret = detect_objects(model, packed_buffer, frame->width, frame->height, channels, &result);
+        detect_ret = detect_objects(model, packed_buffer, frame->width, frame->height, channels, &result);
 
         if (detect_ret != 0) {
             log_error("Detection failed (error code: %d)", detect_ret);
         } else {
-            log_info("Detection completed successfully");
+            log_info("Detection completed successfully, found %d objects", result.count);
+
+            // Log detection results
+            for (int i = 0; i < result.count; i++) {
+                log_info("Detection %d: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]",
+                         i+1, result.detections[i].label,
+                         result.detections[i].confidence * 100.0f,
+                         result.detections[i].x, result.detections[i].y,
+                         result.detections[i].width, result.detections[i].height);
+            }
+
+            // Pass detection results to process_frame_for_recording - avoiding duplicate detection
+            int ret = process_frame_for_recording(stream_name, packed_buffer, frame->width,
+                                                  frame->height, channels, frame_time, &result);
+
+            if (ret != 0) {
+                log_error("Failed to process detection results for recording (error code: %d)", ret);
+            }
         }
 
         // Unload the model
         unload_detection_model(model);
-    }
-
-    // Process detection results
-    if (result.count > 0) {
-        log_info("Detection found %d objects", result.count);
-
-        // Process results for notification/recording
-        for (int i = 0; i < result.count; i++) {
-            log_info("Detection %d: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]",
-                    i+1, result.detections[i].label,
-                    result.detections[i].confidence * 100.0f,
-                    result.detections[i].x, result.detections[i].y,
-                    result.detections[i].width, result.detections[i].height);
-        }
-
-        // Trigger recording
-        log_info("Objects detected, triggering recording");
-        process_frame_for_detection(stream_name, packed_buffer, frame->width, frame->height, channels, frame_time);
-    } else {
-        log_info("No objects detected");
-
-        // Process frame anyway to handle object absence
-        int ret = process_frame_for_detection(stream_name, packed_buffer, frame->width, frame->height, channels, frame_time);
-        log_info("process_frame_for_detection returned: %d", ret);
     }
 
     // Cleanup
@@ -385,92 +342,5 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     sws_freeContext(sws_ctx);
 
     log_info("Finished processing frame %d for detection", frame_counter);
-    return 0;
-}
-
-/**
- * Process a video packet for detection
- * This function is kept for backward compatibility but now delegates to process_decoded_frame_for_detection
- * when a frame is available
- *
- * @param stream_name The name of the stream
- * @param pkt The AVPacket to process
- * @param stream The AVStream the packet belongs to
- * @param detection_interval How often to process frames (e.g., every 10 frames)
- * @return 0 on success, -1 on error
- */
-int process_packet_for_detection(const char *stream_name, AVPacket *pkt, AVStream *stream, int detection_interval) {
-    log_info("process_packet_for_detection called for stream %s - this function is deprecated", stream_name);
-    log_info("Use process_decoded_frame_for_detection instead for better performance");
-
-    // Get codec parameters
-    AVCodecParameters *codecpar = stream->codecpar;
-    if (codecpar->codec_type != AVMEDIA_TYPE_VIDEO) {
-        log_error("Not a video stream: %s", stream_name);
-        return -1;
-    }
-
-    // Find decoder
-    AVCodec *codec = avcodec_find_decoder(codecpar->codec_id);
-    if (!codec) {
-        log_error("Failed to find decoder for stream %s", stream_name);
-        return -1;
-    }
-
-    // Create codec context
-    AVCodecContext *codec_ctx = avcodec_alloc_context3(codec);
-    if (!codec_ctx) {
-        log_error("Failed to allocate codec context for stream %s", stream_name);
-        return -1;
-    }
-
-    // Copy codec parameters to codec context
-    if (avcodec_parameters_to_context(codec_ctx, codecpar) < 0) {
-        log_error("Failed to copy codec parameters to context for stream %s", stream_name);
-        avcodec_free_context(&codec_ctx);
-        return -1;
-    }
-
-    // Open codec
-    if (avcodec_open2(codec_ctx, codec, NULL) < 0) {
-        log_error("Failed to open codec for stream %s", stream_name);
-        avcodec_free_context(&codec_ctx);
-        return -1;
-    }
-
-    // Allocate frame
-    AVFrame *frame = av_frame_alloc();
-    if (!frame) {
-        log_error("Failed to allocate frame for stream %s", stream_name);
-        avcodec_free_context(&codec_ctx);
-        return -1;
-    }
-
-    // Send packet to decoder
-    int ret = avcodec_send_packet(codec_ctx, pkt);
-    if (ret < 0) {
-        log_error("Error sending packet to decoder for stream %s", stream_name);
-        av_frame_free(&frame);
-        avcodec_free_context(&codec_ctx);
-        return -1;
-    }
-
-    // Receive frame from decoder
-    ret = avcodec_receive_frame(codec_ctx, frame);
-    if (ret < 0) {
-        // Not an error, just no frames available yet
-        log_info("No frames available yet for stream %s", stream_name);
-        av_frame_free(&frame);
-        avcodec_free_context(&codec_ctx);
-        return 0;
-    }
-
-    // Process the decoded frame
-    ret = process_decoded_frame_for_detection(stream_name, frame, detection_interval);
-
-    // Cleanup
-    av_frame_free(&frame);
-    avcodec_free_context(&codec_ctx);
-
-    return ret;
+    return (detect_ret == 0) ? 0 : -1;
 }

@@ -24,6 +24,7 @@
 #define MODEL_TYPE_SOD "sod"
 #define MODEL_TYPE_SOD_REALNET "sod_realnet"
 #define MODEL_TYPE_TFLITE "tflite"
+#define MAX_DETECTION_AGE 30 // Maximum age of detections to consider (in seconds)
 
 // Forward declaration of model type detection function
 extern const char* detect_model_type(const char *model_path);
@@ -274,182 +275,183 @@ int stop_detection_recording(const char *stream_name) {
 }
 
 /**
- * Process a frame for detection-based recording
- * This function is called for each frame of a stream
- * 
- * Modified to use the database as the source of truth for detection state
+ * Process detection results for recording
+ * This function manages recording decisions based on detection results
+ *
+ * @param stream_name The name of the stream
+ * @param frame_data The frame data (for debugging only)
+ * @param width Frame width
+ * @param height Frame height
+ * @param channels Number of color channels
+ * @param frame_time Timestamp of the frame
+ * @param result Detection results from detect_objects call
+ * @return 0 on success, -1 on error
  */
-int process_frame_for_detection(const char *stream_name, const unsigned char *frame_data, 
-                               int width, int height, int channels, time_t frame_time) {
-    if (!stream_name || !frame_data) {
-        return -1;
-    }
-    
-    pthread_mutex_lock(&detection_recordings_mutex);
-    
-    // Find the detection recording for this stream
-    int slot = -1;
-    for (int i = 0; i < MAX_STREAMS; i++) {
-        if (detection_recordings[i].stream_name[0] != '\0' && 
-            strcmp(detection_recordings[i].stream_name, stream_name) == 0) {
-            slot = i;
-            break;
-        }
-    }
-    
-    if (slot == -1) {
-        // No detection recording for this stream
-        pthread_mutex_unlock(&detection_recordings_mutex);
-        return 0;
-    }
-    
-    pthread_mutex_lock(&detection_recordings[slot].mutex);
-    pthread_mutex_unlock(&detection_recordings_mutex);
-    
-    // Check if we have a valid model
-    if (!detection_recordings[slot].model) {
-        pthread_mutex_unlock(&detection_recordings[slot].mutex);
-        return -1;
-    }
-    
-    // Run detection on the frame
-    detection_result_t result;
-    const char *model_type = detect_model_type(detection_recordings[slot].model_path);
-    log_info("Running detection for stream %s with model type %s at %s (frame dimensions: %dx%d, channels: %d)", 
-             stream_name, model_type, detection_recordings[slot].model_path, width, height, channels);
-    
-    // Debug: Check the first few bytes of the frame data to ensure it's valid
-    log_info("Frame data first 12 bytes: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
-             frame_data[0], frame_data[1], frame_data[2], frame_data[3], 
-             frame_data[4], frame_data[5], frame_data[6], frame_data[7],
-             frame_data[8], frame_data[9], frame_data[10], frame_data[11]);
-    
-    // Verify channels match expected format for model type
-    if (strcmp(model_type, MODEL_TYPE_SOD_REALNET) == 0 && channels != 1) {
-        log_warn("Warning: RealNet model expects grayscale (1 channel) but received %d channels", channels);
-    } else if (strcmp(model_type, MODEL_TYPE_SOD) == 0 && channels != 3) {
-        log_warn("Warning: SOD CNN model expects RGB (3 channels) but received %d channels", channels);
-    }
-    
-    int ret = detect_objects(detection_recordings[slot].model, frame_data, width, height, channels, &result);
-    if (ret != 0) {
-        log_error("Failed to run detection on frame for stream %s (error code: %d)", stream_name, ret);
-        pthread_mutex_unlock(&detection_recordings[slot].mutex);
+int process_frame_for_recording(const char *stream_name, const unsigned char *frame_data,
+                               int width, int height, int channels, time_t frame_time,
+                               detection_result_t *result) {
+    if (!stream_name || !frame_data || !result) {
+        log_error("Invalid parameters for process_frame_for_recording");
         return -1;
     }
 
-    log_info("Detection completed for stream %s, found %d objects", stream_name, result.count);
-    
-    // Store detection results for frontend visualization
-    const char *frontend_stream_name = stream_name;
-    
-    // Always store with the original stream name
-    log_info("Storing detection results with original stream name: %s", stream_name);
-    store_detection_result(stream_name, &result);
-    
-    // If this is a face detection, also store with the frontend stream name
-    if (has_face_detection && strcmp(frontend_stream_name, stream_name) != 0) {
-        log_info("Also storing face detection results with frontend stream name: %s", frontend_stream_name);
-        store_detection_result(frontend_stream_name, &result);
+    // Get the stream configuration directly
+    stream_handle_t stream = get_stream_by_name(stream_name);
+    if (!stream) {
+        log_error("Failed to get stream handle for %s", stream_name);
+        return -1;
     }
-    
-    // Debug: Dump all detection results to help diagnose API issues
-    extern void debug_dump_detection_results(void);
-    debug_dump_detection_results();
-    
-    // Clean up old detections (older than 1 day)
-    delete_old_detections(86400);
-    
+
+    stream_config_t config;
+    if (get_stream_config(stream, &config) != 0) {
+        log_error("Failed to get stream config for %s", stream_name);
+        return -1;
+    }
+
+    // Check if detection is enabled for this stream
+    if (!config.detection_based_recording || config.detection_model[0] == '\0') {
+        log_info("Detection-based recording not enabled for stream %s", stream_name);
+        return 0;
+    }
+
+    // Get detection parameters from stream config
+    float threshold = config.detection_threshold;
+
+    // Store with the original stream name
+    log_info("Storing detection results with original stream name: %s", stream_name);
+
+    store_detection_result(stream_name, result);
+
     // Check if any objects were detected above threshold
     bool detection_triggered = false;
-    for (int i = 0; i < result.count; i++) {
-        if (result.detections[i].confidence >= detection_recordings[slot].threshold) {
+    for (int i = 0; i < result->count; i++) {
+        if (result->detections[i].confidence >= threshold) {
             detection_triggered = true;
-            log_info("Detection triggered for stream %s: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]", 
-                    stream_name, result.detections[i].label, 
-                    result.detections[i].confidence * 100.0f,
-                    result.detections[i].x, result.detections[i].y,
-                    result.detections[i].width, result.detections[i].height);
+            log_info("Detection triggered for stream %s: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]",
+                    stream_name, result->detections[i].label,
+                    result->detections[i].confidence * 100.0f,
+                    result->detections[i].x, result->detections[i].y,
+                    result->detections[i].width, result->detections[i].height);
         } else {
-            log_info("Detection below threshold for stream %s: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]", 
-                    stream_name, result.detections[i].label, 
-                    result.detections[i].confidence * 100.0f,
-                    result.detections[i].x, result.detections[i].y,
-                    result.detections[i].width, result.detections[i].height);
+            log_info("Detection below threshold for stream %s: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]",
+                    stream_name, result->detections[i].label,
+                    result->detections[i].confidence * 100.0f,
+                    result->detections[i].x, result->detections[i].y,
+                    result->detections[i].width, result->detections[i].height);
         }
     }
-    
-    if (result.count == 0) {
+
+    if (result->count == 0) {
         log_info("No objects detected for stream %s", stream_name);
     }
-    
+
     // Update last detection time if triggered
     if (detection_triggered) {
-        detection_recordings[slot].last_detection_time = frame_time;
+        // Using direct stream configuration for more reliable behavior
+        set_stream_last_detection_time(stream, frame_time);
     }
-    
+
     // Query the database for recent detections to determine if we should be recording
     // This makes the database the source of truth for detection state
     detection_result_t db_result;
-    int post_buffer = detection_recordings[slot].post_buffer;
-    time_t cutoff_time = frame_time - post_buffer;
-    
+
     // Get detections from database since cutoff time
-    int db_count = get_detections_from_db(stream_name, &db_result, post_buffer);
-    
+    int db_count = get_detections_from_db(stream_name, &db_result, MAX_DETECTION_AGE);
+
+    if (db_count < 0) {
+        log_error("Failed to get detections from database for stream %s (error code: %d)",
+                 stream_name, db_count);
+        // Fall back to current detection result if database query fails
+        db_count = 0;
+    } else {
+        log_info("Retrieved %d detections from database for stream %s", db_count, stream_name);
+    }
+
     // Check if we have any recent detections in the database
     bool should_be_recording = false;
     if (db_count > 0) {
         // Check if any detections are above threshold
         for (int i = 0; i < db_result.count; i++) {
-            if (db_result.detections[i].confidence >= detection_recordings[slot].threshold) {
+            if (db_result.detections[i].confidence >= threshold) {
                 should_be_recording = true;
-                log_info("Recent detection found in database for stream %s: %s (%.2f%%)", 
-                        stream_name, db_result.detections[i].label, 
+                log_info("Recent detection found in database for stream %s: %s (%.2f%%)",
+                        stream_name, db_result.detections[i].label,
                         db_result.detections[i].confidence * 100.0f);
                 break;
             }
         }
     }
-    
+
     // Also consider current detection
     should_be_recording = should_be_recording || detection_triggered;
-    
+
     // Check if we should start or continue recording
     if (should_be_recording) {
+        // Check current recording state
+        bool recording_active = false;
+        int recording_state = get_recording_state(stream_name);
+        if (recording_state > 0) {
+            recording_active = true;
+        }
+
         // If not already recording, start recording
-        if (!detection_recordings[slot].recording_active) {
+        if (!recording_active) {
             // Create output path for recording
             char output_path[MAX_PATH_LENGTH];
             config_t *global_config = get_streaming_config();
-            
+            if (!global_config) {
+                log_error("Failed to get streaming config for stream %s", stream_name);
+                return -1;
+            }
+
             // Format timestamp for recording directory
             char timestamp_str[32];
             struct tm *tm_info = localtime(&frame_time);
             strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M%S", tm_info);
-            
+
             // Create output path
             snprintf(output_path, MAX_PATH_LENGTH, "%s/recordings/%s/detection_%s",
                     global_config->storage_path, stream_name, timestamp_str);
-            
-            // Start recording
-            if (start_recording(stream_name, output_path) > 0) {
-                detection_recordings[slot].recording_active = true;
-                log_info("Started detection-based recording for stream %s at %s", 
-                        stream_name, output_path);
-            } else {
-                log_error("Failed to start detection-based recording for stream %s", stream_name);
+
+            // Ensure the directory exists
+            char dir_path[MAX_PATH_LENGTH];
+            snprintf(dir_path, MAX_PATH_LENGTH, "%s/recordings/%s",
+                    global_config->storage_path, stream_name);
+
+            // Create directory if it doesn't exist
+            DIR* dir = opendir(dir_path);
+            if (dir) {
+                closedir(dir);
+            } else if (ENOENT == errno) {
+                // Directory doesn't exist, create it
+                if (mkdir(dir_path, 0755) != 0) {
+                    log_error("Failed to create directory for recording: %s (error: %s)",
+                             dir_path, strerror(errno));
+                }
             }
+
+            // Start recording
+            int recording_id = start_recording(stream_name, output_path);
+            if (recording_id > 0) {
+                // Recording successfully started
+                log_info("Started detection-based recording for stream %s at %s (recording ID: %d)",
+                        stream_name, output_path, recording_id);
+            } else {
+                log_error("Failed to start detection-based recording for stream %s (error code: %d)",
+                         stream_name, recording_id);
+            }
+        } else {
+            log_info("Continuing detection-based recording for stream %s", stream_name);
         }
-    } else if (detection_recordings[slot].recording_active) {
-        // If recording and no recent detections, stop recording
-        stop_recording(stream_name);
-        detection_recordings[slot].recording_active = false;
-        log_info("Stopped detection-based recording for stream %s (no recent detections)", stream_name);
+    } else {
+        // Check if we're currently recording
+        int recording_state = get_recording_state(stream_name);
+        if (recording_state > 0) {
+            // If recording and no recent detections, stop recording
+            stop_recording(stream_name);
+        }
     }
-    
-    pthread_mutex_unlock(&detection_recordings[slot].mutex);
-    
+
     return 0;
 }
 
