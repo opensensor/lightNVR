@@ -5,10 +5,10 @@
 
 
 /**
- * Enable all streams for live viewing
+ * Load streams for live viewing, respecting their streaming_enabled state
  */
 function enableAllStreams() {
-    console.log('Enabling all streams for live view');
+    console.log('Loading streams for live view');
     
     // Fetch streams from API
     fetch('/api/streams')
@@ -20,39 +20,41 @@ function enableAllStreams() {
         })
         .then(streams => {
             if (!streams || streams.length === 0) {
-                console.log('No streams to enable');
+                console.log('No streams to load');
                 return;
             }
             
-            // Enable each stream
+            // Process each stream based on its streaming_enabled state
             streams.forEach(stream => {
                 const streamId = stream.id || stream.name;
-                console.log(`Enabling stream ${streamId}`);
+                const isEnabled = stream.streaming_enabled !== false; // Default to true if not specified
                 
-                // Send toggle request to API to enable streaming
+                console.log(`Stream ${streamId} streaming_enabled state: ${isEnabled}`);
+                
+                // Only toggle if needed (if the current state doesn't match what we want)
                 fetch(`/api/streams/${encodeURIComponent(streamId)}/toggle_streaming`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ enabled: true })
+                    body: JSON.stringify({ enabled: isEnabled })
                 })
                 .then(response => {
                     if (!response.ok) {
-                        throw new Error('Failed to enable stream');
+                        throw new Error('Failed to set stream state');
                     }
                     return response.json();
                 })
                 .then(data => {
-                    console.log(`Stream ${streamId} enabled successfully:`, data);
+                    console.log(`Stream ${streamId} state set successfully:`, data);
                 })
                 .catch(error => {
-                    console.error(`Error enabling stream ${streamId}:`, error);
+                    console.error(`Error setting stream ${streamId} state:`, error);
                 });
             });
         })
         .catch(error => {
-            console.error('Error loading streams to enable:', error);
+            console.error('Error loading streams for live view:', error);
         });
 }
 
@@ -869,6 +871,10 @@ function updateVideoGrid(streams) {
                     <button class="fullscreen-btn" data-id="${streamId}" data-name="${stream.name}">
                         <span>⛶</span> Fullscreen
                     </button>
+                    <label class="toggle-switch" title="Enable/Disable Stream">
+                        <input type="checkbox" class="stream-toggle" data-id="${streamId}" ${stream.streaming_enabled !== false ? 'checked' : ''}>
+                        <span class="toggle-slider"></span>
+                    </label>
                 </div>
             </div>
             <div class="loading-indicator">
@@ -913,6 +919,76 @@ function updateVideoGrid(streams) {
             fullscreenBtn.addEventListener('click', () => {
                 console.log('Toggling fullscreen for stream with ID:', streamId);
                 toggleStreamFullscreen(stream.name);
+            });
+        }
+        
+        // Add event listener for stream toggle button
+        const streamToggle = videoGrid.querySelector(`.stream-toggle[data-id="${streamId}"]`);
+        if (streamToggle) {
+            streamToggle.addEventListener('change', function() {
+                const enabled = this.checked;
+                console.log(`Toggling stream ${streamId} to ${enabled ? 'enabled' : 'disabled'}`);
+                
+                // Send toggle request to API
+                fetch(`/api/streams/${encodeURIComponent(streamId)}/toggle_streaming`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ enabled: enabled })
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Failed to toggle stream');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Stream toggled successfully:', data);
+                    
+                    // If disabled, show a message in the video cell
+                    const videoCell = this.closest('.video-cell');
+                    if (videoCell) {
+                        if (!enabled) {
+                            // Clean up the video player
+                            cleanupVideoPlayer(stream.name);
+                            
+                            // Show disabled message
+                            let disabledMsg = videoCell.querySelector('.disabled-message');
+                            if (!disabledMsg) {
+                                disabledMsg = document.createElement('div');
+                                disabledMsg.className = 'disabled-message';
+                                disabledMsg.style.position = 'absolute';
+                                disabledMsg.style.top = '50%';
+                                disabledMsg.style.left = '50%';
+                                disabledMsg.style.transform = 'translate(-50%, -50%)';
+                                disabledMsg.style.color = 'white';
+                                disabledMsg.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+                                disabledMsg.style.padding = '10px';
+                                disabledMsg.style.borderRadius = '5px';
+                                disabledMsg.style.textAlign = 'center';
+                                videoCell.appendChild(disabledMsg);
+                            }
+                            disabledMsg.textContent = 'Stream disabled';
+                        } else {
+                            // Remove disabled message if it exists
+                            const disabledMsg = videoCell.querySelector('.disabled-message');
+                            if (disabledMsg) {
+                                disabledMsg.remove();
+                            }
+                            
+                            // Reinitialize the video player
+                            initializeVideoPlayer(stream);
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Error toggling stream:', error);
+                    alert('Error toggling stream: ' + error.message);
+                    
+                    // Revert the toggle state in the UI
+                    this.checked = !enabled;
+                });
             });
         }
     });
