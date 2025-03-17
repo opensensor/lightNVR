@@ -345,7 +345,7 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
 }
 
 /**
- * Enhanced close function with improved error handling
+ * Enhanced close function with improved error handling and memory safety
  */
 void mp4_writer_close(mp4_writer_t *writer) {
     if (!writer) {
@@ -353,42 +353,55 @@ void mp4_writer_close(mp4_writer_t *writer) {
         return;
     }
 
-    // Validate writer fields before using them
-    bool valid_output_path = writer->output_path[0] != '\0';
-    bool valid_stream_name = writer->stream_name[0] != '\0';
-    
-    // Make safe copies of the paths
+    // Create local copies of all data we need before modifying the writer
+    // This prevents use-after-free and other memory corruption issues
     char output_path[1024] = {0};
     char stream_name[64] = {0};
-    time_t creation_time = writer->creation_time;
-    bool was_initialized = writer->is_initialized;
-    int64_t first_dts = writer->first_dts;
-    int64_t last_dts = writer->last_dts;
-    AVRational time_base = writer->time_base;
-
+    time_t creation_time = 0;
+    bool was_initialized = false;
+    int64_t first_dts = AV_NOPTS_VALUE;
+    int64_t last_dts = AV_NOPTS_VALUE;
+    AVRational time_base = {0, 0};
+    AVFormatContext *output_ctx = NULL;
+    
+    // Safely copy all needed data with proper validation
+    bool valid_output_path = writer->output_path && writer->output_path[0] != '\0';
+    bool valid_stream_name = writer->stream_name && writer->stream_name[0] != '\0';
+    
     // Only copy if the fields are valid
     if (valid_output_path) {
         strncpy(output_path, writer->output_path, sizeof(output_path) - 1);
         output_path[sizeof(output_path) - 1] = '\0';
-    } else {
-        log_warn("MP4 writer has invalid output path");
     }
 
     if (valid_stream_name) {
         strncpy(stream_name, writer->stream_name, sizeof(stream_name) - 1);
         stream_name[sizeof(stream_name) - 1] = '\0';
     } else {
-        log_warn("MP4 writer has invalid stream name");
-        // Use a placeholder name for logging
         strncpy(stream_name, "unknown", sizeof(stream_name) - 1);
     }
+    
+    // Safely copy other fields
+    creation_time = writer->creation_time;
+    was_initialized = writer->is_initialized;
+    first_dts = writer->first_dts;
+    last_dts = writer->last_dts;
+    time_base = writer->time_base;
+    output_ctx = writer->output_ctx;
+    
+    // Clear the pointer in the writer structure to prevent double-free
+    writer->output_ctx = NULL;
 
-    // Close the output context first
-    if (writer->output_ctx) {
+    // Log the operation
+    log_info("Closing MP4 writer for stream %s at %s",
+            valid_stream_name ? stream_name : "unknown", 
+            valid_output_path ? output_path : "(invalid path)");
+
+    // Close the output context if it exists
+    if (output_ctx) {
         // Write trailer if initialized
-        if (writer->is_initialized) {
-            // Write file trailer
-            int ret = av_write_trailer(writer->output_ctx);
+        if (was_initialized) {
+            int ret = av_write_trailer(output_ctx);
             if (ret < 0) {
                 char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
                 av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
@@ -397,19 +410,13 @@ void mp4_writer_close(mp4_writer_t *writer) {
         }
 
         // Close output
-        if (writer->output_ctx->pb) {
-            avio_closep(&writer->output_ctx->pb);
+        if (output_ctx->pb) {
+            avio_closep(&output_ctx->pb);
         }
 
         // Free context
-        avformat_free_context(writer->output_ctx);
-        writer->output_ctx = NULL;
+        avformat_free_context(output_ctx);
     }
-
-    // Log with safe values
-    log_info("Closed MP4 writer for stream %s at %s",
-            valid_stream_name ? stream_name : "unknown", 
-            valid_output_path ? output_path : "(invalid path)");
 
     // Check if file exists and has a reasonable size - only if we have a valid path
     if (valid_output_path) {
@@ -517,6 +524,6 @@ void mp4_writer_close(mp4_writer_t *writer) {
         }
     }
 
-    // Free writer
+    // Free writer at the end, after we're done using all its data
     free(writer);
 }

@@ -449,7 +449,7 @@ cleanup:
     
     if (cleanup_pid == 0) {
         // Child process - watchdog timer
-        sleep(60);  // Wait 60 seconds (increased from 30)
+        sleep(60);  // Wait 60 seconds
         log_error("Cleanup process timed out after 60 seconds, forcing exit");
         kill(getppid(), SIGKILL);  // Force kill the parent process
         exit(EXIT_FAILURE);
@@ -464,12 +464,13 @@ cleanup:
         for (int i = 0; i < MAX_STREAMS; i++) {
             stream_reader_ctx_t *reader = get_stream_reader_by_index(i);
             if (reader) {
+                // Safely clear the callback
                 set_packet_callback(reader, NULL, NULL);
             }
         }
         
         // Wait a moment for callbacks to clear
-        usleep(100000);  // 100ms
+        usleep(250000);  // 250ms - increased from 100ms for better safety
         
         // Stop all streams to ensure clean shutdown
         for (int i = 0; i < config.max_streams; i++) {
@@ -482,27 +483,27 @@ cleanup:
             }
         }
         
-        // Wait a moment for streams to stop
-        usleep(500000);  // 500ms
+        // Wait longer for streams to stop
+        usleep(1000000);  // 1000ms - increased from 500ms for better safety
         
-        // Clean up stream reader backend first to stop all packet processing
-        log_info("Cleaning up stream reader backend...");
-        cleanup_stream_reader_backend();
-        
-        // Now clean up the backends
-        log_info("Cleaning up HLS streaming backend...");
-        cleanup_hls_streaming_backend();  // Cleanup HLS streaming
-        
-        log_info("Cleaning up MP4 recording backend...");
-        cleanup_mp4_recording_backend();  // Cleanup MP4 recording
-        
-        // Finalize all MP4 recordings
+        // Finalize all MP4 recordings first before cleaning up the backend
         log_info("Finalizing all MP4 recordings...");
         close_all_mp4_writers();
         
         // Clean up HLS directories
         log_info("Cleaning up HLS directories...");
         cleanup_hls_directories();
+        
+        // Now clean up the backends in the correct order
+        log_info("Cleaning up MP4 recording backend...");
+        cleanup_mp4_recording_backend();  // Cleanup MP4 recording
+        
+        log_info("Cleaning up HLS streaming backend...");
+        cleanup_hls_streaming_backend();  // Cleanup HLS streaming
+        
+        // Clean up stream reader backend last to ensure all consumers are stopped
+        log_info("Cleaning up stream reader backend...");
+        cleanup_stream_reader_backend();
         
         // Clean up FFmpeg resources
         log_info("Cleaning up transcoding backend...");
@@ -530,7 +531,7 @@ cleanup:
     } else {
         // Fork failed
         log_error("Failed to create watchdog process for cleanup timeout");
-        // Continue with cleanup anyway
+        // Continue with cleanup anyway in a simplified manner
         
         // Clear all packet callbacks
         for (int i = 0; i < MAX_STREAMS; i++) {
@@ -550,12 +551,19 @@ cleanup:
             }
         }
         
-        cleanup_stream_reader_backend();
-        cleanup_hls_streaming_backend();
-        cleanup_mp4_recording_backend();
+        // Wait a moment
+        usleep(1000000);  // 1 second
+        
+        // Close all MP4 writers first
         close_all_mp4_writers();
-        cleanup_hls_directories();
+        
+        // Then clean up backends in the correct order
+        cleanup_mp4_recording_backend();
+        cleanup_hls_streaming_backend();
+        cleanup_stream_reader_backend();
         cleanup_transcoding_backend();
+        
+        // Shut down remaining components
         shutdown_web_server();
         shutdown_stream_manager();
         shutdown_storage_manager();

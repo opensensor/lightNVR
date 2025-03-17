@@ -351,8 +351,9 @@ void cleanup_mp4_recording_backend(void) {
     }
     pthread_mutex_unlock(&contexts_mutex);
 
-    // Finally close all writers
-    close_all_mp4_writers();
+    // Note: We don't call close_all_mp4_writers() here anymore
+    // It's already called earlier in the main cleanup process
+    // Calling it twice could lead to double free issues
 
     log_info("MP4 recording backend cleanup complete");
 }

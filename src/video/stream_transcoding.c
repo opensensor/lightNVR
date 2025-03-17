@@ -140,11 +140,12 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
         log_info("Using UDP protocol for stream URL: %s", url);
         // UDP-specific options with improved buffering for smoother playback
         av_dict_set(&input_options, "protocol_whitelist", "file,udp,rtp", 0);
-        av_dict_set(&input_options, "buffer_size", "16384000", 0); // Increased buffer for UDP (16MB)
+        av_dict_set(&input_options, "buffer_size", "8192000", 0); // 8MB buffer (reduced from 16MB)
         av_dict_set(&input_options, "reuse", "1", 0); // Allow port reuse
         av_dict_set(&input_options, "timeout", "5000000", 0); // 5 second timeout in microseconds
-        av_dict_set(&input_options, "max_delay", "500000", 0); // 500ms max delay for better real-time performance
-        av_dict_set(&input_options, "fflags", "nobuffer", 0); // Reduce buffering for lower latency
+        av_dict_set(&input_options, "max_delay", "1000000", 0); // 1000ms max delay (increased from 500ms)
+        // Remove the nobuffer flag which causes issues with UDP streams
+        av_dict_set(&input_options, "fflags", "genpts", 0); // Generate PTS if missing
     } else {
         log_info("Using TCP protocol for stream URL: %s", url);
         // TCP-specific options with improved reliability
