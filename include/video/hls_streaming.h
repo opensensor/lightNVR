@@ -4,6 +4,7 @@
 #include <pthread.h>
 #include "core/config.h"
 #include "video/hls_writer.h"
+#include "video/stream_reader.h"
 
 // Structure for HLS streaming context
 typedef struct {
@@ -12,7 +13,7 @@ typedef struct {
     pthread_t thread;
     char output_path[MAX_PATH_LENGTH];
     hls_writer_t *hls_writer;
-    int consumer_id;  // ID for stream reader consumer
+    stream_reader_ctx_t *reader_ctx;  // Stream reader context
 } hls_stream_ctx_t;
 
 /**

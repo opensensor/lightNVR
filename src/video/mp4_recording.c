@@ -39,11 +39,72 @@ static pthread_mutex_t mp4_writers_mutex = PTHREAD_MUTEX_INITIALIZER;
 static void *mp4_recording_thread(void *arg);
 
 /**
+ * MP4 packet processing callback function
+ */
+static int mp4_packet_callback(const AVPacket *pkt, const AVStream *stream, void *user_data) {
+    mp4_recording_ctx_t *recording_ctx = (mp4_recording_ctx_t *)user_data;
+    if (!recording_ctx || !recording_ctx->mp4_writer) {
+        return -1;
+    }
+    
+    // Check if this is a key frame
+    bool is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
+    
+    // Only log key frames at debug level to reduce logging overhead
+    if (is_key_frame) {
+        log_debug("Processing keyframe for MP4: pts=%lld, dts=%lld, size=%d",
+                 (long long)pkt->pts, (long long)pkt->dts, pkt->size);
+    }
+    
+    // Process the packet with improved handling
+    // Check if we're under pressure and need to reduce recording quality
+    if (recording_ctx->mp4_writer->is_under_pressure) {
+        // Under pressure - be more selective about which frames to record
+        
+        // Always process key frames
+        if (is_key_frame) {
+            int ret = process_video_packet(pkt, stream, recording_ctx->mp4_writer, 1, recording_ctx->config.name);
+            
+            if (ret < 0) {
+                log_error("Failed to write keyframe to MP4 for stream %s: %d", recording_ctx->config.name, ret);
+                return ret;
+            }
+        } else {
+            // For non-key frames, use a dynamic frame dropping strategy
+            // based on the current pressure level
+            static int frame_counter = 0;
+            
+            // Skip more frames when under pressure (every 2nd frame)
+            if (++frame_counter % 2 == 0) {
+                int ret = process_video_packet(pkt, stream, recording_ctx->mp4_writer, 1, recording_ctx->config.name);
+                
+                // Only log errors occasionally to reduce log spam
+                if (ret < 0 && frame_counter % 100 == 0) {
+                    log_warn("Failed to write frame to MP4 for stream %s: %d", recording_ctx->config.name, ret);
+                    return ret;
+                }
+            }
+            // Otherwise skip this frame to reduce file size
+        }
+    } else {
+        // Normal operation - process all frames
+        int ret = process_video_packet(pkt, stream, recording_ctx->mp4_writer, 1, recording_ctx->config.name);
+        
+        // Only log errors for key frames to reduce log spam
+        if (ret < 0 && is_key_frame) {
+            log_error("Failed to write keyframe to MP4 for stream %s: %d", recording_ctx->config.name, ret);
+            return ret;
+        }
+    }
+    
+    return 0;
+}
+
+/**
  * MP4 recording thread function for a single stream
  */
 static void *mp4_recording_thread(void *arg) {
     mp4_recording_ctx_t *ctx = (mp4_recording_ctx_t *)arg;
-    AVPacket *pkt = NULL;
     int ret;
     time_t start_time = time(NULL);  // Record when we started
     config_t *global_config = get_streaming_config();
@@ -118,11 +179,11 @@ static void *mp4_recording_thread(void *arg) {
     
     log_info("Created MP4 writer for %s at %s", ctx->config.name, ctx->output_path);
 
-    // Get or start a dedicated stream reader for MP4 recording
+    // Get or start a dedicated stream reader for MP4 recording with our callback
     reader_ctx = get_stream_reader(ctx->config.name);
     if (!reader_ctx) {
         // Start a new dedicated stream reader for MP4 recording
-        reader_ctx = start_stream_reader(ctx->config.name, 1); // 1 for dedicated stream reader
+        reader_ctx = start_stream_reader(ctx->config.name, 1, mp4_packet_callback, ctx); // 1 for dedicated stream reader
         if (!reader_ctx) {
             log_error("Failed to start dedicated stream reader for %s", ctx->config.name);
             
@@ -139,53 +200,34 @@ static void *mp4_recording_thread(void *arg) {
         }
         log_info("Started new dedicated stream reader for MP4 recording of stream %s", ctx->config.name);
     } else {
+        // Set our callback on the existing reader
+        if (set_packet_callback(reader_ctx, mp4_packet_callback, ctx) != 0) {
+            log_error("Failed to set packet callback for stream %s", ctx->config.name);
+            
+            if (ctx->mp4_writer) {
+                mp4_writer_close(ctx->mp4_writer);
+                ctx->mp4_writer = NULL;
+            }
+            
+            // Unregister the MP4 writer if it was registered
+            unregister_mp4_writer_for_stream(ctx->config.name);
+            
+            ctx->running = 0;
+            return NULL;
+        }
         log_info("Using existing stream reader for MP4 recording of stream %s", ctx->config.name);
     }
     
-    // Register as a consumer of the stream
-    ctx->consumer_id = register_stream_consumer(reader_ctx);
-    if (ctx->consumer_id <= 0) {
-        log_error("Failed to register as consumer for stream %s", ctx->config.name);
-        
-        if (ctx->mp4_writer) {
-            mp4_writer_close(ctx->mp4_writer);
-            ctx->mp4_writer = NULL;
-        }
-        
-        // Unregister the MP4 writer if it was registered
-        unregister_mp4_writer_for_stream(ctx->config.name);
-        
-        ctx->running = 0;
-        return NULL;
-    }
+    // Store the reader context
+    ctx->reader_ctx = reader_ctx;
     
-    // Initialize packet
-    pkt = av_packet_alloc();
-    if (!pkt) {
-        log_error("Failed to allocate packet");
-        
-        // Unregister as a consumer
-        unregister_stream_consumer(reader_ctx, ctx->consumer_id);
-        
-        if (ctx->mp4_writer) {
-            mp4_writer_close(ctx->mp4_writer);
-            ctx->mp4_writer = NULL;
-        }
-        
-        // Unregister the MP4 writer if it was registered
-        unregister_mp4_writer_for_stream(ctx->config.name);
-        
-        ctx->running = 0;
-        return NULL;
-    }
-
     // Register the MP4 writer so it can be accessed by other parts of the system
     register_mp4_writer_for_stream(ctx->config.name, ctx->mp4_writer);
 
     // Variables for periodic updates
     time_t last_update = 0;
 
-    // Main packet reading loop
+    // Main loop to handle file rotation and metadata updates
     while (ctx->running) {
         // Check if we need to rotate the MP4 file based on segment duration
         time_t current_time = time(NULL);
@@ -254,77 +296,6 @@ static void *mp4_recording_thread(void *arg) {
             // Update recording metadata in the database
             update_recording(ctx->config.name);
         }
-        
-        // Get a packet from the stream reader
-        av_packet_unref(pkt);  // Make sure the packet is clean before reusing
-        ret = get_packet(reader_ctx, pkt, ctx->consumer_id);
-
-        if (ret < 0) {
-            // Error or abort request
-            log_warn("Error getting packet from stream reader for %s", ctx->config.name);
-            av_usleep(50000);  // Reduced delay to 50ms for faster recovery
-            continue;
-        }
-
-        // Check if this is a timeout (no packet available)
-        if (ret == 1) {
-            // No packet available, just continue the loop
-            continue;
-        }
-        
-        // Check if the system is under pressure (ret == 2)
-        if (ret == 2 && ctx->mp4_writer) {
-            // System is under high pressure - set the flag in the writer
-            ctx->mp4_writer->is_under_pressure = 1;
-            
-            // Log this condition occasionally to avoid log spam
-            static time_t last_pressure_log = 0;
-            time_t now = time(NULL);
-            if (now - last_pressure_log >= 10) {  // Log every 10 seconds
-                log_warn("MP4 recording under high pressure for %s", ctx->config.name);
-                last_pressure_log = now;
-            }
-        } else if (ctx->mp4_writer) {
-            // Normal operation - clear the pressure flag
-            ctx->mp4_writer->is_under_pressure = 0;
-        }
-
-        // Process video packet
-        if (ctx->mp4_writer) {
-            // Verify the packet is valid before processing
-            if (pkt->data && pkt->size > 0) {
-                // Check if this is a key frame
-                bool is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
-                
-                // Only log key frames at debug level to reduce logging overhead
-                if (is_key_frame) {
-                    log_debug("Processing keyframe for MP4: pts=%lld, dts=%lld, size=%d",
-                             (long long)pkt->pts, (long long)pkt->dts, pkt->size);
-                }
-                
-                // Use a more efficient batch processing approach to reduce contention
-                // Process packets in batches to reduce I/O operations
-                static int packet_counter = 0;
-                static int batch_size = 8; // Increased batch size for MP4 recording
-                
-                // Always process key frames immediately, but batch other frames
-                if (is_key_frame || (++packet_counter >= batch_size)) {
-                    packet_counter = 0; // Reset counter after processing a batch
-                    
-                    // Process the packet directly - we already have a clean copy from stream_reader
-                    ret = process_video_packet(pkt, reader_ctx->input_ctx->streams[reader_ctx->video_stream_idx], 
-                                              ctx->mp4_writer, 1, ctx->config.name);
-                    
-                    // Only log errors for key frames to reduce log spam
-                    if (ret < 0 && is_key_frame) {
-                        log_error("Failed to write keyframe to MP4 for stream %s: %d", ctx->config.name, ret);
-                        // Continue anyway to keep the stream going
-                    }
-                }
-            } else {
-                log_warn("Received invalid packet (null data or zero size) for stream %s", ctx->config.name);
-            }
-        }
 
         // Periodically update recording metadata (every 30 seconds)
         time_t now = time(NULL);
@@ -332,16 +303,14 @@ static void *mp4_recording_thread(void *arg) {
             update_recording(ctx->config.name);
             last_update = now;
         }
+        
+        // Sleep to avoid busy waiting
+        av_usleep(100000);  // 100ms
     }
-
-    // Cleanup resources
-    if (pkt) {
-        av_packet_free(&pkt);
-    }
-
-    // Unregister as a consumer
-    if (reader_ctx && ctx->consumer_id > 0) {
-        unregister_stream_consumer(reader_ctx, ctx->consumer_id);
+    
+    // Remove our callback from the reader
+    if (ctx->reader_ctx) {
+        set_packet_callback(ctx->reader_ctx, NULL, NULL);
     }
 
     // When done, close writer
@@ -456,7 +425,6 @@ int start_mp4_recording(const char *stream_name) {
     memset(ctx, 0, sizeof(mp4_recording_ctx_t));
     memcpy(&ctx->config, &config, sizeof(stream_config_t));
     ctx->running = 1;
-    ctx->consumer_id = 0;  // Will be set in the thread
 
     // Create output paths
     config_t *global_config = get_streaming_config();

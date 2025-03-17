@@ -4,6 +4,7 @@
 #include <pthread.h>
 #include "core/config.h"
 #include "video/mp4_writer.h"
+#include "video/stream_reader.h"
 
 // Structure for MP4 recording context
 typedef struct {
@@ -12,7 +13,7 @@ typedef struct {
     pthread_t thread;
     char output_path[MAX_PATH_LENGTH];
     mp4_writer_t *mp4_writer;
-    int consumer_id;  // ID for stream reader consumer
+    stream_reader_ctx_t *reader_ctx;  // Stream reader context
 } mp4_recording_ctx_t;
 
 /**

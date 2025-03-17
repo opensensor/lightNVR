@@ -259,7 +259,8 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
                  (long long)writer->first_dts, (long long)writer->first_pts);
     } else {
         // Check for timestamp discontinuities (common in RTSP streams)
-        int64_t expected_dts = writer->last_dts + 1;
+        int64_t expected_dts = writer->last_dts + 
+            av_rescale_q(1, input_stream->time_base, writer->time_base);
         int64_t dts_diff = 0;
         
         if (pkt.dts != AV_NOPTS_VALUE) {
@@ -273,15 +274,21 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
                         (long long)(pkt.dts - writer->last_dts));
                 
                 // Handle the discontinuity by continuing from the last DTS
+                // Add a small increment to ensure monotonic increase
                 pkt.dts = expected_dts;
                 
                 // If PTS is also invalid, adjust it too
                 if (pkt.pts != AV_NOPTS_VALUE && pkt.pts < pkt.dts) {
-                    pkt.pts = pkt.dts;
+                    pkt.pts = pkt.dts + 1; // Ensure PTS > DTS for proper playback
                 }
             } else {
                 // Normal case - use the relative offset from first_dts
                 pkt.dts = dts_diff;
+                
+                // Ensure monotonic increase
+                if (pkt.dts <= writer->last_dts) {
+                    pkt.dts = writer->last_dts + 1;
+                }
             }
         } else {
             // If DTS is not set, use a continuous value
@@ -295,19 +302,19 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
 
             // If PTS goes backwards or would be less than DTS, adjust it
             if (pts_diff < 0 || pkt.pts < pkt.dts) {
-                // Set PTS equal to DTS as a fallback
-                pkt.pts = pkt.dts;
+                // Set PTS slightly ahead of DTS as a fallback
+                pkt.pts = pkt.dts + 1;
             } else {
                 pkt.pts = pts_diff;
+                
+                // Ensure PTS is at least DTS + 1 for proper playback
+                if (pkt.pts <= pkt.dts) {
+                    pkt.pts = pkt.dts + 1;
+                }
             }
         } else {
-            // If PTS is not set, use DTS
-            pkt.pts = pkt.dts;
-        }
-        
-        // Final sanity check - ensure PTS >= DTS
-        if (pkt.pts < pkt.dts) {
-            pkt.pts = pkt.dts;
+            // If PTS is not set, use DTS + 1
+            pkt.pts = pkt.dts + 1;
         }
     }
 

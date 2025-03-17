@@ -164,7 +164,7 @@ int find_video_stream_index(AVFormatContext *input_ctx) {
 
 /**
  * Process a video packet for either HLS streaming or MP4 recording
- * Optimized to reduce contention and blocking
+ * Optimized to reduce contention and blocking with improved frame handling
  */
 int process_video_packet(const AVPacket *pkt, const AVStream *input_stream, 
                          void *writer, int writer_type, const char *stream_name) {
@@ -219,18 +219,42 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
     } else if (writer_type == 1) {  // MP4 writer
         mp4_writer_t *mp4_writer = (mp4_writer_t *)writer;
         
-        // For MP4 recording, we want to preserve as many frames as possible
-        // But we can still skip some non-key frames if we're falling behind
-        if (mp4_writer->is_under_pressure && !is_key_frame) {
-            // Use a random skip to avoid patterns in the recording
-            static int skip_counter = 0;
-            if (++skip_counter % 3 == 0) {
-                // Skip every 3rd frame when under pressure
-                av_packet_unref(&out_pkt);
-                return 0;
+        // For MP4 recording, implement a more sophisticated frame dropping strategy
+        // to maintain quality while reducing file size
+        if (mp4_writer->is_under_pressure) {
+            // Under high pressure, be more aggressive with frame dropping
+            if (!is_key_frame) {
+                // Use an adaptive frame dropping strategy based on the codec parameters
+                // and current system load
+                static int frame_counter = 0;
+                int skip_factor = 2; // Default: keep every 2nd frame
+                
+                // Adjust skip factor based on resolution
+                // For higher resolutions, we can drop more frames
+                if (input_stream->codecpar->width >= 1920) { // 1080p or higher
+                    skip_factor = 3; // Keep every 3rd frame
+                } else if (input_stream->codecpar->width >= 1280) { // 720p
+                    skip_factor = 2; // Keep every 2nd frame
+                }
+                
+                // Skip frames based on the calculated factor
+                if (++frame_counter % skip_factor != 0) {
+                    av_packet_unref(&out_pkt);
+                    return 0;
+                }
             }
+            // Always keep key frames
         }
         
+        // Ensure timestamps are properly set before writing
+        // This helps prevent glitches in the output file
+        if (out_pkt.pts == AV_NOPTS_VALUE && out_pkt.dts != AV_NOPTS_VALUE) {
+            out_pkt.pts = out_pkt.dts;
+        } else if (out_pkt.dts == AV_NOPTS_VALUE && out_pkt.pts != AV_NOPTS_VALUE) {
+            out_pkt.dts = out_pkt.pts;
+        }
+        
+        // Write the packet
         ret = mp4_writer_write_packet(mp4_writer, &out_pkt, input_stream);
         if (ret < 0) {
             // Only log errors for keyframes or every 200th packet to reduce log spam

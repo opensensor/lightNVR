@@ -38,11 +38,40 @@ static pthread_mutex_t contexts_mutex = PTHREAD_MUTEX_INITIALIZER;
 static void *hls_stream_thread(void *arg);
 
 /**
+ * HLS packet processing callback function
+ */
+static int hls_packet_callback(const AVPacket *pkt, const AVStream *stream, void *user_data) {
+    hls_stream_ctx_t *streaming_ctx = (hls_stream_ctx_t *)user_data;
+    if (!streaming_ctx || !streaming_ctx->hls_writer) {
+        return -1;
+    }
+    
+    // Process only key frames and a subset of non-key frames to reduce CPU load
+    // This helps prevent contention by processing fewer packets
+    static int frame_counter = 0;
+    bool is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
+    
+    // Always process key frames, but only process every 3rd non-key frame
+    // This reduces processing load while maintaining video quality
+    if (is_key_frame || (++frame_counter % 3 == 0)) {
+        // Write to HLS
+        int ret = process_video_packet(pkt, stream, streaming_ctx->hls_writer, 0, streaming_ctx->config.name);
+        
+        // Don't log every error to reduce logging overhead
+        if (ret < 0 && is_key_frame) {
+            log_error("Failed to write keyframe to HLS for stream %s: %d", streaming_ctx->config.name, ret);
+            return ret;
+        }
+    }
+    
+    return 0;
+}
+
+/**
  * HLS streaming thread function for a single stream
  */
 static void *hls_stream_thread(void *arg) {
     hls_stream_ctx_t *ctx = (hls_stream_ctx_t *)arg;
-    AVPacket *pkt = NULL;
     int ret;
     time_t start_time = time(NULL);  // Record when we started
     stream_reader_ctx_t *reader_ctx = NULL;
@@ -129,29 +158,6 @@ static void *hls_stream_thread(void *arg) {
         }
     }
 
-    // Get or start a dedicated stream reader for HLS
-    reader_ctx = get_stream_reader(ctx->config.name);
-    if (!reader_ctx) {
-        // Start a new dedicated stream reader
-        reader_ctx = start_stream_reader(ctx->config.name, 1); // 1 for dedicated stream reader
-        if (!reader_ctx) {
-            log_error("Failed to start dedicated stream reader for %s", ctx->config.name);
-            ctx->running = 0;
-            return NULL;
-        }
-        log_info("Started new dedicated stream reader for HLS stream %s", ctx->config.name);
-    } else {
-        log_info("Using existing stream reader for HLS stream %s", ctx->config.name);
-    }
-    
-    // Register as a consumer of the stream
-    ctx->consumer_id = register_stream_consumer(reader_ctx);
-    if (ctx->consumer_id <= 0) {
-        log_error("Failed to register as consumer for stream %s", ctx->config.name);
-        ctx->running = 0;
-        return NULL;
-    }
-
     // Create HLS writer - adding the segment_duration parameter
     // Using a default of 4 seconds if not specified in config
     // Increased from 2 to 4 seconds for better compatibility with low-powered devices
@@ -161,93 +167,55 @@ static void *hls_stream_thread(void *arg) {
     ctx->hls_writer = hls_writer_create(ctx->output_path, ctx->config.name, segment_duration);
     if (!ctx->hls_writer) {
         log_error("Failed to create HLS writer for %s", ctx->config.name);
-        
-        // Unregister as a consumer
-        unregister_stream_consumer(reader_ctx, ctx->consumer_id);
-        
         ctx->running = 0;
         return NULL;
     }
 
-    // Initialize packet
-    pkt = av_packet_alloc();
-    if (!pkt) {
-        log_error("Failed to allocate packet");
-        
-        hls_writer_close(ctx->hls_writer);
-        ctx->hls_writer = NULL;
-        
-        // Unregister as a consumer
-        unregister_stream_consumer(reader_ctx, ctx->consumer_id);
-        
-        ctx->running = 0;
-        return NULL;
+    // Get or start a dedicated stream reader for HLS with our callback
+    reader_ctx = get_stream_reader(ctx->config.name);
+    if (!reader_ctx) {
+        // Start a new dedicated stream reader
+        reader_ctx = start_stream_reader(ctx->config.name, 1, hls_packet_callback, ctx); // 1 for dedicated stream reader
+        if (!reader_ctx) {
+            log_error("Failed to start dedicated stream reader for %s", ctx->config.name);
+            
+            if (ctx->hls_writer) {
+                hls_writer_close(ctx->hls_writer);
+                ctx->hls_writer = NULL;
+            }
+            
+            ctx->running = 0;
+            return NULL;
+        }
+        log_info("Started new dedicated stream reader for HLS stream %s", ctx->config.name);
+    } else {
+        // Set our callback on the existing reader
+        if (set_packet_callback(reader_ctx, hls_packet_callback, ctx) != 0) {
+            log_error("Failed to set packet callback for stream %s", ctx->config.name);
+            
+            if (ctx->hls_writer) {
+                hls_writer_close(ctx->hls_writer);
+                ctx->hls_writer = NULL;
+            }
+            
+            ctx->running = 0;
+            return NULL;
+        }
+        log_info("Using existing stream reader for HLS stream %s", ctx->config.name);
     }
+    
+    // Store the reader context
+    ctx->reader_ctx = reader_ctx;
 
-    // Main packet reading loop
+    // Main loop to monitor stream status
     while (ctx->running) {
-        // Get a packet from the stream reader
-        av_packet_unref(pkt);  // Make sure the packet is clean before reusing
-        ret = get_packet(reader_ctx, pkt, ctx->consumer_id);
-
-        if (ret < 0) {
-            // Error or abort request
-            log_warn("Error getting packet from stream reader for %s", ctx->config.name);
-            av_usleep(50000);  // Reduced delay to 50ms for faster recovery
-            continue;
-        }
-
-        // Check if this is a timeout (no packet available)
-        if (ret == 1) {
-            // No packet available, just continue the loop
-            continue;
-        }
-        
-        // Check if the system is under pressure (ret == 2)
-        if (ret == 2 && ctx->hls_writer) {
-            // System is under high pressure - set the flag in the writer
-            ctx->hls_writer->is_under_pressure = 1;
-            
-            // Log this condition occasionally to avoid log spam
-            static time_t last_pressure_log = 0;
-            time_t now = time(NULL);
-            if (now - last_pressure_log >= 10) {  // Log every 10 seconds
-                log_warn("HLS streaming under high pressure for %s", ctx->config.name);
-                last_pressure_log = now;
-            }
-        } else if (ctx->hls_writer) {
-            // Normal operation - clear the pressure flag
-            ctx->hls_writer->is_under_pressure = 0;
-        }
-        
-        // Process only key frames and a subset of non-key frames to reduce CPU load
-        // This helps prevent contention by processing fewer packets
-        static int frame_counter = 0;
-        bool is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
-        
-        // Always process key frames, but only process every 3rd non-key frame
-        // This reduces processing load while maintaining video quality
-        if (is_key_frame || (++frame_counter % 3 == 0)) {
-            // Write to HLS - we already have a clean copy from stream_reader
-            ret = process_video_packet(pkt, reader_ctx->input_ctx->streams[reader_ctx->video_stream_idx], 
-                                      ctx->hls_writer, 0, ctx->config.name);
-            
-            // Don't log every error to reduce logging overhead
-            if (ret < 0 && is_key_frame) {
-                log_error("Failed to write keyframe to HLS for stream %s: %d", ctx->config.name, ret);
-                // Continue anyway to keep the stream going
-            }
-        }
+        // Sleep to avoid busy waiting
+        av_usleep(100000);  // 100ms
     }
-
-    // Cleanup resources
-    if (pkt) {
-        av_packet_free(&pkt);
-    }
-
-    // Unregister as a consumer
-    if (reader_ctx && ctx->consumer_id > 0) {
-        unregister_stream_consumer(reader_ctx, ctx->consumer_id);
+    
+    // Remove our callback from the reader
+    if (ctx->reader_ctx) {
+        set_packet_callback(ctx->reader_ctx, NULL, NULL);
     }
 
     // When done, close writer
@@ -375,7 +343,6 @@ int start_hls_stream(const char *stream_name) {
     memset(ctx, 0, sizeof(hls_stream_ctx_t));
     memcpy(&ctx->config, &config, sizeof(stream_config_t));
     ctx->running = 1;
-    ctx->consumer_id = 0;  // Will be set in the thread
 
     // Create output paths
     config_t *global_config = get_streaming_config();
