@@ -13,6 +13,12 @@
 // Maximum number of streams supported
 #define MAX_STREAMS 16
 
+// Stream protocol enum
+typedef enum {
+    STREAM_PROTOCOL_TCP = 0,
+    STREAM_PROTOCOL_UDP = 1
+} stream_protocol_t;
+
 // Stream configuration structure
 typedef struct {
     char name[MAX_STREAM_NAME];
@@ -32,6 +38,7 @@ typedef struct {
     int pre_detection_buffer; // Seconds to keep before detection
     int post_detection_buffer; // Seconds to keep after detection
     bool streaming_enabled; // Whether HLS streaming is enabled for this stream
+    stream_protocol_t protocol; // Stream protocol (TCP or UDP)
 } stream_config_t;
 
 // Main configuration structure

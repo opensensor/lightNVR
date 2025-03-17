@@ -268,6 +268,7 @@ function editStream(streamId) {
             document.getElementById('stream-height').value = stream.height || 720;
             document.getElementById('stream-fps').value = stream.fps || 15;
             document.getElementById('stream-codec').value = stream.codec || 'h264';
+            document.getElementById('stream-protocol').value = stream.protocol !== undefined ? stream.protocol : 0; // Default to TCP (0) if not specified
             document.getElementById('stream-priority').value = stream.priority || 5;
             document.getElementById('stream-record').checked = stream.record !== false; // Default to true if not specified
             document.getElementById('stream-segment').value = stream.segment_duration || 900;
@@ -393,6 +394,7 @@ function saveStream() {
         height: parseInt(document.getElementById('stream-height').value, 10),
         fps: parseInt(document.getElementById('stream-fps').value, 10),
         codec: document.getElementById('stream-codec').value,
+        protocol: parseInt(document.getElementById('stream-protocol').value, 10),
         priority: parseInt(document.getElementById('stream-priority').value, 10),
         record: document.getElementById('stream-record').checked,
         segment_duration: parseInt(document.getElementById('stream-segment').value, 10)

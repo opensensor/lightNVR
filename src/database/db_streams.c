@@ -40,7 +40,7 @@ uint64_t add_stream_config(const stream_config_t *stream) {
     
     pthread_mutex_lock(db_mutex);
     
-    // First, check if we need to alter the table to add detection columns
+    // First, check if we need to alter the table to add detection columns and protocol column
     const char *check_column_sql = "PRAGMA table_info(streams);";
     sqlite3_stmt *check_stmt;
     
@@ -52,12 +52,16 @@ uint64_t add_stream_config(const stream_config_t *stream) {
     }
     
     bool has_detection_columns = false;
+    bool has_protocol_column = false;
     while (sqlite3_step(check_stmt) == SQLITE_ROW) {
         const char *column_name = (const char *)sqlite3_column_text(check_stmt, 1);
         if (column_name && strcmp(column_name, "detection_based_recording") == 0) {
             has_detection_columns = true;
             log_info("detection_based_recording column exists in streams table");
-            break;
+        }
+        if (column_name && strcmp(column_name, "protocol") == 0) {
+            has_protocol_column = true;
+            log_info("protocol column exists in streams table");
         }
     }
     
@@ -87,11 +91,25 @@ uint64_t add_stream_config(const stream_config_t *stream) {
         }
     }
     
-    // Now insert the stream with all fields including detection settings
+    // If protocol column doesn't exist, add it
+    if (!has_protocol_column) {
+        log_info("Adding protocol column to streams table");
+        
+        const char *alter_table_sql = "ALTER TABLE streams ADD COLUMN protocol INTEGER DEFAULT 0;";
+        char *err_msg = NULL;
+        rc = sqlite3_exec(db, alter_table_sql, NULL, NULL, &err_msg);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to alter table: %s", err_msg);
+            sqlite3_free(err_msg);
+            // Continue anyway, the column might already exist
+        }
+    }
+    
+    // Now insert the stream with all fields including detection settings and protocol
     const char *sql = "INSERT INTO streams (name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
                       "detection_based_recording, detection_model, detection_threshold, detection_interval, "
-                      "pre_detection_buffer, post_detection_buffer) "
-                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+                      "pre_detection_buffer, post_detection_buffer, protocol) "
+                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
     
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -120,6 +138,9 @@ uint64_t add_stream_config(const stream_config_t *stream) {
     sqlite3_bind_int(stmt, 15, stream->detection_interval);
     sqlite3_bind_int(stmt, 16, stream->pre_detection_buffer);
     sqlite3_bind_int(stmt, 17, stream->post_detection_buffer);
+    
+    // Bind protocol parameter
+    sqlite3_bind_int(stmt, 18, (int)stream->protocol);
     
     // Execute statement
     rc = sqlite3_step(stmt);
@@ -169,7 +190,7 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
     
     pthread_mutex_lock(db_mutex);
     
-    // First, check if we need to alter the table to add detection columns
+    // First, check if we need to alter the table to add detection columns and protocol column
     const char *check_column_sql = "PRAGMA table_info(streams);";
     sqlite3_stmt *check_stmt;
     
@@ -181,11 +202,14 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
     }
     
     bool has_detection_columns = false;
+    bool has_protocol_column = false;
     while (sqlite3_step(check_stmt) == SQLITE_ROW) {
         const char *column_name = (const char *)sqlite3_column_text(check_stmt, 1);
         if (column_name && strcmp(column_name, "detection_based_recording") == 0) {
             has_detection_columns = true;
-            break;
+        }
+        if (column_name && strcmp(column_name, "protocol") == 0) {
+            has_protocol_column = true;
         }
     }
     
@@ -215,12 +239,27 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
         }
     }
     
-    // Now update the stream with all fields including detection settings
+    // If protocol column doesn't exist, add it
+    if (!has_protocol_column) {
+        log_info("Adding protocol column to streams table");
+        
+        const char *alter_table_sql = "ALTER TABLE streams ADD COLUMN protocol INTEGER DEFAULT 0;";
+        char *err_msg = NULL;
+        rc = sqlite3_exec(db, alter_table_sql, NULL, NULL, &err_msg);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to alter table: %s", err_msg);
+            sqlite3_free(err_msg);
+            // Continue anyway, the column might already exist
+        }
+    }
+    
+    // Now update the stream with all fields including detection settings and protocol
     const char *sql = "UPDATE streams SET "
                       "name = ?, url = ?, enabled = ?, streaming_enabled = ?, width = ?, height = ?, "
                       "fps = ?, codec = ?, priority = ?, record = ?, segment_duration = ?, "
                       "detection_based_recording = ?, detection_model = ?, detection_threshold = ?, "
-                      "detection_interval = ?, pre_detection_buffer = ?, post_detection_buffer = ? "
+                      "detection_interval = ?, pre_detection_buffer = ?, post_detection_buffer = ?, "
+                      "protocol = ? "
                       "WHERE name = ?;";
     
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -251,8 +290,11 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
     sqlite3_bind_int(stmt, 16, stream->pre_detection_buffer);
     sqlite3_bind_int(stmt, 17, stream->post_detection_buffer);
     
+    // Bind protocol parameter
+    sqlite3_bind_int(stmt, 18, (int)stream->protocol);
+    
     // Bind the WHERE clause parameter
-    sqlite3_bind_text(stmt, 18, name, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 19, name, -1, SQLITE_STATIC);
     
     // Execute statement
     rc = sqlite3_step(stmt);
@@ -378,9 +420,28 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
     
     sqlite3_finalize(check_stmt);
     
-    // Prepare SQL based on whether detection columns exist
+    // First, check if protocol column exists
+    bool has_protocol_column = false;
+    rc = sqlite3_prepare_v2(db, check_column_sql, -1, &check_stmt, NULL);
+    if (rc == SQLITE_OK) {
+        while (sqlite3_step(check_stmt) == SQLITE_ROW) {
+            const char *column_name = (const char *)sqlite3_column_text(check_stmt, 1);
+            if (column_name && strcmp(column_name, "protocol") == 0) {
+                has_protocol_column = true;
+                break;
+            }
+        }
+        sqlite3_finalize(check_stmt);
+    }
+    
+    // Prepare SQL based on whether detection columns and protocol column exist
     const char *sql;
-    if (has_detection_columns) {
+    if (has_detection_columns && has_protocol_column) {
+        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
+              "detection_based_recording, detection_model, detection_threshold, detection_interval, "
+              "pre_detection_buffer, post_detection_buffer, protocol "
+              "FROM streams WHERE name = ?;";
+    } else if (has_detection_columns) {
         sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
               "detection_based_recording, detection_model, detection_threshold, detection_interval, "
               "pre_detection_buffer, post_detection_buffer "
@@ -465,6 +526,13 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
             if (sqlite3_column_type(stmt, 16) != SQLITE_NULL) {
                 stream->post_detection_buffer = sqlite3_column_int(stmt, 16);
             }
+            
+            // Parse protocol if it exists (column 17)
+            if (has_protocol_column && sqlite3_column_count(stmt) > 17) {
+                if (sqlite3_column_type(stmt, 17) != SQLITE_NULL) {
+                    stream->protocol = (stream_protocol_t)sqlite3_column_int(stmt, 17);
+                }
+            }
         }
         
         result = 0; // Success
@@ -525,9 +593,28 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
     
     sqlite3_finalize(check_stmt);
     
-    // Prepare SQL based on whether detection columns exist
+    // Check if protocol column exists
+    bool has_protocol_column = false;
+    rc = sqlite3_prepare_v2(db, check_column_sql, -1, &check_stmt, NULL);
+    if (rc == SQLITE_OK) {
+        while (sqlite3_step(check_stmt) == SQLITE_ROW) {
+            const char *column_name = (const char *)sqlite3_column_text(check_stmt, 1);
+            if (column_name && strcmp(column_name, "protocol") == 0) {
+                has_protocol_column = true;
+                break;
+            }
+        }
+        sqlite3_finalize(check_stmt);
+    }
+    
+    // Prepare SQL based on whether detection columns and protocol column exist
     const char *sql;
-    if (has_detection_columns) {
+    if (has_detection_columns && has_protocol_column) {
+        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
+              "detection_based_recording, detection_model, detection_threshold, detection_interval, "
+              "pre_detection_buffer, post_detection_buffer, protocol "
+              "FROM streams ORDER BY name;";
+    } else if (has_detection_columns) {
         sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
               "detection_based_recording, detection_model, detection_threshold, detection_interval, "
               "pre_detection_buffer, post_detection_buffer "
@@ -608,6 +695,13 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
             
             if (sqlite3_column_type(stmt, 16) != SQLITE_NULL) {
                 streams[count].post_detection_buffer = sqlite3_column_int(stmt, 16);
+            }
+            
+            // Parse protocol if it exists (column 17)
+            if (has_protocol_column && sqlite3_column_count(stmt) > 17) {
+                if (sqlite3_column_type(stmt, 17) != SQLITE_NULL) {
+                    streams[count].protocol = (stream_protocol_t)sqlite3_column_int(stmt, 17);
+                }
             }
         }
         
