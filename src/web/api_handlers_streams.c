@@ -741,12 +741,14 @@ static char* create_stream_json(const stream_config_t *stream) {
              "\"detection_threshold\": %d,"
              "\"detection_interval\": %d,"
              "\"pre_detection_buffer\": %d,"
-             "\"post_detection_buffer\": %d",
+             "\"post_detection_buffer\": %d,"
+             "\"protocol\": %d",
              stream->detection_model,
              threshold_percent,
              stream->detection_interval,
              stream->pre_detection_buffer,
-             stream->post_detection_buffer);
+             stream->post_detection_buffer,
+             (int)stream->protocol);
     
     // Close the JSON object
     pos += snprintf(json + pos, 2048 - pos, "}");
@@ -1016,6 +1018,14 @@ static int parse_stream_json(const char *json, stream_config_t *stream) {
     
     if (get_json_has_key(json, "post_detection_buffer")) {
         stream->post_detection_buffer = get_json_integer_value(json, "post_detection_buffer", 10);
+    }
+    
+    // Parse protocol (TCP or UDP)
+    if (get_json_has_key(json, "protocol")) {
+        stream->protocol = (stream_protocol_t)get_json_integer_value(json, "protocol", 0);
+        log_info("Stream protocol set to: %s", stream->protocol == STREAM_PROTOCOL_TCP ? "TCP" : "UDP");
+    } else {
+        stream->protocol = STREAM_PROTOCOL_TCP; // Default to TCP
     }
     
     log_info("Stream config parsed: name=%s, enabled=%s, streaming_enabled=%s, detection=%s", 

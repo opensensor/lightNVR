@@ -222,12 +222,33 @@ static void *stream_transcode_thread(void *arg) {
         }
     }
 
-    // Open input
-    ret = avformat_open_input(&input_ctx, ctx->config.url, NULL, NULL);
+    // Set up options based on protocol (TCP or UDP)
+    AVDictionary *input_options = NULL;
+    
+    if (ctx->config.protocol == STREAM_PROTOCOL_UDP) {
+        log_info("Using UDP protocol for stream %s", ctx->config.name);
+        // UDP-specific options
+        av_dict_set(&input_options, "protocol_whitelist", "file,udp,rtp", 0);
+        av_dict_set(&input_options, "buffer_size", "8192000", 0); // Larger buffer for UDP
+        av_dict_set(&input_options, "reuse", "1", 0); // Allow port reuse
+        av_dict_set(&input_options, "timeout", "5000000", 0); // 5 second timeout in microseconds
+    } else {
+        log_info("Using TCP protocol for stream %s", ctx->config.name);
+        // TCP-specific options
+        av_dict_set(&input_options, "stimeout", "5000000", 0); // 5 second timeout in microseconds
+        av_dict_set(&input_options, "rtsp_transport", "tcp", 0); // Force TCP for RTSP
+    }
+    
+    // Open input with protocol-specific options
+    ret = avformat_open_input(&input_ctx, ctx->config.url, NULL, &input_options);
     if (ret < 0) {
         log_ffmpeg_error(ret, "Could not open input stream");
+        av_dict_free(&input_options);
         goto cleanup;
     }
+    
+    // Free options
+    av_dict_free(&input_options);
 
     // Get stream info
     ret = avformat_find_stream_info(input_ctx, NULL);
@@ -328,9 +349,29 @@ static void *stream_transcode_thread(void *arg) {
 
                 av_usleep(2000000);  // 2 second delay
 
-                // Close and reopen input
+                // Close and reopen input with protocol-specific options
                 avformat_close_input(&input_ctx);
-                ret = avformat_open_input(&input_ctx, ctx->config.url, NULL, NULL);
+                
+                // Set up options based on protocol (TCP or UDP) for reconnection
+                AVDictionary *reconnect_options = NULL;
+                
+                if (ctx->config.protocol == STREAM_PROTOCOL_UDP) {
+                    log_info("Reconnecting using UDP protocol for stream %s", ctx->config.name);
+                    // UDP-specific options
+                    av_dict_set(&reconnect_options, "protocol_whitelist", "file,udp,rtp", 0);
+                    av_dict_set(&reconnect_options, "buffer_size", "8192000", 0); // Larger buffer for UDP
+                    av_dict_set(&reconnect_options, "reuse", "1", 0); // Allow port reuse
+                    av_dict_set(&reconnect_options, "timeout", "5000000", 0); // 5 second timeout in microseconds
+                } else {
+                    log_info("Reconnecting using TCP protocol for stream %s", ctx->config.name);
+                    // TCP-specific options
+                    av_dict_set(&reconnect_options, "stimeout", "5000000", 0); // 5 second timeout in microseconds
+                    av_dict_set(&reconnect_options, "rtsp_transport", "tcp", 0); // Force TCP for RTSP
+                }
+                
+                ret = avformat_open_input(&input_ctx, ctx->config.url, NULL, &reconnect_options);
+                av_dict_free(&reconnect_options);
+                
                 if (ret < 0) {
                     log_ffmpeg_error(ret, "Could not reconnect to input stream");
                     continue;  // Keep trying
