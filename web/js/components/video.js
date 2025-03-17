@@ -25,34 +25,39 @@ function enableAllStreams() {
             }
             
             // Process each stream based on its streaming_enabled state
-            streams.forEach(stream => {
-                const streamId = stream.id || stream.name;
-                const isEnabled = stream.streaming_enabled !== false; // Default to true if not specified
-                
-                console.log(`Stream ${streamId} streaming_enabled state: ${isEnabled}`);
-                
-                // Only toggle if needed (if the current state doesn't match what we want)
-                // This only affects the streaming_enabled flag, not the enabled flag
-                fetch(`/api/streams/${encodeURIComponent(streamId)}/toggle_streaming`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ enabled: isEnabled })
-                })
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('Failed to set stream state');
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    console.log(`Stream ${streamId} state set successfully:`, data);
-                })
-                .catch(error => {
-                    console.error(`Error setting stream ${streamId} state:`, error);
+            // Use sequential processing with promises to avoid overwhelming the server
+            return streams.reduce((promise, stream) => {
+                return promise.then(() => {
+                    const streamId = stream.id || stream.name;
+                    const isEnabled = stream.streaming_enabled !== false; // Default to true if not specified
+                    
+                    console.log(`Stream ${streamId} streaming_enabled state: ${isEnabled}`);
+                    
+                    // Only toggle if needed (if the current state doesn't match what we want)
+                    // This only affects the streaming_enabled flag, not the enabled flag
+                    return fetch(`/api/streams/${encodeURIComponent(streamId)}/toggle_streaming`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ enabled: isEnabled })
+                    })
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Failed to set stream state');
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log(`Stream ${streamId} state set successfully:`, data);
+                        // Add a small delay between stream activations to prevent resource contention
+                        return new Promise(resolve => setTimeout(resolve, 500));
+                    })
+                    .catch(error => {
+                        console.error(`Error setting stream ${streamId} state:`, error);
+                    });
                 });
-            });
+            }, Promise.resolve());
         })
         .catch(error => {
             console.error('Error loading streams for live view:', error);
@@ -79,32 +84,36 @@ function stopAllStreams() {
                 return;
             }
             
-            // Stop each stream
-            streams.forEach(stream => {
-                const streamId = stream.id || stream.name;
-                console.log(`Stopping stream ${streamId}`);
-                
-                // Send toggle request to API to disable streaming (only affects streaming, not the enabled state)
-                fetch(`/api/streams/${encodeURIComponent(streamId)}/toggle_streaming`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ enabled: false })
-                })
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('Failed to stop stream');
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    console.log(`Stream ${streamId} stopped successfully:`, data);
-                })
-                .catch(error => {
-                    console.error(`Error stopping stream ${streamId}:`, error);
+            // Stop each stream sequentially to avoid race conditions
+            return streams.reduce((promise, stream) => {
+                return promise.then(() => {
+                    const streamId = stream.id || stream.name;
+                    console.log(`Stopping stream ${streamId}`);
+                    
+                    // Send toggle request to API to disable streaming (only affects streaming, not the enabled state)
+                    return fetch(`/api/streams/${encodeURIComponent(streamId)}/toggle_streaming`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ enabled: false })
+                    })
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Failed to stop stream');
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log(`Stream ${streamId} stopped successfully:`, data);
+                        // Add a small delay between stream deactivations
+                        return new Promise(resolve => setTimeout(resolve, 200));
+                    })
+                    .catch(error => {
+                        console.error(`Error stopping stream ${streamId}:`, error);
+                    });
                 });
-            });
+            }, Promise.resolve());
         })
         .catch(error => {
             console.error('Error loading streams to stop:', error);
@@ -760,10 +769,6 @@ function startDetectionPolling(streamName, canvasOverlay, videoElement) {
             offsetX = (canvas.width - drawWidth) / 2;
         }
         
-        // Log dimensions for debugging
-        console.log(`Canvas: ${canvas.width}x${canvas.height}, Video: ${videoWidth}x${videoHeight}`);
-        console.log(`Draw area: ${drawWidth}x${drawHeight} with offset (${offsetX}, ${offsetY})`);
-        
         // Draw each detection
         detections.forEach(detection => {
             // Calculate pixel coordinates based on normalized values (0-1)
@@ -791,33 +796,32 @@ function startDetectionPolling(streamName, canvasOverlay, videoElement) {
         });
     }
     
-    // Poll for detection results every 500ms
+    // Use a more conservative polling interval (1000ms instead of 500ms)
+    // and implement exponential backoff on errors
+    let errorCount = 0;
+    let currentInterval = 1000; // Start with 1 second
+    
+    // Poll for detection results
     canvasOverlay.detectionInterval = setInterval(() => {
         if (!videoElement.videoWidth) {
             // Video not loaded yet, skip this cycle
             return;
         }
         
-        // Log the API call we're about to make
-        console.log(`Fetching detection results for stream ${streamName}`);
-        
         // Fetch detection results from API
         fetch(`/api/detection/results/${encodeURIComponent(streamName)}`)
             .then(response => {
-                console.log(`Detection API response status for ${streamName}:`, response.status);
                 if (!response.ok) {
                     throw new Error(`Failed to fetch detection results: ${response.status}`);
                 }
+                // Reset error count on success
+                errorCount = 0;
                 return response.json();
             })
             .then(data => {
-                console.log(`Detection results for ${streamName}:`, data);
                 // Draw bounding boxes if we have detections
                 if (data && data.detections) {
-                    console.log(`Drawing ${data.detections.length} detection boxes for ${streamName}`);
                     drawDetectionBoxes(data.detections);
-                } else {
-                    console.log(`No detections found for ${streamName}`);
                 }
             })
             .catch(error => {
@@ -825,8 +829,19 @@ function startDetectionPolling(streamName, canvasOverlay, videoElement) {
                 // Clear canvas on error
                 const ctx = canvasOverlay.getContext('2d');
                 ctx.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height);
+                
+                // Implement backoff strategy on errors
+                errorCount++;
+                if (errorCount > 3) {
+                    // After 3 consecutive errors, slow down polling to avoid overwhelming the server
+                    clearInterval(canvasOverlay.detectionInterval);
+                    currentInterval = Math.min(5000, currentInterval * 2); // Max 5 seconds
+                    console.log(`Reducing detection polling frequency to ${currentInterval}ms due to errors`);
+                    
+                    canvasOverlay.detectionInterval = setInterval(arguments.callee, currentInterval);
+                }
             });
-    }, 500);
+    }, currentInterval);
 }
 
 /**

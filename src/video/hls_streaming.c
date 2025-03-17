@@ -170,61 +170,22 @@ static void *hls_stream_thread(void *arg) {
         return NULL;
     }
 
-    // Check if a detection stream reader is already running for this stream
-    int detection_running = is_detection_stream_reader_running(ctx->config.name);
-    if (detection_running == 1) {
-        log_info("Detection stream reader already running for %s, will use shared stream reader", ctx->config.name);
+    // Always use a dedicated stream reader for HLS streaming
+    // This ensures that HLS streaming doesn't interfere with detection or recording
+    log_info("Starting new dedicated stream reader for HLS stream %s", ctx->config.name);
+    reader_ctx = start_stream_reader(ctx->config.name, 1, NULL, NULL); // 1 for dedicated stream reader
+    if (!reader_ctx) {
+        log_error("Failed to start dedicated stream reader for %s", ctx->config.name);
         
-        // Get the existing stream reader (which should be the detection reader)
-        reader_ctx = get_stream_reader(ctx->config.name);
-        if (!reader_ctx) {
-            log_error("Failed to get existing stream reader for %s despite detection running", ctx->config.name);
-            
-            // Fall back to creating a new reader
-            log_info("Falling back to creating a new shared stream reader for HLS stream %s", ctx->config.name);
-            reader_ctx = start_stream_reader(ctx->config.name, 0, NULL, NULL); // 0 for shared stream reader
-            if (!reader_ctx) {
-                log_error("Failed to start shared stream reader for %s", ctx->config.name);
-                
-                if (ctx->hls_writer) {
-                    hls_writer_close(ctx->hls_writer);
-                    ctx->hls_writer = NULL;
-                }
-                
-                ctx->running = 0;
-                return NULL;
-            }
-        } else {
-            log_info("Successfully got existing stream reader for HLS stream %s", ctx->config.name);
+        if (ctx->hls_writer) {
+            hls_writer_close(ctx->hls_writer);
+            ctx->hls_writer = NULL;
         }
-    } else {
-        // No detection stream reader running, get or start a dedicated stream reader for HLS
-        reader_ctx = get_stream_reader(ctx->config.name);
-        if (!reader_ctx) {
-            // Start a new dedicated stream reader without setting the callback yet
-            log_info("Starting new dedicated stream reader for HLS stream %s", ctx->config.name);
-            reader_ctx = start_stream_reader(ctx->config.name, 1, NULL, NULL); // 1 for dedicated stream reader
-            if (!reader_ctx) {
-                log_error("Failed to start dedicated stream reader for %s", ctx->config.name);
-                
-                if (ctx->hls_writer) {
-                    hls_writer_close(ctx->hls_writer);
-                    ctx->hls_writer = NULL;
-                }
-                
-                ctx->running = 0;
-                return NULL;
-            }
-            log_info("Successfully started new dedicated stream reader for HLS stream %s", ctx->config.name);
-        } else {
-            log_info("Using existing stream reader for HLS stream %s", ctx->config.name);
-            
-            // Check if this is a dedicated reader
-            if (!reader_ctx->dedicated) {
-                log_warn("Existing stream reader for %s is not dedicated, this may cause issues", ctx->config.name);
-            }
-        }
+        
+        ctx->running = 0;
+        return NULL;
     }
+    log_info("Successfully started new dedicated stream reader for HLS stream %s", ctx->config.name);
     
     // Store the reader context first
     ctx->reader_ctx = reader_ctx;
@@ -256,9 +217,11 @@ static void *hls_stream_thread(void *arg) {
         av_usleep(50000);  // 50ms
     }
     
-    // Remove our callback from the reader
+    // Remove our callback from the reader but don't stop it here
+    // Let the cleanup function handle stopping the stream reader to avoid double-free
     if (ctx->reader_ctx) {
         set_packet_callback(ctx->reader_ctx, NULL, NULL);
+        log_info("Cleared packet callback for HLS stream %s on thread exit", ctx->config.name);
     }
 
     // When done, close writer
@@ -334,6 +297,14 @@ void cleanup_hls_streaming_backend(void) {
                     if (streaming_contexts[j]->hls_writer) {
                         hls_writer_close(streaming_contexts[j]->hls_writer);
                         streaming_contexts[j]->hls_writer = NULL;
+                    }
+                    
+                    // Stop the dedicated stream reader if it exists
+                    if (streaming_contexts[j]->reader_ctx) {
+                        log_info("Stopping dedicated stream reader for HLS stream %s during cleanup", stream_name);
+                        stop_stream_reader(streaming_contexts[j]->reader_ctx);
+                        streaming_contexts[j]->reader_ctx = NULL;
+                        log_info("Successfully stopped dedicated stream reader for HLS stream %s during cleanup", stream_name);
                     }
                     
                     // Free the context
@@ -530,6 +501,14 @@ int stop_hls_stream(const char *stream_name) {
             log_info("Closing HLS writer for stream %s", stream_name);
             hls_writer_close(ctx->hls_writer);
             ctx->hls_writer = NULL;
+        }
+        
+        // Stop the dedicated stream reader if it exists
+        if (ctx->reader_ctx) {
+            log_info("Stopping dedicated stream reader for HLS stream %s", stream_name);
+            stop_stream_reader(ctx->reader_ctx);
+            ctx->reader_ctx = NULL;
+            log_info("Successfully stopped dedicated stream reader for HLS stream %s", stream_name);
         }
 
         // Free context and clear slot
