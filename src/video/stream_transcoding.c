@@ -36,16 +36,32 @@ void log_ffmpeg_error(int err, const char *message) {
 }
 
 /**
+ * Thread data structure for join helper
+ */
+typedef struct {
+    pthread_t thread;
+    void **retval;
+    int result;
+    pthread_mutex_t mutex;
+    pthread_cond_t cond;
+    int done;
+} join_helper_data_t;
+
+/**
  * Helper thread function for pthread_join_with_timeout
  */
 static void *join_helper(void *arg) {
-    struct {
-        pthread_t thread;
-        void **retval;
-        int *result;
-    } *data = arg;
-
-    *(data->result) = pthread_join(data->thread, data->retval);
+    join_helper_data_t *data = (join_helper_data_t *)arg;
+    
+    // Join the target thread
+    data->result = pthread_join(data->thread, data->retval);
+    
+    // Signal completion
+    pthread_mutex_lock(&data->mutex);
+    data->done = 1;
+    pthread_cond_signal(&data->cond);
+    pthread_mutex_unlock(&data->mutex);
+    
     return NULL;
 }
 
@@ -53,53 +69,64 @@ static void *join_helper(void *arg) {
  * Join a thread with timeout
  */
 int pthread_join_with_timeout(pthread_t thread, void **retval, int timeout_sec) {
-    // Simple approach: use a second thread to join
+    int ret = 0;
     pthread_t timeout_thread;
-    int *result = malloc(sizeof(int));
-    *result = -1;
-
-    // Structure to pass data to helper thread
-    struct {
-        pthread_t thread;
-        void **retval;
-        int *result;
-    } join_data = {thread, retval, result};
-
+    
+    // Initialize helper data on the stack to avoid memory leaks
+    join_helper_data_t data = {
+        .thread = thread,
+        .retval = retval,
+        .result = -1,
+        .done = 0
+    };
+    
+    // Initialize mutex and condition variable
+    pthread_mutex_init(&data.mutex, NULL);
+    pthread_cond_init(&data.cond, NULL);
+    
     // Create helper thread to join the target thread
-    if (pthread_create(&timeout_thread, NULL, join_helper, &join_data) != 0) {
-        free(result);
+    if (pthread_create(&timeout_thread, NULL, join_helper, &data) != 0) {
+        pthread_mutex_destroy(&data.mutex);
+        pthread_cond_destroy(&data.cond);
         return EAGAIN;
     }
-
-    // Wait for timeout
+    
+    // Wait for the helper thread to complete or timeout
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
     ts.tv_sec += timeout_sec;
-
-    // Not glibc - use sleep and check
-    while (1) {
-        // Check if thread has completed
-        if (pthread_kill(timeout_thread, 0) != 0) {
-            break;
-        }
-
-        struct timespec now;
-        clock_gettime(CLOCK_REALTIME, &now);
-        if (now.tv_sec >= ts.tv_sec &&
-            (now.tv_nsec >= ts.tv_nsec || now.tv_sec > ts.tv_sec)) {
+    
+    pthread_mutex_lock(&data.mutex);
+    while (!data.done) {
+        ret = pthread_cond_timedwait(&data.cond, &data.mutex, &ts);
+        if (ret == ETIMEDOUT) {
+            // Timeout occurred
+            pthread_mutex_unlock(&data.mutex);
+            
+            // Cancel the helper thread
             pthread_cancel(timeout_thread);
             pthread_join(timeout_thread, NULL);
-            free(result);
+            
+            // Clean up resources
+            pthread_mutex_destroy(&data.mutex);
+            pthread_cond_destroy(&data.cond);
+            
             return ETIMEDOUT;
         }
-
-        usleep(10000); // Sleep 10ms and try again (reduced from 50ms for more responsive handling)
     }
-
+    pthread_mutex_unlock(&data.mutex);
+    
+    // Join the helper thread to clean up
+    pthread_join(timeout_thread, NULL);
+    
     // Get the join result
-    int join_result = *result;
-    free(result);
-    return join_result;
+    ret = data.result;
+    
+    // Clean up resources
+    pthread_mutex_destroy(&data.mutex);
+    pthread_cond_destroy(&data.cond);
+    
+    return ret;
 }
 
 /**

@@ -249,37 +249,58 @@ void cleanup_hls_streaming_backend(void) {
             log_info("Stopping HLS stream in slot %d: %s", i,
                     streaming_contexts[i]->config.name);
 
-            // Copy the stream name for later use
+            // Copy the stream name and thread for later use
             char stream_name[MAX_STREAM_NAME];
             strncpy(stream_name, streaming_contexts[i]->config.name,
                     MAX_STREAM_NAME - 1);
             stream_name[MAX_STREAM_NAME - 1] = '\0';
+            
+            pthread_t thread_to_join = streaming_contexts[i]->thread;
 
             // Mark as not running
             streaming_contexts[i]->running = 0;
+            
+            // Remove callback from reader if it exists
+            if (streaming_contexts[i]->reader_ctx) {
+                set_packet_callback(streaming_contexts[i]->reader_ctx, NULL, NULL);
+            }
 
-            // Attempt to join the thread with a timeout
-            pthread_t thread = streaming_contexts[i]->thread;
+            // Unlock before joining thread to prevent deadlocks
             pthread_mutex_unlock(&contexts_mutex);
 
             // Try to join with a timeout
-            if (pthread_join_with_timeout(thread, NULL, 2) != 0) {
-                log_warn("Could not join thread for stream %s within timeout",
-                        stream_name);
+            log_info("Waiting for HLS streaming thread for %s to exit", stream_name);
+            int join_result = pthread_join_with_timeout(thread_to_join, NULL, 3);
+            if (join_result != 0) {
+                log_warn("Could not join thread for stream %s within timeout: %s",
+                        stream_name, strerror(join_result));
+            } else {
+                log_info("Successfully joined HLS streaming thread for %s", stream_name);
             }
 
+            // Re-lock for cleanup
             pthread_mutex_lock(&contexts_mutex);
 
-            // Clean up resources
-            if (streaming_contexts[i] && streaming_contexts[i]->hls_writer) {
-                hls_writer_close(streaming_contexts[i]->hls_writer);
-                streaming_contexts[i]->hls_writer = NULL;
+            // Check if the context is still valid
+            int found = 0;
+            for (int j = 0; j < MAX_STREAMS; j++) {
+                if (streaming_contexts[j] && strcmp(streaming_contexts[j]->config.name, stream_name) == 0) {
+                    // Clean up resources
+                    if (streaming_contexts[j]->hls_writer) {
+                        hls_writer_close(streaming_contexts[j]->hls_writer);
+                        streaming_contexts[j]->hls_writer = NULL;
+                    }
+                    
+                    // Free the context
+                    free(streaming_contexts[j]);
+                    streaming_contexts[j] = NULL;
+                    found = 1;
+                    break;
+                }
             }
-
-            // Free the context
-            if (streaming_contexts[i]) {
-                free(streaming_contexts[i]);
-                streaming_contexts[i] = NULL;
+            
+            if (!found) {
+                log_warn("HLS streaming context for %s was already cleaned up", stream_name);
             }
         }
     }

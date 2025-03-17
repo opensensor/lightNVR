@@ -205,31 +205,56 @@ void cleanup_stream_reader_backend(void) {
             log_info("Stopping stream reader in slot %d: %s", i,
                     reader_contexts[i]->config.name);
             
-            // Copy the stream name for later use
+            // Copy the stream name and thread for later use
             char stream_name[MAX_STREAM_NAME];
             strncpy(stream_name, reader_contexts[i]->config.name,
                     MAX_STREAM_NAME - 1);
             stream_name[MAX_STREAM_NAME - 1] = '\0';
             
+            pthread_t thread_to_join = reader_contexts[i]->thread;
+            
             // Mark as not running
             reader_contexts[i]->running = 0;
             
-            // Attempt to join the thread with a timeout
-            pthread_t thread = reader_contexts[i]->thread;
+            // Clear the callback to prevent any further processing
+            reader_contexts[i]->packet_callback = NULL;
+            reader_contexts[i]->callback_data = NULL;
+            
+            // Unlock before joining thread to prevent deadlocks
             pthread_mutex_unlock(&contexts_mutex);
             
             // Try to join with a timeout
-            if (pthread_join_with_timeout(thread, NULL, 2) != 0) {
-                log_warn("Could not join thread for stream %s within timeout",
-                        stream_name);
+            log_info("Waiting for stream reader thread for %s to exit", stream_name);
+            int join_result = pthread_join_with_timeout(thread_to_join, NULL, 3);
+            if (join_result != 0) {
+                log_warn("Could not join stream reader thread for %s within timeout: %s",
+                        stream_name, strerror(join_result));
+            } else {
+                log_info("Successfully joined stream reader thread for %s", stream_name);
             }
             
+            // Re-lock for cleanup
             pthread_mutex_lock(&contexts_mutex);
             
-            // Clean up resources
-            if (reader_contexts[i]) {
-                free(reader_contexts[i]);
-                reader_contexts[i] = NULL;
+            // Check if the context is still valid
+            int found = 0;
+            for (int j = 0; j < MAX_STREAMS; j++) {
+                if (reader_contexts[j] && strcmp(reader_contexts[j]->config.name, stream_name) == 0) {
+                    // Close input context if it exists
+                    if (reader_contexts[j]->input_ctx) {
+                        avformat_close_input(&reader_contexts[j]->input_ctx);
+                    }
+                    
+                    // Free context
+                    free(reader_contexts[j]);
+                    reader_contexts[j] = NULL;
+                    found = 1;
+                    break;
+                }
+            }
+            
+            if (!found) {
+                log_warn("Stream reader context for %s was already cleaned up", stream_name);
             }
         }
     }
@@ -396,9 +421,12 @@ int set_packet_callback(stream_reader_ctx_t *ctx, packet_callback_t callback, vo
         return -1;
     }
     
+    // Allow NULL callback for clearing during shutdown
     if (!callback) {
-        log_error("Cannot set NULL callback");
-        return -1;
+        log_info("Clearing packet callback for stream %s", ctx->config.name);
+        ctx->packet_callback = NULL;
+        ctx->callback_data = NULL;
+        return 0;
     }
     
     ctx->packet_callback = callback;
@@ -441,4 +469,19 @@ stream_reader_ctx_t *get_stream_reader(const char *stream_name) {
     // No existing reader found
     pthread_mutex_unlock(&contexts_mutex);
     return NULL;
+}
+
+/**
+ * Get stream reader by index
+ */
+stream_reader_ctx_t *get_stream_reader_by_index(int index) {
+    if (index < 0 || index >= MAX_STREAMS) {
+        return NULL;
+    }
+    
+    pthread_mutex_lock(&contexts_mutex);
+    stream_reader_ctx_t *reader = reader_contexts[index];
+    pthread_mutex_unlock(&contexts_mutex);
+    
+    return reader;
 }

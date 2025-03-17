@@ -305,17 +305,49 @@ void cleanup_mp4_recording_backend(void) {
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (recording_contexts[i]) {
             recording_contexts[i]->running = 0;
+            
+            // Copy thread ID for joining outside the lock
+            pthread_t thread_to_join = recording_contexts[i]->thread;
+            char stream_name[MAX_STREAM_NAME];
+            strncpy(stream_name, recording_contexts[i]->config.name, MAX_STREAM_NAME - 1);
+            stream_name[MAX_STREAM_NAME - 1] = '\0';
+            
+            pthread_mutex_unlock(&contexts_mutex);
+            
+            // Join thread with timeout
+            log_info("Waiting for MP4 recording thread for %s to exit", stream_name);
+            int join_result = pthread_join_with_timeout(thread_to_join, NULL, 3);
+            if (join_result != 0) {
+                log_warn("Could not join MP4 recording thread for %s within timeout: %s", 
+                        stream_name, strerror(join_result));
+            } else {
+                log_info("Successfully joined MP4 recording thread for %s", stream_name);
+            }
+            
+            pthread_mutex_lock(&contexts_mutex);
+            
+            // Check if the context is still valid
+            int found = 0;
+            for (int j = 0; j < MAX_STREAMS; j++) {
+                if (recording_contexts[j] && strcmp(recording_contexts[j]->config.name, stream_name) == 0) {
+                    // Clean up resources
+                    if (recording_contexts[j]->mp4_writer) {
+                        mp4_writer_close(recording_contexts[j]->mp4_writer);
+                        recording_contexts[j]->mp4_writer = NULL;
+                    }
+                    
+                    // Free context
+                    free(recording_contexts[j]);
+                    recording_contexts[j] = NULL;
+                    found = 1;
+                    break;
+                }
+            }
+            
+            if (!found) {
+                log_warn("MP4 recording context for %s was already cleaned up", stream_name);
+            }
         }
-    }
-    pthread_mutex_unlock(&contexts_mutex);
-
-    // Give threads time to exit cleanly
-    usleep(50000);  // 50ms
-
-    // Now try to join threads
-    pthread_mutex_lock(&contexts_mutex);
-    for (int i = 0; i < MAX_STREAMS; i++) {
-        // Join code
     }
     pthread_mutex_unlock(&contexts_mutex);
 

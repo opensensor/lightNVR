@@ -72,4 +72,12 @@ int set_packet_callback(stream_reader_ctx_t *ctx, packet_callback_t callback, vo
  */
 stream_reader_ctx_t *get_stream_reader(const char *stream_name);
 
+/**
+ * Get stream reader by index
+ * 
+ * @param index Index of the stream reader in the array
+ * @return Stream reader context or NULL if not found
+ */
+stream_reader_ctx_t *get_stream_reader_by_index(int index);
+
 #endif /* STREAM_READER_H */

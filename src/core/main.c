@@ -439,13 +439,18 @@ int main(int argc, char *argv[]) {
 cleanup:
     log_info("Starting cleanup process...");
     
+    // Block signals during cleanup to prevent interruptions
+    sigset_t block_mask, old_mask;
+    sigfillset(&block_mask);
+    pthread_sigmask(SIG_BLOCK, &block_mask, &old_mask);
+    
     // Set up a watchdog timer to force exit if cleanup takes too long
     pid_t cleanup_pid = fork();
     
     if (cleanup_pid == 0) {
         // Child process - watchdog timer
-        sleep(30);  // Wait 30 seconds
-        log_error("Cleanup process timed out after 30 seconds, forcing exit");
+        sleep(60);  // Wait 60 seconds (increased from 30)
+        log_error("Cleanup process timed out after 60 seconds, forcing exit");
         kill(getppid(), SIGKILL);  // Force kill the parent process
         exit(EXIT_FAILURE);
     } else if (cleanup_pid > 0) {
@@ -453,9 +458,43 @@ cleanup:
         
         // First stop all streams to ensure proper finalization of recordings
         log_info("Stopping all active streams...");
+        
+        // First, clear all packet callbacks to prevent further processing
+        log_info("Clearing all packet callbacks...");
+        for (int i = 0; i < MAX_STREAMS; i++) {
+            stream_reader_ctx_t *reader = get_stream_reader_by_index(i);
+            if (reader) {
+                set_packet_callback(reader, NULL, NULL);
+            }
+        }
+        
+        // Wait a moment for callbacks to clear
+        usleep(100000);  // 100ms
+        
+        // Stop all streams to ensure clean shutdown
+        for (int i = 0; i < config.max_streams; i++) {
+            if (config.streams[i].name[0] != '\0') {
+                stream_handle_t stream = get_stream_by_name(config.streams[i].name);
+                if (stream) {
+                    log_info("Stopping stream: %s", config.streams[i].name);
+                    stop_stream(stream);
+                }
+            }
+        }
+        
+        // Wait a moment for streams to stop
+        usleep(500000);  // 500ms
+        
+        // Clean up stream reader backend first to stop all packet processing
+        log_info("Cleaning up stream reader backend...");
+        cleanup_stream_reader_backend();
+        
+        // Now clean up the backends
+        log_info("Cleaning up HLS streaming backend...");
         cleanup_hls_streaming_backend();  // Cleanup HLS streaming
+        
+        log_info("Cleaning up MP4 recording backend...");
         cleanup_mp4_recording_backend();  // Cleanup MP4 recording
-        cleanup_transcoding_backend();    // Cleanup FFmpeg resources
         
         // Finalize all MP4 recordings
         log_info("Finalizing all MP4 recordings...");
@@ -465,28 +504,65 @@ cleanup:
         log_info("Cleaning up HLS directories...");
         cleanup_hls_directories();
         
+        // Clean up FFmpeg resources
+        log_info("Cleaning up transcoding backend...");
+        cleanup_transcoding_backend();
+        
         // Now shut down other components
+        log_info("Shutting down web server...");
         shutdown_web_server();
+        
+        log_info("Shutting down stream manager...");
         shutdown_stream_manager();
+        
+        log_info("Shutting down storage manager...");
         shutdown_storage_manager();
+        
+        log_info("Shutting down database...");
         shutdown_database();
         
         // Kill the watchdog timer since we completed successfully
         kill(cleanup_pid, SIGKILL);
         waitpid(cleanup_pid, NULL, 0);
+        
+        // Restore signal mask
+        pthread_sigmask(SIG_SETMASK, &old_mask, NULL);
     } else {
         // Fork failed
         log_error("Failed to create watchdog process for cleanup timeout");
         // Continue with cleanup anyway
+        
+        // Clear all packet callbacks
+        for (int i = 0; i < MAX_STREAMS; i++) {
+            stream_reader_ctx_t *reader = get_stream_reader_by_index(i);
+            if (reader) {
+                set_packet_callback(reader, NULL, NULL);
+            }
+        }
+        
+        // Stop all streams first
+        for (int i = 0; i < config.max_streams; i++) {
+            if (config.streams[i].name[0] != '\0') {
+                stream_handle_t stream = get_stream_by_name(config.streams[i].name);
+                if (stream) {
+                    stop_stream(stream);
+                }
+            }
+        }
+        
+        cleanup_stream_reader_backend();
         cleanup_hls_streaming_backend();
         cleanup_mp4_recording_backend();
-        cleanup_transcoding_backend();
         close_all_mp4_writers();
         cleanup_hls_directories();
+        cleanup_transcoding_backend();
         shutdown_web_server();
         shutdown_stream_manager();
         shutdown_storage_manager();
         shutdown_database();
+        
+        // Restore signal mask
+        pthread_sigmask(SIG_SETMASK, &old_mask, NULL);
     }
 
     // Handle PID file cleanup based on mode
