@@ -44,8 +44,9 @@ static void *detection_thread_func(void *arg) {
                             // Receive frame from decoder
                             if (avcodec_receive_frame(codec_ctx, frame) >= 0) {
                                 // Process the decoded frame for detection
-                                // Use a larger detection interval (30) to reduce processing load
-                                int detection_interval = 30;
+                                // Use a smaller detection interval (15) to improve detection quality
+                                // while still maintaining reasonable performance
+                                int detection_interval = 15;
                                 process_decoded_frame_for_detection(data->stream_name, frame, detection_interval);
                             }
                         }
@@ -548,11 +549,11 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
     static int detection_in_progress = 0;
     time_t current_time = time(NULL);
     
-    // Only process for detection every 2 seconds to reduce CPU load
-    // This is a significant optimization for embedded devices
+    // Process for detection more frequently (every 1 second instead of 2) to improve detection quality
+    // while still maintaining reasonable performance
     if (pkt->stream_index == 0 && 
         input_stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO && 
-        (current_time - last_detection_time >= 2)) {
+        (current_time - last_detection_time >= 1)) {
         
         // Update last detection time
         last_detection_time = current_time;

@@ -40,6 +40,7 @@ static void *mp4_recording_thread(void *arg);
 
 /**
  * MP4 packet processing callback function
+ * Removed adaptive degrading to improve quality
  */
 static int mp4_packet_callback(const AVPacket *pkt, const AVStream *stream, void *user_data) {
     mp4_recording_ctx_t *recording_ctx = (mp4_recording_ctx_t *)user_data;
@@ -56,59 +57,16 @@ static int mp4_packet_callback(const AVPacket *pkt, const AVStream *stream, void
                  (long long)pkt->pts, (long long)pkt->dts, pkt->size);
     }
     
-    // Check system load and set pressure flag if needed
-    // Simple heuristic: if packet queue is growing too large, we're under pressure
-    if (recording_ctx->mp4_writer->output_ctx && 
-        recording_ctx->mp4_writer->output_ctx->pb && 
-        recording_ctx->mp4_writer->output_ctx->pb->buf_ptr - recording_ctx->mp4_writer->output_ctx->pb->buffer > 1024*1024) {
-        // Buffer is getting large, set under pressure flag
-        recording_ctx->mp4_writer->is_under_pressure = 1;
-        log_debug("MP4 writer for %s is under pressure", recording_ctx->config.name);
-    } else {
-        // Buffer is manageable, clear pressure flag
-        recording_ctx->mp4_writer->is_under_pressure = 0;
-    }
+    // Always set pressure flag to 0 to ensure we never drop frames
+    recording_ctx->mp4_writer->is_under_pressure = 0;
     
-    // Process the packet with improved handling
-    // Check if we're under pressure and need to reduce recording quality
-    if (recording_ctx->mp4_writer->is_under_pressure) {
-        // Under pressure - be more selective about which frames to record
-        
-        // Always process key frames
-        if (is_key_frame) {
-            int ret = process_video_packet(pkt, stream, recording_ctx->mp4_writer, 1, recording_ctx->config.name);
-            
-            if (ret < 0) {
-                log_error("Failed to write keyframe to MP4 for stream %s: %d", recording_ctx->config.name, ret);
-                return ret;
-            }
-        } else {
-            // For non-key frames, use a dynamic frame dropping strategy
-            // based on the current pressure level
-            // Use per-stream counter instead of static
-            recording_ctx->frame_counter++;
-            
-            // Skip more frames when under pressure (every 2nd frame)
-            if (recording_ctx->frame_counter % 2 == 0) {
-                int ret = process_video_packet(pkt, stream, recording_ctx->mp4_writer, 1, recording_ctx->config.name);
-                
-                // Only log errors occasionally to reduce log spam
-                if (ret < 0 && recording_ctx->frame_counter % 100 == 0) {
-                    log_warn("Failed to write frame to MP4 for stream %s: %d", recording_ctx->config.name, ret);
-                    return ret;
-                }
-            }
-            // Otherwise skip this frame to reduce file size
-        }
-    } else {
-        // Normal operation - process all frames
-        int ret = process_video_packet(pkt, stream, recording_ctx->mp4_writer, 1, recording_ctx->config.name);
-        
-        // Only log errors for key frames to reduce log spam
-        if (ret < 0 && is_key_frame) {
-            log_error("Failed to write keyframe to MP4 for stream %s: %d", recording_ctx->config.name, ret);
-            return ret;
-        }
+    // Process all frames for better quality
+    int ret = process_video_packet(pkt, stream, recording_ctx->mp4_writer, 1, recording_ctx->config.name);
+    
+    // Only log errors for key frames to reduce log spam
+    if (ret < 0 && is_key_frame) {
+        log_error("Failed to write keyframe to MP4 for stream %s: %d", recording_ctx->config.name, ret);
+        return ret;
     }
     
     return 0;

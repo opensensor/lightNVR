@@ -93,7 +93,7 @@ int pthread_join_with_timeout(pthread_t thread, void **retval, int timeout_sec) 
             return ETIMEDOUT;
         }
 
-        usleep(50000); // Sleep 50ms and try again (reduced from 100ms)
+        usleep(10000); // Sleep 10ms and try again (reduced from 50ms for more responsive handling)
     }
 
     // Get the join result
@@ -172,6 +172,7 @@ int find_video_stream_index(AVFormatContext *input_ctx) {
 /**
  * Process a video packet for either HLS streaming or MP4 recording
  * Optimized to reduce contention and blocking with improved frame handling
+ * Removed adaptive degrading to improve quality
  */
 int process_video_packet(const AVPacket *pkt, const AVStream *input_stream, 
                          void *writer, int writer_type, const char *stream_name) {
@@ -206,28 +207,8 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
     if (writer_type == 0) {  // HLS writer
         hls_writer_t *hls_writer = (hls_writer_t *)writer;
         
-        // For HLS, we can be more aggressive about dropping frames when under pressure
-        // This helps ensure smooth streaming by prioritizing key frames
-        if (hls_writer->is_under_pressure && !is_key_frame) {
-            // Use an adaptive frame dropping strategy based on the codec parameters
-            // and current system load
-            int skip_factor = 2; // Default: keep every 2nd frame
-            
-            // Adjust skip factor based on resolution
-            // For higher resolutions, we can drop more frames
-            if (input_stream->codecpar->width >= 1920) { // 1080p or higher
-                skip_factor = 3; // Keep every 3rd frame
-            } else if (input_stream->codecpar->width >= 1280) { // 720p
-                skip_factor = 2; // Keep every 2nd frame
-            }
-            
-            // Skip frames based on the calculated factor - using per-stream counter
-            if (hls_writer->frame_counter++ % skip_factor != 0) {
-                // Skip this frame to reduce pressure
-                av_packet_unref(&out_pkt);
-                return 0;
-            }
-        }
+        // Removed adaptive frame dropping to improve quality
+        // Always process all frames for better quality
         
         ret = hls_writer_write_packet(hls_writer, &out_pkt, input_stream);
         if (ret < 0) {
@@ -241,32 +222,8 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
     } else if (writer_type == 1) {  // MP4 writer
         mp4_writer_t *mp4_writer = (mp4_writer_t *)writer;
         
-        // For MP4 recording, implement a more sophisticated frame dropping strategy
-        // to maintain quality while reducing file size
-        if (mp4_writer->is_under_pressure) {
-            // Under high pressure, be more aggressive with frame dropping
-            if (!is_key_frame) {
-                // Use an adaptive frame dropping strategy based on the codec parameters
-                // and current system load
-                int skip_factor = 2; // Default: keep every 2nd frame
-                
-                // Adjust skip factor based on resolution
-                // For higher resolutions, we can drop more frames
-                if (input_stream->codecpar->width >= 1920) { // 1080p or higher
-                    skip_factor = 3; // Keep every 3rd frame
-                } else if (input_stream->codecpar->width >= 1280) { // 720p
-                    skip_factor = 2; // Keep every 2nd frame
-                }
-                
-                // Skip frames based on the calculated factor - using per-stream counter
-                // from the mp4_recording_ctx_t structure
-                if (mp4_writer->frame_counter++ % skip_factor != 0) {
-                    av_packet_unref(&out_pkt);
-                    return 0;
-                }
-            }
-            // Always keep key frames
-        }
+        // Removed adaptive frame dropping to improve quality
+        // Always process all frames for better quality
         
         // Ensure timestamps are properly set before writing
         // This helps prevent glitches in the output file

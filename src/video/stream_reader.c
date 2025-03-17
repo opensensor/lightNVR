@@ -54,8 +54,8 @@ static void *stream_reader_thread(void *arg) {
         log_error("Failed to open input stream for %s (attempt %d/%d)", 
                  ctx->config.name, retry_count + 1, max_retries);
         
-        // Wait before retrying - reduced from 2s to 1s for more responsive handling
-        av_usleep(1000000);  // 1 second delay
+        // Wait before retrying - reduced from 1s to 250ms for more responsive handling
+        av_usleep(250000);  // 250ms delay
         retry_count++;
     }
     
@@ -88,8 +88,8 @@ static void *stream_reader_thread(void *arg) {
     while (ctx->running) {
         // Check if we have a callback registered
         if (!ctx->packet_callback) {
-            // No callback, sleep and check again - reduced from 50ms to 25ms for more responsive handling
-            av_usleep(25000);  // 25ms
+            // No callback, sleep and check again - reduced from 25ms to 5ms for more responsive handling
+            av_usleep(5000);  // 5ms
             continue;
         }
         
@@ -102,14 +102,14 @@ static void *stream_reader_thread(void *arg) {
                 av_packet_unref(pkt);
                 log_warn("Stream %s disconnected, attempting to reconnect...", ctx->config.name);
                 
-                // Implement exponential backoff for reconnection attempts
+                // Implement exponential backoff for reconnection attempts with reduced delays
                 static int reconnect_attempts = 0;
-                int backoff_time_ms = 500 * (1 << (reconnect_attempts > 5 ? 5 : reconnect_attempts));
+                int backoff_time_ms = 250 * (1 << (reconnect_attempts > 5 ? 5 : reconnect_attempts));
                 reconnect_attempts++;
                 
-                // Cap the backoff time at 8 seconds
-                if (backoff_time_ms > 8000) {
-                    backoff_time_ms = 8000;
+                // Cap the backoff time at 4 seconds (reduced from 8 seconds)
+                if (backoff_time_ms > 4000) {
+                    backoff_time_ms = 4000;
                 }
                 
                 log_info("Reconnection attempt %d for %s, waiting %d ms", 
@@ -153,30 +153,16 @@ static void *stream_reader_thread(void *arg) {
                          (long long)pkt->pts, (long long)pkt->dts, pkt->size);
             }
             
-            // Implement a simple packet throttling mechanism to avoid overwhelming
-            // the system when under high load
-            static struct timeval last_process_time = {0, 0};
-            struct timeval current_time;
-            gettimeofday(&current_time, NULL);
+            // Removed packet throttling mechanism to improve quality
+            // Always process all frames for better quality
             
-            // Calculate time difference in milliseconds
-            long time_diff_ms = (current_time.tv_sec - last_process_time.tv_sec) * 1000 +
-                               (current_time.tv_usec - last_process_time.tv_usec) / 1000;
-            
-            // Always process key frames, but throttle non-key frames if needed
-            // This ensures we maintain stream continuity while reducing load
-            if (is_key_frame || time_diff_ms >= 5) { // Process at most every 5ms for non-key frames
-                // Call the callback function with the packet
-                if (ctx->packet_callback) {
-                    ret = ctx->packet_callback(pkt, ctx->input_ctx->streams[ctx->video_stream_idx], ctx->callback_data);
-                    if (ret < 0) {
-                        log_error("Packet callback failed for stream %s: %d", ctx->config.name, ret);
-                        // Continue anyway
-                    }
+            // Call the callback function with the packet
+            if (ctx->packet_callback) {
+                ret = ctx->packet_callback(pkt, ctx->input_ctx->streams[ctx->video_stream_idx], ctx->callback_data);
+                if (ret < 0) {
+                    log_error("Packet callback failed for stream %s: %d", ctx->config.name, ret);
+                    // Continue anyway
                 }
-                
-                // Update last process time
-                last_process_time = current_time;
             }
         }
         
