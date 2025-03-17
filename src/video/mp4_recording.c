@@ -151,44 +151,24 @@ static void *mp4_recording_thread(void *arg) {
     
     log_info("Created MP4 writer for %s at %s", ctx->config.name, ctx->output_path);
 
-    // Get or start a dedicated stream reader for MP4 recording with our callback
-    reader_ctx = get_stream_reader(ctx->config.name);
+    // Always start a new dedicated stream reader for MP4 recording
+    // This ensures MP4 recording has its own stream reader with its own callback
+    reader_ctx = start_stream_reader(ctx->config.name, 1, mp4_packet_callback, ctx); // 1 for dedicated stream reader
     if (!reader_ctx) {
-        // Start a new dedicated stream reader for MP4 recording
-        reader_ctx = start_stream_reader(ctx->config.name, 1, mp4_packet_callback, ctx); // 1 for dedicated stream reader
-        if (!reader_ctx) {
-            log_error("Failed to start dedicated stream reader for %s", ctx->config.name);
-            
-            if (ctx->mp4_writer) {
-                mp4_writer_close(ctx->mp4_writer);
-                ctx->mp4_writer = NULL;
-            }
-            
-            // Unregister the MP4 writer if it was registered
-            unregister_mp4_writer_for_stream(ctx->config.name);
-            
-            ctx->running = 0;
-            return NULL;
+        log_error("Failed to start dedicated stream reader for %s", ctx->config.name);
+        
+        if (ctx->mp4_writer) {
+            mp4_writer_close(ctx->mp4_writer);
+            ctx->mp4_writer = NULL;
         }
-        log_info("Started new dedicated stream reader for MP4 recording of stream %s", ctx->config.name);
-    } else {
-        // Set our callback on the existing reader
-        if (set_packet_callback(reader_ctx, mp4_packet_callback, ctx) != 0) {
-            log_error("Failed to set packet callback for stream %s", ctx->config.name);
-            
-            if (ctx->mp4_writer) {
-                mp4_writer_close(ctx->mp4_writer);
-                ctx->mp4_writer = NULL;
-            }
-            
-            // Unregister the MP4 writer if it was registered
-            unregister_mp4_writer_for_stream(ctx->config.name);
-            
-            ctx->running = 0;
-            return NULL;
-        }
-        log_info("Using existing stream reader for MP4 recording of stream %s", ctx->config.name);
+        
+        // Unregister the MP4 writer if it was registered
+        unregister_mp4_writer_for_stream(ctx->config.name);
+        
+        ctx->running = 0;
+        return NULL;
     }
+    log_info("Started new dedicated stream reader for MP4 recording of stream %s", ctx->config.name);
     
     // Store the reader context
     ctx->reader_ctx = reader_ctx;
