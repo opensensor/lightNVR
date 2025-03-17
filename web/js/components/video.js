@@ -286,7 +286,42 @@ function initializeVideoPlayer(stream) {
             if (data.fatal) {
                 console.error('HLS error:', data);
                 hls.destroy();
-                handleVideoError(stream.name);
+                
+                // Check if the stream was recently enabled
+                const videoCell = videoElement.closest('.video-cell');
+                const loadingIndicator = videoCell.querySelector('.loading-indicator');
+                
+                // If the stream was recently enabled (indicated by the loading message),
+                // automatically retry after a short delay
+                if (loadingIndicator && 
+                    loadingIndicator.querySelector('span').textContent === 'Starting stream...') {
+                    
+                    console.log(`Stream ${stream.name} failed to load after enabling, retrying in 2 seconds...`);
+                    
+                    // Show retry message
+                    loadingIndicator.querySelector('span').textContent = 'Retrying connection...';
+                    
+                    // Retry after a delay
+                    setTimeout(() => {
+                        console.log(`Retrying stream ${stream.name} after failure`);
+                        // Fetch updated stream info and reinitialize
+                        fetch(`/api/streams/${encodeURIComponent(stream.name)}`)
+                            .then(response => response.json())
+                            .then(updatedStream => {
+                                // Cleanup existing player
+                                cleanupVideoPlayer(stream.name);
+                                // Reinitialize with updated stream info
+                                initializeVideoPlayer(updatedStream);
+                            })
+                            .catch(error => {
+                                console.error(`Error fetching stream info for retry: ${error}`);
+                                handleVideoError(stream.name, 'Failed to reconnect after enabling');
+                            });
+                    }, 2000);
+                } else {
+                    // Regular error handling for non-startup errors
+                    handleVideoError(stream.name);
+                }
             }
         });
 
@@ -978,8 +1013,29 @@ function updateVideoGrid(streams) {
                                 disabledMsg.remove();
                             }
                             
-                            // Reinitialize the video player
-                            initializeVideoPlayer(stream);
+                            // Show loading indicator
+                            const loadingIndicator = videoCell.querySelector('.loading-indicator');
+                            if (loadingIndicator) {
+                                loadingIndicator.style.display = 'flex';
+                                loadingIndicator.querySelector('span').textContent = 'Starting stream...';
+                            }
+                            
+                            // Add a delay before initializing the video player to give the backend time to start the stream
+                            console.log(`Waiting 2 seconds before initializing video player for ${stream.name}...`);
+                            setTimeout(() => {
+                                // Fetch updated stream info to ensure we have the latest configuration
+                                fetch(`/api/streams/${encodeURIComponent(stream.name)}`)
+                                    .then(response => response.json())
+                                    .then(updatedStream => {
+                                        console.log(`Initializing video player for ${stream.name} after delay`);
+                                        initializeVideoPlayer(updatedStream);
+                                    })
+                                    .catch(error => {
+                                        console.error(`Error fetching updated stream info for ${stream.name}:`, error);
+                                        // Still try to initialize with the original stream info
+                                        initializeVideoPlayer(stream);
+                                    });
+                            }, 2000); // 2 second delay
                         }
                     }
                 })
