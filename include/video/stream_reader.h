@@ -99,15 +99,6 @@ int register_stream_consumer(stream_reader_ctx_t *ctx);
 int unregister_stream_consumer(stream_reader_ctx_t *ctx, int consumer_id);
 
 /**
- * Backward compatibility wrapper for unregister_stream_consumer
- * This is for any code that hasn't been updated to use consumer IDs yet
- * 
- * @param ctx Stream reader context
- * @return 0 on success, non-zero on failure
- */
-int unregister_stream_consumer_legacy(stream_reader_ctx_t *ctx);
-
-/**
  * Get a packet from the queue (blocking)
  * 
  * @param ctx Stream reader context
@@ -116,16 +107,6 @@ int unregister_stream_consumer_legacy(stream_reader_ctx_t *ctx);
  * @return 0 on success, non-zero on failure or abort
  */
 int get_packet(stream_reader_ctx_t *ctx, AVPacket *pkt, int consumer_id);
-
-/**
- * Backward compatibility wrapper for the old get_packet function
- * This is for any code that hasn't been updated to use consumer IDs yet
- * 
- * @param ctx Stream reader context
- * @param pkt Packet to fill
- * @return 0 on success, non-zero on failure or abort
- */
-int get_packet_legacy(stream_reader_ctx_t *ctx, AVPacket *pkt);
 
 /**
  * Get the stream reader for a stream

@@ -130,6 +130,46 @@ static int packet_queue_put(packet_queue_t *q, AVPacket *pkt) {
         new_packet->consumer_status[i].processed = 0;
     }
     
+    // Register all active consumers for this packet
+    // We need to iterate through all packets in the queue to find all unique consumer IDs
+    int registered_consumers = 0;
+    int consumer_ids[MAX_QUEUE_CONSUMERS] = {0};
+    
+    // First, collect all unique consumer IDs from existing packets
+    if (q->size > 0) {
+        for (int i = 0; i < q->size; i++) {
+            int idx = (q->head + i) % MAX_PACKET_QUEUE_SIZE;
+            broadcast_packet_t *packet = &q->packets[idx];
+            
+            for (int j = 0; j < MAX_QUEUE_CONSUMERS; j++) {
+                if (packet->consumer_status[j].consumer_id > 0) {
+                    // Check if we already have this consumer ID
+                    int found = 0;
+                    for (int k = 0; k < registered_consumers; k++) {
+                        if (consumer_ids[k] == packet->consumer_status[j].consumer_id) {
+                            found = 1;
+                            break;
+                        }
+                    }
+                    
+                    // If not found and we have space, add it
+                    if (!found && registered_consumers < MAX_QUEUE_CONSUMERS) {
+                        consumer_ids[registered_consumers++] = packet->consumer_status[j].consumer_id;
+                    }
+                }
+            }
+        }
+    }
+    
+    // Now register all these consumers with the new packet
+    for (int i = 0; i < registered_consumers && i < MAX_QUEUE_CONSUMERS; i++) {
+        new_packet->consumer_status[i].consumer_id = consumer_ids[i];
+        new_packet->consumer_status[i].processed = 0;
+    }
+    
+    // Update consumer count
+    new_packet->consumer_count = registered_consumers;
+    
     // Add to queue
     q->tail = (q->tail + 1) % MAX_PACKET_QUEUE_SIZE;
     q->size++;
@@ -169,6 +209,26 @@ static int packet_queue_get(packet_queue_t *q, AVPacket *pkt, int consumer_id) {
             }
         }
         
+        // If consumer not found in this packet's status array, add it
+        if (consumer_idx < 0) {
+            // Find an empty slot to add this consumer
+            for (int i = 0; i < MAX_QUEUE_CONSUMERS; i++) {
+                if (packet->consumer_status[i].consumer_id == 0) {
+                    packet->consumer_status[i].consumer_id = consumer_id;
+                    packet->consumer_status[i].processed = 0;
+                    packet->consumer_count++;
+                    consumer_idx = i;
+                    break;
+                }
+            }
+            
+            // If no empty slot found, log an error but continue
+            if (consumer_idx < 0) {
+                log_error("No empty slot for consumer %d in packet, MAX_QUEUE_CONSUMERS (%d) may be too small",
+                         consumer_id, MAX_QUEUE_CONSUMERS);
+            }
+        }
+        
         if (consumer_idx >= 0 && !packet->consumer_status[consumer_idx].processed) {
             // Found an unprocessed packet for this consumer
             found = 1;
@@ -198,6 +258,26 @@ static int packet_queue_get(packet_queue_t *q, AVPacket *pkt, int consumer_id) {
                 if (packet->consumer_status[i].consumer_id == consumer_id) {
                     consumer_idx = i;
                     break;
+                }
+            }
+            
+            // If consumer not found in this packet's status array, add it
+            if (consumer_idx < 0) {
+                // Find an empty slot to add this consumer
+                for (int i = 0; i < MAX_QUEUE_CONSUMERS; i++) {
+                    if (packet->consumer_status[i].consumer_id == 0) {
+                        packet->consumer_status[i].consumer_id = consumer_id;
+                        packet->consumer_status[i].processed = 0;
+                        packet->consumer_count++;
+                        consumer_idx = i;
+                        break;
+                    }
+                }
+                
+                // If no empty slot found, log an error but continue
+                if (consumer_idx < 0) {
+                    log_error("No empty slot for consumer %d in packet, MAX_QUEUE_CONSUMERS (%d) may be too small",
+                             consumer_id, MAX_QUEUE_CONSUMERS);
                 }
             }
             
@@ -644,14 +724,36 @@ int register_stream_consumer(stream_reader_ctx_t *ctx) {
         int idx = (ctx->queue.head + i) % MAX_PACKET_QUEUE_SIZE;
         broadcast_packet_t *packet = &ctx->queue.packets[idx];
         
-        // Find an empty slot for this consumer
+        // Check if this consumer is already in the packet's status array
+        int consumer_idx = -1;
         for (int j = 0; j < MAX_QUEUE_CONSUMERS; j++) {
-            if (packet->consumer_status[j].consumer_id == 0) {
-                packet->consumer_status[j].consumer_id = consumer_id;
-                packet->consumer_status[j].processed = 0;
-                packet->consumer_count++;
+            if (packet->consumer_status[j].consumer_id == consumer_id) {
+                consumer_idx = j;
                 break;
             }
+        }
+        
+        // If consumer not found, add it to an empty slot
+        if (consumer_idx < 0) {
+            // Find an empty slot for this consumer
+            for (int j = 0; j < MAX_QUEUE_CONSUMERS; j++) {
+                if (packet->consumer_status[j].consumer_id == 0) {
+                    packet->consumer_status[j].consumer_id = consumer_id;
+                    packet->consumer_status[j].processed = 0;
+                    packet->consumer_count++;
+                    consumer_idx = j;
+                    break;
+                }
+            }
+            
+            // If no empty slot found, log an error
+            if (consumer_idx < 0) {
+                log_error("No empty slot for consumer %d in packet during registration, MAX_QUEUE_CONSUMERS (%d) may be too small",
+                         consumer_id, MAX_QUEUE_CONSUMERS);
+            }
+        } else {
+            // Consumer already exists in this packet, make sure it's marked as unprocessed
+            packet->consumer_status[consumer_idx].processed = 0;
         }
     }
     
@@ -751,65 +853,6 @@ int get_packet(stream_reader_ctx_t *ctx, AVPacket *pkt, int consumer_id) {
     }
     
     return packet_queue_get(&ctx->queue, pkt, consumer_id);
-}
-
-/**
- * Backward compatibility wrapper for unregister_stream_consumer
- * This is for any code that hasn't been updated to use consumer IDs yet
- */
-int unregister_stream_consumer_legacy(stream_reader_ctx_t *ctx) {
-    if (!ctx) {
-        return -1;
-    }
-    
-    pthread_mutex_lock(&ctx->consumers_mutex);
-    if (ctx->consumers > 0) {
-        ctx->consumers--;
-    }
-    int remaining = ctx->consumers;
-    
-    // Also decrement the active_consumers count in the queue
-    pthread_mutex_lock(&ctx->queue.mutex);
-    if (ctx->queue.active_consumers > 0) {
-        ctx->queue.active_consumers--;
-    }
-    pthread_mutex_unlock(&ctx->queue.mutex);
-    
-    pthread_mutex_unlock(&ctx->consumers_mutex);
-    
-    log_info("Legacy unregister consumer for stream %s, remaining consumers: %d",
-            ctx->config.name, remaining);
-    
-    // If no more consumers, consider stopping the reader
-    if (remaining == 0) {
-        log_info("No more consumers for stream %s, reader will be stopped when appropriate",
-                ctx->config.name);
-    }
-    
-    return 0;
-}
-
-/**
- * Backward compatibility wrapper for the old get_packet function
- * This is for any code that hasn't been updated to use consumer IDs yet
- */
-int get_packet_legacy(stream_reader_ctx_t *ctx, AVPacket *pkt) {
-    log_warn("Legacy get_packet called without consumer ID for stream %s", 
-             ctx->config.name);
-    
-    // Register a temporary consumer
-    int consumer_id = register_stream_consumer(ctx);
-    if (consumer_id <= 0) {
-        return -1;
-    }
-    
-    // Get a packet
-    int ret = get_packet(ctx, pkt, consumer_id);
-    
-    // Unregister the temporary consumer
-    unregister_stream_consumer(ctx, consumer_id);
-    
-    return ret;
 }
 
 /**
