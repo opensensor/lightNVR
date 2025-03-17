@@ -59,23 +59,43 @@ void init_detection_stream_system(void) {
  * Shutdown detection stream system
  */
 void shutdown_detection_stream_system(void) {
+    log_info("Shutting down detection stream system...");
     pthread_mutex_lock(&detection_streams_mutex);
     
     for (int i = 0; i < MAX_STREAMS; i++) {
         pthread_mutex_lock(&detection_streams[i].mutex);
         
-        if (detection_streams[i].reader_ctx) {
-            stop_stream_reader(detection_streams[i].reader_ctx);
-            detection_streams[i].reader_ctx = NULL;
+        // Store a local copy of the reader context and stream name
+        stream_reader_ctx_t *reader_ctx = detection_streams[i].reader_ctx;
+        char stream_name[MAX_STREAM_NAME] = {0};
+        
+        if (detection_streams[i].stream_name[0] != '\0') {
+            strncpy(stream_name, detection_streams[i].stream_name, MAX_STREAM_NAME - 1);
         }
         
+        // Clear the reference in the detection stream structure first
+        detection_streams[i].reader_ctx = NULL;
+        detection_streams[i].stream_name[0] = '\0';
+        detection_streams[i].detection_interval = 0;
+        detection_streams[i].frame_counter = 0;
+        
         pthread_mutex_unlock(&detection_streams[i].mutex);
+        
+        // Now stop the stream reader outside of any locks to prevent deadlocks
+        if (reader_ctx) {
+            log_info("Stopping stream reader for detection on stream %s during shutdown", 
+                    stream_name[0] != '\0' ? stream_name : "unknown");
+            stop_stream_reader(reader_ctx);
+            log_info("Successfully stopped stream reader for detection during shutdown");
+        }
+        
+        // Destroy the mutex
         pthread_mutex_destroy(&detection_streams[i].mutex);
     }
     
     pthread_mutex_unlock(&detection_streams_mutex);
     
-    log_info("Detection stream system shutdown");
+    log_info("Detection stream system shutdown complete");
 }
 
 /**
@@ -286,6 +306,8 @@ int stop_detection_stream_reader(const char *stream_name) {
         return -1;
     }
     
+    log_info("Attempting to stop detection stream reader for stream %s", stream_name);
+    
     pthread_mutex_lock(&detection_streams_mutex);
     
     // Find the detection stream for this stream
@@ -306,19 +328,26 @@ int stop_detection_stream_reader(const char *stream_name) {
     
     pthread_mutex_lock(&detection_streams[slot].mutex);
     
-    // Stop the stream reader
-    if (detection_streams[slot].reader_ctx) {
-        stop_stream_reader(detection_streams[slot].reader_ctx);
-        detection_streams[slot].reader_ctx = NULL;
-    }
+    // Store a local copy of the reader context
+    stream_reader_ctx_t *reader_ctx = detection_streams[slot].reader_ctx;
     
-    // Clear the detection stream
+    // Clear the reference in the detection stream structure first
+    detection_streams[slot].reader_ctx = NULL;
+    
+    // Clear the detection stream data
     detection_streams[slot].stream_name[0] = '\0';
     detection_streams[slot].detection_interval = 0;
     detection_streams[slot].frame_counter = 0;
     
     pthread_mutex_unlock(&detection_streams[slot].mutex);
     pthread_mutex_unlock(&detection_streams_mutex);
+    
+    // Now stop the stream reader outside of any locks to prevent deadlocks
+    if (reader_ctx) {
+        log_info("Stopping stream reader for detection on stream %s", stream_name);
+        stop_stream_reader(reader_ctx);
+        log_info("Successfully stopped stream reader for detection on stream %s", stream_name);
+    }
     
     log_info("Stopped detection stream reader for stream %s", stream_name);
     

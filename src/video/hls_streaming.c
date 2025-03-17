@@ -173,6 +173,7 @@ static void *hls_stream_thread(void *arg) {
     reader_ctx = get_stream_reader(ctx->config.name);
     if (!reader_ctx) {
         // Start a new dedicated stream reader without setting the callback yet
+        log_info("Starting new dedicated stream reader for HLS stream %s", ctx->config.name);
         reader_ctx = start_stream_reader(ctx->config.name, 1, NULL, NULL); // 1 for dedicated stream reader
         if (!reader_ctx) {
             log_error("Failed to start dedicated stream reader for %s", ctx->config.name);
@@ -185,7 +186,14 @@ static void *hls_stream_thread(void *arg) {
             ctx->running = 0;
             return NULL;
         }
-        log_info("Started new dedicated stream reader for HLS stream %s", ctx->config.name);
+        log_info("Successfully started new dedicated stream reader for HLS stream %s", ctx->config.name);
+    } else {
+        log_info("Using existing stream reader for HLS stream %s", ctx->config.name);
+        
+        // Check if this is a dedicated reader
+        if (!reader_ctx->dedicated) {
+            log_warn("Existing stream reader for %s is not dedicated, this may cause issues", ctx->config.name);
+        }
     }
     
     // Store the reader context first

@@ -413,14 +413,20 @@ int stop_stream_reader(stream_reader_ctx_t *ctx) {
     pthread_mutex_unlock(&contexts_mutex);
     
     // Try to join with a timeout
-    if (pthread_join_with_timeout(thread_to_join, NULL, 5) != 0) {
-        log_warn("Could not join thread for stream %s within timeout", stream_name);
+    int join_result = pthread_join_with_timeout(thread_to_join, NULL, 5);
+    if (join_result != 0) {
+        log_warn("Could not join thread for stream %s within timeout (error: %s)", 
+                stream_name, strerror(join_result));
+        
+        // Even if we couldn't join the thread, we still need to free the context
+        // This is safe because we've already removed it from the array and cleared the callback
+        log_warn("Freeing context for stream %s despite join failure", stream_name);
     } else {
         log_info("Successfully joined thread for stream %s", stream_name);
     }
     
     // Now it's safe to free the context since we've removed it from the array
-    // and joined the thread
+    // and either joined the thread or at least tried to
     free(ctx);
     
     log_info("Successfully stopped stream reader for %s", stream_name);
