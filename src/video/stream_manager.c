@@ -419,53 +419,49 @@ int start_stream(stream_handle_t handle) {
     
     pthread_mutex_unlock(&s->mutex);
     
+    // Track if any component started successfully
+    bool any_component_started = false;
+    
     // Start HLS stream only if streaming is enabled
-    int result = 0;
+    int hls_result = 0;
     if (streaming_enabled) {
-        result = start_hls_stream(stream_name);
-        if (result != 0) {
+        hls_result = start_hls_stream(stream_name);
+        if (hls_result != 0) {
             log_error("Failed to start HLS stream '%s'", stream_name);
-            // Only set error status if recording is also not enabled
-            if (!recording_enabled) {
-                pthread_mutex_lock(&s->mutex);
-                s->status = STREAM_STATUS_ERROR;
-                pthread_mutex_unlock(&s->mutex);
-                return -1;
-            }
         } else {
             log_info("Started HLS streaming for '%s'", stream_name);
+            any_component_started = true;
         }
     } else {
         log_info("Streaming disabled for '%s', not starting HLS stream", stream_name);
     }
     
     // Start recording if enabled - completely independent of streaming status
+    int mp4_result = 0;
     if (recording_enabled) {
         // Start MP4 recording directly
-        if (start_mp4_recording(stream_name) != 0) {
-            log_warn("Failed to start MP4 recording for '%s'", stream_name);
-            // Continue anyway, this is not a fatal error
-            // But if both streaming and recording failed, set error status
-            if (!streaming_enabled || result != 0) {
-                pthread_mutex_lock(&s->mutex);
-                s->status = STREAM_STATUS_ERROR;
-                pthread_mutex_unlock(&s->mutex);
-                log_error("Both streaming and recording failed for '%s'", stream_name);
-                return -1;
-            }
+        mp4_result = start_mp4_recording(stream_name);
+        if (mp4_result != 0) {
+            log_error("Failed to start MP4 recording for '%s'", stream_name);
         } else {
             log_info("Started recording for '%s'", stream_name);
+            any_component_started = true;
         }
     }
     
-    // Update status to running if we got here
+    // Update status based on results
     pthread_mutex_lock(&s->mutex);
-    if (s->status != STREAM_STATUS_ERROR) {
+    if (any_component_started) {
         s->status = STREAM_STATUS_RUNNING;
+        log_info("Stream '%s' is now running", stream_name);
+    } else {
+        s->status = STREAM_STATUS_ERROR;
+        log_error("Failed to start any components for stream '%s'", stream_name);
+        pthread_mutex_unlock(&s->mutex);
+        return -1;
     }
     pthread_mutex_unlock(&s->mutex);
     
-    log_info("Started stream '%s'", stream_name);
     return 0;
 }
 
