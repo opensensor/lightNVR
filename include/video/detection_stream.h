@@ -36,4 +36,10 @@ int stop_detection_stream_reader(const char *stream_name);
  */
 int is_detection_stream_reader_running(const char *stream_name);
 
+/**
+ * Print status of all detection stream readers
+ * This is useful for debugging detection issues
+ */
+void print_detection_stream_status(void);
+
 #endif /* DETECTION_STREAM_H */

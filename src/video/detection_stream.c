@@ -86,7 +86,15 @@ void shutdown_detection_stream_system(void) {
 static int detection_packet_callback(const AVPacket *pkt, const AVStream *stream, void *user_data) {
     detection_stream_t *detection_stream = (detection_stream_t *)user_data;
     if (!detection_stream) {
+        log_error("Invalid user data in detection_packet_callback");
         return -1;
+    }
+    
+    // Log that the callback was invoked (periodically to avoid log spam)
+    static int callback_counter = 0;
+    if (callback_counter++ % 100 == 0) {
+        log_info("Detection packet callback invoked for stream %s (frame %d)", 
+                detection_stream->stream_name, callback_counter);
     }
     
     // Only process video packets
@@ -101,6 +109,10 @@ static int detection_packet_callback(const AVPacket *pkt, const AVStream *stream
     if (detection_stream->frame_counter % detection_stream->detection_interval != 0) {
         return 0;
     }
+    
+    log_debug("Processing frame %d for detection (interval: %d, stream: %s)", 
+            detection_stream->frame_counter, detection_stream->detection_interval,
+            detection_stream->stream_name);
     
     // Find decoder
     AVCodec *codec = avcodec_find_decoder(stream->codecpar->codec_id);
@@ -159,6 +171,8 @@ static int detection_packet_callback(const AVPacket *pkt, const AVStream *stream
     }
     
     // Process the decoded frame for detection
+    log_debug("Sending decoded frame to detection integration for stream %s", 
+             detection_stream->stream_name);
     process_decoded_frame_for_detection(detection_stream->stream_name, frame, detection_stream->detection_interval);
     
     // Cleanup
@@ -176,6 +190,8 @@ static int detection_packet_callback(const AVPacket *pkt, const AVStream *stream
  * @return 0 on success, -1 on error
  */
 int start_detection_stream_reader(const char *stream_name, int detection_interval) {
+    log_info("Starting detection stream reader for stream %s with interval %d", 
+             stream_name, detection_interval);
     if (!stream_name) {
         log_error("Invalid stream name for start_detection_stream_reader");
         return -1;
@@ -238,6 +254,9 @@ int start_detection_stream_reader(const char *stream_name, int detection_interva
         pthread_mutex_unlock(&detection_streams_mutex);
         return -1;
     }
+    
+    // Verify the reader is running
+    log_info("Detection stream reader created for %s, verifying it's running...", stream_name);
     
     pthread_mutex_unlock(&detection_streams[slot].mutex);
     pthread_mutex_unlock(&detection_streams_mutex);
@@ -325,4 +344,39 @@ int is_detection_stream_reader_running(const char *stream_name) {
     pthread_mutex_unlock(&detection_streams_mutex);
     
     return 0;
+}
+
+/**
+ * Print status of all detection stream readers
+ * This is useful for debugging detection issues
+ */
+void print_detection_stream_status(void) {
+    pthread_mutex_lock(&detection_streams_mutex);
+    
+    log_info("=== Detection Stream Status ===");
+    int active_count = 0;
+    
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (detection_streams[i].stream_name[0] != '\0') {
+            pthread_mutex_lock(&detection_streams[i].mutex);
+            
+            const char *status = detection_streams[i].reader_ctx ? "ACTIVE" : "INACTIVE";
+            log_info("Stream %s: %s (interval: %d, frame counter: %d)", 
+                    detection_streams[i].stream_name, 
+                    status,
+                    detection_streams[i].detection_interval,
+                    detection_streams[i].frame_counter);
+            
+            if (detection_streams[i].reader_ctx) {
+                active_count++;
+            }
+            
+            pthread_mutex_unlock(&detection_streams[i].mutex);
+        }
+    }
+    
+    log_info("Total active detection streams: %d", active_count);
+    log_info("==============================");
+    
+    pthread_mutex_unlock(&detection_streams_mutex);
 }

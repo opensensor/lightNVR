@@ -430,15 +430,29 @@ int main(int argc, char *argv[]) {
                 log_warn("Failed to start detection-based recording for stream %s", config.streams[i].name);
             }
             
-            // Start detection stream reader
-            log_info("Starting detection stream reader for stream %s", config.streams[i].name);
+            // Start detection stream reader with more detailed logging
+            log_info("Starting detection stream reader for stream %s with model %s", 
+                    config.streams[i].name, config.streams[i].detection_model);
+            
             int detection_interval = config.streams[i].detection_interval > 0 ? 
                                     config.streams[i].detection_interval : 10;
-            if (start_detection_stream_reader(config.streams[i].name, detection_interval) == 0) {
-                log_info("Detection stream reader started for stream %s with interval %d", 
-                        config.streams[i].name, detection_interval);
+            
+            int result = start_detection_stream_reader(config.streams[i].name, detection_interval);
+            if (result == 0) {
+                log_info("Successfully started detection stream reader for stream %s", 
+                        config.streams[i].name);
+                
+                // Verify the reader is running
+                if (is_detection_stream_reader_running(config.streams[i].name)) {
+                    log_info("Confirmed detection stream reader is running for %s", 
+                            config.streams[i].name);
+                } else {
+                    log_warn("Detection stream reader reported as not running for %s despite successful start", 
+                            config.streams[i].name);
+                }
             } else {
-                log_warn("Failed to start detection stream reader for stream %s", config.streams[i].name);
+                log_error("Failed to start detection stream reader for stream %s: error code %d", 
+                        config.streams[i].name, result);
             }
         }
     }
@@ -468,14 +482,25 @@ int main(int argc, char *argv[]) {
 
     log_info("LightNVR initialized successfully");
 
+    // Print initial detection stream status
+    print_detection_stream_status();
+
     // Main loop
     while (running) {
         // Log that the daemon is still running (maybe once per minute)
         static time_t last_log_time = 0;
+        static time_t last_status_time = 0;
         time_t now = time(NULL);
+        
         if (now - last_log_time > 60) {
             log_debug("Daemon is still running...");
             last_log_time = now;
+        }
+        
+        // Print detection stream status every 5 minutes to help diagnose issues
+        if (now - last_status_time > 300) {
+            print_detection_stream_status();
+            last_status_time = now;
         }
 
         // Process events, monitor system health, etc.
