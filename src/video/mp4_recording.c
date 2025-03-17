@@ -333,6 +333,10 @@ void cleanup_mp4_recording_backend(void) {
             strncpy(stream_name, recording_contexts[i]->config.name, MAX_STREAM_NAME - 1);
             stream_name[MAX_STREAM_NAME - 1] = '\0';
             
+            // Safely NULL out the mp4_writer pointer to prevent double free
+            // This is critical since close_all_mp4_writers() was already called
+            recording_contexts[i]->mp4_writer = NULL;
+            
             pthread_mutex_unlock(&contexts_mutex);
             
             // Join thread with timeout
@@ -351,13 +355,7 @@ void cleanup_mp4_recording_backend(void) {
             int found = 0;
             for (int j = 0; j < MAX_STREAMS; j++) {
                 if (recording_contexts[j] && strcmp(recording_contexts[j]->config.name, stream_name) == 0) {
-                    // Clean up resources
-                    if (recording_contexts[j]->mp4_writer) {
-                        mp4_writer_close(recording_contexts[j]->mp4_writer);
-                        recording_contexts[j]->mp4_writer = NULL;
-                    }
-                    
-                    // Free context
+                    // Free context - no need to close mp4_writer as it was already NULLed out
                     free(recording_contexts[j]);
                     recording_contexts[j] = NULL;
                     found = 1;
@@ -744,6 +742,23 @@ void close_all_mp4_writers(void) {
         log_info("Closing MP4 writer for stream %s at %s", 
                 stream_names_to_close[i], 
                 file_paths_to_close[i][0] != '\0' ? file_paths_to_close[i] : "(empty path)");
+        
+        // Update recording contexts to prevent double-free
+        // This is critical to prevent use-after-free in cleanup_mp4_recording_backend
+        pthread_mutex_lock(&contexts_mutex);
+        for (int j = 0; j < MAX_STREAMS; j++) {
+            if (recording_contexts[j] && 
+                strcmp(recording_contexts[j]->config.name, stream_names_to_close[i]) == 0) {
+                // If this recording context references the writer we're about to close,
+                // NULL out the reference to prevent double-free
+                if (recording_contexts[j]->mp4_writer == writers_to_close[i]) {
+                    log_info("Clearing mp4_writer reference in recording context for %s", 
+                            stream_names_to_close[i]);
+                    recording_contexts[j]->mp4_writer = NULL;
+                }
+            }
+        }
+        pthread_mutex_unlock(&contexts_mutex);
         
         // Close the MP4 writer to finalize the file
         if (writers_to_close[i] != NULL) {
