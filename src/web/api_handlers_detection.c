@@ -13,7 +13,7 @@
 #include "core/logger.h"
 #include "core/config.h"
 #include "video/detection.h"
-#include "video/motion_detection_optimized.h"
+#include "video/motion_detection.h"
 #include "video/stream_manager.h"
 
 // Global detection settings

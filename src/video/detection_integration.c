@@ -28,7 +28,7 @@
 #include "video/streams.h"
 #include "video/detection.h"
 #include "video/detection_result.h"
-#include "video/motion_detection_optimized.h"
+#include "video/motion_detection.h"
 
 // Define model types
 #define MODEL_TYPE_SOD "sod"
@@ -306,11 +306,11 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     // If the model is "motion_optimized", enable optimized motion detection
     if (is_motion_optimized_model) {
         // Initialize optimized motion detection if not already initialized
-        if (!is_motion_detection_enabled_optimized(stream_name)) {
+        if (!is_motion_detection_enabled(stream_name)) {
             // Configure with default settings
-            configure_motion_detection_optimized(stream_name, 0.25f, 0.01f, 3);
+            configure_motion_detection(stream_name, 0.25f, 0.01f, 3);
             configure_motion_detection_optimizations(stream_name, true, 2); // Enable 2x downscaling
-            set_motion_detection_enabled_optimized(stream_name, true);
+            set_motion_detection_enabled(stream_name, true);
             log_info("Automatically enabled optimized motion detection for stream %s based on model setting", stream_name);
         }
     }
@@ -326,16 +326,16 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
         memset(&motion_result, 0, sizeof(detection_result_t));
         
         // Initialize optimized motion detection if not already initialized
-        if (!is_motion_detection_enabled_optimized(stream_name)) {
+        if (!is_motion_detection_enabled(stream_name)) {
             // Configure with default settings
-            configure_motion_detection_optimized(stream_name, 0.25f, 0.01f, 3);
+            configure_motion_detection(stream_name, 0.25f, 0.01f, 3);
             configure_motion_detection_optimizations(stream_name, true, 2); // Enable 2x downscaling
-            set_motion_detection_enabled_optimized(stream_name, true);
+            set_motion_detection_enabled(stream_name, true);
             log_info("Initialized optimized motion detection for stream %s", stream_name);
         }
         
         // Run optimized motion detection
-        int motion_ret = detect_motion_optimized(stream_name, packed_buffer, frame->width, frame->height, 
+        int motion_ret = detect_motion(stream_name, packed_buffer, frame->width, frame->height,
                                                channels, frame_time, &motion_result);
         
         if (motion_ret == 0 && motion_result.count > 0) {

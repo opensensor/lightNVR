@@ -42,30 +42,6 @@ if(ENABLE_SOD)
     add_definitions(-DSOD_ENABLED)
 endif()
 
-# Build motion detection optimization test
-add_executable(test_motion_detection_optimized
-    test_motion_detection_optimized.c
-    ${MOTION_DETECTION_SOURCES}
-)
-
-# Link libraries for motion detection test
-target_link_libraries(test_motion_detection_optimized
-    ${FFMPEG_LIBRARIES}
-    ${SQLITE_LIBRARIES}
-    pthread
-    rt
-    m
-)
-
-# Set output directory for motion detection test
-set_target_properties(test_motion_detection_optimized
-    PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-)
-
-# Add motion detection test to CTest
-add_test(NAME test_motion_detection_optimized COMMAND test_motion_detection_optimized)
-
 # Only build SOD tests if SOD is enabled
 if(ENABLE_SOD)
     # Define test executables

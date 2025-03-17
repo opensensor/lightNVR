@@ -345,7 +345,7 @@ int configure_advanced_motion_detection(const char *stream_name, int blur_radius
  */
 int configure_motion_detection_optimizations(const char *stream_name, bool downscale_enabled, int downscale_factor) {
     if (!stream_name) {
-        log_error("Invalid stream name for configure_motion_detection_optimizations");
+        log_error("Invalid stream name for configure_motion_detection");
         return -1;
     }
 

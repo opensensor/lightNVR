@@ -62,6 +62,16 @@ int configure_advanced_motion_detection(const char *stream_name, int blur_radius
                                        int grid_size, int history_size);
 
 /**
+ * Configure motion detection optimizations
+ * 
+ * @param stream_name The name of the stream
+ * @param downscale_enabled Whether to enable downscaling for processing
+ * @param downscale_factor Factor by which to downscale (2 = half size, 1 = no downscaling)
+ * @return 0 on success, non-zero on failure
+ */
+int configure_motion_detection_optimizations(const char *stream_name, bool downscale_enabled, int downscale_factor);
+
+/**
  * Enable or disable motion detection for a stream
  * 
  * @param stream_name The name of the stream
