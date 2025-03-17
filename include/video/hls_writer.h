@@ -30,6 +30,9 @@ typedef struct hls_writer_t {
 
     // Per-stream DTS tracking
     stream_dts_info_t dts_tracker;
+    
+    // Pressure indicator - set to 1 when the system is under pressure
+    int is_under_pressure;
 } hls_writer_t;
 
 /**

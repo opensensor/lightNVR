@@ -263,6 +263,29 @@ static void *mp4_recording_thread(void *arg) {
             continue;
         }
 
+        // Check if this is a timeout (no packet available)
+        if (ret == 1) {
+            // No packet available, just continue the loop
+            continue;
+        }
+        
+        // Check if the system is under pressure (ret == 2)
+        if (ret == 2 && ctx->mp4_writer) {
+            // System is under high pressure - set the flag in the writer
+            ctx->mp4_writer->is_under_pressure = 1;
+            
+            // Log this condition occasionally to avoid log spam
+            static time_t last_pressure_log = 0;
+            time_t now = time(NULL);
+            if (now - last_pressure_log >= 10) {  // Log every 10 seconds
+                log_warn("MP4 recording under high pressure for %s", ctx->config.name);
+                last_pressure_log = now;
+            }
+        } else if (ctx->mp4_writer) {
+            // Normal operation - clear the pressure flag
+            ctx->mp4_writer->is_under_pressure = 0;
+        }
+
         // Process video packet
         if (ctx->mp4_writer) {
             // Verify the packet is valid before processing
@@ -276,10 +299,10 @@ static void *mp4_recording_thread(void *arg) {
                              (long long)pkt->pts, (long long)pkt->dts, pkt->size);
                 }
                 
-                // Use a batch processing approach to reduce contention
+                // Use a more efficient batch processing approach to reduce contention
                 // Process packets in batches to reduce I/O operations
                 static int packet_counter = 0;
-                static int batch_size = 5; // Process in batches of 5 packets
+                static int batch_size = 8; // Increased batch size for MP4 recording
                 
                 // Always process key frames immediately, but batch other frames
                 if (is_key_frame || (++packet_counter >= batch_size)) {

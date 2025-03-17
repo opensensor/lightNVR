@@ -184,6 +184,9 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
 
     // Initialize DTS tracker
     writer->dts_tracker.initialized = 0;
+    
+    // Initialize pressure indicator
+    writer->is_under_pressure = 0;
 
     // Create output directory if it doesn't exist
     // Use the configured storage path to avoid writing to overlay

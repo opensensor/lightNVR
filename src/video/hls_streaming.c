@@ -194,14 +194,37 @@ static void *hls_stream_thread(void *arg) {
             continue;
         }
 
+        // Check if this is a timeout (no packet available)
+        if (ret == 1) {
+            // No packet available, just continue the loop
+            continue;
+        }
+        
+        // Check if the system is under pressure (ret == 2)
+        if (ret == 2 && ctx->hls_writer) {
+            // System is under high pressure - set the flag in the writer
+            ctx->hls_writer->is_under_pressure = 1;
+            
+            // Log this condition occasionally to avoid log spam
+            static time_t last_pressure_log = 0;
+            time_t now = time(NULL);
+            if (now - last_pressure_log >= 10) {  // Log every 10 seconds
+                log_warn("HLS streaming under high pressure for %s", ctx->config.name);
+                last_pressure_log = now;
+            }
+        } else if (ctx->hls_writer) {
+            // Normal operation - clear the pressure flag
+            ctx->hls_writer->is_under_pressure = 0;
+        }
+        
         // Process only key frames and a subset of non-key frames to reduce CPU load
         // This helps prevent contention by processing fewer packets
         static int frame_counter = 0;
         bool is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
         
-        // Always process key frames, but only process every 2nd non-key frame
+        // Always process key frames, but only process every 3rd non-key frame
         // This reduces processing load while maintaining video quality
-        if (is_key_frame || (++frame_counter % 2 == 0)) {
+        if (is_key_frame || (++frame_counter % 3 == 0)) {
             // Write to HLS - we already have a clean copy from stream_reader
             ret = process_video_packet(pkt, reader_ctx->input_ctx->streams[reader_ctx->video_stream_idx], 
                                       ctx->hls_writer, 0, ctx->config.name);

@@ -181,34 +181,48 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
         return -1;
     }
     
-    // Check if this is a key frame
+    // Check if this is a key frame - only log at debug level to reduce overhead
     bool is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
-    
-    // Only log keyframes at debug level to reduce logging overhead
-    if (is_key_frame) {
-        log_debug("Processing keyframe for stream %s: pts=%lld, dts=%lld, size=%d",
-                 stream_name, (long long)pkt->pts, (long long)pkt->dts, pkt->size);
-    }
     
     // Use direct function calls instead of conditional branching for better performance
     if (writer_type == 0) {  // HLS writer
         hls_writer_t *hls_writer = (hls_writer_t *)writer;
+        
+        // For HLS, we can be more aggressive about dropping frames when under pressure
+        // This helps ensure smooth streaming by prioritizing key frames
+        if (hls_writer->is_under_pressure && !is_key_frame) {
+            // Skip this frame to reduce pressure
+            return 0;
+        }
+        
         ret = hls_writer_write_packet(hls_writer, pkt, input_stream);
         if (ret < 0) {
-            // Only log errors for keyframes or every 100th packet to reduce log spam
+            // Only log errors for keyframes or every 200th packet to reduce log spam
             static int error_count = 0;
-            if (is_key_frame || (++error_count % 100 == 0)) {
+            if (is_key_frame || (++error_count % 200 == 0)) {
                 log_error("Failed to write packet to HLS for stream %s: %d (count: %d)", 
                          stream_name, ret, error_count);
             }
         }
     } else if (writer_type == 1) {  // MP4 writer
         mp4_writer_t *mp4_writer = (mp4_writer_t *)writer;
+        
+        // For MP4 recording, we want to preserve as many frames as possible
+        // But we can still skip some non-key frames if we're falling behind
+        if (mp4_writer->is_under_pressure && !is_key_frame) {
+            // Use a random skip to avoid patterns in the recording
+            static int skip_counter = 0;
+            if (++skip_counter % 3 == 0) {
+                // Skip every 3rd frame when under pressure
+                return 0;
+            }
+        }
+        
         ret = mp4_writer_write_packet(mp4_writer, pkt, input_stream);
         if (ret < 0) {
-            // Only log errors for keyframes or every 100th packet to reduce log spam
+            // Only log errors for keyframes or every 200th packet to reduce log spam
             static int error_count = 0;
-            if (is_key_frame || (++error_count % 100 == 0)) {
+            if (is_key_frame || (++error_count % 200 == 0)) {
                 log_error("Failed to write packet to MP4 for stream %s: %d (count: %d)", 
                          stream_name, ret, error_count);
             }

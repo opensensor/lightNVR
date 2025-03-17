@@ -41,6 +41,7 @@ typedef struct {
     int abort_request;
     int next_consumer_id;   // For assigning unique consumer IDs
     int active_consumers;   // Count of currently active consumers
+    int active_consumer_ids[MAX_QUEUE_CONSUMERS]; // Array of active consumer IDs
 } packet_queue_t;
 
 // Stream reader context

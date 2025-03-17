@@ -23,6 +23,9 @@ struct mp4_writer {
  AVRational time_base;
  int is_initialized;
  time_t creation_time;
+ 
+ // Pressure indicator - set to 1 when the system is under pressure
+ int is_under_pressure;
 };
 
 /**
