@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <pthread.h>
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
@@ -12,6 +13,56 @@
 #include "core/logger.h"
 #include "video/hls_writer.h"
 #include "video/detection_integration.h"
+
+// Structure to pass data to the detection thread
+typedef struct {
+    char stream_name[MAX_STREAM_NAME];
+    AVPacket pkt;
+    AVCodecParameters codec_params;
+} detection_thread_data_t;
+
+// Detection thread function
+static void *detection_thread_func(void *arg) {
+    detection_thread_data_t *data = (detection_thread_data_t *)arg;
+    static int detection_in_progress = 1;
+    
+    // Find decoder
+    AVCodec *codec = avcodec_find_decoder(data->codec_params.codec_id);
+    if (codec) {
+        // Create codec context
+        AVCodecContext *codec_ctx = avcodec_alloc_context3(codec);
+        if (codec_ctx) {
+            // Copy codec parameters to codec context
+            if (avcodec_parameters_to_context(codec_ctx, &data->codec_params) >= 0) {
+                // Open codec
+                if (avcodec_open2(codec_ctx, codec, NULL) >= 0) {
+                    // Allocate frame
+                    AVFrame *frame = av_frame_alloc();
+                    if (frame) {
+                        // Send packet to decoder
+                        if (avcodec_send_packet(codec_ctx, &data->pkt) >= 0) {
+                            // Receive frame from decoder
+                            if (avcodec_receive_frame(codec_ctx, frame) >= 0) {
+                                // Process the decoded frame for detection
+                                // Use a larger detection interval (30) to reduce processing load
+                                int detection_interval = 30;
+                                process_decoded_frame_for_detection(data->stream_name, frame, detection_interval);
+                            }
+                        }
+                        av_frame_free(&frame);
+                    }
+                    avcodec_free_context(&codec_ctx);
+                }
+            }
+        }
+    }
+    
+    // Cleanup
+    av_packet_unref(&data->pkt);
+    free(data);
+    detection_in_progress = 0;
+    return NULL;
+}
 
 /**
  * Clean up old HLS segments that are no longer in the playlist
@@ -418,51 +469,56 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
         out_pkt.pts = out_pkt.dts;
     }
 
-    // Process packet for detection if it's a video packet
-    if (pkt->stream_index == 0 && input_stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
-        // Decode the frame for detection
-        AVCodecContext *codec_ctx = NULL;
-        AVFrame *frame = NULL;
+    // Process packet for detection if it's a video packet - using a more efficient approach
+    static int frame_counter = 0;
+    static time_t last_detection_time = 0;
+    static int detection_in_progress = 0;
+    time_t current_time = time(NULL);
+    
+    // Only process for detection every 2 seconds to reduce CPU load
+    // This is a significant optimization for embedded devices
+    if (pkt->stream_index == 0 && 
+        input_stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO && 
+        (current_time - last_detection_time >= 2)) {
         
-        // Find decoder
-        AVCodec *codec = avcodec_find_decoder(input_stream->codecpar->codec_id);
-        if (codec) {
-            // Create codec context
-            codec_ctx = avcodec_alloc_context3(codec);
-            if (codec_ctx) {
-                // Copy codec parameters to codec context
-                if (avcodec_parameters_to_context(codec_ctx, input_stream->codecpar) >= 0) {
-                    // Open codec
-                    if (avcodec_open2(codec_ctx, codec, NULL) >= 0) {
-                        // Allocate frame
-                        frame = av_frame_alloc();
-                        if (frame) {
-                            // Send packet to decoder
-                            AVPacket pkt_copy;
-                            if (av_packet_ref(&pkt_copy, pkt) >= 0) {
-                                if (avcodec_send_packet(codec_ctx, &pkt_copy) >= 0) {
-                                    // Receive frame from decoder
-                                    if (avcodec_receive_frame(codec_ctx, frame) >= 0) {
-                                        // Process the decoded frame for detection
-                                        // Use a default detection interval of 10 if not specified
-                                        int detection_interval = 10;
-                                        process_decoded_frame_for_detection(writer->stream_name, frame, detection_interval);
-                                    }
-                                }
-                                av_packet_unref(&pkt_copy);
-                            }
-                        }
-                    }
+        // Update last detection time
+        last_detection_time = current_time;
+        
+        // Use a separate thread for detection to avoid blocking the HLS writer
+        if (!detection_in_progress) {
+            detection_in_progress = 1;
+            
+            // Process in a separate thread to avoid blocking HLS writing
+            pthread_t detection_thread;
+            
+            detection_thread_data_t *thread_data = malloc(sizeof(detection_thread_data_t));
+            if (thread_data) {
+                // Copy stream name
+                strncpy(thread_data->stream_name, writer->stream_name, MAX_STREAM_NAME - 1);
+                thread_data->stream_name[MAX_STREAM_NAME - 1] = '\0';
+                
+                // Copy packet
+                av_packet_ref(&thread_data->pkt, pkt);
+                
+                // Copy codec parameters
+                memcpy(&thread_data->codec_params, input_stream->codecpar, sizeof(AVCodecParameters));
+                
+                // Create detached thread
+                pthread_attr_t attr;
+                pthread_attr_init(&attr);
+                pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+                
+                if (pthread_create(&detection_thread, &attr, detection_thread_func, thread_data) != 0) {
+                    // Failed to create thread, clean up
+                    av_packet_unref(&thread_data->pkt);
+                    free(thread_data);
+                    detection_in_progress = 0;
                 }
+                
+                pthread_attr_destroy(&attr);
+            } else {
+                detection_in_progress = 0;
             }
-        }
-        
-        // Cleanup
-        if (frame) {
-            av_frame_free(&frame);
-        }
-        if (codec_ctx) {
-            avcodec_free_context(&codec_ctx);
         }
     }
 
