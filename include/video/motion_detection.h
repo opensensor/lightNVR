@@ -47,6 +47,21 @@ int detect_motion(const char *stream_name, const unsigned char *frame_data,
                  detection_result_t *result);
 
 /**
+ * Configure advanced motion detection parameters
+ * 
+ * @param stream_name The name of the stream
+ * @param blur_radius Blur radius for noise reduction (0-5)
+ * @param noise_threshold Threshold for noise filtering (0-50)
+ * @param use_grid_detection Whether to use grid-based detection
+ * @param grid_size Size of detection grid (2-32)
+ * @param history_size Size of frame history buffer (1-10)
+ * @return 0 on success, non-zero on failure
+ */
+int configure_advanced_motion_detection(const char *stream_name, int blur_radius,
+                                       int noise_threshold, bool use_grid_detection,
+                                       int grid_size, int history_size);
+
+/**
  * Enable or disable motion detection for a stream
  * 
  * @param stream_name The name of the stream
