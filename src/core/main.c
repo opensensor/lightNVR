@@ -22,6 +22,7 @@
 #include "video/hls_streaming.h"
 #include "video/mp4_recording.h"
 #include "video/stream_transcoding.h"
+#include "video/detection_stream.h"
 
 // External function declarations
 void init_recordings_system(void);
@@ -393,6 +394,25 @@ int main(int argc, char *argv[]) {
     init_transcoding_backend();
     init_hls_streaming_backend();
     init_mp4_recording_backend();
+    
+    // Initialize detection stream system
+    init_detection_stream_system();
+    
+    // Start detection stream readers for streams with detection-based recording enabled
+    for (int i = 0; i < config.max_streams; i++) {
+        if (config.streams[i].name[0] != '\0' && config.streams[i].enabled && 
+            config.streams[i].detection_based_recording && config.streams[i].detection_model[0] != '\0') {
+            log_info("Starting detection stream reader for stream %s", config.streams[i].name);
+            int detection_interval = config.streams[i].detection_interval > 0 ? 
+                                    config.streams[i].detection_interval : 10;
+            if (start_detection_stream_reader(config.streams[i].name, detection_interval) == 0) {
+                log_info("Detection stream reader started for stream %s with interval %d", 
+                        config.streams[i].name, detection_interval);
+            } else {
+                log_warn("Failed to start detection stream reader for stream %s", config.streams[i].name);
+            }
+        }
+    }
 
     // Initialize web server
     if (init_web_server(config.web_port, config.web_root) != 0) {
@@ -495,6 +515,9 @@ cleanup:
         cleanup_hls_directories();
         
         // Now clean up the backends in the correct order
+        log_info("Cleaning up detection stream system...");
+        shutdown_detection_stream_system();
+        
         log_info("Cleaning up MP4 recording backend...");
         cleanup_mp4_recording_backend();  // Cleanup MP4 recording
         
@@ -558,6 +581,7 @@ cleanup:
         close_all_mp4_writers();
         
         // Then clean up backends in the correct order
+        shutdown_detection_stream_system();
         cleanup_mp4_recording_backend();
         cleanup_hls_streaming_backend();
         cleanup_stream_reader_backend();

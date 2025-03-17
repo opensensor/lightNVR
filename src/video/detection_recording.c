@@ -18,6 +18,7 @@
 #include "video/detection.h"
 #include "video/detection_result.h"
 #include "video/motion_detection.h"
+#include "video/detection_stream.h"
 #include "database/database_manager.h"
 #include "web/api_handlers_detection_results.h"
 
@@ -226,6 +227,15 @@ int start_detection_recording(const char *stream_name, const char *model_path, f
     
     set_stream_detection_params(stream, detection_interval, threshold, pre_buffer, post_buffer);
     
+    // Start a dedicated stream reader for detection
+    int ret = start_detection_stream_reader(stream_name, detection_interval);
+    if (ret != 0) {
+        log_error("Failed to start detection stream reader for stream %s", stream_name);
+        // Continue anyway, as the detection recording can still work with HLS-based detection
+    } else {
+        log_info("Started detection stream reader for stream %s with interval %d", stream_name, detection_interval);
+    }
+    
     log_info("Started detection-based recording for stream %s with model %s", 
              stream_name, model_path);
     
@@ -290,6 +300,14 @@ int stop_detection_recording(const char *stream_name) {
     stream_handle_t stream = get_stream_by_name(stream_name);
     if (stream) {
         set_stream_detection_recording(stream, false, NULL);
+    }
+    
+    // Stop the detection stream reader
+    int ret = stop_detection_stream_reader(stream_name);
+    if (ret != 0) {
+        log_warn("Failed to stop detection stream reader for stream %s", stream_name);
+    } else {
+        log_info("Stopped detection stream reader for stream %s", stream_name);
     }
     
     log_info("Stopped detection-based recording for stream %s", stream_name);
