@@ -134,10 +134,10 @@ void handle_hls_manifest(const http_request_t *request, http_response_t *respons
     snprintf(manifest_path, MAX_PATH_LENGTH, "%s/hls/%s/index.m3u8",
              global_config->storage_path, stream_name);
 
-    // Wait for the manifest file to be created, but with a shorter timeout
-    // Try up to 30 times with 100ms between attempts (3 seconds total)
+    // Wait for the manifest file to be created with a longer timeout for low-powered devices
+    // Try up to 50 times with 100ms between attempts (5 seconds total)
     bool manifest_exists = false;
-    for (int i = 0; i < 30; i++) {
+    for (int i = 0; i < 50; i++) {
         // Check for the final manifest file
         if (access(manifest_path, F_OK) == 0) {
             manifest_exists = true;
@@ -152,8 +152,8 @@ void handle_hls_manifest(const http_request_t *request, http_response_t *respons
             // Continue waiting for the final file
         }
 
-        log_debug("Waiting for manifest file to be created (attempt %d/30)", i+1);
-        usleep(100000);  // 100ms - reduced from 200ms
+        log_debug("Waiting for manifest file to be created (attempt %d/50)", i+1);
+        usleep(100000);  // 100ms
     }
 
     if (!manifest_exists) {
@@ -271,17 +271,17 @@ void handle_hls_segment(const http_request_t *request, http_response_t *response
     if (access(segment_path, F_OK) != 0) {
         log_debug("Segment file not found on first attempt: %s (%s)", segment_path, strerror(errno));
 
-        // Wait for it to be created, but with a shorter timeout
+        // Wait for it to be created with a longer timeout for low-powered devices
         bool segment_exists = false;
-        for (int i = 0; i < 20; i++) {  // Try for 2 seconds total
+        for (int i = 0; i < 40; i++) {  // Try for 4 seconds total (increased from 2 seconds)
             if (access(segment_path, F_OK) == 0) {
                 log_info("Segment file found after waiting: %s (attempt %d)", segment_path, i+1);
                 segment_exists = true;
                 break;
             }
 
-            log_debug("Waiting for segment file to be created: %s (attempt %d/20)", segment_path, i+1);
-            usleep(100000);  // 100ms - reduced from 200ms
+            log_debug("Waiting for segment file to be created: %s (attempt %d/40)", segment_path, i+1);
+            usleep(100000);  // 100ms
         }
 
         if (!segment_exists) {

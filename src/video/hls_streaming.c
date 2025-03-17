@@ -271,9 +271,10 @@ static void *stream_transcode_thread(void *arg) {
     }
 
     // Create HLS writer - adding the segment_duration parameter
-    // Using a default of 2 seconds if not specified in config
+    // Using a default of 4 seconds if not specified in config
+    // Increased from 2 to 4 seconds for better compatibility with low-powered devices
     int segment_duration = ctx->config.segment_duration > 0 ?
-                          ctx->config.segment_duration : 2;
+                          ctx->config.segment_duration : 4;
 
     ctx->hls_writer = hls_writer_create(ctx->output_path, ctx->config.name, segment_duration);
     if (!ctx->hls_writer) {
