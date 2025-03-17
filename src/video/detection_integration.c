@@ -404,25 +404,86 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     
     // If we're using a model-based detection (not just motion), run it
     if (use_model_detection) {
-        // Load the detection model
-        log_info("Loading detection model: %s with threshold: %.2f", full_model_path, threshold);
-        detection_model_t model = load_detection_model(full_model_path, threshold);
+        // Use a static cache of loaded models to avoid loading/unloading for each frame
+        static struct {
+            char path[MAX_PATH_LENGTH];
+            detection_model_t model;
+            time_t last_used;
+        } model_cache[MAX_STREAMS] = {{{0}}};
+        
+        // Find model in cache or load it
+        detection_model_t model = NULL;
+        int cache_idx = -1;
+        
+        // Look for model in cache
+        for (int i = 0; i < MAX_STREAMS; i++) {
+            if (model_cache[i].path[0] != '\0' && 
+                strcmp(model_cache[i].path, full_model_path) == 0) {
+                model = model_cache[i].model;
+                cache_idx = i;
+                model_cache[i].last_used = time(NULL);
+                log_info("Using cached detection model for %s", full_model_path);
+                break;
+            }
+        }
+        
+        // If not found in cache, load it
+        if (!model) {
+            // Find an empty slot or the oldest used model
+            time_t oldest_time = time(NULL);
+            int oldest_idx = -1;
+            
+            for (int i = 0; i < MAX_STREAMS; i++) {
+                if (model_cache[i].path[0] == '\0') {
+                    oldest_idx = i;
+                    break;
+                } else if (model_cache[i].last_used < oldest_time) {
+                    oldest_time = model_cache[i].last_used;
+                    oldest_idx = i;
+                }
+            }
+            
+            // If we found a slot, load the model
+            if (oldest_idx >= 0) {
+                // If slot was used, unload the old model
+                if (model_cache[oldest_idx].path[0] != '\0') {
+                    log_info("Unloading cached model %s to make room for %s", 
+                            model_cache[oldest_idx].path, full_model_path);
+                    unload_detection_model(model_cache[oldest_idx].model);
+                    model_cache[oldest_idx].path[0] = '\0';
+                    model_cache[oldest_idx].model = NULL;
+                }
+                
+                // Load the new model
+                log_error("LOADING DETECTION MODEL: %s with threshold: %.2f", full_model_path, threshold);
+                model = load_detection_model(full_model_path, threshold);
+                
+                if (model) {
+                    // Cache the model
+                    strncpy(model_cache[oldest_idx].path, full_model_path, MAX_PATH_LENGTH - 1);
+                    model_cache[oldest_idx].model = model;
+                    model_cache[oldest_idx].last_used = time(NULL);
+                    cache_idx = oldest_idx;
+                    log_info("Cached detection model for %s in slot %d", full_model_path, oldest_idx);
+                }
+            }
+        }
         
         if (!model) {
             log_error("Failed to load detection model: %s", full_model_path);
         } else {
             // Use our improved detect_objects function for ALL model types
-            log_info("Running detection with unified detect_objects function");
+            log_error("RUNNING DETECTION with unified detect_objects function");
             detect_ret = detect_objects(model, packed_buffer, frame->width, frame->height, channels, &result);
             
             if (detect_ret != 0) {
                 log_error("Detection failed (error code: %d)", detect_ret);
             } else {
-                log_info("Detection completed successfully, found %d objects", result.count);
+                log_error("DETECTION COMPLETED SUCCESSFULLY, found %d objects", result.count);
                 
                 // Log detection results
                 for (int i = 0; i < result.count; i++) {
-                    log_info("Detection %d: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]",
+                    log_error("DETECTION %d: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]",
                              i+1, result.detections[i].label,
                              result.detections[i].confidence * 100.0f,
                              result.detections[i].x, result.detections[i].y,
@@ -438,8 +499,7 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                 }
             }
             
-            // Unload the model
-            unload_detection_model(model);
+            // Note: We don't unload the model here, it stays in the cache
         }
     }
 

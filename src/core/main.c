@@ -410,10 +410,61 @@ int main(int argc, char *argv[]) {
     // Initialize detection stream system
     init_detection_stream_system();
     
-    // Start detection-based recording and detection stream readers for streams with detection enabled
+    // Check if detection models exist and start detection-based recording
     for (int i = 0; i < config.max_streams; i++) {
         if (config.streams[i].name[0] != '\0' && config.streams[i].enabled && 
             config.streams[i].detection_based_recording && config.streams[i].detection_model[0] != '\0') {
+            
+            // Check if model file exists
+            char model_path[MAX_PATH_LENGTH];
+            if (config.streams[i].detection_model[0] != '/') {
+                // Relative path, check in models directory
+                char cwd[MAX_PATH_LENGTH];
+                if (getcwd(cwd, sizeof(cwd)) != NULL) {
+                    snprintf(model_path, MAX_PATH_LENGTH, "%s/models/%s", cwd, config.streams[i].detection_model);
+                } else {
+                    snprintf(model_path, MAX_PATH_LENGTH, "/var/lib/lightnvr/models/%s", config.streams[i].detection_model);
+                }
+            } else {
+                // Absolute path
+                strncpy(model_path, config.streams[i].detection_model, MAX_PATH_LENGTH - 1);
+            }
+            
+            // Check if file exists
+            FILE *model_file = fopen(model_path, "r");
+            if (model_file) {
+                fclose(model_file);
+                log_info("Detection model found: %s", model_path);
+            } else {
+                log_error("Detection model not found: %s", model_path);
+                
+                // Try alternative locations
+                const char *locations[] = {
+                    "./", // Current directory
+                    "./build/models/", // Build directory
+                    "../models/", // Parent directory
+                    "/var/lib/lightnvr/models/" // System directory
+                };
+                
+                bool found = false;
+                for (int j = 0; j < sizeof(locations)/sizeof(locations[0]); j++) {
+                    char alt_path[MAX_PATH_LENGTH];
+                    snprintf(alt_path, MAX_PATH_LENGTH, "%s%s", locations[j], config.streams[i].detection_model);
+                    
+                    FILE *alt_file = fopen(alt_path, "r");
+                    if (alt_file) {
+                        fclose(alt_file);
+                        log_info("Detection model found at alternative location: %s", alt_path);
+                        found = true;
+                        break;
+                    }
+                }
+                
+                if (!found) {
+                    log_error("Detection model not found in any location: %s", config.streams[i].detection_model);
+                    log_error("Detection will not work properly!");
+                }
+            }
             
             log_info("Starting detection-based recording for stream %s with model %s", 
                     config.streams[i].name, config.streams[i].detection_model);

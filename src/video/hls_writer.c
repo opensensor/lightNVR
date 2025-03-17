@@ -16,12 +16,40 @@
 
 // Direct detection processing function - no thread needed
 static void process_packet_for_detection(const char *stream_name, const AVPacket *pkt, const AVCodecParameters *codec_params) {
+    // Use a static flag to prevent recursive calls and potential stack overflow
+    static int detection_in_progress = 0;
+    
+    // Skip if detection is already in progress to prevent recursive calls
+    if (detection_in_progress) {
+        return;
+    }
+    
+    detection_in_progress = 1;
+    
     log_debug("Processing packet for detection directly for stream %s", stream_name);
+    
+    // Create a copy of the packet to avoid modifying the original
+    AVPacket *pkt_copy = av_packet_alloc();
+    if (!pkt_copy) {
+        log_error("Failed to allocate packet copy for detection");
+        detection_in_progress = 0;
+        return;
+    }
+    
+    if (av_packet_ref(pkt_copy, pkt) < 0) {
+        log_error("Failed to reference packet for detection");
+        av_packet_free(&pkt_copy);
+        detection_in_progress = 0;
+        return;
+    }
     
     // Find decoder
     AVCodec *codec = avcodec_find_decoder(codec_params->codec_id);
     if (!codec) {
         log_error("Failed to find decoder for stream %s", stream_name);
+        av_packet_unref(pkt_copy);
+        av_packet_free(&pkt_copy);
+        detection_in_progress = 0;
         return;
     }
     
@@ -29,6 +57,9 @@ static void process_packet_for_detection(const char *stream_name, const AVPacket
     AVCodecContext *codec_ctx = avcodec_alloc_context3(codec);
     if (!codec_ctx) {
         log_error("Failed to allocate codec context for stream %s", stream_name);
+        av_packet_unref(pkt_copy);
+        av_packet_free(&pkt_copy);
+        detection_in_progress = 0;
         return;
     }
     
@@ -36,6 +67,9 @@ static void process_packet_for_detection(const char *stream_name, const AVPacket
     if (avcodec_parameters_to_context(codec_ctx, codec_params) < 0) {
         log_error("Failed to copy codec parameters to context for stream %s", stream_name);
         avcodec_free_context(&codec_ctx);
+        av_packet_unref(pkt_copy);
+        av_packet_free(&pkt_copy);
+        detection_in_progress = 0;
         return;
     }
     
@@ -43,6 +77,9 @@ static void process_packet_for_detection(const char *stream_name, const AVPacket
     if (avcodec_open2(codec_ctx, codec, NULL) < 0) {
         log_error("Failed to open codec for stream %s", stream_name);
         avcodec_free_context(&codec_ctx);
+        av_packet_unref(pkt_copy);
+        av_packet_free(&pkt_copy);
+        detection_in_progress = 0;
         return;
     }
     
@@ -51,14 +88,20 @@ static void process_packet_for_detection(const char *stream_name, const AVPacket
     if (!frame) {
         log_error("Failed to allocate frame for stream %s", stream_name);
         avcodec_free_context(&codec_ctx);
+        av_packet_unref(pkt_copy);
+        av_packet_free(&pkt_copy);
+        detection_in_progress = 0;
         return;
     }
     
     // Send packet to decoder
-    if (avcodec_send_packet(codec_ctx, pkt) < 0) {
+    if (avcodec_send_packet(codec_ctx, pkt_copy) < 0) {
         log_error("Failed to send packet to decoder for stream %s", stream_name);
         av_frame_free(&frame);
         avcodec_free_context(&codec_ctx);
+        av_packet_unref(pkt_copy);
+        av_packet_free(&pkt_copy);
+        detection_in_progress = 0;
         return;
     }
     
@@ -78,6 +121,10 @@ static void process_packet_for_detection(const char *stream_name, const AVPacket
     // Cleanup
     av_frame_free(&frame);
     avcodec_free_context(&codec_ctx);
+    av_packet_unref(pkt_copy);
+    av_packet_free(&pkt_copy);
+    
+    detection_in_progress = 0;
 }
 
 /**
@@ -563,17 +610,17 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
     static time_t last_detection_time = 0;
     time_t current_time = time(NULL);
     
-    // Process for detection more frequently (every 1 second instead of 2) to improve detection quality
-    // while still maintaining reasonable performance
+    // Process for detection less frequently (every 3 seconds) to reduce CPU load
+    // This should still be frequent enough for most detection scenarios
     if (pkt->stream_index == 0 && 
         input_stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO && 
-        (current_time - last_detection_time >= 1)) {
+        (current_time - last_detection_time >= 3)) {
         
         // Update last detection time
         last_detection_time = current_time;
         
         // Process directly without creating a thread
-        log_debug("Processing packet for detection from HLS writer for stream %s", writer->stream_name);
+        log_info("Processing packet for detection from HLS writer for stream %s", writer->stream_name);
         process_packet_for_detection(writer->stream_name, pkt, input_stream->codecpar);
     }
 

@@ -90,11 +90,18 @@ static int detection_packet_callback(const AVPacket *pkt, const AVStream *stream
         return -1;
     }
     
-    // Log that the callback was invoked (periodically to avoid log spam)
-    static int callback_counter = 0;
-    if (callback_counter++ % 100 == 0) {
-        log_info("Detection packet callback invoked for stream %s (frame %d)", 
-                detection_stream->stream_name, callback_counter);
+    // Always log the first few callbacks to confirm it's being invoked
+    static int initial_callbacks = 0;
+    if (initial_callbacks < 5) {
+        log_error("DETECTION CALLBACK INVOKED #%d for stream %s", 
+                 ++initial_callbacks, detection_stream->stream_name);
+    } else {
+        // After the first few, log periodically to avoid spam
+        static int callback_counter = 0;
+        if (callback_counter++ % 100 == 0) {
+            log_info("Detection packet callback invoked for stream %s (frame %d)", 
+                    detection_stream->stream_name, callback_counter);
+        }
     }
     
     // Only process video packets
@@ -110,9 +117,9 @@ static int detection_packet_callback(const AVPacket *pkt, const AVStream *stream
         return 0;
     }
     
-    log_debug("Processing frame %d for detection (interval: %d, stream: %s)", 
-            detection_stream->frame_counter, detection_stream->detection_interval,
-            detection_stream->stream_name);
+    log_error("PROCESSING FRAME %d FOR DETECTION (interval: %d, stream: %s)", 
+             detection_stream->frame_counter, detection_stream->detection_interval,
+             detection_stream->stream_name);
     
     // Find decoder
     AVCodec *codec = avcodec_find_decoder(stream->codecpar->codec_id);
