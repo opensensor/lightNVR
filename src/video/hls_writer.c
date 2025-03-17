@@ -11,6 +11,7 @@
 
 #include "core/logger.h"
 #include "video/hls_writer.h"
+#include "video/detection_integration.h"
 
 /**
  * Clean up old HLS segments that are no longer in the playlist
@@ -415,6 +416,54 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
     if (out_pkt.pts != AV_NOPTS_VALUE && out_pkt.dts != AV_NOPTS_VALUE &&
         out_pkt.pts < out_pkt.dts) {
         out_pkt.pts = out_pkt.dts;
+    }
+
+    // Process packet for detection if it's a video packet
+    if (pkt->stream_index == 0 && input_stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+        // Decode the frame for detection
+        AVCodecContext *codec_ctx = NULL;
+        AVFrame *frame = NULL;
+        
+        // Find decoder
+        AVCodec *codec = avcodec_find_decoder(input_stream->codecpar->codec_id);
+        if (codec) {
+            // Create codec context
+            codec_ctx = avcodec_alloc_context3(codec);
+            if (codec_ctx) {
+                // Copy codec parameters to codec context
+                if (avcodec_parameters_to_context(codec_ctx, input_stream->codecpar) >= 0) {
+                    // Open codec
+                    if (avcodec_open2(codec_ctx, codec, NULL) >= 0) {
+                        // Allocate frame
+                        frame = av_frame_alloc();
+                        if (frame) {
+                            // Send packet to decoder
+                            AVPacket pkt_copy;
+                            if (av_packet_ref(&pkt_copy, pkt) >= 0) {
+                                if (avcodec_send_packet(codec_ctx, &pkt_copy) >= 0) {
+                                    // Receive frame from decoder
+                                    if (avcodec_receive_frame(codec_ctx, frame) >= 0) {
+                                        // Process the decoded frame for detection
+                                        // Use a default detection interval of 10 if not specified
+                                        int detection_interval = 10;
+                                        process_decoded_frame_for_detection(writer->stream_name, frame, detection_interval);
+                                    }
+                                }
+                                av_packet_unref(&pkt_copy);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Cleanup
+        if (frame) {
+            av_frame_free(&frame);
+        }
+        if (codec_ctx) {
+            avcodec_free_context(&codec_ctx);
+        }
     }
 
     // Write the packet
