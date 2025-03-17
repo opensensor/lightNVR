@@ -217,18 +217,20 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
     }
     
     // Create a clean copy of the packet to avoid reference issues
-    AVPacket out_pkt;
-    av_init_packet(&out_pkt);
-    out_pkt.data = NULL;
-    out_pkt.size = 0;
+    AVPacket *out_pkt = av_packet_alloc();
+    if (!out_pkt) {
+        log_error("Failed to allocate packet in process_video_packet for stream %s", stream_name);
+        return -1;
+    }
     
-    if (av_packet_ref(&out_pkt, pkt) < 0) {
+    if (av_packet_ref(out_pkt, pkt) < 0) {
         log_error("Failed to reference packet in process_video_packet for stream %s", stream_name);
+        av_packet_free(&out_pkt);
         return -1;
     }
     
     // Check if this is a key frame - only log at debug level to reduce overhead
-    bool is_key_frame = (out_pkt.flags & AV_PKT_FLAG_KEY) != 0;
+    bool is_key_frame = (out_pkt->flags & AV_PKT_FLAG_KEY) != 0;
     
     // Use direct function calls instead of conditional branching for better performance
     if (writer_type == 0) {  // HLS writer
@@ -237,7 +239,7 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
         // Removed adaptive frame dropping to improve quality
         // Always process all frames for better quality
         
-        ret = hls_writer_write_packet(hls_writer, &out_pkt, input_stream);
+        ret = hls_writer_write_packet(hls_writer, out_pkt, input_stream);
         if (ret < 0) {
             // Only log errors for keyframes or every 200th packet to reduce log spam
             static int error_count = 0;
@@ -254,14 +256,14 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
         
         // Ensure timestamps are properly set before writing
         // This helps prevent glitches in the output file
-        if (out_pkt.pts == AV_NOPTS_VALUE && out_pkt.dts != AV_NOPTS_VALUE) {
-            out_pkt.pts = out_pkt.dts;
-        } else if (out_pkt.dts == AV_NOPTS_VALUE && out_pkt.pts != AV_NOPTS_VALUE) {
-            out_pkt.dts = out_pkt.pts;
+        if (out_pkt->pts == AV_NOPTS_VALUE && out_pkt->dts != AV_NOPTS_VALUE) {
+            out_pkt->pts = out_pkt->dts;
+        } else if (out_pkt->dts == AV_NOPTS_VALUE && out_pkt->pts != AV_NOPTS_VALUE) {
+            out_pkt->dts = out_pkt->pts;
         }
         
         // Write the packet
-        ret = mp4_writer_write_packet(mp4_writer, &out_pkt, input_stream);
+        ret = mp4_writer_write_packet(mp4_writer, out_pkt, input_stream);
         if (ret < 0) {
             // Only log errors for keyframes or every 200th packet to reduce log spam
             static int error_count = 0;
@@ -276,7 +278,7 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
     }
     
     // Clean up our packet reference
-    av_packet_unref(&out_pkt);
+    av_packet_free(&out_pkt);
     
     return ret;
 }

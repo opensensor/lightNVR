@@ -156,12 +156,18 @@ static void *stream_reader_thread(void *arg) {
             // Removed packet throttling mechanism to improve quality
             // Always process all frames for better quality
             
-            // Call the callback function with the packet
-            if (ctx->packet_callback) {
-                ret = ctx->packet_callback(pkt, ctx->input_ctx->streams[ctx->video_stream_idx], ctx->callback_data);
-                if (ret < 0) {
-                    log_error("Packet callback failed for stream %s: %d", ctx->config.name, ret);
-                    // Continue anyway
+            // Call the callback function with the packet - but check if we're still running first
+            if (ctx->running && ctx->packet_callback) {
+                // Make a local copy of the callback to avoid race conditions
+                packet_callback_t callback = ctx->packet_callback;
+                void *callback_data = ctx->callback_data;
+                
+                if (callback) {
+                    ret = callback(pkt, ctx->input_ctx->streams[ctx->video_stream_idx], callback_data);
+                    if (ret < 0) {
+                        log_error("Packet callback failed for stream %s: %d", ctx->config.name, ret);
+                        // Continue anyway
+                    }
                 }
             }
         }
