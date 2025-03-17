@@ -181,8 +181,19 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
         return -1;
     }
     
+    // Create a clean copy of the packet to avoid reference issues
+    AVPacket out_pkt;
+    av_init_packet(&out_pkt);
+    out_pkt.data = NULL;
+    out_pkt.size = 0;
+    
+    if (av_packet_ref(&out_pkt, pkt) < 0) {
+        log_error("Failed to reference packet in process_video_packet for stream %s", stream_name);
+        return -1;
+    }
+    
     // Check if this is a key frame - only log at debug level to reduce overhead
-    bool is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
+    bool is_key_frame = (out_pkt.flags & AV_PKT_FLAG_KEY) != 0;
     
     // Use direct function calls instead of conditional branching for better performance
     if (writer_type == 0) {  // HLS writer
@@ -192,10 +203,11 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
         // This helps ensure smooth streaming by prioritizing key frames
         if (hls_writer->is_under_pressure && !is_key_frame) {
             // Skip this frame to reduce pressure
+            av_packet_unref(&out_pkt);
             return 0;
         }
         
-        ret = hls_writer_write_packet(hls_writer, pkt, input_stream);
+        ret = hls_writer_write_packet(hls_writer, &out_pkt, input_stream);
         if (ret < 0) {
             // Only log errors for keyframes or every 200th packet to reduce log spam
             static int error_count = 0;
@@ -214,11 +226,12 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
             static int skip_counter = 0;
             if (++skip_counter % 3 == 0) {
                 // Skip every 3rd frame when under pressure
+                av_packet_unref(&out_pkt);
                 return 0;
             }
         }
         
-        ret = mp4_writer_write_packet(mp4_writer, pkt, input_stream);
+        ret = mp4_writer_write_packet(mp4_writer, &out_pkt, input_stream);
         if (ret < 0) {
             // Only log errors for keyframes or every 200th packet to reduce log spam
             static int error_count = 0;
@@ -231,6 +244,9 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
         log_error("Unknown writer type: %d", writer_type);
         ret = -1;
     }
+    
+    // Clean up our packet reference
+    av_packet_unref(&out_pkt);
     
     return ret;
 }

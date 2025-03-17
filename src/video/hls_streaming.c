@@ -129,16 +129,19 @@ static void *hls_stream_thread(void *arg) {
         }
     }
 
-    // Get or start a stream reader
+    // Get or start a dedicated stream reader for HLS
     reader_ctx = get_stream_reader(ctx->config.name);
     if (!reader_ctx) {
-        // Start a new stream reader
+        // Start a new dedicated stream reader
         reader_ctx = start_stream_reader(ctx->config.name, 1); // 1 for dedicated stream reader
         if (!reader_ctx) {
-            log_error("Failed to start stream reader for %s", ctx->config.name);
+            log_error("Failed to start dedicated stream reader for %s", ctx->config.name);
             ctx->running = 0;
             return NULL;
         }
+        log_info("Started new dedicated stream reader for HLS stream %s", ctx->config.name);
+    } else {
+        log_info("Using existing stream reader for HLS stream %s", ctx->config.name);
     }
     
     // Register as a consumer of the stream

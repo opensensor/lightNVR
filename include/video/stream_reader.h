@@ -56,6 +56,7 @@ typedef struct {
     pthread_mutex_t consumers_mutex;
     AVFormatContext *input_ctx;
     int video_stream_idx;
+    int dedicated;          // Flag to indicate if this is a dedicated stream reader
 } stream_reader_ctx_t;
 
 /**

@@ -118,13 +118,13 @@ static void *mp4_recording_thread(void *arg) {
     
     log_info("Created MP4 writer for %s at %s", ctx->config.name, ctx->output_path);
 
-    // Get or start a stream reader
+    // Get or start a dedicated stream reader for MP4 recording
     reader_ctx = get_stream_reader(ctx->config.name);
     if (!reader_ctx) {
-        // Start a new stream reader - use dedicated reader for MP4 recording
+        // Start a new dedicated stream reader for MP4 recording
         reader_ctx = start_stream_reader(ctx->config.name, 1); // 1 for dedicated stream reader
         if (!reader_ctx) {
-            log_error("Failed to start stream reader for %s", ctx->config.name);
+            log_error("Failed to start dedicated stream reader for %s", ctx->config.name);
             
             if (ctx->mp4_writer) {
                 mp4_writer_close(ctx->mp4_writer);
@@ -137,6 +137,9 @@ static void *mp4_recording_thread(void *arg) {
             ctx->running = 0;
             return NULL;
         }
+        log_info("Started new dedicated stream reader for MP4 recording of stream %s", ctx->config.name);
+    } else {
+        log_info("Using existing stream reader for MP4 recording of stream %s", ctx->config.name);
     }
     
     // Register as a consumer of the stream

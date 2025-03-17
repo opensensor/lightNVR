@@ -22,21 +22,8 @@
 #include "video/stream_reader.h"
 #include "video/stream_transcoding.h"
 
-// Extended stream reader context with dedicated flag
-typedef struct {
-    stream_config_t config;
-    int running;
-    pthread_t thread;
-    packet_queue_t queue;
-    int consumers;          // Number of active consumers
-    pthread_mutex_t consumers_mutex;
-    AVFormatContext *input_ctx;
-    int video_stream_idx;
-    int dedicated;          // Flag to indicate if this is a dedicated stream reader
-} stream_reader_ctx_internal_t;
-
 // Hash map for tracking running stream reader contexts
-static stream_reader_ctx_internal_t *reader_contexts[MAX_STREAMS];
+static stream_reader_ctx_t *reader_contexts[MAX_STREAMS];
 static pthread_mutex_t contexts_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // Forward declarations
@@ -364,6 +351,18 @@ static int packet_queue_get(packet_queue_t *q, AVPacket *pkt, int consumer_id, i
         // For shared stream readers, always reset cursor to head to ensure sequential processing
         // This ensures monotonically increasing DTS values
         q->consumers[consumer_idx].cursor = q->head;
+    } else {
+        // For dedicated stream readers, if the cursor is at the head, keep it there
+        // This ensures we don't miss any packets when starting a new dedicated reader
+        if (q->consumers[consumer_idx].cursor == q->head) {
+            // Already at head, no need to change
+        } else if (q->consumers[consumer_idx].cursor < q->head || 
+                  q->consumers[consumer_idx].cursor >= q->head + q->size) {
+            // If cursor is before head or beyond the valid range, reset it to head
+            q->consumers[consumer_idx].cursor = q->head;
+            log_debug("Reset dedicated consumer cursor to head: consumer_id=%d", consumer_id);
+        }
+        // Otherwise, leave the cursor where it is
     }
     
     // Get the packet at the consumer's cursor
@@ -436,7 +435,7 @@ static void packet_queue_abort(packet_queue_t *q) {
  * Stream reader thread function
  */
 static void *stream_reader_thread(void *arg) {
-    stream_reader_ctx_internal_t *ctx = (stream_reader_ctx_internal_t *)arg;
+    stream_reader_ctx_t *ctx = (stream_reader_ctx_t *)arg;
     AVPacket *pkt = NULL;
     int ret;
     
@@ -671,14 +670,14 @@ stream_reader_ctx_t *start_stream_reader(const char *stream_name, int dedicated)
     }
     
     // Create context
-    stream_reader_ctx_internal_t *ctx = malloc(sizeof(stream_reader_ctx_internal_t));
+    stream_reader_ctx_t *ctx = malloc(sizeof(stream_reader_ctx_t));
     if (!ctx) {
         pthread_mutex_unlock(&contexts_mutex);
         log_error("Memory allocation failed for stream reader context");
         return NULL;
     }
     
-    memset(ctx, 0, sizeof(stream_reader_ctx_internal_t));
+    memset(ctx, 0, sizeof(stream_reader_ctx_t));
     memcpy(&ctx->config, &config, sizeof(stream_config_t));
     ctx->running = 1;
     ctx->consumers = 0;
@@ -710,30 +709,29 @@ stream_reader_ctx_t *start_stream_reader(const char *stream_name, int dedicated)
  * Stop a stream reader
  */
 int stop_stream_reader(stream_reader_ctx_t *ctx) {
-    stream_reader_ctx_internal_t *internal_ctx = (stream_reader_ctx_internal_t *)ctx;
-    if (!internal_ctx) {
+    if (!ctx) {
         return -1;
     }
     
     // Log that we're attempting to stop the reader
-    log_info("Attempting to stop stream reader: %s", internal_ctx->config.name);
+    log_info("Attempting to stop stream reader: %s", ctx->config.name);
     
     // Check if there are still consumers
-    pthread_mutex_lock(&internal_ctx->consumers_mutex);
-    if (internal_ctx->consumers > 0) {
+    pthread_mutex_lock(&ctx->consumers_mutex);
+    if (ctx->consumers > 0) {
         log_warn("Stream reader for %s still has %d consumers, not stopping",
-                internal_ctx->config.name, internal_ctx->consumers);
-        pthread_mutex_unlock(&internal_ctx->consumers_mutex);
+                ctx->config.name, ctx->consumers);
+        pthread_mutex_unlock(&ctx->consumers_mutex);
         return -1;
     }
-    pthread_mutex_unlock(&internal_ctx->consumers_mutex);
+    pthread_mutex_unlock(&ctx->consumers_mutex);
     
     pthread_mutex_lock(&contexts_mutex);
     
     // Find the reader context in the array
     int index = -1;
     for (int i = 0; i < MAX_STREAMS; i++) {
-        if (reader_contexts[i] == internal_ctx) {
+        if (reader_contexts[i] == ctx) {
             index = i;
             break;
         }
@@ -746,31 +744,31 @@ int stop_stream_reader(stream_reader_ctx_t *ctx) {
     }
     
     // Mark as not running
-    internal_ctx->running = 0;
+    ctx->running = 0;
     
     // Abort packet queue
-    packet_queue_abort(&internal_ctx->queue);
+    packet_queue_abort(&ctx->queue);
     
     // Attempt to join the thread with a timeout
-    pthread_t thread = internal_ctx->thread;
+    pthread_t thread = ctx->thread;
     pthread_mutex_unlock(&contexts_mutex);
     
     // Try to join with a timeout
     if (pthread_join_with_timeout(thread, NULL, 5) != 0) {
         log_warn("Could not join thread for stream %s within timeout",
-                internal_ctx->config.name);
+                ctx->config.name);
     }
     
     pthread_mutex_lock(&contexts_mutex);
     
     // Clean up resources
-    if (reader_contexts[index] == internal_ctx) {
-        packet_queue_destroy(&internal_ctx->queue);
-        pthread_mutex_destroy(&internal_ctx->consumers_mutex);
-        free(internal_ctx);
+    if (reader_contexts[index] == ctx) {
+        packet_queue_destroy(&ctx->queue);
+        pthread_mutex_destroy(&ctx->consumers_mutex);
+        free(ctx);
         reader_contexts[index] = NULL;
         
-        log_info("Successfully stopped stream reader for %s", internal_ctx->config.name);
+        log_info("Successfully stopped stream reader for %s", ctx->config.name);
     } else {
         log_warn("Stream reader context was modified during cleanup");
     }
@@ -784,48 +782,47 @@ int stop_stream_reader(stream_reader_ctx_t *ctx) {
  * Register as a consumer of the stream reader
  */
 int register_stream_consumer(stream_reader_ctx_t *ctx) {
-    stream_reader_ctx_internal_t *internal_ctx = (stream_reader_ctx_internal_t *)ctx;
-    if (!internal_ctx) {
+    if (!ctx) {
         log_error("Cannot register consumer: NULL context");
         return -1;
     }
     
-    pthread_mutex_lock(&internal_ctx->consumers_mutex);
-    internal_ctx->consumers++;
+    pthread_mutex_lock(&ctx->consumers_mutex);
+    ctx->consumers++;
     
     // Assign a consumer ID and register with the queue
     int consumer_id = 0;
     
-    pthread_mutex_lock(&internal_ctx->queue.mutex);
-    consumer_id = internal_ctx->queue.next_consumer_id++;
+    pthread_mutex_lock(&ctx->queue.mutex);
+    consumer_id = ctx->queue.next_consumer_id++;
     
     // Find an empty slot in the consumers array
     int slot = -1;
     for (int i = 0; i < MAX_QUEUE_CONSUMERS; i++) {
-        if (!internal_ctx->queue.consumers[i].active) {
+        if (!ctx->queue.consumers[i].active) {
             slot = i;
             break;
         }
     }
     
     if (slot < 0) {
-        log_error("No empty slot for new consumer in stream %s", internal_ctx->config.name);
-        pthread_mutex_unlock(&internal_ctx->queue.mutex);
-        pthread_mutex_unlock(&internal_ctx->consumers_mutex);
+        log_error("No empty slot for new consumer in stream %s", ctx->config.name);
+        pthread_mutex_unlock(&ctx->queue.mutex);
+        pthread_mutex_unlock(&ctx->consumers_mutex);
         return -1;
     }
     
     // Initialize the consumer cursor
-    internal_ctx->queue.consumers[slot].consumer_id = consumer_id;
-    internal_ctx->queue.consumers[slot].cursor = internal_ctx->queue.head; // Start at the head of the queue
-    internal_ctx->queue.consumers[slot].last_read_time = time(NULL);
-    internal_ctx->queue.consumers[slot].active = 1;
+    ctx->queue.consumers[slot].consumer_id = consumer_id;
+    ctx->queue.consumers[slot].cursor = ctx->queue.head; // Start at the head of the queue
+    ctx->queue.consumers[slot].last_read_time = time(NULL);
+    ctx->queue.consumers[slot].active = 1;
     
-    pthread_mutex_unlock(&internal_ctx->queue.mutex);
-    pthread_mutex_unlock(&internal_ctx->consumers_mutex);
+    pthread_mutex_unlock(&ctx->queue.mutex);
+    pthread_mutex_unlock(&ctx->consumers_mutex);
     
     log_info("Registered consumer %d for stream %s (dedicated: %d)", 
-             consumer_id, internal_ctx->config.name, internal_ctx->dedicated);
+             consumer_id, ctx->config.name, ctx->dedicated);
     return consumer_id;
 }
 
@@ -833,32 +830,31 @@ int register_stream_consumer(stream_reader_ctx_t *ctx) {
  * Unregister as a consumer of the stream reader
  */
 int unregister_stream_consumer(stream_reader_ctx_t *ctx, int consumer_id) {
-    stream_reader_ctx_internal_t *internal_ctx = (stream_reader_ctx_internal_t *)ctx;
-    if (!internal_ctx) {
+    if (!ctx) {
         return -1;
     }
     
-    pthread_mutex_lock(&internal_ctx->consumers_mutex);
+    pthread_mutex_lock(&ctx->consumers_mutex);
     
     // Verify the consumer ID is valid
-    pthread_mutex_lock(&internal_ctx->queue.mutex);
-    int consumer_idx = find_consumer(&internal_ctx->queue, consumer_id);
+    pthread_mutex_lock(&ctx->queue.mutex);
+    int consumer_idx = find_consumer(&ctx->queue, consumer_id);
     if (consumer_idx < 0) {
-        pthread_mutex_unlock(&internal_ctx->queue.mutex);
-        pthread_mutex_unlock(&internal_ctx->consumers_mutex);
-        log_warn("Consumer %d not found for stream %s", consumer_id, internal_ctx->config.name);
+        pthread_mutex_unlock(&ctx->queue.mutex);
+        pthread_mutex_unlock(&ctx->consumers_mutex);
+        log_warn("Consumer %d not found for stream %s", consumer_id, ctx->config.name);
         return -1;
     }
     
     // Mark the consumer as inactive
-    internal_ctx->queue.consumers[consumer_idx].active = 0;
-    pthread_mutex_unlock(&internal_ctx->queue.mutex);
+    ctx->queue.consumers[consumer_idx].active = 0;
+    pthread_mutex_unlock(&ctx->queue.mutex);
     
     // Decrement the consumer count
-    internal_ctx->consumers--;
-    pthread_mutex_unlock(&internal_ctx->consumers_mutex);
+    ctx->consumers--;
+    pthread_mutex_unlock(&ctx->consumers_mutex);
     
-    log_info("Unregistered consumer %d for stream %s", consumer_id, internal_ctx->config.name);
+    log_info("Unregistered consumer %d for stream %s", consumer_id, ctx->config.name);
     return 0;
 }
 
@@ -866,14 +862,32 @@ int unregister_stream_consumer(stream_reader_ctx_t *ctx, int consumer_id) {
  * Get a packet from the queue (blocking)
  */
 int get_packet(stream_reader_ctx_t *ctx, AVPacket *pkt, int consumer_id) {
-    stream_reader_ctx_internal_t *internal_ctx = (stream_reader_ctx_internal_t *)ctx;
-    if (!internal_ctx) {
+    if (!ctx) {
+        log_error("Invalid stream reader context in get_packet");
+        return -1;
+    }
+    
+    if (pkt == NULL) {
+        log_error("NULL packet passed to get_packet");
+        return -1;
+    }
+    
+    if (consumer_id <= 0) {
+        log_error("Invalid consumer ID (%d) in get_packet", consumer_id);
         return -1;
     }
     
     // Pass the dedicated flag from the context
     // This ensures proper handling of shared vs dedicated stream readers
-    return packet_queue_get(&internal_ctx->queue, pkt, consumer_id, internal_ctx->dedicated);
+    int ret = packet_queue_get(&ctx->queue, pkt, consumer_id, ctx->dedicated);
+    
+    // Add additional logging for debugging
+    if (ret < 0) {
+        log_error("Failed to get packet for consumer %d (dedicated: %d)", 
+                 consumer_id, ctx->dedicated);
+    }
+    
+    return ret;
 }
 
 /**
@@ -886,8 +900,27 @@ stream_reader_ctx_t *get_stream_reader(const char *stream_name) {
     
     pthread_mutex_lock(&contexts_mutex);
     
-    // Always return NULL to force creation of a new dedicated stream reader
-    // This ensures each consumer gets its own stream reader
+    // First look for an existing dedicated reader for this stream
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (reader_contexts[i] && 
+            strcmp(reader_contexts[i]->config.name, stream_name) == 0 && 
+            reader_contexts[i]->dedicated) {
+            pthread_mutex_unlock(&contexts_mutex);
+            return (stream_reader_ctx_t *)reader_contexts[i];
+        }
+    }
+    
+    // If no dedicated reader exists, look for a shared reader
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (reader_contexts[i] && 
+            strcmp(reader_contexts[i]->config.name, stream_name) == 0 && 
+            !reader_contexts[i]->dedicated) {
+            pthread_mutex_unlock(&contexts_mutex);
+            return (stream_reader_ctx_t *)reader_contexts[i];
+        }
+    }
+    
+    // No existing reader found
     pthread_mutex_unlock(&contexts_mutex);
     return NULL;
 }
