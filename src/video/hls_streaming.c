@@ -27,6 +27,7 @@
 #include "video/hls_writer.h"
 #include "video/hls_streaming.h"
 #include "video/stream_transcoding.h"
+#include "video/stream_reader.h"
 #include "database/database_manager.h"
 
 // Hash map for tracking running HLS streaming contexts
@@ -41,11 +42,10 @@ static void *hls_stream_thread(void *arg);
  */
 static void *hls_stream_thread(void *arg) {
     hls_stream_ctx_t *ctx = (hls_stream_ctx_t *)arg;
-    AVFormatContext *input_ctx = NULL;
     AVPacket *pkt = NULL;
-    int video_stream_idx = -1;
     int ret;
     time_t start_time = time(NULL);  // Record when we started
+    stream_reader_ctx_t *reader_ctx = NULL;
 
     log_info("Starting HLS streaming thread for stream %s", ctx->config.name);
 
@@ -129,22 +129,20 @@ static void *hls_stream_thread(void *arg) {
         }
     }
 
-    // Open input stream
-    ret = open_input_stream(&input_ctx, ctx->config.url, ctx->config.protocol);
-    if (ret < 0) {
-        log_error("Failed to open input stream for %s", ctx->config.name);
-        ctx->running = 0;
-        return NULL;
+    // Get or start a stream reader
+    reader_ctx = get_stream_reader(ctx->config.name);
+    if (!reader_ctx) {
+        // Start a new stream reader
+        reader_ctx = start_stream_reader(ctx->config.name);
+        if (!reader_ctx) {
+            log_error("Failed to start stream reader for %s", ctx->config.name);
+            ctx->running = 0;
+            return NULL;
+        }
     }
-
-    // Find video stream
-    video_stream_idx = find_video_stream_index(input_ctx);
-    if (video_stream_idx == -1) {
-        log_error("No video stream found in %s", ctx->config.url);
-        avformat_close_input(&input_ctx);
-        ctx->running = 0;
-        return NULL;
-    }
+    
+    // Register as a consumer of the stream
+    register_stream_consumer(reader_ctx);
 
     // Create HLS writer - adding the segment_duration parameter
     // Using a default of 4 seconds if not specified in config
@@ -155,7 +153,10 @@ static void *hls_stream_thread(void *arg) {
     ctx->hls_writer = hls_writer_create(ctx->output_path, ctx->config.name, segment_duration);
     if (!ctx->hls_writer) {
         log_error("Failed to create HLS writer for %s", ctx->config.name);
-        avformat_close_input(&input_ctx);
+        
+        // Unregister as a consumer
+        unregister_stream_consumer(reader_ctx);
+        
         ctx->running = 0;
         return NULL;
     }
@@ -164,61 +165,37 @@ static void *hls_stream_thread(void *arg) {
     pkt = av_packet_alloc();
     if (!pkt) {
         log_error("Failed to allocate packet");
+        
         hls_writer_close(ctx->hls_writer);
         ctx->hls_writer = NULL;
-        avformat_close_input(&input_ctx);
+        
+        // Unregister as a consumer
+        unregister_stream_consumer(reader_ctx);
+        
         ctx->running = 0;
         return NULL;
     }
 
     // Main packet reading loop
     while (ctx->running) {
-        ret = av_read_frame(input_ctx, pkt);
+        // Get a packet from the stream reader
+        av_packet_unref(pkt);  // Make sure the packet is clean before reusing
+        ret = get_packet(reader_ctx, pkt);
 
         if (ret < 0) {
-            if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN)) {
-                // End of stream or resource temporarily unavailable
-                // Try to reconnect after a short delay
-                av_packet_unref(pkt);
-                log_warn("Stream %s disconnected, attempting to reconnect...", ctx->config.name);
-
-                av_usleep(2000000);  // 2 second delay
-
-                // Close and reopen input
-                avformat_close_input(&input_ctx);
-                
-                ret = open_input_stream(&input_ctx, ctx->config.url, ctx->config.protocol);
-                if (ret < 0) {
-                    log_error("Could not reconnect to input stream for %s", ctx->config.name);
-                    continue;  // Keep trying
-                }
-
-                // Find video stream again
-                video_stream_idx = find_video_stream_index(input_ctx);
-                if (video_stream_idx == -1) {
-                    log_error("No video stream found in %s after reconnect", ctx->config.url);
-                    continue;  // Keep trying
-                }
-
-                continue;
-            } else {
-                log_ffmpeg_error(ret, "Error reading frame");
-                break;
-            }
+            // Error or abort request
+            log_warn("Error getting packet from stream reader for %s", ctx->config.name);
+            av_usleep(1000000);  // 1 second delay
+            continue;
         }
 
-        // Process video packets
-        if (pkt->stream_index == video_stream_idx) {
-            // Write to HLS
-            ret = process_video_packet(pkt, input_ctx->streams[video_stream_idx], 
-                                      ctx->hls_writer, 0, ctx->config.name);
-            if (ret < 0) {
-                log_error("Failed to write packet to HLS for stream %s: %d", ctx->config.name, ret);
-                // Continue anyway to keep the stream going
-            }
+        // Write to HLS
+        ret = process_video_packet(pkt, reader_ctx->input_ctx->streams[reader_ctx->video_stream_idx], 
+                                  ctx->hls_writer, 0, ctx->config.name);
+        if (ret < 0) {
+            log_error("Failed to write packet to HLS for stream %s: %d", ctx->config.name, ret);
+            // Continue anyway to keep the stream going
         }
-
-        av_packet_unref(pkt);
     }
 
     // Cleanup resources
@@ -226,8 +203,9 @@ static void *hls_stream_thread(void *arg) {
         av_packet_free(&pkt);
     }
 
-    if (input_ctx) {
-        avformat_close_input(&input_ctx);
+    // Unregister as a consumer
+    if (reader_ctx) {
+        unregister_stream_consumer(reader_ctx);
     }
 
     // When done, close writer

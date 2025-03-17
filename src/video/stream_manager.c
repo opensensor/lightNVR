@@ -9,6 +9,7 @@
 #include "core/config.h"
 #include "video/streams.h"
 #include "video/detection.h"
+#include "video/stream_reader.h"
 
 // Stream structure
 typedef struct {
@@ -55,6 +56,9 @@ int init_stream_manager(int max_streams) {
             }
         }
     }
+    
+    // Initialize stream reader backend
+    init_stream_reader_backend();
     
     initialized = true;
     pthread_mutex_unlock(&streams_mutex);
@@ -107,6 +111,9 @@ void shutdown_stream_manager(void) {
     for (int i = 0; i < MAX_STREAMS; i++) {
         pthread_mutex_destroy(&streams[i].mutex);
     }
+    
+    // Cleanup stream reader backend
+    cleanup_stream_reader_backend();
     
     initialized = false;
     pthread_mutex_unlock(&streams_mutex);
