@@ -119,10 +119,7 @@ void handle_hls_manifest(const http_request_t *request, http_response_t *respons
         return;
     }
     
-    // Set streaming enabled flag to true
-    set_stream_streaming_enabled(stream, true);
-    
-    // Start HLS if not already running
+    // Start HLS if not already running - this only starts streaming, not recording
     if (start_hls_stream(stream_name) != 0) {
         create_stream_error_response(response, 500, "Failed to start HLS stream");
         return;
@@ -507,6 +504,18 @@ void handle_stream_toggle(const http_request_t *request, http_response_t *respon
         return;
     }
     
+    // Get current stream configuration to check recording state
+    stream_config_t config;
+    if (get_stream_config(stream, &config) != 0) {
+        create_stream_error_response(response, 500, "Failed to get stream configuration");
+        return;
+    }
+    
+    // Store the current recording state
+    bool recording_enabled = config.record;
+    log_info("Current recording state for stream %s: %s", 
+             stream_name, recording_enabled ? "enabled" : "disabled");
+    
     // Parse request body to get enabled flag
     if (!request->body || request->content_length == 0) {
         create_stream_error_response(response, 400, "Empty request body");
@@ -527,7 +536,7 @@ void handle_stream_toggle(const http_request_t *request, http_response_t *respon
     bool enabled = get_json_boolean_value(json, "enabled", true);
     free(json);
     
-    log_info("Toggle request for stream %s: enabled=%s", stream_name, enabled ? "true" : "false");
+    log_info("Toggle streaming request for stream %s: enabled=%s", stream_name, enabled ? "true" : "false");
     
     // Set the streaming_enabled flag in the stream configuration
     set_stream_streaming_enabled(stream, enabled);
@@ -549,11 +558,32 @@ void handle_stream_toggle(const http_request_t *request, http_response_t *respon
         log_info("Stopped HLS stream for %s", stream_name);
     }
     
+    // If recording is enabled, ensure it's running regardless of streaming state
+    if (recording_enabled) {
+        // Check current recording state
+        int recording_state = get_recording_state(stream_name);
+        
+        if (recording_state == 0) {
+            // Recording is not active, start it
+            log_info("Ensuring recording is active for stream %s (independent of streaming)", stream_name);
+            if (start_mp4_recording(stream_name) != 0) {
+                log_warn("Failed to start recording for stream %s", stream_name);
+                // Continue anyway, this is not a fatal error for streaming
+            } else {
+                log_info("Successfully started recording for stream %s", stream_name);
+            }
+        } else if (recording_state == 1) {
+            log_info("Recording is already active for stream %s", stream_name);
+        } else {
+            log_warn("Could not determine recording state for stream %s", stream_name);
+        }
+    }
+    
     // Create success response
     char response_json[256];
     snprintf(response_json, sizeof(response_json),
-             "{\"success\": true, \"name\": \"%s\", \"streaming_enabled\": %s}",
-             stream_name, enabled ? "true" : "false");
+             "{\"success\": true, \"name\": \"%s\", \"streaming_enabled\": %s, \"recording_enabled\": %s}",
+             stream_name, enabled ? "true" : "false", recording_enabled ? "true" : "false");
     
     create_json_response(response, 200, response_json);
 }

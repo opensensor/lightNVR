@@ -19,6 +19,9 @@
 #include "video/stream_manager.h"
 #include "storage/storage_manager.h"
 #include "video/streams.h"
+#include "video/hls_streaming.h"
+#include "video/mp4_recording.h"
+#include "video/stream_transcoding.h"
 
 // External function declarations
 void init_recordings_system(void);
@@ -387,7 +390,9 @@ int main(int argc, char *argv[]) {
     load_streams_from_config(&config);
 
     // Initialize FFmpeg streaming backend
-    init_streaming_backend();
+    init_transcoding_backend();
+    init_hls_streaming_backend();
+    init_mp4_recording_backend();
 
     // Initialize web server
     if (init_web_server(config.web_port, config.web_root) != 0) {
@@ -448,7 +453,9 @@ cleanup:
         
         // First stop all streams to ensure proper finalization of recordings
         log_info("Stopping all active streams...");
-        cleanup_streaming_backend();  // Cleanup FFmpeg streaming
+        cleanup_hls_streaming_backend();  // Cleanup HLS streaming
+        cleanup_mp4_recording_backend();  // Cleanup MP4 recording
+        cleanup_transcoding_backend();    // Cleanup FFmpeg resources
         
         // Finalize all MP4 recordings
         log_info("Finalizing all MP4 recordings...");
@@ -471,7 +478,9 @@ cleanup:
         // Fork failed
         log_error("Failed to create watchdog process for cleanup timeout");
         // Continue with cleanup anyway
-        cleanup_streaming_backend();
+        cleanup_hls_streaming_backend();
+        cleanup_mp4_recording_backend();
+        cleanup_transcoding_backend();
         close_all_mp4_writers();
         cleanup_hls_directories();
         shutdown_web_server();

@@ -17,8 +17,6 @@
 #include "web/api_handlers_common.h"
 
 // Forward declarations of helper functions
-
-// Forward declarations of helper functions
 static char* create_stream_json(const stream_config_t *stream);
 static char* create_streams_json_array();
 static int parse_stream_json(const char *json, stream_config_t *stream);
@@ -879,14 +877,7 @@ void handle_toggle_streaming(const http_request_t *request, http_response_t *res
     
     log_info("Toggle streaming for stream %s: enabled=%s", decoded_name, enabled ? "true" : "false");
     
-    // Set the streaming_enabled flag in the stream configuration
-    if (set_stream_streaming_enabled(stream, enabled) != 0) {
-        log_error("Failed to set streaming_enabled flag for stream: %s", decoded_name);
-        create_json_response(response, 500, "{\"error\": \"Failed to set streaming_enabled flag\"}");
-        return;
-    }
-    
-    // Also update the streaming_enabled flag in the database
+    // Get current stream configuration to preserve recording state
     stream_config_t config;
     if (get_stream_config(stream, &config) != 0) {
         log_error("Failed to get stream configuration for: %s", decoded_name);
@@ -894,7 +885,19 @@ void handle_toggle_streaming(const http_request_t *request, http_response_t *res
         return;
     }
     
-    // Set only the streaming_enabled flag in the config
+    // Store the current recording state
+    bool recording_enabled = config.record;
+    log_info("Current recording state for stream %s: %s", 
+             decoded_name, recording_enabled ? "enabled" : "disabled");
+    
+    // Set the streaming_enabled flag in the stream configuration
+    if (set_stream_streaming_enabled(stream, enabled) != 0) {
+        log_error("Failed to set streaming_enabled flag for stream: %s", decoded_name);
+        create_json_response(response, 500, "{\"error\": \"Failed to set streaming_enabled flag\"}");
+        return;
+    }
+    
+    // Update only the streaming_enabled flag in the config
     config.streaming_enabled = enabled;
     
     // Update the stream configuration in database
@@ -905,7 +908,7 @@ void handle_toggle_streaming(const http_request_t *request, http_response_t *res
         return;
     }
     
-    // Toggle the stream
+    // Toggle the streaming
     if (enabled) {
         // Start HLS stream if not already running
         if (start_hls_stream(decoded_name) != 0) {
@@ -924,16 +927,39 @@ void handle_toggle_streaming(const http_request_t *request, http_response_t *res
         log_info("Stopped HLS stream for %s", decoded_name);
     }
     
+    // If recording was enabled, ensure it stays enabled regardless of streaming state
+    if (recording_enabled) {
+        log_info("Ensuring recording remains active for stream %s", decoded_name);
+        
+        // Check current recording state
+        int recording_state = get_recording_state(decoded_name);
+        
+        if (recording_state == 0) {
+            // Recording is not active, start it
+            log_info("Starting recording for stream %s", decoded_name);
+            if (start_mp4_recording(decoded_name) != 0) {
+                log_warn("Failed to start recording for stream %s", decoded_name);
+                // Continue anyway, this is not a fatal error
+            } else {
+                log_info("Successfully started recording for stream %s", decoded_name);
+            }
+        } else if (recording_state == 1) {
+            log_info("Recording is already active for stream %s", decoded_name);
+        } else {
+            log_warn("Could not determine recording state for stream %s", decoded_name);
+        }
+    }
+    
     // Create success response
     char response_json[256];
     snprintf(response_json, sizeof(response_json),
-             "{\"success\": true, \"name\": \"%s\", \"streaming_enabled\": %s}",
-             decoded_name, enabled ? "true" : "false");
+             "{\"success\": true, \"name\": \"%s\", \"streaming_enabled\": %s, \"recording_enabled\": %s}",
+             decoded_name, enabled ? "true" : "false", recording_enabled ? "true" : "false");
     
     create_json_response(response, 200, response_json);
     
-    log_info("Successfully toggled streaming for stream: %s (enabled=%s)", 
-             decoded_name, enabled ? "true" : "false");
+    log_info("Successfully toggled streaming for stream: %s (streaming=%s, recording=%s)", 
+             decoded_name, enabled ? "enabled" : "disabled", recording_enabled ? "enabled" : "disabled");
 }
 
 /**
