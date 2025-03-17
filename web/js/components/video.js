@@ -149,9 +149,12 @@ function initializeVideoPlayer(stream) {
     // Use HLS.js for browsers that don't support HLS natively
     else if (Hls && Hls.isSupported()) {
         const hls = new Hls({
-            maxBufferLength: 60,            // Increased from 30 to 60 seconds
-            maxMaxBufferLength: 120,        // Increased from 60 to 120 seconds
-            liveSyncDurationCount: 5,       // Increased from 3 to 5 segments
+            maxBufferLength: 10,            // Reduced from 60 to 10 seconds
+            maxMaxBufferLength: 20,         // Reduced from 120 to 20 seconds
+            liveSyncDurationCount: 3,       // Reduced from 5 to 3 segments
+            liveMaxLatencyDurationCount: 5, // Maximum latency in segments
+            liveDurationInfinity: false,    // Don't treat live streams as infinite duration
+            lowLatencyMode: true,           // Enable low latency mode
             enableWorker: true,
             fragLoadingTimeOut: 20000,      // 20 seconds timeout for fragment loading (default is 8000ms)
             manifestLoadingTimeOut: 15000,  // 15 seconds timeout for manifest loading (default is 10000ms)
@@ -180,8 +183,8 @@ function initializeVideoPlayer(stream) {
             }
         });
 
-        // Set up periodic refresh to prevent stale data
-        const refreshInterval = 60000; // 60 seconds
+        // Set up more frequent refresh to prevent stale data
+        const refreshInterval = 30000; // 30 seconds
         const refreshTimer = setInterval(() => {
             if (videoCell && videoCell.hlsPlayer) {
                 console.log(`Refreshing HLS stream for ${stream.name}`);

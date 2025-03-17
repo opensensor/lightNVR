@@ -185,9 +185,9 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     snprintf(hls_time, sizeof(hls_time), "%d", segment_duration);
 
     av_dict_set(&options, "hls_time", hls_time, 0);
-    av_dict_set(&options, "hls_list_size", "15", 0);  // Increased from 10 to 15
-    av_dict_set(&options, "hls_flags", "delete_segments+append_list+discont_start+split_by_time", 0);
-    av_dict_set(&options, "hls_allow_cache", "1", 0);  // Allow caching to improve playback
+    av_dict_set(&options, "hls_list_size", "5", 0);  // Reduced from 15 to 5 to minimize delay
+    av_dict_set(&options, "hls_flags", "delete_segments+append_list+discont_start+split_by_time+program_date_time", 0);
+    av_dict_set(&options, "hls_allow_cache", "0", 0);  // Disable caching to prevent stale data
     av_dict_set(&options, "hls_segment_type", "mpegts", 0);  // Ensure MPEG-TS segments for better compatibility
 
     // Remove the delete_segments flag to prevent FFmpeg from automatically deleting segments
@@ -493,11 +493,11 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
         return ret;
     }
 
-    // Periodically clean up old segments (every 120 seconds)
-    if (now - writer->last_cleanup_time >= 120) {
-        // Keep twice the number of segments in the playlist to ensure smooth playback
-        // while still cleaning up old segments
-        int max_segments_to_keep = 30; // Default to 30 segments (2x the default hls_list_size of 15)
+        // Periodically clean up old segments (every 60 seconds)
+    if (now - writer->last_cleanup_time >= 60) {
+        // Keep only a few more segments than in the playlist to reduce delay
+        // while still ensuring smooth playback
+        int max_segments_to_keep = 8; // Default to 8 segments (slightly more than hls_list_size of 5)
         cleanup_old_segments(writer->output_dir, max_segments_to_keep);
         writer->last_cleanup_time = now;
     }

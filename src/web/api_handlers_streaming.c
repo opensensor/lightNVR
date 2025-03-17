@@ -114,10 +114,10 @@ void handle_hls_manifest(const http_request_t *request, http_response_t *respons
     snprintf(manifest_path, MAX_PATH_LENGTH, "%s/hls/%s/index.m3u8",
              global_config->storage_path, stream_name);
 
-    // Wait longer for the manifest file to be created
-    // Try up to 60 times with 200ms between attempts (12 seconds total)
+    // Wait for the manifest file to be created, but with a shorter timeout
+    // Try up to 30 times with 100ms between attempts (3 seconds total)
     bool manifest_exists = false;
-    for (int i = 0; i < 60; i++) {
+    for (int i = 0; i < 30; i++) {
         // Check for the final manifest file
         if (access(manifest_path, F_OK) == 0) {
             manifest_exists = true;
@@ -132,8 +132,8 @@ void handle_hls_manifest(const http_request_t *request, http_response_t *respons
             // Continue waiting for the final file
         }
 
-        log_debug("Waiting for manifest file to be created (attempt %d/60)", i+1);
-        usleep(200000);  // 200ms
+        log_debug("Waiting for manifest file to be created (attempt %d/30)", i+1);
+        usleep(100000);  // 100ms - reduced from 200ms
     }
 
     if (!manifest_exists) {
@@ -178,10 +178,16 @@ void handle_hls_manifest(const http_request_t *request, http_response_t *respons
     strncpy(response->content_type, "application/vnd.apple.mpegurl", sizeof(response->content_type) - 1);
     response->content_type[sizeof(response->content_type) - 1] = '\0';
     
-    // Add cache control headers to prevent caching of HLS manifests
-    set_response_header(response, "Cache-Control", "no-cache, no-store, must-revalidate");
+    // Add strict cache control headers to prevent caching of HLS manifests
+    set_response_header(response, "Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
     set_response_header(response, "Pragma", "no-cache");
     set_response_header(response, "Expires", "0");
+    
+    // Add timestamp header to help client identify the freshness of the manifest
+    char timestamp_str[32];
+    time_t now = time(NULL);
+    snprintf(timestamp_str, sizeof(timestamp_str), "%ld", now);
+    set_response_header(response, "X-Timestamp", timestamp_str);
     
     response->body = content;
     response->body_length = file_size;
@@ -245,17 +251,17 @@ void handle_hls_segment(const http_request_t *request, http_response_t *response
     if (access(segment_path, F_OK) != 0) {
         log_debug("Segment file not found on first attempt: %s (%s)", segment_path, strerror(errno));
 
-        // Wait longer for it to be created - HLS segments might still be generating
+        // Wait for it to be created, but with a shorter timeout
         bool segment_exists = false;
-        for (int i = 0; i < 40; i++) {  // Try for 8 seconds total
+        for (int i = 0; i < 20; i++) {  // Try for 2 seconds total
             if (access(segment_path, F_OK) == 0) {
                 log_info("Segment file found after waiting: %s (attempt %d)", segment_path, i+1);
                 segment_exists = true;
                 break;
             }
 
-            log_debug("Waiting for segment file to be created: %s (attempt %d/40)", segment_path, i+1);
-            usleep(200000);  // 200ms
+            log_debug("Waiting for segment file to be created: %s (attempt %d/20)", segment_path, i+1);
+            usleep(100000);  // 100ms - reduced from 200ms
         }
 
         if (!segment_exists) {
@@ -305,10 +311,16 @@ void handle_hls_segment(const http_request_t *request, http_response_t *response
     strncpy(response->content_type, "video/mp2t", sizeof(response->content_type) - 1);
     response->content_type[sizeof(response->content_type) - 1] = '\0';
     
-    // Add cache control headers to prevent caching of HLS segments
-    set_response_header(response, "Cache-Control", "no-cache, no-store, must-revalidate");
+    // Add strict cache control headers to prevent caching of HLS segments
+    set_response_header(response, "Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
     set_response_header(response, "Pragma", "no-cache");
     set_response_header(response, "Expires", "0");
+    
+    // Add timestamp header to help client identify the freshness of the segment
+    char timestamp_str[32];
+    time_t now = time(NULL);
+    snprintf(timestamp_str, sizeof(timestamp_str), "%ld", now);
+    set_response_header(response, "X-Timestamp", timestamp_str);
     
     response->body = content;
     response->body_length = file_size;
