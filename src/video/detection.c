@@ -5,6 +5,7 @@
 #include <dlfcn.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <sys/stat.h>
 
 #include "video/detection.h"
 #include "video/sod_realnet.h"
@@ -459,8 +460,25 @@ detection_model_t load_detection_model(const char *model_path, float threshold) 
         return NULL;
     }
 
+    // Check if file exists
+    FILE *model_file = fopen(model_path, "r");
+    if (!model_file) {
+        log_error("MODEL FILE NOT FOUND IN DETECTION.C: %s", model_path);
+        return NULL;
+    } else {
+        fclose(model_file);
+        log_error("MODEL FILE EXISTS IN DETECTION.C: %s", model_path);
+        
+        // Get file size
+        struct stat st;
+        if (stat(model_path, &st) == 0) {
+            log_error("MODEL FILE SIZE: %ld bytes", (long)st.st_size);
+        }
+    }
+
     // Get model type
     const char *model_type = get_model_type(model_path);
+    log_error("MODEL TYPE: %s", model_type);
 
     // Load appropriate model type
     if (strcmp(model_type, MODEL_TYPE_SOD_REALNET) == 0) {

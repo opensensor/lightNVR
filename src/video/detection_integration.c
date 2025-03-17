@@ -456,6 +456,45 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                 
                 // Load the new model
                 log_error("LOADING DETECTION MODEL: %s with threshold: %.2f", full_model_path, threshold);
+                
+                // Check if file exists before loading
+                FILE *model_file = fopen(full_model_path, "r");
+                if (!model_file) {
+                    log_error("MODEL FILE NOT FOUND: %s", full_model_path);
+                    
+                    // Try alternative locations
+                    const char *locations[] = {
+                        "./", // Current directory
+                        "./build/models/", // Build directory
+                        "../models/", // Parent directory
+                        "/var/lib/lightnvr/models/" // System directory
+                    };
+                    
+                    bool found = false;
+                    for (int j = 0; j < sizeof(locations)/sizeof(locations[0]); j++) {
+                        char alt_path[MAX_PATH_LENGTH];
+                        snprintf(alt_path, MAX_PATH_LENGTH, "%s%s", 
+                                locations[j], strrchr(full_model_path, '/') ? 
+                                strrchr(full_model_path, '/') + 1 : full_model_path);
+                        
+                        FILE *alt_file = fopen(alt_path, "r");
+                        if (alt_file) {
+                            fclose(alt_file);
+                            log_error("MODEL FOUND AT ALTERNATIVE LOCATION: %s", alt_path);
+                            strncpy(full_model_path, alt_path, MAX_PATH_LENGTH - 1);
+                            found = true;
+                            break;
+                        }
+                    }
+                    
+                    if (!found) {
+                        log_error("MODEL NOT FOUND IN ANY LOCATION!");
+                    }
+                } else {
+                    fclose(model_file);
+                    log_error("MODEL FILE EXISTS: %s", full_model_path);
+                }
+                
                 model = load_detection_model(full_model_path, threshold);
                 
                 if (model) {

@@ -117,7 +117,7 @@ static int detection_packet_callback(const AVPacket *pkt, const AVStream *stream
         return 0;
     }
     
-    log_error("PROCESSING FRAME %d FOR DETECTION (interval: %d, stream: %s)", 
+    log_info("PROCESSING FRAME %d FOR DETECTION (interval: %d, stream: %s)",
              detection_stream->frame_counter, detection_stream->detection_interval,
              detection_stream->stream_name);
     
