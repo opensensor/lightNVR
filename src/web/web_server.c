@@ -27,6 +27,7 @@
 #include "core/config.h"
 #include "database/database_manager.h"
 #include "video/stream_manager.h"
+#include "video/stream_transcoding.h"
 #include "storage/storage_manager.h"
 #include "utils/memory.h"
 
@@ -376,12 +377,8 @@ void shutdown_web_server(void) {
     }
     pthread_mutex_unlock(&web_server.mutex);
 
-// Join server thread with timeout
-struct timespec ts;
-clock_gettime(CLOCK_REALTIME, &ts);
-ts.tv_sec += 30; // 30 second timeout
-
-int join_result = pthread_timedjoin_np(web_server.server_thread, NULL, &ts);
+// Join server thread with timeout using our custom implementation
+int join_result = pthread_join_with_timeout(web_server.server_thread, NULL, 30);
 if (join_result != 0) {
     if (join_result == ETIMEDOUT) {
         log_warn("Server thread join timed out after 30 seconds, forcefully terminating thread");
@@ -1291,7 +1288,7 @@ static void handle_static_file(const http_request_t *request, http_response_t *r
         if (S_ISDIR(st.st_mode)) {
             // Redirect to add trailing slash if needed
             if (request->path[strlen(request->path) - 1] != '/') {
-                char redirect_path[256];
+                char redirect_path[MAX_PATH_SIZE * 2];  // Double the size to ensure enough space
                 snprintf(redirect_path, sizeof(redirect_path), "%s/", request->path);
                 create_redirect_response(response, 301, redirect_path);
                 return;
@@ -1339,7 +1336,7 @@ static void handle_static_file(const http_request_t *request, http_response_t *r
         strncmp(request->path, "/recordings/", 12) == 0 ||
         strncmp(request->path, "/streams/", 9) == 0) {
 
-        char index_path[MAX_PATH_SIZE];
+        char index_path[MAX_PATH_SIZE * 2];  // Double the size to ensure enough space
         snprintf(index_path, sizeof(index_path), "%s/index.html", web_server.web_root);
 
         // Check if index.html exists
