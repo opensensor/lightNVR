@@ -169,11 +169,11 @@ static void *hls_stream_thread(void *arg) {
         return NULL;
     }
 
-    // Get or start a dedicated stream reader for HLS with our callback
+    // Get or start a dedicated stream reader for HLS
     reader_ctx = get_stream_reader(ctx->config.name);
     if (!reader_ctx) {
-        // Start a new dedicated stream reader
-        reader_ctx = start_stream_reader(ctx->config.name, 1, hls_packet_callback, ctx); // 1 for dedicated stream reader
+        // Start a new dedicated stream reader without setting the callback yet
+        reader_ctx = start_stream_reader(ctx->config.name, 1, NULL, NULL); // 1 for dedicated stream reader
         if (!reader_ctx) {
             log_error("Failed to start dedicated stream reader for %s", ctx->config.name);
             
@@ -186,24 +186,31 @@ static void *hls_stream_thread(void *arg) {
             return NULL;
         }
         log_info("Started new dedicated stream reader for HLS stream %s", ctx->config.name);
-    } else {
-        // Set our callback on the existing reader
-        if (set_packet_callback(reader_ctx, hls_packet_callback, ctx) != 0) {
-            log_error("Failed to set packet callback for stream %s", ctx->config.name);
-            
-            if (ctx->hls_writer) {
-                hls_writer_close(ctx->hls_writer);
-                ctx->hls_writer = NULL;
-            }
-            
-            ctx->running = 0;
-            return NULL;
-        }
-        log_info("Using existing stream reader for HLS stream %s", ctx->config.name);
     }
     
-    // Store the reader context
+    // Store the reader context first
     ctx->reader_ctx = reader_ctx;
+    
+    // Now set our callback - doing this separately ensures we don't have a race condition
+    // where the callback might be called before ctx->reader_ctx is set
+    if (set_packet_callback(reader_ctx, hls_packet_callback, ctx) != 0) {
+        log_error("Failed to set packet callback for stream %s", ctx->config.name);
+        
+        if (ctx->hls_writer) {
+            hls_writer_close(ctx->hls_writer);
+            ctx->hls_writer = NULL;
+        }
+        
+        // Don't stop the reader if we didn't create it
+        if (reader_ctx->dedicated) {
+            stop_stream_reader(reader_ctx);
+        }
+        
+        ctx->running = 0;
+        return NULL;
+    }
+    
+    log_info("Set packet callback for HLS stream %s", ctx->config.name);
 
     // Main loop to monitor stream status
     while (ctx->running) {

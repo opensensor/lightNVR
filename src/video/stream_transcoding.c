@@ -205,6 +205,7 @@ int find_video_stream_index(AVFormatContext *input_ctx) {
 int process_video_packet(const AVPacket *pkt, const AVStream *input_stream, 
                          void *writer, int writer_type, const char *stream_name) {
     int ret = 0;
+    AVPacket *out_pkt = NULL;
     
     if (!pkt || !input_stream || !writer || !stream_name) {
         log_error("Invalid parameters passed to process_video_packet");
@@ -218,7 +219,7 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
     }
     
     // Create a clean copy of the packet to avoid reference issues
-    AVPacket *out_pkt = av_packet_alloc();
+    out_pkt = av_packet_alloc();
     if (!out_pkt) {
         log_error("Failed to allocate packet in process_video_packet for stream %s", stream_name);
         return -1;
@@ -276,6 +277,9 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
     } else {
         log_error("Unknown writer type: %d", writer_type);
         ret = -1;
+        // Make sure we free the packet before returning on error
+        av_packet_free(&out_pkt);
+        return ret;
     }
     
     // Clean up our packet reference

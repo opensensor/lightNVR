@@ -364,42 +364,49 @@ void mp4_writer_close(mp4_writer_t *writer) {
     AVRational time_base = {0, 0};
     AVFormatContext *output_ctx = NULL;
     
-    // Safely copy all needed data with proper validation
-    bool valid_output_path = writer->output_path && writer->output_path[0] != '\0';
-    bool valid_stream_name = writer->stream_name && writer->stream_name[0] != '\0';
-    
-    // Only copy if the fields are valid
-    if (valid_output_path) {
-        strncpy(output_path, writer->output_path, sizeof(output_path) - 1);
-        output_path[sizeof(output_path) - 1] = '\0';
-    }
+    // Use a critical section to safely extract and nullify the output context
+    // This prevents race conditions where multiple threads might try to close the same writer
+    {
+        // Safely copy all needed data with proper validation
+        bool valid_output_path = writer->output_path && writer->output_path[0] != '\0';
+        bool valid_stream_name = writer->stream_name && writer->stream_name[0] != '\0';
+        
+        // Only copy if the fields are valid
+        if (valid_output_path) {
+            strncpy(output_path, writer->output_path, sizeof(output_path) - 1);
+            output_path[sizeof(output_path) - 1] = '\0';
+        }
 
-    if (valid_stream_name) {
-        strncpy(stream_name, writer->stream_name, sizeof(stream_name) - 1);
-        stream_name[sizeof(stream_name) - 1] = '\0';
-    } else {
-        strncpy(stream_name, "unknown", sizeof(stream_name) - 1);
+        if (valid_stream_name) {
+            strncpy(stream_name, writer->stream_name, sizeof(stream_name) - 1);
+            stream_name[sizeof(stream_name) - 1] = '\0';
+        } else {
+            strncpy(stream_name, "unknown", sizeof(stream_name) - 1);
+        }
+        
+        // Safely copy other fields
+        creation_time = writer->creation_time;
+        was_initialized = writer->is_initialized;
+        first_dts = writer->first_dts;
+        last_dts = writer->last_dts;
+        time_base = writer->time_base;
+        
+        // Extract the output context and immediately set it to NULL to prevent double-free
+        output_ctx = writer->output_ctx;
+        writer->output_ctx = NULL;
+        
+        // Mark as not initialized to prevent further packet writes
+        writer->is_initialized = 0;
     }
-    
-    // Safely copy other fields
-    creation_time = writer->creation_time;
-    was_initialized = writer->is_initialized;
-    first_dts = writer->first_dts;
-    last_dts = writer->last_dts;
-    time_base = writer->time_base;
-    output_ctx = writer->output_ctx;
-    
-    // Clear the pointer in the writer structure to prevent double-free
-    writer->output_ctx = NULL;
 
     // Log the operation
     log_info("Closing MP4 writer for stream %s at %s",
-            valid_stream_name ? stream_name : "unknown", 
-            valid_output_path ? output_path : "(invalid path)");
+            stream_name[0] ? stream_name : "unknown", 
+            output_path[0] ? output_path : "(invalid path)");
 
     // Close the output context if it exists
     if (output_ctx) {
-        // Write trailer if initialized
+        // Write trailer if the writer was initialized
         if (was_initialized) {
             int ret = av_write_trailer(output_ctx);
             if (ret < 0) {
@@ -416,10 +423,11 @@ void mp4_writer_close(mp4_writer_t *writer) {
 
         // Free context
         avformat_free_context(output_ctx);
+        output_ctx = NULL;  // Prevent any accidental use after free
     }
 
     // Check if file exists and has a reasonable size - only if we have a valid path
-    if (valid_output_path) {
+    if (output_path[0] != '\0') {
         struct stat st;
         if (stat(output_path, &st) == 0 && st.st_size > 1024) { // File exists and is not empty
             // Log success with absolute path for easy debugging

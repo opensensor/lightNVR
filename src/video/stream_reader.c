@@ -368,8 +368,13 @@ int stop_stream_reader(stream_reader_ctx_t *ctx) {
         return -1;
     }
     
+    // Make a local copy of the stream name for logging after ctx is freed
+    char stream_name[MAX_STREAM_NAME];
+    strncpy(stream_name, ctx->config.name, MAX_STREAM_NAME - 1);
+    stream_name[MAX_STREAM_NAME - 1] = '\0';
+    
     // Log that we're attempting to stop the reader
-    log_info("Attempting to stop stream reader: %s", ctx->config.name);
+    log_info("Attempting to stop stream reader: %s", stream_name);
     
     pthread_mutex_lock(&contexts_mutex);
     
@@ -384,36 +389,41 @@ int stop_stream_reader(stream_reader_ctx_t *ctx) {
     
     if (index == -1) {
         pthread_mutex_unlock(&contexts_mutex);
-        log_warn("Stream reader context not found in array");
+        log_warn("Stream reader context not found in array for %s", stream_name);
         return -1;
     }
     
-    // Mark as not running
+    // Mark as not running and clear callback to prevent further processing
     ctx->running = 0;
+    ctx->packet_callback = NULL;
+    ctx->callback_data = NULL;
     
-    // Attempt to join the thread with a timeout
-    pthread_t thread = ctx->thread;
+    // Store a local copy of the thread to join
+    pthread_t thread_to_join = ctx->thread;
+    
+    // Close input context if it exists
+    if (ctx->input_ctx) {
+        avformat_close_input(&ctx->input_ctx);
+    }
+    
+    // Remove the context from the array before unlocking to prevent other threads from accessing it
+    reader_contexts[index] = NULL;
+    
+    // Unlock before joining thread to prevent deadlocks
     pthread_mutex_unlock(&contexts_mutex);
     
     // Try to join with a timeout
-    if (pthread_join_with_timeout(thread, NULL, 5) != 0) {
-        log_warn("Could not join thread for stream %s within timeout",
-                ctx->config.name);
-    }
-    
-    pthread_mutex_lock(&contexts_mutex);
-    
-    // Clean up resources
-    if (reader_contexts[index] == ctx) {
-        free(ctx);
-        reader_contexts[index] = NULL;
-        
-        log_info("Successfully stopped stream reader for %s", ctx->config.name);
+    if (pthread_join_with_timeout(thread_to_join, NULL, 5) != 0) {
+        log_warn("Could not join thread for stream %s within timeout", stream_name);
     } else {
-        log_warn("Stream reader context was modified during cleanup");
+        log_info("Successfully joined thread for stream %s", stream_name);
     }
     
-    pthread_mutex_unlock(&contexts_mutex);
+    // Now it's safe to free the context since we've removed it from the array
+    // and joined the thread
+    free(ctx);
+    
+    log_info("Successfully stopped stream reader for %s", stream_name);
     
     return 0;
 }

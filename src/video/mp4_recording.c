@@ -153,7 +153,7 @@ static void *mp4_recording_thread(void *arg) {
 
     // Always start a new dedicated stream reader for MP4 recording
     // This ensures MP4 recording has its own stream reader with its own callback
-    reader_ctx = start_stream_reader(ctx->config.name, 1, mp4_packet_callback, ctx); // 1 for dedicated stream reader
+    reader_ctx = start_stream_reader(ctx->config.name, 1, NULL, NULL); // 1 for dedicated stream reader, no callback yet
     if (!reader_ctx) {
         log_error("Failed to start dedicated stream reader for %s", ctx->config.name);
         
@@ -168,10 +168,31 @@ static void *mp4_recording_thread(void *arg) {
         ctx->running = 0;
         return NULL;
     }
-    log_info("Started new dedicated stream reader for MP4 recording of stream %s", ctx->config.name);
     
     // Store the reader context
     ctx->reader_ctx = reader_ctx;
+    
+    // Now set the callback - doing this separately ensures we don't have a race condition
+    // where the callback might be called before ctx->reader_ctx is set
+    if (set_packet_callback(reader_ctx, mp4_packet_callback, ctx) != 0) {
+        log_error("Failed to set packet callback for MP4 recording of stream %s", ctx->config.name);
+        
+        // Clean up resources
+        stop_stream_reader(reader_ctx);
+        
+        if (ctx->mp4_writer) {
+            mp4_writer_close(ctx->mp4_writer);
+            ctx->mp4_writer = NULL;
+        }
+        
+        // Unregister the MP4 writer if it was registered
+        unregister_mp4_writer_for_stream(ctx->config.name);
+        
+        ctx->running = 0;
+        return NULL;
+    }
+    
+    log_info("Started new dedicated stream reader for MP4 recording of stream %s", ctx->config.name);
     
     // Register the MP4 writer so it can be accessed by other parts of the system
     register_mp4_writer_for_stream(ctx->config.name, ctx->mp4_writer);
