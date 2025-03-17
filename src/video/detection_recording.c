@@ -17,7 +17,7 @@
 #include "video/mp4_writer.h"
 #include "video/detection.h"
 #include "video/detection_result.h"
-#include "video/motion_detection.h"
+#include "video/motion_detection_optimized.h"
 #include "video/detection_stream.h"
 #include "database/database_manager.h"
 #include "web/api_handlers_detection_results.h"

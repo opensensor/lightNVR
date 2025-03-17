@@ -5,7 +5,6 @@
 
 #include "core/logger.h"
 #include "video/streams.h"
-#include "video/motion_detection.h"
 #include "video/motion_detection_optimized.h"
 #include "video/motion_detection_wrapper.h"
 
@@ -21,19 +20,13 @@ extern int stop_detection_recording(const char *stream_name);
  * @return 0 on success, non-zero on failure
  */
 int init_motion_detection_systems(void) {
-    int ret = init_motion_detection_system();
-    if (ret != 0) {
-        log_error("Failed to initialize standard motion detection");
-        return ret;
-    }
-    
-    ret = init_motion_detection_optimized();
+    int ret = init_motion_detection_optimized();
     if (ret != 0) {
         log_error("Failed to initialize optimized motion detection");
         return ret;
     }
     
-    log_info("Motion detection systems initialized successfully");
+    log_info("Motion detection system initialized successfully");
     return 0;
 }
 
@@ -42,9 +35,8 @@ int init_motion_detection_systems(void) {
  * This function should be called at system shutdown
  */
 void shutdown_motion_detection_systems(void) {
-    shutdown_motion_detection_system();
     shutdown_motion_detection_optimized();
-    log_info("Motion detection systems shut down");
+    log_info("Motion detection system shut down");
 }
 
 /**
@@ -62,33 +54,8 @@ int enable_motion_detection(const char *stream_name, float sensitivity, float mi
         return -1;
     }
     
-    // Configure motion detection
-    int ret = configure_motion_detection(stream_name, sensitivity, min_motion_area, cooldown_time);
-    if (ret != 0) {
-        log_error("Failed to configure motion detection for stream %s", stream_name);
-        return ret;
-    }
-    
-    // Enable motion detection
-    ret = set_motion_detection_enabled(stream_name, true);
-    if (ret != 0) {
-        log_error("Failed to enable motion detection for stream %s", stream_name);
-        return ret;
-    }
-    
-    // Start detection-based recording with "motion" as the model path
-    // This special value will be recognized by the detection system to use motion detection
-    ret = start_detection_recording(stream_name, "motion", sensitivity, 5, 10);
-    if (ret != 0) {
-        log_error("Failed to start motion-based recording for stream %s", stream_name);
-        set_motion_detection_enabled(stream_name, false);
-        return ret;
-    }
-    
-    log_info("Motion detection enabled for stream %s with sensitivity=%.2f, min_area=%.2f, cooldown=%d",
-             stream_name, sensitivity, min_motion_area, cooldown_time);
-    
-    return 0;
+    // Use the optimized implementation instead
+    return enable_optimized_motion_detection(stream_name, sensitivity, min_motion_area, cooldown_time, 2);
 }
 
 /**
@@ -103,23 +70,8 @@ int disable_motion_detection(const char *stream_name) {
         return -1;
     }
     
-    // Disable motion detection
-    int ret = set_motion_detection_enabled(stream_name, false);
-    if (ret != 0) {
-        log_error("Failed to disable motion detection for stream %s", stream_name);
-        return ret;
-    }
-    
-    // Stop detection-based recording
-    ret = stop_detection_recording(stream_name);
-    if (ret != 0) {
-        log_error("Failed to stop motion-based recording for stream %s", stream_name);
-        return ret;
-    }
-    
-    log_info("Motion detection disabled for stream %s", stream_name);
-    
-    return 0;
+    // Use the optimized implementation instead
+    return disable_optimized_motion_detection(stream_name);
 }
 
 /**

@@ -28,7 +28,6 @@
 #include "video/streams.h"
 #include "video/detection.h"
 #include "video/detection_result.h"
-#include "video/motion_detection.h"
 #include "video/motion_detection_optimized.h"
 
 // Define model types
@@ -300,19 +299,9 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     time_t frame_time = time(NULL);
     
     // Check if we should use motion detection
-    bool use_motion_detection = is_motion_detection_enabled(stream_name);
     bool is_motion_model = (strcmp(config.detection_model, "motion") == 0);
-    bool is_motion_optimized_model = (strcmp(config.detection_model, "motion_optimized") == 0);
+    bool is_motion_optimized_model = (strcmp(config.detection_model, "motion_optimized") == 0 || is_motion_model);
     bool use_model_detection = !is_motion_model && !is_motion_optimized_model;
-    
-    // If the model is "motion", enable motion detection
-    if (is_motion_model && !use_motion_detection) {
-        // Configure with default settings
-        configure_motion_detection(stream_name, 0.25f, 0.01f, 3);
-        set_motion_detection_enabled(stream_name, true);
-        use_motion_detection = true;
-        log_info("Automatically enabled motion detection for stream %s based on model setting", stream_name);
-    }
     
     // If the model is "motion_optimized", enable optimized motion detection
     if (is_motion_optimized_model) {
@@ -327,40 +316,8 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     }
     int detect_ret = -1;
     
-    // If motion detection is enabled, run it first
-    if (use_motion_detection) {
-        log_info("Running motion detection for stream %s", stream_name);
-        
-        // Create a separate result for motion detection
-        detection_result_t motion_result;
-        memset(&motion_result, 0, sizeof(detection_result_t));
-        
-        // Run motion detection
-        int motion_ret = detect_motion(stream_name, packed_buffer, frame->width, frame->height, 
-                                      channels, frame_time, &motion_result);
-        
-        if (motion_ret == 0 && motion_result.count > 0) {
-            log_info("Motion detected in stream %s: confidence=%.2f", 
-                    stream_name, motion_result.detections[0].confidence);
-            
-            // Pass motion detection results to process_frame_for_recording
-            int ret = process_frame_for_recording(stream_name, packed_buffer, frame->width,
-                                                 frame->height, channels, frame_time, &motion_result);
-            
-            if (ret != 0) {
-                log_error("Failed to process motion detection results for recording (error code: %d)", ret);
-            }
-            
-            // If we're only using motion detection (no model), we're done
-            if (!use_model_detection) {
-                detect_ret = 0;
-            }
-        } else if (motion_ret != 0) {
-            log_error("Motion detection failed (error code: %d)", motion_ret);
-        }
-    }
     
-    // If optimized motion detection is enabled, run it
+    // If motion detection is enabled, run the optimized implementation
     if (is_motion_optimized_model) {
         log_info("Running optimized motion detection for stream %s", stream_name);
         

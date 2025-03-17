@@ -9,7 +9,7 @@
 
 #include "video/detection.h"
 #include "video/sod_realnet.h"
-#include "video/motion_detection.h"
+#include "video/motion_detection_optimized.h"
 #include "core/logger.h"
 
 // Include SOD header if SOD is enabled at compile time
@@ -162,7 +162,7 @@ int init_detection_system(void) {
     }
     
     // Initialize motion detection system
-    int motion_ret = init_motion_detection_system();
+    int motion_ret = init_motion_detection_optimized();
     if (motion_ret != 0) {
         log_error("Failed to initialize motion detection system");
     } else {
@@ -195,7 +195,7 @@ void shutdown_detection_system(void) {
     #endif
     
     // Shutdown motion detection system
-    shutdown_motion_detection_system();
+    shutdown_motion_detection_optimized();
     
     initialized = false;
     sod_available = false;
