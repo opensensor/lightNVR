@@ -23,6 +23,8 @@
 #include "video/mp4_recording.h"
 #include "video/stream_transcoding.h"
 #include "video/detection_stream.h"
+#include "video/detection_recording.h"
+#include "video/detection.h"
 
 // External function declarations
 void init_recordings_system(void);
@@ -395,13 +397,40 @@ int main(int argc, char *argv[]) {
     init_hls_streaming_backend();
     init_mp4_recording_backend();
     
+    // Initialize detection system
+    if (init_detection_system() != 0) {
+        log_error("Failed to initialize detection system");
+    } else {
+        log_info("Detection system initialized successfully");
+    }
+    
+    // Initialize detection recording system
+    init_detection_recording_system();
+    
     // Initialize detection stream system
     init_detection_stream_system();
     
-    // Start detection stream readers for streams with detection-based recording enabled
+    // Start detection-based recording and detection stream readers for streams with detection enabled
     for (int i = 0; i < config.max_streams; i++) {
         if (config.streams[i].name[0] != '\0' && config.streams[i].enabled && 
             config.streams[i].detection_based_recording && config.streams[i].detection_model[0] != '\0') {
+            
+            log_info("Starting detection-based recording for stream %s with model %s", 
+                    config.streams[i].name, config.streams[i].detection_model);
+            
+            // Start detection recording
+            float threshold = config.streams[i].detection_threshold;
+            int pre_buffer = config.streams[i].pre_detection_buffer;
+            int post_buffer = config.streams[i].post_detection_buffer;
+            
+            if (start_detection_recording(config.streams[i].name, config.streams[i].detection_model, 
+                                         threshold, pre_buffer, post_buffer) == 0) {
+                log_info("Detection-based recording started for stream %s", config.streams[i].name);
+            } else {
+                log_warn("Failed to start detection-based recording for stream %s", config.streams[i].name);
+            }
+            
+            // Start detection stream reader
             log_info("Starting detection stream reader for stream %s", config.streams[i].name);
             int detection_interval = config.streams[i].detection_interval > 0 ? 
                                     config.streams[i].detection_interval : 10;
