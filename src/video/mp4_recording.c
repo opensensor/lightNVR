@@ -121,8 +121,8 @@ static void *mp4_recording_thread(void *arg) {
     // Get or start a stream reader
     reader_ctx = get_stream_reader(ctx->config.name);
     if (!reader_ctx) {
-        // Start a new stream reader
-        reader_ctx = start_stream_reader(ctx->config.name);
+        // Start a new stream reader - use dedicated reader for MP4 recording
+        reader_ctx = start_stream_reader(ctx->config.name, 1); // 1 for dedicated stream reader
         if (!reader_ctx) {
             log_error("Failed to start stream reader for %s", ctx->config.name);
             

@@ -133,7 +133,7 @@ static void *hls_stream_thread(void *arg) {
     reader_ctx = get_stream_reader(ctx->config.name);
     if (!reader_ctx) {
         // Start a new stream reader
-        reader_ctx = start_stream_reader(ctx->config.name);
+        reader_ctx = start_stream_reader(ctx->config.name, 1); // 1 for dedicated stream reader
         if (!reader_ctx) {
             log_error("Failed to start stream reader for %s", ctx->config.name);
             ctx->running = 0;

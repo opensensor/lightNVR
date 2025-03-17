@@ -72,9 +72,10 @@ void cleanup_stream_reader_backend(void);
  * Start a stream reader for a stream
  * 
  * @param stream_name Name of the stream to read
+ * @param dedicated Whether this is a dedicated stream reader (not shared)
  * @return Stream reader context or NULL on failure
  */
-stream_reader_ctx_t *start_stream_reader(const char *stream_name);
+stream_reader_ctx_t *start_stream_reader(const char *stream_name, int dedicated);
 
 /**
  * Stop a stream reader
