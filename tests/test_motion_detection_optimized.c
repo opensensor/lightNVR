@@ -11,7 +11,6 @@
 #endif
 
 #include "video/motion_detection.h"
-#include "video/motion_detection_optimized.h"
 #include "video/detection_result.h"
 #include "core/logger.h"
 
@@ -65,14 +64,14 @@ int main(int argc, char* argv[]) {
     printf("----------------------------------\n");
     
     // Initialize motion detection systems
-    init_motion_detection_optimized();
+    init_motion_detection_system();
     
-    // Configure optimized motion detection
-    configure_motion_detection_optimized(STREAM_NAME, 0.2f, 0.01f, 1);
-    configure_advanced_motion_detection_optimized(STREAM_NAME, 1, 10, true, 8, 3);
-    set_motion_detection_enabled_optimized(STREAM_NAME, true);
+    // Configure motion detection
+    configure_motion_detection(STREAM_NAME, 0.2f, 0.01f, 1);
+    configure_advanced_motion_detection(STREAM_NAME, 1, 10, true, 8, 3);
+    set_motion_detection_enabled(STREAM_NAME, true);
     
-    // Configure optimized motion detection
+    // Configure motion detection optimizations
     configure_motion_detection_optimizations(STREAM_NAME, true, 2);
     
     // Performance tracking
@@ -95,7 +94,7 @@ int main(int argc, char* argv[]) {
         detection_result_t result;
         
         clock_gettime(CLOCK_MONOTONIC, &start_time);
-        int ret = detect_motion_optimized(STREAM_NAME, frame, TEST_WIDTH, TEST_HEIGHT, TEST_CHANNELS, time(NULL), &result);
+        int ret = detect_motion(STREAM_NAME, frame, TEST_WIDTH, TEST_HEIGHT, TEST_CHANNELS, time(NULL), &result);
         clock_gettime(CLOCK_MONOTONIC, &end_time);
         
         // Calculate processing time

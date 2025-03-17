@@ -27,13 +27,12 @@ include_directories(
 set(DETECTION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/detection.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/sod_realnet.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/motion_detection_optimized.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/motion_detection.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/logger.c
 )
 
-# Define optimized motion detection sources
-set(MOTION_DETECTION_OPTIMIZED_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/motion_detection_optimized.c
+# Define motion detection sources
+set(MOTION_DETECTION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/motion_detection.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/logger.c
 )
@@ -46,7 +45,7 @@ endif()
 # Build motion detection optimization test
 add_executable(test_motion_detection_optimized
     test_motion_detection_optimized.c
-    ${MOTION_DETECTION_OPTIMIZED_SOURCES}
+    ${MOTION_DETECTION_SOURCES}
 )
 
 # Link libraries for motion detection test

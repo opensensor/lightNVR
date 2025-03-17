@@ -38,14 +38,26 @@ include_directories(
 )
 
 # Define source files, excluding SOD sources which are built separately
-file(GLOB_RECURSE SOURCES 
-    "src/core/*.c"
-    "src/database/*.c"
-    "src/storage/*.c"
-    "src/utils/*.c"
-    "src/video/*.c"
-    "src/web/*.c"
-    "src/*.c"
+file(GLOB_RECURSE CORE_SOURCES "src/core/*.c")
+file(GLOB_RECURSE DATABASE_SOURCES "src/database/*.c")
+file(GLOB_RECURSE STORAGE_SOURCES "src/storage/*.c")
+file(GLOB_RECURSE UTILS_SOURCES "src/utils/*.c")
+file(GLOB_RECURSE WEB_SOURCES "src/web/*.c")
+file(GLOB_RECURSE ROOT_SOURCES "src/*.c")
+
+# Explicitly list video sources to exclude motion_detection_optimized.c
+file(GLOB VIDEO_SOURCES "src/video/*.c")
+list(FILTER VIDEO_SOURCES EXCLUDE REGEX ".*motion_detection_optimized\\.c$")
+
+# Combine all sources
+set(SOURCES
+    ${CORE_SOURCES}
+    ${DATABASE_SOURCES}
+    ${STORAGE_SOURCES}
+    ${UTILS_SOURCES}
+    ${VIDEO_SOURCES}
+    ${WEB_SOURCES}
+    ${ROOT_SOURCES}
     "external/inih/ini.c"
 )
 
