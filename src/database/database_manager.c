@@ -221,6 +221,7 @@ int init_database(const char *db_path) {
         "name TEXT NOT NULL UNIQUE,"
         "url TEXT NOT NULL,"
         "enabled INTEGER DEFAULT 1,"
+        "streaming_enabled INTEGER DEFAULT 1,"
         "width INTEGER DEFAULT 1280,"
         "height INTEGER DEFAULT 720,"
         "fps INTEGER DEFAULT 30,"
@@ -269,6 +270,41 @@ int init_database(const char *db_path) {
         sqlite3_close(db);
         db = NULL;
         return -1;
+    }
+    
+    // Check if streaming_enabled column exists in streams table
+    log_info("Checking if streaming_enabled column exists in streams table");
+    sqlite3_stmt *check_stmt;
+    bool has_streaming_enabled = false;
+    
+    rc = sqlite3_prepare_v2(db, "PRAGMA table_info(streams);", -1, &check_stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement to check streams table columns: %s", sqlite3_errmsg(db));
+    } else {
+        while (sqlite3_step(check_stmt) == SQLITE_ROW) {
+            const char *column_name = (const char *)sqlite3_column_text(check_stmt, 1);
+            if (column_name && strcmp(column_name, "streaming_enabled") == 0) {
+                has_streaming_enabled = true;
+                log_info("streaming_enabled column exists in streams table");
+                break;
+            }
+        }
+        sqlite3_finalize(check_stmt);
+        
+        // Add streaming_enabled column if it doesn't exist
+        if (!has_streaming_enabled) {
+            log_info("Adding streaming_enabled column to streams table");
+            const char *alter_table_sql = "ALTER TABLE streams ADD COLUMN streaming_enabled INTEGER DEFAULT 1;";
+            
+            rc = sqlite3_exec(db, alter_table_sql, NULL, NULL, &err_msg);
+            if (rc != SQLITE_OK) {
+                log_error("Failed to add streaming_enabled column: %s", err_msg);
+                sqlite3_free(err_msg);
+                // Continue anyway, as this is not a critical error
+            } else {
+                log_info("Successfully added streaming_enabled column to streams table");
+            }
+        }
     }
     
     log_info("Database initialized successfully");
@@ -1546,10 +1582,10 @@ uint64_t add_stream_config(const stream_config_t *stream) {
     }
     
     // Now insert the stream with all fields including detection settings
-    const char *sql = "INSERT INTO streams (name, url, enabled, width, height, fps, codec, priority, record, segment_duration, "
+    const char *sql = "INSERT INTO streams (name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
                       "detection_based_recording, detection_model, detection_threshold, detection_interval, "
                       "pre_detection_buffer, post_detection_buffer) "
-                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
     
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -1562,21 +1598,22 @@ uint64_t add_stream_config(const stream_config_t *stream) {
     sqlite3_bind_text(stmt, 1, stream->name, -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 2, stream->url, -1, SQLITE_STATIC);
     sqlite3_bind_int(stmt, 3, stream->enabled ? 1 : 0);
-    sqlite3_bind_int(stmt, 4, stream->width);
-    sqlite3_bind_int(stmt, 5, stream->height);
-    sqlite3_bind_int(stmt, 6, stream->fps);
-    sqlite3_bind_text(stmt, 7, stream->codec, -1, SQLITE_STATIC);
-    sqlite3_bind_int(stmt, 8, stream->priority);
-    sqlite3_bind_int(stmt, 9, stream->record ? 1 : 0);
-    sqlite3_bind_int(stmt, 10, stream->segment_duration);
+    sqlite3_bind_int(stmt, 4, stream->streaming_enabled ? 1 : 0);
+    sqlite3_bind_int(stmt, 5, stream->width);
+    sqlite3_bind_int(stmt, 6, stream->height);
+    sqlite3_bind_int(stmt, 7, stream->fps);
+    sqlite3_bind_text(stmt, 8, stream->codec, -1, SQLITE_STATIC);
+    sqlite3_bind_int(stmt, 9, stream->priority);
+    sqlite3_bind_int(stmt, 10, stream->record ? 1 : 0);
+    sqlite3_bind_int(stmt, 11, stream->segment_duration);
     
     // Bind parameters for detection settings
-    sqlite3_bind_int(stmt, 11, stream->detection_based_recording ? 1 : 0);
-    sqlite3_bind_text(stmt, 12, stream->detection_model, -1, SQLITE_STATIC);
-    sqlite3_bind_double(stmt, 13, stream->detection_threshold);
-    sqlite3_bind_int(stmt, 14, stream->detection_interval);
-    sqlite3_bind_int(stmt, 15, stream->pre_detection_buffer);
-    sqlite3_bind_int(stmt, 16, stream->post_detection_buffer);
+    sqlite3_bind_int(stmt, 12, stream->detection_based_recording ? 1 : 0);
+    sqlite3_bind_text(stmt, 13, stream->detection_model, -1, SQLITE_STATIC);
+    sqlite3_bind_double(stmt, 14, stream->detection_threshold);
+    sqlite3_bind_int(stmt, 15, stream->detection_interval);
+    sqlite3_bind_int(stmt, 16, stream->pre_detection_buffer);
+    sqlite3_bind_int(stmt, 17, stream->post_detection_buffer);
     
     // Execute statement
     rc = sqlite3_step(stmt);
@@ -1671,7 +1708,7 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
     
     // Now update the stream with all fields including detection settings
     const char *sql = "UPDATE streams SET "
-                      "name = ?, url = ?, enabled = ?, width = ?, height = ?, "
+                      "name = ?, url = ?, enabled = ?, streaming_enabled = ?, width = ?, height = ?, "
                       "fps = ?, codec = ?, priority = ?, record = ?, segment_duration = ?, "
                       "detection_based_recording = ?, detection_model = ?, detection_threshold = ?, "
                       "detection_interval = ?, pre_detection_buffer = ?, post_detection_buffer = ? "
@@ -1688,24 +1725,25 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
     sqlite3_bind_text(stmt, 1, stream->name, -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 2, stream->url, -1, SQLITE_STATIC);
     sqlite3_bind_int(stmt, 3, stream->enabled ? 1 : 0);
-    sqlite3_bind_int(stmt, 4, stream->width);
-    sqlite3_bind_int(stmt, 5, stream->height);
-    sqlite3_bind_int(stmt, 6, stream->fps);
-    sqlite3_bind_text(stmt, 7, stream->codec, -1, SQLITE_STATIC);
-    sqlite3_bind_int(stmt, 8, stream->priority);
-    sqlite3_bind_int(stmt, 9, stream->record ? 1 : 0);
-    sqlite3_bind_int(stmt, 10, stream->segment_duration);
+    sqlite3_bind_int(stmt, 4, stream->streaming_enabled ? 1 : 0);
+    sqlite3_bind_int(stmt, 5, stream->width);
+    sqlite3_bind_int(stmt, 6, stream->height);
+    sqlite3_bind_int(stmt, 7, stream->fps);
+    sqlite3_bind_text(stmt, 8, stream->codec, -1, SQLITE_STATIC);
+    sqlite3_bind_int(stmt, 9, stream->priority);
+    sqlite3_bind_int(stmt, 10, stream->record ? 1 : 0);
+    sqlite3_bind_int(stmt, 11, stream->segment_duration);
     
     // Bind parameters for detection settings
-    sqlite3_bind_int(stmt, 11, stream->detection_based_recording ? 1 : 0);
-    sqlite3_bind_text(stmt, 12, stream->detection_model, -1, SQLITE_STATIC);
-    sqlite3_bind_double(stmt, 13, stream->detection_threshold);
-    sqlite3_bind_int(stmt, 14, stream->detection_interval);
-    sqlite3_bind_int(stmt, 15, stream->pre_detection_buffer);
-    sqlite3_bind_int(stmt, 16, stream->post_detection_buffer);
+    sqlite3_bind_int(stmt, 12, stream->detection_based_recording ? 1 : 0);
+    sqlite3_bind_text(stmt, 13, stream->detection_model, -1, SQLITE_STATIC);
+    sqlite3_bind_double(stmt, 14, stream->detection_threshold);
+    sqlite3_bind_int(stmt, 15, stream->detection_interval);
+    sqlite3_bind_int(stmt, 16, stream->pre_detection_buffer);
+    sqlite3_bind_int(stmt, 17, stream->post_detection_buffer);
     
     // Bind the WHERE clause parameter
-    sqlite3_bind_text(stmt, 17, name, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 18, name, -1, SQLITE_STATIC);
     
     // Execute statement
     rc = sqlite3_step(stmt);
@@ -1828,12 +1866,12 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
     // Prepare SQL based on whether detection columns exist
     const char *sql;
     if (has_detection_columns) {
-        sql = "SELECT name, url, enabled, width, height, fps, codec, priority, record, segment_duration, "
+        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
               "detection_based_recording, detection_model, detection_threshold, detection_interval, "
               "pre_detection_buffer, post_detection_buffer "
               "FROM streams WHERE name = ?;";
     } else {
-        sql = "SELECT name, url, enabled, width, height, fps, codec, priority, record, segment_duration "
+        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration "
               "FROM streams WHERE name = ?;";
     }
     
@@ -1872,9 +1910,10 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
         }
         
         stream->enabled = sqlite3_column_int(stmt, 2) != 0;
-        stream->width = sqlite3_column_int(stmt, 3);
-        stream->height = sqlite3_column_int(stmt, 4);
-        stream->fps = sqlite3_column_int(stmt, 5);
+        stream->streaming_enabled = sqlite3_column_int(stmt, 3) != 0;
+        stream->width = sqlite3_column_int(stmt, 4);
+        stream->height = sqlite3_column_int(stmt, 5);
+        stream->fps = sqlite3_column_int(stmt, 6);
         
         const char *codec = (const char *)sqlite3_column_text(stmt, 6);
         if (codec) {
@@ -1971,12 +2010,12 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
     // Prepare SQL based on whether detection columns exist
     const char *sql;
     if (has_detection_columns) {
-        sql = "SELECT name, url, enabled, width, height, fps, codec, priority, record, segment_duration, "
+        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
               "detection_based_recording, detection_model, detection_threshold, detection_interval, "
               "pre_detection_buffer, post_detection_buffer "
               "FROM streams ORDER BY name;";
     } else {
-        sql = "SELECT name, url, enabled, width, height, fps, codec, priority, record, segment_duration "
+        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration "
               "FROM streams ORDER BY name;";
     }
     
@@ -2012,9 +2051,10 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
         }
         
         streams[count].enabled = sqlite3_column_int(stmt, 2) != 0;
-        streams[count].width = sqlite3_column_int(stmt, 3);
-        streams[count].height = sqlite3_column_int(stmt, 4);
-        streams[count].fps = sqlite3_column_int(stmt, 5);
+        streams[count].streaming_enabled = sqlite3_column_int(stmt, 3) != 0;
+        streams[count].width = sqlite3_column_int(stmt, 4);
+        streams[count].height = sqlite3_column_int(stmt, 5);
+        streams[count].fps = sqlite3_column_int(stmt, 6);
         
         const char *codec = (const char *)sqlite3_column_text(stmt, 6);
         if (codec) {

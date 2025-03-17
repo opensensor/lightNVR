@@ -390,6 +390,97 @@ void handle_put_stream(const http_request_t *request, http_response_t *response)
     // Also update the in-memory stream configuration
     log_info("Updating in-memory stream configuration for: %s", current_config.name);
     
+    // Log the enabled state for debugging
+    log_info("Stream enabled state: %s", config.enabled ? "true" : "false");
+    
+    // We need to update the in-memory stream configuration
+    // Instead of removing and re-adding the stream, let's use the available API functions
+    
+    // Log the updated configuration
+    log_info("Updating in-memory stream configuration: name=%s, enabled=%s", 
+             config.name, config.enabled ? "true" : "false");
+    
+    // First, stop the stream if it's running (we already did this above)
+    
+    // Verify that the stream was properly updated
+    stream_config_t verified_config;
+    if (get_stream_config(stream, &verified_config) != 0) {
+        log_error("Failed to get verified stream configuration");
+        create_json_response(response, 500, "{\"error\": \"Failed to get verified stream configuration\"}");
+        return;
+    }
+    
+    // Always perform a full update by removing and re-adding the stream
+    log_info("Performing full update by removing and re-adding stream");
+    
+    // Log changes for debugging
+    if (verified_config.enabled != config.enabled) {
+        log_info("Enabled flag changed: %s -> %s", 
+                verified_config.enabled ? "true" : "false", 
+                config.enabled ? "true" : "false");
+    }
+    
+    if (strcmp(verified_config.codec, config.codec) != 0) {
+        log_info("Codec changed: %s -> %s", verified_config.codec, config.codec);
+    }
+    
+    if (verified_config.width != config.width || verified_config.height != config.height) {
+        log_info("Resolution changed: %dx%d -> %dx%d", 
+                verified_config.width, verified_config.height, 
+                config.width, config.height);
+    }
+    
+    if (verified_config.fps != config.fps) {
+        log_info("FPS changed: %d -> %d", verified_config.fps, config.fps);
+    }
+    
+    if (verified_config.priority != config.priority) {
+        log_info("Priority changed: %d -> %d", verified_config.priority, config.priority);
+    }
+    
+    if (verified_config.record != config.record) {
+        log_info("Record flag changed: %s -> %s", 
+                verified_config.record ? "true" : "false", 
+                config.record ? "true" : "false");
+    }
+    
+    if (verified_config.streaming_enabled != config.streaming_enabled) {
+        log_info("Streaming enabled flag changed: %s -> %s", 
+                verified_config.streaming_enabled ? "true" : "false", 
+                config.streaming_enabled ? "true" : "false");
+    }
+        
+    // Remove the stream
+    if (remove_stream(stream) != 0) {
+        log_error("Failed to remove stream for full update: %s", config.name);
+        create_json_response(response, 500, "{\"error\": \"Failed to update stream configuration\"}");
+        return;
+    }
+    
+    // Add the stream back with the updated configuration
+    stream = add_stream(&config);
+    if (!stream) {
+        log_error("Failed to re-add stream with updated configuration: %s", config.name);
+        create_json_response(response, 500, "{\"error\": \"Failed to update stream configuration\"}");
+        return;
+    }
+    
+    // Get the updated configuration to verify
+    if (get_stream_config(stream, &verified_config) != 0) {
+        log_error("Failed to get verified stream configuration after full update");
+        create_json_response(response, 500, "{\"error\": \"Failed to verify stream configuration\"}");
+        return;
+    }
+    
+    log_info("Stream configuration fully updated");
+    
+    // Log the verified configuration
+    log_info("Verified stream configuration: name=%s, enabled=%s, streaming_enabled=%s, codec=%s", 
+             verified_config.name, 
+             verified_config.enabled ? "true" : "false", 
+             verified_config.streaming_enabled ? "true" : "false",
+             verified_config.codec);
+    
     // Update detection parameters in memory
     if (config.detection_based_recording) {
         log_info("Updating detection parameters: threshold=%.2f, interval=%d", 
@@ -610,6 +701,7 @@ static char* create_stream_json(const stream_config_t *stream) {
              "\"name\": \"%s\","
              "\"url\": \"%s\","
              "\"enabled\": %s,"
+             "\"streaming_enabled\": %s,"
              "\"width\": %d,"
              "\"height\": %d,"
              "\"fps\": %d,"
@@ -621,6 +713,7 @@ static char* create_stream_json(const stream_config_t *stream) {
              stream->name,
              stream->url,
              stream->enabled ? "true" : "false",
+             stream->streaming_enabled ? "true" : "false",
              stream->width,
              stream->height,
              stream->fps,
@@ -710,9 +803,6 @@ static char* create_streams_json_array() {
 }
 
 /**
- * Parse JSON into stream configuration
- */
-/**
  * Handle POST request to toggle streaming for a stream
  */
 void handle_toggle_streaming(const http_request_t *request, http_response_t *response) {
@@ -794,6 +884,25 @@ void handle_toggle_streaming(const http_request_t *request, http_response_t *res
         return;
     }
     
+    // Also update the streaming_enabled flag in the database
+    stream_config_t config;
+    if (get_stream_config(stream, &config) != 0) {
+        log_error("Failed to get stream configuration for: %s", decoded_name);
+        create_json_response(response, 500, "{\"error\": \"Failed to get stream configuration\"}");
+        return;
+    }
+    
+    // Set only the streaming_enabled flag in the config
+    config.streaming_enabled = enabled;
+    
+    // Update the stream configuration in database
+    log_info("Updating streaming_enabled flag in database for: %s", decoded_name);
+    if (update_stream_config(decoded_name, &config) != 0) {
+        log_error("Failed to update stream configuration in database");
+        create_json_response(response, 500, "{\"error\": \"Failed to update stream configuration in database\"}");
+        return;
+    }
+    
     // Toggle the stream
     if (enabled) {
         // Start HLS stream if not already running
@@ -825,6 +934,9 @@ void handle_toggle_streaming(const http_request_t *request, http_response_t *res
              decoded_name, enabled ? "true" : "false");
 }
 
+/**
+ * Parse JSON into stream configuration
+ */
 static int parse_stream_json(const char *json, stream_config_t *stream) {
     if (!json || !stream) return -1;
 
@@ -850,6 +962,7 @@ static int parse_stream_json(const char *json, stream_config_t *stream) {
     free(url);
 
     stream->enabled = get_json_boolean_value(json, "enabled", true);
+    stream->streaming_enabled = get_json_boolean_value(json, "streaming_enabled", true);
     stream->width = get_json_integer_value(json, "width", 1280);
     stream->height = get_json_integer_value(json, "height", 720);
     stream->fps = get_json_integer_value(json, "fps", 15);
@@ -905,9 +1018,10 @@ static int parse_stream_json(const char *json, stream_config_t *stream) {
         stream->post_detection_buffer = get_json_integer_value(json, "post_detection_buffer", 10);
     }
     
-    log_info("Stream config parsed: name=%s, enabled=%s, detection=%s", 
+    log_info("Stream config parsed: name=%s, enabled=%s, streaming_enabled=%s, detection=%s", 
             stream->name, 
             stream->enabled ? "true" : "false",
+            stream->streaming_enabled ? "true" : "false",
             stream->detection_based_recording ? "true" : "false");
     
     if (detection_model || get_json_has_key(json, "detection_threshold")) {

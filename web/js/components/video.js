@@ -32,6 +32,7 @@ function enableAllStreams() {
                 console.log(`Stream ${streamId} streaming_enabled state: ${isEnabled}`);
                 
                 // Only toggle if needed (if the current state doesn't match what we want)
+                // This only affects the streaming_enabled flag, not the enabled flag
                 fetch(`/api/streams/${encodeURIComponent(streamId)}/toggle_streaming`, {
                     method: 'POST',
                     headers: {
@@ -83,7 +84,7 @@ function stopAllStreams() {
                 const streamId = stream.id || stream.name;
                 console.log(`Stopping stream ${streamId}`);
                 
-                // Send toggle request to API to disable streaming
+                // Send toggle request to API to disable streaming (only affects streaming, not the enabled state)
                 fetch(`/api/streams/${encodeURIComponent(streamId)}/toggle_streaming`, {
                     method: 'POST',
                     headers: {
@@ -929,7 +930,7 @@ function updateVideoGrid(streams) {
                 const enabled = this.checked;
                 console.log(`Toggling stream ${streamId} to ${enabled ? 'enabled' : 'disabled'}`);
                 
-                // Send toggle request to API
+                // Send toggle request to API (only affects streaming_enabled flag, not the enabled flag)
                 fetch(`/api/streams/${encodeURIComponent(streamId)}/toggle_streaming`, {
                     method: 'POST',
                     headers: {

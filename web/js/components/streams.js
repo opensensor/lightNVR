@@ -102,10 +102,9 @@ function loadStreams(forLiveView = false) {
                         <td>${stream.fps}</td>
                         <td>${stream.record ? 'Yes' : 'No'}</td>
                         <td>
-                            <label class="toggle-switch">
-                                <input type="checkbox" class="stream-toggle" data-id="${streamId}" ${stream.streaming_enabled !== false ? 'checked' : ''}>
-                                <span class="toggle-slider"></span>
-                            </label>
+                            <span class="status-indicator ${stream.streaming_enabled !== false ? 'active' : 'inactive'}">
+                                ${stream.streaming_enabled !== false ? 'Enabled' : 'Disabled'}
+                            </span>
                         </td>
                         <td>
                             <button class="btn-icon edit-btn" data-id="${streamId}" title="Edit"><span class="icon">✎</span></button>
@@ -264,6 +263,7 @@ function editStream(streamId) {
             document.getElementById('stream-name').value = stream.name;
             document.getElementById('stream-url').value = stream.url;
             document.getElementById('stream-enabled').checked = stream.enabled !== false; // Default to true if not specified
+            document.getElementById('stream-streaming-enabled').checked = stream.streaming_enabled !== false; // Default to true if not specified
             document.getElementById('stream-width').value = stream.width || 1280;
             document.getElementById('stream-height').value = stream.height || 720;
             document.getElementById('stream-fps').value = stream.fps || 15;
@@ -388,6 +388,7 @@ function saveStream() {
         name: document.getElementById('stream-name').value,
         url: document.getElementById('stream-url').value,
         enabled: document.getElementById('stream-enabled').checked,
+        streaming_enabled: document.getElementById('stream-streaming-enabled').checked,
         width: parseInt(document.getElementById('stream-width').value, 10),
         height: parseInt(document.getElementById('stream-height').value, 10),
         fps: parseInt(document.getElementById('stream-fps').value, 10),
@@ -396,6 +397,9 @@ function saveStream() {
         record: document.getElementById('stream-record').checked,
         segment_duration: parseInt(document.getElementById('stream-segment').value, 10)
     };
+    
+    // Log the enabled state for debugging
+    console.log('Stream enabled state:', streamData.enabled);
     
     // Add detection-based recording options
     const detectionEnabled = document.getElementById('stream-detection-enabled');
@@ -765,39 +769,4 @@ function setupStreamsHandlers() {
         });
     }
     
-    // Stream toggle button change handler
-    document.addEventListener('click', function(e) {
-        if (e.target && e.target.classList.contains('stream-toggle')) {
-            const streamId = e.target.getAttribute('data-id');
-            const enabled = e.target.checked;
-            
-            console.log(`Toggling stream ${streamId} to ${enabled ? 'enabled' : 'disabled'}`);
-            
-            // Send toggle request to API
-            fetch(`/api/streams/${encodeURIComponent(streamId)}/toggle_streaming`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ enabled: enabled })
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Failed to toggle stream');
-                }
-                return response.json();
-            })
-            .then(data => {
-                console.log('Stream toggled successfully:', data);
-                // No need to reload the page, the toggle state is already updated in the UI
-            })
-            .catch(error => {
-                console.error('Error toggling stream:', error);
-                alert('Error toggling stream: ' + error.message);
-                
-                // Revert the toggle state in the UI
-                e.target.checked = !enabled;
-            });
-        }
-    });
 }
