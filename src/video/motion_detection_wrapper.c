@@ -119,8 +119,8 @@ int enable_optimized_motion_detection(const char *stream_name, float sensitivity
         return ret;
     }
     
-    // Start detection-based recording with "motion_optimized" as the model path
-    ret = start_detection_recording(stream_name, "motion_optimized", sensitivity, 5, 10);
+    // Start detection-based recording with "motion" as the model path
+    ret = start_detection_recording(stream_name, "motion", sensitivity, 5, 10);
     if (ret != 0) {
         log_error("Failed to start optimized motion-based recording for stream %s", stream_name);
         set_motion_detection_enabled(stream_name, false);

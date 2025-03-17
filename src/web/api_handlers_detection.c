@@ -81,7 +81,7 @@ void handle_get_detection_settings(const http_request_t *request, http_response_
             "\"default_post_buffer\":%d,"
             "\"supported_models\":["
             "\"motion\","
-            "\"motion_optimized\","
+            "\"motion\","
             "\"sod\","
             "\"tflite\""
             "]"
@@ -179,7 +179,7 @@ void handle_get_detection_models(const http_request_t *request, http_response_t 
     count++;
     
     // Add optimized motion detection as a special "model"
-    strcat(json, ",{\"name\":\"motion_optimized\",\"type\":\"motion_optimized\",\"size\":0,\"supported\":true}");
+    strcat(json, ",{\"name\":\"motion\",\"type\":\"motion\",\"size\":0,\"supported\":true}");
     count++;
     
     struct dirent *entry;
@@ -267,7 +267,7 @@ void handle_post_test_detection_model(const http_request_t *request, http_respon
     }
     
     // Special case for optimized motion detection
-    if (strcmp(model_name, "motion_optimized") == 0) {
+    if (strcmp(model_name, "motion") == 0) {
         // Optimized motion detection is always supported
         create_json_response(response, 200, 
                             "{\"success\":true,\"message\":\"Optimized motion detection is supported\"}");

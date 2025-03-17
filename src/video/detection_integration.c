@@ -29,6 +29,7 @@
 #include "video/detection.h"
 #include "video/detection_result.h"
 #include "video/motion_detection.h"
+#include "video/motion_detection_wrapper.h"
 
 // Define model types
 #define MODEL_TYPE_SOD "sod"
@@ -299,12 +300,10 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     time_t frame_time = time(NULL);
     
     // Check if we should use motion detection
-    bool is_motion_model = (strcmp(config.detection_model, "motion") == 0);
-    bool is_motion_optimized_model = (strcmp(config.detection_model, "motion_optimized") == 0 || is_motion_model);
-    bool use_model_detection = !is_motion_model && !is_motion_optimized_model;
-    
-    // If the model is "motion_optimized", enable optimized motion detection
-    if (is_motion_optimized_model) {
+    bool use_model_detection = (strcmp(config.detection_model, "motion") == 0);
+
+    // If the model is "motion", enable optimized motion detection
+    if (use_model_detection) {
         // Initialize optimized motion detection if not already initialized
         if (!is_motion_detection_enabled(stream_name)) {
             // Use the wrapper function which handles proper initialization and cleanup
@@ -313,10 +312,8 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
         }
     }
     int detect_ret = -1;
-    
-    
     // If motion detection is enabled, run the optimized implementation
-    if (is_motion_optimized_model) {
+    if (use_model_detection) {
         log_info("Running optimized motion detection for stream %s", stream_name);
         
         // Create a separate result for motion detection
