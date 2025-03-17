@@ -47,11 +47,13 @@ static void packet_queue_init(packet_queue_t *q) {
     q->size = 0;
     q->abort_request = 0;
     q->next_consumer_id = 1;  // Start consumer IDs at 1
-    q->active_consumers = 0;
     
-    // Initialize active consumer IDs array
+    // Initialize consumer cursors
     for (int i = 0; i < MAX_QUEUE_CONSUMERS; i++) {
-        q->active_consumer_ids[i] = 0;
+        q->consumers[i].consumer_id = 0;
+        q->consumers[i].cursor = 0;
+        q->consumers[i].last_read_time = 0;
+        q->consumers[i].active = 0;
     }
 }
 
@@ -87,20 +89,64 @@ static void packet_queue_destroy(packet_queue_t *q) {
  */
 static int packet_queue_put(packet_queue_t *q, AVPacket *pkt) {
     // Quick check without locking first
-    if (q->active_consumers <= 0) {
+    int has_active_consumers = 0;
+    for (int i = 0; i < MAX_QUEUE_CONSUMERS; i++) {
+        if (q->consumers[i].active) {
+            has_active_consumers = 1;
+            break;
+        }
+    }
+    
+    if (!has_active_consumers) {
         return 0;  // No consumers, don't bother queueing
     }
     
     pthread_mutex_lock(&q->mutex);
     
     // Double-check after locking
-    if (q->active_consumers <= 0) {
+    has_active_consumers = 0;
+    for (int i = 0; i < MAX_QUEUE_CONSUMERS; i++) {
+        if (q->consumers[i].active) {
+            has_active_consumers = 1;
+            break;
+        }
+    }
+    
+    if (!has_active_consumers) {
         pthread_mutex_unlock(&q->mutex);
         return 0;  // No consumers, don't bother queueing
     }
     
+    // Remove old packets based on retention time
+    time_t current_time = time(NULL);
+    while (q->size > 0) {
+        broadcast_packet_t *oldest = &q->packets[q->head];
+        
+        // Check if the packet is older than the retention time
+        if (current_time - oldest->arrival_time > MAX_PACKET_RETENTION_TIME) {
+            // Free the packet
+            if (oldest->pkt) {
+                av_packet_free(&oldest->pkt);
+            }
+            
+            // Move head pointer
+            q->head = (q->head + 1) % MAX_PACKET_QUEUE_SIZE;
+            q->size--;
+            
+            // Update consumer cursors that point to the removed packet
+            for (int i = 0; i < MAX_QUEUE_CONSUMERS; i++) {
+                if (q->consumers[i].active && q->consumers[i].cursor == q->head) {
+                    // Move cursor to next packet
+                    q->consumers[i].cursor = (q->consumers[i].cursor + 1) % MAX_PACKET_QUEUE_SIZE;
+                }
+            }
+        } else {
+            // If the oldest packet is still within retention time, stop removing
+            break;
+        }
+    }
+    
     // If queue is getting full, be more aggressive about dropping non-keyframes
-    // This helps prevent producer-consumer contention and ensures smoother streaming
     if (q->size >= MAX_PACKET_QUEUE_SIZE * 0.8) { // At 80% capacity
         int packets_to_remove = MAX_PACKET_QUEUE_SIZE / 5; // Remove ~20% of packets
         int removed = 0;
@@ -120,6 +166,14 @@ static int packet_queue_put(packet_queue_t *q, AVPacket *pkt) {
                 q->head = (q->head + 1) % MAX_PACKET_QUEUE_SIZE;
                 q->size--;
                 removed++;
+                
+                // Update consumer cursors that point to the removed packet
+                for (int j = 0; j < MAX_QUEUE_CONSUMERS; j++) {
+                    if (q->consumers[j].active && q->consumers[j].cursor == q->head) {
+                        // Move cursor to next packet
+                        q->consumers[j].cursor = (q->consumers[j].cursor + 1) % MAX_PACKET_QUEUE_SIZE;
+                    }
+                }
             } else {
                 // If it's a keyframe, skip it in first pass
                 break;
@@ -127,7 +181,6 @@ static int packet_queue_put(packet_queue_t *q, AVPacket *pkt) {
         }
         
         // If we still need to make room and queue is still very full (>90%), remove keyframes too
-        // But only as a last resort
         if (q->size >= MAX_PACKET_QUEUE_SIZE * 0.9) {
             log_warn("Packet queue critically full, dropping oldest packets including keyframes");
             
@@ -143,6 +196,14 @@ static int packet_queue_put(packet_queue_t *q, AVPacket *pkt) {
                 // Move head pointer
                 q->head = (q->head + 1) % MAX_PACKET_QUEUE_SIZE;
                 q->size--;
+                
+                // Update consumer cursors that point to the removed packet
+                for (int j = 0; j < MAX_QUEUE_CONSUMERS; j++) {
+                    if (q->consumers[j].active && q->consumers[j].cursor == q->head) {
+                        // Move cursor to next packet
+                        q->consumers[j].cursor = (q->consumers[j].cursor + 1) % MAX_PACKET_QUEUE_SIZE;
+                    }
+                }
             }
         }
         
@@ -159,7 +220,6 @@ static int packet_queue_put(packet_queue_t *q, AVPacket *pkt) {
     int is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) ? 1 : 0;
     
     // If queue is still nearly full and this is not a keyframe, consider dropping it
-    // This prioritizes keyframes when under pressure
     if (q->size >= MAX_PACKET_QUEUE_SIZE * 0.9 && !is_key_frame) {
         // Drop this non-keyframe to make room for more important frames
         pthread_mutex_unlock(&q->mutex);
@@ -190,40 +250,7 @@ static int packet_queue_put(packet_queue_t *q, AVPacket *pkt) {
     new_packet->key_frame = is_key_frame;
     new_packet->stream_index = pkt->stream_index;
     new_packet->size = pkt->size;
-    new_packet->consumer_count = q->active_consumers;
-    new_packet->all_processed = 0;
-    
-    // Initialize consumer status
-    for (int i = 0; i < MAX_QUEUE_CONSUMERS; i++) {
-        new_packet->consumer_status[i].consumer_id = 0;
-        new_packet->consumer_status[i].processed = 0;
-    }
-    
-    // Directly register all active consumers
-    // This is more efficient than scanning recent packets
-    int registered = 0;
-    
-    // Get a snapshot of active consumer IDs from the queue
-    // We already have the mutex locked from above
-    int consumer_ids[MAX_QUEUE_CONSUMERS] = {0};
-    int consumer_count = 0;
-    
-    // Copy active consumer IDs
-    for (int i = 0; i < MAX_QUEUE_CONSUMERS; i++) {
-        if (q->active_consumer_ids[i] > 0) {
-            consumer_ids[consumer_count++] = q->active_consumer_ids[i];
-        }
-    }
-    
-    // Register all active consumers with the new packet
-    for (int i = 0; i < consumer_count && i < MAX_QUEUE_CONSUMERS; i++) {
-        new_packet->consumer_status[i].consumer_id = consumer_ids[i];
-        new_packet->consumer_status[i].processed = 0;
-        registered++;
-    }
-    
-    // Update consumer count
-    new_packet->consumer_count = registered;
+    new_packet->arrival_time = time(NULL);
     
     // Add to queue
     q->tail = (q->tail + 1) % MAX_PACKET_QUEUE_SIZE;
@@ -236,22 +263,22 @@ static int packet_queue_put(packet_queue_t *q, AVPacket *pkt) {
 }
 
 /**
- * Check if a consumer is active
+ * Find a consumer by ID
+ * Returns the index in the consumers array, or -1 if not found
+ * Assumes the mutex is already locked
  */
-static int is_consumer_active(packet_queue_t *q, int consumer_id) {
-    // This function assumes the mutex is already locked
+static int find_consumer(packet_queue_t *q, int consumer_id) {
     if (consumer_id <= 0) {
-        return 0;
+        return -1;
     }
     
-    // Check if this consumer ID is in the active consumers list
     for (int i = 0; i < MAX_QUEUE_CONSUMERS; i++) {
-        if (q->active_consumer_ids[i] == consumer_id) {
-            return 1;
+        if (q->consumers[i].consumer_id == consumer_id && q->consumers[i].active) {
+            return i;
         }
     }
     
-    return 0;
+    return -1;
 }
 
 /**
@@ -285,79 +312,24 @@ static int packet_queue_get(packet_queue_t *q, AVPacket *pkt, int consumer_id) {
         return -1;
     }
     
-    // Find the next unprocessed packet for this consumer
-    // Always start from the head of the queue to ensure fair distribution
-    int found = 0;
-    int idx = q->head;
-    int count = 0;
-    
-    // First pass: Try to find the oldest unprocessed packet for this consumer
-    // Prioritize keyframes when queue is getting full
-    int keyframe_idx = -1;
-    int found_keyframe = 0;
-    
-    while (count < q->size && !found) {
-        broadcast_packet_t *packet = &q->packets[idx];
-        
-        // Check if this consumer has already processed this packet
-        int consumer_idx = -1;
-        for (int i = 0; i < MAX_QUEUE_CONSUMERS; i++) {
-            if (packet->consumer_status[i].consumer_id == consumer_id) {
-                consumer_idx = i;
-                break;
-            }
-        }
-        
-        // If consumer not found in this packet's status array, add it
-        if (consumer_idx < 0) {
-            // Find an empty slot to add this consumer
-            for (int i = 0; i < MAX_QUEUE_CONSUMERS; i++) {
-                if (packet->consumer_status[i].consumer_id == 0) {
-                    packet->consumer_status[i].consumer_id = consumer_id;
-                    packet->consumer_status[i].processed = 0;
-                    packet->consumer_count++;
-                    consumer_idx = i;
-                    break;
-                }
-            }
-            
-            // If no empty slot found, log an error but continue
-            if (consumer_idx < 0) {
-                log_error("No empty slot for consumer %d in packet, MAX_QUEUE_CONSUMERS (%d) may be too small",
-                         consumer_id, MAX_QUEUE_CONSUMERS);
-            }
-        }
-        
-        if (consumer_idx >= 0 && !packet->consumer_status[consumer_idx].processed) {
-            // Found an unprocessed packet for this consumer
-            
-            // If it's a keyframe, remember it but keep looking for non-keyframes
-            // This ensures we don't skip too many frames between keyframes
-            if (packet->key_frame && keyframe_idx < 0) {
-                keyframe_idx = idx;
-                found_keyframe = 1;
-            }
-            
-            // If we're not in a high-pressure situation, process frames in order
-            if (q->size < MAX_PACKET_QUEUE_SIZE * 0.8 || !found_keyframe) {
-                found = 1;
-                break;
-            }
-        }
-        
-        // Move to next packet
-        idx = (idx + 1) % MAX_PACKET_QUEUE_SIZE;
-        count++;
+    // Find the consumer in our array
+    int consumer_idx = find_consumer(q, consumer_id);
+    if (consumer_idx < 0) {
+        log_error("Consumer %d not found or not active", consumer_id);
+        pthread_mutex_unlock(&q->mutex);
+        return -1;
     }
     
-    // If we found a keyframe but no other suitable packet, use the keyframe
-    if (!found && found_keyframe) {
-        idx = keyframe_idx;
-        found = 1;
-    }
+    // Update last read time
+    q->consumers[consumer_idx].last_read_time = time(NULL);
     
-    // If no unprocessed packet found, wait for new packets with timeout
-    if (!found && !q->abort_request) {
+    // If queue is empty, wait for new packets
+    if (q->size == 0) {
+        if (q->abort_request) {
+            pthread_mutex_unlock(&q->mutex);
+            return -1;
+        }
+        
         int wait_result = pthread_cond_timedwait(&q->cond_not_empty, &q->mutex, &timeout);
         
         // If we timed out, return a special code
@@ -366,86 +338,21 @@ static int packet_queue_get(packet_queue_t *q, AVPacket *pkt, int consumer_id) {
             return 1; // Timeout, no packet available
         }
         
-        // After waking up, search again from the head of the queue
-        found = 0;
-        idx = q->head;
-        count = 0;
-        keyframe_idx = -1;
-        found_keyframe = 0;
-        
-        // Same logic as above, but after waiting for new packets
-        while (count < q->size && !found) {
-            broadcast_packet_t *packet = &q->packets[idx];
-            
-            // Check if this consumer has already processed this packet
-            int consumer_idx = -1;
-            for (int i = 0; i < MAX_QUEUE_CONSUMERS; i++) {
-                if (packet->consumer_status[i].consumer_id == consumer_id) {
-                    consumer_idx = i;
-                    break;
-                }
-            }
-            
-            // If consumer not found in this packet's status array, add it
-            if (consumer_idx < 0) {
-                // Find an empty slot to add this consumer
-                for (int i = 0; i < MAX_QUEUE_CONSUMERS; i++) {
-                    if (packet->consumer_status[i].consumer_id == 0) {
-                        packet->consumer_status[i].consumer_id = consumer_id;
-                        packet->consumer_status[i].processed = 0;
-                        packet->consumer_count++;
-                        consumer_idx = i;
-                        break;
-                    }
-                }
-                
-                // If no empty slot found, log an error but continue
-                if (consumer_idx < 0) {
-                    log_error("No empty slot for consumer %d in packet, MAX_QUEUE_CONSUMERS (%d) may be too small",
-                             consumer_id, MAX_QUEUE_CONSUMERS);
-                }
-            }
-            
-            if (consumer_idx >= 0 && !packet->consumer_status[consumer_idx].processed) {
-                // Found an unprocessed packet for this consumer
-                
-                // If it's a keyframe, remember it but keep looking for non-keyframes
-                if (packet->key_frame && keyframe_idx < 0) {
-                    keyframe_idx = idx;
-                    found_keyframe = 1;
-                }
-                
-                // If we're not in a high-pressure situation, process frames in order
-                if (q->size < MAX_PACKET_QUEUE_SIZE * 0.8 || !found_keyframe) {
-                    found = 1;
-                    break;
-                }
-            }
-            
-            // Move to next packet
-            idx = (idx + 1) % MAX_PACKET_QUEUE_SIZE;
-            count++;
-        }
-        
-        // If we found a keyframe but no other suitable packet, use the keyframe
-        if (!found && found_keyframe) {
-            idx = keyframe_idx;
-            found = 1;
+        // If queue is still empty after waiting, return timeout
+        if (q->size == 0) {
+            pthread_mutex_unlock(&q->mutex);
+            return 1; // No packet available
         }
     }
     
-    if (q->abort_request) {
-        pthread_mutex_unlock(&q->mutex);
-        return -1;
+    // If the consumer's cursor is outside the valid range, reset it to the head
+    if (q->consumers[consumer_idx].cursor < q->head || 
+        q->consumers[consumer_idx].cursor >= (q->head + q->size) % MAX_PACKET_QUEUE_SIZE) {
+        q->consumers[consumer_idx].cursor = q->head;
     }
     
-    // If we still didn't find a packet, return timeout
-    if (!found) {
-        pthread_mutex_unlock(&q->mutex);
-        return 1; // No packet available
-    }
-    
-    // Get the packet
+    // Get the packet at the consumer's cursor
+    int idx = q->consumers[consumer_idx].cursor;
     broadcast_packet_t *packet = &q->packets[idx];
     
     // Create a clean copy of the packet to avoid reference issues
@@ -456,49 +363,32 @@ static int packet_queue_get(packet_queue_t *q, AVPacket *pkt, int consumer_id) {
         return -1;
     }
     
-    // Mark as processed by this consumer
-    for (int i = 0; i < MAX_QUEUE_CONSUMERS; i++) {
-        if (packet->consumer_status[i].consumer_id == consumer_id) {
-            packet->consumer_status[i].processed = 1;
-            break;
-        }
-    }
+    // Advance the consumer's cursor for next time
+    q->consumers[consumer_idx].cursor = (q->consumers[consumer_idx].cursor + 1) % MAX_PACKET_QUEUE_SIZE;
     
-    // Check if all consumers have processed this packet
-    int all_processed = 1;
-    for (int i = 0; i < MAX_QUEUE_CONSUMERS; i++) {
-        if (packet->consumer_status[i].consumer_id != 0 && 
-            !packet->consumer_status[i].processed) {
-            all_processed = 0;
-            break;
-        }
-    }
-    
-    // If all consumers have processed this packet, mark it for removal
-    if (all_processed) {
-        packet->all_processed = 1;
+    // Check if we need to prioritize keyframes when under pressure
+    if (q->size > MAX_PACKET_QUEUE_SIZE * 0.8) {
+        // Look ahead for keyframes
+        int next_idx = q->consumers[consumer_idx].cursor;
+        int count = 0;
+        int max_look_ahead = 10; // Don't look too far ahead
         
-        // If this is the head packet, remove it and any other fully processed packets
-        if (idx == q->head) {
-            while (q->size > 0 && q->packets[q->head].all_processed) {
-                // Free the packet
-                if (q->packets[q->head].pkt) {
-                    av_packet_free(&q->packets[q->head].pkt);
-                }
-                
-                // Move head pointer
-                q->head = (q->head + 1) % MAX_PACKET_QUEUE_SIZE;
-                q->size--;
-                
-                // Signal that the queue is not full
-                pthread_cond_signal(&q->cond_not_full);
+        while (count < max_look_ahead && count < q->size - 1) {
+            broadcast_packet_t *next_packet = &q->packets[next_idx];
+            if (next_packet->key_frame) {
+                // Found a keyframe, skip ahead to it
+                q->consumers[consumer_idx].cursor = next_idx;
+                break;
             }
+            next_idx = (next_idx + 1) % MAX_PACKET_QUEUE_SIZE;
+            count++;
         }
     }
     
     pthread_mutex_unlock(&q->mutex);
     return 0;
 }
+
 
 /**
  * Abort packet queue operations
@@ -864,53 +754,28 @@ int register_stream_consumer(stream_reader_ctx_t *ctx) {
     
     pthread_mutex_lock(&ctx->queue.mutex);
     consumer_id = ctx->queue.next_consumer_id++;
-    ctx->queue.active_consumers++;
     
-    // Add to active consumer IDs array
+    // Find an empty slot in the consumers array
+    int slot = -1;
     for (int i = 0; i < MAX_QUEUE_CONSUMERS; i++) {
-        if (ctx->queue.active_consumer_ids[i] == 0) {
-            ctx->queue.active_consumer_ids[i] = consumer_id;
+        if (!ctx->queue.consumers[i].active) {
+            slot = i;
             break;
         }
     }
     
-    // Initialize consumer status for all packets in the queue
-    for (int i = 0; i < ctx->queue.size; i++) {
-        int idx = (ctx->queue.head + i) % MAX_PACKET_QUEUE_SIZE;
-        broadcast_packet_t *packet = &ctx->queue.packets[idx];
-        
-        // Check if this consumer is already in the packet's status array
-        int consumer_idx = -1;
-        for (int j = 0; j < MAX_QUEUE_CONSUMERS; j++) {
-            if (packet->consumer_status[j].consumer_id == consumer_id) {
-                consumer_idx = j;
-                break;
-            }
-        }
-        
-        // If consumer not found, add it to an empty slot
-        if (consumer_idx < 0) {
-            // Find an empty slot for this consumer
-            for (int j = 0; j < MAX_QUEUE_CONSUMERS; j++) {
-                if (packet->consumer_status[j].consumer_id == 0) {
-                    packet->consumer_status[j].consumer_id = consumer_id;
-                    packet->consumer_status[j].processed = 0;
-                    packet->consumer_count++;
-                    consumer_idx = j;
-                    break;
-                }
-            }
-            
-            // If no empty slot found, log an error
-            if (consumer_idx < 0) {
-                log_error("No empty slot for consumer %d in packet during registration, MAX_QUEUE_CONSUMERS (%d) may be too small",
-                         consumer_id, MAX_QUEUE_CONSUMERS);
-            }
-        } else {
-            // Consumer already exists in this packet, make sure it's marked as unprocessed
-            packet->consumer_status[consumer_idx].processed = 0;
-        }
+    if (slot < 0) {
+        log_error("No empty slot for new consumer in stream %s", ctx->config.name);
+        pthread_mutex_unlock(&ctx->queue.mutex);
+        pthread_mutex_unlock(&ctx->consumers_mutex);
+        return -1;
     }
+    
+    // Initialize the consumer cursor
+    ctx->queue.consumers[slot].consumer_id = consumer_id;
+    ctx->queue.consumers[slot].cursor = ctx->queue.head; // Start at the head of the queue
+    ctx->queue.consumers[slot].last_read_time = time(NULL);
+    ctx->queue.consumers[slot].active = 1;
     
     pthread_mutex_unlock(&ctx->queue.mutex);
     pthread_mutex_unlock(&ctx->consumers_mutex);
@@ -937,59 +802,13 @@ int unregister_stream_consumer(stream_reader_ctx_t *ctx, int consumer_id) {
     
     // Update the queue
     pthread_mutex_lock(&ctx->queue.mutex);
-    ctx->queue.active_consumers--;
     
-    // Remove from active consumer IDs array
+    // Find and deactivate the consumer
     for (int i = 0; i < MAX_QUEUE_CONSUMERS; i++) {
-        if (ctx->queue.active_consumer_ids[i] == consumer_id) {
-            ctx->queue.active_consumer_ids[i] = 0;
+        if (ctx->queue.consumers[i].consumer_id == consumer_id && ctx->queue.consumers[i].active) {
+            ctx->queue.consumers[i].active = 0;
             break;
         }
-    }
-    
-    // Mark all packets as processed for this consumer
-    for (int i = 0; i < ctx->queue.size; i++) {
-        int idx = (ctx->queue.head + i) % MAX_PACKET_QUEUE_SIZE;
-        broadcast_packet_t *packet = &ctx->queue.packets[idx];
-        
-        // Find this consumer in the packet's consumer status
-        for (int j = 0; j < MAX_QUEUE_CONSUMERS; j++) {
-            if (packet->consumer_status[j].consumer_id == consumer_id) {
-                packet->consumer_status[j].processed = 1;
-                
-                // Check if all consumers have processed this packet
-                int all_processed = 1;
-                for (int k = 0; k < MAX_QUEUE_CONSUMERS; k++) {
-                    if (packet->consumer_status[k].consumer_id != 0 && 
-                        !packet->consumer_status[k].processed) {
-                        all_processed = 0;
-                        break;
-                    }
-                }
-                
-                // If all consumers have processed this packet, mark it for removal
-                if (all_processed) {
-                    packet->all_processed = 1;
-                }
-                
-                break;
-            }
-        }
-    }
-    
-    // Remove any fully processed packets from the head of the queue
-    while (ctx->queue.size > 0 && ctx->queue.packets[ctx->queue.head].all_processed) {
-        // Free the packet
-        if (ctx->queue.packets[ctx->queue.head].pkt) {
-            av_packet_free(&ctx->queue.packets[ctx->queue.head].pkt);
-        }
-        
-        // Move head pointer
-        ctx->queue.head = (ctx->queue.head + 1) % MAX_PACKET_QUEUE_SIZE;
-        ctx->queue.size--;
-        
-        // Signal that the queue is not full
-        pthread_cond_signal(&ctx->queue.cond_not_full);
     }
     
     pthread_mutex_unlock(&ctx->queue.mutex);
