@@ -51,6 +51,8 @@ mp4_writer_t *mp4_writer_create(const char *output_path, const char *stream_name
     writer->last_dts = AV_NOPTS_VALUE;
     writer->is_initialized = 0;
     writer->creation_time = time(NULL);
+    writer->is_under_pressure = 0;
+    writer->frame_counter = 0; // Initialize frame counter
 
     log_info("Created MP4 writer for stream %s at %s", stream_name, output_path);
 
@@ -77,11 +79,15 @@ static int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, cons
         // Create directory if it doesn't exist
         char mkdir_cmd[1024 + 10];
         snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p %s", dir_path);
-        system(mkdir_cmd);
+        if (system(mkdir_cmd) != 0) {
+            log_warn("Failed to create directory: %s", dir_path);
+        }
 
         // Set permissions to ensure it's writable
         snprintf(mkdir_cmd, sizeof(mkdir_cmd), "chmod -R 777 %s", dir_path);
-        system(mkdir_cmd);
+        if (system(mkdir_cmd) != 0) {
+            log_warn("Failed to set permissions: %s", dir_path);
+        }
     }
 
     // Log the full output path
@@ -182,6 +188,23 @@ static int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, cons
  */
 int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const AVStream *input_stream) {
     if (!writer) {
+        log_error("Null writer passed to mp4_writer_write_packet");
+        return -1;
+    }
+
+    if (!in_pkt) {
+        log_error("Null packet passed to mp4_writer_write_packet for %s", writer->stream_name);
+        return -1;
+    }
+
+    if (!input_stream) {
+        log_error("Null input stream passed to mp4_writer_write_packet for %s", writer->stream_name);
+        return -1;
+    }
+
+    // Validate packet data
+    if (!in_pkt->data || in_pkt->size <= 0) {
+        log_warn("Invalid packet (null data or zero size) for stream %s", writer->stream_name);
         return -1;
     }
 
@@ -195,7 +218,17 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
 
     // Create a copy of the packet so we don't modify the original
     AVPacket pkt;
-    av_packet_ref(&pkt, in_pkt);
+    av_init_packet(&pkt);
+    pkt.data = NULL;
+    pkt.size = 0;
+    
+    int ret = av_packet_ref(&pkt, in_pkt);
+    if (ret < 0) {
+        char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+        av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+        log_error("Failed to reference packet: %s", error_buf);
+        return ret;
+    }
 
     // Enhanced timestamp handling to fix non-monotonic DTS issues
     if (writer->first_dts == AV_NOPTS_VALUE) {
@@ -227,7 +260,8 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
                  (long long)writer->first_dts, (long long)writer->first_pts);
     } else {
         // Check for timestamp discontinuities (common in RTSP streams)
-        int64_t expected_dts = writer->last_dts + 1;
+        int64_t expected_dts = writer->last_dts + 
+            av_rescale_q(1, input_stream->time_base, writer->time_base);
         int64_t dts_diff = 0;
         
         if (pkt.dts != AV_NOPTS_VALUE) {
@@ -241,15 +275,21 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
                         (long long)(pkt.dts - writer->last_dts));
                 
                 // Handle the discontinuity by continuing from the last DTS
+                // Add a small increment to ensure monotonic increase
                 pkt.dts = expected_dts;
                 
                 // If PTS is also invalid, adjust it too
                 if (pkt.pts != AV_NOPTS_VALUE && pkt.pts < pkt.dts) {
-                    pkt.pts = pkt.dts;
+                    pkt.pts = pkt.dts + 1; // Ensure PTS > DTS for proper playback
                 }
             } else {
                 // Normal case - use the relative offset from first_dts
                 pkt.dts = dts_diff;
+                
+                // Ensure monotonic increase
+                if (pkt.dts <= writer->last_dts) {
+                    pkt.dts = writer->last_dts + 1;
+                }
             }
         } else {
             // If DTS is not set, use a continuous value
@@ -263,19 +303,19 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
 
             // If PTS goes backwards or would be less than DTS, adjust it
             if (pts_diff < 0 || pkt.pts < pkt.dts) {
-                // Set PTS equal to DTS as a fallback
-                pkt.pts = pkt.dts;
+                // Set PTS slightly ahead of DTS as a fallback
+                pkt.pts = pkt.dts + 1;
             } else {
                 pkt.pts = pts_diff;
+                
+                // Ensure PTS is at least DTS + 1 for proper playback
+                if (pkt.pts <= pkt.dts) {
+                    pkt.pts = pkt.dts + 1;
+                }
             }
         } else {
-            // If PTS is not set, use DTS
-            pkt.pts = pkt.dts;
-        }
-        
-        // Final sanity check - ensure PTS >= DTS
-        if (pkt.pts < pkt.dts) {
-            pkt.pts = pkt.dts;
+            // If PTS is not set, use DTS + 1
+            pkt.pts = pkt.dts + 1;
         }
     }
 
@@ -291,7 +331,7 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
                  (long long)pkt.pts, (long long)pkt.dts);
     }
 
-    int ret = av_interleaved_write_frame(writer->output_ctx, &pkt);
+    ret = av_interleaved_write_frame(writer->output_ctx, &pkt);
     if (ret < 0) {
         char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
         av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
@@ -305,24 +345,45 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
 }
 
 /**
- * Enhanced close function that creates symlinks to help with discovery
+ * Enhanced close function with improved error handling
  */
 void mp4_writer_close(mp4_writer_t *writer) {
     if (!writer) {
+        log_warn("Attempted to close NULL MP4 writer");
         return;
     }
 
-    char output_path[1024];
-    char stream_name[64];
+    // Validate writer fields before using them
+    bool valid_output_path = writer->output_path[0] != '\0';
+    bool valid_stream_name = writer->stream_name[0] != '\0';
+    
+    // Make safe copies of the paths
+    char output_path[1024] = {0};
+    char stream_name[64] = {0};
     time_t creation_time = writer->creation_time;
+    bool was_initialized = writer->is_initialized;
+    int64_t first_dts = writer->first_dts;
+    int64_t last_dts = writer->last_dts;
+    AVRational time_base = writer->time_base;
 
-    // Save these for later use with symlinks
-    strncpy(output_path, writer->output_path, sizeof(output_path) - 1);
-    output_path[sizeof(output_path) - 1] = '\0';
+    // Only copy if the fields are valid
+    if (valid_output_path) {
+        strncpy(output_path, writer->output_path, sizeof(output_path) - 1);
+        output_path[sizeof(output_path) - 1] = '\0';
+    } else {
+        log_warn("MP4 writer has invalid output path");
+    }
 
-    strncpy(stream_name, writer->stream_name, sizeof(stream_name) - 1);
-    stream_name[sizeof(stream_name) - 1] = '\0';
+    if (valid_stream_name) {
+        strncpy(stream_name, writer->stream_name, sizeof(stream_name) - 1);
+        stream_name[sizeof(stream_name) - 1] = '\0';
+    } else {
+        log_warn("MP4 writer has invalid stream name");
+        // Use a placeholder name for logging
+        strncpy(stream_name, "unknown", sizeof(stream_name) - 1);
+    }
 
+    // Close the output context first
     if (writer->output_ctx) {
         // Write trailer if initialized
         if (writer->is_initialized) {
@@ -345,183 +406,117 @@ void mp4_writer_close(mp4_writer_t *writer) {
         writer->output_ctx = NULL;
     }
 
+    // Log with safe values
     log_info("Closed MP4 writer for stream %s at %s",
-            writer->stream_name, writer->output_path);
+            valid_stream_name ? stream_name : "unknown", 
+            valid_output_path ? output_path : "(invalid path)");
 
-    // Check if file exists and has a reasonable size
-    struct stat st;
-    if (stat(output_path, &st) == 0 && st.st_size > 1024) { // File exists and is not empty
-        // Log success with absolute path for easy debugging
-        char abs_path[PATH_MAX];
-        if (realpath(output_path, abs_path)) {
-            log_info("Successfully wrote MP4 file at: %s (size: %lld bytes)",
-                    abs_path, (long long)st.st_size);
+    // Check if file exists and has a reasonable size - only if we have a valid path
+    if (valid_output_path) {
+        struct stat st;
+        if (stat(output_path, &st) == 0 && st.st_size > 1024) { // File exists and is not empty
+            // Log success with absolute path for easy debugging
+            char abs_path[PATH_MAX];
+            if (realpath(output_path, abs_path)) {
+                log_info("Successfully wrote MP4 file at: %s (size: %lld bytes)",
+                        abs_path, (long long)st.st_size);
+            } else {
+                log_info("Successfully wrote MP4 file at: %s (size: %lld bytes)",
+                        output_path, (long long)st.st_size);
+            }
+
+            // Ensure recording is properly updated in database
+            if (was_initialized) {
+                // Find any active recordings for this stream in our tracking array
+                pthread_mutex_lock(&recordings_mutex);
+                bool found = false;
+
+                for (int i = 0; i < MAX_STREAMS; i++) {
+                    if (active_recordings[i].recording_id > 0 &&
+                        strcmp(active_recordings[i].stream_name, stream_name) == 0) {
+
+                        // We found an active recording for this stream
+                        found = true;
+
+                        // Mark recording as complete
+                        time_t end_time = time(NULL);
+                        update_recording_metadata(active_recordings[i].recording_id,
+                                                end_time, st.st_size, true);
+
+                        log_info("Updated database record for recording %llu, size: %lld bytes",
+                                (unsigned long long)active_recordings[i].recording_id,
+                                (long long)st.st_size);
+
+                        // Clear the active recording slot
+                        active_recordings[i].recording_id = 0;
+                        active_recordings[i].stream_name[0] = '\0';
+                        active_recordings[i].output_path[0] = '\0';
+
+                        break;
+                    }
+                }
+
+                // If no active recording was found, create one
+                if (!found) {
+                    log_info("No active recording found for stream %s, creating database entry",
+                            stream_name);
+
+                    // Create recording metadata
+                    recording_metadata_t metadata;
+                    memset(&metadata, 0, sizeof(recording_metadata_t));
+
+                    strncpy(metadata.stream_name, stream_name, sizeof(metadata.stream_name) - 1);
+                    strncpy(metadata.file_path, output_path, sizeof(metadata.file_path) - 1);
+
+                    metadata.size_bytes = st.st_size;
+
+                    // Get stream config for additional metadata
+                    stream_handle_t stream = get_stream_by_name(stream_name);
+                    if (stream) {
+                        stream_config_t config;
+                        if (get_stream_config(stream, &config) == 0) {
+                            metadata.width = config.width;
+                            metadata.height = config.height;
+                            metadata.fps = config.fps;
+                            strncpy(metadata.codec, config.codec, sizeof(metadata.codec) - 1);
+                        }
+                    }
+
+                    // Set timestamps
+                    time_t duration_sec = 0;
+                    if (first_dts != AV_NOPTS_VALUE && last_dts != AV_NOPTS_VALUE) {
+                        // Convert from stream timebase to seconds
+                        int64_t duration_tb = last_dts;  // last_dts is already relative to first_dts
+                        if (time_base.den > 0) {
+                            duration_sec = duration_tb * time_base.num / time_base.den;
+                            log_info("MP4 duration calculated: %ld seconds (timebase: %d/%d, ticks: %lld)", 
+                                    duration_sec, time_base.num, time_base.den, 
+                                    (long long)duration_tb);
+                        }
+                    }
+
+                    time_t now = time(NULL);
+                    metadata.start_time = now - duration_sec;
+                    metadata.end_time = now;
+                    metadata.is_complete = true;
+
+                    // Add to database
+                    uint64_t recording_id = add_recording_metadata(&metadata);
+                    if (recording_id > 0) {
+                        log_info("Created database entry for completed recording, ID: %llu",
+                                (unsigned long long)recording_id);
+                    } else {
+                        log_error("Failed to create database entry for completed recording");
+                    }
+                }
+
+                pthread_mutex_unlock(&recordings_mutex);
+            }
         } else {
-            log_info("Successfully wrote MP4 file at: %s (size: %lld bytes)",
-                    output_path, (long long)st.st_size);
+            log_error("MP4 file missing or too small: %s", output_path);
         }
-
-        // Ensure recording is properly updated in database
-        if (writer->is_initialized) {
-            // Find any active recordings for this stream in our tracking array
-            pthread_mutex_lock(&recordings_mutex);
-            bool found = false;
-
-            for (int i = 0; i < MAX_STREAMS; i++) {
-                if (active_recordings[i].recording_id > 0 &&
-                    strcmp(active_recordings[i].stream_name, writer->stream_name) == 0) {
-
-                    // We found an active recording for this stream
-                    found = true;
-
-                    // Mark recording as complete
-                    time_t end_time = time(NULL);
-                    update_recording_metadata(active_recordings[i].recording_id,
-                                              end_time, st.st_size, true);
-
-                    log_info("Updated database record for recording %llu, size: %lld bytes",
-                            (unsigned long long)active_recordings[i].recording_id,
-                            (long long)st.st_size);
-
-                    // Clear the active recording slot
-                    active_recordings[i].recording_id = 0;
-                    active_recordings[i].stream_name[0] = '\0';
-                    active_recordings[i].output_path[0] = '\0';
-
-                    break;
-                }
-            }
-
-            // If no active recording was found, create one
-            if (!found) {
-                log_info("No active recording found for stream %s, creating database entry",
-                        writer->stream_name);
-
-                // Create recording metadata
-                recording_metadata_t metadata;
-                memset(&metadata, 0, sizeof(recording_metadata_t));
-
-                strncpy(metadata.stream_name, writer->stream_name, sizeof(metadata.stream_name) - 1);
-                strncpy(metadata.file_path, writer->output_path, sizeof(metadata.file_path) - 1);
-
-                metadata.size_bytes = st.st_size;
-
-                // Get stream config for additional metadata
-                stream_handle_t stream = get_stream_by_name(writer->stream_name);
-                if (stream) {
-                    stream_config_t config;
-                    if (get_stream_config(stream, &config) == 0) {
-                        metadata.width = config.width;
-                        metadata.height = config.height;
-                        metadata.fps = config.fps;
-                        strncpy(metadata.codec, config.codec, sizeof(metadata.codec) - 1);
-                    }
-                }
-
-                // Set timestamps
-                time_t duration_sec = 0;
-                if (writer->first_dts != AV_NOPTS_VALUE && writer->last_dts != AV_NOPTS_VALUE) {
-                    // Convert from stream timebase to seconds
-                    int64_t duration_tb = writer->last_dts;  // last_dts is already relative to first_dts
-                    if (writer->time_base.den > 0) {
-                        duration_sec = duration_tb * writer->time_base.num / writer->time_base.den;
-                        log_info("MP4 duration calculated: %ld seconds (timebase: %d/%d, ticks: %lld)", 
-                                duration_sec, writer->time_base.num, writer->time_base.den, 
-                                (long long)duration_tb);
-                    }
-                }
-
-                time_t now = time(NULL);
-                metadata.start_time = now - duration_sec;
-                metadata.end_time = now;
-                metadata.is_complete = true;
-
-                // Add to database
-                uint64_t recording_id = add_recording_metadata(&metadata);
-                if (recording_id > 0) {
-                    log_info("Created database entry for completed recording, ID: %llu",
-                            (unsigned long long)recording_id);
-                } else {
-                    log_error("Failed to create database entry for completed recording");
-                }
-            }
-
-            pthread_mutex_unlock(&recordings_mutex);
-        }
-    } else {
-        log_error("MP4 file missing or too small: %s", output_path);
     }
 
     // Free writer
     free(writer);
-}
-
-/**
- * Update list_mp4_files_for_stream function to include the mp4 directory
- */
-void list_mp4_files_for_stream(const char *stream_name) {
-    if (!stream_name) return;
-
-    log_info("=== Listing all MP4 files for stream '%s' ===", stream_name);
-
-    // Get global config for storage paths
-    config_t *global_config = get_streaming_config();
-
-    // Places to look
-    const char *locations[] = {
-        // Standard recordings directory
-        global_config->storage_path ? global_config->storage_path : "",
-        // Direct MP4 storage if configured
-        global_config->record_mp4_directly && global_config->mp4_storage_path[0] != '\0' ?
-            global_config->mp4_storage_path : NULL,
-        // HLS directory
-        global_config->storage_path ? global_config->storage_path : "",
-        // NEW: MP4 directory
-        global_config->storage_path ? global_config->storage_path : ""
-    };
-
-    // Subdirectories to check in each location
-    const char *subdirs[] = {
-        "recordings",
-        "",
-        "mp4"  // NEW: Added mp4 directory
-    };
-
-    for (int i = 0; i < 4; i++) {  // Updated to 4 to include the new location
-        if (!locations[i] || locations[i][0] == '\0') continue;
-
-        char base_path[512];
-        if (subdirs[i][0] != '\0') {
-            snprintf(base_path, sizeof(base_path), "%s/%s/%s",
-                    locations[i], subdirs[i], stream_name);
-        } else {
-            snprintf(base_path, sizeof(base_path), "%s/%s",
-                    locations[i], stream_name);
-        }
-
-        // Use find command to locate all MP4 files
-        char find_cmd[1024];
-        snprintf(find_cmd, sizeof(find_cmd),
-                "find %s -type f -name \"*.mp4\" -exec ls -la {} \\; 2>/dev/null",
-                base_path);
-
-        log_info("Checking location: %s", base_path);
-
-        FILE *cmd_pipe = popen(find_cmd, "r");
-        if (cmd_pipe) {
-            char line[1024];
-            while (fgets(line, sizeof(line), cmd_pipe)) {
-                // Remove trailing newline
-                size_t len = strlen(line);
-                if (len > 0 && line[len-1] == '\n') {
-                    line[len-1] = '\0';
-                }
-
-                log_info("  Found: %s", line);
-            }
-            pclose(cmd_pipe);
-        }
-    }
-
-    log_info("=== MP4 file listing complete ===");
 }

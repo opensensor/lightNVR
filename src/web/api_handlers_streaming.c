@@ -119,10 +119,7 @@ void handle_hls_manifest(const http_request_t *request, http_response_t *respons
         return;
     }
     
-    // Set streaming enabled flag to true
-    set_stream_streaming_enabled(stream, true);
-    
-    // Start HLS if not already running
+    // Start HLS if not already running - this only starts streaming, not recording
     if (start_hls_stream(stream_name) != 0) {
         create_stream_error_response(response, 500, "Failed to start HLS stream");
         return;
@@ -130,14 +127,21 @@ void handle_hls_manifest(const http_request_t *request, http_response_t *respons
 
     // Get the manifest file path
     config_t *global_config = get_streaming_config();
+    
+    // Log the storage path for debugging
+    log_info("API looking for HLS manifest in storage path: %s", global_config->storage_path);
+    
     char manifest_path[MAX_PATH_LENGTH];
     snprintf(manifest_path, MAX_PATH_LENGTH, "%s/hls/%s/index.m3u8",
              global_config->storage_path, stream_name);
+    
+    // Log the full manifest path
+    log_info("Full manifest path: %s", manifest_path);
 
-    // Wait for the manifest file to be created, but with a shorter timeout
-    // Try up to 30 times with 100ms between attempts (3 seconds total)
+    // Wait for the manifest file to be created with a longer timeout for low-powered devices
+    // Try up to 50 times with 100ms between attempts (5 seconds total)
     bool manifest_exists = false;
-    for (int i = 0; i < 30; i++) {
+    for (int i = 0; i < 50; i++) {
         // Check for the final manifest file
         if (access(manifest_path, F_OK) == 0) {
             manifest_exists = true;
@@ -152,13 +156,40 @@ void handle_hls_manifest(const http_request_t *request, http_response_t *respons
             // Continue waiting for the final file
         }
 
-        log_debug("Waiting for manifest file to be created (attempt %d/30)", i+1);
-        usleep(100000);  // 100ms - reduced from 200ms
+        log_debug("Waiting for manifest file to be created (attempt %d/50)", i+1);
+        usleep(100000);  // 100ms
     }
 
     if (!manifest_exists) {
         log_error("Manifest file was not created in time: %s", manifest_path);
-        create_stream_error_response(response, 404, "Manifest file not found");
+        
+        // Check if the directory exists
+        char dir_path[MAX_PATH_LENGTH];
+        snprintf(dir_path, sizeof(dir_path), "%s/hls/%s", global_config->storage_path, stream_name);
+        
+        struct stat st;
+        if (stat(dir_path, &st) != 0 || !S_ISDIR(st.st_mode)) {
+            log_error("HLS directory does not exist: %s", dir_path);
+            
+            // Try to create it
+            char mkdir_cmd[MAX_PATH_LENGTH * 2];
+            snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p %s && chmod -R 777 %s", 
+                    dir_path, dir_path);
+            system(mkdir_cmd);
+            
+            log_info("Created HLS directory: %s", dir_path);
+        }
+        
+        // Try to restart the HLS stream
+        stop_hls_stream(stream_name);
+        if (start_hls_stream(stream_name) != 0) {
+            log_error("Failed to restart HLS stream for %s", stream_name);
+            create_stream_error_response(response, 500, "Failed to start HLS stream");
+            return;
+        }
+        
+        log_info("Restarted HLS stream for %s, but manifest file still not available", stream_name);
+        create_stream_error_response(response, 404, "Manifest file not found, please try again");
         return;
     }
 
@@ -192,6 +223,66 @@ void handle_hls_manifest(const http_request_t *request, http_response_t *respons
 
     content[file_size] = '\0';
     fclose(fp);
+    
+    // Check if the manifest file is empty or doesn't contain the EXTM3U delimiter
+    if (file_size == 0 || strstr(content, "#EXTM3U") == NULL) {
+        log_error("Manifest file is empty or missing EXTM3U delimiter: %s", manifest_path);
+        
+        // Try to restart the HLS stream
+        stop_hls_stream(stream_name);
+        if (start_hls_stream(stream_name) != 0) {
+            log_error("Failed to restart HLS stream for %s", stream_name);
+            free(content);
+            create_stream_error_response(response, 500, "Failed to restart HLS stream");
+            return;
+        }
+        
+        // Wait for the manifest file to be properly created
+        bool manifest_valid = false;
+        for (int i = 0; i < 30; i++) {
+            // Re-read the manifest file
+            FILE *fp_retry = fopen(manifest_path, "r");
+            if (fp_retry) {
+                fseek(fp_retry, 0, SEEK_END);
+                long new_size = ftell(fp_retry);
+                fseek(fp_retry, 0, SEEK_SET);
+                
+                if (new_size > 0) {
+                    // Free old content and allocate new buffer
+                    free(content);
+                    content = malloc(new_size + 1);
+                    if (!content) {
+                        fclose(fp_retry);
+                        create_stream_error_response(response, 500, "Memory allocation failed");
+                        return;
+                    }
+                    
+                    size_t new_bytes_read = fread(content, 1, new_size, fp_retry);
+                    if (new_bytes_read == (size_t)new_size) {
+                        content[new_size] = '\0';
+                        if (strstr(content, "#EXTM3U") != NULL) {
+                            file_size = new_size;
+                            manifest_valid = true;
+                            log_info("Successfully regenerated valid manifest file for %s", stream_name);
+                            fclose(fp_retry);
+                            break;
+                        }
+                    }
+                }
+                fclose(fp_retry);
+            }
+            
+            log_debug("Waiting for valid manifest file (attempt %d/30)", i+1);
+            usleep(100000);  // 100ms
+        }
+        
+        if (!manifest_valid) {
+            log_error("Failed to generate valid manifest file for %s", stream_name);
+            free(content);
+            create_stream_error_response(response, 500, "Failed to generate valid manifest file");
+            return;
+        }
+    }
 
     // Create response
     response->status_code = 200;
@@ -271,17 +362,17 @@ void handle_hls_segment(const http_request_t *request, http_response_t *response
     if (access(segment_path, F_OK) != 0) {
         log_debug("Segment file not found on first attempt: %s (%s)", segment_path, strerror(errno));
 
-        // Wait for it to be created, but with a shorter timeout
+        // Wait for it to be created with a longer timeout for low-powered devices
         bool segment_exists = false;
-        for (int i = 0; i < 20; i++) {  // Try for 2 seconds total
+        for (int i = 0; i < 40; i++) {  // Try for 4 seconds total (increased from 2 seconds)
             if (access(segment_path, F_OK) == 0) {
                 log_info("Segment file found after waiting: %s (attempt %d)", segment_path, i+1);
                 segment_exists = true;
                 break;
             }
 
-            log_debug("Waiting for segment file to be created: %s (attempt %d/20)", segment_path, i+1);
-            usleep(100000);  // 100ms - reduced from 200ms
+            log_debug("Waiting for segment file to be created: %s (attempt %d/40)", segment_path, i+1);
+            usleep(100000);  // 100ms
         }
 
         if (!segment_exists) {
@@ -507,6 +598,18 @@ void handle_stream_toggle(const http_request_t *request, http_response_t *respon
         return;
     }
     
+    // Get current stream configuration to check recording state
+    stream_config_t config;
+    if (get_stream_config(stream, &config) != 0) {
+        create_stream_error_response(response, 500, "Failed to get stream configuration");
+        return;
+    }
+    
+    // Store the current recording state
+    bool recording_enabled = config.record;
+    log_info("Current recording state for stream %s: %s", 
+             stream_name, recording_enabled ? "enabled" : "disabled");
+    
     // Parse request body to get enabled flag
     if (!request->body || request->content_length == 0) {
         create_stream_error_response(response, 400, "Empty request body");
@@ -527,7 +630,7 @@ void handle_stream_toggle(const http_request_t *request, http_response_t *respon
     bool enabled = get_json_boolean_value(json, "enabled", true);
     free(json);
     
-    log_info("Toggle request for stream %s: enabled=%s", stream_name, enabled ? "true" : "false");
+    log_info("Toggle streaming request for stream %s: enabled=%s", stream_name, enabled ? "true" : "false");
     
     // Set the streaming_enabled flag in the stream configuration
     set_stream_streaming_enabled(stream, enabled);
@@ -549,11 +652,32 @@ void handle_stream_toggle(const http_request_t *request, http_response_t *respon
         log_info("Stopped HLS stream for %s", stream_name);
     }
     
+    // If recording is enabled, ensure it's running regardless of streaming state
+    if (recording_enabled) {
+        // Check current recording state
+        int recording_state = get_recording_state(stream_name);
+        
+        if (recording_state == 0) {
+            // Recording is not active, start it
+            log_info("Ensuring recording is active for stream %s (independent of streaming)", stream_name);
+            if (start_mp4_recording(stream_name) != 0) {
+                log_warn("Failed to start recording for stream %s", stream_name);
+                // Continue anyway, this is not a fatal error for streaming
+            } else {
+                log_info("Successfully started recording for stream %s", stream_name);
+            }
+        } else if (recording_state == 1) {
+            log_info("Recording is already active for stream %s", stream_name);
+        } else {
+            log_warn("Could not determine recording state for stream %s", stream_name);
+        }
+    }
+    
     // Create success response
     char response_json[256];
     snprintf(response_json, sizeof(response_json),
-             "{\"success\": true, \"name\": \"%s\", \"streaming_enabled\": %s}",
-             stream_name, enabled ? "true" : "false");
+             "{\"success\": true, \"name\": \"%s\", \"streaming_enabled\": %s, \"recording_enabled\": %s}",
+             stream_name, enabled ? "true" : "false", recording_enabled ? "true" : "false");
     
     create_json_response(response, 200, response_json);
 }

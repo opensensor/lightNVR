@@ -45,7 +45,7 @@ file(GLOB_RECURSE SOURCES
     "src/utils/*.c"
     "src/video/*.c"
     "src/web/*.c"
-    "src/*.cpp"
+    "src/*.c"
     "external/inih/ini.c"
 )
 

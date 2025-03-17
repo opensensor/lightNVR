@@ -9,6 +9,7 @@
 #include "core/config.h"
 #include "video/streams.h"
 #include "video/detection.h"
+#include "video/stream_reader.h"
 
 // Stream structure
 typedef struct {
@@ -56,6 +57,9 @@ int init_stream_manager(int max_streams) {
         }
     }
     
+    // Initialize stream reader backend
+    init_stream_reader_backend();
+    
     initialized = true;
     pthread_mutex_unlock(&streams_mutex);
     
@@ -76,8 +80,28 @@ void shutdown_stream_manager(void) {
     // Stop all streams
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (streams[i].config.name[0] != '\0' && streams[i].status == STREAM_STATUS_RUNNING) {
+            char stream_name[MAX_STREAM_NAME];
+            strncpy(stream_name, streams[i].config.name, MAX_STREAM_NAME - 1);
+            stream_name[MAX_STREAM_NAME - 1] = '\0';
+            
+            bool streaming_enabled = streams[i].config.streaming_enabled;
+            bool recording_enabled = streams[i].config.record;
+            
             pthread_mutex_unlock(&streams_mutex);
-            stop_hls_stream(streams[i].config.name);
+            
+            // Stop HLS stream if it was enabled
+            if (streaming_enabled) {
+                stop_hls_stream(stream_name);
+                log_info("Stopped HLS streaming for '%s' during shutdown", stream_name);
+            }
+            
+            // Stop MP4 recording if it was enabled
+            if (recording_enabled) {
+                stop_mp4_recording(stream_name);
+                stop_recording(stream_name);
+                log_info("Stopped recording for '%s' during shutdown", stream_name);
+            }
+            
             pthread_mutex_lock(&streams_mutex);
             streams[i].status = STREAM_STATUS_STOPPED;
         }
@@ -87,6 +111,9 @@ void shutdown_stream_manager(void) {
     for (int i = 0; i < MAX_STREAMS; i++) {
         pthread_mutex_destroy(&streams[i].mutex);
     }
+    
+    // Cleanup stream reader backend
+    cleanup_stream_reader_backend();
     
     initialized = false;
     pthread_mutex_unlock(&streams_mutex);
@@ -137,7 +164,7 @@ int get_stream_config(stream_handle_t stream, stream_config_t *config) {
  */
 stream_status_t get_stream_status(stream_handle_t stream) {
     if (!stream) {
-        return STREAM_STATUS_STOPPED; // Return STOPPED instead of UNKNOWN
+        return STREAM_STATUS_UNKNOWN; // Now we can return UNKNOWN
     }
     
     stream_t *s = (stream_t *)stream;
@@ -391,24 +418,57 @@ int start_stream(stream_handle_t handle) {
     strncpy(stream_name, s->config.name, MAX_STREAM_NAME - 1);
     stream_name[MAX_STREAM_NAME - 1] = '\0';
     
+    // Get streaming_enabled flag
+    bool streaming_enabled = s->config.streaming_enabled;
+    
+    // Get recording_enabled flag
+    bool recording_enabled = s->config.record;
+    
     pthread_mutex_unlock(&s->mutex);
     
-    // Start HLS stream
-    int result = start_hls_stream(stream_name);
-    if (result != 0) {
-        pthread_mutex_lock(&s->mutex);
-        s->status = STREAM_STATUS_ERROR;
-        pthread_mutex_unlock(&s->mutex);
-        log_error("Failed to start HLS stream '%s'", stream_name);
-        return -1;
+    // Track if any component started successfully
+    bool any_component_started = false;
+    
+    // Start HLS stream only if streaming is enabled
+    int hls_result = 0;
+    if (streaming_enabled) {
+        hls_result = start_hls_stream(stream_name);
+        if (hls_result != 0) {
+            log_error("Failed to start HLS stream '%s'", stream_name);
+        } else {
+            log_info("Started HLS streaming for '%s'", stream_name);
+            any_component_started = true;
+        }
+    } else {
+        log_info("Streaming disabled for '%s', not starting HLS stream", stream_name);
     }
     
-    // Update status to running
+    // Start recording if enabled - completely independent of streaming status
+    int mp4_result = 0;
+    if (recording_enabled) {
+        // Start MP4 recording directly
+        mp4_result = start_mp4_recording(stream_name);
+        if (mp4_result != 0) {
+            log_error("Failed to start MP4 recording for '%s'", stream_name);
+        } else {
+            log_info("Started recording for '%s'", stream_name);
+            any_component_started = true;
+        }
+    }
+    
+    // Update status based on results
     pthread_mutex_lock(&s->mutex);
-    s->status = STREAM_STATUS_RUNNING;
+    if (any_component_started) {
+        s->status = STREAM_STATUS_RUNNING;
+        log_info("Stream '%s' is now running", stream_name);
+    } else {
+        s->status = STREAM_STATUS_ERROR;
+        log_error("Failed to start any components for stream '%s'", stream_name);
+        pthread_mutex_unlock(&s->mutex);
+        return -1;
+    }
     pthread_mutex_unlock(&s->mutex);
     
-    log_info("Started stream '%s'", stream_name);
     return 0;
 }
 
@@ -436,13 +496,39 @@ int stop_stream(stream_handle_t handle) {
     strncpy(stream_name, s->config.name, MAX_STREAM_NAME - 1);
     stream_name[MAX_STREAM_NAME - 1] = '\0';
     
+    // Get streaming_enabled flag
+    bool streaming_enabled = s->config.streaming_enabled;
+    
+    // Get recording_enabled flag
+    bool recording_enabled = s->config.record;
+    
     pthread_mutex_unlock(&s->mutex);
     
-    // Stop HLS stream
-    int result = stop_hls_stream(stream_name);
-    if (result != 0) {
-        log_warn("Failed to stop HLS stream '%s'", stream_name);
-        // Continue anyway
+    // Stop HLS stream if it was started
+    if (streaming_enabled) {
+        int result = stop_hls_stream(stream_name);
+        if (result != 0) {
+            log_warn("Failed to stop HLS stream '%s'", stream_name);
+            // Continue anyway
+        } else {
+            log_info("Stopped HLS streaming for '%s'", stream_name);
+        }
+    }
+    
+    // Stop recording if it was started
+    if (recording_enabled) {
+        // First stop the MP4 recording directly
+        int mp4_result = stop_mp4_recording(stream_name);
+        if (mp4_result != 0) {
+            log_warn("Failed to stop MP4 recording for '%s'", stream_name);
+            // Continue anyway
+        } else {
+            log_info("Stopped MP4 recording for '%s'", stream_name);
+        }
+        
+        // Then stop the recording in the database
+        stop_recording(stream_name);
+        log_info("Stopped recording metadata for '%s'", stream_name);
     }
     
     // Update status to stopped

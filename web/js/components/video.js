@@ -256,16 +256,21 @@ function initializeVideoPlayer(stream) {
     // Use HLS.js for browsers that don't support HLS natively
     else if (Hls && Hls.isSupported()) {
         const hls = new Hls({
-            maxBufferLength: 10,            // Reduced from 60 to 10 seconds
-            maxMaxBufferLength: 20,         // Reduced from 120 to 20 seconds
-            liveSyncDurationCount: 3,       // Reduced from 5 to 3 segments
-            liveMaxLatencyDurationCount: 5, // Maximum latency in segments
+            maxBufferLength: 30,            // Increased from 10 to 30 seconds for better buffering on low-power devices
+            maxMaxBufferLength: 60,         // Increased from 20 to 60 seconds for better buffering on low-power devices
+            liveSyncDurationCount: 4,       // Increased from 3 to 4 segments for better stability
+            liveMaxLatencyDurationCount: 10, // Increased from 5 to 10 segments for better stability on low-power devices
             liveDurationInfinity: false,    // Don't treat live streams as infinite duration
-            lowLatencyMode: true,           // Enable low latency mode
+            lowLatencyMode: false,          // Disable low latency mode for better stability on low-power devices
             enableWorker: true,
-            fragLoadingTimeOut: 20000,      // 20 seconds timeout for fragment loading (default is 8000ms)
-            manifestLoadingTimeOut: 15000,  // 15 seconds timeout for manifest loading (default is 10000ms)
-            levelLoadingTimeOut: 15000      // 15 seconds timeout for level loading (default is 10000ms)
+            fragLoadingTimeOut: 30000,      // Increased from 20 to 30 seconds timeout for fragment loading
+            manifestLoadingTimeOut: 20000,  // Increased from 15 to 20 seconds timeout for manifest loading
+            levelLoadingTimeOut: 20000,     // Increased from 15 to 20 seconds timeout for level loading
+            backBufferLength: 60,           // Add back buffer length to keep more segments in memory
+            startLevel: -1,                 // Auto-select quality level based on network conditions
+            abrEwmaDefaultEstimate: 500000, // Start with a lower bandwidth estimate (500kbps)
+            abrBandWidthFactor: 0.7,        // Be more conservative with bandwidth estimates
+            abrBandWidthUpFactor: 0.5       // Be more conservative when increasing quality
         });
 
         hls.loadSource(hlsStreamUrl);
@@ -325,8 +330,8 @@ function initializeVideoPlayer(stream) {
             }
         });
 
-        // Set up more frequent refresh to prevent stale data
-        const refreshInterval = 30000; // 30 seconds
+    // Set up less frequent refresh to reduce load on low-power devices
+    const refreshInterval = 60000; // 60 seconds (increased from 30 seconds)
         const refreshTimer = setInterval(() => {
             if (videoCell && videoCell.hlsPlayer) {
                 console.log(`Refreshing HLS stream for ${stream.name}`);

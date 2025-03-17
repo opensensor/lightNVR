@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <pthread.h>
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
@@ -12,6 +13,57 @@
 #include "core/logger.h"
 #include "video/hls_writer.h"
 #include "video/detection_integration.h"
+
+// Structure to pass data to the detection thread
+typedef struct {
+    char stream_name[MAX_STREAM_NAME];
+    AVPacket pkt;
+    AVCodecParameters codec_params;
+} detection_thread_data_t;
+
+// Detection thread function
+static void *detection_thread_func(void *arg) {
+    detection_thread_data_t *data = (detection_thread_data_t *)arg;
+    static int detection_in_progress = 1;
+    
+    // Find decoder
+    AVCodec *codec = avcodec_find_decoder(data->codec_params.codec_id);
+    if (codec) {
+        // Create codec context
+        AVCodecContext *codec_ctx = avcodec_alloc_context3(codec);
+        if (codec_ctx) {
+            // Copy codec parameters to codec context
+            if (avcodec_parameters_to_context(codec_ctx, &data->codec_params) >= 0) {
+                // Open codec
+                if (avcodec_open2(codec_ctx, codec, NULL) >= 0) {
+                    // Allocate frame
+                    AVFrame *frame = av_frame_alloc();
+                    if (frame) {
+                        // Send packet to decoder
+                        if (avcodec_send_packet(codec_ctx, &data->pkt) >= 0) {
+                            // Receive frame from decoder
+                            if (avcodec_receive_frame(codec_ctx, frame) >= 0) {
+                                // Process the decoded frame for detection
+                                // Use a smaller detection interval (15) to improve detection quality
+                                // while still maintaining reasonable performance
+                                int detection_interval = 15;
+                                process_decoded_frame_for_detection(data->stream_name, frame, detection_interval);
+                            }
+                        }
+                        av_frame_free(&frame);
+                    }
+                    avcodec_free_context(&codec_ctx);
+                }
+            }
+        }
+    }
+    
+    // Cleanup
+    av_packet_unref(&data->pkt);
+    free(data);
+    detection_in_progress = 0;
+    return NULL;
+}
 
 /**
  * Clean up old HLS segments that are no longer in the playlist
@@ -133,6 +185,12 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
 
     // Initialize DTS tracker
     writer->dts_tracker.initialized = 0;
+    
+    // Initialize pressure indicator
+    writer->is_under_pressure = 0;
+    
+    // Initialize frame counter
+    writer->frame_counter = 0;
 
     // Create output directory if it doesn't exist
     // Use the configured storage path to avoid writing to overlay
@@ -157,10 +215,29 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
         safe_output_dir[MAX_PATH_LENGTH - 1] = '\0';
     }
     
+    // Create the HLS directory and ensure it has proper permissions
     snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p %s", output_dir);
     int ret_mkdir = system(mkdir_cmd);
     if (ret_mkdir != 0) {
         log_warn("Failed to create directory: %s (return code: %d)", output_dir, ret_mkdir);
+    }
+    
+    // Set full permissions to ensure FFmpeg can write files
+    snprintf(mkdir_cmd, sizeof(mkdir_cmd), "chmod -R 777 %s", output_dir);
+    system(mkdir_cmd);
+    
+    // Also ensure the parent directory exists and is writable
+    char parent_dir[MAX_PATH_LENGTH];
+    const char *last_slash = strrchr(output_dir, '/');
+    if (last_slash) {
+        size_t parent_len = last_slash - output_dir;
+        strncpy(parent_dir, output_dir, parent_len);
+        parent_dir[parent_len] = '\0';
+        
+        snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p %s && chmod -R 777 %s", 
+                parent_dir, parent_dir);
+        system(mkdir_cmd);
+        log_info("Ensured parent directory exists with proper permissions: %s", parent_dir);
     }
 
     // Initialize output format context for HLS
@@ -185,10 +262,59 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     snprintf(hls_time, sizeof(hls_time), "%d", segment_duration);
 
     av_dict_set(&options, "hls_time", hls_time, 0);
-    av_dict_set(&options, "hls_list_size", "5", 0);  // Reduced from 15 to 5 to minimize delay
+    av_dict_set(&options, "hls_list_size", "8", 0);  // Increased from 5 to 8 for better buffering on low-power devices
     av_dict_set(&options, "hls_flags", "delete_segments+append_list+discont_start+split_by_time+program_date_time", 0);
-    av_dict_set(&options, "hls_allow_cache", "0", 0);  // Disable caching to prevent stale data
+    av_dict_set(&options, "hls_allow_cache", "1", 0);  // Enable caching to improve playback on low-power devices
     av_dict_set(&options, "hls_segment_type", "mpegts", 0);  // Ensure MPEG-TS segments for better compatibility
+    
+    // Ensure the manifest file is properly initialized with EXTM3U delimiter
+    // Create a minimal valid manifest file if it doesn't exist
+    char manifest_path[MAX_PATH_LENGTH];
+    snprintf(manifest_path, MAX_PATH_LENGTH, "%s/index.m3u8", output_dir);
+    
+    // Check if the manifest file exists and is valid
+    FILE *manifest_check = fopen(manifest_path, "r");
+    bool create_initial_manifest = false;
+    
+    if (manifest_check) {
+        // Check if the file is empty or doesn't contain EXTM3U
+        fseek(manifest_check, 0, SEEK_END);
+        long size = ftell(manifest_check);
+        
+        if (size == 0) {
+            create_initial_manifest = true;
+        } else {
+            // Check for EXTM3U
+            char buffer[16];
+            fseek(manifest_check, 0, SEEK_SET);
+            size_t read_size = fread(buffer, 1, sizeof(buffer) - 1, manifest_check);
+            buffer[read_size] = '\0';
+            
+            if (strstr(buffer, "#EXTM3U") == NULL) {
+                create_initial_manifest = true;
+            }
+        }
+        fclose(manifest_check);
+    } else {
+        create_initial_manifest = true;
+    }
+    
+    // Create a minimal valid manifest file if needed
+    if (create_initial_manifest) {
+        FILE *manifest_init = fopen(manifest_path, "w");
+        if (manifest_init) {
+            // Write a minimal valid HLS manifest
+            fprintf(manifest_init, "#EXTM3U\n");
+            fprintf(manifest_init, "#EXT-X-VERSION:3\n");
+            fprintf(manifest_init, "#EXT-X-TARGETDURATION:%d\n", segment_duration);
+            fprintf(manifest_init, "#EXT-X-MEDIA-SEQUENCE:0\n");
+            fclose(manifest_init);
+            
+            log_info("Created initial valid HLS manifest file: %s", manifest_path);
+        } else {
+            log_error("Failed to create initial HLS manifest file: %s", manifest_path);
+        }
+    }
 
     // Remove the delete_segments flag to prevent FFmpeg from automatically deleting segments
     // This will help prevent issues with the index.m3u8.tmp file not being able to be renamed
@@ -418,51 +544,55 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
         out_pkt.pts = out_pkt.dts;
     }
 
-    // Process packet for detection if it's a video packet
-    if (pkt->stream_index == 0 && input_stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
-        // Decode the frame for detection
-        AVCodecContext *codec_ctx = NULL;
-        AVFrame *frame = NULL;
+    // Process packet for detection if it's a video packet - using a more efficient approach
+    static time_t last_detection_time = 0;
+    static int detection_in_progress = 0;
+    time_t current_time = time(NULL);
+    
+    // Process for detection more frequently (every 1 second instead of 2) to improve detection quality
+    // while still maintaining reasonable performance
+    if (pkt->stream_index == 0 && 
+        input_stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO && 
+        (current_time - last_detection_time >= 1)) {
         
-        // Find decoder
-        AVCodec *codec = avcodec_find_decoder(input_stream->codecpar->codec_id);
-        if (codec) {
-            // Create codec context
-            codec_ctx = avcodec_alloc_context3(codec);
-            if (codec_ctx) {
-                // Copy codec parameters to codec context
-                if (avcodec_parameters_to_context(codec_ctx, input_stream->codecpar) >= 0) {
-                    // Open codec
-                    if (avcodec_open2(codec_ctx, codec, NULL) >= 0) {
-                        // Allocate frame
-                        frame = av_frame_alloc();
-                        if (frame) {
-                            // Send packet to decoder
-                            AVPacket pkt_copy;
-                            if (av_packet_ref(&pkt_copy, pkt) >= 0) {
-                                if (avcodec_send_packet(codec_ctx, &pkt_copy) >= 0) {
-                                    // Receive frame from decoder
-                                    if (avcodec_receive_frame(codec_ctx, frame) >= 0) {
-                                        // Process the decoded frame for detection
-                                        // Use a default detection interval of 10 if not specified
-                                        int detection_interval = 10;
-                                        process_decoded_frame_for_detection(writer->stream_name, frame, detection_interval);
-                                    }
-                                }
-                                av_packet_unref(&pkt_copy);
-                            }
-                        }
-                    }
+        // Update last detection time
+        last_detection_time = current_time;
+        
+        // Use a separate thread for detection to avoid blocking the HLS writer
+        if (!detection_in_progress) {
+            detection_in_progress = 1;
+            
+            // Process in a separate thread to avoid blocking HLS writing
+            pthread_t detection_thread;
+            
+            detection_thread_data_t *thread_data = malloc(sizeof(detection_thread_data_t));
+            if (thread_data) {
+                // Copy stream name
+                strncpy(thread_data->stream_name, writer->stream_name, MAX_STREAM_NAME - 1);
+                thread_data->stream_name[MAX_STREAM_NAME - 1] = '\0';
+                
+                // Copy packet
+                av_packet_ref(&thread_data->pkt, pkt);
+                
+                // Copy codec parameters
+                memcpy(&thread_data->codec_params, input_stream->codecpar, sizeof(AVCodecParameters));
+                
+                // Create detached thread
+                pthread_attr_t attr;
+                pthread_attr_init(&attr);
+                pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+                
+                if (pthread_create(&detection_thread, &attr, detection_thread_func, thread_data) != 0) {
+                    // Failed to create thread, clean up
+                    av_packet_unref(&thread_data->pkt);
+                    free(thread_data);
+                    detection_in_progress = 0;
                 }
+                
+                pthread_attr_destroy(&attr);
+            } else {
+                detection_in_progress = 0;
             }
-        }
-        
-        // Cleanup
-        if (frame) {
-            av_frame_free(&frame);
-        }
-        if (codec_ctx) {
-            avcodec_free_context(&codec_ctx);
         }
     }
 
@@ -495,9 +625,8 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
 
         // Periodically clean up old segments (every 60 seconds)
     if (now - writer->last_cleanup_time >= 60) {
-        // Keep only a few more segments than in the playlist to reduce delay
-        // while still ensuring smooth playback
-        int max_segments_to_keep = 8; // Default to 8 segments (slightly more than hls_list_size of 5)
+        // Keep more segments than in the playlist to ensure smooth playback on low-power devices
+        int max_segments_to_keep = 12; // Increased from 8 to 12 segments (more than hls_list_size of 8)
         cleanup_old_segments(writer->output_dir, max_segments_to_keep);
         writer->last_cleanup_time = now;
     }

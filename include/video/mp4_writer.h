@@ -1,6 +1,5 @@
 /**
-* Header file for MP4 writer
- * Save this file as src/video/mp4_writer.h
+ * Header file for MP4 writer
  */
 
 #ifndef MP4_WRITER_H
@@ -12,17 +11,23 @@
 typedef struct mp4_writer mp4_writer_t;
 
 struct mp4_writer {
- char output_path[1024];
- char stream_name[64];
- AVFormatContext *output_ctx;
- int video_stream_idx;
- int has_audio;
- int64_t first_dts;
- int64_t first_pts;
- int64_t last_dts;
- AVRational time_base;
- int is_initialized;
- time_t creation_time;
+    char output_path[1024];
+    char stream_name[64];
+    AVFormatContext *output_ctx;
+    int video_stream_idx;
+    int has_audio;
+    int64_t first_dts;
+    int64_t first_pts;
+    int64_t last_dts;
+    AVRational time_base;
+    int is_initialized;
+    time_t creation_time;
+    
+    // Pressure indicator - set to 1 when the system is under pressure
+    int is_under_pressure;
+    
+    // Frame counter for adaptive frame dropping
+    int frame_counter;
 };
 
 /**

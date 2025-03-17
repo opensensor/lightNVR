@@ -9,9 +9,12 @@
 #include "video/detection.h"
 #include "video/detection_result.h"
 #include "video/motion_detection.h"
+#include "video/hls_streaming.h"
+#include "video/mp4_recording.h"
+#include "video/stream_transcoding.h"
 
 
-// Structure for stream transcoding context
+// Structure for stream transcoding context (legacy, kept for compatibility)
 typedef struct {
     stream_config_t config;
     int running;
