@@ -80,16 +80,68 @@ static void packet_queue_destroy(packet_queue_t *q) {
  * Put a packet in the queue (blocking if full)
  */
 static int packet_queue_put(packet_queue_t *q, AVPacket *pkt) {
+    // Quick check without locking first
+    if (q->active_consumers <= 0) {
+        return 0;  // No consumers, don't bother queueing
+    }
+    
     pthread_mutex_lock(&q->mutex);
     
-    // Check if we have any active consumers
+    // Double-check after locking
     if (q->active_consumers <= 0) {
         pthread_mutex_unlock(&q->mutex);
         return 0;  // No consumers, don't bother queueing
     }
     
-    while (q->size >= MAX_PACKET_QUEUE_SIZE && !q->abort_request) {
-        pthread_cond_wait(&q->cond_not_full, &q->mutex);
+    // If queue is full, drop oldest packets to make room rather than blocking
+    // This helps prevent producer-consumer contention
+    if (q->size >= MAX_PACKET_QUEUE_SIZE) {
+        // If we're at 90% capacity or more, remove oldest non-keyframe packets first
+        int packets_to_remove = MAX_PACKET_QUEUE_SIZE / 10; // Remove ~10% of packets
+        int removed = 0;
+        
+        // First pass: try to remove non-keyframe packets
+        for (int i = 0; i < packets_to_remove && q->size > 0; i++) {
+            broadcast_packet_t *oldest = &q->packets[q->head];
+            
+            // Only remove non-keyframe packets in first pass
+            if (!oldest->key_frame) {
+                // Free the packet
+                if (oldest->pkt) {
+                    av_packet_free(&oldest->pkt);
+                }
+                
+                // Move head pointer
+                q->head = (q->head + 1) % MAX_PACKET_QUEUE_SIZE;
+                q->size--;
+                removed++;
+            } else {
+                // If it's a keyframe, skip it in first pass
+                break;
+            }
+        }
+        
+        // If we still need to make room and queue is still full, remove keyframes too
+        if (q->size >= MAX_PACKET_QUEUE_SIZE) {
+            log_warn("Packet queue full, dropping oldest packets including keyframes");
+            
+            // Remove oldest packets regardless of keyframe status
+            while (q->size >= MAX_PACKET_QUEUE_SIZE - packets_to_remove + removed) {
+                broadcast_packet_t *oldest = &q->packets[q->head];
+                
+                // Free the packet
+                if (oldest->pkt) {
+                    av_packet_free(&oldest->pkt);
+                }
+                
+                // Move head pointer
+                q->head = (q->head + 1) % MAX_PACKET_QUEUE_SIZE;
+                q->size--;
+            }
+        }
+        
+        // Signal that the queue is not full
+        pthread_cond_signal(&q->cond_not_full);
     }
     
     if (q->abort_request) {
@@ -130,45 +182,48 @@ static int packet_queue_put(packet_queue_t *q, AVPacket *pkt) {
         new_packet->consumer_status[i].processed = 0;
     }
     
-    // Register all active consumers for this packet
-    // We need to iterate through all packets in the queue to find all unique consumer IDs
-    int registered_consumers = 0;
-    int consumer_ids[MAX_QUEUE_CONSUMERS] = {0};
+    // Use a more efficient approach to register consumers
+    // Just use the active consumer count from the queue
+    int active_consumers = q->active_consumers;
+    int next_consumer_id = q->next_consumer_id;
+    int registered = 0;
     
-    // First, collect all unique consumer IDs from existing packets
-    if (q->size > 0) {
-        for (int i = 0; i < q->size; i++) {
-            int idx = (q->head + i) % MAX_PACKET_QUEUE_SIZE;
-            broadcast_packet_t *packet = &q->packets[idx];
-            
-            for (int j = 0; j < MAX_QUEUE_CONSUMERS; j++) {
-                if (packet->consumer_status[j].consumer_id > 0) {
-                    // Check if we already have this consumer ID
-                    int found = 0;
-                    for (int k = 0; k < registered_consumers; k++) {
-                        if (consumer_ids[k] == packet->consumer_status[j].consumer_id) {
-                            found = 1;
-                            break;
-                        }
+    // Collect active consumer IDs from the most recent packets
+    // This is more efficient than scanning the entire queue
+    int consumer_ids[MAX_QUEUE_CONSUMERS] = {0};
+    int recent_packets = 5; // Only check the most recent packets
+    
+    for (int i = 0; i < recent_packets && i < q->size; i++) {
+        int idx = (q->tail - i - 1 + MAX_PACKET_QUEUE_SIZE) % MAX_PACKET_QUEUE_SIZE;
+        broadcast_packet_t *packet = &q->packets[idx];
+        
+        for (int j = 0; j < MAX_QUEUE_CONSUMERS; j++) {
+            if (packet->consumer_status[j].consumer_id > 0) {
+                // Check if we already have this consumer ID
+                int found = 0;
+                for (int k = 0; k < registered; k++) {
+                    if (consumer_ids[k] == packet->consumer_status[j].consumer_id) {
+                        found = 1;
+                        break;
                     }
-                    
-                    // If not found and we have space, add it
-                    if (!found && registered_consumers < MAX_QUEUE_CONSUMERS) {
-                        consumer_ids[registered_consumers++] = packet->consumer_status[j].consumer_id;
-                    }
+                }
+                
+                // If not found and we have space, add it
+                if (!found && registered < MAX_QUEUE_CONSUMERS) {
+                    consumer_ids[registered++] = packet->consumer_status[j].consumer_id;
                 }
             }
         }
     }
     
     // Now register all these consumers with the new packet
-    for (int i = 0; i < registered_consumers && i < MAX_QUEUE_CONSUMERS; i++) {
+    for (int i = 0; i < registered && i < MAX_QUEUE_CONSUMERS; i++) {
         new_packet->consumer_status[i].consumer_id = consumer_ids[i];
         new_packet->consumer_status[i].processed = 0;
     }
     
     // Update consumer count
-    new_packet->consumer_count = registered_consumers;
+    new_packet->consumer_count = registered;
     
     // Add to queue
     q->tail = (q->tail + 1) % MAX_PACKET_QUEUE_SIZE;
@@ -193,10 +248,12 @@ static int packet_queue_get(packet_queue_t *q, AVPacket *pkt, int consumer_id) {
     }
     
     // Find the next unprocessed packet for this consumer
+    // Always start from the head of the queue to ensure fair distribution
     int found = 0;
     int idx = q->head;
     int count = 0;
     
+    // First pass: Try to find the oldest unprocessed packet for this consumer
     while (count < q->size && !found) {
         broadcast_packet_t *packet = &q->packets[idx];
         
@@ -244,11 +301,12 @@ static int packet_queue_get(packet_queue_t *q, AVPacket *pkt, int consumer_id) {
     while (!found && !q->abort_request) {
         pthread_cond_wait(&q->cond_not_empty, &q->mutex);
         
-        // After waking up, search again
+        // After waking up, search again from the head of the queue
         found = 0;
         idx = q->head;
         count = 0;
         
+        // Same logic as above, but after waiting for new packets
         while (count < q->size && !found) {
             broadcast_packet_t *packet = &q->packets[idx];
             
@@ -301,7 +359,7 @@ static int packet_queue_get(packet_queue_t *q, AVPacket *pkt, int consumer_id) {
     // Get the packet
     broadcast_packet_t *packet = &q->packets[idx];
     
-    // Reference the packet to the output
+    // Create a clean copy of the packet to avoid reference issues
     av_packet_unref(pkt);
     if (av_packet_ref(pkt, packet->pkt) < 0) {
         pthread_mutex_unlock(&q->mutex);
@@ -427,7 +485,7 @@ static void *stream_reader_thread(void *arg) {
         
         // If no consumers, sleep and check again
         if (!has_consumers) {
-            av_usleep(500000);  // 500ms
+            av_usleep(50000);  // 50ms
             continue;
         }
         

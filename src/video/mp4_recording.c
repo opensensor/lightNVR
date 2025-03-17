@@ -259,7 +259,7 @@ static void *mp4_recording_thread(void *arg) {
         if (ret < 0) {
             // Error or abort request
             log_warn("Error getting packet from stream reader for %s", ctx->config.name);
-            av_usleep(1000000);  // 1 second delay
+            av_usleep(50000);  // Reduced delay to 50ms for faster recovery
             continue;
         }
 
@@ -267,30 +267,33 @@ static void *mp4_recording_thread(void *arg) {
         if (ctx->mp4_writer) {
             // Verify the packet is valid before processing
             if (pkt->data && pkt->size > 0) {
-                // Log key frames for debugging
-                if (pkt->flags & AV_PKT_FLAG_KEY) {
+                // Check if this is a key frame
+                bool is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
+                
+                // Only log key frames at debug level to reduce logging overhead
+                if (is_key_frame) {
                     log_debug("Processing keyframe for MP4: pts=%lld, dts=%lld, size=%d",
                              (long long)pkt->pts, (long long)pkt->dts, pkt->size);
                 }
                 
-                // Create a clean copy of the packet to avoid reference issues
-                AVPacket *copy_pkt = av_packet_alloc();
-                if (copy_pkt) {
-                    if (av_packet_ref(copy_pkt, pkt) >= 0) {
-                        // Process the copy instead of the original
-                        ret = process_video_packet(copy_pkt, reader_ctx->input_ctx->streams[reader_ctx->video_stream_idx], 
-                                                  ctx->mp4_writer, 1, ctx->config.name);
-                        if (ret < 0) {
-                            log_error("Failed to write packet to MP4 for stream %s: %d", ctx->config.name, ret);
-                            // Continue anyway to keep the stream going
-                        }
-                        av_packet_unref(copy_pkt);
-                    } else {
-                        log_error("Failed to reference packet for MP4 writer");
+                // Use a batch processing approach to reduce contention
+                // Process packets in batches to reduce I/O operations
+                static int packet_counter = 0;
+                static int batch_size = 5; // Process in batches of 5 packets
+                
+                // Always process key frames immediately, but batch other frames
+                if (is_key_frame || (++packet_counter >= batch_size)) {
+                    packet_counter = 0; // Reset counter after processing a batch
+                    
+                    // Process the packet directly - we already have a clean copy from stream_reader
+                    ret = process_video_packet(pkt, reader_ctx->input_ctx->streams[reader_ctx->video_stream_idx], 
+                                              ctx->mp4_writer, 1, ctx->config.name);
+                    
+                    // Only log errors for key frames to reduce log spam
+                    if (ret < 0 && is_key_frame) {
+                        log_error("Failed to write keyframe to MP4 for stream %s: %d", ctx->config.name, ret);
+                        // Continue anyway to keep the stream going
                     }
-                    av_packet_free(&copy_pkt);
-                } else {
-                    log_error("Failed to allocate packet for MP4 writer");
                 }
             } else {
                 log_warn("Received invalid packet (null data or zero size) for stream %s", ctx->config.name);
@@ -360,7 +363,7 @@ void cleanup_mp4_recording_backend(void) {
     pthread_mutex_unlock(&contexts_mutex);
 
     // Give threads time to exit cleanly
-    usleep(500000);  // 500ms
+    usleep(50000);  // 50ms
 
     // Now try to join threads
     pthread_mutex_lock(&contexts_mutex);

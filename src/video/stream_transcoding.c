@@ -164,6 +164,7 @@ int find_video_stream_index(AVFormatContext *input_ctx) {
 
 /**
  * Process a video packet for either HLS streaming or MP4 recording
+ * Optimized to reduce contention and blocking
  */
 int process_video_packet(const AVPacket *pkt, const AVStream *input_stream, 
                          void *writer, int writer_type, const char *stream_name) {
@@ -183,22 +184,34 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
     // Check if this is a key frame
     bool is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
     
+    // Only log keyframes at debug level to reduce logging overhead
     if (is_key_frame) {
         log_debug("Processing keyframe for stream %s: pts=%lld, dts=%lld, size=%d",
                  stream_name, (long long)pkt->pts, (long long)pkt->dts, pkt->size);
     }
     
+    // Use direct function calls instead of conditional branching for better performance
     if (writer_type == 0) {  // HLS writer
         hls_writer_t *hls_writer = (hls_writer_t *)writer;
         ret = hls_writer_write_packet(hls_writer, pkt, input_stream);
         if (ret < 0) {
-            log_error("Failed to write packet to HLS for stream %s: %d", stream_name, ret);
+            // Only log errors for keyframes or every 100th packet to reduce log spam
+            static int error_count = 0;
+            if (is_key_frame || (++error_count % 100 == 0)) {
+                log_error("Failed to write packet to HLS for stream %s: %d (count: %d)", 
+                         stream_name, ret, error_count);
+            }
         }
     } else if (writer_type == 1) {  // MP4 writer
         mp4_writer_t *mp4_writer = (mp4_writer_t *)writer;
         ret = mp4_writer_write_packet(mp4_writer, pkt, input_stream);
         if (ret < 0) {
-            log_error("Failed to write packet to MP4 for stream %s: %d", stream_name, ret);
+            // Only log errors for keyframes or every 100th packet to reduce log spam
+            static int error_count = 0;
+            if (is_key_frame || (++error_count % 100 == 0)) {
+                log_error("Failed to write packet to MP4 for stream %s: %d (count: %d)", 
+                         stream_name, ret, error_count);
+            }
         }
     } else {
         log_error("Unknown writer type: %d", writer_type);

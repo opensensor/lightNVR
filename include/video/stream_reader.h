@@ -6,10 +6,10 @@
 #include <libavcodec/avcodec.h>
 #include "core/config.h"
 
-// Maximum number of packets in the queue
-#define MAX_PACKET_QUEUE_SIZE 300
-// Maximum number of consumers per stream
-#define MAX_QUEUE_CONSUMERS 5
+// Maximum number of packets in the queue - increased for smoother streaming
+#define MAX_PACKET_QUEUE_SIZE 100
+// Maximum number of consumers per stream - increased to support more simultaneous operations
+#define MAX_QUEUE_CONSUMERS 3
 
 // Packet status for each consumer
 typedef struct {

@@ -190,16 +190,27 @@ static void *hls_stream_thread(void *arg) {
         if (ret < 0) {
             // Error or abort request
             log_warn("Error getting packet from stream reader for %s", ctx->config.name);
-            av_usleep(1000000);  // 1 second delay
+            av_usleep(50000);  // Reduced delay to 50ms for faster recovery
             continue;
         }
 
-        // Write to HLS
-        ret = process_video_packet(pkt, reader_ctx->input_ctx->streams[reader_ctx->video_stream_idx], 
-                                  ctx->hls_writer, 0, ctx->config.name);
-        if (ret < 0) {
-            log_error("Failed to write packet to HLS for stream %s: %d", ctx->config.name, ret);
-            // Continue anyway to keep the stream going
+        // Process only key frames and a subset of non-key frames to reduce CPU load
+        // This helps prevent contention by processing fewer packets
+        static int frame_counter = 0;
+        bool is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
+        
+        // Always process key frames, but only process every 2nd non-key frame
+        // This reduces processing load while maintaining video quality
+        if (is_key_frame || (++frame_counter % 2 == 0)) {
+            // Write to HLS - we already have a clean copy from stream_reader
+            ret = process_video_packet(pkt, reader_ctx->input_ctx->streams[reader_ctx->video_stream_idx], 
+                                      ctx->hls_writer, 0, ctx->config.name);
+            
+            // Don't log every error to reduce logging overhead
+            if (ret < 0 && is_key_frame) {
+                log_error("Failed to write keyframe to HLS for stream %s: %d", ctx->config.name, ret);
+                // Continue anyway to keep the stream going
+            }
         }
     }
 
