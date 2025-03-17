@@ -91,6 +91,13 @@ int enable_optimized_motion_detection(const char *stream_name, float sensitivity
         return -1;
     }
     
+    // Check if motion detection is already enabled for this stream
+    if (is_motion_detection_enabled(stream_name)) {
+        log_info("Motion detection already enabled for stream %s, reconfiguring", stream_name);
+        // Disable it first to ensure clean state
+        disable_optimized_motion_detection(stream_name);
+    }
+    
     // Configure optimized motion detection
     int ret = configure_motion_detection(stream_name, sensitivity, min_motion_area, cooldown_time);
     if (ret != 0) {
@@ -138,17 +145,24 @@ int disable_optimized_motion_detection(const char *stream_name) {
         return -1;
     }
     
-    // Disable optimized motion detection
-    int ret = set_motion_detection_enabled(stream_name, false);
-    if (ret != 0) {
-        log_error("Failed to disable optimized motion detection for stream %s", stream_name);
-        return ret;
+    // Check if motion detection is enabled for this stream
+    if (!is_motion_detection_enabled(stream_name)) {
+        log_info("Motion detection already disabled for stream %s", stream_name);
+        return 0;
     }
     
-    // Stop detection-based recording
-    ret = stop_detection_recording(stream_name);
+    // First stop detection-based recording to prevent any callbacks from using the motion detection
+    // system after it's been disabled
+    int ret = stop_detection_recording(stream_name);
     if (ret != 0) {
         log_error("Failed to stop optimized motion-based recording for stream %s", stream_name);
+        // Continue anyway to ensure motion detection is disabled
+    }
+    
+    // Disable optimized motion detection
+    ret = set_motion_detection_enabled(stream_name, false);
+    if (ret != 0) {
+        log_error("Failed to disable optimized motion detection for stream %s", stream_name);
         return ret;
     }
     

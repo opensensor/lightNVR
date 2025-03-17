@@ -307,10 +307,8 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     if (is_motion_optimized_model) {
         // Initialize optimized motion detection if not already initialized
         if (!is_motion_detection_enabled(stream_name)) {
-            // Configure with default settings
-            configure_motion_detection(stream_name, 0.25f, 0.01f, 3);
-            configure_motion_detection_optimizations(stream_name, true, 2); // Enable 2x downscaling
-            set_motion_detection_enabled(stream_name, true);
+            // Use the wrapper function which handles proper initialization and cleanup
+            enable_optimized_motion_detection(stream_name, 0.25f, 0.01f, 3, 2);
             log_info("Automatically enabled optimized motion detection for stream %s based on model setting", stream_name);
         }
     }
@@ -327,35 +325,37 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
         
         // Initialize optimized motion detection if not already initialized
         if (!is_motion_detection_enabled(stream_name)) {
-            // Configure with default settings
-            configure_motion_detection(stream_name, 0.25f, 0.01f, 3);
-            configure_motion_detection_optimizations(stream_name, true, 2); // Enable 2x downscaling
-            set_motion_detection_enabled(stream_name, true);
+            // Use the wrapper function which handles proper initialization and cleanup
+            enable_optimized_motion_detection(stream_name, 0.25f, 0.01f, 3, 2);
             log_info("Initialized optimized motion detection for stream %s", stream_name);
         }
         
-        // Run optimized motion detection
-        int motion_ret = detect_motion(stream_name, packed_buffer, frame->width, frame->height,
-                                               channels, frame_time, &motion_result);
-        
-        if (motion_ret == 0 && motion_result.count > 0) {
-            log_info("Motion detected (optimized) in stream %s: confidence=%.2f", 
-                    stream_name, motion_result.detections[0].confidence);
+        // Run optimized motion detection only if it's properly enabled
+        if (is_motion_detection_enabled(stream_name)) {
+            int motion_ret = detect_motion(stream_name, packed_buffer, frame->width, frame->height,
+                                          channels, frame_time, &motion_result);
             
-            // Pass motion detection results to process_frame_for_recording
-            int ret = process_frame_for_recording(stream_name, packed_buffer, frame->width,
-                                                 frame->height, channels, frame_time, &motion_result);
-            
-            if (ret != 0) {
-                log_error("Failed to process optimized motion detection results for recording (error code: %d)", ret);
+            if (motion_ret == 0 && motion_result.count > 0) {
+                log_info("Motion detected (optimized) in stream %s: confidence=%.2f", 
+                        stream_name, motion_result.detections[0].confidence);
+                
+                // Pass motion detection results to process_frame_for_recording
+                int ret = process_frame_for_recording(stream_name, packed_buffer, frame->width,
+                                                     frame->height, channels, frame_time, &motion_result);
+                
+                if (ret != 0) {
+                    log_error("Failed to process optimized motion detection results for recording (error code: %d)", ret);
+                }
+                
+                // If we're only using optimized motion detection (no model), we're done
+                if (!use_model_detection) {
+                    detect_ret = 0;
+                }
+            } else if (motion_ret != 0) {
+                log_error("Optimized motion detection failed (error code: %d)", motion_ret);
             }
-            
-            // If we're only using optimized motion detection (no model), we're done
-            if (!use_model_detection) {
-                detect_ret = 0;
-            }
-        } else if (motion_ret != 0) {
-            log_error("Optimized motion detection failed (error code: %d)", motion_ret);
+        } else {
+            log_warn("Motion detection is not properly enabled for stream %s, skipping detection", stream_name);
         }
     }
     
