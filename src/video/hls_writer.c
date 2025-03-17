@@ -606,23 +606,8 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
         out_pkt.pts = out_pkt.dts;
     }
 
-    // Process packet for detection if it's a video packet - using direct processing instead of threads
-    static time_t last_detection_time = 0;
-    time_t current_time = time(NULL);
-    
-    // Process for detection less frequently (every 3 seconds) to reduce CPU load
-    // This should still be frequent enough for most detection scenarios
-    if (pkt->stream_index == 0 && 
-        input_stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO && 
-        (current_time - last_detection_time >= 3)) {
-        
-        // Update last detection time
-        last_detection_time = current_time;
-        
-        // Process directly without creating a thread
-        log_info("Processing packet for detection from HLS writer for stream %s", writer->stream_name);
-        process_packet_for_detection(writer->stream_name, pkt, input_stream->codecpar);
-    }
+    // Detection processing has been moved to a dedicated detection thread
+    // This direct processing is now disabled to avoid duplicate detection processing
 
     // Write the packet
     int ret = av_interleaved_write_frame(writer->output_ctx, &out_pkt);
