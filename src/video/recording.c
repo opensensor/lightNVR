@@ -17,10 +17,8 @@
 #include "video/mp4_writer.h"
 #include "database/database_manager.h"
 
-// Global array to store MP4 writers
-static mp4_writer_t *mp4_writers[MAX_STREAMS] = {0};
-static char mp4_writer_stream_names[MAX_STREAMS][64] = {{0}};
-static pthread_mutex_t mp4_writers_mutex = PTHREAD_MUTEX_INITIALIZER;
+// We no longer maintain a separate array of MP4 writers here
+// Instead, we use the functions from mp4_recording.c
 
 // Array to store active recordings (one for each stream)
 // These are made non-static so they can be accessed from mp4_writer.c
@@ -114,15 +112,28 @@ uint64_t start_recording(const char *stream_name, const char *output_path) {
     strncpy(metadata.stream_name, stream_name, sizeof(metadata.stream_name) - 1);
 
     // Format paths for the recording - MAKE SURE THIS POINTS TO REAL FILES
-    char hls_path[MAX_PATH_LENGTH];
     char mp4_path[MAX_PATH_LENGTH];
     
-    // HLS path (primary path stored in metadata)
-    snprintf(hls_path, sizeof(hls_path), "%s/index.m3u8", output_path);
-    strncpy(metadata.file_path, hls_path, sizeof(metadata.file_path) - 1);
-    
-    // MP4 path (stored in details field for now)
-    snprintf(mp4_path, sizeof(mp4_path), "%s/recording.mp4", output_path);
+    // Get the MP4 writer for this stream to get the actual path
+    mp4_writer_t *mp4_writer = get_mp4_writer_for_stream(stream_name);
+    if (mp4_writer && mp4_writer->output_path) {
+        // Use the actual MP4 file path from the writer
+        strncpy(mp4_path, mp4_writer->output_path, sizeof(mp4_path) - 1);
+        mp4_path[sizeof(mp4_path) - 1] = '\0';
+        
+        // Store the actual MP4 path in the metadata
+        strncpy(metadata.file_path, mp4_path, sizeof(metadata.file_path) - 1);
+        metadata.file_path[sizeof(metadata.file_path) - 1] = '\0';
+        
+        log_info("Using actual MP4 path for recording: %s", mp4_path);
+    } else {
+        // Fallback to a default path if no writer is available
+        snprintf(mp4_path, sizeof(mp4_path), "%s/recording.mp4", output_path);
+        strncpy(metadata.file_path, mp4_path, sizeof(metadata.file_path) - 1);
+        metadata.file_path[sizeof(metadata.file_path) - 1] = '\0';
+        
+        log_warn("No MP4 writer found for stream %s, using default path: %s", stream_name, mp4_path);
+    }
 
     metadata.start_time = time(NULL);
     metadata.end_time = 0; // Will be updated when recording ends
@@ -261,9 +272,25 @@ void stop_recording(const char *stream_name) {
             // Mark recording as complete
             time_t end_time = time(NULL);
             update_recording_metadata(recording_id, end_time, total_size, true);
-
-            // Also unregister any MP4 writer for this stream to ensure proper cleanup
-            unregister_mp4_writer_for_stream(stream_name);
+            
+            // Get the MP4 writer for this stream
+            mp4_writer_t *mp4_writer = get_mp4_writer_for_stream(stream_name);
+            if (mp4_writer) {
+                // Update the file path in the database with the actual MP4 path
+                recording_metadata_t metadata;
+                if (get_recording_metadata_by_id(recording_id, &metadata) == 0) {
+                    if (mp4_writer->output_path && mp4_writer->output_path[0] != '\0') {
+                        strncpy(metadata.file_path, mp4_writer->output_path, sizeof(metadata.file_path) - 1);
+                        metadata.file_path[sizeof(metadata.file_path) - 1] = '\0';
+                        update_recording_metadata(recording_id, end_time, total_size, true);
+                        log_info("Updated recording %llu with actual MP4 path: %s", 
+                                (unsigned long long)recording_id, metadata.file_path);
+                    }
+                }
+                
+                // Note: We don't unregister the MP4 writer here as that's handled by stop_mp4_recording
+                // which should be called separately
+            }
 
             log_info("Completed recording %llu for stream %s, duration: %ld seconds, size: %llu bytes", 
                     (unsigned long long)recording_id, stream_name, 
@@ -305,16 +332,11 @@ int get_recording_state(const char *stream_name) {
     pthread_mutex_unlock(&recordings_mutex);
     
     // If no active recording found in active_recordings, check if there's an active MP4 writer
-    pthread_mutex_lock(&mp4_writers_mutex);
-    
-    for (int i = 0; i < MAX_STREAMS; i++) {
-        if (mp4_writers[i] && strcmp(mp4_writer_stream_names[i], stream_name) == 0) {
-            pthread_mutex_unlock(&mp4_writers_mutex);
-            return 1; // MP4 recording is active
-        }
+    // using the function from mp4_recording.c
+    mp4_writer_t *writer = get_mp4_writer_for_stream(stream_name);
+    if (writer) {
+        return 1; // MP4 recording is active
     }
-    
-    pthread_mutex_unlock(&mp4_writers_mutex);
     
     return 0; // No active recording
 }

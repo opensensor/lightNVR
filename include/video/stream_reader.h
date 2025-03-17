@@ -8,10 +8,30 @@
 
 // Maximum number of packets in the queue
 #define MAX_PACKET_QUEUE_SIZE 300
+// Maximum number of consumers per stream
+#define MAX_QUEUE_CONSUMERS 5
 
-// Packet queue structure
+// Packet status for each consumer
 typedef struct {
-    AVPacket *packets[MAX_PACKET_QUEUE_SIZE];
+    int consumer_id;
+    int processed;  // 1 if processed, 0 if not
+} packet_consumer_status_t;
+
+// Packet entry in the broadcast queue
+typedef struct {
+    AVPacket *pkt;          // Pointer to the packet data (in-memory)
+    int64_t pts;            // Presentation timestamp for sorting/debugging
+    int key_frame;          // 1 if key frame, 0 if not
+    int stream_index;       // Stream index from the original packet
+    int size;               // Size of the packet data
+    packet_consumer_status_t consumer_status[MAX_QUEUE_CONSUMERS];
+    int consumer_count;     // Number of consumers that need to process this packet
+    int all_processed;      // 1 if all consumers have processed, 0 otherwise
+} broadcast_packet_t;
+
+// Broadcast packet queue structure
+typedef struct {
+    broadcast_packet_t packets[MAX_PACKET_QUEUE_SIZE];
     int head;
     int tail;
     int size;
@@ -19,6 +39,8 @@ typedef struct {
     pthread_cond_t cond_not_empty;
     pthread_cond_t cond_not_full;
     int abort_request;
+    int next_consumer_id;   // For assigning unique consumer IDs
+    int active_consumers;   // Count of currently active consumers
 } packet_queue_t;
 
 // Stream reader context
@@ -71,18 +93,39 @@ int register_stream_consumer(stream_reader_ctx_t *ctx);
  * Unregister as a consumer of the stream reader
  * 
  * @param ctx Stream reader context
+ * @param consumer_id ID of the consumer to unregister
  * @return 0 on success, non-zero on failure
  */
-int unregister_stream_consumer(stream_reader_ctx_t *ctx);
+int unregister_stream_consumer(stream_reader_ctx_t *ctx, int consumer_id);
+
+/**
+ * Backward compatibility wrapper for unregister_stream_consumer
+ * This is for any code that hasn't been updated to use consumer IDs yet
+ * 
+ * @param ctx Stream reader context
+ * @return 0 on success, non-zero on failure
+ */
+int unregister_stream_consumer_legacy(stream_reader_ctx_t *ctx);
 
 /**
  * Get a packet from the queue (blocking)
  * 
  * @param ctx Stream reader context
  * @param pkt Packet to fill
+ * @param consumer_id ID of the consumer requesting the packet
  * @return 0 on success, non-zero on failure or abort
  */
-int get_packet(stream_reader_ctx_t *ctx, AVPacket *pkt);
+int get_packet(stream_reader_ctx_t *ctx, AVPacket *pkt, int consumer_id);
+
+/**
+ * Backward compatibility wrapper for the old get_packet function
+ * This is for any code that hasn't been updated to use consumer IDs yet
+ * 
+ * @param ctx Stream reader context
+ * @param pkt Packet to fill
+ * @return 0 on success, non-zero on failure or abort
+ */
+int get_packet_legacy(stream_reader_ctx_t *ctx, AVPacket *pkt);
 
 /**
  * Get the stream reader for a stream

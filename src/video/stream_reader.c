@@ -30,7 +30,7 @@ static void *stream_reader_thread(void *arg);
 static void packet_queue_init(packet_queue_t *q);
 static void packet_queue_destroy(packet_queue_t *q);
 static int packet_queue_put(packet_queue_t *q, AVPacket *pkt);
-static int packet_queue_get(packet_queue_t *q, AVPacket *pkt);
+static int packet_queue_get(packet_queue_t *q, AVPacket *pkt, int consumer_id);
 static void packet_queue_abort(packet_queue_t *q);
 
 /**
@@ -45,6 +45,8 @@ static void packet_queue_init(packet_queue_t *q) {
     q->tail = 0;
     q->size = 0;
     q->abort_request = 0;
+    q->next_consumer_id = 1;  // Start consumer IDs at 1
+    q->active_consumers = 0;
 }
 
 /**
@@ -55,14 +57,15 @@ static void packet_queue_destroy(packet_queue_t *q) {
     
     pthread_mutex_lock(&q->mutex);
     
-    // Free any remaining packets
+    // Clean up any remaining packets
     while (q->size > 0) {
-        AVPacket *pkt = q->packets[q->head];
+        broadcast_packet_t *packet = &q->packets[q->head];
         q->head = (q->head + 1) % MAX_PACKET_QUEUE_SIZE;
         q->size--;
         
-        if (pkt) {
-            av_packet_free(&pkt);
+        // Free the packet
+        if (packet->pkt) {
+            av_packet_free(&packet->pkt);
         }
     }
     
@@ -79,6 +82,12 @@ static void packet_queue_destroy(packet_queue_t *q) {
 static int packet_queue_put(packet_queue_t *q, AVPacket *pkt) {
     pthread_mutex_lock(&q->mutex);
     
+    // Check if we have any active consumers
+    if (q->active_consumers <= 0) {
+        pthread_mutex_unlock(&q->mutex);
+        return 0;  // No consumers, don't bother queueing
+    }
+    
     while (q->size >= MAX_PACKET_QUEUE_SIZE && !q->abort_request) {
         pthread_cond_wait(&q->cond_not_full, &q->mutex);
     }
@@ -88,17 +97,40 @@ static int packet_queue_put(packet_queue_t *q, AVPacket *pkt) {
         return -1;
     }
     
-    // Create a new packet and copy the data
-    AVPacket *new_pkt = av_packet_alloc();
-    if (!new_pkt) {
+    // Initialize a new broadcast packet entry
+    broadcast_packet_t *new_packet = &q->packets[q->tail];
+    memset(new_packet, 0, sizeof(broadcast_packet_t));
+    
+    // Allocate and copy the packet
+    new_packet->pkt = av_packet_alloc();
+    if (!new_packet->pkt) {
         pthread_mutex_unlock(&q->mutex);
+        log_error("Failed to allocate packet in queue");
         return -1;
     }
     
-    av_packet_ref(new_pkt, pkt);
+    if (av_packet_ref(new_packet->pkt, pkt) < 0) {
+        av_packet_free(&new_packet->pkt);
+        pthread_mutex_unlock(&q->mutex);
+        log_error("Failed to reference packet in queue");
+        return -1;
+    }
+    
+    // Store packet metadata
+    new_packet->pts = pkt->pts;
+    new_packet->key_frame = (pkt->flags & AV_PKT_FLAG_KEY) ? 1 : 0;
+    new_packet->stream_index = pkt->stream_index;
+    new_packet->size = pkt->size;
+    new_packet->consumer_count = q->active_consumers;
+    new_packet->all_processed = 0;
+    
+    // Initialize consumer status
+    for (int i = 0; i < MAX_QUEUE_CONSUMERS; i++) {
+        new_packet->consumer_status[i].consumer_id = 0;
+        new_packet->consumer_status[i].processed = 0;
+    }
     
     // Add to queue
-    q->packets[q->tail] = new_pkt;
     q->tail = (q->tail + 1) % MAX_PACKET_QUEUE_SIZE;
     q->size++;
     
@@ -111,11 +143,74 @@ static int packet_queue_put(packet_queue_t *q, AVPacket *pkt) {
 /**
  * Get a packet from the queue (blocking if empty)
  */
-static int packet_queue_get(packet_queue_t *q, AVPacket *pkt) {
+static int packet_queue_get(packet_queue_t *q, AVPacket *pkt, int consumer_id) {
     pthread_mutex_lock(&q->mutex);
     
-    while (q->size == 0 && !q->abort_request) {
+    if (consumer_id <= 0) {
+        log_error("Invalid consumer ID: %d", consumer_id);
+        pthread_mutex_unlock(&q->mutex);
+        return -1;
+    }
+    
+    // Find the next unprocessed packet for this consumer
+    int found = 0;
+    int idx = q->head;
+    int count = 0;
+    
+    while (count < q->size && !found) {
+        broadcast_packet_t *packet = &q->packets[idx];
+        
+        // Check if this consumer has already processed this packet
+        int consumer_idx = -1;
+        for (int i = 0; i < MAX_QUEUE_CONSUMERS; i++) {
+            if (packet->consumer_status[i].consumer_id == consumer_id) {
+                consumer_idx = i;
+                break;
+            }
+        }
+        
+        if (consumer_idx >= 0 && !packet->consumer_status[consumer_idx].processed) {
+            // Found an unprocessed packet for this consumer
+            found = 1;
+            break;
+        }
+        
+        // Move to next packet
+        idx = (idx + 1) % MAX_PACKET_QUEUE_SIZE;
+        count++;
+    }
+    
+    // If no unprocessed packet found, wait for new packets
+    while (!found && !q->abort_request) {
         pthread_cond_wait(&q->cond_not_empty, &q->mutex);
+        
+        // After waking up, search again
+        found = 0;
+        idx = q->head;
+        count = 0;
+        
+        while (count < q->size && !found) {
+            broadcast_packet_t *packet = &q->packets[idx];
+            
+            // Check if this consumer has already processed this packet
+            int consumer_idx = -1;
+            for (int i = 0; i < MAX_QUEUE_CONSUMERS; i++) {
+                if (packet->consumer_status[i].consumer_id == consumer_id) {
+                    consumer_idx = i;
+                    break;
+                }
+            }
+            
+            if (consumer_idx >= 0 && !packet->consumer_status[consumer_idx].processed) {
+                // Found an unprocessed packet for this consumer
+                found = 1;
+                break;
+            }
+            
+            // Move to next packet
+            idx = (idx + 1) % MAX_PACKET_QUEUE_SIZE;
+            count++;
+        }
     }
     
     if (q->abort_request) {
@@ -123,20 +218,58 @@ static int packet_queue_get(packet_queue_t *q, AVPacket *pkt) {
         return -1;
     }
     
-    // Get packet from queue
-    AVPacket *src_pkt = q->packets[q->head];
-    q->head = (q->head + 1) % MAX_PACKET_QUEUE_SIZE;
-    q->size--;
+    // Get the packet
+    broadcast_packet_t *packet = &q->packets[idx];
     
-    // Copy packet data
-    av_packet_ref(pkt, src_pkt);
+    // Reference the packet to the output
+    av_packet_unref(pkt);
+    if (av_packet_ref(pkt, packet->pkt) < 0) {
+        pthread_mutex_unlock(&q->mutex);
+        log_error("Failed to reference packet from queue");
+        return -1;
+    }
     
-    // Free the source packet
-    av_packet_free(&src_pkt);
+    // Mark as processed by this consumer
+    for (int i = 0; i < MAX_QUEUE_CONSUMERS; i++) {
+        if (packet->consumer_status[i].consumer_id == consumer_id) {
+            packet->consumer_status[i].processed = 1;
+            break;
+        }
+    }
     
-    pthread_cond_signal(&q->cond_not_full);
+    // Check if all consumers have processed this packet
+    int all_processed = 1;
+    for (int i = 0; i < MAX_QUEUE_CONSUMERS; i++) {
+        if (packet->consumer_status[i].consumer_id != 0 && 
+            !packet->consumer_status[i].processed) {
+            all_processed = 0;
+            break;
+        }
+    }
+    
+    // If all consumers have processed this packet, mark it for removal
+    if (all_processed) {
+        packet->all_processed = 1;
+        
+        // If this is the head packet, remove it and any other fully processed packets
+        if (idx == q->head) {
+            while (q->size > 0 && q->packets[q->head].all_processed) {
+                // Free the packet
+                if (q->packets[q->head].pkt) {
+                    av_packet_free(&q->packets[q->head].pkt);
+                }
+                
+                // Move head pointer
+                q->head = (q->head + 1) % MAX_PACKET_QUEUE_SIZE;
+                q->size--;
+                
+                // Signal that the queue is not full
+                pthread_cond_signal(&q->cond_not_full);
+            }
+        }
+    }
+    
     pthread_mutex_unlock(&q->mutex);
-    
     return 0;
 }
 
@@ -498,19 +631,44 @@ int register_stream_consumer(stream_reader_ctx_t *ctx) {
     
     pthread_mutex_lock(&ctx->consumers_mutex);
     ctx->consumers++;
+    
+    // Assign a consumer ID and register with the queue
+    int consumer_id = 0;
+    
+    pthread_mutex_lock(&ctx->queue.mutex);
+    consumer_id = ctx->queue.next_consumer_id++;
+    ctx->queue.active_consumers++;
+    
+    // Initialize consumer status for all packets in the queue
+    for (int i = 0; i < ctx->queue.size; i++) {
+        int idx = (ctx->queue.head + i) % MAX_PACKET_QUEUE_SIZE;
+        broadcast_packet_t *packet = &ctx->queue.packets[idx];
+        
+        // Find an empty slot for this consumer
+        for (int j = 0; j < MAX_QUEUE_CONSUMERS; j++) {
+            if (packet->consumer_status[j].consumer_id == 0) {
+                packet->consumer_status[j].consumer_id = consumer_id;
+                packet->consumer_status[j].processed = 0;
+                packet->consumer_count++;
+                break;
+            }
+        }
+    }
+    
+    pthread_mutex_unlock(&ctx->queue.mutex);
     pthread_mutex_unlock(&ctx->consumers_mutex);
     
-    log_info("Registered consumer for stream %s, total consumers: %d",
-            ctx->config.name, ctx->consumers);
+    log_info("Registered consumer %d for stream %s, total consumers: %d",
+            consumer_id, ctx->config.name, ctx->consumers);
     
-    return 0;
+    return consumer_id;
 }
 
 /**
  * Unregister as a consumer of the stream reader
  */
-int unregister_stream_consumer(stream_reader_ctx_t *ctx) {
-    if (!ctx) {
+int unregister_stream_consumer(stream_reader_ctx_t *ctx, int consumer_id) {
+    if (!ctx || consumer_id <= 0) {
         return -1;
     }
     
@@ -519,10 +677,61 @@ int unregister_stream_consumer(stream_reader_ctx_t *ctx) {
         ctx->consumers--;
     }
     int remaining = ctx->consumers;
+    
+    // Update the queue
+    pthread_mutex_lock(&ctx->queue.mutex);
+    ctx->queue.active_consumers--;
+    
+    // Mark all packets as processed for this consumer
+    for (int i = 0; i < ctx->queue.size; i++) {
+        int idx = (ctx->queue.head + i) % MAX_PACKET_QUEUE_SIZE;
+        broadcast_packet_t *packet = &ctx->queue.packets[idx];
+        
+        // Find this consumer in the packet's consumer status
+        for (int j = 0; j < MAX_QUEUE_CONSUMERS; j++) {
+            if (packet->consumer_status[j].consumer_id == consumer_id) {
+                packet->consumer_status[j].processed = 1;
+                
+                // Check if all consumers have processed this packet
+                int all_processed = 1;
+                for (int k = 0; k < MAX_QUEUE_CONSUMERS; k++) {
+                    if (packet->consumer_status[k].consumer_id != 0 && 
+                        !packet->consumer_status[k].processed) {
+                        all_processed = 0;
+                        break;
+                    }
+                }
+                
+                // If all consumers have processed this packet, mark it for removal
+                if (all_processed) {
+                    packet->all_processed = 1;
+                }
+                
+                break;
+            }
+        }
+    }
+    
+    // Remove any fully processed packets from the head of the queue
+    while (ctx->queue.size > 0 && ctx->queue.packets[ctx->queue.head].all_processed) {
+        // Free the packet
+        if (ctx->queue.packets[ctx->queue.head].pkt) {
+            av_packet_free(&ctx->queue.packets[ctx->queue.head].pkt);
+        }
+        
+        // Move head pointer
+        ctx->queue.head = (ctx->queue.head + 1) % MAX_PACKET_QUEUE_SIZE;
+        ctx->queue.size--;
+        
+        // Signal that the queue is not full
+        pthread_cond_signal(&ctx->queue.cond_not_full);
+    }
+    
+    pthread_mutex_unlock(&ctx->queue.mutex);
     pthread_mutex_unlock(&ctx->consumers_mutex);
     
-    log_info("Unregistered consumer for stream %s, remaining consumers: %d",
-            ctx->config.name, remaining);
+    log_info("Unregistered consumer %d for stream %s, remaining consumers: %d",
+            consumer_id, ctx->config.name, remaining);
     
     // If no more consumers, consider stopping the reader
     if (remaining == 0) {
@@ -536,12 +745,71 @@ int unregister_stream_consumer(stream_reader_ctx_t *ctx) {
 /**
  * Get a packet from the queue (blocking)
  */
-int get_packet(stream_reader_ctx_t *ctx, AVPacket *pkt) {
-    if (!ctx || !pkt) {
+int get_packet(stream_reader_ctx_t *ctx, AVPacket *pkt, int consumer_id) {
+    if (!ctx || !pkt || consumer_id <= 0) {
         return -1;
     }
     
-    return packet_queue_get(&ctx->queue, pkt);
+    return packet_queue_get(&ctx->queue, pkt, consumer_id);
+}
+
+/**
+ * Backward compatibility wrapper for unregister_stream_consumer
+ * This is for any code that hasn't been updated to use consumer IDs yet
+ */
+int unregister_stream_consumer_legacy(stream_reader_ctx_t *ctx) {
+    if (!ctx) {
+        return -1;
+    }
+    
+    pthread_mutex_lock(&ctx->consumers_mutex);
+    if (ctx->consumers > 0) {
+        ctx->consumers--;
+    }
+    int remaining = ctx->consumers;
+    
+    // Also decrement the active_consumers count in the queue
+    pthread_mutex_lock(&ctx->queue.mutex);
+    if (ctx->queue.active_consumers > 0) {
+        ctx->queue.active_consumers--;
+    }
+    pthread_mutex_unlock(&ctx->queue.mutex);
+    
+    pthread_mutex_unlock(&ctx->consumers_mutex);
+    
+    log_info("Legacy unregister consumer for stream %s, remaining consumers: %d",
+            ctx->config.name, remaining);
+    
+    // If no more consumers, consider stopping the reader
+    if (remaining == 0) {
+        log_info("No more consumers for stream %s, reader will be stopped when appropriate",
+                ctx->config.name);
+    }
+    
+    return 0;
+}
+
+/**
+ * Backward compatibility wrapper for the old get_packet function
+ * This is for any code that hasn't been updated to use consumer IDs yet
+ */
+int get_packet_legacy(stream_reader_ctx_t *ctx, AVPacket *pkt) {
+    log_warn("Legacy get_packet called without consumer ID for stream %s", 
+             ctx->config.name);
+    
+    // Register a temporary consumer
+    int consumer_id = register_stream_consumer(ctx);
+    if (consumer_id <= 0) {
+        return -1;
+    }
+    
+    // Get a packet
+    int ret = get_packet(ctx, pkt, consumer_id);
+    
+    // Unregister the temporary consumer
+    unregister_stream_consumer(ctx, consumer_id);
+    
+    return ret;
 }
 
 /**

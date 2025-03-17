@@ -208,10 +208,29 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
         safe_output_dir[MAX_PATH_LENGTH - 1] = '\0';
     }
     
+    // Create the HLS directory and ensure it has proper permissions
     snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p %s", output_dir);
     int ret_mkdir = system(mkdir_cmd);
     if (ret_mkdir != 0) {
         log_warn("Failed to create directory: %s (return code: %d)", output_dir, ret_mkdir);
+    }
+    
+    // Set full permissions to ensure FFmpeg can write files
+    snprintf(mkdir_cmd, sizeof(mkdir_cmd), "chmod -R 777 %s", output_dir);
+    system(mkdir_cmd);
+    
+    // Also ensure the parent directory exists and is writable
+    char parent_dir[MAX_PATH_LENGTH];
+    const char *last_slash = strrchr(output_dir, '/');
+    if (last_slash) {
+        size_t parent_len = last_slash - output_dir;
+        strncpy(parent_dir, output_dir, parent_len);
+        parent_dir[parent_len] = '\0';
+        
+        snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p %s && chmod -R 777 %s", 
+                parent_dir, parent_dir);
+        system(mkdir_cmd);
+        log_info("Ensured parent directory exists with proper permissions: %s", parent_dir);
     }
 
     // Initialize output format context for HLS
@@ -240,6 +259,55 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     av_dict_set(&options, "hls_flags", "delete_segments+append_list+discont_start+split_by_time+program_date_time", 0);
     av_dict_set(&options, "hls_allow_cache", "1", 0);  // Enable caching to improve playback on low-power devices
     av_dict_set(&options, "hls_segment_type", "mpegts", 0);  // Ensure MPEG-TS segments for better compatibility
+    
+    // Ensure the manifest file is properly initialized with EXTM3U delimiter
+    // Create a minimal valid manifest file if it doesn't exist
+    char manifest_path[MAX_PATH_LENGTH];
+    snprintf(manifest_path, MAX_PATH_LENGTH, "%s/index.m3u8", output_dir);
+    
+    // Check if the manifest file exists and is valid
+    FILE *manifest_check = fopen(manifest_path, "r");
+    bool create_initial_manifest = false;
+    
+    if (manifest_check) {
+        // Check if the file is empty or doesn't contain EXTM3U
+        fseek(manifest_check, 0, SEEK_END);
+        long size = ftell(manifest_check);
+        
+        if (size == 0) {
+            create_initial_manifest = true;
+        } else {
+            // Check for EXTM3U
+            char buffer[16];
+            fseek(manifest_check, 0, SEEK_SET);
+            size_t read_size = fread(buffer, 1, sizeof(buffer) - 1, manifest_check);
+            buffer[read_size] = '\0';
+            
+            if (strstr(buffer, "#EXTM3U") == NULL) {
+                create_initial_manifest = true;
+            }
+        }
+        fclose(manifest_check);
+    } else {
+        create_initial_manifest = true;
+    }
+    
+    // Create a minimal valid manifest file if needed
+    if (create_initial_manifest) {
+        FILE *manifest_init = fopen(manifest_path, "w");
+        if (manifest_init) {
+            // Write a minimal valid HLS manifest
+            fprintf(manifest_init, "#EXTM3U\n");
+            fprintf(manifest_init, "#EXT-X-VERSION:3\n");
+            fprintf(manifest_init, "#EXT-X-TARGETDURATION:%d\n", segment_duration);
+            fprintf(manifest_init, "#EXT-X-MEDIA-SEQUENCE:0\n");
+            fclose(manifest_init);
+            
+            log_info("Created initial valid HLS manifest file: %s", manifest_path);
+        } else {
+            log_error("Failed to create initial HLS manifest file: %s", manifest_path);
+        }
+    }
 
     // Remove the delete_segments flag to prevent FFmpeg from automatically deleting segments
     // This will help prevent issues with the index.m3u8.tmp file not being able to be renamed

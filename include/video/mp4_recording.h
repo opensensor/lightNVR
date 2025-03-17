@@ -12,6 +12,7 @@ typedef struct {
     pthread_t thread;
     char output_path[MAX_PATH_LENGTH];
     mp4_writer_t *mp4_writer;
+    int consumer_id;  // ID for stream reader consumer
 } mp4_recording_ctx_t;
 
 /**

@@ -12,6 +12,7 @@ typedef struct {
     pthread_t thread;
     char output_path[MAX_PATH_LENGTH];
     hls_writer_t *hls_writer;
+    int consumer_id;  // ID for stream reader consumer
 } hls_stream_ctx_t;
 
 /**

@@ -127,9 +127,16 @@ void handle_hls_manifest(const http_request_t *request, http_response_t *respons
 
     // Get the manifest file path
     config_t *global_config = get_streaming_config();
+    
+    // Log the storage path for debugging
+    log_info("API looking for HLS manifest in storage path: %s", global_config->storage_path);
+    
     char manifest_path[MAX_PATH_LENGTH];
     snprintf(manifest_path, MAX_PATH_LENGTH, "%s/hls/%s/index.m3u8",
              global_config->storage_path, stream_name);
+    
+    // Log the full manifest path
+    log_info("Full manifest path: %s", manifest_path);
 
     // Wait for the manifest file to be created with a longer timeout for low-powered devices
     // Try up to 50 times with 100ms between attempts (5 seconds total)
@@ -155,7 +162,34 @@ void handle_hls_manifest(const http_request_t *request, http_response_t *respons
 
     if (!manifest_exists) {
         log_error("Manifest file was not created in time: %s", manifest_path);
-        create_stream_error_response(response, 404, "Manifest file not found");
+        
+        // Check if the directory exists
+        char dir_path[MAX_PATH_LENGTH];
+        snprintf(dir_path, sizeof(dir_path), "%s/hls/%s", global_config->storage_path, stream_name);
+        
+        struct stat st;
+        if (stat(dir_path, &st) != 0 || !S_ISDIR(st.st_mode)) {
+            log_error("HLS directory does not exist: %s", dir_path);
+            
+            // Try to create it
+            char mkdir_cmd[MAX_PATH_LENGTH * 2];
+            snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p %s && chmod -R 777 %s", 
+                    dir_path, dir_path);
+            system(mkdir_cmd);
+            
+            log_info("Created HLS directory: %s", dir_path);
+        }
+        
+        // Try to restart the HLS stream
+        stop_hls_stream(stream_name);
+        if (start_hls_stream(stream_name) != 0) {
+            log_error("Failed to restart HLS stream for %s", stream_name);
+            create_stream_error_response(response, 500, "Failed to start HLS stream");
+            return;
+        }
+        
+        log_info("Restarted HLS stream for %s, but manifest file still not available", stream_name);
+        create_stream_error_response(response, 404, "Manifest file not found, please try again");
         return;
     }
 
@@ -189,6 +223,66 @@ void handle_hls_manifest(const http_request_t *request, http_response_t *respons
 
     content[file_size] = '\0';
     fclose(fp);
+    
+    // Check if the manifest file is empty or doesn't contain the EXTM3U delimiter
+    if (file_size == 0 || strstr(content, "#EXTM3U") == NULL) {
+        log_error("Manifest file is empty or missing EXTM3U delimiter: %s", manifest_path);
+        
+        // Try to restart the HLS stream
+        stop_hls_stream(stream_name);
+        if (start_hls_stream(stream_name) != 0) {
+            log_error("Failed to restart HLS stream for %s", stream_name);
+            free(content);
+            create_stream_error_response(response, 500, "Failed to restart HLS stream");
+            return;
+        }
+        
+        // Wait for the manifest file to be properly created
+        bool manifest_valid = false;
+        for (int i = 0; i < 30; i++) {
+            // Re-read the manifest file
+            FILE *fp_retry = fopen(manifest_path, "r");
+            if (fp_retry) {
+                fseek(fp_retry, 0, SEEK_END);
+                long new_size = ftell(fp_retry);
+                fseek(fp_retry, 0, SEEK_SET);
+                
+                if (new_size > 0) {
+                    // Free old content and allocate new buffer
+                    free(content);
+                    content = malloc(new_size + 1);
+                    if (!content) {
+                        fclose(fp_retry);
+                        create_stream_error_response(response, 500, "Memory allocation failed");
+                        return;
+                    }
+                    
+                    size_t new_bytes_read = fread(content, 1, new_size, fp_retry);
+                    if (new_bytes_read == (size_t)new_size) {
+                        content[new_size] = '\0';
+                        if (strstr(content, "#EXTM3U") != NULL) {
+                            file_size = new_size;
+                            manifest_valid = true;
+                            log_info("Successfully regenerated valid manifest file for %s", stream_name);
+                            fclose(fp_retry);
+                            break;
+                        }
+                    }
+                }
+                fclose(fp_retry);
+            }
+            
+            log_debug("Waiting for valid manifest file (attempt %d/30)", i+1);
+            usleep(100000);  // 100ms
+        }
+        
+        if (!manifest_valid) {
+            log_error("Failed to generate valid manifest file for %s", stream_name);
+            free(content);
+            create_stream_error_response(response, 500, "Failed to generate valid manifest file");
+            return;
+        }
+    }
 
     // Create response
     response->status_code = 200;

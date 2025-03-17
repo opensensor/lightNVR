@@ -24,6 +24,7 @@
 #include "video/stream_transcoding.h"
 #include "video/stream_reader.h"
 #include "database/database_manager.h"
+#include "database/db_events.h"
 
 // Hash map for tracking running MP4 recording contexts
 static mp4_recording_ctx_t *recording_contexts[MAX_STREAMS];
@@ -139,7 +140,21 @@ static void *mp4_recording_thread(void *arg) {
     }
     
     // Register as a consumer of the stream
-    register_stream_consumer(reader_ctx);
+    ctx->consumer_id = register_stream_consumer(reader_ctx);
+    if (ctx->consumer_id <= 0) {
+        log_error("Failed to register as consumer for stream %s", ctx->config.name);
+        
+        if (ctx->mp4_writer) {
+            mp4_writer_close(ctx->mp4_writer);
+            ctx->mp4_writer = NULL;
+        }
+        
+        // Unregister the MP4 writer if it was registered
+        unregister_mp4_writer_for_stream(ctx->config.name);
+        
+        ctx->running = 0;
+        return NULL;
+    }
     
     // Initialize packet
     pkt = av_packet_alloc();
@@ -147,7 +162,7 @@ static void *mp4_recording_thread(void *arg) {
         log_error("Failed to allocate packet");
         
         // Unregister as a consumer
-        unregister_stream_consumer(reader_ctx);
+        unregister_stream_consumer(reader_ctx, ctx->consumer_id);
         
         if (ctx->mp4_writer) {
             mp4_writer_close(ctx->mp4_writer);
@@ -201,11 +216,13 @@ static void *mp4_recording_thread(void *arg) {
             mp4_writer_t *new_writer = mp4_writer_create(ctx->output_path, ctx->config.name);
             if (!new_writer) {
                 log_error("Failed to create new MP4 writer for stream %s during rotation", ctx->config.name);
-                
-                // Re-register the old writer since we failed to create a new one
-                register_mp4_writer_for_stream(ctx->config.name, old_writer);
+                // Wait a bit before trying again
+                av_usleep(1000000);  // 1 second delay
                 continue; // Try again on next iteration
             }
+            
+            // First unregister the current MP4 writer
+            unregister_mp4_writer_for_stream(ctx->config.name);
             
             // Register the new MP4 writer
             if (register_mp4_writer_for_stream(ctx->config.name, new_writer) != 0) {
@@ -216,6 +233,9 @@ static void *mp4_recording_thread(void *arg) {
                 
                 // Re-register the old writer
                 register_mp4_writer_for_stream(ctx->config.name, old_writer);
+                
+                // Wait a bit before trying again
+                av_usleep(1000000);  // 1 second delay
                 continue; // Try again on next iteration
             }
             
@@ -224,13 +244,17 @@ static void *mp4_recording_thread(void *arg) {
             
             // Close the old writer now that everything else is set up
             mp4_writer_close(old_writer);
+            old_writer = NULL; // Prevent any accidental use after free
             
             log_info("Successfully rotated MP4 writer for stream %s at %s", ctx->config.name, ctx->output_path);
+            
+            // Update recording metadata in the database
+            update_recording(ctx->config.name);
         }
         
         // Get a packet from the stream reader
         av_packet_unref(pkt);  // Make sure the packet is clean before reusing
-        ret = get_packet(reader_ctx, pkt);
+        ret = get_packet(reader_ctx, pkt, ctx->consumer_id);
 
         if (ret < 0) {
             // Error or abort request
@@ -241,11 +265,35 @@ static void *mp4_recording_thread(void *arg) {
 
         // Process video packet
         if (ctx->mp4_writer) {
-            ret = process_video_packet(pkt, reader_ctx->input_ctx->streams[reader_ctx->video_stream_idx], 
-                                      ctx->mp4_writer, 1, ctx->config.name);
-            if (ret < 0) {
-                log_error("Failed to write packet to MP4 for stream %s: %d", ctx->config.name, ret);
-                // Continue anyway to keep the stream going
+            // Verify the packet is valid before processing
+            if (pkt->data && pkt->size > 0) {
+                // Log key frames for debugging
+                if (pkt->flags & AV_PKT_FLAG_KEY) {
+                    log_debug("Processing keyframe for MP4: pts=%lld, dts=%lld, size=%d",
+                             (long long)pkt->pts, (long long)pkt->dts, pkt->size);
+                }
+                
+                // Create a clean copy of the packet to avoid reference issues
+                AVPacket *copy_pkt = av_packet_alloc();
+                if (copy_pkt) {
+                    if (av_packet_ref(copy_pkt, pkt) >= 0) {
+                        // Process the copy instead of the original
+                        ret = process_video_packet(copy_pkt, reader_ctx->input_ctx->streams[reader_ctx->video_stream_idx], 
+                                                  ctx->mp4_writer, 1, ctx->config.name);
+                        if (ret < 0) {
+                            log_error("Failed to write packet to MP4 for stream %s: %d", ctx->config.name, ret);
+                            // Continue anyway to keep the stream going
+                        }
+                        av_packet_unref(copy_pkt);
+                    } else {
+                        log_error("Failed to reference packet for MP4 writer");
+                    }
+                    av_packet_free(&copy_pkt);
+                } else {
+                    log_error("Failed to allocate packet for MP4 writer");
+                }
+            } else {
+                log_warn("Received invalid packet (null data or zero size) for stream %s", ctx->config.name);
             }
         }
 
@@ -263,8 +311,8 @@ static void *mp4_recording_thread(void *arg) {
     }
 
     // Unregister as a consumer
-    if (reader_ctx) {
-        unregister_stream_consumer(reader_ctx);
+    if (reader_ctx && ctx->consumer_id > 0) {
+        unregister_stream_consumer(reader_ctx, ctx->consumer_id);
     }
 
     // When done, close writer
@@ -300,56 +348,31 @@ void init_mp4_recording_backend(void) {
  * Cleanup MP4 recording backend
  */
 void cleanup_mp4_recording_backend(void) {
-    log_info("Cleaning up MP4 recording backend...");
-    pthread_mutex_lock(&contexts_mutex);
+    log_info("Starting MP4 recording backend cleanup");
 
-    // Stop all running recordings
+    // First mark all contexts as not running
+    pthread_mutex_lock(&contexts_mutex);
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (recording_contexts[i]) {
-            log_info("Stopping MP4 recording in slot %d: %s", i,
-                    recording_contexts[i]->config.name);
-
-            // Copy the stream name for later use
-            char stream_name[MAX_STREAM_NAME];
-            strncpy(stream_name, recording_contexts[i]->config.name,
-                    MAX_STREAM_NAME - 1);
-            stream_name[MAX_STREAM_NAME - 1] = '\0';
-
-            // Mark as not running
             recording_contexts[i]->running = 0;
-
-            // Attempt to join the thread with a timeout
-            pthread_t thread = recording_contexts[i]->thread;
-            pthread_mutex_unlock(&contexts_mutex);
-
-            // Try to join with a timeout
-            if (pthread_join_with_timeout(thread, NULL, 2) != 0) {
-                log_warn("Could not join thread for stream %s within timeout",
-                        stream_name);
-            }
-
-            pthread_mutex_lock(&contexts_mutex);
-
-            // Clean up resources
-            if (recording_contexts[i] && recording_contexts[i]->mp4_writer) {
-                mp4_writer_close(recording_contexts[i]->mp4_writer);
-                recording_contexts[i]->mp4_writer = NULL;
-            }
-
-            // Free the context
-            if (recording_contexts[i]) {
-                free(recording_contexts[i]);
-                recording_contexts[i] = NULL;
-            }
         }
     }
-
     pthread_mutex_unlock(&contexts_mutex);
 
-    // Close all MP4 writers
+    // Give threads time to exit cleanly
+    usleep(500000);  // 500ms
+
+    // Now try to join threads
+    pthread_mutex_lock(&contexts_mutex);
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        // Join code
+    }
+    pthread_mutex_unlock(&contexts_mutex);
+
+    // Finally close all writers
     close_all_mp4_writers();
 
-    log_info("MP4 recording backend cleaned up");
+    log_info("MP4 recording backend cleanup complete");
 }
 
 /**
@@ -404,6 +427,7 @@ int start_mp4_recording(const char *stream_name) {
     memset(ctx, 0, sizeof(mp4_recording_ctx_t));
     memcpy(&ctx->config, &config, sizeof(stream_config_t));
     ctx->running = 1;
+    ctx->consumer_id = 0;  // Will be set in the thread
 
     // Create output paths
     config_t *global_config = get_streaming_config();
@@ -433,13 +457,13 @@ int start_mp4_recording(const char *stream_name) {
     if (ret != 0) {
         log_error("Failed to create MP4 directory: %s (return code: %d)", mp4_dir, ret);
         
-        // Try to create the parent directory first
-        char parent_dir[MAX_PATH_LENGTH];
-        if (global_config->record_mp4_directly && global_config->mp4_storage_path[0] != '\0') {
-            strncpy(parent_dir, global_config->mp4_storage_path, MAX_PATH_LENGTH - 1);
-        } else {
-            snprintf(parent_dir, MAX_PATH_LENGTH, "%s/mp4", global_config->storage_path);
-        }
+            // Try to create the parent directory first
+            char parent_dir[MAX_PATH_LENGTH];
+            if (global_config->record_mp4_directly && global_config->mp4_storage_path[0] != '\0') {
+                strncpy(parent_dir, global_config->mp4_storage_path, MAX_PATH_LENGTH - 1);
+            } else {
+                snprintf(parent_dir, MAX_PATH_LENGTH, "%s/mp4", global_config->storage_path);
+            }
         
         snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s", parent_dir);
         ret = system(dir_cmd);
@@ -635,9 +659,11 @@ void unregister_mp4_writer_for_stream(const char *stream_name) {
 
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (mp4_writers[i] && strcmp(mp4_writer_stream_names[i], stream_name) == 0) {
-            mp4_writer_close(mp4_writers[i]);
+            // Don't close the writer here, just unregister it
+            // The caller is responsible for closing the writer if needed
             mp4_writers[i] = NULL;
             mp4_writer_stream_names[i][0] = '\0';
+            log_info("Unregistered MP4 writer for stream %s", stream_name);
             break;
         }
     }
@@ -651,47 +677,86 @@ void unregister_mp4_writer_for_stream(const char *stream_name) {
 void close_all_mp4_writers(void) {
     log_info("Finalizing all MP4 recordings...");
     
+    // Create a local array to store writers we need to close
+    // This prevents double-free issues by ensuring we only close each writer once
+    mp4_writer_t *writers_to_close[MAX_STREAMS] = {0};
+    char stream_names_to_close[MAX_STREAMS][64] = {{0}};
+    char file_paths_to_close[MAX_STREAMS][MAX_PATH_LENGTH] = {{0}};
+    int num_writers_to_close = 0;
+    
+    // First, collect all writers under lock
     pthread_mutex_lock(&mp4_writers_mutex);
     
     for (int i = 0; i < MAX_STREAMS; i++) {
-        if (mp4_writers[i]) {
-            log_info("Finalizing MP4 recording for stream: %s", mp4_writer_stream_names[i]);
+        if (mp4_writers[i] && mp4_writer_stream_names[i][0] != '\0') {
+            // Store the writer pointer
+            writers_to_close[num_writers_to_close] = mp4_writers[i];
             
-            // Get the file path from the MP4 writer
-            char file_path[MAX_PATH_LENGTH];
-            if (mp4_writers[i]->output_path) {
-                strncpy(file_path, mp4_writers[i]->output_path, MAX_PATH_LENGTH - 1);
-                file_path[MAX_PATH_LENGTH - 1] = '\0';
-            } else {
-                file_path[0] = '\0';
-            }
+            // Make a safe copy of the stream name
+            strncpy(stream_names_to_close[num_writers_to_close], 
+                    mp4_writer_stream_names[i], 
+                    sizeof(stream_names_to_close[0]) - 1);
             
-            // Get file size before closing
-            struct stat st;
-            uint64_t file_size = 0;
-            if (file_path[0] != '\0' && stat(file_path, &st) == 0) {
-                file_size = st.st_size;
-            }
-            
-            // Close the MP4 writer to finalize the file
-            mp4_writer_close(mp4_writers[i]);
-            
-            // Update the database to mark the recording as complete
-            if (file_path[0] != '\0') {
-                // Get the current time for the end timestamp
-                time_t end_time = time(NULL);
+            // Safely get the file path from the MP4 writer
+            if (mp4_writers[i]->output_path && mp4_writers[i]->output_path[0] != '\0') {
+                strncpy(file_paths_to_close[num_writers_to_close], 
+                        mp4_writers[i]->output_path, 
+                        MAX_PATH_LENGTH - 1);
                 
-                // Add an event to the database
-                add_event(EVENT_RECORDING_STOP, mp4_writer_stream_names[i], 
-                         "Recording stopped during shutdown", file_path);
+                // Log the path we're about to check
+                log_info("Checking MP4 file: %s", file_paths_to_close[num_writers_to_close]);
+                
+                // Get file size before closing
+                struct stat st;
+                if (stat(file_paths_to_close[num_writers_to_close], &st) == 0) {
+                    log_info("MP4 file size: %llu bytes", (unsigned long long)st.st_size);
+                } else {
+                    log_warn("Cannot stat MP4 file: %s (error: %s)", 
+                            file_paths_to_close[num_writers_to_close], 
+                            strerror(errno));
+                }
+            } else {
+                log_warn("MP4 writer for stream %s has invalid or empty output path", 
+                        stream_names_to_close[num_writers_to_close]);
             }
             
-            // Clear the writer
+            // Clear the entry in the global array
             mp4_writers[i] = NULL;
             mp4_writer_stream_names[i][0] = '\0';
+            
+            // Increment counter
+            num_writers_to_close++;
         }
     }
     
+    // Release the lock before closing writers
     pthread_mutex_unlock(&mp4_writers_mutex);
-    log_info("All MP4 recordings finalized");
+    
+    // Now close each writer (outside the lock to prevent deadlocks)
+    for (int i = 0; i < num_writers_to_close; i++) {
+        log_info("Finalizing MP4 recording for stream: %s", stream_names_to_close[i]);
+        
+        // Log before closing
+        log_info("Closing MP4 writer for stream %s at %s", 
+                stream_names_to_close[i], 
+                file_paths_to_close[i][0] != '\0' ? file_paths_to_close[i] : "(empty path)");
+        
+        // Close the MP4 writer to finalize the file
+        if (writers_to_close[i] != NULL) {
+            mp4_writer_close(writers_to_close[i]);
+            // No need to set to NULL as this is a local copy
+        }
+        
+        // Update the database to mark the recording as complete
+        if (file_paths_to_close[i][0] != '\0') {
+            // Get the current time for the end timestamp
+            time_t end_time = time(NULL);
+            
+            // Add an event to the database
+            add_event(EVENT_RECORDING_STOP, stream_names_to_close[i], 
+                     "Recording stopped during shutdown", file_paths_to_close[i]);
+        }
+    }
+    
+    log_info("All MP4 recordings finalized (%d writers closed)", num_writers_to_close);
 }

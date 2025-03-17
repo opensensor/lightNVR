@@ -170,11 +170,23 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
     int ret = 0;
     
     if (!pkt || !input_stream || !writer || !stream_name) {
+        log_error("Invalid parameters passed to process_video_packet");
+        return -1;
+    }
+    
+    // Validate packet data
+    if (!pkt->data || pkt->size <= 0) {
+        log_warn("Invalid packet (null data or zero size) for stream %s", stream_name);
         return -1;
     }
     
     // Check if this is a key frame
     bool is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
+    
+    if (is_key_frame) {
+        log_debug("Processing keyframe for stream %s: pts=%lld, dts=%lld, size=%d",
+                 stream_name, (long long)pkt->pts, (long long)pkt->dts, pkt->size);
+    }
     
     if (writer_type == 0) {  // HLS writer
         hls_writer_t *hls_writer = (hls_writer_t *)writer;

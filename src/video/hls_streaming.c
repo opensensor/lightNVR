@@ -142,7 +142,12 @@ static void *hls_stream_thread(void *arg) {
     }
     
     // Register as a consumer of the stream
-    register_stream_consumer(reader_ctx);
+    ctx->consumer_id = register_stream_consumer(reader_ctx);
+    if (ctx->consumer_id <= 0) {
+        log_error("Failed to register as consumer for stream %s", ctx->config.name);
+        ctx->running = 0;
+        return NULL;
+    }
 
     // Create HLS writer - adding the segment_duration parameter
     // Using a default of 4 seconds if not specified in config
@@ -155,7 +160,7 @@ static void *hls_stream_thread(void *arg) {
         log_error("Failed to create HLS writer for %s", ctx->config.name);
         
         // Unregister as a consumer
-        unregister_stream_consumer(reader_ctx);
+        unregister_stream_consumer(reader_ctx, ctx->consumer_id);
         
         ctx->running = 0;
         return NULL;
@@ -170,7 +175,7 @@ static void *hls_stream_thread(void *arg) {
         ctx->hls_writer = NULL;
         
         // Unregister as a consumer
-        unregister_stream_consumer(reader_ctx);
+        unregister_stream_consumer(reader_ctx, ctx->consumer_id);
         
         ctx->running = 0;
         return NULL;
@@ -180,7 +185,7 @@ static void *hls_stream_thread(void *arg) {
     while (ctx->running) {
         // Get a packet from the stream reader
         av_packet_unref(pkt);  // Make sure the packet is clean before reusing
-        ret = get_packet(reader_ctx, pkt);
+        ret = get_packet(reader_ctx, pkt, ctx->consumer_id);
 
         if (ret < 0) {
             // Error or abort request
@@ -204,8 +209,8 @@ static void *hls_stream_thread(void *arg) {
     }
 
     // Unregister as a consumer
-    if (reader_ctx) {
-        unregister_stream_consumer(reader_ctx);
+    if (reader_ctx && ctx->consumer_id > 0) {
+        unregister_stream_consumer(reader_ctx, ctx->consumer_id);
     }
 
     // When done, close writer
@@ -333,9 +338,13 @@ int start_hls_stream(const char *stream_name) {
     memset(ctx, 0, sizeof(hls_stream_ctx_t));
     memcpy(&ctx->config, &config, sizeof(stream_config_t));
     ctx->running = 1;
+    ctx->consumer_id = 0;  // Will be set in the thread
 
     // Create output paths
     config_t *global_config = get_streaming_config();
+
+    // Log the storage path for debugging
+    log_info("Using storage path for HLS: %s", global_config->storage_path);
 
     // Create HLS output path
     snprintf(ctx->output_path, MAX_PATH_LENGTH, "%s/hls/%s",
@@ -354,6 +363,13 @@ int start_hls_stream(const char *stream_name) {
 
     // Set full permissions to ensure FFmpeg can write files
     snprintf(dir_cmd, sizeof(dir_cmd), "chmod -R 777 %s", ctx->output_path);
+    system(dir_cmd);
+
+    // Also ensure the parent directory of the HLS directory exists and is writable
+    char parent_dir[MAX_PATH_LENGTH];
+    snprintf(parent_dir, sizeof(parent_dir), "%s/hls", global_config->storage_path);
+    snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s && chmod -R 777 %s", 
+             parent_dir, parent_dir);
     system(dir_cmd);
 
     log_info("Created HLS directory with full permissions: %s", ctx->output_path);
