@@ -610,3 +610,32 @@ int set_stream_last_detection_time(stream_handle_t handle, time_t time) {
     log_info("Set last detection time for stream '%s' to %ld", s->config.name, (long)time);
     return 0;
 }
+
+/**
+ * Set streaming enabled flag for a stream
+ */
+int set_stream_streaming_enabled(stream_handle_t handle, bool enabled) {
+    if (!handle || !initialized) {
+        return -1;
+    }
+    
+    stream_t *s = (stream_t *)handle;
+    
+    pthread_mutex_lock(&s->mutex);
+    s->config.streaming_enabled = enabled;
+    pthread_mutex_unlock(&s->mutex);
+    
+    // Update config
+    config_t *global_config = get_streaming_config();
+    if (global_config) {
+        for (int i = 0; i < global_config->max_streams && i < MAX_STREAMS; i++) {
+            if (strcmp(global_config->streams[i].name, s->config.name) == 0) {
+                global_config->streams[i].streaming_enabled = enabled;
+                break;
+            }
+        }
+    }
+    
+    log_info("Set streaming enabled for stream '%s' to %s", s->config.name, enabled ? "enabled" : "disabled");
+    return 0;
+}

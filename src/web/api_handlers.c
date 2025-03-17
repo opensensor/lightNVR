@@ -21,10 +21,10 @@ void register_api_handlers(void) {
     // Register stream API handlers
     register_request_handler("/api/streams", "GET", handle_get_streams);
     register_request_handler("/api/streams", "POST", handle_post_stream);
-    register_request_handler("/api/streams/test", "POST", handle_test_stream);
 
     // Register improved stream-specific API handlers for individual streams
     // Use a more specific pattern that matches the exact pattern of IDs
+    register_request_handler("/api/streams/*/toggle_streaming", "POST", handle_toggle_streaming);
     register_request_handler("/api/streams/*", "GET", handle_get_stream);
     register_request_handler("/api/streams/*", "PUT", handle_put_stream);
     register_request_handler("/api/streams/*", "DELETE", handle_delete_stream);

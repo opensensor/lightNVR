@@ -712,6 +712,119 @@ static char* create_streams_json_array() {
 /**
  * Parse JSON into stream configuration
  */
+/**
+ * Handle POST request to toggle streaming for a stream
+ */
+void handle_toggle_streaming(const http_request_t *request, http_response_t *response) {
+    // Extract stream identifier from the URL
+    // URL format: /api/streams/{stream_name}/toggle_streaming
+    const char *path = request->path;
+    const char *prefix = "/api/streams/";
+    const char *suffix = "/toggle_streaming";
+    
+    // Verify path starts with expected prefix
+    if (strncmp(path, prefix, strlen(prefix)) != 0) {
+        log_error("Invalid request path: %s", path);
+        create_json_response(response, 400, "{\"error\": \"Invalid request path\"}");
+        return;
+    }
+    
+    // Find the suffix position
+    const char *suffix_pos = strstr(path + strlen(prefix), suffix);
+    if (!suffix_pos) {
+        log_error("Invalid toggle_streaming request path: %s", path);
+        create_json_response(response, 400, "{\"error\": \"Invalid toggle_streaming request path\"}");
+        return;
+    }
+    
+    // Extract the stream name between prefix and suffix
+    size_t name_len = suffix_pos - (path + strlen(prefix));
+    if (name_len >= MAX_STREAM_NAME) {
+        log_error("Stream name too long in toggle_streaming request");
+        create_json_response(response, 400, "{\"error\": \"Stream name too long\"}");
+        return;
+    }
+    
+    char stream_name[MAX_STREAM_NAME];
+    memcpy(stream_name, path + strlen(prefix), name_len);
+    stream_name[name_len] = '\0';
+    
+    // URL-decode the stream name
+    char decoded_name[MAX_STREAM_NAME];
+    url_decode(stream_name, decoded_name, sizeof(decoded_name));
+    
+    log_info("Toggle streaming request for stream: %s", decoded_name);
+    
+    // Find the stream by name
+    stream_handle_t stream = get_stream_by_name(decoded_name);
+    if (!stream) {
+        log_error("Stream not found: %s", decoded_name);
+        create_json_response(response, 404, "{\"error\": \"Stream not found\"}");
+        return;
+    }
+    
+    // Parse request body to get enabled flag
+    if (!request->body || request->content_length == 0) {
+        log_error("Empty request body in toggle_streaming request");
+        create_json_response(response, 400, "{\"error\": \"Empty request body\"}");
+        return;
+    }
+    
+    // Make a null-terminated copy of the request body
+    char *json = malloc(request->content_length + 1);
+    if (!json) {
+        log_error("Memory allocation failed for request body");
+        create_json_response(response, 500, "{\"error\": \"Memory allocation failed\"}");
+        return;
+    }
+    
+    memcpy(json, request->body, request->content_length);
+    json[request->content_length] = '\0';
+    
+    // Parse the enabled flag from the JSON
+    bool enabled = get_json_boolean_value(json, "enabled", true);
+    free(json);
+    
+    log_info("Toggle streaming for stream %s: enabled=%s", decoded_name, enabled ? "true" : "false");
+    
+    // Set the streaming_enabled flag in the stream configuration
+    if (set_stream_streaming_enabled(stream, enabled) != 0) {
+        log_error("Failed to set streaming_enabled flag for stream: %s", decoded_name);
+        create_json_response(response, 500, "{\"error\": \"Failed to set streaming_enabled flag\"}");
+        return;
+    }
+    
+    // Toggle the stream
+    if (enabled) {
+        // Start HLS stream if not already running
+        if (start_hls_stream(decoded_name) != 0) {
+            log_error("Failed to start HLS stream for: %s", decoded_name);
+            create_json_response(response, 500, "{\"error\": \"Failed to start HLS stream\"}");
+            return;
+        }
+        log_info("Started HLS stream for %s", decoded_name);
+    } else {
+        // Stop HLS stream if running
+        if (stop_hls_stream(decoded_name) != 0) {
+            log_error("Failed to stop HLS stream for: %s", decoded_name);
+            create_json_response(response, 500, "{\"error\": \"Failed to stop HLS stream\"}");
+            return;
+        }
+        log_info("Stopped HLS stream for %s", decoded_name);
+    }
+    
+    // Create success response
+    char response_json[256];
+    snprintf(response_json, sizeof(response_json),
+             "{\"success\": true, \"name\": \"%s\", \"streaming_enabled\": %s}",
+             decoded_name, enabled ? "true" : "false");
+    
+    create_json_response(response, 200, response_json);
+    
+    log_info("Successfully toggled streaming for stream: %s (enabled=%s)", 
+             decoded_name, enabled ? "true" : "false");
+}
+
 static int parse_stream_json(const char *json, stream_config_t *stream) {
     if (!json || !stream) return -1;
 

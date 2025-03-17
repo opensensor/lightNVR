@@ -979,14 +979,58 @@ int create_file_response(http_response_t *response, int status_code,
 }
 
 int path_matches(const char *pattern, const char *path) {
+    // Log the pattern and path for debugging
+    log_debug("Matching pattern '%s' against path '%s'", pattern, path);
+    
     // Special case: if pattern ends with "/*", it matches any path that starts with the prefix
     size_t pattern_len = strlen(pattern);
     if (pattern_len >= 2 && pattern[pattern_len-2] == '/' && pattern[pattern_len-1] == '*') {
-        return strncmp(pattern, path, pattern_len-1) == 0;
+        // Extract the prefix (everything before the "/*")
+        size_t prefix_len = pattern_len - 2;
+        
+        // Check if the path starts with the prefix
+        if (strncmp(pattern, path, prefix_len) == 0) {
+            // Make sure the next character in path is either '/' or the end of string
+            if (path[prefix_len] == '/' || path[prefix_len] == '\0') {
+                log_debug("Wildcard match result: true");
+                return 1;
+            }
+        }
+        
+        log_debug("Wildcard match result: false");
+        return 0;
+    }
+    
+    // Special case: if pattern contains "/*/", it matches any segment in the path
+    char *wildcard_pos = strstr(pattern, "/*/");
+    if (wildcard_pos != NULL) {
+        // Split the pattern into prefix and suffix
+        size_t prefix_len = wildcard_pos - pattern;
+        const char *suffix = wildcard_pos + 3; // Skip "/*/"
+        
+        // Check if the path starts with the prefix
+        if (strncmp(pattern, path, prefix_len) == 0) {
+            // Find the next '/' in the path after the prefix
+            const char *path_after_prefix = path + prefix_len + 1;
+            const char *next_slash = strchr(path_after_prefix, '/');
+            
+            if (next_slash) {
+                // Check if the rest of the path matches the suffix
+                if (strcmp(next_slash + 1, suffix) == 0) {
+                    log_debug("Segment wildcard match: true");
+                    return 1;
+                }
+            } else if (suffix[0] == '\0') {
+                // If there's no next slash and the suffix is empty, it's a match
+                log_debug("Segment wildcard match (no suffix): true");
+                return 1;
+            }
+        }
     }
 
     // Check for exact match
     if (strcmp(pattern, path) == 0) {
+        log_debug("Exact match: true");
         return 1;
     }
 
@@ -994,15 +1038,18 @@ int path_matches(const char *pattern, const char *path) {
     size_t path_len = strlen(path);
     if (path_len > 0 && path[path_len-1] == '/' && 
         strncmp(pattern, path, path_len-1) == 0 && pattern[path_len-1] == '\0') {
+        log_debug("Path trailing slash match: true");
         return 1;
     }
 
     // Check if the pattern has a trailing slash but path doesn't
     if (pattern_len > 0 && pattern[pattern_len-1] == '/' && 
         strncmp(pattern, path, pattern_len-1) == 0 && path[pattern_len-1] == '\0') {
+        log_debug("Pattern trailing slash match: true");
         return 1;
     }
 
+    log_debug("No match found");
     return 0;
 }
 

@@ -5,6 +5,110 @@
 
 
 /**
+ * Enable all streams for live viewing
+ */
+function enableAllStreams() {
+    console.log('Enabling all streams for live view');
+    
+    // Fetch streams from API
+    fetch('/api/streams')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to load streams');
+            }
+            return response.json();
+        })
+        .then(streams => {
+            if (!streams || streams.length === 0) {
+                console.log('No streams to enable');
+                return;
+            }
+            
+            // Enable each stream
+            streams.forEach(stream => {
+                const streamId = stream.id || stream.name;
+                console.log(`Enabling stream ${streamId}`);
+                
+                // Send toggle request to API to enable streaming
+                fetch(`/api/streams/${encodeURIComponent(streamId)}/toggle_streaming`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ enabled: true })
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Failed to enable stream');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log(`Stream ${streamId} enabled successfully:`, data);
+                })
+                .catch(error => {
+                    console.error(`Error enabling stream ${streamId}:`, error);
+                });
+            });
+        })
+        .catch(error => {
+            console.error('Error loading streams to enable:', error);
+        });
+}
+
+/**
+ * Stop all streams when leaving the streams page
+ */
+function stopAllStreams() {
+    console.log('Stopping all streams');
+    
+    // Fetch streams from API
+    fetch('/api/streams')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to load streams');
+            }
+            return response.json();
+        })
+        .then(streams => {
+            if (!streams || streams.length === 0) {
+                console.log('No streams to stop');
+                return;
+            }
+            
+            // Stop each stream
+            streams.forEach(stream => {
+                const streamId = stream.id || stream.name;
+                console.log(`Stopping stream ${streamId}`);
+                
+                // Send toggle request to API to disable streaming
+                fetch(`/api/streams/${encodeURIComponent(streamId)}/toggle_streaming`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ enabled: false })
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Failed to stop stream');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log(`Stream ${streamId} stopped successfully:`, data);
+                })
+                .catch(error => {
+                    console.error(`Error stopping stream ${streamId}:`, error);
+                });
+            });
+        })
+        .catch(error => {
+            console.error('Error loading streams to stop:', error);
+        });
+}
+
+/**
  * Update video layout
  */
 function updateVideoLayout(layout) {

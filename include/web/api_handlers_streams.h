@@ -33,4 +33,9 @@ void handle_delete_stream(const http_request_t *request, http_response_t *respon
  */
 void handle_test_stream(const http_request_t *request, http_response_t *response);
 
+/**
+ * Handle POST request to toggle streaming for a stream
+ */
+void handle_toggle_streaming(const http_request_t *request, http_response_t *response);
+
 #endif /* API_HANDLERS_STREAMS_H */

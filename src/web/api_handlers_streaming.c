@@ -19,6 +19,7 @@
 #include "video/stream_manager.h"
 #include "video/streams.h"
 #include "video/hls_writer.h"
+#include <stdbool.h>
 
 /**
  * Handle streaming request (HLS, WebRTC)
@@ -101,7 +102,26 @@ void handle_hls_manifest(const http_request_t *request, http_response_t *respons
         create_stream_error_response(response, 404, "Stream not found");
         return;
     }
-
+    
+    // Get stream configuration to check if streaming is enabled
+    stream_config_t config;
+    if (get_stream_config(stream, &config) != 0) {
+        create_stream_error_response(response, 500, "Failed to get stream configuration");
+        return;
+    }
+    
+    // Check if streaming is enabled for this stream
+    // If streaming_enabled is false, don't start streaming
+    if (config.streaming_enabled == false) {
+        // Streaming is disabled for this stream
+        log_info("Streaming is disabled for stream %s", stream_name);
+        create_stream_error_response(response, 403, "Streaming is disabled for this stream");
+        return;
+    }
+    
+    // Set streaming enabled flag to true
+    set_stream_streaming_enabled(stream, true);
+    
     // Start HLS if not already running
     if (start_hls_stream(stream_name) != 0) {
         create_stream_error_response(response, 500, "Failed to start HLS stream");
@@ -437,6 +457,105 @@ void handle_webrtc_ice(const http_request_t *request, http_response_t *response)
     
     // For now, just return a 501 error (not implemented)
     create_stream_error_response(response, 501, "WebRTC not implemented");
+}
+
+/**
+ * Handle stream toggle request
+ */
+void handle_stream_toggle(const http_request_t *request, http_response_t *response) {
+    // Extract stream name from URL
+    // URL format: /api/streaming/{stream_name}/toggle
+    
+    const char *path = request->path;
+    const char *streams_pos = strstr(path, "/streaming/");
+    
+    if (!streams_pos) {
+        create_stream_error_response(response, 400, "Invalid request path");
+        return;
+    }
+    
+    const char *stream_name_start = streams_pos + 11;  // Skip "/streaming/"
+    const char *toggle_pos = strstr(stream_name_start, "/toggle");
+    
+    if (!toggle_pos) {
+        create_stream_error_response(response, 400, "Invalid toggle request path");
+        return;
+    }
+    
+    // Extract stream name
+    char stream_name[MAX_STREAM_NAME];
+    size_t name_len = toggle_pos - stream_name_start;
+    
+    if (name_len >= MAX_STREAM_NAME) {
+        create_stream_error_response(response, 400, "Stream name too long");
+        return;
+    }
+    
+    memcpy(stream_name, stream_name_start, name_len);
+    stream_name[name_len] = '\0';
+    
+    // URL decode the stream name
+    char decoded_stream[MAX_STREAM_NAME];
+    url_decode(stream_name, decoded_stream, sizeof(decoded_stream));
+    strncpy(stream_name, decoded_stream, MAX_STREAM_NAME - 1);
+    stream_name[MAX_STREAM_NAME - 1] = '\0';
+    
+    // Check if stream exists
+    stream_handle_t stream = get_stream_by_name(stream_name);
+    if (!stream) {
+        create_stream_error_response(response, 404, "Stream not found");
+        return;
+    }
+    
+    // Parse request body to get enabled flag
+    if (!request->body || request->content_length == 0) {
+        create_stream_error_response(response, 400, "Empty request body");
+        return;
+    }
+    
+    // Make a null-terminated copy of the request body
+    char *json = malloc(request->content_length + 1);
+    if (!json) {
+        create_stream_error_response(response, 500, "Memory allocation failed");
+        return;
+    }
+    
+    memcpy(json, request->body, request->content_length);
+    json[request->content_length] = '\0';
+    
+    // Parse the enabled flag from the JSON
+    bool enabled = get_json_boolean_value(json, "enabled", true);
+    free(json);
+    
+    log_info("Toggle request for stream %s: enabled=%s", stream_name, enabled ? "true" : "false");
+    
+    // Set the streaming_enabled flag in the stream configuration
+    set_stream_streaming_enabled(stream, enabled);
+    
+    // Toggle the stream
+    if (enabled) {
+        // Start HLS stream if not already running
+        if (start_hls_stream(stream_name) != 0) {
+            create_stream_error_response(response, 500, "Failed to start HLS stream");
+            return;
+        }
+        log_info("Started HLS stream for %s", stream_name);
+    } else {
+        // Stop HLS stream if running
+        if (stop_hls_stream(stream_name) != 0) {
+            create_stream_error_response(response, 500, "Failed to stop HLS stream");
+            return;
+        }
+        log_info("Stopped HLS stream for %s", stream_name);
+    }
+    
+    // Create success response
+    char response_json[256];
+    snprintf(response_json, sizeof(response_json),
+             "{\"success\": true, \"name\": \"%s\", \"streaming_enabled\": %s}",
+             stream_name, enabled ? "true" : "false");
+    
+    create_json_response(response, 200, response_json);
 }
 
 /**

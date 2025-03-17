@@ -62,6 +62,7 @@ void load_default_config(config_t *config) {
         config->streams[i].detection_threshold = 0.5f; // 50% confidence threshold
         config->streams[i].pre_detection_buffer = 5; // 5 seconds before detection
         config->streams[i].post_detection_buffer = 10; // 10 seconds after detection
+        config->streams[i].streaming_enabled = true; // Enable streaming by default
     }
 }
 

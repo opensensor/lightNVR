@@ -31,6 +31,7 @@ typedef struct {
     float detection_threshold; // Confidence threshold for detection
     int pre_detection_buffer; // Seconds to keep before detection
     int post_detection_buffer; // Seconds to keep after detection
+    bool streaming_enabled; // Whether HLS streaming is enabled for this stream
 } stream_config_t;
 
 // Main configuration structure

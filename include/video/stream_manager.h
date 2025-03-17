@@ -182,6 +182,15 @@ int set_stream_detection_params(stream_handle_t handle, int interval, float thre
 int set_stream_last_detection_time(stream_handle_t handle, time_t time);
 
 /**
+ * Enable/disable streaming for a stream
+ * 
+ * @param handle Stream handle
+ * @param enabled True to enable streaming, false to disable
+ * @return 0 on success, non-zero on failure
+ */
+int set_stream_streaming_enabled(stream_handle_t handle, bool enabled);
+
+/**
  * Get a snapshot from the stream
  * 
  * @param handle Stream handle
