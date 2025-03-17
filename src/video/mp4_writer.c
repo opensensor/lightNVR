@@ -52,6 +52,7 @@ mp4_writer_t *mp4_writer_create(const char *output_path, const char *stream_name
     writer->is_initialized = 0;
     writer->creation_time = time(NULL);
     writer->is_under_pressure = 0;
+    writer->frame_counter = 0; // Initialize frame counter
 
     log_info("Created MP4 writer for stream %s at %s", stream_name, output_path);
 

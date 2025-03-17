@@ -56,6 +56,19 @@ static int mp4_packet_callback(const AVPacket *pkt, const AVStream *stream, void
                  (long long)pkt->pts, (long long)pkt->dts, pkt->size);
     }
     
+    // Check system load and set pressure flag if needed
+    // Simple heuristic: if packet queue is growing too large, we're under pressure
+    if (recording_ctx->mp4_writer->output_ctx && 
+        recording_ctx->mp4_writer->output_ctx->pb && 
+        recording_ctx->mp4_writer->output_ctx->pb->buf_ptr - recording_ctx->mp4_writer->output_ctx->pb->buffer > 1024*1024) {
+        // Buffer is getting large, set under pressure flag
+        recording_ctx->mp4_writer->is_under_pressure = 1;
+        log_debug("MP4 writer for %s is under pressure", recording_ctx->config.name);
+    } else {
+        // Buffer is manageable, clear pressure flag
+        recording_ctx->mp4_writer->is_under_pressure = 0;
+    }
+    
     // Process the packet with improved handling
     // Check if we're under pressure and need to reduce recording quality
     if (recording_ctx->mp4_writer->is_under_pressure) {
@@ -72,14 +85,15 @@ static int mp4_packet_callback(const AVPacket *pkt, const AVStream *stream, void
         } else {
             // For non-key frames, use a dynamic frame dropping strategy
             // based on the current pressure level
-            static int frame_counter = 0;
+            // Use per-stream counter instead of static
+            recording_ctx->frame_counter++;
             
             // Skip more frames when under pressure (every 2nd frame)
-            if (++frame_counter % 2 == 0) {
+            if (recording_ctx->frame_counter % 2 == 0) {
                 int ret = process_video_packet(pkt, stream, recording_ctx->mp4_writer, 1, recording_ctx->config.name);
                 
                 // Only log errors occasionally to reduce log spam
-                if (ret < 0 && frame_counter % 100 == 0) {
+                if (ret < 0 && recording_ctx->frame_counter % 100 == 0) {
                     log_warn("Failed to write frame to MP4 for stream %s: %d", recording_ctx->config.name, ret);
                     return ret;
                 }
@@ -261,8 +275,8 @@ static void *mp4_recording_thread(void *arg) {
             mp4_writer_t *new_writer = mp4_writer_create(ctx->output_path, ctx->config.name);
             if (!new_writer) {
                 log_error("Failed to create new MP4 writer for stream %s during rotation", ctx->config.name);
-                // Wait a bit before trying again
-                av_usleep(1000000);  // 1 second delay
+                // Wait a bit before trying again - reduced from 1s to 500ms
+                av_usleep(500000);  // 500ms delay
                 continue; // Try again on next iteration
             }
             
@@ -279,8 +293,8 @@ static void *mp4_recording_thread(void *arg) {
                 // Re-register the old writer
                 register_mp4_writer_for_stream(ctx->config.name, old_writer);
                 
-                // Wait a bit before trying again
-                av_usleep(1000000);  // 1 second delay
+                // Wait a bit before trying again - reduced from 1s to 500ms
+                av_usleep(500000);  // 500ms delay
                 continue; // Try again on next iteration
             }
             
@@ -304,8 +318,8 @@ static void *mp4_recording_thread(void *arg) {
             last_update = now;
         }
         
-        // Sleep to avoid busy waiting
-        av_usleep(100000);  // 100ms
+        // Sleep to avoid busy waiting - reduced from 100ms to 50ms for more responsive handling
+        av_usleep(50000);  // 50ms
     }
     
     // Remove our callback from the reader
@@ -425,6 +439,7 @@ int start_mp4_recording(const char *stream_name) {
     memset(ctx, 0, sizeof(mp4_recording_ctx_t));
     memcpy(&ctx->config, &config, sizeof(stream_config_t));
     ctx->running = 1;
+    ctx->frame_counter = 0; // Initialize frame counter
 
     // Create output paths
     config_t *global_config = get_streaming_config();

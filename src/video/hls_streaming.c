@@ -46,21 +46,75 @@ static int hls_packet_callback(const AVPacket *pkt, const AVStream *stream, void
         return -1;
     }
     
-    // Process only key frames and a subset of non-key frames to reduce CPU load
-    // This helps prevent contention by processing fewer packets
-    static int frame_counter = 0;
+    // Check if this is a key frame
     bool is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
     
-    // Always process key frames, but only process every 3rd non-key frame
-    // This reduces processing load while maintaining video quality
-    if (is_key_frame || (++frame_counter % 3 == 0)) {
-        // Write to HLS
-        int ret = process_video_packet(pkt, stream, streaming_ctx->hls_writer, 0, streaming_ctx->config.name);
+    // Check system load and set pressure flag if needed
+    // Simple heuristic: if packet queue is growing too large, we're under pressure
+    if (streaming_ctx->hls_writer->output_ctx && 
+        streaming_ctx->hls_writer->output_ctx->pb && 
+        streaming_ctx->hls_writer->output_ctx->pb->buf_ptr - streaming_ctx->hls_writer->output_ctx->pb->buffer > 1024*1024) {
+        // Buffer is getting large, set under pressure flag
+        streaming_ctx->hls_writer->is_under_pressure = 1;
+        log_debug("HLS writer for %s is under pressure", streaming_ctx->config.name);
+    } else {
+        // Buffer is manageable, clear pressure flag
+        streaming_ctx->hls_writer->is_under_pressure = 0;
+    }
+    
+    // Process frames based on pressure and frame type
+    if (streaming_ctx->hls_writer->is_under_pressure) {
+        // Under pressure - be more selective about which frames to process
         
-        // Don't log every error to reduce logging overhead
-        if (ret < 0 && is_key_frame) {
-            log_error("Failed to write keyframe to HLS for stream %s: %d", streaming_ctx->config.name, ret);
-            return ret;
+        // Always process key frames
+        if (is_key_frame) {
+            int ret = process_video_packet(pkt, stream, streaming_ctx->hls_writer, 0, streaming_ctx->config.name);
+            
+            if (ret < 0) {
+                log_error("Failed to write keyframe to HLS for stream %s: %d", streaming_ctx->config.name, ret);
+                return ret;
+            }
+        } else {
+            // For non-key frames, use a dynamic frame dropping strategy
+            // Use per-stream counter instead of static
+            streaming_ctx->frame_counter++;
+            
+            // Skip more frames when under pressure (every 3rd frame)
+            if (streaming_ctx->frame_counter % 3 == 0) {
+                int ret = process_video_packet(pkt, stream, streaming_ctx->hls_writer, 0, streaming_ctx->config.name);
+                
+                // Only log errors occasionally to reduce log spam
+                if (ret < 0 && streaming_ctx->frame_counter % 100 == 0) {
+                    log_warn("Failed to write frame to HLS for stream %s: %d", streaming_ctx->config.name, ret);
+                    return ret;
+                }
+            }
+            // Otherwise skip this frame to reduce processing load
+        }
+    } else {
+        // Normal operation - process key frames and every 2nd non-key frame
+        // Less aggressive than before (was every 3rd frame)
+        if (is_key_frame) {
+            int ret = process_video_packet(pkt, stream, streaming_ctx->hls_writer, 0, streaming_ctx->config.name);
+            
+            if (ret < 0) {
+                log_error("Failed to write keyframe to HLS for stream %s: %d", streaming_ctx->config.name, ret);
+                return ret;
+            }
+        } else {
+            // Use per-stream counter instead of static
+            streaming_ctx->frame_counter++;
+            
+            // Process every 2nd non-key frame (less aggressive than before)
+            if (streaming_ctx->frame_counter % 2 == 0) {
+                int ret = process_video_packet(pkt, stream, streaming_ctx->hls_writer, 0, streaming_ctx->config.name);
+                
+                // Only log errors occasionally to reduce log spam
+                if (ret < 0 && streaming_ctx->frame_counter % 100 == 0) {
+                    log_warn("Failed to write frame to HLS for stream %s: %d", streaming_ctx->config.name, ret);
+                    return ret;
+                }
+            }
         }
     }
     
@@ -209,8 +263,8 @@ static void *hls_stream_thread(void *arg) {
 
     // Main loop to monitor stream status
     while (ctx->running) {
-        // Sleep to avoid busy waiting
-        av_usleep(100000);  // 100ms
+        // Sleep to avoid busy waiting - reduced from 100ms to 50ms for more responsive handling
+        av_usleep(50000);  // 50ms
     }
     
     // Remove our callback from the reader
@@ -343,6 +397,7 @@ int start_hls_stream(const char *stream_name) {
     memset(ctx, 0, sizeof(hls_stream_ctx_t));
     memcpy(&ctx->config, &config, sizeof(stream_config_t));
     ctx->running = 1;
+    ctx->frame_counter = 0; // Initialize frame counter
 
     // Create output paths
     config_t *global_config = get_streaming_config();

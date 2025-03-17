@@ -14,6 +14,7 @@ typedef struct {
     char output_path[MAX_PATH_LENGTH];
     hls_writer_t *hls_writer;
     stream_reader_ctx_t *reader_ctx;  // Stream reader context
+    int frame_counter;                // Per-stream frame counter for frame dropping
 } hls_stream_ctx_t;
 
 /**

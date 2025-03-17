@@ -93,7 +93,7 @@ int pthread_join_with_timeout(pthread_t thread, void **retval, int timeout_sec) 
             return ETIMEDOUT;
         }
 
-        usleep(100000); // Sleep 100ms and try again
+        usleep(50000); // Sleep 50ms and try again (reduced from 100ms)
     }
 
     // Get the join result
@@ -111,16 +111,23 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
     
     if (protocol == STREAM_PROTOCOL_UDP) {
         log_info("Using UDP protocol for stream URL: %s", url);
-        // UDP-specific options
+        // UDP-specific options with improved buffering for smoother playback
         av_dict_set(&input_options, "protocol_whitelist", "file,udp,rtp", 0);
-        av_dict_set(&input_options, "buffer_size", "8192000", 0); // Larger buffer for UDP
+        av_dict_set(&input_options, "buffer_size", "16384000", 0); // Increased buffer for UDP (16MB)
         av_dict_set(&input_options, "reuse", "1", 0); // Allow port reuse
         av_dict_set(&input_options, "timeout", "5000000", 0); // 5 second timeout in microseconds
+        av_dict_set(&input_options, "max_delay", "500000", 0); // 500ms max delay for better real-time performance
+        av_dict_set(&input_options, "fflags", "nobuffer", 0); // Reduce buffering for lower latency
     } else {
         log_info("Using TCP protocol for stream URL: %s", url);
-        // TCP-specific options
+        // TCP-specific options with improved reliability
         av_dict_set(&input_options, "stimeout", "5000000", 0); // 5 second timeout in microseconds
         av_dict_set(&input_options, "rtsp_transport", "tcp", 0); // Force TCP for RTSP
+        av_dict_set(&input_options, "analyzeduration", "2000000", 0); // 2 seconds analyze duration
+        av_dict_set(&input_options, "probesize", "1000000", 0); // 1MB probe size
+        av_dict_set(&input_options, "reconnect", "1", 0); // Enable reconnection
+        av_dict_set(&input_options, "reconnect_streamed", "1", 0); // Reconnect if streaming
+        av_dict_set(&input_options, "reconnect_delay_max", "5", 0); // Max 5 seconds between reconnection attempts
     }
     
     // Open input with protocol-specific options
@@ -202,9 +209,24 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
         // For HLS, we can be more aggressive about dropping frames when under pressure
         // This helps ensure smooth streaming by prioritizing key frames
         if (hls_writer->is_under_pressure && !is_key_frame) {
-            // Skip this frame to reduce pressure
-            av_packet_unref(&out_pkt);
-            return 0;
+            // Use an adaptive frame dropping strategy based on the codec parameters
+            // and current system load
+            int skip_factor = 2; // Default: keep every 2nd frame
+            
+            // Adjust skip factor based on resolution
+            // For higher resolutions, we can drop more frames
+            if (input_stream->codecpar->width >= 1920) { // 1080p or higher
+                skip_factor = 3; // Keep every 3rd frame
+            } else if (input_stream->codecpar->width >= 1280) { // 720p
+                skip_factor = 2; // Keep every 2nd frame
+            }
+            
+            // Skip frames based on the calculated factor - using per-stream counter
+            if (hls_writer->frame_counter++ % skip_factor != 0) {
+                // Skip this frame to reduce pressure
+                av_packet_unref(&out_pkt);
+                return 0;
+            }
         }
         
         ret = hls_writer_write_packet(hls_writer, &out_pkt, input_stream);
@@ -226,7 +248,6 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
             if (!is_key_frame) {
                 // Use an adaptive frame dropping strategy based on the codec parameters
                 // and current system load
-                static int frame_counter = 0;
                 int skip_factor = 2; // Default: keep every 2nd frame
                 
                 // Adjust skip factor based on resolution
@@ -237,8 +258,9 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
                     skip_factor = 2; // Keep every 2nd frame
                 }
                 
-                // Skip frames based on the calculated factor
-                if (++frame_counter % skip_factor != 0) {
+                // Skip frames based on the calculated factor - using per-stream counter
+                // from the mp4_recording_ctx_t structure
+                if (mp4_writer->frame_counter++ % skip_factor != 0) {
                     av_packet_unref(&out_pkt);
                     return 0;
                 }

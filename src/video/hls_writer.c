@@ -187,6 +187,9 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     
     // Initialize pressure indicator
     writer->is_under_pressure = 0;
+    
+    // Initialize frame counter
+    writer->frame_counter = 0;
 
     // Create output directory if it doesn't exist
     // Use the configured storage path to avoid writing to overlay
@@ -541,7 +544,6 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
     }
 
     // Process packet for detection if it's a video packet - using a more efficient approach
-    static int frame_counter = 0;
     static time_t last_detection_time = 0;
     static int detection_in_progress = 0;
     time_t current_time = time(NULL);

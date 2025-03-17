@@ -33,6 +33,9 @@ typedef struct hls_writer_t {
     
     // Pressure indicator - set to 1 when the system is under pressure
     int is_under_pressure;
+    
+    // Frame counter for adaptive frame dropping
+    int frame_counter;
 } hls_writer_t;
 
 /**
