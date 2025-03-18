@@ -23,6 +23,8 @@
 #include "video/mp4_recording.h"
 #include "video/stream_transcoding.h"
 #include "video/stream_reader.h"
+#include "video/stream_state.h"
+#include "video/stream_packet_processor.h"
 #include "database/database_manager.h"
 #include "database/db_events.h"
 
@@ -60,8 +62,18 @@ static int mp4_packet_callback(const AVPacket *pkt, const AVStream *stream, void
     // Always set pressure flag to 0 to ensure we never drop frames
     recording_ctx->mp4_writer->is_under_pressure = 0;
     
-    // Process all frames for better quality
-    int ret = process_video_packet(pkt, stream, recording_ctx->mp4_writer, 1, recording_ctx->config.name);
+    // Get the stream state manager
+    stream_state_manager_t *state = get_stream_state_by_name(recording_ctx->config.name);
+    if (!state) {
+        log_warn("Stream state not found for '%s', using adapter", recording_ctx->config.name);
+        
+        // Use the adapter which will create a state if needed
+        int ret = process_video_packet_adapter(pkt, stream, recording_ctx->mp4_writer, 1, recording_ctx->config.name);
+        return ret;
+    }
+    
+    // Process all frames using the newer state-based approach
+    int ret = process_packet_with_state(state, pkt, stream, 1, recording_ctx->mp4_writer);
     
     // Only log errors for key frames to reduce log spam
     if (ret < 0 && is_key_frame) {

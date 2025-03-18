@@ -13,9 +13,18 @@
  * Includes enhanced timestamp handling for UDP streams
  * 
  * FIXED: Improved thread safety for multiple UDP streams
+ * 
+ * @deprecated Use process_packet_with_state or process_video_packet_adapter instead
  */
 int process_video_packet(const AVPacket *pkt, const AVStream *input_stream, 
                          void *writer, int writer_type, const char *stream_name) {
+    // Log deprecation warning
+    static bool warning_logged = false;
+    if (!warning_logged) {
+        log_warn("process_video_packet is deprecated, use process_packet_with_state or process_video_packet_adapter instead");
+        warning_logged = true;
+    }
+    
     int ret = 0;
     AVPacket *out_pkt = NULL;
     

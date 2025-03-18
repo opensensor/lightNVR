@@ -14,22 +14,8 @@
 #include "video/stream_transcoding.h"
 
 
-// Structure for stream transcoding context (legacy, kept for compatibility)
-typedef struct {
-    stream_config_t config;
-    int running;
-    pthread_t thread;
-    char output_path[MAX_PATH_LENGTH];
-    char mp4_output_path[MAX_PATH_LENGTH];
-    hls_writer_t *hls_writer;
-    mp4_writer_t *mp4_writer;
-    
-    // Detection-related fields
-    detection_model_t detection_model;
-    int frame_count;
-    bool recording_active;
-    time_t last_detection_time;
-} stream_transcode_ctx_t;
+// Legacy stream_transcode_ctx_t structure has been removed
+// Use stream_state_manager_t, hls_stream_ctx_t, or mp4_recording_ctx_t instead
 
 // Structure to keep track of active recordings
 typedef struct {

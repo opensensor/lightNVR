@@ -334,6 +334,7 @@ int process_packet_with_state(stream_state_manager_t *state, const AVPacket *pkt
 
 /**
  * Adapter function for process_video_packet
+ * Instead of falling back to legacy implementation, creates a state manager if one doesn't exist
  */
 int process_video_packet_adapter(const AVPacket *pkt, const AVStream *input_stream, 
                                 void *writer, int writer_type, const char *stream_name) {
@@ -345,9 +346,30 @@ int process_video_packet_adapter(const AVPacket *pkt, const AVStream *input_stre
     // Get the state manager by name
     stream_state_manager_t *state = get_stream_state_by_name(stream_name);
     if (!state) {
-        // Fall back to the old implementation if state manager not found
-        log_warn("Stream state not found for '%s', falling back to old implementation", stream_name);
-        return process_video_packet(pkt, input_stream, writer, writer_type, stream_name);
+        // Instead of falling back to legacy implementation, create a new state manager
+        log_info("Stream state not found for '%s', creating new state manager", stream_name);
+        
+        // Get stream configuration
+        stream_handle_t handle = get_stream_by_name(stream_name);
+        if (!handle) {
+            log_error("Stream '%s' not found", stream_name);
+            return -1;
+        }
+        
+        stream_config_t config;
+        if (get_stream_config(handle, &config) != 0) {
+            log_error("Failed to get config for stream '%s'", stream_name);
+            return -1;
+        }
+        
+        // Create new state manager
+        state = create_stream_state(&config);
+        if (!state) {
+            log_error("Failed to create state manager for stream '%s'", stream_name);
+            return -1;
+        }
+        
+        log_info("Created new state manager for stream '%s'", stream_name);
     }
     
     // Process the packet with the state manager

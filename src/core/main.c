@@ -25,6 +25,7 @@
 #include "video/detection_stream.h"
 #include "video/detection_recording.h"
 #include "video/detection.h"
+#include "video/stream_state.h"
 
 // External function declarations
 void init_recordings_system(void);
@@ -197,6 +198,14 @@ static void load_streams_from_config(const config_t *config) {
 
             if (stream) {
                 log_info("Stream loaded: %s", config->streams[i].name);
+                
+                // Create a state manager for this stream to ensure we're using the newer patterns
+                stream_state_manager_t *state = create_stream_state(&config->streams[i]);
+                if (state) {
+                    log_info("Created state manager for stream: %s", config->streams[i].name);
+                } else {
+                    log_warn("Failed to create state manager for stream: %s", config->streams[i].name);
+                }
 
                 if (config->streams[i].enabled) {
                     if (start_stream(stream) == 0) {

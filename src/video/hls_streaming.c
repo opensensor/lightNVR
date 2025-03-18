@@ -29,6 +29,8 @@
 #include "video/stream_transcoding.h"
 #include "video/stream_reader.h"
 #include "video/detection_stream.h"
+#include "video/stream_state.h"
+#include "video/stream_packet_processor.h"
 #include "database/database_manager.h"
 
 // Hash map for tracking running HLS streaming contexts
@@ -86,15 +88,25 @@ static int hls_packet_callback(const AVPacket *pkt, const AVStream *stream, void
     // Always set pressure flag to 0 to ensure we never drop frames
     streaming_ctx->hls_writer->is_under_pressure = 0;
     
-    // CRITICAL FIX: Validate that process_video_packet function exists
-    if (!process_video_packet) {
-        log_error("HLS packet callback: process_video_packet function is NULL for stream %s", 
-                 streaming_ctx->config.name);
-        return -1;
+    // Get the stream state manager
+    stream_state_manager_t *state = get_stream_state_by_name(streaming_ctx->config.name);
+    if (!state) {
+        log_warn("Stream state not found for '%s', using adapter", streaming_ctx->config.name);
+        
+        // CRITICAL FIX: Validate that process_video_packet_adapter function exists
+        if (!process_video_packet_adapter) {
+            log_error("HLS packet callback: process_video_packet_adapter function is NULL for stream %s", 
+                     streaming_ctx->config.name);
+            return -1;
+        }
+        
+        // Use the adapter which will create a state if needed
+        int ret = process_video_packet_adapter(pkt, stream, streaming_ctx->hls_writer, 0, streaming_ctx->config.name);
+        return ret;
     }
     
-    // Process all frames for better quality
-    int ret = process_video_packet(pkt, stream, streaming_ctx->hls_writer, 0, streaming_ctx->config.name);
+    // Process all frames using the newer state-based approach
+    int ret = process_packet_with_state(state, pkt, stream, 0, streaming_ctx->hls_writer);
     
     // Only log errors for key frames to reduce log spam
     if (ret < 0 && is_key_frame) {
