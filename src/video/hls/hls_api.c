@@ -41,19 +41,10 @@ int start_hls_stream(const char *stream_name) {
     // Get the stream state manager
     stream_state_manager_t *state = get_stream_state_by_name(stream_name);
     if (!state) {
-        // Create a new state manager if it doesn't exist
-        stream_config_t config;
-        if (get_stream_config(stream, &config) != 0) {
-            log_error("Failed to get config for stream %s", stream_name);
-            return -1;
-        }
-        
-        state = create_stream_state(&config);
-        if (!state) {
-            log_error("Failed to create stream state for %s", stream_name);
-            return -1;
-        }
-        log_info("Created new stream state for %s", stream_name);
+        // Don't create a new state manager here - it should be created by the stream manager
+        // when the stream is added. If it doesn't exist, there's a problem with the stream.
+        log_error("Stream state not found for %s", stream_name);
+        return -1;
     }
     
     // Check if the stream is in the process of being stopped
@@ -240,7 +231,7 @@ int stop_hls_stream(const char *stream_name) {
     // CRITICAL FIX: First clear the packet callback to prevent any further processing
     // This must be done before marking the stream as not running to prevent race conditions
     if (ctx->reader_ctx) {
-        log_info("Clearing packet callback for HLS stream %s", stream_name);
+        log_info("Clearing packet callback for stream %s", stream_name);
         set_packet_callback(ctx->reader_ctx, NULL, NULL);
         
         // CRITICAL FIX: Add a small delay to ensure any in-progress callbacks complete

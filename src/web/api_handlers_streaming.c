@@ -258,27 +258,69 @@ void handle_hls_manifest(const http_request_t *request, http_response_t *respons
     if (file_size == 0 || strstr(content, "#EXTM3U") == NULL) {
         log_error("Manifest file is empty or missing EXTM3U delimiter: %s", manifest_path);
         
-        // Try to restart the HLS stream
-        stop_hls_stream(stream_name);
+    // SIMPLIFIED APPROACH: Restart the stream to let FFmpeg create a fresh manifest
+    log_info("Restarting HLS stream for %s to generate a fresh manifest", stream_name);
+    
+    // Stop the stream
+    stop_hls_stream(stream_name);
+    
+    // Wait a moment to ensure the stream is fully stopped
+    usleep(500000); // 500ms
+    
+    // Start the stream again
+    if (start_hls_stream(stream_name) != 0) {
+        log_error("Failed to restart HLS stream for %s", stream_name);
+        free(content);
+        create_stream_error_response(response, 500, "Failed to restart HLS stream");
+        return;
+    }
+    
+    // Wait for the manifest file to be created
+    for (int i = 0; i < 30; i++) {
+        // Check if the file exists and has content
+        FILE *check = fopen(manifest_path, "r");
+        if (check) {
+            fseek(check, 0, SEEK_END);
+            long size = ftell(check);
+            fseek(check, 0, SEEK_SET);
+            
+            if (size > 0) {
+                // Read the new content
+                free(content);
+                content = malloc(size + 1);
+                if (!content) {
+                    fclose(check);
+                    create_stream_error_response(response, 500, "Memory allocation failed");
+                    return;
+                }
+                
+                size_t bytes_read = fread(content, 1, size, check);
+                if (bytes_read == (size_t)size) {
+                    content[size] = '\0';
+                    file_size = size;
+                    fclose(check);
+                    
+                    if (strstr(content, "#EXTM3U") != NULL) {
+                        log_info("Successfully regenerated manifest file for %s", stream_name);
+                        break;
+                    }
+                }
+                fclose(check);
+            } else {
+                fclose(check);
+            }
+        }
         
-        // Wait a longer time to ensure the stream is fully stopped
-        usleep(1000000); // 1000ms (1 second) - increased from 500ms for better reliability
-        
-        // Check if the stream is still in the process of stopping
-        stream_state_manager_t *state = get_stream_state_by_name(stream_name);
-        if (state && is_stream_state_stopping(state)) {
-            log_warn("Stream %s is still in the process of stopping, cannot restart yet", stream_name);
+        // If we've tried 30 times and still don't have a valid manifest, give up
+        if (i == 29) {
+            log_error("Failed to generate valid manifest file for %s after 30 attempts", stream_name);
             free(content);
-            create_stream_error_response(response, 503, "Stream is still stopping, please try again later");
+            create_stream_error_response(response, 500, "Failed to generate valid manifest file");
             return;
         }
         
-        if (start_hls_stream(stream_name) != 0) {
-            log_error("Failed to restart HLS stream for %s", stream_name);
-            free(content);
-            create_stream_error_response(response, 500, "Failed to restart HLS stream");
-            return;
-        }
+        usleep(100000); // 100ms
+    }
         
         // Wait for the manifest file to be properly created
         bool manifest_valid = false;

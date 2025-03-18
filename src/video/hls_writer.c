@@ -312,131 +312,35 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
         return NULL;
     }
 
-    // Set HLS options
+    // Set HLS options - SIMPLIFIED APPROACH: Let FFmpeg handle HLS completely
     AVDictionary *options = NULL;
     char hls_time[16];
     snprintf(hls_time, sizeof(hls_time), "%d", segment_duration);
 
+    // Basic HLS settings
     av_dict_set(&options, "hls_time", hls_time, 0);
-    av_dict_set(&options, "hls_list_size", "8", 0);  // Increased from 5 to 8 for better buffering on low-power devices
-    av_dict_set(&options, "hls_flags", "delete_segments+append_list+discont_start+split_by_time+program_date_time", 0);
-    av_dict_set(&options, "hls_allow_cache", "1", 0);  // Enable caching to improve playback on low-power devices
-    av_dict_set(&options, "hls_segment_type", "mpegts", 0);  // Ensure MPEG-TS segments for better compatibility
+    av_dict_set(&options, "hls_list_size", "10", 0);  // Keep 10 segments in the playlist
     
-    // Always create a fresh manifest file to ensure it's valid
-    char manifest_path[MAX_PATH_LENGTH];
-    snprintf(manifest_path, MAX_PATH_LENGTH, "%s/index.m3u8", output_dir);
+    // Let FFmpeg handle segment deletion
+    av_dict_set(&options, "hls_flags", "delete_segments+independent_segments", 0);
     
-    // First, ensure the directory exists and has proper permissions
+    // Enable caching for better playback
+    av_dict_set(&options, "hls_allow_cache", "1", 0);
+    
+    // Use standard MPEG-TS segments
+    av_dict_set(&options, "hls_segment_type", "mpegts", 0);
+    
+    // Start segment numbering from 0
+    av_dict_set(&options, "start_number", "0", 0);
+    
+    // Ensure the directory exists with proper permissions
     char dir_cmd[MAX_PATH_LENGTH * 2];
     snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s && chmod -R 777 %s", output_dir, output_dir);
     system(dir_cmd);
     
-    // Create a minimal valid manifest file
-    FILE *manifest_init = fopen(manifest_path, "w");
-    if (manifest_init) {
-        // Write a minimal valid HLS manifest
-        fprintf(manifest_init, "#EXTM3U\n");
-        fprintf(manifest_init, "#EXT-X-VERSION:3\n");
-        fprintf(manifest_init, "#EXT-X-TARGETDURATION:%d\n", segment_duration);
-        fprintf(manifest_init, "#EXT-X-MEDIA-SEQUENCE:0\n");
-        
-        // CRITICAL FIX: Ensure file is properly flushed to disk before closing
-        fflush(manifest_init);
-        fsync(fileno(manifest_init));
-        fclose(manifest_init);
-        
-        // Ensure the manifest file has proper permissions
-        char chmod_cmd[MAX_PATH_LENGTH * 2];
-        snprintf(chmod_cmd, sizeof(chmod_cmd), "chmod 666 %s", manifest_path);
-        system(chmod_cmd);
-        
-        log_info("Created initial valid HLS manifest file: %s", manifest_path);
-        
-        // Verify the file was actually written with content
-        FILE *verify = fopen(manifest_path, "r");
-        if (verify) {
-            fseek(verify, 0, SEEK_END);
-            long size = ftell(verify);
-            fclose(verify);
-            
-            if (size > 0) {
-                log_info("Verified manifest file has content: %ld bytes", size);
-            } else {
-                log_error("Manifest file exists but is empty: %s", manifest_path);
-                
-                // Try writing the file again with a different method
-                FILE *retry = fopen(manifest_path, "w");
-                if (retry) {
-                    // Write content and immediately flush
-                    const char *content = "#EXTM3U\n#EXT-X-VERSION:3\n"
-                                         "#EXT-X-TARGETDURATION:%d\n"
-                                         "#EXT-X-MEDIA-SEQUENCE:0\n";
-                    char buffer[256];
-                    snprintf(buffer, sizeof(buffer), content, segment_duration);
-                    
-                    size_t written = fwrite(buffer, 1, strlen(buffer), retry);
-                    log_info("Retry write to manifest file: wrote %zu bytes", written);
-                    
-                    fflush(retry);
-                    fsync(fileno(retry));
-                    fclose(retry);
-                    
-                    // Verify again
-                    FILE *verify2 = fopen(manifest_path, "r");
-                    if (verify2) {
-                        fseek(verify2, 0, SEEK_END);
-                        size = ftell(verify2);
-                        fclose(verify2);
-                        
-                        if (size > 0) {
-                            log_info("Retry successful: manifest file now has %ld bytes", size);
-                        } else {
-                            log_error("Retry failed: manifest file still empty");
-                        }
-                    }
-                }
-            }
-        } else {
-            log_error("Failed to verify manifest file: %s (error: %s)", 
-                     manifest_path, strerror(errno));
-        }
-    } else {
-        log_error("Failed to create initial HLS manifest file: %s (error: %s)", 
-                 manifest_path, strerror(errno));
-        
-        // Try to diagnose the issue
-        char ls_cmd[MAX_PATH_LENGTH * 2];
-        snprintf(ls_cmd, sizeof(ls_cmd), "ls -la %s", output_dir);
-        system(ls_cmd);
-        
-        // Try with a different method - using system command
-        char write_cmd[MAX_PATH_LENGTH * 4];
-        snprintf(write_cmd, sizeof(write_cmd), 
-                "echo -e '#EXTM3U\\n#EXT-X-VERSION:3\\n#EXT-X-TARGETDURATION:%d\\n#EXT-X-MEDIA-SEQUENCE:0' > %s", 
-                segment_duration, manifest_path);
-        int ret_write = system(write_cmd);
-        
-        if (ret_write == 0) {
-            log_info("Created manifest file using system command: %s", manifest_path);
-            
-            // Verify the file was created with content
-            FILE *verify = fopen(manifest_path, "r");
-            if (verify) {
-                fseek(verify, 0, SEEK_END);
-                long size = ftell(verify);
-                fclose(verify);
-                
-                if (size > 0) {
-                    log_info("Verified manifest file has content: %ld bytes", size);
-                } else {
-                    log_error("Manifest file exists but is empty after system command");
-                }
-            }
-        } else {
-            log_error("Failed to create manifest file using system command: %d", ret_write);
-        }
-    }
+    // Log the HLS configuration
+    log_info("Configured HLS writer with: hls_time=%s, hls_list_size=10, flags=delete_segments+independent_segments", 
+             hls_time);
     
     // Also create a test segment file to ensure we can write to the directory
     char test_segment[MAX_PATH_LENGTH];
@@ -513,14 +417,24 @@ int hls_writer_initialize(hls_writer_t *writer, const AVStream *input_stream) {
     // Set stream time base
     out_stream->time_base = input_stream->time_base;
 
-    // Write stream header
-    ret = avformat_write_header(writer->output_ctx, NULL);
+    // SIMPLIFIED APPROACH: Let FFmpeg handle HLS header creation
+    AVDictionary *header_options = NULL;
+    
+    // Write stream header with minimal options
+    ret = avformat_write_header(writer->output_ctx, &header_options);
     if (ret < 0) {
         char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
         av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
         log_error("Failed to write HLS header: %s", error_buf);
+        av_dict_free(&header_options);
         return ret;
     }
+    
+    // Free header options
+    av_dict_free(&header_options);
+    
+    // Log success
+    log_info("FFmpeg initialized HLS writer for stream %s", writer->stream_name);
 
     writer->initialized = 1;
     log_info("Initialized HLS writer for stream %s", writer->stream_name);
@@ -809,6 +723,13 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
         return -1;
     }
 
+    // CRITICAL FIX: Add logging for key frames to help diagnose issues
+    bool is_key_frame = (out_pkt.flags & AV_PKT_FLAG_KEY) != 0;
+    if (is_key_frame) {
+        log_debug("Writing key frame to HLS for stream %s: pts=%lld, dts=%lld, size=%d",
+                 writer->stream_name, (long long)out_pkt.pts, (long long)out_pkt.dts, out_pkt.size);
+    }
+    
     // Write the packet
     int ret = av_interleaved_write_frame(writer->output_ctx, &out_pkt);
     av_packet_unref(&out_pkt);
@@ -817,6 +738,12 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
         char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
         av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
         log_error("Error writing HLS packet for stream %s: %s", writer->stream_name, error_buf);
+        
+        // SIMPLIFIED APPROACH: Let FFmpeg handle manifest file errors
+        // Just ensure the directory exists
+        if (ensure_output_directory(writer->output_dir) == 0) {
+            log_info("Ensured HLS output directory exists after error: %s", writer->output_dir);
+        }
 
         // If we get a "No such file or directory" error, try to recreate the directory
         if (strstr(error_buf, "No such file or directory") != NULL) {

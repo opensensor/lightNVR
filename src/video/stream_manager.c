@@ -338,6 +338,17 @@ stream_handle_t add_stream(const stream_config_t *config) {
     streams[slot].detection_recording_enabled = config->detection_based_recording;
     pthread_mutex_unlock(&streams[slot].mutex);
     
+    // Create a stream state manager for this stream
+    stream_state_manager_t *state = get_stream_state_by_name(config->name);
+    if (!state) {
+        state = create_stream_state(config);
+        if (!state) {
+            log_warn("Failed to create stream state for '%s', some features may not work correctly", config->name);
+        } else {
+            log_info("Created stream state for '%s'", config->name);
+        }
+    }
+    
     // Save to config
     config_t *global_config = get_streaming_config();
     if (global_config) {

@@ -213,6 +213,10 @@ void *hls_stream_thread(void *arg) {
         }
         return NULL;
     }
+    
+    // SIMPLIFIED APPROACH: Let FFmpeg handle manifest file creation
+    // Just ensure the directory exists and is writable
+    log_info("Letting FFmpeg handle HLS manifest file creation for stream %s", stream_name);
 
     // Always use a dedicated stream reader for HLS streaming
     // This ensures that HLS streaming doesn't interfere with detection or recording
