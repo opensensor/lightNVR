@@ -788,35 +788,15 @@ void hls_writer_close(hls_writer_t *writer) {
     strncpy(stream_name, writer->stream_name, MAX_STREAM_NAME - 1);
     stream_name[MAX_STREAM_NAME - 1] = '\0';
     
-    // CRITICAL FIX: Use a local variable to track if we've already closed this writer
-    // to prevent double-free issues
+    // CRITICAL FIX: Check if the writer has already been closed by checking if output_ctx is NULL
+    if (!writer->output_ctx) {
+        log_warn("Attempted to close already closed HLS writer for stream %s", stream_name);
+        return;
+    }
+    
+    // CRITICAL FIX: Use a mutex to prevent concurrent access during closing
     static pthread_mutex_t close_mutex = PTHREAD_MUTEX_INITIALIZER;
-    static hls_writer_t *recently_closed_writers[16] = {NULL};
-    static int closed_writer_count = 0;
-    
     pthread_mutex_lock(&close_mutex);
-    
-    // Check if this writer was recently closed
-    for (int i = 0; i < closed_writer_count; i++) {
-        if (recently_closed_writers[i] == writer) {
-            log_warn("Attempted to close already closed HLS writer for stream %s", stream_name);
-            pthread_mutex_unlock(&close_mutex);
-            return;
-        }
-    }
-    
-    // Add to recently closed list
-    if (closed_writer_count < 16) {
-        recently_closed_writers[closed_writer_count++] = writer;
-    } else {
-        // Shift array to make room
-        for (int i = 0; i < 15; i++) {
-            recently_closed_writers[i] = recently_closed_writers[i+1];
-        }
-        recently_closed_writers[15] = writer;
-    }
-    
-    pthread_mutex_unlock(&close_mutex);
 
     // Write trailer if initialized
     if (writer->initialized && writer->output_ctx) {
@@ -837,6 +817,9 @@ void hls_writer_close(hls_writer_t *writer) {
     }
 
     log_info("Closed HLS writer for stream %s", stream_name);
+
+    // Unlock the mutex before freeing the writer
+    pthread_mutex_unlock(&close_mutex);
 
     // Free writer
     free(writer);

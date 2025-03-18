@@ -67,18 +67,17 @@ static int hls_packet_callback(const AVPacket *pkt, const AVStream *stream, void
         return -1;
     }
     
-    // CRITICAL FIX: Validate that the stream is still running
-    if (!streaming_ctx->running) {
-        log_debug("HLS packet callback: stream %s is no longer running, skipping packet", 
-                 streaming_ctx->config.name);
+    // CRITICAL FIX: Validate that the stream is still running and has a valid writer
+    // This is a critical check to prevent segfaults when toggling streams off
+    if (!streaming_ctx->running || !streaming_ctx->hls_writer) {
+        if (!streaming_ctx->running) {
+            log_debug("HLS packet callback: stream %s is no longer running, skipping packet", 
+                     streaming_ctx->config.name);
+        } else {
+            log_error("HLS packet callback: streaming context has NULL hls_writer for stream %s", 
+                     streaming_ctx->config.name);
+        }
         return 0; // Return success but don't process the packet
-    }
-    
-    // CRITICAL FIX: Check for NULL hls_writer with proper error handling
-    if (!streaming_ctx->hls_writer) {
-        log_error("HLS packet callback: streaming context has NULL hls_writer for stream %s", 
-                 streaming_ctx->config.name);
-        return -1;
     }
     
     // Check if this is a key frame
@@ -305,13 +304,15 @@ void cleanup_hls_streaming_backend(void) {
             
             pthread_t thread_to_join = streaming_contexts[i]->thread;
 
-            // Mark as not running
-            streaming_contexts[i]->running = 0;
-            
-            // Remove callback from reader if it exists
+            // CRITICAL FIX: First clear the packet callback to prevent any further processing
+            // This must be done before marking the stream as not running to prevent race conditions
             if (streaming_contexts[i]->reader_ctx) {
+                log_info("Clearing packet callback for HLS stream %s during cleanup", stream_name);
                 set_packet_callback(streaming_contexts[i]->reader_ctx, NULL, NULL);
             }
+            
+            // Now mark as not running
+            streaming_contexts[i]->running = 0;
 
             // Unlock before joining thread to prevent deadlocks
             pthread_mutex_unlock(&contexts_mutex);
@@ -515,7 +516,14 @@ int stop_hls_stream(const char *stream_name) {
         return -1;
     }
 
-    // Mark as not running first
+    // CRITICAL FIX: First clear the packet callback to prevent any further processing
+    // This must be done before marking the stream as not running to prevent race conditions
+    if (ctx->reader_ctx) {
+        log_info("Clearing packet callback for HLS stream %s", stream_name);
+        set_packet_callback(ctx->reader_ctx, NULL, NULL);
+    }
+    
+    // Now mark as not running
     ctx->running = 0;
     log_info("Marked HLS stream %s as stopping (index: %d)", stream_name, index);
     
@@ -551,6 +559,7 @@ int stop_hls_stream(const char *stream_name) {
         // Stop the dedicated stream reader if it exists
         if (ctx->reader_ctx) {
             log_info("Stopping dedicated stream reader for HLS stream %s", stream_name);
+            // CRITICAL FIX: We already cleared the callback above, so the reader should be safe to stop now
             stop_stream_reader(ctx->reader_ctx);
             ctx->reader_ctx = NULL;
             log_info("Successfully stopped dedicated stream reader for HLS stream %s", stream_name);

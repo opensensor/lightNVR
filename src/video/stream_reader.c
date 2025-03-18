@@ -594,6 +594,17 @@ int stop_stream_reader(stream_reader_ctx_t *ctx) {
     // Log that we're attempting to stop the reader
     log_info("Attempting to stop stream reader: %s", stream_name);
     
+    // CRITICAL FIX: Use a static mutex to prevent concurrent access during stopping
+    static pthread_mutex_t stop_mutex = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_lock(&stop_mutex);
+    
+    // CRITICAL FIX: Check if the reader is already stopped
+    if (!ctx->running) {
+        log_warn("Stream reader for %s is already stopped", stream_name);
+        pthread_mutex_unlock(&stop_mutex);
+        return 0;
+    }
+    
     pthread_mutex_lock(&contexts_mutex);
     
     // Find the reader context in the array
@@ -607,6 +618,7 @@ int stop_stream_reader(stream_reader_ctx_t *ctx) {
     
     if (index == -1) {
         pthread_mutex_unlock(&contexts_mutex);
+        pthread_mutex_unlock(&stop_mutex);
         log_warn("Stream reader context not found in array for %s", stream_name);
         return -1;
     }
@@ -655,6 +667,9 @@ int stop_stream_reader(stream_reader_ctx_t *ctx) {
     free(ctx_copy);
     
     log_info("Successfully stopped stream reader for %s", stream_name);
+    
+    // CRITICAL FIX: Unlock the stop mutex
+    pthread_mutex_unlock(&stop_mutex);
     
     return 0;
 }
