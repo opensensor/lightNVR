@@ -56,10 +56,7 @@ static int mp4_packet_callback(const AVPacket *pkt, const AVStream *stream, void
         log_debug("Processing keyframe for MP4: pts=%lld, dts=%lld, size=%d",
                  (long long)pkt->pts, (long long)pkt->dts, pkt->size);
     }
-    
-    // Always set pressure flag to 0 to ensure we never drop frames
-    recording_ctx->mp4_writer->is_under_pressure = 0;
-    
+
     // Process all frames for better quality
     int ret = process_video_packet(pkt, stream, recording_ctx->mp4_writer, 1, recording_ctx->config.name);
     
@@ -429,7 +426,6 @@ int start_mp4_recording(const char *stream_name) {
     memset(ctx, 0, sizeof(mp4_recording_ctx_t));
     memcpy(&ctx->config, &config, sizeof(stream_config_t));
     ctx->running = 1;
-    ctx->frame_counter = 0; // Initialize frame counter
 
     // Create output paths
     config_t *global_config = get_streaming_config();

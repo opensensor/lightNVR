@@ -346,8 +346,25 @@ int process_video_packet_adapter(const AVPacket *pkt, const AVStream *input_stre
     stream_state_manager_t *state = get_stream_state_by_name(stream_name);
     if (!state) {
         // Fall back to the old implementation if state manager not found
-        log_warn("Stream state not found for '%s', falling back to old implementation", stream_name);
-        return process_video_packet(pkt, input_stream, writer, writer_type, stream_name);
+        log_warn("Stream state not found for '%s', using direct packet processing", stream_name);
+        
+        // Create a temporary state structure to use with process_packet_with_state
+        // This avoids using the old process_video_packet function which expects the old structure layout
+        stream_state_manager_t temp_state;
+        memset(&temp_state, 0, sizeof(stream_state_manager_t));
+        strncpy(temp_state.name, stream_name, MAX_STREAM_NAME - 1);
+        temp_state.name[MAX_STREAM_NAME - 1] = '\0';
+        
+        // Initialize mutex
+        pthread_mutex_init(&temp_state.mutex, NULL);
+        
+        // Process the packet with the temporary state
+        int ret = process_packet_with_state(&temp_state, pkt, input_stream, writer_type, writer);
+        
+        // Destroy mutex
+        pthread_mutex_destroy(&temp_state.mutex);
+        
+        return ret;
     }
     
     // Process the packet with the state manager

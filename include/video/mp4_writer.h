@@ -6,13 +6,15 @@
 #define MP4_WRITER_H
 
 #include <libavformat/avformat.h>
+#include "core/config.h"  // For MAX_PATH_LENGTH and MAX_STREAM_NAME
 
-// Opaque structure for MP4 writer
+// Forward declaration of the MP4 writer structure
 typedef struct mp4_writer mp4_writer_t;
 
+// Full definition of the MP4 writer structure
 struct mp4_writer {
-    char output_path[1024];
-    char stream_name[64];
+    char output_path[MAX_PATH_LENGTH];
+    char stream_name[MAX_STREAM_NAME];
     AVFormatContext *output_ctx;
     int video_stream_idx;
     int has_audio;
@@ -22,12 +24,6 @@ struct mp4_writer {
     AVRational time_base;
     int is_initialized;
     time_t creation_time;
-    
-    // Pressure indicator - set to 1 when the system is under pressure
-    int is_under_pressure;
-    
-    // Frame counter for adaptive frame dropping
-    int frame_counter;
 };
 
 /**

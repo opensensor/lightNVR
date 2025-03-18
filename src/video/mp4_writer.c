@@ -51,8 +51,6 @@ mp4_writer_t *mp4_writer_create(const char *output_path, const char *stream_name
     writer->last_dts = AV_NOPTS_VALUE;
     writer->is_initialized = 0;
     writer->creation_time = time(NULL);
-    writer->is_under_pressure = 0;
-    writer->frame_counter = 0; // Initialize frame counter
 
     log_info("Created MP4 writer for stream %s at %s", stream_name, output_path);
 
@@ -66,7 +64,12 @@ static int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, cons
     int ret;
 
     // First, ensure the directory exists
-    char dir_path[1024];
+    char *dir_path = malloc(PATH_MAX);
+    if (!dir_path) {
+        log_error("Failed to allocate memory for directory path");
+        return -1;
+    }
+    
     const char *last_slash = strrchr(writer->output_path, '/');
     if (last_slash) {
         size_t dir_len = last_slash - writer->output_path;
@@ -77,17 +80,25 @@ static int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, cons
         log_info("Ensuring MP4 output directory exists: %s", dir_path);
 
         // Create directory if it doesn't exist
-        char mkdir_cmd[1024 + 10];
-        snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p %s", dir_path);
+        char *mkdir_cmd = malloc(PATH_MAX + 10);
+        if (!mkdir_cmd) {
+            log_error("Failed to allocate memory for mkdir command");
+            free(dir_path);
+            return -1;
+        }
+        
+        snprintf(mkdir_cmd, PATH_MAX + 10, "mkdir -p %s", dir_path);
         if (system(mkdir_cmd) != 0) {
             log_warn("Failed to create directory: %s", dir_path);
         }
 
         // Set permissions to ensure it's writable
-        snprintf(mkdir_cmd, sizeof(mkdir_cmd), "chmod -R 777 %s", dir_path);
+        snprintf(mkdir_cmd, PATH_MAX + 10, "chmod -R 777 %s", dir_path);
         if (system(mkdir_cmd) != 0) {
             log_warn("Failed to set permissions: %s", dir_path);
         }
+        
+        free(mkdir_cmd);
     }
 
     // Log the full output path
@@ -355,14 +366,24 @@ void mp4_writer_close(mp4_writer_t *writer) {
 
     // Create local copies of all data we need before modifying the writer
     // This prevents use-after-free and other memory corruption issues
-    char output_path[1024] = {0};
-    char stream_name[64] = {0};
+    char *output_path = malloc(PATH_MAX);
+    char *stream_name = malloc(MAX_STREAM_NAME);
     time_t creation_time = 0;
     bool was_initialized = false;
     int64_t first_dts = AV_NOPTS_VALUE;
     int64_t last_dts = AV_NOPTS_VALUE;
     AVRational time_base = {0, 0};
     AVFormatContext *output_ctx = NULL;
+    
+    if (!output_path || !stream_name) {
+        log_error("Failed to allocate memory for path or stream name");
+        free(output_path);
+        free(stream_name);
+        return;
+    }
+    
+    memset(output_path, 0, PATH_MAX);
+    memset(stream_name, 0, MAX_STREAM_NAME);
     
     // Use a critical section to safely extract and nullify the output context
     // This prevents race conditions where multiple threads might try to close the same writer
@@ -373,15 +394,15 @@ void mp4_writer_close(mp4_writer_t *writer) {
         
         // Only copy if the fields are valid
         if (valid_output_path) {
-            strncpy(output_path, writer->output_path, sizeof(output_path) - 1);
-            output_path[sizeof(output_path) - 1] = '\0';
+            strncpy(output_path, writer->output_path, PATH_MAX - 1);
+            output_path[PATH_MAX - 1] = '\0';
         }
 
         if (valid_stream_name) {
-            strncpy(stream_name, writer->stream_name, sizeof(stream_name) - 1);
-            stream_name[sizeof(stream_name) - 1] = '\0';
+            strncpy(stream_name, writer->stream_name, MAX_STREAM_NAME - 1);
+            stream_name[MAX_STREAM_NAME - 1] = '\0';
         } else {
-            strncpy(stream_name, "unknown", sizeof(stream_name) - 1);
+            strncpy(stream_name, "unknown", MAX_STREAM_NAME - 1);
         }
         
         // Safely copy other fields
@@ -431,10 +452,16 @@ void mp4_writer_close(mp4_writer_t *writer) {
         struct stat st;
         if (stat(output_path, &st) == 0 && st.st_size > 1024) { // File exists and is not empty
             // Log success with absolute path for easy debugging
-            char abs_path[PATH_MAX];
-            if (realpath(output_path, abs_path)) {
-                log_info("Successfully wrote MP4 file at: %s (size: %lld bytes)",
-                        abs_path, (long long)st.st_size);
+            char *abs_path = malloc(PATH_MAX);
+            if (abs_path) {
+                if (realpath(output_path, abs_path)) {
+                    log_info("Successfully wrote MP4 file at: %s (size: %lld bytes)",
+                            abs_path, (long long)st.st_size);
+                } else {
+                    log_info("Successfully wrote MP4 file at: %s (size: %lld bytes)",
+                            output_path, (long long)st.st_size);
+                }
+                free(abs_path);
             } else {
                 log_info("Successfully wrote MP4 file at: %s (size: %lld bytes)",
                         output_path, (long long)st.st_size);
@@ -532,6 +559,10 @@ void mp4_writer_close(mp4_writer_t *writer) {
         }
     }
 
+    // Free allocated memory
+    free(output_path);
+    free(stream_name);
+    
     // Free writer at the end, after we're done using all its data
     free(writer);
 }

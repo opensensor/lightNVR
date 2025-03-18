@@ -14,7 +14,6 @@ typedef struct {
     char output_path[MAX_PATH_LENGTH];
     mp4_writer_t *mp4_writer;
     stream_reader_ctx_t *reader_ctx;  // Stream reader context
-    int frame_counter;                // Per-stream frame counter for frame dropping
 } mp4_recording_ctx_t;
 
 /**

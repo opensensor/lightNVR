@@ -82,10 +82,7 @@ static int hls_packet_callback(const AVPacket *pkt, const AVStream *stream, void
     
     // Check if this is a key frame
     bool is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
-    
-    // Always set pressure flag to 0 to ensure we never drop frames
-    streaming_ctx->hls_writer->is_under_pressure = 0;
-    
+
     // CRITICAL FIX: Validate that process_video_packet function exists
     if (!process_video_packet) {
         log_error("HLS packet callback: process_video_packet function is NULL for stream %s", 
@@ -419,7 +416,6 @@ int start_hls_stream(const char *stream_name) {
     memset(ctx, 0, sizeof(hls_stream_ctx_t));
     memcpy(&ctx->config, &config, sizeof(stream_config_t));
     ctx->running = 1;
-    ctx->frame_counter = 0; // Initialize frame counter
 
     // Create output paths
     config_t *global_config = get_streaming_config();
