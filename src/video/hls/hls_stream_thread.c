@@ -70,13 +70,24 @@ int hls_packet_callback(const AVPacket *pkt, const AVStream *stream, void *user_
     stream_state_manager_t *state = get_stream_state_by_name(stream_name);
     if (state) {
         // Check if the stream is in the process of being stopped or callbacks are disabled
-        if (is_stream_state_stopping(state) || !are_stream_callbacks_enabled(state)) {
-            log_debug("HLS packet callback: stream %s is stopping or callbacks disabled, skipping packet", 
-                     stream_name);
+        if (is_stream_state_stopping(state)) {
+            log_debug("HLS packet callback: stream %s is stopping, skipping packet", stream_name);
+            return 0; // Return success but don't process the packet
+        }
+        
+        if (!are_stream_callbacks_enabled(state)) {
+            log_debug("HLS packet callback: callbacks disabled for stream %s, skipping packet", stream_name);
             return 0; // Return success but don't process the packet
         }
     } else {
         log_warn("HLS packet callback: could not find stream state for %s", stream_name);
+    }
+    
+    // CRITICAL FIX: Check if the streaming context is still running
+    if (!streaming_ctx->running) {
+        log_debug("HLS packet callback: streaming context for %s is no longer running, skipping packet", 
+                 stream_name);
+        return 0; // Return success but don't process the packet
     }
     
     // CRITICAL FIX: Use a static mutex for thread safety during packet processing
@@ -85,16 +96,10 @@ int hls_packet_callback(const AVPacket *pkt, const AVStream *stream, void *user_
     
     int ret = 0;
     
-    // CRITICAL FIX: Validate that the stream is still running and has a valid writer
-    // This is a critical check to prevent segfaults when toggling streams off
-    if (!streaming_ctx->running || !streaming_ctx->hls_writer) {
-        if (!streaming_ctx->running) {
-            log_debug("HLS packet callback: stream %s is no longer running, skipping packet", 
-                     stream_name);
-        } else {
-            log_error("HLS packet callback: streaming context has NULL hls_writer for stream %s", 
-                     stream_name);
-        }
+    // CRITICAL FIX: Validate that the stream has a valid writer
+    if (!streaming_ctx->hls_writer) {
+        log_error("HLS packet callback: streaming context has NULL hls_writer for stream %s", 
+                 stream_name);
         pthread_mutex_unlock(&hls_packet_mutex);
         return 0; // Return success but don't process the packet
     }
@@ -264,10 +269,18 @@ void *hls_stream_thread(void *arg) {
     // Main loop to monitor stream status
     while (ctx->running) {
         // Check if the stream state indicates we should stop
-        if (state && is_stream_state_stopping(state)) {
-            log_info("HLS streaming thread for %s stopping due to stream state", stream_name);
-            ctx->running = 0;
-            break;
+        if (state) {
+            if (is_stream_state_stopping(state)) {
+                log_info("HLS streaming thread for %s stopping due to stream state STOPPING", stream_name);
+                ctx->running = 0;
+                break;
+            }
+            
+            if (!are_stream_callbacks_enabled(state)) {
+                log_info("HLS streaming thread for %s stopping due to callbacks disabled", stream_name);
+                ctx->running = 0;
+                break;
+            }
         }
         
         // Sleep to avoid busy waiting - reduced from 100ms to 50ms for more responsive handling

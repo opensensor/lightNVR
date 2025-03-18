@@ -169,8 +169,25 @@ int stop_hls_stream(const char *stream_name) {
     // Get the stream state manager
     stream_state_manager_t *state = get_stream_state_by_name(stream_name);
     if (state) {
-        // Disable callbacks to prevent new packets from being processed
-        set_stream_callbacks_enabled(state, false);
+        // Only disable callbacks if we're actually stopping the stream
+        // This prevents disabling callbacks when the stream doesn't exist
+        pthread_mutex_lock(&hls_contexts_mutex);
+        bool found = false;
+        for (int i = 0; i < MAX_STREAMS; i++) {
+            if (streaming_contexts[i] && strcmp(streaming_contexts[i]->config.name, stream_name) == 0) {
+                found = true;
+                break;
+            }
+        }
+        pthread_mutex_unlock(&hls_contexts_mutex);
+        
+        if (found) {
+            // Disable callbacks to prevent new packets from being processed
+            set_stream_callbacks_enabled(state, false);
+            log_info("Disabled callbacks for stream %s during HLS shutdown", stream_name);
+        } else {
+            log_info("Stream %s not found in HLS contexts, not disabling callbacks", stream_name);
+        }
     }
     
     // CRITICAL FIX: Use a static mutex to prevent concurrent access during stopping
@@ -196,10 +213,7 @@ int stop_hls_stream(const char *stream_name) {
         log_warn("HLS stream %s not found for stopping", stream_name);
         pthread_mutex_unlock(&hls_contexts_mutex);
         pthread_mutex_unlock(&stop_mutex);
-        // Re-enable callbacks if we couldn't find the stream context
-        if (state) {
-            set_stream_callbacks_enabled(state, true);
-        }
+        // Don't re-enable callbacks here - the stream wasn't found so we never disabled them
         return -1;
     }
     
@@ -208,10 +222,7 @@ int stop_hls_stream(const char *stream_name) {
         log_warn("HLS stream %s is already stopped", stream_name);
         pthread_mutex_unlock(&hls_contexts_mutex);
         pthread_mutex_unlock(&stop_mutex);
-        // Re-enable callbacks if the stream is already stopped
-        if (state) {
-            set_stream_callbacks_enabled(state, true);
-        }
+        // Don't re-enable callbacks here - the stream is already stopped
         return 0;
     }
 
@@ -286,11 +297,12 @@ int stop_hls_stream(const char *stream_name) {
     
     // Release the HLS reference
     if (state) {
+        // Re-enable callbacks before releasing the reference
+        set_stream_callbacks_enabled(state, true);
+        log_info("Re-enabled callbacks for stream %s after HLS shutdown", stream_name);
+        
         stream_state_release_ref(state, STREAM_COMPONENT_HLS);
         log_info("Released HLS reference to stream %s", stream_name);
-        
-        // Re-enable callbacks now that we're done
-        set_stream_callbacks_enabled(state, true);
     }
     
     return 0;

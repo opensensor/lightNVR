@@ -17,6 +17,7 @@
 #include "core/config.h"
 #include "core/logger.h"
 #include "video/stream_manager.h"
+#include "video/stream_state.h"
 #include "video/streams.h"
 #include "video/hls_writer.h"
 #include <stdbool.h>
@@ -119,11 +120,23 @@ void handle_hls_manifest(const http_request_t *request, http_response_t *respons
         return;
     }
     
+    // Get the stream state to check if it's in the process of stopping
+    stream_state_manager_t *state = get_stream_state_by_name(stream_name);
+    if (state && is_stream_state_stopping(state)) {
+        log_warn("Cannot start HLS stream %s while it is in the process of being stopped", stream_name);
+        create_stream_error_response(response, 503, "Stream is in the process of stopping, please try again later");
+        return;
+    }
+    
     // Start HLS if not already running - this only starts streaming, not recording
-    if (start_hls_stream(stream_name) != 0) {
+    int hls_result = start_hls_stream(stream_name);
+    if (hls_result != 0) {
+        log_error("Failed to start HLS stream %s (error code: %d)", stream_name, hls_result);
         create_stream_error_response(response, 500, "Failed to start HLS stream");
         return;
     }
+    
+    log_info("Successfully started or confirmed HLS stream for %s", stream_name);
 
     // Get the manifest file path
     config_t *global_config = get_streaming_config();
@@ -182,6 +195,18 @@ void handle_hls_manifest(const http_request_t *request, http_response_t *respons
         
         // Try to restart the HLS stream
         stop_hls_stream(stream_name);
+        
+        // Wait a short time to ensure the stream is fully stopped
+        usleep(500000); // 500ms
+        
+        // Check if the stream is still in the process of stopping
+        stream_state_manager_t *state = get_stream_state_by_name(stream_name);
+        if (state && is_stream_state_stopping(state)) {
+            log_warn("Stream %s is still in the process of stopping, cannot restart yet", stream_name);
+            create_stream_error_response(response, 503, "Stream is still stopping, please try again later");
+            return;
+        }
+        
         if (start_hls_stream(stream_name) != 0) {
             log_error("Failed to restart HLS stream for %s", stream_name);
             create_stream_error_response(response, 500, "Failed to start HLS stream");
@@ -230,6 +255,19 @@ void handle_hls_manifest(const http_request_t *request, http_response_t *respons
         
         // Try to restart the HLS stream
         stop_hls_stream(stream_name);
+        
+        // Wait a short time to ensure the stream is fully stopped
+        usleep(500000); // 500ms
+        
+        // Check if the stream is still in the process of stopping
+        stream_state_manager_t *state = get_stream_state_by_name(stream_name);
+        if (state && is_stream_state_stopping(state)) {
+            log_warn("Stream %s is still in the process of stopping, cannot restart yet", stream_name);
+            free(content);
+            create_stream_error_response(response, 503, "Stream is still stopping, please try again later");
+            return;
+        }
+        
         if (start_hls_stream(stream_name) != 0) {
             log_error("Failed to restart HLS stream for %s", stream_name);
             free(content);
@@ -637,6 +675,14 @@ void handle_stream_toggle(const http_request_t *request, http_response_t *respon
     
     // Toggle the stream
     if (enabled) {
+        // Check if the stream is in the process of stopping
+        stream_state_manager_t *state = get_stream_state_by_name(stream_name);
+        if (state && is_stream_state_stopping(state)) {
+            log_warn("Cannot start HLS stream %s while it is in the process of being stopped", stream_name);
+            create_stream_error_response(response, 503, "Stream is in the process of stopping, please try again later");
+            return;
+        }
+        
         // Start HLS stream if not already running
         if (start_hls_stream(stream_name) != 0) {
             create_stream_error_response(response, 500, "Failed to start HLS stream");

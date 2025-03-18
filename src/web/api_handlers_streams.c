@@ -11,6 +11,7 @@
 #include "core/logger.h"
 #include "database/database_manager.h"
 #include "video/stream_manager.h"
+#include "video/stream_state.h"
 #include "video/streams.h"
 #include "web/request_response.h"
 #include "web/api_handlers_streams.h"
@@ -908,8 +909,18 @@ void handle_toggle_streaming(const http_request_t *request, http_response_t *res
         return;
     }
     
+    // Check if the stream is in the process of stopping
+    stream_state_manager_t *state = get_stream_state_by_name(decoded_name);
+    
     // Toggle the streaming
     if (enabled) {
+        // Check if the stream is in the process of stopping
+        if (state && is_stream_state_stopping(state)) {
+            log_warn("Cannot start HLS stream %s while it is in the process of being stopped", decoded_name);
+            create_json_response(response, 503, "{\"error\": \"Stream is in the process of stopping, please try again later\"}");
+            return;
+        }
+        
         // Start HLS stream if not already running
         if (start_hls_stream(decoded_name) != 0) {
             log_error("Failed to start HLS stream for: %s", decoded_name);
@@ -925,6 +936,12 @@ void handle_toggle_streaming(const http_request_t *request, http_response_t *res
             return;
         }
         log_info("Stopped HLS stream for %s", decoded_name);
+        
+        // If the stream is in the process of stopping, wait for it to complete
+        if (state && is_stream_state_stopping(state)) {
+            log_info("Waiting for stream %s to complete stopping process", decoded_name);
+            wait_for_stream_stop(state, 5000); // Wait up to 5 seconds
+        }
     }
     
     // If recording was enabled, ensure it stays enabled regardless of streaming state
