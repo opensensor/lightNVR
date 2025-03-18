@@ -95,26 +95,78 @@ static void *stream_reader_thread(void *arg) {
         
         ret = av_read_frame(ctx->input_ctx, pkt);
         
+        // Handle timestamp recovery for UDP streams - AFTER reading the packet
+        if (ret >= 0 && ctx->config.protocol == STREAM_PROTOCOL_UDP && pkt->pts == AV_NOPTS_VALUE) {
+            // For UDP streams, generate timestamps if missing
+            // Use per-context variables to avoid issues with multiple streams
+            if (!ctx->last_pts_initialized) {
+                ctx->last_pts = 0;
+                ctx->frame_duration = 0;
+                ctx->last_pts_initialized = 1;
+            }
+            
+            // Calculate frame duration based on stream timebase and framerate if available
+            if (ctx->frame_duration == 0 && ctx->input_ctx->streams[ctx->video_stream_idx]->avg_frame_rate.num > 0) {
+                AVRational tb = ctx->input_ctx->streams[ctx->video_stream_idx]->time_base;
+                AVRational fr = ctx->input_ctx->streams[ctx->video_stream_idx]->avg_frame_rate;
+                ctx->frame_duration = av_rescale_q(1, av_inv_q(fr), tb);
+                log_debug("Calculated frame duration for UDP stream %s: %lld", 
+                         ctx->config.name, (long long)ctx->frame_duration);
+            }
+            
+            // If we have a valid frame duration, generate timestamps
+            if (ctx->frame_duration > 0) {
+                pkt->pts = ctx->last_pts + ctx->frame_duration;
+                pkt->dts = pkt->pts;
+                ctx->last_pts = pkt->pts;
+                log_debug("Generated timestamp for UDP stream %s: pts=%lld", 
+                         ctx->config.name, (long long)pkt->pts);
+            }
+        }
+        
         if (ret < 0) {
             if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN)) {
                 // End of stream or resource temporarily unavailable
-                // Try to reconnect with exponential backoff
                 av_packet_unref(pkt);
                 log_warn("Stream %s disconnected, attempting to reconnect...", ctx->config.name);
                 
-                // Implement exponential backoff for reconnection attempts with reduced delays
+                // Use different reconnection strategies based on protocol
                 static int reconnect_attempts = 0;
-                int backoff_time_ms = 250 * (1 << (reconnect_attempts > 5 ? 5 : reconnect_attempts));
-                reconnect_attempts++;
+                int backoff_time_ms;
                 
-                // Cap the backoff time at 4 seconds (reduced from 8 seconds)
-                if (backoff_time_ms > 4000) {
-                    backoff_time_ms = 4000;
+                if (ctx->config.protocol == STREAM_PROTOCOL_UDP) {
+                    // For UDP streams, use a gentler fixed delay strategy
+                    // UDP streams often have transient issues that resolve quickly
+                    backoff_time_ms = 500; // Fixed 500ms delay for UDP
+                    
+                    log_info("UDP reconnection attempt %d for %s, using fixed delay of %d ms", 
+                            reconnect_attempts, ctx->config.name, backoff_time_ms);
+                    
+                    // For UDP, we'll try a more conservative approach first:
+                    // Instead of immediately closing and reopening, try reading again after a delay
+                    if (reconnect_attempts < 3) {
+                        reconnect_attempts++;
+                        av_usleep(backoff_time_ms * 1000);  // Convert ms to μs
+                        continue; // Try reading again without closing/reopening
+                    }
+                    
+                    // After a few attempts with the conservative approach, try a full reconnect
+                    log_info("Conservative UDP reconnection failed for %s, trying full reconnect", 
+                            ctx->config.name);
+                } else {
+                    // For TCP streams, use the existing exponential backoff strategy
+                    backoff_time_ms = 250 * (1 << (reconnect_attempts > 5 ? 5 : reconnect_attempts));
+                    
+                    // Cap the backoff time at 4 seconds (reduced from 8 seconds)
+                    if (backoff_time_ms > 4000) {
+                        backoff_time_ms = 4000;
+                    }
+                    
+                    log_info("TCP reconnection attempt %d for %s, waiting %d ms", 
+                            reconnect_attempts, ctx->config.name, backoff_time_ms);
                 }
                 
-                log_info("Reconnection attempt %d for %s, waiting %d ms", 
-                        reconnect_attempts, ctx->config.name, backoff_time_ms);
-                
+                reconnect_attempts++;
                 av_usleep(backoff_time_ms * 1000);  // Convert ms to μs
                 
                 // Close and reopen input

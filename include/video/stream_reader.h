@@ -22,6 +22,11 @@ typedef struct {
     // Callback function for packet processing
     packet_callback_t packet_callback;
     void *callback_data;    // User data for the callback
+    
+    // Timestamp tracking for UDP streams
+    int last_pts_initialized;  // Flag to indicate if last_pts has been initialized
+    int64_t last_pts;          // Last PTS value for timestamp recovery
+    int64_t frame_duration;    // Duration of a frame in timebase units
 } stream_reader_ctx_t;
 
 /**

@@ -130,22 +130,88 @@ int pthread_join_with_timeout(pthread_t thread, void **retval, int timeout_sec) 
 }
 
 /**
+ * Check if a URL is a multicast address
+ * Multicast IPv4 addresses are in the range 224.0.0.0 to 239.255.255.255
+ */
+static bool is_multicast_url(const char *url) {
+    // Extract IP address from URL
+    // Simple parsing for common formats like udp://239.255.0.1:1234
+    const char *ip_start = NULL;
+    
+    // Skip protocol prefix
+    if (strncmp(url, "udp://", 6) == 0) {
+        ip_start = url + 6;
+    } else if (strncmp(url, "rtp://", 6) == 0) {
+        ip_start = url + 6;
+    } else {
+        // Not a UDP or RTP URL
+        return false;
+    }
+    
+    // Parse IP address
+    unsigned int a, b, c, d;
+    if (sscanf(ip_start, "%u.%u.%u.%u", &a, &b, &c, &d) == 4) {
+        // Check if it's in multicast range (224.0.0.0 - 239.255.255.255)
+        if (a >= 224 && a <= 239) {
+            log_info("Detected multicast address: %u.%u.%u.%u", a, b, c, d);
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+/**
  * Open input stream with appropriate options based on protocol
  */
 int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol) {
     int ret;
     AVDictionary *input_options = NULL;
+    bool is_multicast = false;
     
     if (protocol == STREAM_PROTOCOL_UDP) {
-        log_info("Using UDP protocol for stream URL: %s", url);
+        // Check if this is a multicast stream
+        is_multicast = is_multicast_url(url);
+        
+        log_info("Using UDP protocol for stream URL: %s (multicast: %s)", 
+                url, is_multicast ? "yes" : "no");
+        
         // UDP-specific options with improved buffering for smoother playback
-        av_dict_set(&input_options, "protocol_whitelist", "file,udp,rtp", 0);
-        av_dict_set(&input_options, "buffer_size", "8192000", 0); // 8MB buffer (reduced from 16MB)
-        av_dict_set(&input_options, "reuse", "1", 0); // Allow port reuse
-        av_dict_set(&input_options, "timeout", "5000000", 0); // 5 second timeout in microseconds
-        av_dict_set(&input_options, "max_delay", "1000000", 0); // 1000ms max delay (increased from 500ms)
-        // Remove the nobuffer flag which causes issues with UDP streams
-        av_dict_set(&input_options, "fflags", "genpts", 0); // Generate PTS if missing
+        // Expanded protocol whitelist to support more UDP variants
+        av_dict_set(&input_options, "protocol_whitelist", "file,udp,rtp,rtsp,tcp,https,tls,http", 0);
+        
+        // Increased buffer size to 16MB as recommended for UDP jitter handling
+        av_dict_set(&input_options, "buffer_size", "16777216", 0); // 16MB buffer
+        
+        // Allow port reuse
+        av_dict_set(&input_options, "reuse", "1", 0);
+        
+        // Extended timeout for UDP streams which may have more jitter
+        av_dict_set(&input_options, "timeout", "10000000", 0); // 10 second timeout in microseconds
+        
+        // Increased max delay for UDP streams
+        av_dict_set(&input_options, "max_delay", "2000000", 0); // 2000ms max delay
+        
+        // More tolerant timestamp handling for UDP streams
+        av_dict_set(&input_options, "fflags", "genpts+discardcorrupt+nobuffer", 0);
+        
+        // Set UDP-specific socket options
+        av_dict_set(&input_options, "recv_buffer_size", "16777216", 0); // 16MB socket receive buffer
+        
+        // UDP-specific packet reordering settings
+        av_dict_set(&input_options, "max_interleave_delta", "1000000", 0); // 1 second max interleave
+        
+        // Multicast-specific settings
+        if (is_multicast) {
+            // Set appropriate TTL for multicast
+            av_dict_set(&input_options, "ttl", "32", 0);
+            
+            // Join multicast group
+            av_dict_set(&input_options, "multiple_requests", "1", 0);
+            
+            // Auto-detect the best network interface
+            av_dict_set(&input_options, "localaddr", "0.0.0.0", 0);
+        }
     } else {
         log_info("Using TCP protocol for stream URL: %s", url);
         // TCP-specific options with improved reliability
@@ -197,15 +263,78 @@ int find_video_stream_index(AVFormatContext *input_ctx) {
     return -1;
 }
 
+// Structure to track timestamp information per stream
+typedef struct {
+    char stream_name[MAX_STREAM_NAME];
+    int64_t last_pts;
+    int64_t last_dts;
+    int64_t pts_discontinuity_count;
+    int64_t expected_next_pts;
+    bool is_udp_stream;
+    bool initialized;
+} timestamp_tracker_t;
+
+// Array to track timestamps for multiple streams
+#define MAX_TIMESTAMP_TRACKERS 16
+static timestamp_tracker_t timestamp_trackers[MAX_TIMESTAMP_TRACKERS];
+static pthread_mutex_t timestamp_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+/**
+ * Get or create a timestamp tracker for a stream
+ */
+static timestamp_tracker_t *get_timestamp_tracker(const char *stream_name) {
+    pthread_mutex_lock(&timestamp_mutex);
+    
+    // Look for existing tracker
+    for (int i = 0; i < MAX_TIMESTAMP_TRACKERS; i++) {
+        if (timestamp_trackers[i].initialized && 
+            strcmp(timestamp_trackers[i].stream_name, stream_name) == 0) {
+            pthread_mutex_unlock(&timestamp_mutex);
+            return &timestamp_trackers[i];
+        }
+    }
+    
+    // Create new tracker
+    for (int i = 0; i < MAX_TIMESTAMP_TRACKERS; i++) {
+        if (!timestamp_trackers[i].initialized) {
+            strncpy(timestamp_trackers[i].stream_name, stream_name, MAX_STREAM_NAME - 1);
+            timestamp_trackers[i].stream_name[MAX_STREAM_NAME - 1] = '\0';
+            timestamp_trackers[i].last_pts = AV_NOPTS_VALUE;
+            timestamp_trackers[i].last_dts = AV_NOPTS_VALUE;
+            timestamp_trackers[i].pts_discontinuity_count = 0;
+            timestamp_trackers[i].expected_next_pts = AV_NOPTS_VALUE;
+            
+            // Check if this is a UDP stream by looking at the stream name
+            timestamp_trackers[i].is_udp_stream = (strstr(stream_name, "udp://") != NULL || 
+                                                  strstr(stream_name, "rtp://") != NULL);
+            
+            timestamp_trackers[i].initialized = true;
+            pthread_mutex_unlock(&timestamp_mutex);
+            return &timestamp_trackers[i];
+        }
+    }
+    
+    // No slots available
+    pthread_mutex_unlock(&timestamp_mutex);
+    return NULL;
+}
+
 /**
  * Process a video packet for either HLS streaming or MP4 recording
  * Optimized to reduce contention and blocking with improved frame handling
- * Removed adaptive degrading to improve quality
+ * Includes enhanced timestamp handling for UDP streams
  */
 int process_video_packet(const AVPacket *pkt, const AVStream *input_stream, 
                          void *writer, int writer_type, const char *stream_name) {
     int ret = 0;
     AVPacket *out_pkt = NULL;
+    
+    // Get timestamp tracker for this stream
+    timestamp_tracker_t *tracker = get_timestamp_tracker(stream_name);
+    if (!tracker) {
+        log_error("Failed to get timestamp tracker for stream %s", stream_name);
+        // Continue without timestamp tracking
+    }
     
     if (!pkt || !input_stream || !writer || !stream_name) {
         log_error("Invalid parameters passed to process_video_packet");
@@ -233,6 +362,85 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
     
     // Check if this is a key frame - only log at debug level to reduce overhead
     bool is_key_frame = (out_pkt->flags & AV_PKT_FLAG_KEY) != 0;
+    
+    // Enhanced timestamp handling for UDP streams
+    if (tracker && tracker->is_udp_stream) {
+        // Handle missing timestamps
+        if (out_pkt->pts == AV_NOPTS_VALUE && out_pkt->dts != AV_NOPTS_VALUE) {
+            out_pkt->pts = out_pkt->dts;
+        } else if (out_pkt->dts == AV_NOPTS_VALUE && out_pkt->pts != AV_NOPTS_VALUE) {
+            out_pkt->dts = out_pkt->pts;
+        } else if (out_pkt->pts == AV_NOPTS_VALUE && out_pkt->dts == AV_NOPTS_VALUE) {
+            // Both timestamps missing, try to generate based on previous packet
+            if (tracker->last_pts != AV_NOPTS_VALUE) {
+                // Calculate frame duration based on stream timebase and framerate
+                int64_t frame_duration = 0;
+                if (input_stream->avg_frame_rate.num > 0) {
+                    AVRational tb = input_stream->time_base;
+                    AVRational fr = input_stream->avg_frame_rate;
+                    frame_duration = av_rescale_q(1, av_inv_q(fr), tb);
+                } else {
+                    // Default to 1/30 second if framerate not available
+                    frame_duration = input_stream->time_base.den / (30 * input_stream->time_base.num);
+                }
+                
+                out_pkt->pts = tracker->last_pts + frame_duration;
+                out_pkt->dts = out_pkt->pts;
+                log_debug("Generated timestamps for UDP stream %s: pts=%lld, dts=%lld", 
+                         stream_name, (long long)out_pkt->pts, (long long)out_pkt->dts);
+            }
+        }
+        
+        // Detect and handle timestamp discontinuities
+        if (tracker->last_pts != AV_NOPTS_VALUE && out_pkt->pts != AV_NOPTS_VALUE) {
+            // Calculate expected next PTS
+            int64_t frame_duration = 0;
+            if (input_stream->avg_frame_rate.num > 0) {
+                AVRational tb = input_stream->time_base;
+                AVRational fr = input_stream->avg_frame_rate;
+                frame_duration = av_rescale_q(1, av_inv_q(fr), tb);
+            } else {
+                // Default to 1/30 second if framerate not available
+                frame_duration = input_stream->time_base.den / (30 * input_stream->time_base.num);
+            }
+            
+            if (tracker->expected_next_pts == AV_NOPTS_VALUE) {
+                tracker->expected_next_pts = tracker->last_pts + frame_duration;
+            }
+            
+            // Check for large discontinuities (more than 10x frame duration)
+            int64_t pts_diff = llabs(out_pkt->pts - tracker->expected_next_pts);
+            if (pts_diff > 10 * frame_duration) {
+                tracker->pts_discontinuity_count++;
+                
+                // Only log occasionally to avoid flooding logs
+                if (tracker->pts_discontinuity_count % 10 == 1) {
+                    log_warn("Timestamp discontinuity detected in UDP stream %s: expected=%lld, actual=%lld, diff=%lld ms", 
+                            stream_name, 
+                            (long long)tracker->expected_next_pts, 
+                            (long long)out_pkt->pts,
+                            (long long)(pts_diff * 1000 * input_stream->time_base.num / input_stream->time_base.den));
+                }
+                
+                // For severe discontinuities, try to correct by using expected PTS
+                if (pts_diff > 100 * frame_duration) {
+                    int64_t original_pts = out_pkt->pts;
+                    out_pkt->pts = tracker->expected_next_pts;
+                    out_pkt->dts = out_pkt->pts;
+                    
+                    log_debug("Corrected severe timestamp discontinuity: original=%lld, corrected=%lld", 
+                             (long long)original_pts, (long long)out_pkt->pts);
+                }
+            }
+            
+            // Update expected next PTS
+            tracker->expected_next_pts = out_pkt->pts + frame_duration;
+        }
+        
+        // Store current timestamps for next packet
+        tracker->last_pts = out_pkt->pts;
+        tracker->last_dts = out_pkt->dts;
+    }
     
     // Use direct function calls instead of conditional branching for better performance
     if (writer_type == 0) {  // HLS writer
@@ -289,6 +497,27 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
 }
 
 /**
+ * Initialize timestamp trackers
+ */
+static void init_timestamp_trackers(void) {
+    pthread_mutex_lock(&timestamp_mutex);
+    
+    // Initialize all trackers to unused state
+    for (int i = 0; i < MAX_TIMESTAMP_TRACKERS; i++) {
+        timestamp_trackers[i].initialized = false;
+        timestamp_trackers[i].last_pts = AV_NOPTS_VALUE;
+        timestamp_trackers[i].last_dts = AV_NOPTS_VALUE;
+        timestamp_trackers[i].pts_discontinuity_count = 0;
+        timestamp_trackers[i].expected_next_pts = AV_NOPTS_VALUE;
+        timestamp_trackers[i].is_udp_stream = false;
+        timestamp_trackers[i].stream_name[0] = '\0';
+    }
+    
+    pthread_mutex_unlock(&timestamp_mutex);
+    log_info("Timestamp trackers initialized");
+}
+
+/**
  * Initialize FFmpeg libraries
  */
 void init_transcoding_backend(void) {
@@ -297,14 +526,36 @@ void init_transcoding_backend(void) {
     av_register_all();
 #endif
     avformat_network_init();
+    
+    // Initialize timestamp trackers
+    init_timestamp_trackers();
 
     log_info("Transcoding backend initialized");
+}
+
+/**
+ * Cleanup timestamp trackers
+ */
+static void cleanup_timestamp_trackers(void) {
+    pthread_mutex_lock(&timestamp_mutex);
+    
+    // Reset all trackers to unused state
+    for (int i = 0; i < MAX_TIMESTAMP_TRACKERS; i++) {
+        timestamp_trackers[i].initialized = false;
+        timestamp_trackers[i].stream_name[0] = '\0';
+    }
+    
+    pthread_mutex_unlock(&timestamp_mutex);
+    log_info("Timestamp trackers cleaned up");
 }
 
 /**
  * Cleanup FFmpeg resources
  */
 void cleanup_transcoding_backend(void) {
+    // Cleanup timestamp trackers
+    cleanup_timestamp_trackers();
+    
     // Cleanup FFmpeg
     avformat_network_deinit();
 
