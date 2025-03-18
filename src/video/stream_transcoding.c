@@ -472,6 +472,8 @@ static timestamp_tracker_t *get_timestamp_tracker(const char *stream_name) {
  * Process a video packet for either HLS streaming or MP4 recording
  * Optimized to reduce contention and blocking with improved frame handling
  * Includes enhanced timestamp handling for UDP streams
+ * 
+ * FIXED: Improved thread safety for multiple UDP streams
  */
 int process_video_packet(const AVPacket *pkt, const AVStream *input_stream, 
                          void *writer, int writer_type, const char *stream_name) {
@@ -508,69 +510,6 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
     // Log entry point for debugging
     log_debug("Processing video packet for stream %s, size=%d", stream_name, pkt->size);
     
-    // Use a try/catch style approach with goto for cleanup
-    timestamp_tracker_t *tracker = NULL;
-    
-// Get timestamp tracker for this stream with proper error handling
-// Use a critical section to safely get the tracker
-pthread_mutex_lock(&timestamp_mutex);
-
-// First look for existing tracker
-int tracker_idx = -1;
-for (int i = 0; i < MAX_TIMESTAMP_TRACKERS; i++) {
-    if (timestamp_trackers[i].initialized && 
-        strcmp(timestamp_trackers[i].stream_name, stream_name) == 0) {
-        tracker_idx = i;
-        break;
-    }
-}
-
-// If not found, create a new one
-if (tracker_idx == -1) {
-    for (int i = 0; i < MAX_TIMESTAMP_TRACKERS; i++) {
-        if (!timestamp_trackers[i].initialized) {
-            tracker_idx = i;
-            
-            // Initialize the new tracker
-            strncpy(timestamp_trackers[i].stream_name, stream_name, MAX_STREAM_NAME - 1);
-            timestamp_trackers[i].stream_name[MAX_STREAM_NAME - 1] = '\0';
-            timestamp_trackers[i].last_pts = AV_NOPTS_VALUE;
-            timestamp_trackers[i].last_dts = AV_NOPTS_VALUE;
-            timestamp_trackers[i].pts_discontinuity_count = 0;
-            timestamp_trackers[i].expected_next_pts = AV_NOPTS_VALUE;
-            
-            // Default to false for safety - will be set correctly by set_timestamp_tracker_udp_flag
-            timestamp_trackers[i].is_udp_stream = false;
-            
-            // Mark as initialized
-            timestamp_trackers[i].initialized = true;
-            
-            log_info("Created new timestamp tracker for stream %s at index %d", 
-                    stream_name, i);
-            break;
-        }
-    }
-}
-
-// Get a reference to the tracker if we found or created one
-if (tracker_idx != -1) {
-    // Store a local copy of the tracker pointer
-    tracker = &timestamp_trackers[tracker_idx];
-    pthread_mutex_unlock(&timestamp_mutex);
-    
-    // Log the UDP status for debugging
-    log_debug("Using timestamp tracker for stream %s with UDP flag: %s", 
-             stream_name, tracker->is_udp_stream ? "true" : "false");
-} else {
-    pthread_mutex_unlock(&timestamp_mutex);
-    log_error("Failed to get or create timestamp tracker for stream %s", stream_name);
-}
-    
-    if (!tracker) {
-        log_error("Failed to get timestamp tracker for stream %s", stream_name);
-        // Continue without timestamp tracking
-    }
-    
     // Create a clean copy of the packet to avoid reference issues
     out_pkt = av_packet_alloc();
     if (!out_pkt) {
@@ -587,91 +526,131 @@ if (tracker_idx != -1) {
     // Check if this is a key frame - only log at debug level to reduce overhead
     bool is_key_frame = (out_pkt->flags & AV_PKT_FLAG_KEY) != 0;
     
-    // Enhanced timestamp handling for UDP streams with additional safety checks
-    // First check if we have a valid tracker
-    if (tracker) {
-        // Get the UDP flag safely
-        pthread_mutex_lock(&timestamp_mutex);
-        bool is_udp_stream = false;
-        int64_t last_pts = AV_NOPTS_VALUE;
-        int64_t expected_next_pts = AV_NOPTS_VALUE;
-        int pts_discontinuity_count = 0;
-        bool tracker_valid = false;
-        
-        // Find our tracker again to ensure it's still valid
+    // FIXED: Create local copies of timestamp data to avoid race conditions
+    bool is_udp_stream = false;
+    int64_t last_pts = AV_NOPTS_VALUE;
+    int64_t expected_next_pts = AV_NOPTS_VALUE;
+    int pts_discontinuity_count = 0;
+    bool tracker_found = false;
+    int tracker_idx = -1;
+    
+    // FIXED: Use a single mutex lock/unlock pair to get all timestamp data
+    pthread_mutex_lock(&timestamp_mutex);
+    
+    // Find the tracker for this stream
+    for (int i = 0; i < MAX_TIMESTAMP_TRACKERS; i++) {
+        if (timestamp_trackers[i].initialized && 
+            strcmp(timestamp_trackers[i].stream_name, stream_name) == 0) {
+            // Copy all needed data to local variables
+            is_udp_stream = timestamp_trackers[i].is_udp_stream;
+            last_pts = timestamp_trackers[i].last_pts;
+            expected_next_pts = timestamp_trackers[i].expected_next_pts;
+            pts_discontinuity_count = timestamp_trackers[i].pts_discontinuity_count;
+            tracker_found = true;
+            tracker_idx = i;
+            break;
+        }
+    }
+    
+    // If not found, create a new tracker
+    if (!tracker_found) {
         for (int i = 0; i < MAX_TIMESTAMP_TRACKERS; i++) {
-            if (timestamp_trackers[i].initialized && 
-                strcmp(timestamp_trackers[i].stream_name, stream_name) == 0) {
-                is_udp_stream = timestamp_trackers[i].is_udp_stream;
-                last_pts = timestamp_trackers[i].last_pts;
-                expected_next_pts = timestamp_trackers[i].expected_next_pts;
-                pts_discontinuity_count = timestamp_trackers[i].pts_discontinuity_count;
-                tracker_valid = true;
+            if (!timestamp_trackers[i].initialized) {
+                // Initialize the new tracker
+                strncpy(timestamp_trackers[i].stream_name, stream_name, MAX_STREAM_NAME - 1);
+                timestamp_trackers[i].stream_name[MAX_STREAM_NAME - 1] = '\0';
+                timestamp_trackers[i].last_pts = AV_NOPTS_VALUE;
+                timestamp_trackers[i].last_dts = AV_NOPTS_VALUE;
+                timestamp_trackers[i].pts_discontinuity_count = 0;
+                timestamp_trackers[i].expected_next_pts = AV_NOPTS_VALUE;
+                timestamp_trackers[i].is_udp_stream = false; // Default to false
+                timestamp_trackers[i].initialized = true;
+                
+                // Copy data to local variables
+                is_udp_stream = false;
+                last_pts = AV_NOPTS_VALUE;
+                expected_next_pts = AV_NOPTS_VALUE;
+                pts_discontinuity_count = 0;
+                
+                tracker_found = true;
+                tracker_idx = i;
+                
+                log_info("Created new timestamp tracker for stream %s at index %d", 
+                        stream_name, i);
                 break;
             }
         }
-        pthread_mutex_unlock(&timestamp_mutex);
-        
-        if (!tracker_valid) {
-            log_error("Timestamp tracker for stream %s is no longer valid", stream_name);
-        } else if (is_udp_stream) {
+    }
+    
+    // Release the mutex after getting all the data we need
+    pthread_mutex_unlock(&timestamp_mutex);
+    
+    if (!tracker_found) {
+        log_error("Failed to get or create timestamp tracker for stream %s", stream_name);
+        // Continue without timestamp tracking
+    } else {
+        log_debug("Using timestamp tracker for stream %s with UDP flag: %s", 
+                 stream_name, is_udp_stream ? "true" : "false");
+                 
+        // Process UDP streams with special timestamp handling
+        if (is_udp_stream) {
             log_debug("Applying UDP timestamp handling for stream %s", stream_name);
             
-        // Handle missing timestamps
-        if (out_pkt->pts == AV_NOPTS_VALUE && out_pkt->dts != AV_NOPTS_VALUE) {
-            out_pkt->pts = out_pkt->dts;
-        } else if (out_pkt->dts == AV_NOPTS_VALUE && out_pkt->pts != AV_NOPTS_VALUE) {
-            out_pkt->dts = out_pkt->pts;
-        } else if (out_pkt->pts == AV_NOPTS_VALUE && out_pkt->dts == AV_NOPTS_VALUE) {
-            // Both timestamps missing, try to generate based on previous packet
-            if (last_pts != AV_NOPTS_VALUE) {
-                // Calculate frame duration based on stream timebase and framerate
-                int64_t frame_duration = 0;
-                
-                // Add safety checks for input_stream
-                if (input_stream && input_stream->avg_frame_rate.num > 0) {
-                    AVRational tb = input_stream->time_base;
-                    AVRational fr = input_stream->avg_frame_rate;
-                    
-                    // Avoid division by zero
-                    if (fr.den > 0) {
-                        frame_duration = av_rescale_q(1, av_inv_q(fr), tb);
-                    } else {
-                        // Default to a reasonable value if framerate is invalid
-                        frame_duration = 3000; // Assume 30fps with timebase 1/90000
-                    }
-                } else {
-                    // Default to 1/30 second if framerate not available
-                    // With additional safety checks
-                    if (input_stream && input_stream->time_base.num > 0 && input_stream->time_base.den > 0) {
-                        frame_duration = input_stream->time_base.den / (30 * input_stream->time_base.num);
-                    } else {
-                        // Fallback to a reasonable default
-                        frame_duration = 3000; // Assume 30fps with timebase 1/90000
-                    }
-                }
-                
-                // Sanity check on frame duration
-                if (frame_duration <= 0) {
-                    frame_duration = 3000; // Reasonable default
-                }
-                
-                out_pkt->pts = last_pts + frame_duration;
+            // Handle missing timestamps
+            if (out_pkt->pts == AV_NOPTS_VALUE && out_pkt->dts != AV_NOPTS_VALUE) {
+                out_pkt->pts = out_pkt->dts;
+            } else if (out_pkt->dts == AV_NOPTS_VALUE && out_pkt->pts != AV_NOPTS_VALUE) {
                 out_pkt->dts = out_pkt->pts;
-                log_debug("Generated timestamps for UDP stream %s: pts=%lld, dts=%lld", 
-                         stream_name, (long long)out_pkt->pts, (long long)out_pkt->dts);
-            } else {
-                // If we don't have a last_pts, set a default starting value
-                out_pkt->pts = 1;
-                out_pkt->dts = 1;
-                log_debug("Set default initial timestamps for UDP stream %s with no previous reference", 
-                         stream_name);
+            } else if (out_pkt->pts == AV_NOPTS_VALUE && out_pkt->dts == AV_NOPTS_VALUE) {
+                // Both timestamps missing, try to generate based on previous packet
+                if (last_pts != AV_NOPTS_VALUE) {
+                    // Calculate frame duration based on stream timebase and framerate
+                    int64_t frame_duration = 0;
+                    
+                    // Add safety checks for input_stream
+                    if (input_stream && input_stream->avg_frame_rate.num > 0) {
+                        AVRational tb = input_stream->time_base;
+                        AVRational fr = input_stream->avg_frame_rate;
+                        
+                        // Avoid division by zero
+                        if (fr.den > 0) {
+                            frame_duration = av_rescale_q(1, av_inv_q(fr), tb);
+                        } else {
+                            // Default to a reasonable value if framerate is invalid
+                            frame_duration = 3000; // Assume 30fps with timebase 1/90000
+                        }
+                    } else {
+                        // Default to 1/30 second if framerate not available
+                        // With additional safety checks
+                        if (input_stream && input_stream->time_base.num > 0 && input_stream->time_base.den > 0) {
+                            frame_duration = input_stream->time_base.den / (30 * input_stream->time_base.num);
+                        } else {
+                            // Fallback to a reasonable default
+                            frame_duration = 3000; // Assume 30fps with timebase 1/90000
+                        }
+                    }
+                    
+                    // Sanity check on frame duration
+                    if (frame_duration <= 0) {
+                        frame_duration = 3000; // Reasonable default
+                    }
+                    
+                    out_pkt->pts = last_pts + frame_duration;
+                    out_pkt->dts = out_pkt->pts;
+                    log_debug("Generated timestamps for UDP stream %s: pts=%lld, dts=%lld", 
+                             stream_name, (long long)out_pkt->pts, (long long)out_pkt->dts);
+                } else {
+                    // If we don't have a last_pts, set a default starting value
+                    out_pkt->pts = 1;
+                    out_pkt->dts = 1;
+                    log_debug("Set default initial timestamps for UDP stream %s with no previous reference", 
+                             stream_name);
+                }
             }
-        }
             
             // Detect and handle timestamp discontinuities with additional safety checks
             if (last_pts != AV_NOPTS_VALUE && out_pkt->pts != AV_NOPTS_VALUE) {
-                // Calculate expected next PTS
+                // Calculate frame duration
                 int64_t frame_duration = 0;
                 
                 // Add safety checks for input_stream
@@ -711,17 +690,17 @@ if (tracker_idx != -1) {
                 int64_t pts_diff = llabs(out_pkt->pts - local_expected_next_pts);
                 if (pts_diff > 10 * frame_duration) {
                     // Update discontinuity count safely
-                    pthread_mutex_lock(&timestamp_mutex);
                     int local_count = 0;
                     
-                    // Find our tracker again
-                    for (int i = 0; i < MAX_TIMESTAMP_TRACKERS; i++) {
-                        if (timestamp_trackers[i].initialized && 
-                            strcmp(timestamp_trackers[i].stream_name, stream_name) == 0) {
-                            timestamp_trackers[i].pts_discontinuity_count++;
-                            local_count = timestamp_trackers[i].pts_discontinuity_count;
-                            break;
-                        }
+                    // FIXED: Use a single atomic update for the discontinuity count
+                    pthread_mutex_lock(&timestamp_mutex);
+                    // Verify the tracker is still valid
+                    if (tracker_idx >= 0 && tracker_idx < MAX_TIMESTAMP_TRACKERS && 
+                        timestamp_trackers[tracker_idx].initialized && 
+                        strcmp(timestamp_trackers[tracker_idx].stream_name, stream_name) == 0) {
+                        
+                        timestamp_trackers[tracker_idx].pts_discontinuity_count++;
+                        local_count = timestamp_trackers[tracker_idx].pts_discontinuity_count;
                     }
                     pthread_mutex_unlock(&timestamp_mutex);
                     
@@ -749,29 +728,34 @@ if (tracker_idx != -1) {
                     }
                 }
                 
-                // Update expected next PTS safely
+                // FIXED: Calculate the next expected PTS locally
+                int64_t next_expected_pts = out_pkt->pts + frame_duration;
+                
+                // FIXED: Update all timestamp data in a single atomic operation
                 pthread_mutex_lock(&timestamp_mutex);
-                for (int i = 0; i < MAX_TIMESTAMP_TRACKERS; i++) {
-                    if (timestamp_trackers[i].initialized && 
-                        strcmp(timestamp_trackers[i].stream_name, stream_name) == 0) {
-                        timestamp_trackers[i].expected_next_pts = out_pkt->pts + frame_duration;
-                        break;
-                    }
+                // Verify the tracker is still valid
+                if (tracker_idx >= 0 && tracker_idx < MAX_TIMESTAMP_TRACKERS && 
+                    timestamp_trackers[tracker_idx].initialized && 
+                    strcmp(timestamp_trackers[tracker_idx].stream_name, stream_name) == 0) {
+                    
+                    timestamp_trackers[tracker_idx].last_pts = out_pkt->pts;
+                    timestamp_trackers[tracker_idx].last_dts = out_pkt->dts;
+                    timestamp_trackers[tracker_idx].expected_next_pts = next_expected_pts;
+                }
+                pthread_mutex_unlock(&timestamp_mutex);
+            } else {
+                // FIXED: Update timestamps even if we don't have a previous reference
+                pthread_mutex_lock(&timestamp_mutex);
+                // Verify the tracker is still valid
+                if (tracker_idx >= 0 && tracker_idx < MAX_TIMESTAMP_TRACKERS && 
+                    timestamp_trackers[tracker_idx].initialized && 
+                    strcmp(timestamp_trackers[tracker_idx].stream_name, stream_name) == 0) {
+                    
+                    timestamp_trackers[tracker_idx].last_pts = out_pkt->pts;
+                    timestamp_trackers[tracker_idx].last_dts = out_pkt->dts;
                 }
                 pthread_mutex_unlock(&timestamp_mutex);
             }
-            
-            // Store current timestamps for next packet safely
-            pthread_mutex_lock(&timestamp_mutex);
-            for (int i = 0; i < MAX_TIMESTAMP_TRACKERS; i++) {
-                if (timestamp_trackers[i].initialized && 
-                    strcmp(timestamp_trackers[i].stream_name, stream_name) == 0) {
-                    timestamp_trackers[i].last_pts = out_pkt->pts;
-                    timestamp_trackers[i].last_dts = out_pkt->dts;
-                    break;
-                }
-            }
-            pthread_mutex_unlock(&timestamp_mutex);
         }
     }
     

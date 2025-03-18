@@ -103,17 +103,45 @@ static void *stream_reader_thread(void *arg) {
             continue;
         }
         
-        ret = av_read_frame(ctx->input_ctx, pkt);
+        // CRITICAL FIX: Check if we're still running before reading a frame
+        // This prevents race conditions during shutdown
+        if (!ctx->running) {
+            av_usleep(5000);  // 5ms
+            continue;
+        }
         
-            // Handle timestamp recovery for UDP streams - AFTER reading the packet
-            if (ret >= 0) {
-                // Log for debugging
-                log_debug("Processing packet for stream %s (protocol: %s): pts=%lld, dts=%lld, size=%d", 
-                     ctx->config.name, 
-                     ctx->config.protocol == STREAM_PROTOCOL_UDP ? "UDP" : "TCP",
-                     (long long)(pkt->pts != AV_NOPTS_VALUE ? pkt->pts : -1), 
-                     (long long)(pkt->dts != AV_NOPTS_VALUE ? pkt->dts : -1), 
-                     pkt->size);
+        // CRITICAL FIX: Use a local copy of the input context to avoid race conditions
+        AVFormatContext *local_input_ctx = ctx->input_ctx;
+        if (!local_input_ctx) {
+            av_usleep(5000);  // 5ms
+            continue;
+        }
+        
+        ret = av_read_frame(local_input_ctx, pkt);
+        
+        // Handle timestamp recovery for UDP streams - AFTER reading the packet
+        if (ret >= 0) {
+            // CRITICAL FIX: Check if we're still running after reading a frame
+            // This prevents race conditions during shutdown
+            if (!ctx->running) {
+                av_packet_unref(pkt);
+                continue;
+            }
+            
+            // Log for debugging
+            log_debug("Processing packet for stream %s (protocol: %s): pts=%lld, dts=%lld, size=%d", 
+                 ctx->config.name, 
+                 ctx->config.protocol == STREAM_PROTOCOL_UDP ? "UDP" : "TCP",
+                 (long long)(pkt->pts != AV_NOPTS_VALUE ? pkt->pts : -1), 
+                 (long long)(pkt->dts != AV_NOPTS_VALUE ? pkt->dts : -1), 
+                 pkt->size);
+            
+            // CRITICAL FIX: Use a mutex for timestamp handling in UDP streams
+            // This prevents race conditions when multiple UDP streams are active
+            if (ctx->config.protocol == STREAM_PROTOCOL_UDP) {
+                // Use a static mutex for UDP timestamp handling
+                static pthread_mutex_t udp_timestamp_mutex = PTHREAD_MUTEX_INITIALIZER;
+                pthread_mutex_lock(&udp_timestamp_mutex);
                 
                 // For all streams, but especially UDP streams, ensure timestamps are valid
                 // Use per-context variables to avoid issues with multiple streams
@@ -121,22 +149,21 @@ static void *stream_reader_thread(void *arg) {
                     ctx->last_pts = 0;
                     ctx->frame_duration = 0;
                     ctx->last_pts_initialized = 1;
-                    log_info("Initialized timestamp tracking for stream %s (protocol: %s)", 
-                            ctx->config.name, 
-                            ctx->config.protocol == STREAM_PROTOCOL_UDP ? "UDP" : "TCP");
+                    log_info("Initialized timestamp tracking for stream %s (protocol: UDP)", 
+                            ctx->config.name);
                 }
                 
                 // Calculate frame duration based on stream timebase and framerate if available
-                if (ctx->frame_duration == 0 && ctx->input_ctx && 
-                    ctx->video_stream_idx >= 0 && ctx->video_stream_idx < ctx->input_ctx->nb_streams &&
-                    ctx->input_ctx->streams[ctx->video_stream_idx]) {
+                if (ctx->frame_duration == 0 && local_input_ctx && 
+                    ctx->video_stream_idx >= 0 && ctx->video_stream_idx < local_input_ctx->nb_streams &&
+                    local_input_ctx->streams[ctx->video_stream_idx]) {
                     
                     // Add null check for avg_frame_rate
-                    if (ctx->input_ctx->streams[ctx->video_stream_idx]->avg_frame_rate.num > 0 &&
-                        ctx->input_ctx->streams[ctx->video_stream_idx]->avg_frame_rate.den > 0) {
+                    if (local_input_ctx->streams[ctx->video_stream_idx]->avg_frame_rate.num > 0 &&
+                        local_input_ctx->streams[ctx->video_stream_idx]->avg_frame_rate.den > 0) {
                         
-                        AVRational tb = ctx->input_ctx->streams[ctx->video_stream_idx]->time_base;
-                        AVRational fr = ctx->input_ctx->streams[ctx->video_stream_idx]->avg_frame_rate;
+                        AVRational tb = local_input_ctx->streams[ctx->video_stream_idx]->time_base;
+                        AVRational fr = local_input_ctx->streams[ctx->video_stream_idx]->avg_frame_rate;
                         
                         // Avoid division by zero
                         if (fr.den > 0) {
@@ -216,7 +243,38 @@ static void *stream_reader_thread(void *arg) {
                 if (pkt->pts != AV_NOPTS_VALUE) {
                     ctx->last_pts = pkt->pts;
                 }
+                
+                pthread_mutex_unlock(&udp_timestamp_mutex);
+            } else {
+                // For TCP streams, we can handle timestamps without a mutex
+                // since they're more reliable and don't need as much correction
+                
+                // For all streams, ensure timestamps are valid
+                if (!ctx->last_pts_initialized) {
+                    ctx->last_pts = 0;
+                    ctx->frame_duration = 0;
+                    ctx->last_pts_initialized = 1;
+                    log_info("Initialized timestamp tracking for stream %s (protocol: TCP)", 
+                            ctx->config.name);
+                }
+                
+                // Handle missing timestamps
+                if (pkt->pts == AV_NOPTS_VALUE && pkt->dts != AV_NOPTS_VALUE) {
+                    pkt->pts = pkt->dts;
+                } else if (pkt->dts == AV_NOPTS_VALUE && pkt->pts != AV_NOPTS_VALUE) {
+                    pkt->dts = pkt->pts;
+                } else if (pkt->pts == AV_NOPTS_VALUE && pkt->dts == AV_NOPTS_VALUE) {
+                    // Both timestamps missing, use a default
+                    pkt->pts = 1;
+                    pkt->dts = 1;
+                }
+                
+                // Store current timestamp for next packet if valid
+                if (pkt->pts != AV_NOPTS_VALUE) {
+                    ctx->last_pts = pkt->pts;
+                }
             }
+        }
         
         if (ret < 0) {
             if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN)) {
