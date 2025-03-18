@@ -135,7 +135,7 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     // Get stream configuration
     stream_handle_t stream_handle = get_stream_by_name(stream_name);
     if (!stream_handle) {
-        log_error("Failed to get stream handle for %s", stream_name);
+        log_error("Failed to get stream handle for %s - stream may not exist", stream_name);
         return -1;
     }
 
@@ -357,7 +357,7 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     }
     
     // If we're using a model-based detection (not just motion), run it
-    if (use_model_detection) {
+    if (!use_model_detection) {
         // Use a static cache of loaded models to avoid loading/unloading for each frame
         static struct {
             char path[MAX_PATH_LENGTH];
