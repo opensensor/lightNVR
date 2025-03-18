@@ -43,7 +43,17 @@ static void *hls_stream_thread(void *arg);
  * Removed adaptive degrading to improve quality
  */
 static int hls_packet_callback(const AVPacket *pkt, const AVStream *stream, void *user_data) {
-    // CRITICAL FIX: Add extra validation for user_data to prevent segfaults
+    // CRITICAL FIX: Add extra validation for all parameters
+    if (!pkt) {
+        log_error("HLS packet callback received NULL packet");
+        return -1;
+    }
+    
+    if (!stream) {
+        log_error("HLS packet callback received NULL stream");
+        return -1;
+    }
+    
     if (!user_data) {
         log_error("HLS packet callback received NULL user_data");
         return -1;
@@ -57,12 +67,6 @@ static int hls_packet_callback(const AVPacket *pkt, const AVStream *stream, void
         return -1;
     }
     
-    if (!streaming_ctx->hls_writer) {
-        log_error("HLS packet callback: streaming context has NULL hls_writer for stream %s", 
-                 streaming_ctx->config.name);
-        return -1;
-    }
-    
     // CRITICAL FIX: Validate that the stream is still running
     if (!streaming_ctx->running) {
         log_debug("HLS packet callback: stream %s is no longer running, skipping packet", 
@@ -70,11 +74,25 @@ static int hls_packet_callback(const AVPacket *pkt, const AVStream *stream, void
         return 0; // Return success but don't process the packet
     }
     
+    // CRITICAL FIX: Check for NULL hls_writer with proper error handling
+    if (!streaming_ctx->hls_writer) {
+        log_error("HLS packet callback: streaming context has NULL hls_writer for stream %s", 
+                 streaming_ctx->config.name);
+        return -1;
+    }
+    
     // Check if this is a key frame
     bool is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
     
     // Always set pressure flag to 0 to ensure we never drop frames
     streaming_ctx->hls_writer->is_under_pressure = 0;
+    
+    // CRITICAL FIX: Validate that process_video_packet function exists
+    if (!process_video_packet) {
+        log_error("HLS packet callback: process_video_packet function is NULL for stream %s", 
+                 streaming_ctx->config.name);
+        return -1;
+    }
     
     // Process all frames for better quality
     int ret = process_video_packet(pkt, stream, streaming_ctx->hls_writer, 0, streaming_ctx->config.name);

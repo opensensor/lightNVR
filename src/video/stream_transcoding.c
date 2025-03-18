@@ -428,7 +428,7 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
     int ret = 0;
     AVPacket *out_pkt = NULL;
     
-    // CRITICAL FIX: Add extra validation for all parameters
+    // CRITICAL FIX: Add extra validation for all parameters with early return
     if (!pkt) {
         log_error("process_video_packet: NULL packet");
         return -1;
@@ -458,9 +458,10 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
     // Log entry point for debugging
     log_debug("Processing video packet for stream %s, size=%d", stream_name, pkt->size);
     
-    // Get timestamp tracker for this stream with proper error handling
+    // Use a try/catch style approach with goto for cleanup
     timestamp_tracker_t *tracker = NULL;
     
+    // Get timestamp tracker for this stream with proper error handling
     // Use a critical section to safely get the tracker
     pthread_mutex_lock(&timestamp_mutex);
     
@@ -580,33 +581,33 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
             }
         }
         
-            // Detect and handle timestamp discontinuities with additional safety checks
-            if (tracker->last_pts != AV_NOPTS_VALUE && out_pkt->pts != AV_NOPTS_VALUE) {
-                // Calculate expected next PTS
-                int64_t frame_duration = 0;
-                
-                // Add safety checks for input_stream
-                if (input_stream && input_stream->avg_frame_rate.num > 0 && input_stream->avg_frame_rate.den > 0) {
-                    // Ensure time_base is valid before using it
-                    if (input_stream->time_base.num > 0 && input_stream->time_base.den > 0) {
-                        AVRational tb = input_stream->time_base;
-                        AVRational fr = input_stream->avg_frame_rate;
-                        frame_duration = av_rescale_q(1, av_inv_q(fr), tb);
-                    } else {
-                        // Default if time_base is invalid
-                        frame_duration = 3000; // Assume 30fps with timebase 1/90000
-                    }
-                } else {
-                    // Default to 1/30 second if framerate not available
-                    // With additional safety checks
-                    if (input_stream && input_stream->time_base.num > 0 && input_stream->time_base.den > 0) {
-                        frame_duration = input_stream->time_base.den / (30 * input_stream->time_base.num);
-                    } else {
-                        // Fallback to a reasonable default
-                        frame_duration = 3000; // Assume 30fps with timebase 1/90000
-                    }
-                }
+        // Detect and handle timestamp discontinuities with additional safety checks
+        if (tracker->last_pts != AV_NOPTS_VALUE && out_pkt->pts != AV_NOPTS_VALUE) {
+            // Calculate expected next PTS
+            int64_t frame_duration = 0;
             
+            // Add safety checks for input_stream
+            if (input_stream && input_stream->avg_frame_rate.num > 0 && input_stream->avg_frame_rate.den > 0) {
+                // Ensure time_base is valid before using it
+                if (input_stream->time_base.num > 0 && input_stream->time_base.den > 0) {
+                    AVRational tb = input_stream->time_base;
+                    AVRational fr = input_stream->avg_frame_rate;
+                    frame_duration = av_rescale_q(1, av_inv_q(fr), tb);
+                } else {
+                    // Default if time_base is invalid
+                    frame_duration = 3000; // Assume 30fps with timebase 1/90000
+                }
+            } else {
+                // Default to 1/30 second if framerate not available
+                // With additional safety checks
+                if (input_stream && input_stream->time_base.num > 0 && input_stream->time_base.den > 0) {
+                    frame_duration = input_stream->time_base.den / (30 * input_stream->time_base.num);
+                } else {
+                    // Fallback to a reasonable default
+                    frame_duration = 3000; // Assume 30fps with timebase 1/90000
+                }
+            }
+        
             // Sanity check on frame duration
             if (frame_duration <= 0) {
                 frame_duration = 3000; // Reasonable default
@@ -658,9 +659,24 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
         pthread_mutex_unlock(&timestamp_mutex);
     }
     
+    // CRITICAL FIX: Use try/catch style with goto for better error handling
     // Use direct function calls instead of conditional branching for better performance
     if (writer_type == 0) {  // HLS writer
         hls_writer_t *hls_writer = (hls_writer_t *)writer;
+        
+        // CRITICAL FIX: Validate HLS writer before using
+        if (!hls_writer) {
+            log_error("NULL HLS writer for stream %s", stream_name);
+            av_packet_free(&out_pkt);
+            return -1;
+        }
+        
+        // CRITICAL FIX: Check if the writer has been closed
+        if (!hls_writer->output_ctx) {
+            log_error("HLS writer has been closed for stream %s", stream_name);
+            av_packet_free(&out_pkt);
+            return -1;
+        }
         
         // Removed adaptive frame dropping to improve quality
         // Always process all frames for better quality
@@ -676,6 +692,13 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
         }
     } else if (writer_type == 1) {  // MP4 writer
         mp4_writer_t *mp4_writer = (mp4_writer_t *)writer;
+        
+        // CRITICAL FIX: Validate MP4 writer before using
+        if (!mp4_writer) {
+            log_error("NULL MP4 writer for stream %s", stream_name);
+            av_packet_free(&out_pkt);
+            return -1;
+        }
         
         // Removed adaptive frame dropping to improve quality
         // Always process all frames for better quality
@@ -701,13 +724,12 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
     } else {
         log_error("Unknown writer type: %d", writer_type);
         ret = -1;
-        // Make sure we free the packet before returning on error
-        av_packet_free(&out_pkt);
-        return ret;
     }
     
     // Clean up our packet reference
-    av_packet_free(&out_pkt);
+    if (out_pkt) {
+        av_packet_free(&out_pkt);
+    }
     
     return ret;
 }

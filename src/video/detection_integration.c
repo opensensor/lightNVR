@@ -91,8 +91,33 @@ const char* detect_model_type(const char *model_path) {
  * @return 0 on success, -1 on error
  */
 int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame, int detection_interval) {
+    // CRITICAL FIX: Add extra validation for all parameters
+    if (!stream_name) {
+        log_error("process_decoded_frame_for_detection: NULL stream name");
+        return -1;
+    }
+    
+    if (!frame) {
+        log_error("process_decoded_frame_for_detection: NULL frame for stream %s", stream_name);
+        return -1;
+    }
+    
+    // CRITICAL FIX: Validate frame data
+    if (frame->width <= 0 || frame->height <= 0 || !frame->data[0]) {
+        log_error("process_decoded_frame_for_detection: Invalid frame dimensions or data for stream %s: width=%d, height=%d, data=%p", 
+                 stream_name, frame->width, frame->height, (void*)frame->data[0]);
+        return -1;
+    }
+    
     static int frame_counters[MAX_STREAMS] = {0};
     static char stream_names[MAX_STREAMS][MAX_STREAM_NAME] = {{0}};
+    
+    // Variables for cleanup
+    AVFrame *converted_frame = NULL;
+    struct SwsContext *sws_ctx = NULL;
+    uint8_t *buffer = NULL;
+    uint8_t *packed_buffer = NULL;
+    int detect_ret = -1;
 
     // Find the stream's frame counter
     int stream_idx = -1;
@@ -174,32 +199,29 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     }
 
     // Convert frame to the appropriate format for detection
-    struct SwsContext *sws_ctx = sws_getContext(
+    sws_ctx = sws_getContext(
         frame->width, frame->height, frame->format,
         frame->width, frame->height, target_format,
         SWS_BILINEAR, NULL, NULL, NULL);
 
     if (!sws_ctx) {
         log_error("Failed to create SwsContext for stream %s", stream_name);
-        return -1;
+        goto cleanup;
     }
 
     // Allocate converted frame
-    AVFrame *converted_frame = av_frame_alloc();
+    converted_frame = av_frame_alloc();
     if (!converted_frame) {
         log_error("Failed to allocate converted frame for stream %s", stream_name);
-        sws_freeContext(sws_ctx);
-        return -1;
+        goto cleanup;
     }
 
     // Allocate buffer for converted frame - ensure it's large enough
     int buffer_size = av_image_get_buffer_size(target_format, frame->width, frame->height, 1);
-    uint8_t *buffer = (uint8_t *)av_malloc(buffer_size);
+    buffer = (uint8_t *)av_malloc(buffer_size);
     if (!buffer) {
         log_error("Failed to allocate buffer for converted frame for stream %s", stream_name);
-        av_frame_free(&converted_frame);
-        sws_freeContext(sws_ctx);
-        return -1;
+        goto cleanup;
     }
 
     // Setup converted frame
@@ -214,13 +236,10 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
              (channels == 1) ? "grayscale" : "RGB", stream_name);
 
     // Create a packed buffer without stride padding
-    uint8_t *packed_buffer = (uint8_t *)malloc(frame->width * frame->height * channels);
+    packed_buffer = (uint8_t *)malloc(frame->width * frame->height * channels);
     if (!packed_buffer) {
         log_error("Failed to allocate packed buffer for frame");
-        av_free(buffer);
-        av_frame_free(&converted_frame);
-        sws_freeContext(sws_ctx);
-        return -1;
+        goto cleanup;
     }
 
     // Copy each row, removing stride padding
@@ -300,10 +319,10 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     time_t frame_time = time(NULL);
     
     // Check if we should use motion detection
-    bool use_model_detection = (strcmp(config.detection_model, "motion") == 0);
+    bool use_motion_detection = (strcmp(config.detection_model, "motion") == 0);
 
     // If the model is "motion", enable optimized motion detection
-    if (use_model_detection) {
+    if (use_motion_detection) {
         // Initialize optimized motion detection if not already initialized
         if (!is_motion_detection_enabled(stream_name)) {
             // Use the wrapper function which handles proper initialization and cleanup
@@ -311,9 +330,11 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
             log_info("Automatically enabled optimized motion detection for stream %s based on model setting", stream_name);
         }
     }
-    int detect_ret = -1;
+    
+    detect_ret = -1;
+    
     // If motion detection is enabled, run the optimized implementation
-    if (use_model_detection) {
+    if (use_motion_detection) {
         log_info("Running optimized motion detection for stream %s", stream_name);
         
         // Create a separate result for motion detection
@@ -344,8 +365,8 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                     log_error("Failed to process optimized motion detection results for recording (error code: %d)", ret);
                 }
                 
-                // If we're only using optimized motion detection (no model), we're done
-                if (!use_model_detection) {
+                // If we're only using motion detection, we're done
+                if (use_motion_detection) {
                     detect_ret = 0;
                 }
             } else if (motion_ret != 0) {
@@ -357,7 +378,7 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     }
     
     // If we're using a model-based detection (not just motion), run it
-    if (!use_model_detection) {
+    if (!use_motion_detection) {
         // Use a static cache of loaded models to avoid loading/unloading for each frame
         static struct {
             char path[MAX_PATH_LENGTH];
@@ -496,15 +517,14 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
         }
     }
 
+cleanup:
     // Cleanup - ensure all resources are properly freed
     if (packed_buffer) {
         free(packed_buffer);
-        packed_buffer = NULL;
     }
     
     if (buffer) {
         av_free(buffer);
-        buffer = NULL;
     }
     
     if (converted_frame) {
@@ -513,7 +533,6 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     
     if (sws_ctx) {
         sws_freeContext(sws_ctx);
-        sws_ctx = NULL;
     }
 
     log_info("Finished processing frame %d for detection", frame_counter);
