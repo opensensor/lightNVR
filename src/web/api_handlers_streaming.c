@@ -144,6 +144,8 @@ void handle_hls_manifest(const http_request_t *request, http_response_t *respons
     // Log the storage path for debugging
     log_info("API looking for HLS manifest in storage path: %s", global_config->storage_path);
     
+    // CRITICAL FIX: Use a consistent path for HLS manifests
+    // Always use the /hls/ directory structure without /recordings/
     char manifest_path[MAX_PATH_LENGTH];
     snprintf(manifest_path, MAX_PATH_LENGTH, "%s/hls/%s/index.m3u8",
              global_config->storage_path, stream_name);
@@ -256,8 +258,8 @@ void handle_hls_manifest(const http_request_t *request, http_response_t *respons
         // Try to restart the HLS stream
         stop_hls_stream(stream_name);
         
-        // Wait a short time to ensure the stream is fully stopped
-        usleep(500000); // 500ms
+        // Wait a longer time to ensure the stream is fully stopped
+        usleep(1000000); // 1000ms (1 second) - increased from 500ms for better reliability
         
         // Check if the stream is still in the process of stopping
         stream_state_manager_t *state = get_stream_state_by_name(stream_name);
@@ -390,6 +392,9 @@ void handle_hls_segment(const http_request_t *request, http_response_t *response
 
     // Get the segment file path
     config_t *global_config = get_streaming_config();
+    
+    // CRITICAL FIX: Use a consistent path for HLS segments
+    // Always use the /hls/ directory structure without /recordings/
     char segment_path[MAX_PATH_LENGTH];
     snprintf(segment_path, MAX_PATH_LENGTH, "%s/hls/%s/%s",
              global_config->storage_path, stream_name, segment_filename);
@@ -478,34 +483,15 @@ void handle_hls_segment(const http_request_t *request, http_response_t *response
 }
 
 /**
- * URL decode function
+ * URL decode function (deprecated, use url_decode from request_response.h instead)
  */
 static void url_decode_stream(char *str) {
-    char *src = str;
-    char *dst = str;
-    char a, b;
-
-    while (*src) {
-        if ((*src == '%') && ((a = src[1]) && (b = src[2])) &&
-            (isxdigit(a) && isxdigit(b))) {
-            if (a >= 'a') a -= 'a' - 'A';
-            if (a >= 'A') a -= ('A' - 10);
-            else a -= '0';
-
-            if (b >= 'a') b -= 'a' - 'A';
-            if (b >= 'A') b -= ('A' - 10);
-            else b -= '0';
-
-            *dst++ = 16 * a + b;
-            src += 3;
-            } else if (*src == '+') {
-                *dst++ = ' ';
-                src++;
-            } else {
-                *dst++ = *src++;
-            }
-    }
-    *dst = '\0';
+    if (!str) return;
+    
+    char decoded[MAX_STREAM_NAME];
+    url_decode(str, decoded, sizeof(decoded));
+    strncpy(str, decoded, MAX_STREAM_NAME - 1);
+    str[MAX_STREAM_NAME - 1] = '\0';
 }
 
 /**
@@ -543,7 +529,7 @@ void handle_webrtc_offer(const http_request_t *request, http_response_t *respons
 
     // URL decode the stream name
     char decoded_stream[MAX_STREAM_NAME];
-    url_decode_stream(decoded_stream);
+    url_decode(stream_name, decoded_stream, sizeof(decoded_stream));
     strncpy(stream_name, decoded_stream, MAX_STREAM_NAME - 1);
     stream_name[MAX_STREAM_NAME - 1] = '\0';
 

@@ -244,7 +244,7 @@ int stop_hls_stream(const char *stream_name) {
         set_packet_callback(ctx->reader_ctx, NULL, NULL);
         
         // CRITICAL FIX: Add a small delay to ensure any in-progress callbacks complete
-        usleep(50000); // 50ms delay
+        usleep(100000); // 100ms delay - increased from 50ms for better reliability
     }
     
     // Now mark as not running

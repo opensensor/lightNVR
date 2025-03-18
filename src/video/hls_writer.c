@@ -258,20 +258,17 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     extern config_t global_config;
     char safe_output_dir[MAX_PATH_LENGTH];
     
-    // If output_dir is absolute and not within storage_path, redirect it
-    if (output_dir[0] == '/' && strncmp(output_dir, global_config.storage_path, strlen(global_config.storage_path)) != 0) {
-        // Create a path within our storage directory instead
-        snprintf(safe_output_dir, sizeof(safe_output_dir), "%s/hls/%s", 
-                global_config.storage_path, stream_name);
-        log_warn("Redirecting HLS output from %s to %s to avoid overlay writes", 
-                output_dir, safe_output_dir);
-        strncpy(writer->output_dir, safe_output_dir, MAX_PATH_LENGTH - 1);
-        writer->output_dir[MAX_PATH_LENGTH - 1] = '\0';
-        output_dir = safe_output_dir;
-    } else {
-        strncpy(safe_output_dir, output_dir, MAX_PATH_LENGTH - 1);
-        safe_output_dir[MAX_PATH_LENGTH - 1] = '\0';
-    }
+    // CRITICAL FIX: Always use the consistent path structure for HLS
+    // Always use /hls/ directory without /recordings/
+    snprintf(safe_output_dir, sizeof(safe_output_dir), "%s/hls/%s", 
+            global_config.storage_path, stream_name);
+    
+    // Update the writer's output directory
+    strncpy(writer->output_dir, safe_output_dir, MAX_PATH_LENGTH - 1);
+    writer->output_dir[MAX_PATH_LENGTH - 1] = '\0';
+    output_dir = safe_output_dir;
+    
+    log_info("Using consistent HLS output directory: %s", output_dir);
     
     // Create the HLS directory and ensure it has proper permissions
     snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p %s", output_dir);
@@ -325,53 +322,60 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     av_dict_set(&options, "hls_allow_cache", "1", 0);  // Enable caching to improve playback on low-power devices
     av_dict_set(&options, "hls_segment_type", "mpegts", 0);  // Ensure MPEG-TS segments for better compatibility
     
-    // Ensure the manifest file is properly initialized with EXTM3U delimiter
-    // Create a minimal valid manifest file if it doesn't exist
+    // Always create a fresh manifest file to ensure it's valid
     char manifest_path[MAX_PATH_LENGTH];
     snprintf(manifest_path, MAX_PATH_LENGTH, "%s/index.m3u8", output_dir);
     
-    // Check if the manifest file exists and is valid
-    FILE *manifest_check = fopen(manifest_path, "r");
-    bool create_initial_manifest = false;
+    // First, ensure the directory exists and has proper permissions
+    char dir_cmd[MAX_PATH_LENGTH * 2];
+    snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s && chmod -R 777 %s", output_dir, output_dir);
+    system(dir_cmd);
     
-    if (manifest_check) {
-        // Check if the file is empty or doesn't contain EXTM3U
-        fseek(manifest_check, 0, SEEK_END);
-        long size = ftell(manifest_check);
+    // Create a minimal valid manifest file
+    FILE *manifest_init = fopen(manifest_path, "w");
+    if (manifest_init) {
+        // Write a minimal valid HLS manifest
+        fprintf(manifest_init, "#EXTM3U\n");
+        fprintf(manifest_init, "#EXT-X-VERSION:3\n");
+        fprintf(manifest_init, "#EXT-X-TARGETDURATION:%d\n", segment_duration);
+        fprintf(manifest_init, "#EXT-X-MEDIA-SEQUENCE:0\n");
         
-        if (size == 0) {
-            create_initial_manifest = true;
-        } else {
-            // Check for EXTM3U
-            char buffer[16];
-            fseek(manifest_check, 0, SEEK_SET);
-            size_t read_size = fread(buffer, 1, sizeof(buffer) - 1, manifest_check);
-            buffer[read_size] = '\0';
-            
-            if (strstr(buffer, "#EXTM3U") == NULL) {
-                create_initial_manifest = true;
-            }
-        }
-        fclose(manifest_check);
+        // CRITICAL FIX: Ensure file is properly flushed to disk before closing
+        fflush(manifest_init);
+        fsync(fileno(manifest_init));
+        fclose(manifest_init);
+        
+        // Ensure the manifest file has proper permissions
+        char chmod_cmd[MAX_PATH_LENGTH * 2];
+        snprintf(chmod_cmd, sizeof(chmod_cmd), "chmod 666 %s", manifest_path);
+        system(chmod_cmd);
+        
+        log_info("Created initial valid HLS manifest file: %s", manifest_path);
     } else {
-        create_initial_manifest = true;
+        log_error("Failed to create initial HLS manifest file: %s (error: %s)", 
+                 manifest_path, strerror(errno));
+        
+        // Try to diagnose the issue
+        char ls_cmd[MAX_PATH_LENGTH * 2];
+        snprintf(ls_cmd, sizeof(ls_cmd), "ls -la %s", output_dir);
+        system(ls_cmd);
     }
     
-    // Create a minimal valid manifest file if needed
-    if (create_initial_manifest) {
-        FILE *manifest_init = fopen(manifest_path, "w");
-        if (manifest_init) {
-            // Write a minimal valid HLS manifest
-            fprintf(manifest_init, "#EXTM3U\n");
-            fprintf(manifest_init, "#EXT-X-VERSION:3\n");
-            fprintf(manifest_init, "#EXT-X-TARGETDURATION:%d\n", segment_duration);
-            fprintf(manifest_init, "#EXT-X-MEDIA-SEQUENCE:0\n");
-            fclose(manifest_init);
-            
-            log_info("Created initial valid HLS manifest file: %s", manifest_path);
-        } else {
-            log_error("Failed to create initial HLS manifest file: %s", manifest_path);
-        }
+    // Also create a test segment file to ensure we can write to the directory
+    char test_segment[MAX_PATH_LENGTH];
+    snprintf(test_segment, MAX_PATH_LENGTH, "%s/test_segment.ts", output_dir);
+    FILE *test_file = fopen(test_segment, "w");
+    if (test_file) {
+        // Write some dummy data
+        fwrite("TEST", 1, 4, test_file);
+        fclose(test_file);
+        
+        // Remove the test file
+        unlink(test_segment);
+        log_info("Successfully verified segment file creation in: %s", output_dir);
+    } else {
+        log_error("Failed to create test segment file: %s (error: %s)", 
+                 test_segment, strerror(errno));
     }
 
     // Remove the delete_segments flag to prevent FFmpeg from automatically deleting segments

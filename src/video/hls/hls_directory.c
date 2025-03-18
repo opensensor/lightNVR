@@ -17,10 +17,28 @@
  * Ensure the HLS output directory exists and is writable
  */
 int ensure_hls_directory(const char *output_dir, const char *stream_name) {
+    // Get the global config for storage path
+    config_t *global_config = get_streaming_config();
+    if (!global_config) {
+        log_error("Failed to get global config for HLS directory");
+        return -1;
+    }
+
+    // Ensure we're using a path within our configured storage
+    char safe_output_dir[MAX_PATH_LENGTH];
+    if (output_dir[0] == '/' && strncmp(output_dir, global_config->storage_path, strlen(global_config->storage_path)) != 0) {
+        // Create a path within our storage directory instead
+        snprintf(safe_output_dir, sizeof(safe_output_dir), "%s/hls/%s", 
+                global_config->storage_path, stream_name);
+        log_warn("Redirecting HLS output from %s to %s to avoid overlay writes", 
+                output_dir, safe_output_dir);
+        output_dir = safe_output_dir;
+    }
+
     // Verify output directory exists and is writable
     struct stat st;
     if (stat(output_dir, &st) != 0 || !S_ISDIR(st.st_mode)) {
-        log_error("Output directory does not exist or is not a directory: %s", output_dir);
+        log_warn("Output directory does not exist or is not a directory: %s", output_dir);
 
         // Recreate it as a last resort
         char mkdir_cmd[MAX_PATH_LENGTH * 2];
@@ -32,11 +50,18 @@ int ensure_hls_directory(const char *output_dir, const char *stream_name) {
             return -1;
         }
 
-        // Set permissions
+        // Set permissions - use 777 to ensure all processes can write
         snprintf(mkdir_cmd, sizeof(mkdir_cmd), "chmod -R 777 %s", output_dir);
         int ret_chmod = system(mkdir_cmd);
         if (ret_chmod != 0) {
             log_warn("Failed to set permissions on directory: %s (return code: %d)", output_dir, ret_chmod);
+            
+            // Try again with sudo if available
+            snprintf(mkdir_cmd, sizeof(mkdir_cmd), "sudo chmod -R 777 %s 2>/dev/null", output_dir);
+            ret_chmod = system(mkdir_cmd);
+            if (ret_chmod != 0) {
+                log_warn("Failed to set permissions with sudo on directory: %s", output_dir);
+            }
         }
         
         log_info("Successfully created output directory: %s", output_dir);

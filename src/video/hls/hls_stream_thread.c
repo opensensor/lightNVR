@@ -125,6 +125,21 @@ int hls_packet_callback(const AVPacket *pkt, const AVStream *stream, void *user_
         return -1;
     }
     
+    // CRITICAL FIX: Check if process_video_packet function exists and validate parameters
+    if (!process_video_packet) {
+        log_error("HLS packet callback: process_video_packet function is NULL for stream %s", 
+                 stream_name);
+        pthread_mutex_unlock(&hls_packet_mutex);
+        return -1;
+    }
+    
+    // CRITICAL FIX: Validate the packet and stream before processing
+    if (!pkt || !stream) {
+        log_error("HLS packet callback: invalid packet or stream for %s", stream_name);
+        pthread_mutex_unlock(&hls_packet_mutex);
+        return -1;
+    }
+    
     // Process all frames for better quality
     ret = process_video_packet(pkt, stream, local_hls_writer, 0, stream_name);
     
