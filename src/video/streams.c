@@ -208,10 +208,23 @@ int stop_transcode_stream(const char *stream_name) {
         return -1;
     }
 
-    // First stop the HLS stream
-    int result = stop_hls_stream(stream_name);
+    // Get the stream and its processor
+    stream_handle_t stream = get_stream_by_name(stream_name);
+    if (!stream) {
+        log_error("Failed to find stream: %s", stream_name);
+        return -1;
+    }
+    
+    stream_processor_t processor = get_stream_processor(stream);
+    if (!processor) {
+        log_error("Failed to get stream processor for: %s", stream_name);
+        return -1;
+    }
+    
+    // Remove HLS output from the processor
+    int result = stream_processor_remove_output(processor, OUTPUT_TYPE_HLS);
     if (result != 0) {
-        log_warn("Failed to stop HLS stream: %s", stream_name);
+        log_warn("Failed to remove HLS output from stream processor: %s", stream_name);
         // Continue anyway
     }
 

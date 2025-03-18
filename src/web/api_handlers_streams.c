@@ -240,10 +240,39 @@ void handle_post_stream(const http_request_t *request, http_response_t *response
             // Start recording if record flag is set
             if (config.record) {
                 log_info("Starting recording for stream: %s", config.name);
-                if (start_hls_stream(config.name) == 0) {
-                    log_info("Recording started for stream: %s", config.name);
+                // Get the stream processor
+                stream_processor_t processor = get_stream_processor(stream);
+                if (processor) {
+                    // Add HLS output to the processor
+                    output_config_t output_config;
+                    memset(&output_config, 0, sizeof(output_config));
+                    output_config.type = OUTPUT_TYPE_HLS;
+                    
+                    // Get HLS output path from global config
+                    config_t *global_config = get_streaming_config();
+                    snprintf(output_config.hls.output_path, MAX_PATH_LENGTH, "%s/hls/%s",
+                            global_config->storage_path, config.name);
+                    
+                    // Use segment duration from stream config or default to 4 seconds
+                    output_config.hls.segment_duration = config.segment_duration > 0 ?
+                                                       config.segment_duration : 4;
+                    
+                    // Create HLS directory if it doesn't exist
+                    char dir_cmd[MAX_PATH_LENGTH * 2];
+                    snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s", output_config.hls.output_path);
+                    system(dir_cmd);
+                    
+                    // Set full permissions to ensure FFmpeg can write files
+                    snprintf(dir_cmd, sizeof(dir_cmd), "chmod -R 777 %s", output_config.hls.output_path);
+                    system(dir_cmd);
+                    
+                    if (stream_processor_add_output(processor, &output_config) == 0) {
+                        log_info("Recording started for stream: %s", config.name);
+                    } else {
+                        log_warn("Failed to start recording for stream: %s", config.name);
+                    }
                 } else {
-                    log_warn("Failed to start recording for stream: %s", config.name);
+                    log_warn("Failed to get stream processor for recording: %s", config.name);
                 }
             }
         }
@@ -504,10 +533,39 @@ void handle_put_stream(const http_request_t *request, http_response_t *response)
             // Start recording if record flag is set
             if (config.record) {
                 log_info("Starting recording for stream: %s", config.name);
-                if (start_hls_stream(config.name) == 0) {
-                    log_info("Recording started for stream: %s", config.name);
+                // Get the stream processor
+                stream_processor_t processor = get_stream_processor(stream);
+                if (processor) {
+                    // Add HLS output to the processor
+                    output_config_t output_config;
+                    memset(&output_config, 0, sizeof(output_config));
+                    output_config.type = OUTPUT_TYPE_HLS;
+                    
+                    // Get HLS output path from global config
+                    config_t *global_config = get_streaming_config();
+                    snprintf(output_config.hls.output_path, MAX_PATH_LENGTH, "%s/hls/%s",
+                            global_config->storage_path, config.name);
+                    
+                    // Use segment duration from stream config or default to 4 seconds
+                    output_config.hls.segment_duration = config.segment_duration > 0 ?
+                                                       config.segment_duration : 4;
+                    
+                    // Create HLS directory if it doesn't exist
+                    char dir_cmd[MAX_PATH_LENGTH * 2];
+                    snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s", output_config.hls.output_path);
+                    system(dir_cmd);
+                    
+                    // Set full permissions to ensure FFmpeg can write files
+                    snprintf(dir_cmd, sizeof(dir_cmd), "chmod -R 777 %s", output_config.hls.output_path);
+                    system(dir_cmd);
+                    
+                    if (stream_processor_add_output(processor, &output_config) == 0) {
+                        log_info("Recording started for stream: %s", config.name);
+                    } else {
+                        log_warn("Failed to start recording for stream: %s", config.name);
+                    }
                 } else {
-                    log_warn("Failed to start recording for stream: %s", config.name);
+                    log_warn("Failed to get stream processor for recording: %s", config.name);
                 }
             }
         }
@@ -910,21 +968,61 @@ void handle_toggle_streaming(const http_request_t *request, http_response_t *res
     
     // Toggle the streaming
     if (enabled) {
-        // Start HLS stream if not already running
-        if (start_hls_stream(decoded_name) != 0) {
-            log_error("Failed to start HLS stream for: %s", decoded_name);
-            create_json_response(response, 500, "{\"error\": \"Failed to start HLS stream\"}");
+        // Get the stream processor
+        stream_processor_t processor = get_stream_processor(stream);
+        if (processor) {
+            // Add HLS output to the processor
+            output_config_t output_config;
+            memset(&output_config, 0, sizeof(output_config));
+            output_config.type = OUTPUT_TYPE_HLS;
+            
+            // Get HLS output path from global config
+            config_t *global_config = get_streaming_config();
+            snprintf(output_config.hls.output_path, MAX_PATH_LENGTH, "%s/hls/%s",
+                    global_config->storage_path, decoded_name);
+            
+            // Use segment duration from stream config or default to 4 seconds
+            output_config.hls.segment_duration = config.segment_duration > 0 ?
+                                               config.segment_duration : 4;
+            
+            // Create HLS directory if it doesn't exist
+            char dir_cmd[MAX_PATH_LENGTH * 2];
+            snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s", output_config.hls.output_path);
+            system(dir_cmd);
+            
+            // Set full permissions to ensure FFmpeg can write files
+            snprintf(dir_cmd, sizeof(dir_cmd), "chmod -R 777 %s", output_config.hls.output_path);
+            system(dir_cmd);
+            
+            if (stream_processor_add_output(processor, &output_config) == 0) {
+                log_info("Started HLS stream for %s", decoded_name);
+            } else {
+                log_error("Failed to start HLS stream for: %s", decoded_name);
+                create_json_response(response, 500, "{\"error\": \"Failed to start HLS stream\"}");
+                return;
+            }
+        } else {
+            log_error("Failed to get stream processor for: %s", decoded_name);
+            create_json_response(response, 500, "{\"error\": \"Failed to get stream processor\"}");
             return;
         }
-        log_info("Started HLS stream for %s", decoded_name);
     } else {
-        // Stop HLS stream if running
-        if (stop_hls_stream(decoded_name) != 0) {
-            log_error("Failed to stop HLS stream for: %s", decoded_name);
-            create_json_response(response, 500, "{\"error\": \"Failed to stop HLS stream\"}");
+        // Get the stream processor
+        stream_processor_t processor = get_stream_processor(stream);
+        if (processor) {
+            // Remove HLS output from the processor
+            if (stream_processor_remove_output(processor, OUTPUT_TYPE_HLS) == 0) {
+                log_info("Stopped HLS stream for %s", decoded_name);
+            } else {
+                log_error("Failed to stop HLS stream for: %s", decoded_name);
+                create_json_response(response, 500, "{\"error\": \"Failed to stop HLS stream\"}");
+                return;
+            }
+        } else {
+            log_error("Failed to get stream processor for: %s", decoded_name);
+            create_json_response(response, 500, "{\"error\": \"Failed to get stream processor\"}");
             return;
         }
-        log_info("Stopped HLS stream for %s", decoded_name);
     }
     
     // If recording was enabled, ensure it stays enabled regardless of streaming state

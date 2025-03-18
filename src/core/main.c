@@ -19,7 +19,6 @@
 #include "video/stream_manager.h"
 #include "storage/storage_manager.h"
 #include "video/streams.h"
-#include "video/hls_streaming.h"
 #include "video/mp4_recording.h"
 #include "video/stream_transcoding.h"
 #include "video/detection_stream.h"
@@ -204,10 +203,38 @@ static void load_streams_from_config(const config_t *config) {
                         
                         // Start recording if record flag is set
                         if (config->streams[i].record) {
-                            if (start_hls_stream(config->streams[i].name) == 0) {
-                                log_info("Recording started for stream: %s", config->streams[i].name);
+                            // Get the stream processor
+                            stream_processor_t processor = get_stream_processor(stream);
+                            if (processor) {
+                                // Add HLS output to the processor
+                                output_config_t output_config;
+                                memset(&output_config, 0, sizeof(output_config));
+                                output_config.type = OUTPUT_TYPE_HLS;
+                                
+                                // Get HLS output path from global config
+                                snprintf(output_config.hls.output_path, MAX_PATH_LENGTH, "%s/hls/%s",
+                                        config->storage_path, config->streams[i].name);
+                                
+                                // Use segment duration from stream config or default to 4 seconds
+                                output_config.hls.segment_duration = config->streams[i].segment_duration > 0 ?
+                                                                   config->streams[i].segment_duration : 4;
+                                
+                                // Create HLS directory if it doesn't exist
+                                char dir_cmd[MAX_PATH_LENGTH * 2];
+                                snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s", output_config.hls.output_path);
+                                system(dir_cmd);
+                                
+                                // Set full permissions to ensure FFmpeg can write files
+                                snprintf(dir_cmd, sizeof(dir_cmd), "chmod -R 777 %s", output_config.hls.output_path);
+                                system(dir_cmd);
+                                
+                                if (stream_processor_add_output(processor, &output_config) == 0) {
+                                    log_info("Recording started for stream: %s", config->streams[i].name);
+                                } else {
+                                    log_warn("Failed to start recording for stream: %s", config->streams[i].name);
+                                }
                             } else {
-                                log_warn("Failed to start recording for stream: %s", config->streams[i].name);
+                                log_warn("Failed to get stream processor for recording: %s", config->streams[i].name);
                             }
                         }
                     } else {
@@ -394,7 +421,6 @@ int main(int argc, char *argv[]) {
 
     // Initialize FFmpeg streaming backend
     init_transcoding_backend();
-    init_hls_streaming_backend();
     init_mp4_recording_backend();
     
     // Initialize detection system
@@ -631,19 +657,12 @@ cleanup:
         log_info("Finalizing all MP4 recordings...");
         close_all_mp4_writers();
         
-        // Clean up HLS directories
-        log_info("Cleaning up HLS directories...");
-        cleanup_hls_directories();
-        
         // Now clean up the backends in the correct order
         log_info("Cleaning up detection stream system...");
         shutdown_detection_stream_system();
         
         log_info("Cleaning up MP4 recording backend...");
         cleanup_mp4_recording_backend();  // Cleanup MP4 recording
-        
-        log_info("Cleaning up HLS streaming backend...");
-        cleanup_hls_streaming_backend();  // Cleanup HLS streaming
         
         // Clean up stream reader backend last to ensure all consumers are stopped
         log_info("Cleaning up stream reader backend...");
@@ -704,7 +723,6 @@ cleanup:
         // Then clean up backends in the correct order
         shutdown_detection_stream_system();
         cleanup_mp4_recording_backend();
-        cleanup_hls_streaming_backend();
         cleanup_stream_reader_backend();
         cleanup_transcoding_backend();
         

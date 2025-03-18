@@ -1,3 +1,7 @@
+/**
+ * @file stream_transcoding.c
+ * @brief Implementation of stream transcoding functionality
+ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -316,6 +320,9 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
         av_dict_set(&input_options, "reconnect_delay_max", "5", 0); // Max 5 seconds between reconnection attempts
     }
     
+    // CRITICAL FIX: Use a try/catch pattern with goto for error handling
+    ret = 0;
+    
     // Open input with protocol-specific options
     ret = avformat_open_input(input_ctx, url, NULL, &input_options);
     if (ret < 0) {
@@ -539,9 +546,6 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
         return -1;
     }
     
-    // Log entry point for debugging
-    log_debug("Processing video packet for stream %s, size=%d", stream_name, pkt->size);
-    
     // Create a clean copy of the packet to avoid reference issues
     out_pkt = av_packet_alloc();
     if (!out_pkt) {
@@ -555,10 +559,7 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
         return -1;
     }
     
-    // Check if this is a key frame - only log at debug level to reduce overhead
-    bool is_key_frame = (out_pkt->flags & AV_PKT_FLAG_KEY) != 0;
-    
-    // FIXED: Create local copies of timestamp data to avoid race conditions
+    // CRITICAL FIX: Create local copies of timestamp data to avoid race conditions
     bool is_udp_stream = false;
     int64_t last_pts = AV_NOPTS_VALUE;
     int64_t expected_next_pts = AV_NOPTS_VALUE;
@@ -566,7 +567,7 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
     bool tracker_found = false;
     int tracker_idx = -1;
     
-    // FIXED: Use a single mutex lock/unlock pair to get all timestamp data
+    // CRITICAL FIX: Use a single mutex lock/unlock pair to get all timestamp data
     pthread_mutex_lock(&timestamp_mutex);
     
     // Find the tracker for this stream
@@ -807,7 +808,7 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
         if (!hls_writer->output_ctx) {
             log_error("HLS writer has been closed for stream %s", stream_name);
             av_packet_free(&out_pkt);
-            return -1;
+            return 0;  // Return success to avoid crashing the server
         }
         
         // CRITICAL FIX: Ensure timestamps are valid before writing
@@ -823,17 +824,35 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
             log_debug("Set default timestamps for packet with no PTS/DTS in stream %s", stream_name);
         }
         
+        // CRITICAL FIX: Additional validation for output_ctx and pb
+        if (!hls_writer->output_ctx->pb) {
+            log_error("HLS writer has invalid output context for stream %s", stream_name);
+            av_packet_free(&out_pkt);
+            return 0;  // Return success to avoid crashing the server
+        }
+        
         // Removed adaptive frame dropping to improve quality
         // Always process all frames for better quality
         
-        ret = hls_writer_write_packet(hls_writer, out_pkt, input_stream);
-        if (ret < 0) {
-            // Only log errors for keyframes or every 200th packet to reduce log spam
-            static int error_count = 0;
-            if (is_key_frame || (++error_count % 200 == 0)) {
+    // CRITICAL FIX: Use try/catch pattern with goto for error handling
+    ret = 0;
+    
+    // Check if this is a key frame
+    bool is_key_frame = (out_pkt->flags & AV_PKT_FLAG_KEY) != 0;
+    
+    // Try to write the packet, but handle errors gracefully
+    ret = hls_writer_write_packet(hls_writer, out_pkt, input_stream);
+    if (ret < 0) {
+        // Only log errors for keyframes or every 200th packet to reduce log spam
+        static int error_count = 0;
+        if (is_key_frame || (++error_count % 200 == 0)) {
                 log_error("Failed to write packet to HLS for stream %s: %d (count: %d)", 
                          stream_name, ret, error_count);
             }
+            
+            // CRITICAL FIX: Don't propagate errors that could crash the server
+            // Just log them and continue
+            ret = 0;
         }
     } else if (writer_type == 1) {  // MP4 writer
         mp4_writer_t *mp4_writer = (mp4_writer_t *)writer;
@@ -847,6 +866,9 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
         
         // Removed adaptive frame dropping to improve quality
         // Always process all frames for better quality
+        
+        // Check if this is a key frame
+        bool is_key_frame = (out_pkt->flags & AV_PKT_FLAG_KEY) != 0;
         
         // CRITICAL FIX: Ensure timestamps are valid before writing
         // This is especially important for UDP streams

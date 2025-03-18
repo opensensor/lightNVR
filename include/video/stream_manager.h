@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "core/config.h"
+#include "video/stream_processor.h"
+#include "video/stream_reader.h"
 
 // Stream status enum
 typedef enum {
@@ -208,5 +210,21 @@ int get_stream_snapshot(stream_handle_t handle, const char *path);
  * @return 0 on success, non-zero on failure
  */
 int get_stream_manager_memory_usage(uint64_t *used_memory, uint64_t *peak_memory);
+
+/**
+ * Get the stream processor for a stream
+ * 
+ * @param handle Stream handle
+ * @return Stream processor or NULL if not found
+ */
+stream_processor_t get_stream_processor(stream_handle_t handle);
+
+/**
+ * Get the stream reader for a stream
+ * 
+ * @param handle Stream handle
+ * @return Stream reader or NULL if not found
+ */
+stream_reader_ctx_t *get_stream_reader_from_handle(stream_handle_t handle);
 
 #endif // LIGHTNVR_STREAM_MANAGER_H

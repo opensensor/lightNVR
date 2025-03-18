@@ -241,13 +241,16 @@ function initializeVideoPlayer(stream) {
     const loadingIndicator = videoCell.querySelector('.loading-indicator');
     if (loadingIndicator) {
         loadingIndicator.style.display = 'flex';
+        loadingIndicator.querySelector('span').textContent = 'Connecting...';
     }
 
     // Build the HLS stream URL with cache-busting timestamp to prevent stale data
-    // Your backend needs to convert RTSP to HLS using FFmpeg
     const timestamp = Date.now();
     const hlsStreamUrl = `/api/streaming/${encodeURIComponent(stream.name)}/hls/index.m3u8?_t=${timestamp}`;
 
+    // Track retry attempts
+    videoCell.retryCount = videoCell.retryCount || 0;
+    
     // Check if HLS is supported natively
     if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
         // Native HLS support (Safari)
@@ -256,39 +259,65 @@ function initializeVideoPlayer(stream) {
             if (loadingIndicator) {
                 loadingIndicator.style.display = 'none';
             }
+            // Reset retry count on successful load
+            videoCell.retryCount = 0;
         });
 
-        videoElement.addEventListener('error', function() {
-            handleVideoError(stream.name);
+        videoElement.addEventListener('error', function(e) {
+            console.error('Video error in Safari:', e);
+            handleVideoError(stream.name, 'Error loading stream');
         });
     }
     // Use HLS.js for browsers that don't support HLS natively
     else if (Hls && Hls.isSupported()) {
+        // Clean up any existing HLS instance
+        if (videoCell.hlsPlayer) {
+            videoCell.hlsPlayer.destroy();
+            videoCell.hlsPlayer = null;
+        }
+        
+        // Clear any existing refresh timer
+        if (videoCell.refreshTimer) {
+            clearInterval(videoCell.refreshTimer);
+            videoCell.refreshTimer = null;
+        }
+        
+        // Create new HLS instance with optimized settings
         const hls = new Hls({
-            maxBufferLength: 30,            // Increased from 10 to 30 seconds for better buffering on low-power devices
-            maxMaxBufferLength: 60,         // Increased from 20 to 60 seconds for better buffering on low-power devices
-            liveSyncDurationCount: 4,       // Increased from 3 to 4 segments for better stability
-            liveMaxLatencyDurationCount: 10, // Increased from 5 to 10 segments for better stability on low-power devices
+            maxBufferLength: 30,            // 30 seconds buffer for better stability
+            maxMaxBufferLength: 60,         // 60 seconds max buffer for better stability
+            liveSyncDurationCount: 4,       // 4 segments for better stability
+            liveMaxLatencyDurationCount: 10, // 10 segments for better stability
             liveDurationInfinity: false,    // Don't treat live streams as infinite duration
-            lowLatencyMode: false,          // Disable low latency mode for better stability on low-power devices
-            enableWorker: true,
-            fragLoadingTimeOut: 30000,      // Increased from 20 to 30 seconds timeout for fragment loading
-            manifestLoadingTimeOut: 20000,  // Increased from 15 to 20 seconds timeout for manifest loading
-            levelLoadingTimeOut: 20000,     // Increased from 15 to 20 seconds timeout for level loading
-            backBufferLength: 60,           // Add back buffer length to keep more segments in memory
-            startLevel: -1,                 // Auto-select quality level based on network conditions
-            abrEwmaDefaultEstimate: 500000, // Start with a lower bandwidth estimate (500kbps)
-            abrBandWidthFactor: 0.7,        // Be more conservative with bandwidth estimates
-            abrBandWidthUpFactor: 0.5       // Be more conservative when increasing quality
+            lowLatencyMode: false,          // Disable low latency mode for better stability
+            enableWorker: true,             // Use web workers for better performance
+            fragLoadingTimeOut: 30000,      // 30 seconds timeout for fragment loading
+            manifestLoadingTimeOut: 20000,  // 20 seconds timeout for manifest loading
+            levelLoadingTimeOut: 20000,     // 20 seconds timeout for level loading
+            backBufferLength: 60,           // 60 seconds back buffer
+            startLevel: -1,                 // Auto-select quality level
+            abrEwmaDefaultEstimate: 500000, // 500kbps initial bandwidth estimate
+            abrBandWidthFactor: 0.7,        // Conservative bandwidth estimates
+            abrBandWidthUpFactor: 0.5,      // Conservative quality increases
+            // Add debug logs for troubleshooting
+            debug: false
         });
 
+        // Load the stream
         hls.loadSource(hlsStreamUrl);
         hls.attachMedia(videoElement);
 
+        // Handle successful manifest parsing
         hls.on(Hls.Events.MANIFEST_PARSED, function() {
+            console.log(`Manifest parsed successfully for ${stream.name}`);
             if (loadingIndicator) {
                 loadingIndicator.style.display = 'none';
             }
+            
+            // Reset retry count on successful load
+            videoCell.retryCount = 0;
+            
+            // Attempt to play the video
             videoElement.play().catch(error => {
                 console.warn('Auto-play prevented:', error);
                 // Add play button overlay for user interaction
@@ -296,32 +325,45 @@ function initializeVideoPlayer(stream) {
             });
         });
 
+        // Handle HLS errors
         hls.on(Hls.Events.ERROR, function(event, data) {
+            console.warn(`HLS error for ${stream.name}:`, data);
+            
+            // Only handle fatal errors that require recovery
             if (data.fatal) {
-                console.error('HLS error:', data);
+                console.error(`Fatal HLS error for ${stream.name}:`, data);
+                
+                // Clean up the HLS instance
                 hls.destroy();
                 
-                // Check if the stream was recently enabled
-                const videoCell = videoElement.closest('.video-cell');
-                const loadingIndicator = videoCell.querySelector('.loading-indicator');
+                // Increment retry count
+                videoCell.retryCount = (videoCell.retryCount || 0) + 1;
                 
-                // If the stream was recently enabled (indicated by the loading message),
-                // automatically retry after a short delay
-                if (loadingIndicator && 
-                    loadingIndicator.querySelector('span').textContent === 'Starting stream...') {
-                    
-                    console.log(`Stream ${stream.name} failed to load after enabling, retrying in 2 seconds...`);
-                    
+                // Check if we should retry
+                if (videoCell.retryCount <= 3) {
                     // Show retry message
-                    loadingIndicator.querySelector('span').textContent = 'Retrying connection...';
+                    if (loadingIndicator) {
+                        loadingIndicator.style.display = 'flex';
+                        loadingIndicator.querySelector('span').textContent = `Retrying connection (${videoCell.retryCount}/3)...`;
+                    }
                     
-                    // Retry after a delay
+                    // Exponential backoff for retries
+                    const retryDelay = Math.min(2000 * Math.pow(1.5, videoCell.retryCount - 1), 10000);
+                    
+                    console.log(`Retrying stream ${stream.name} in ${retryDelay}ms (attempt ${videoCell.retryCount}/3)`);
+                    
+                    // Retry after delay with a new timestamp
                     setTimeout(() => {
-                        console.log(`Retrying stream ${stream.name} after failure`);
                         // Fetch updated stream info and reinitialize
                         fetch(`/api/streams/${encodeURIComponent(stream.name)}`)
-                            .then(response => response.json())
+                            .then(response => {
+                                if (!response.ok) {
+                                    throw new Error(`Failed to fetch stream info: ${response.status}`);
+                                }
+                                return response.json();
+                            })
                             .then(updatedStream => {
+                                console.log(`Retrying stream ${stream.name} with fresh data`);
                                 // Cleanup existing player
                                 cleanupVideoPlayer(stream.name);
                                 // Reinitialize with updated stream info
@@ -329,24 +371,30 @@ function initializeVideoPlayer(stream) {
                             })
                             .catch(error => {
                                 console.error(`Error fetching stream info for retry: ${error}`);
-                                handleVideoError(stream.name, 'Failed to reconnect after enabling');
+                                handleVideoError(stream.name, 'Failed to reconnect to stream');
                             });
-                    }, 2000);
+                    }, retryDelay);
                 } else {
-                    // Regular error handling for non-startup errors
-                    handleVideoError(stream.name);
+                    // We've exceeded retry attempts, show error
+                    handleVideoError(stream.name, 'Failed to load stream after multiple attempts');
                 }
             }
         });
 
-    // Set up less frequent refresh to reduce load on low-power devices
-    const refreshInterval = 60000; // 60 seconds (increased from 30 seconds)
+        // Set up periodic manifest refresh to handle stale streams
+        const refreshInterval = 30000; // 30 seconds
         const refreshTimer = setInterval(() => {
-            if (videoCell && videoCell.hlsPlayer) {
-                console.log(`Refreshing HLS stream for ${stream.name}`);
+            if (videoCell && hls && !hls.destroyed) {
+                console.log(`Refreshing HLS manifest for ${stream.name}`);
                 const newTimestamp = Date.now();
                 const newUrl = `/api/streaming/${encodeURIComponent(stream.name)}/hls/index.m3u8?_t=${newTimestamp}`;
-                videoCell.hlsPlayer.loadSource(newUrl);
+                
+                try {
+                    hls.loadSource(newUrl);
+                } catch (e) {
+                    console.error(`Error refreshing HLS manifest for ${stream.name}:`, e);
+                    // If refresh fails, don't crash - the next refresh might succeed
+                }
             } else {
                 // Clear interval if video cell or player no longer exists
                 clearInterval(refreshTimer);
@@ -407,42 +455,70 @@ function handleVideoError(streamName, message) {
         videoCell.appendChild(errorIndicator);
     }
 
+    // Set error message with more details
+    const errorMessage = message || 'Stream connection failed';
+    console.error(`Stream error for ${streamName}: ${errorMessage}`);
+
     errorIndicator.innerHTML = `
         <div class="error-icon">!</div>
-        <p>${message || 'Stream connection failed'}</p>
+        <p>${errorMessage}</p>
         <button class="retry-button">Retry</button>
     `;
 
-    // Add retry button handler
+    // Make sure the error indicator is visible
+    errorIndicator.style.display = 'flex';
+
+    // Add retry button handler with improved error handling
     const retryButton = errorIndicator.querySelector('.retry-button');
     if (retryButton) {
-        retryButton.addEventListener('click', function() {
+        // Remove any existing event listeners to prevent duplicates
+        const newRetryButton = retryButton.cloneNode(true);
+        retryButton.parentNode.replaceChild(newRetryButton, retryButton);
+        
+        newRetryButton.addEventListener('click', function() {
+            // Reset retry count on manual retry
+            videoCell.retryCount = 0;
+            
             // Show loading indicator again
             if (loadingIndicator) {
                 loadingIndicator.style.display = 'flex';
+                loadingIndicator.querySelector('span').textContent = 'Reconnecting...';
             }
             
             // Hide error indicator
             errorIndicator.style.display = 'none';
             
-            // Fetch stream info again and reinitialize
+            console.log(`Manual retry for stream ${streamName}`);
+            
+            // Fetch stream info again with error handling
             fetch(`/api/streams/${encodeURIComponent(streamName)}`)
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+                    }
+                    return response.json();
+                })
                 .then(streamInfo => {
-                    // Cleanup existing player if any
+                    if (!streamInfo) {
+                        throw new Error('Invalid stream information received');
+                    }
+                    
+                    console.log(`Successfully fetched stream info for ${streamName}`, streamInfo);
+                    
+                    // Cleanup existing player
                     cleanupVideoPlayer(streamName);
 
-                    // Reinitialize
+                    // Reinitialize with fresh data
                     initializeVideoPlayer(streamInfo);
                 })
                 .catch(error => {
-                    console.error('Error fetching stream info:', error);
+                    console.error(`Error during manual retry for ${streamName}:`, error);
                     
                     // Show error indicator again with new message
                     errorIndicator.style.display = 'flex';
                     const errorMsg = errorIndicator.querySelector('p');
                     if (errorMsg) {
-                        errorMsg.textContent = 'Could not reconnect: ' + error.message;
+                        errorMsg.textContent = `Could not reconnect: ${error.message}`;
                     }
                     
                     // Hide loading indicator
@@ -464,28 +540,43 @@ function cleanupVideoPlayer(streamName) {
 
     if (!videoCell) return;
 
-    // Destroy HLS instance and clear refresh timer if they exist
+    console.log(`Cleaning up video player for ${streamName}`);
+
+    // Destroy HLS instance with proper error handling
     if (videoCell.hlsPlayer) {
-        videoCell.hlsPlayer.destroy();
-        delete videoCell.hlsPlayer;
+        try {
+            videoCell.hlsPlayer.destroy();
+        } catch (e) {
+            console.error(`Error destroying HLS player for ${streamName}:`, e);
+        }
+        videoCell.hlsPlayer = null;
     }
     
+    // Clear refresh timer
     if (videoCell.refreshTimer) {
         clearInterval(videoCell.refreshTimer);
-        delete videoCell.refreshTimer;
+        videoCell.refreshTimer = null;
     }
 
     // Reset video element
     if (videoElement) {
-        videoElement.pause();
-        videoElement.removeAttribute('src');
-        videoElement.load();
+        try {
+            videoElement.pause();
+            videoElement.removeAttribute('src');
+            videoElement.load();
+        } catch (e) {
+            console.error(`Error resetting video element for ${streamName}:`, e);
+        }
     }
 
     // Reset loading indicator
     const loadingIndicator = videoCell.querySelector('.loading-indicator');
     if (loadingIndicator) {
         loadingIndicator.style.display = 'none';
+        const loadingText = loadingIndicator.querySelector('span');
+        if (loadingText) {
+            loadingText.textContent = 'Connecting...';
+        }
     }
 
     // Remove error indicator if any
@@ -507,6 +598,13 @@ function cleanupVideoPlayer(streamName) {
         clearInterval(canvasOverlay.detectionInterval);
         delete canvasOverlay.detectionInterval;
     }
+    
+    // Reset retry count
+    if (videoCell) {
+        videoCell.retryCount = 0;
+    }
+    
+    console.log(`Cleanup complete for ${streamName}`);
 }
 
 /**

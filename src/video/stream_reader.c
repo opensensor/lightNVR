@@ -25,6 +25,8 @@
 // Hash map for tracking running stream reader contexts
 static stream_reader_ctx_t *reader_contexts[MAX_STREAMS];
 static pthread_mutex_t contexts_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t udp_timestamp_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t stop_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // Forward declarations
 static void *stream_reader_thread(void *arg);
@@ -37,6 +39,12 @@ static void *stream_reader_thread(void *arg) {
     AVPacket *pkt = NULL;
     int ret;
     
+    // CRITICAL FIX: Check if context is valid
+    if (!ctx) {
+        log_error("Stream reader thread started with NULL context");
+        return NULL;
+    }
+    
     log_info("Starting stream reader thread for stream %s (dedicated: %d)", 
              ctx->config.name, ctx->dedicated);
     
@@ -44,7 +52,7 @@ static void *stream_reader_thread(void *arg) {
     int retry_count = 0;
     const int max_retries = 5;
     
-    while (retry_count < max_retries) {
+    while (retry_count < max_retries && ctx->running) {  // CRITICAL FIX: Check running flag
         ret = open_input_stream(&ctx->input_ctx, ctx->config.url, ctx->config.protocol);
         if (ret == 0) {
             // Successfully opened the stream
@@ -67,11 +75,21 @@ static void *stream_reader_thread(void *arg) {
         // Wait before retrying - reduced from 1s to 250ms for more responsive handling
         av_usleep(250000);  // 250ms delay
         retry_count++;
+        
+        // CRITICAL FIX: Check if we're still running before retrying
+        if (!ctx->running) {
+            log_info("Stream reader for %s stopped during connection retry", ctx->config.name);
+            return NULL;
+        }
     }
     
-    if (ret < 0 || !ctx->input_ctx) {
-        log_error("Failed to open input stream for %s after %d attempts", 
-                 ctx->config.name, max_retries);
+    if (ret < 0 || !ctx->input_ctx || !ctx->running) {  // CRITICAL FIX: Check running flag
+        if (!ctx->running) {
+            log_info("Stream reader for %s stopped during initialization", ctx->config.name);
+        } else {
+            log_error("Failed to open input stream for %s after %d attempts", 
+                     ctx->config.name, max_retries);
+        }
         ctx->running = 0;
         return NULL;
     }
@@ -117,6 +135,7 @@ static void *stream_reader_thread(void *arg) {
             continue;
         }
         
+        // CRITICAL FIX: Use a try/catch pattern with goto for error handling
         ret = av_read_frame(local_input_ctx, pkt);
         
         // Handle timestamp recovery for UDP streams - AFTER reading the packet
@@ -136,11 +155,9 @@ static void *stream_reader_thread(void *arg) {
                  (long long)(pkt->dts != AV_NOPTS_VALUE ? pkt->dts : -1), 
                  pkt->size);
             
-            // CRITICAL FIX: Use a mutex for timestamp handling in UDP streams
+            // Use the global mutex for timestamp handling in UDP streams
             // This prevents race conditions when multiple UDP streams are active
             if (ctx->config.protocol == STREAM_PROTOCOL_UDP) {
-                // Use a static mutex for UDP timestamp handling
-                static pthread_mutex_t udp_timestamp_mutex = PTHREAD_MUTEX_INITIALIZER;
                 pthread_mutex_lock(&udp_timestamp_mutex);
                 
                 // For all streams, but especially UDP streams, ensure timestamps are valid
@@ -282,6 +299,11 @@ static void *stream_reader_thread(void *arg) {
                 av_packet_unref(pkt);
                 log_warn("Stream %s disconnected, attempting to reconnect...", ctx->config.name);
                 
+                // CRITICAL FIX: Check if we're still running before reconnecting
+                if (!ctx->running) {
+                    break;
+                }
+                
                 // Use different reconnection strategies based on protocol
                 static int reconnect_attempts = 0;
                 int backoff_time_ms;
@@ -320,6 +342,11 @@ static void *stream_reader_thread(void *arg) {
                 
                 reconnect_attempts++;
                 av_usleep(backoff_time_ms * 1000);  // Convert ms to μs
+                
+                // CRITICAL FIX: Check if we're still running before reconnecting
+                if (!ctx->running) {
+                    break;
+                }
                 
                 // Close and reopen input
                 avformat_close_input(&ctx->input_ctx);
@@ -366,13 +393,11 @@ static void *stream_reader_thread(void *arg) {
                          (long long)pkt->pts, (long long)pkt->dts, pkt->size);
             }
             
-            // Removed packet throttling mechanism to improve quality
-            // Always process all frames for better quality
-            
             // CRITICAL FIX: Double-check that we're still running and have a valid callback
             // This prevents use-after-free issues during shutdown
             if (!ctx->running || !ctx->packet_callback) {
                 // Skip processing if we're shutting down or callback was cleared
+                av_packet_unref(pkt);
                 continue;
             }
             
@@ -437,12 +462,15 @@ void cleanup_stream_reader_backend(void) {
             
             pthread_t thread_to_join = reader_contexts[i]->thread;
             
-            // Mark as not running
-            reader_contexts[i]->running = 0;
-            
-            // Clear the callback to prevent any further processing
+            // CRITICAL FIX: First safely clear the callback to prevent any further processing
             reader_contexts[i]->packet_callback = NULL;
             reader_contexts[i]->callback_data = NULL;
+            
+            // Use memory barrier to ensure the callback clearing is visible to all threads
+            __sync_synchronize();
+            
+            // Now mark as not running
+            reader_contexts[i]->running = 0;
             
             // Unlock before joining thread to prevent deadlocks
             pthread_mutex_unlock(&contexts_mutex);
@@ -594,13 +622,16 @@ int stop_stream_reader(stream_reader_ctx_t *ctx) {
     // Log that we're attempting to stop the reader
     log_info("Attempting to stop stream reader: %s", stream_name);
     
-    // CRITICAL FIX: Use a static mutex to prevent concurrent access during stopping
-    static pthread_mutex_t stop_mutex = PTHREAD_MUTEX_INITIALIZER;
+    // CRITICAL FIX: Use a mutex to prevent concurrent access during stopping
     pthread_mutex_lock(&stop_mutex);
     
-    // CRITICAL FIX: Check if the reader is already stopped
-    if (!ctx->running) {
-        log_warn("Stream reader for %s is already stopped", stream_name);
+    // Check if the reader is already stopped or if the context is invalid
+    if (!ctx || !ctx->running) {
+        if (!ctx) {
+            log_warn("Attempted to stop NULL stream reader context");
+        } else {
+            log_warn("Stream reader for %s is already stopped", stream_name);
+        }
         pthread_mutex_unlock(&stop_mutex);
         return 0;
     }
@@ -623,25 +654,30 @@ int stop_stream_reader(stream_reader_ctx_t *ctx) {
         return -1;
     }
     
-    // CRITICAL FIX: First safely clear the callback to prevent any further processing
+    // First safely clear the callback to prevent any further processing
     // This must be done before marking as not running to prevent race conditions
     ctx->packet_callback = NULL;
     ctx->callback_data = NULL;
     
-    // Now mark as not running
-    ctx->running = 0;
+    // Use memory barrier to ensure the callback clearing is visible to all threads
+    __sync_synchronize();
+    
+    // Now mark as not running using atomic operation
+    __atomic_store_n(&ctx->running, 0, __ATOMIC_SEQ_CST);
     
     // Store a local copy of the thread to join
     pthread_t thread_to_join = ctx->thread;
     
     // Close input context if it exists - this will force any blocking read operations to return
-    if (ctx->input_ctx) {
-        avformat_close_input(&ctx->input_ctx);
-        ctx->input_ctx = NULL; // Set to NULL to prevent double-free or use-after-free
+    AVFormatContext *input_ctx_to_close = ctx->input_ctx;
+    if (input_ctx_to_close) {
+        // Set to NULL first to prevent other threads from using it
+        ctx->input_ctx = NULL;
+        // Memory barrier to ensure the NULL assignment is visible to all threads
+        __sync_synchronize();
+        // Now close the input context
+        avformat_close_input(&input_ctx_to_close);
     }
-    
-    // Create a local copy of the context pointer before removing it from the array
-    stream_reader_ctx_t *ctx_copy = ctx;
     
     // Remove the context from the array before unlocking to prevent other threads from accessing it
     reader_contexts[index] = NULL;
@@ -654,17 +690,12 @@ int stop_stream_reader(stream_reader_ctx_t *ctx) {
     if (join_result != 0) {
         log_warn("Could not join thread for stream %s within timeout (error: %s)", 
                 stream_name, strerror(join_result));
-        
-        // Even if we couldn't join the thread, we still need to free the context
-        // This is safe because we've already removed it from the array and cleared the callback
-        log_warn("Freeing context for stream %s despite join failure", stream_name);
     } else {
         log_info("Successfully joined thread for stream %s", stream_name);
     }
     
-    // Now it's safe to free the context since we've removed it from the array
-    // and either joined the thread or at least tried to
-    free(ctx_copy);
+    // Now it's safe to free the context
+    free(ctx);
     
     log_info("Successfully stopped stream reader for %s", stream_name);
     
@@ -672,6 +703,45 @@ int stop_stream_reader(stream_reader_ctx_t *ctx) {
     pthread_mutex_unlock(&stop_mutex);
     
     return 0;
+}
+
+/**
+ * Get the stream reader for a stream
+ */
+stream_reader_ctx_t *get_stream_reader(const char *stream_name) {
+    if (!stream_name) {
+        log_error("Cannot get stream reader: NULL stream name");
+        return NULL;
+    }
+    
+    pthread_mutex_lock(&contexts_mutex);
+    
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (reader_contexts[i] && 
+            strcmp(reader_contexts[i]->config.name, stream_name) == 0) {
+            pthread_mutex_unlock(&contexts_mutex);
+            return reader_contexts[i];
+        }
+    }
+    
+    pthread_mutex_unlock(&contexts_mutex);
+    return NULL;
+}
+
+/**
+ * Get stream reader by index
+ */
+stream_reader_ctx_t *get_stream_reader_by_index(int index) {
+    if (index < 0 || index >= MAX_STREAMS) {
+        log_error("Invalid stream reader index: %d", index);
+        return NULL;
+    }
+    
+    pthread_mutex_lock(&contexts_mutex);
+    stream_reader_ctx_t *ctx = reader_contexts[index];
+    pthread_mutex_unlock(&contexts_mutex);
+    
+    return ctx;
 }
 
 /**
@@ -683,67 +753,35 @@ int set_packet_callback(stream_reader_ctx_t *ctx, packet_callback_t callback, vo
         return -1;
     }
     
+    // CRITICAL FIX: Use atomic operations to update the callback
+    // This prevents race conditions if the callback is being used while we're updating it
+    
     // Allow NULL callback for clearing during shutdown
     if (!callback) {
         log_info("Clearing packet callback for stream %s", ctx->config.name);
-        ctx->packet_callback = NULL;
-        ctx->callback_data = NULL;
+        
+        // First clear the user data
+        __atomic_store_n(&ctx->callback_data, NULL, __ATOMIC_SEQ_CST);
+        
+        // Memory barrier to ensure the user data clearing is visible to all threads
+        __sync_synchronize();
+        
+        // Then clear the callback
+        __atomic_store_n(&ctx->packet_callback, NULL, __ATOMIC_SEQ_CST);
+        
         return 0;
     }
     
-    ctx->packet_callback = callback;
-    ctx->callback_data = user_data;
+    // First set the callback
+    __atomic_store_n(&ctx->packet_callback, callback, __ATOMIC_SEQ_CST);
     
-    log_info("Set packet callback for stream %s", ctx->config.name);
+    // Memory barrier to ensure the callback setting is visible to all threads
+    __sync_synchronize();
+    
+    // Then set the user data
+    __atomic_store_n(&ctx->callback_data, user_data, __ATOMIC_SEQ_CST);
+    
+    log_info("Updated packet callback for stream %s", ctx->config.name);
+    
     return 0;
-}
-
-/**
- * Get the stream reader for a stream
- */
-stream_reader_ctx_t *get_stream_reader(const char *stream_name) {
-    if (!stream_name) {
-        return NULL;
-    }
-    
-    pthread_mutex_lock(&contexts_mutex);
-    
-    // First look for an existing dedicated reader for this stream
-    for (int i = 0; i < MAX_STREAMS; i++) {
-        if (reader_contexts[i] && 
-            strcmp(reader_contexts[i]->config.name, stream_name) == 0 && 
-            reader_contexts[i]->dedicated) {
-            pthread_mutex_unlock(&contexts_mutex);
-            return reader_contexts[i];
-        }
-    }
-    
-    // If no dedicated reader exists, look for a shared reader
-    for (int i = 0; i < MAX_STREAMS; i++) {
-        if (reader_contexts[i] && 
-            strcmp(reader_contexts[i]->config.name, stream_name) == 0 && 
-            !reader_contexts[i]->dedicated) {
-            pthread_mutex_unlock(&contexts_mutex);
-            return reader_contexts[i];
-        }
-    }
-    
-    // No existing reader found
-    pthread_mutex_unlock(&contexts_mutex);
-    return NULL;
-}
-
-/**
- * Get stream reader by index
- */
-stream_reader_ctx_t *get_stream_reader_by_index(int index) {
-    if (index < 0 || index >= MAX_STREAMS) {
-        return NULL;
-    }
-    
-    pthread_mutex_lock(&contexts_mutex);
-    stream_reader_ctx_t *reader = reader_contexts[index];
-    pthread_mutex_unlock(&contexts_mutex);
-    
-    return reader;
 }

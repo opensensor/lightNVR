@@ -14,6 +14,32 @@
 #include "video/hls_writer.h"
 #include "video/detection_integration.h"
 
+// In api_handlers_streaming_hls.c
+// Add this function at the top to consolidate path handling
+
+/**
+ * Get standardized HLS directory path for a stream
+ */
+static void get_hls_path(const char *storage_base, const char *stream_name, char *output_path, size_t output_size) {
+    // Primary path: /storage/hls/{stream_name}
+    snprintf(output_path, output_size, "%s/hls/%s", storage_base, stream_name);
+
+    // Check if directory exists
+    struct stat st;
+    if (stat(output_path, &st) != 0 || !S_ISDIR(st.st_mode)) {
+        // Try alternative path: /storage/recordings/hls/{stream_name}
+        snprintf(output_path, output_size, "%s/recordings/hls/%s", storage_base, stream_name);
+
+        // Create directory if it doesn't exist
+        if (stat(output_path, &st) != 0 || !S_ISDIR(st.st_mode)) {
+            char mkdir_cmd[MAX_PATH_LENGTH * 2];
+            snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p %s && chmod -R 777 %s",
+                    output_path, output_path);
+            system(mkdir_cmd);
+        }
+    }
+}
+
 // Direct detection processing function - no thread needed
 static void process_packet_for_detection(const char *stream_name, const AVPacket *pkt, const AVCodecParameters *codec_params) {
     // CRITICAL FIX: Add extra validation for all parameters

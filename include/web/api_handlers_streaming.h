@@ -2,31 +2,15 @@
 #define API_HANDLERS_STREAMING_H
 
 #include "web/web_server.h"
+#include "web/api_handlers_streaming_hls.h"
+#include "web/api_handlers_streaming_webrtc.h"
+#include "web/api_handlers_streaming_control.h"
 
 /**
  * Handle streaming request (HLS, WebRTC)
+ * Main entry point for all streaming requests
  */
 void handle_streaming_request(const http_request_t *request, http_response_t *response);
-
-/**
- * Handle HLS manifest request
- */
-void handle_hls_manifest(const http_request_t *request, http_response_t *response);
-
-/**
- * Handle HLS segment request
- */
-void handle_hls_segment(const http_request_t *request, http_response_t *response);
-
-/**
- * Handle WebRTC offer request
- */
-void handle_webrtc_offer(const http_request_t *request, http_response_t *response);
-
-/**
- * Handle WebRTC ICE request
- */
-void handle_webrtc_ice(const http_request_t *request, http_response_t *response);
 
 /**
  * Register streaming API handlers

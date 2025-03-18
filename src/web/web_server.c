@@ -187,19 +187,61 @@ static void log_request(const http_request_t *request, int status_code);
 static int write_pid_file(void);
 static int remove_pid_file(void);
 
-// Signal handler
+// Flag to prevent recursive signal handling
+static volatile sig_atomic_t handling_signal = 0;
+
+// Signal handler with improved shutdown sequence
 static void signal_handler(int sig) {
     if (sig == SIGINT || sig == SIGTERM) {
+        // Prevent recursive signal handling
+        if (handling_signal) {
+            log_debug("Already handling signal, ignoring duplicate signal %d", sig);
+            return;
+        }
+        
+        handling_signal = 1;
         log_info("Web server received signal %d, shutting down...", sig);
+        
+        // Set flags to stop all processing
         server_running = 0;
         web_server.running = 0;
 
-        // Close server socket to unblock accept()
+        // Create a self-connection to unblock accept()
         if (web_server.server_socket >= 0) {
-            shutdown(web_server.server_socket, SHUT_RDWR);
-            close(web_server.server_socket);
+            // Create a new socket for self-connection
+            int temp_socket = socket(AF_INET, SOCK_STREAM, 0);
+            if (temp_socket >= 0) {
+                struct sockaddr_in server_addr;
+                memset(&server_addr, 0, sizeof(server_addr));
+                server_addr.sin_family = AF_INET;
+                server_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK); // 127.0.0.1
+                server_addr.sin_port = htons(web_server.port);
+                
+                // Set non-blocking mode for the temp socket
+                int flags = fcntl(temp_socket, F_GETFL, 0);
+                fcntl(temp_socket, F_SETFL, flags | O_NONBLOCK);
+                
+                // Try to connect to our own server to unblock accept()
+                connect(temp_socket, (struct sockaddr*)&server_addr, sizeof(server_addr));
+                
+                // We don't care about the result, just close it
+                close(temp_socket);
+                log_debug("Sent self-connection to unblock accept()");
+            }
+            
+            // First try to shutdown the socket
+            if (shutdown(web_server.server_socket, SHUT_RDWR) != 0) {
+                log_warn("Failed to shutdown server socket: %s", strerror(errno));
+            }
+            
+            // Then close it
+            if (close(web_server.server_socket) != 0) {
+                log_warn("Failed to close server socket: %s", strerror(errno));
+            }
+            
             web_server.server_socket = -1;
             server_socket = -1; // Update the global reference
+            log_debug("Server socket closed");
         }
 
         // Set global running flag to false if not in daemon mode
@@ -207,8 +249,23 @@ static void signal_handler(int sig) {
         if (!daemon_mode) {
             extern volatile bool running;
             running = false;
+            
+            // Force cleanup of all streams to prevent hanging
+            log_info("Initiating emergency cleanup of all streams");
+            shutdown_stream_manager();
+            
+            // Force cleanup of transcoding backend
+            log_info("Initiating emergency cleanup of transcoding backend");
+            cleanup_transcoding_backend();
+            
+            // DO NOT send SIGTERM to all processes in the process group
+            // as this would include ourselves and cause recursive signal handling
+            // Instead, we'll let the main process handle the cleanup
         }
         // In daemon mode, the signal is handled by daemon_signal_handler
+        
+        // Reset the handling_signal flag
+        handling_signal = 0;
     }
 }
 
@@ -368,28 +425,63 @@ void shutdown_web_server(void) {
     pthread_mutex_lock(&web_server.mutex);
     web_server.running = 0;
 
-    // Close server socket to unblock accept()
+    // Create a self-connection to unblock accept() before closing the socket
     if (web_server.server_socket >= 0) {
-        shutdown(web_server.server_socket, SHUT_RDWR);
-        close(web_server.server_socket);
+        // Create a new socket for self-connection
+        int temp_socket = socket(AF_INET, SOCK_STREAM, 0);
+        if (temp_socket >= 0) {
+            struct sockaddr_in server_addr;
+            memset(&server_addr, 0, sizeof(server_addr));
+            server_addr.sin_family = AF_INET;
+            server_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK); // 127.0.0.1
+            server_addr.sin_port = htons(web_server.port);
+            
+            // Set non-blocking mode for the temp socket
+            int flags = fcntl(temp_socket, F_GETFL, 0);
+            fcntl(temp_socket, F_SETFL, flags | O_NONBLOCK);
+            
+            // Try to connect to our own server to unblock accept()
+            connect(temp_socket, (struct sockaddr*)&server_addr, sizeof(server_addr));
+            
+            // We don't care about the result, just close it
+            close(temp_socket);
+            log_debug("Sent self-connection to unblock accept() during shutdown");
+        }
+
+        // Close server socket
+        if (shutdown(web_server.server_socket, SHUT_RDWR) != 0) {
+            log_warn("Failed to shutdown server socket: %s", strerror(errno));
+        }
+        
+        if (close(web_server.server_socket) != 0) {
+            log_warn("Failed to close server socket: %s", strerror(errno));
+        }
+        
         web_server.server_socket = -1;
         server_socket = -1; // Update the global reference
+        log_debug("Server socket closed during shutdown");
     }
     pthread_mutex_unlock(&web_server.mutex);
 
-// Join server thread with timeout using our custom implementation
-int join_result = pthread_join_with_timeout(web_server.server_thread, NULL, 30);
-if (join_result != 0) {
-    if (join_result == ETIMEDOUT) {
-        log_warn("Server thread join timed out after 30 seconds, forcefully terminating thread");
+    // Give the server thread a moment to detect the shutdown flag
+    usleep(100000); // 100ms
+
+    // Join server thread with a standard pthread_join
+    log_info("Waiting for server thread to exit...");
+    int join_result = pthread_join(web_server.server_thread, NULL);
+    
+    if (join_result != 0) {
+        log_warn("Failed to join server thread: %s", strerror(join_result));
+        
+        // If join failed, try to cancel the thread
+        log_warn("Attempting to cancel server thread");
         pthread_cancel(web_server.server_thread);
         
-        // Force cleanup of any resources that might be held by the thread
-        log_warn("Performing forced cleanup of server resources");
+        // Wait a moment for the thread to be cancelled
+        usleep(100000); // 100ms
     } else {
-        log_warn("Failed to join server thread: %s", strerror(join_result));
+        log_info("Server thread joined successfully");
     }
-}
 
     // Shutdown thread pool
     if (web_server.thread_pool) {
@@ -411,9 +503,26 @@ static void *server_thread_func(void *arg) {
     fd_set read_fds;
     struct timeval tv;
 
+    // Set up signal mask to block signals in this thread
+    // Signals will be handled by the main thread
+    sigset_t mask;
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGINT);
+    sigaddset(&mask, SIGTERM);
+    pthread_sigmask(SIG_BLOCK, &mask, NULL);
+
+    log_info("Web server thread started");
+
     while (server_running) {
         // Clear the set and add server socket
         FD_ZERO(&read_fds);
+        
+        // Check if server socket is valid
+        if (web_server.server_socket < 0) {
+            log_error("Server socket is invalid, exiting server thread");
+            break;
+        }
+        
         FD_SET(web_server.server_socket, &read_fds);
 
         // Set timeout to 1 second
@@ -434,6 +543,10 @@ static void *server_thread_func(void *arg) {
                 // Interrupted by signal, check if we should continue
                 log_debug("select() interrupted by signal");
                 continue;
+            } else if (errno == EBADF) {
+                // Bad file descriptor, socket was closed
+                log_error("select() error: Bad file descriptor, socket was closed");
+                break;
             } else {
                 log_error("select() error: %s", strerror(errno));
                 sleep(1); // Brief pause to prevent high CPU in error state
@@ -459,6 +572,10 @@ static void *server_thread_func(void *arg) {
                     // Interrupted by signal
                     log_debug("accept() interrupted by signal");
                     continue;
+                } else if (errno == EBADF || errno == EINVAL) {
+                    // Socket was closed or is invalid
+                    log_error("accept() error: %s, socket was closed or is invalid", strerror(errno));
+                    break;
                 } else {
                     log_error("Failed to accept connection: %s", strerror(errno));
                     sleep(1); // Brief pause to prevent high CPU in error state
