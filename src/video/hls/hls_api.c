@@ -41,8 +41,19 @@ int start_hls_stream(const char *stream_name) {
     // Get the stream state manager
     stream_state_manager_t *state = get_stream_state_by_name(stream_name);
     if (!state) {
-        log_error("Stream state for %s not found", stream_name);
-        return -1;
+        // Create a new state manager if it doesn't exist
+        stream_config_t config;
+        if (get_stream_config(stream, &config) != 0) {
+            log_error("Failed to get config for stream %s", stream_name);
+            return -1;
+        }
+        
+        state = create_stream_state(&config);
+        if (!state) {
+            log_error("Failed to create stream state for %s", stream_name);
+            return -1;
+        }
+        log_info("Created new stream state for %s", stream_name);
     }
     
     // Check if the stream is in the process of being stopped

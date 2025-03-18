@@ -17,6 +17,8 @@
 #include "core/logger.h"
 #include "core/daemon.h"
 #include "video/stream_manager.h"
+#include "video/stream_state.h"
+#include "video/stream_state_adapter.h"
 #include "storage/storage_manager.h"
 #include "video/streams.h"
 #include "video/hls_streaming.h"
@@ -385,6 +387,18 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
 
+    // Initialize stream state manager
+    if (init_stream_state_manager(config.max_streams) != 0) {
+        log_error("Failed to initialize stream state manager");
+        goto cleanup;
+    }
+    
+    // Initialize stream state adapter
+    if (init_stream_state_adapter() != 0) {
+        log_error("Failed to initialize stream state adapter");
+        goto cleanup;
+    }
+    
     // Initialize stream manager
     if (init_stream_manager(config.max_streams) != 0) {
         log_error("Failed to initialize stream manager");
@@ -659,6 +673,12 @@ cleanup:
         
         log_info("Shutting down stream manager...");
         shutdown_stream_manager();
+        
+        log_info("Shutting down stream state adapter...");
+        shutdown_stream_state_adapter();
+        
+        log_info("Shutting down stream state manager...");
+        shutdown_stream_state_manager();
         
         log_info("Shutting down storage manager...");
         shutdown_storage_manager();
