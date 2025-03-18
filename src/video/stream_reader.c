@@ -106,21 +106,24 @@ static void *stream_reader_thread(void *arg) {
         ret = av_read_frame(ctx->input_ctx, pkt);
         
             // Handle timestamp recovery for UDP streams - AFTER reading the packet
-            if (ret >= 0 && ctx->config.protocol == STREAM_PROTOCOL_UDP) {
+            if (ret >= 0) {
                 // Log for debugging
-                log_debug("Processing UDP packet for stream %s: pts=%lld, dts=%lld, size=%d", 
+                log_debug("Processing packet for stream %s (protocol: %s): pts=%lld, dts=%lld, size=%d", 
                      ctx->config.name, 
+                     ctx->config.protocol == STREAM_PROTOCOL_UDP ? "UDP" : "TCP",
                      (long long)(pkt->pts != AV_NOPTS_VALUE ? pkt->pts : -1), 
                      (long long)(pkt->dts != AV_NOPTS_VALUE ? pkt->dts : -1), 
                      pkt->size);
                 
-                // For UDP streams, generate timestamps if missing
+                // For all streams, but especially UDP streams, ensure timestamps are valid
                 // Use per-context variables to avoid issues with multiple streams
                 if (!ctx->last_pts_initialized) {
                     ctx->last_pts = 0;
                     ctx->frame_duration = 0;
                     ctx->last_pts_initialized = 1;
-                    log_info("Initialized timestamp tracking for UDP stream %s", ctx->config.name);
+                    log_info("Initialized timestamp tracking for stream %s (protocol: %s)", 
+                            ctx->config.name, 
+                            ctx->config.protocol == STREAM_PROTOCOL_UDP ? "UDP" : "TCP");
                 }
                 
                 // Calculate frame duration based on stream timebase and framerate if available
@@ -143,44 +146,70 @@ static void *stream_reader_thread(void *arg) {
                             ctx->frame_duration = 3000; // Assume 30fps with timebase 1/90000
                         }
                         
-                        log_debug("Calculated frame duration for UDP stream %s: %lld", 
+                        log_debug("Calculated frame duration for stream %s: %lld", 
                              ctx->config.name, (long long)ctx->frame_duration);
                     } else {
                         // Default to a reasonable value if framerate is invalid
                         ctx->frame_duration = 3000; // Assume 30fps with timebase 1/90000
-                        log_debug("Using default frame duration for UDP stream %s (invalid framerate): %lld", 
+                        log_debug("Using default frame duration for stream %s (invalid framerate): %lld", 
                              ctx->config.name, (long long)ctx->frame_duration);
                     }
                 } else if (ctx->frame_duration == 0) {
                     // Default to a reasonable value if we can't calculate
                     ctx->frame_duration = 3000; // Assume 30fps with timebase 1/90000
-                    log_debug("Using default frame duration for UDP stream %s: %lld", 
+                    log_debug("Using default frame duration for stream %s: %lld", 
                          ctx->config.name, (long long)ctx->frame_duration);
                 }
                 
-                // Handle missing timestamps
+                // Handle missing timestamps for all streams, but especially important for UDP
                 if (pkt->pts == AV_NOPTS_VALUE && pkt->dts != AV_NOPTS_VALUE) {
                     pkt->pts = pkt->dts;
-                    log_debug("Using DTS as PTS for UDP stream %s: pts=%lld", 
+                    log_debug("Using DTS as PTS for stream %s: pts=%lld", 
                          ctx->config.name, (long long)pkt->pts);
                 } else if (pkt->dts == AV_NOPTS_VALUE && pkt->pts != AV_NOPTS_VALUE) {
                     pkt->dts = pkt->pts;
-                    log_debug("Using PTS as DTS for UDP stream %s: dts=%lld", 
+                    log_debug("Using PTS as DTS for stream %s: dts=%lld", 
                          ctx->config.name, (long long)pkt->dts);
                 } else if (pkt->pts == AV_NOPTS_VALUE && pkt->dts == AV_NOPTS_VALUE) {
                     // Both timestamps missing, generate based on previous packet
                     if (ctx->last_pts > 0) {
                         pkt->pts = ctx->last_pts + ctx->frame_duration;
                         pkt->dts = pkt->pts;
-                        log_debug("Generated timestamps for UDP stream %s: pts=%lld, dts=%lld", 
+                        log_debug("Generated timestamps for stream %s: pts=%lld, dts=%lld", 
                              ctx->config.name, (long long)pkt->pts, (long long)pkt->dts);
                     } else {
                         // First packet with no timestamp, use a default
-                        pkt->pts = ctx->frame_duration;
+                        pkt->pts = 1;  // Use 1 instead of frame_duration for safer initialization
                         pkt->dts = pkt->pts;
-                        log_debug("Generated initial timestamps for UDP stream %s: pts=%lld, dts=%lld", 
+                        log_debug("Generated initial timestamps for stream %s: pts=%lld, dts=%lld", 
                              ctx->config.name, (long long)pkt->pts, (long long)pkt->dts);
                     }
+                }
+                
+                // Additional safety check: ensure timestamps are positive
+                if (pkt->pts <= 0 || pkt->dts <= 0) {
+                    log_warn("Non-positive timestamps detected in stream %s: pts=%lld, dts=%lld", 
+                            ctx->config.name, (long long)pkt->pts, (long long)pkt->dts);
+                    
+                    // Set to safe values
+                    if (pkt->pts <= 0) {
+                        if (pkt->dts > 0) {
+                            pkt->pts = pkt->dts;
+                        } else {
+                            pkt->pts = 1;
+                        }
+                    }
+                    
+                    if (pkt->dts <= 0) {
+                        if (pkt->pts > 0) {
+                            pkt->dts = pkt->pts;
+                        } else {
+                            pkt->dts = 1;
+                        }
+                    }
+                    
+                    log_debug("Corrected non-positive timestamps for stream %s: pts=%lld, dts=%lld", 
+                             ctx->config.name, (long long)pkt->pts, (long long)pkt->dts);
                 }
                 
                 // Store current timestamp for next packet if valid

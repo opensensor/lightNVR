@@ -554,18 +554,13 @@ if (tracker_idx == -1) {
 
 // Get a reference to the tracker if we found or created one
 if (tracker_idx != -1) {
-    // Make a copy of the tracker to use locally
-    timestamp_tracker_t *local_tracker = &timestamp_trackers[tracker_idx];
-    // Store a local copy of the UDP flag
-    bool is_udp_stream = local_tracker->is_udp_stream;
+    // Store a local copy of the tracker pointer
+    tracker = &timestamp_trackers[tracker_idx];
     pthread_mutex_unlock(&timestamp_mutex);
-    
-    // Now set tracker to our local copy
-    tracker = local_tracker;
     
     // Log the UDP status for debugging
     log_debug("Using timestamp tracker for stream %s with UDP flag: %s", 
-             stream_name, is_udp_stream ? "true" : "false");
+             stream_name, tracker->is_udp_stream ? "true" : "false");
 } else {
     pthread_mutex_unlock(&timestamp_mutex);
     log_error("Failed to get or create timestamp tracker for stream %s", stream_name);
@@ -622,51 +617,57 @@ if (tracker_idx != -1) {
         } else if (is_udp_stream) {
             log_debug("Applying UDP timestamp handling for stream %s", stream_name);
             
-            // Handle missing timestamps
-            if (out_pkt->pts == AV_NOPTS_VALUE && out_pkt->dts != AV_NOPTS_VALUE) {
-                out_pkt->pts = out_pkt->dts;
-            } else if (out_pkt->dts == AV_NOPTS_VALUE && out_pkt->pts != AV_NOPTS_VALUE) {
-                out_pkt->dts = out_pkt->pts;
-            } else if (out_pkt->pts == AV_NOPTS_VALUE && out_pkt->dts == AV_NOPTS_VALUE) {
-                // Both timestamps missing, try to generate based on previous packet
-                if (last_pts != AV_NOPTS_VALUE) {
-                    // Calculate frame duration based on stream timebase and framerate
-                    int64_t frame_duration = 0;
+        // Handle missing timestamps
+        if (out_pkt->pts == AV_NOPTS_VALUE && out_pkt->dts != AV_NOPTS_VALUE) {
+            out_pkt->pts = out_pkt->dts;
+        } else if (out_pkt->dts == AV_NOPTS_VALUE && out_pkt->pts != AV_NOPTS_VALUE) {
+            out_pkt->dts = out_pkt->pts;
+        } else if (out_pkt->pts == AV_NOPTS_VALUE && out_pkt->dts == AV_NOPTS_VALUE) {
+            // Both timestamps missing, try to generate based on previous packet
+            if (last_pts != AV_NOPTS_VALUE) {
+                // Calculate frame duration based on stream timebase and framerate
+                int64_t frame_duration = 0;
+                
+                // Add safety checks for input_stream
+                if (input_stream && input_stream->avg_frame_rate.num > 0) {
+                    AVRational tb = input_stream->time_base;
+                    AVRational fr = input_stream->avg_frame_rate;
                     
-                    // Add safety checks for input_stream
-                    if (input_stream && input_stream->avg_frame_rate.num > 0) {
-                        AVRational tb = input_stream->time_base;
-                        AVRational fr = input_stream->avg_frame_rate;
-                        
-                        // Avoid division by zero
-                        if (fr.den > 0) {
-                            frame_duration = av_rescale_q(1, av_inv_q(fr), tb);
-                        } else {
-                            // Default to a reasonable value if framerate is invalid
-                            frame_duration = 3000; // Assume 30fps with timebase 1/90000
-                        }
+                    // Avoid division by zero
+                    if (fr.den > 0) {
+                        frame_duration = av_rescale_q(1, av_inv_q(fr), tb);
                     } else {
-                        // Default to 1/30 second if framerate not available
-                        // With additional safety checks
-                        if (input_stream && input_stream->time_base.num > 0 && input_stream->time_base.den > 0) {
-                            frame_duration = input_stream->time_base.den / (30 * input_stream->time_base.num);
-                        } else {
-                            // Fallback to a reasonable default
-                            frame_duration = 3000; // Assume 30fps with timebase 1/90000
-                        }
+                        // Default to a reasonable value if framerate is invalid
+                        frame_duration = 3000; // Assume 30fps with timebase 1/90000
                     }
-                    
-                    // Sanity check on frame duration
-                    if (frame_duration <= 0) {
-                        frame_duration = 3000; // Reasonable default
+                } else {
+                    // Default to 1/30 second if framerate not available
+                    // With additional safety checks
+                    if (input_stream && input_stream->time_base.num > 0 && input_stream->time_base.den > 0) {
+                        frame_duration = input_stream->time_base.den / (30 * input_stream->time_base.num);
+                    } else {
+                        // Fallback to a reasonable default
+                        frame_duration = 3000; // Assume 30fps with timebase 1/90000
                     }
-                    
-                    out_pkt->pts = last_pts + frame_duration;
-                    out_pkt->dts = out_pkt->pts;
-                    log_debug("Generated timestamps for UDP stream %s: pts=%lld, dts=%lld", 
-                             stream_name, (long long)out_pkt->pts, (long long)out_pkt->dts);
                 }
+                
+                // Sanity check on frame duration
+                if (frame_duration <= 0) {
+                    frame_duration = 3000; // Reasonable default
+                }
+                
+                out_pkt->pts = last_pts + frame_duration;
+                out_pkt->dts = out_pkt->pts;
+                log_debug("Generated timestamps for UDP stream %s: pts=%lld, dts=%lld", 
+                         stream_name, (long long)out_pkt->pts, (long long)out_pkt->dts);
+            } else {
+                // If we don't have a last_pts, set a default starting value
+                out_pkt->pts = 1;
+                out_pkt->dts = 1;
+                log_debug("Set default initial timestamps for UDP stream %s with no previous reference", 
+                         stream_name);
             }
+        }
             
             // Detect and handle timestamp discontinuities with additional safety checks
             if (last_pts != AV_NOPTS_VALUE && out_pkt->pts != AV_NOPTS_VALUE) {
@@ -793,6 +794,19 @@ if (tracker_idx != -1) {
             return -1;
         }
         
+        // CRITICAL FIX: Ensure timestamps are valid before writing
+        // This is especially important for UDP streams
+        if (out_pkt->pts == AV_NOPTS_VALUE && out_pkt->dts != AV_NOPTS_VALUE) {
+            out_pkt->pts = out_pkt->dts;
+        } else if (out_pkt->dts == AV_NOPTS_VALUE && out_pkt->pts != AV_NOPTS_VALUE) {
+            out_pkt->dts = out_pkt->pts;
+        } else if (out_pkt->pts == AV_NOPTS_VALUE && out_pkt->dts == AV_NOPTS_VALUE) {
+            // If both timestamps are missing, set them to 1 to avoid segfault
+            out_pkt->pts = 1;
+            out_pkt->dts = 1;
+            log_debug("Set default timestamps for packet with no PTS/DTS in stream %s", stream_name);
+        }
+        
         // Removed adaptive frame dropping to improve quality
         // Always process all frames for better quality
         
@@ -818,12 +832,17 @@ if (tracker_idx != -1) {
         // Removed adaptive frame dropping to improve quality
         // Always process all frames for better quality
         
-        // Ensure timestamps are properly set before writing
-        // This helps prevent glitches in the output file
+        // CRITICAL FIX: Ensure timestamps are valid before writing
+        // This is especially important for UDP streams
         if (out_pkt->pts == AV_NOPTS_VALUE && out_pkt->dts != AV_NOPTS_VALUE) {
             out_pkt->pts = out_pkt->dts;
         } else if (out_pkt->dts == AV_NOPTS_VALUE && out_pkt->pts != AV_NOPTS_VALUE) {
             out_pkt->dts = out_pkt->pts;
+        } else if (out_pkt->pts == AV_NOPTS_VALUE && out_pkt->dts == AV_NOPTS_VALUE) {
+            // If both timestamps are missing, set them to 1 to avoid segfault
+            out_pkt->pts = 1;
+            out_pkt->dts = 1;
+            log_debug("Set default timestamps for packet with no PTS/DTS in stream %s", stream_name);
         }
         
         // Write the packet

@@ -597,26 +597,65 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
     }
 
     // CRITICAL FIX: Ensure timestamps are set to avoid FFmpeg warnings and potential crashes
-    if (out_pkt.pts == AV_NOPTS_VALUE && out_pkt.dts == AV_NOPTS_VALUE) {
+    // This is especially important for UDP streams which may have invalid timestamps
+    if (out_pkt.pts == AV_NOPTS_VALUE || out_pkt.dts == AV_NOPTS_VALUE) {
+        // Log the original values for debugging
+        log_debug("Original timestamps for stream %s: pts=%lld, dts=%lld", 
+                 writer->stream_name, 
+                 (long long)(out_pkt.pts != AV_NOPTS_VALUE ? out_pkt.pts : -1), 
+                 (long long)(out_pkt.dts != AV_NOPTS_VALUE ? out_pkt.dts : -1));
+        
         // If both timestamps are unset, use the last DTS or a default value
-        if (dts_tracker->last_dts != AV_NOPTS_VALUE) {
-            out_pkt.dts = dts_tracker->last_dts + 1;
+        if (out_pkt.pts == AV_NOPTS_VALUE && out_pkt.dts == AV_NOPTS_VALUE) {
+            if (dts_tracker->last_dts != AV_NOPTS_VALUE) {
+                out_pkt.dts = dts_tracker->last_dts + 1;
+                out_pkt.pts = out_pkt.dts;
+                log_debug("Setting both missing timestamps for stream %s: pts=%lld, dts=%lld", 
+                         writer->stream_name, (long long)out_pkt.pts, (long long)out_pkt.dts);
+            } else {
+                // Use a default value if we don't have a last DTS
+                out_pkt.dts = 1;
+                out_pkt.pts = 1;
+                log_debug("Setting default timestamps for stream %s: pts=%lld, dts=%lld", 
+                         writer->stream_name, (long long)out_pkt.pts, (long long)out_pkt.dts);
+            }
+        } else if (out_pkt.pts == AV_NOPTS_VALUE) {
+            // If only PTS is unset, use DTS
             out_pkt.pts = out_pkt.dts;
-            log_debug("Setting missing timestamps for stream %s: pts=%lld, dts=%lld", 
-                     writer->stream_name, (long long)out_pkt.pts, (long long)out_pkt.dts);
-        } else {
-            // Use a default value if we don't have a last DTS
-            out_pkt.dts = 1;
-            out_pkt.pts = 1;
-            log_debug("Setting default timestamps for stream %s: pts=%lld, dts=%lld", 
-                     writer->stream_name, (long long)out_pkt.pts, (long long)out_pkt.dts);
+            log_debug("Setting missing PTS for stream %s: pts=%lld (from dts)", 
+                     writer->stream_name, (long long)out_pkt.pts);
+        } else if (out_pkt.dts == AV_NOPTS_VALUE) {
+            // If only DTS is unset, use PTS
+            out_pkt.dts = out_pkt.pts;
+            log_debug("Setting missing DTS for stream %s: dts=%lld (from pts)", 
+                     writer->stream_name, (long long)out_pkt.dts);
         }
-    } else if (out_pkt.pts == AV_NOPTS_VALUE) {
-        // If only PTS is unset, use DTS
-        out_pkt.pts = out_pkt.dts;
-    } else if (out_pkt.dts == AV_NOPTS_VALUE) {
-        // If only DTS is unset, use PTS
-        out_pkt.dts = out_pkt.pts;
+    }
+    
+    // Additional safety check: ensure timestamps are positive
+    if (out_pkt.pts <= 0 || out_pkt.dts <= 0) {
+        log_warn("Non-positive timestamps detected in stream %s: pts=%lld, dts=%lld", 
+                writer->stream_name, (long long)out_pkt.pts, (long long)out_pkt.dts);
+        
+        // Set to safe values
+        if (out_pkt.pts <= 0) {
+            if (out_pkt.dts > 0) {
+                out_pkt.pts = out_pkt.dts;
+            } else {
+                out_pkt.pts = 1;
+            }
+        }
+        
+        if (out_pkt.dts <= 0) {
+            if (out_pkt.pts > 0) {
+                out_pkt.dts = out_pkt.pts;
+            } else {
+                out_pkt.dts = 1;
+            }
+        }
+        
+        log_debug("Corrected non-positive timestamps for stream %s: pts=%lld, dts=%lld", 
+                 writer->stream_name, (long long)out_pkt.pts, (long long)out_pkt.dts);
     }
 
     // Check for timestamp discontinuities before rescaling
