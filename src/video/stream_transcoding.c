@@ -45,6 +45,7 @@ typedef struct {
     pthread_mutex_t mutex;
     pthread_cond_t cond;
     int done;
+    int cancelled;
 } join_helper_data_t;
 
 /**
@@ -52,6 +53,14 @@ typedef struct {
  */
 static void *join_helper(void *arg) {
     join_helper_data_t *data = (join_helper_data_t *)arg;
+    
+    // Check if we've been cancelled before even starting
+    pthread_mutex_lock(&data->mutex);
+    if (data->cancelled) {
+        pthread_mutex_unlock(&data->mutex);
+        return NULL;
+    }
+    pthread_mutex_unlock(&data->mutex);
     
     // Join the target thread
     data->result = pthread_join(data->thread, data->retval);
@@ -72,22 +81,39 @@ int pthread_join_with_timeout(pthread_t thread, void **retval, int timeout_sec) 
     int ret = 0;
     pthread_t timeout_thread;
     
-    // Initialize helper data on the stack to avoid memory leaks
-    join_helper_data_t data = {
-        .thread = thread,
-        .retval = retval,
-        .result = -1,
-        .done = 0
-    };
+    // Allocate helper data on the heap to avoid stack issues
+    join_helper_data_t *data = calloc(1, sizeof(join_helper_data_t));
+    if (!data) {
+        log_error("Failed to allocate memory for join helper data");
+        return ENOMEM;
+    }
+    
+    // Initialize data
+    data->thread = thread;
+    data->retval = retval;
+    data->result = -1;
+    data->done = 0;
+    data->cancelled = 0;
     
     // Initialize mutex and condition variable
-    pthread_mutex_init(&data.mutex, NULL);
-    pthread_cond_init(&data.cond, NULL);
+    if (pthread_mutex_init(&data->mutex, NULL) != 0) {
+        log_error("Failed to initialize mutex for join helper");
+        free(data);
+        return EAGAIN;
+    }
+    
+    if (pthread_cond_init(&data->cond, NULL) != 0) {
+        log_error("Failed to initialize condition variable for join helper");
+        pthread_mutex_destroy(&data->mutex);
+        free(data);
+        return EAGAIN;
+    }
     
     // Create helper thread to join the target thread
-    if (pthread_create(&timeout_thread, NULL, join_helper, &data) != 0) {
-        pthread_mutex_destroy(&data.mutex);
-        pthread_cond_destroy(&data.cond);
+    if (pthread_create(&timeout_thread, NULL, join_helper, data) != 0) {
+        pthread_mutex_destroy(&data->mutex);
+        pthread_cond_destroy(&data->cond);
+        free(data);
         return EAGAIN;
     }
     
@@ -96,35 +122,41 @@ int pthread_join_with_timeout(pthread_t thread, void **retval, int timeout_sec) 
     clock_gettime(CLOCK_REALTIME, &ts);
     ts.tv_sec += timeout_sec;
     
-    pthread_mutex_lock(&data.mutex);
-    while (!data.done) {
-        ret = pthread_cond_timedwait(&data.cond, &data.mutex, &ts);
+    pthread_mutex_lock(&data->mutex);
+    while (!data->done) {
+        ret = pthread_cond_timedwait(&data->cond, &data->mutex, &ts);
         if (ret == ETIMEDOUT) {
             // Timeout occurred
-            pthread_mutex_unlock(&data.mutex);
+            data->cancelled = 1;  // Mark as cancelled before unlocking
+            pthread_mutex_unlock(&data->mutex);
             
             // Cancel the helper thread
             pthread_cancel(timeout_thread);
-            pthread_join(timeout_thread, NULL);
+            
+            // Wait for the helper thread to actually terminate
+            void *thread_result;
+            pthread_join(timeout_thread, &thread_result);
             
             // Clean up resources
-            pthread_mutex_destroy(&data.mutex);
-            pthread_cond_destroy(&data.cond);
+            pthread_mutex_destroy(&data->mutex);
+            pthread_cond_destroy(&data->cond);
+            free(data);
             
             return ETIMEDOUT;
         }
     }
-    pthread_mutex_unlock(&data.mutex);
+    
+    // Get the join result before unlocking
+    ret = data->result;
+    pthread_mutex_unlock(&data->mutex);
     
     // Join the helper thread to clean up
     pthread_join(timeout_thread, NULL);
     
-    // Get the join result
-    ret = data.result;
-    
     // Clean up resources
-    pthread_mutex_destroy(&data.mutex);
-    pthread_cond_destroy(&data.cond);
+    pthread_mutex_destroy(&data->mutex);
+    pthread_cond_destroy(&data->cond);
+    free(data);
     
     return ret;
 }
