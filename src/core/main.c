@@ -581,35 +581,51 @@ cleanup:
     } else if (cleanup_pid > 0) {
         // Parent process - continue with cleanup
         
-        // First stop all streams to ensure proper finalization of recordings
-        log_info("Stopping all active streams...");
-        
-        // First, clear all packet callbacks to prevent further processing
-        log_info("Clearing all packet callbacks...");
-        for (int i = 0; i < MAX_STREAMS; i++) {
-            stream_reader_ctx_t *reader = get_stream_reader_by_index(i);
-            if (reader) {
-                // Safely clear the callback
-                set_packet_callback(reader, NULL, NULL);
+    // First stop all streams to ensure proper finalization of recordings
+    log_info("Stopping all active streams...");
+    
+    // CRITICAL FIX: First, clear all packet callbacks to prevent further processing
+    // This must be done before stopping streams to prevent race conditions
+    log_info("Clearing all packet callbacks...");
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        stream_reader_ctx_t *reader = get_stream_reader_by_index(i);
+        if (reader) {
+            // Safely clear the callback
+            set_packet_callback(reader, NULL, NULL);
+        }
+    }
+    
+    // Wait a moment for callbacks to clear and any in-progress operations to complete
+    usleep(500000);  // 500ms - increased from 250ms for better safety
+    
+    // Stop all detection stream readers first
+    log_info("Stopping all detection stream readers...");
+    for (int i = 0; i < config.max_streams; i++) {
+        if (config.streams[i].name[0] != '\0' && 
+            config.streams[i].detection_based_recording && 
+            config.streams[i].detection_model[0] != '\0') {
+            
+            log_info("Stopping detection stream reader for: %s", config.streams[i].name);
+            stop_detection_stream_reader(config.streams[i].name);
+        }
+    }
+    
+    // Wait for detection stream readers to stop
+    usleep(500000);  // 500ms
+    
+    // Stop all streams to ensure clean shutdown
+    for (int i = 0; i < config.max_streams; i++) {
+        if (config.streams[i].name[0] != '\0') {
+            stream_handle_t stream = get_stream_by_name(config.streams[i].name);
+            if (stream) {
+                log_info("Stopping stream: %s", config.streams[i].name);
+                stop_stream(stream);
             }
         }
-        
-        // Wait a moment for callbacks to clear
-        usleep(250000);  // 250ms - increased from 100ms for better safety
-        
-        // Stop all streams to ensure clean shutdown
-        for (int i = 0; i < config.max_streams; i++) {
-            if (config.streams[i].name[0] != '\0') {
-                stream_handle_t stream = get_stream_by_name(config.streams[i].name);
-                if (stream) {
-                    log_info("Stopping stream: %s", config.streams[i].name);
-                    stop_stream(stream);
-                }
-            }
-        }
-        
-        // Wait longer for streams to stop
-        usleep(1000000);  // 1000ms - increased from 500ms for better safety
+    }
+    
+    // Wait longer for streams to stop
+    usleep(1500000);  // 1500ms - increased from 1000ms for better safety
         
         // Finalize all MP4 recordings first before cleaning up the backend
         log_info("Finalizing all MP4 recordings...");

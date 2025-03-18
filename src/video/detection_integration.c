@@ -496,11 +496,25 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
         }
     }
 
-    // Cleanup
-    free(packed_buffer);
-    av_free(buffer);
-    av_frame_free(&converted_frame);
-    sws_freeContext(sws_ctx);
+    // Cleanup - ensure all resources are properly freed
+    if (packed_buffer) {
+        free(packed_buffer);
+        packed_buffer = NULL;
+    }
+    
+    if (buffer) {
+        av_free(buffer);
+        buffer = NULL;
+    }
+    
+    if (converted_frame) {
+        av_frame_free(&converted_frame);
+    }
+    
+    if (sws_ctx) {
+        sws_freeContext(sws_ctx);
+        sws_ctx = NULL;
+    }
 
     log_info("Finished processing frame %d for detection", frame_counter);
     return (detect_ret == 0) ? 0 : -1;

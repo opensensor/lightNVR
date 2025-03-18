@@ -393,10 +393,13 @@ int stop_stream_reader(stream_reader_ctx_t *ctx) {
         return -1;
     }
     
-    // Mark as not running and clear callback to prevent further processing
-    ctx->running = 0;
+    // CRITICAL FIX: First safely clear the callback to prevent any further processing
+    // This must be done before marking as not running to prevent race conditions
     ctx->packet_callback = NULL;
     ctx->callback_data = NULL;
+    
+    // Now mark as not running
+    ctx->running = 0;
     
     // Store a local copy of the thread to join
     pthread_t thread_to_join = ctx->thread;

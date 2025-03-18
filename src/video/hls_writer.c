@@ -591,6 +591,17 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
 
             out_pkt.dts = fixed_dts;
         }
+        // Also check for large forward jumps which could indicate a stream reset
+        else if (pkt->dts > dts_tracker->last_dts + 90000) { // More than 1 second jump (assuming 90kHz timebase)
+            log_warn("HLS large DTS jump in stream %s: last=%lld, current=%lld, diff=%lld",
+                    writer->stream_name,
+                    (long long)dts_tracker->last_dts,
+                    (long long)pkt->dts,
+                    (long long)(pkt->dts - dts_tracker->last_dts));
+            
+            // For large forward jumps, we'll accept the new timestamp but log it
+            // This allows the stream to recover from resets without forcing timestamps
+        }
 
         // Update last DTS for next comparison
         dts_tracker->last_dts = out_pkt.dts;
@@ -601,9 +612,25 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
                         writer->output_ctx->streams[0]->time_base);
 
     // Final sanity check - ensure PTS >= DTS
-    if (out_pkt.pts != AV_NOPTS_VALUE && out_pkt.dts != AV_NOPTS_VALUE &&
-        out_pkt.pts < out_pkt.dts) {
-        out_pkt.pts = out_pkt.dts;
+    if (out_pkt.pts != AV_NOPTS_VALUE && out_pkt.dts != AV_NOPTS_VALUE) {
+        if (out_pkt.pts < out_pkt.dts) {
+            log_debug("Fixing invalid PTS/DTS relationship in stream %s: pts=%lld, dts=%lld",
+                     writer->stream_name, (long long)out_pkt.pts, (long long)out_pkt.dts);
+            out_pkt.pts = out_pkt.dts;
+        }
+        
+        // Also check for unreasonable PTS/DTS differences
+        int64_t pts_dts_diff = out_pkt.pts - out_pkt.dts;
+        if (pts_dts_diff > 90000 * 10) { // More than 10 seconds difference (assuming 90kHz timebase)
+            log_warn("Unreasonable PTS/DTS difference in stream %s: pts=%lld, dts=%lld, diff=%lld",
+                    writer->stream_name, 
+                    (long long)out_pkt.pts, 
+                    (long long)out_pkt.dts,
+                    (long long)pts_dts_diff);
+            
+            // Cap the difference to something reasonable
+            out_pkt.pts = out_pkt.dts + 90000 * 5; // 5 seconds max difference
+        }
     }
 
     // Detection processing has been moved to a dedicated detection thread
