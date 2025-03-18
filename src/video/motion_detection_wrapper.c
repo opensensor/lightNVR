@@ -98,6 +98,20 @@ int enable_optimized_motion_detection(const char *stream_name, float sensitivity
         disable_optimized_motion_detection(stream_name);
     }
     
+    // For embedded A1 device, use more aggressive optimizations
+    #ifdef EMBEDDED_A1_DEVICE
+    log_info("Applying embedded A1 device optimizations for motion detection");
+    // Use higher downscale factor for A1 device to reduce memory usage
+    downscale_factor = (downscale_factor < 3) ? 3 : downscale_factor;
+    // Use smaller grid size for A1 device
+    int grid_size = 4;  // Reduced from default 6
+    // Use smaller history buffer
+    int history_size = 1;  // Minimum history
+    
+    // Configure advanced parameters with reduced memory usage
+    configure_advanced_motion_detection(stream_name, 1, 15, true, grid_size, history_size);
+    #endif
+    
     // Configure optimized motion detection
     int ret = configure_motion_detection(stream_name, sensitivity, min_motion_area, cooldown_time);
     if (ret != 0) {

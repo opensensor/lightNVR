@@ -13,6 +13,16 @@ option(ENABLE_SOD "Enable SOD library for object detection" ON)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O2 -ffunction-sections -fdata-sections -Wl,--gc-sections -pthread")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -ffunction-sections -fdata-sections -Wl,--gc-sections -pthread")
 
+# Option to build for embedded A1 device
+option(EMBEDDED_A1_DEVICE "Build for embedded A1 device with limited memory" OFF)
+if(EMBEDDED_A1_DEVICE)
+    message(STATUS "Building for embedded A1 device with memory optimizations")
+    add_definitions(-DEMBEDDED_A1_DEVICE)
+    # Additional optimizations for embedded devices
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Os -fno-exceptions -fomit-frame-pointer")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Os -fno-exceptions -fomit-frame-pointer")
+endif()
+
 # Include directories
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}

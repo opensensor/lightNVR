@@ -115,17 +115,46 @@ The test program processes a series of test frames and reports performance metri
 
 ## Embedded Device Considerations
 
-For extremely resource-constrained devices:
+For extremely resource-constrained devices like the A1 SoC:
 
-1. Use the highest downscale factor that maintains acceptable detection accuracy (2-4x)
+1. Use the highest downscale factor that maintains acceptable detection accuracy (3-4x)
 2. Reduce the grid size to 4x4 for even faster processing
-3. Increase the detection interval to process fewer frames (e.g., every 5th frame)
-4. Disable motion detection when the device is under heavy load
+3. Reduce the frame history buffer size to 1
+4. Increase the detection interval to process fewer frames (e.g., every 5th frame)
+5. Disable motion detection when the device is under heavy load
+
+### A1 Device-Specific Optimizations
+
+The A1 SoC has limited memory (256MB RAM), which can cause stack overflow issues with large allocations. To address this:
+
+1. **Heap Allocation**: Motion detection structures are now allocated on the heap instead of the stack
+2. **Reduced Buffer Sizes**: Frame history and grid sizes are automatically reduced
+3. **Increased Downscaling**: Default downscale factor is increased to 3x for A1 devices
+4. **Build with A1 Optimizations**: Use the `EMBEDDED_A1_DEVICE` CMake option
+
+To build specifically for the A1 device:
+
+```bash
+mkdir build && cd build
+cmake -DEMBEDDED_A1_DEVICE=ON ..
+make
+```
+
+This enables additional compiler optimizations and memory-saving techniques specifically for the A1 device.
 
 ## Implementation Details
 
 The optimized motion detection implementation is in:
-- `src/video/motion_detection_optimized.c`
-- `include/video/motion_detection_optimized.h`
+- `src/video/motion_detection.c`
+- `include/video/motion_detection.h`
+- `src/video/motion_detection_wrapper.c`
+- `include/video/motion_detection_wrapper.h`
 
-It extends the original motion detection system with additional optimizations while maintaining the same API for backward compatibility.
+Key improvements:
+1. **Heap Allocation**: All large structures are now allocated on the heap to prevent stack overflow
+2. **Dynamic Configuration**: Parameters automatically adjust based on the target device
+3. **Memory Tracking**: Added memory usage tracking to monitor resource consumption
+4. **Integer Arithmetic**: Replaced floating-point operations with fixed-point integer math
+5. **Optimized Algorithms**: Improved blur and background subtraction algorithms
+
+The system maintains the same API for backward compatibility while providing significant performance improvements and memory usage reductions.

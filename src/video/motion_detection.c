@@ -79,10 +79,70 @@ typedef struct {
     pthread_mutex_t mutex;
 } motion_stream_t;
 
-// Array to store motion detection state for each stream
-static motion_stream_t motion_streams[MAX_MOTION_STREAMS];
+// Forward declaration of motion_stream_t for heap allocation
+motion_stream_t* allocate_motion_stream(void);
+void free_motion_stream(motion_stream_t* stream);
+
+// Array to store pointers to motion detection state for each stream
+static motion_stream_t* motion_streams[MAX_MOTION_STREAMS];
 static pthread_mutex_t motion_streams_mutex = PTHREAD_MUTEX_INITIALIZER;
 static bool initialized = false;
+
+/**
+ * Allocate a motion stream structure on the heap
+ * This avoids large stack allocations that can cause crashes on embedded devices
+ */
+motion_stream_t* allocate_motion_stream(void) {
+    motion_stream_t* stream = (motion_stream_t*)calloc(1, sizeof(motion_stream_t));
+    if (stream) {
+        pthread_mutex_init(&stream->mutex, NULL);
+    }
+    return stream;
+}
+
+/**
+ * Free a motion stream structure
+ */
+void free_motion_stream(motion_stream_t* stream) {
+    if (!stream) return;
+    
+    pthread_mutex_lock(&stream->mutex);
+    
+    if (stream->prev_frame) {
+        free(stream->prev_frame);
+        stream->prev_frame = NULL;
+    }
+
+    if (stream->blur_buffer) {
+        free(stream->blur_buffer);
+        stream->blur_buffer = NULL;
+    }
+
+    if (stream->background) {
+        free(stream->background);
+        stream->background = NULL;
+    }
+
+    if (stream->grid_scores) {
+        free(stream->grid_scores);
+        stream->grid_scores = NULL;
+    }
+
+    if (stream->frame_history) {
+        for (int j = 0; j < stream->history_size; j++) {
+            if (stream->frame_history[j].frame) {
+                free(stream->frame_history[j].frame);
+            }
+        }
+        free(stream->frame_history);
+        stream->frame_history = NULL;
+    }
+    
+    pthread_mutex_unlock(&stream->mutex);
+    pthread_mutex_destroy(&stream->mutex);
+    
+    free(stream);
+}
 
 // Forward declarations for helper functions
 static void apply_box_blur(unsigned char *src, unsigned char *dst, int width, int height, int radius);
@@ -107,19 +167,7 @@ int init_motion_detection_system(void) {
     pthread_mutex_lock(&motion_streams_mutex);
 
     for (int i = 0; i < MAX_MOTION_STREAMS; i++) {
-        memset(&motion_streams[i], 0, sizeof(motion_stream_t));
-        pthread_mutex_init(&motion_streams[i].mutex, NULL);
-        motion_streams[i].sensitivity = DEFAULT_SENSITIVITY;
-        motion_streams[i].min_motion_area = DEFAULT_MIN_MOTION_AREA;
-        motion_streams[i].cooldown_time = DEFAULT_COOLDOWN_TIME;
-        motion_streams[i].history_size = DEFAULT_MOTION_HISTORY;
-        motion_streams[i].blur_radius = DEFAULT_BLUR_RADIUS;
-        motion_streams[i].noise_threshold = DEFAULT_NOISE_THRESHOLD;
-        motion_streams[i].use_grid_detection = DEFAULT_USE_GRID_DETECTION;
-        motion_streams[i].grid_size = DEFAULT_GRID_SIZE;
-        motion_streams[i].enabled = false;
-        motion_streams[i].downscale_enabled = DEFAULT_DOWNSCALE_ENABLED;
-        motion_streams[i].downscale_factor = DEFAULT_DOWNSCALE_FACTOR;
+        motion_streams[i] = NULL;
     }
 
     initialized = true;
@@ -140,40 +188,10 @@ void shutdown_motion_detection_system(void) {
     pthread_mutex_lock(&motion_streams_mutex);
 
     for (int i = 0; i < MAX_MOTION_STREAMS; i++) {
-        pthread_mutex_lock(&motion_streams[i].mutex);
-
-        if (motion_streams[i].prev_frame) {
-            free(motion_streams[i].prev_frame);
-            motion_streams[i].prev_frame = NULL;
+        if (motion_streams[i]) {
+            free_motion_stream(motion_streams[i]);
+            motion_streams[i] = NULL;
         }
-
-        if (motion_streams[i].blur_buffer) {
-            free(motion_streams[i].blur_buffer);
-            motion_streams[i].blur_buffer = NULL;
-        }
-
-        if (motion_streams[i].background) {
-            free(motion_streams[i].background);
-            motion_streams[i].background = NULL;
-        }
-
-        if (motion_streams[i].grid_scores) {
-            free(motion_streams[i].grid_scores);
-            motion_streams[i].grid_scores = NULL;
-        }
-
-        if (motion_streams[i].frame_history) {
-            for (int j = 0; j < motion_streams[i].history_size; j++) {
-                if (motion_streams[i].frame_history[j].frame) {
-                    free(motion_streams[i].frame_history[j].frame);
-                }
-            }
-            free(motion_streams[i].frame_history);
-            motion_streams[i].frame_history = NULL;
-        }
-
-        pthread_mutex_unlock(&motion_streams[i].mutex);
-        pthread_mutex_destroy(&motion_streams[i].mutex);
     }
 
     initialized = false;
@@ -201,35 +219,43 @@ static motion_stream_t *get_motion_stream(const char *stream_name) {
 
     // Find existing entry
     for (int i = 0; i < MAX_MOTION_STREAMS; i++) {
-        if (motion_streams[i].stream_name[0] != '\0' &&
-            strcmp(motion_streams[i].stream_name, stream_name) == 0) {
+        if (motion_streams[i] && motion_streams[i]->stream_name[0] != '\0' &&
+            strcmp(motion_streams[i]->stream_name, stream_name) == 0) {
             pthread_mutex_unlock(&motion_streams_mutex);
-            return &motion_streams[i];
+            return motion_streams[i];
         }
     }
 
     // Create new entry
     for (int i = 0; i < MAX_MOTION_STREAMS; i++) {
-        if (motion_streams[i].stream_name[0] == '\0') {
-            strncpy(motion_streams[i].stream_name, stream_name, MAX_STREAM_NAME - 1);
-            motion_streams[i].stream_name[MAX_STREAM_NAME - 1] = '\0';
+        if (motion_streams[i] == NULL) {
+            // Allocate a new motion stream on the heap
+            motion_streams[i] = allocate_motion_stream();
+            if (!motion_streams[i]) {
+                log_error("Failed to allocate memory for motion stream");
+                pthread_mutex_unlock(&motion_streams_mutex);
+                return NULL;
+            }
+            
+            strncpy(motion_streams[i]->stream_name, stream_name, MAX_STREAM_NAME - 1);
+            motion_streams[i]->stream_name[MAX_STREAM_NAME - 1] = '\0';
             
             // Initialize default values
-            motion_streams[i].sensitivity = DEFAULT_SENSITIVITY;
-            motion_streams[i].min_motion_area = DEFAULT_MIN_MOTION_AREA;
-            motion_streams[i].cooldown_time = DEFAULT_COOLDOWN_TIME;
-            motion_streams[i].history_size = DEFAULT_MOTION_HISTORY;
-            motion_streams[i].blur_radius = DEFAULT_BLUR_RADIUS;
-            motion_streams[i].noise_threshold = DEFAULT_NOISE_THRESHOLD;
-            motion_streams[i].use_grid_detection = DEFAULT_USE_GRID_DETECTION;
-            motion_streams[i].grid_size = DEFAULT_GRID_SIZE;
-            motion_streams[i].enabled = false;
-            motion_streams[i].downscale_enabled = DEFAULT_DOWNSCALE_ENABLED;
-            motion_streams[i].downscale_factor = DEFAULT_DOWNSCALE_FACTOR;
+            motion_streams[i]->sensitivity = DEFAULT_SENSITIVITY;
+            motion_streams[i]->min_motion_area = DEFAULT_MIN_MOTION_AREA;
+            motion_streams[i]->cooldown_time = DEFAULT_COOLDOWN_TIME;
+            motion_streams[i]->history_size = DEFAULT_MOTION_HISTORY;
+            motion_streams[i]->blur_radius = DEFAULT_BLUR_RADIUS;
+            motion_streams[i]->noise_threshold = DEFAULT_NOISE_THRESHOLD;
+            motion_streams[i]->use_grid_detection = DEFAULT_USE_GRID_DETECTION;
+            motion_streams[i]->grid_size = DEFAULT_GRID_SIZE;
+            motion_streams[i]->enabled = false;
+            motion_streams[i]->downscale_enabled = DEFAULT_DOWNSCALE_ENABLED;
+            motion_streams[i]->downscale_factor = DEFAULT_DOWNSCALE_FACTOR;
             
             log_info("Created new motion stream entry for %s", stream_name);
             pthread_mutex_unlock(&motion_streams_mutex);
-            return &motion_streams[i];
+            return motion_streams[i];
         }
     }
 
