@@ -333,6 +333,15 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     // Start segment numbering from 0
     av_dict_set(&options, "start_number", "0", 0);
     
+    // CRITICAL FIX: Force FFmpeg to flush data to disk immediately
+    av_dict_set(&options, "flush_packets", "1", 0);
+    
+    // CRITICAL FIX: Set a shorter segment duration for faster manifest creation
+    av_dict_set(&options, "hls_init_time", "1", 0);
+    
+    // CRITICAL FIX: Ensure FFmpeg creates the manifest file immediately
+    av_dict_set(&options, "hls_flags", "delete_segments+independent_segments+program_date_time+append_list", 0);
+    
     // Ensure the directory exists with proper permissions
     char dir_cmd[MAX_PATH_LENGTH * 2];
     snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s && chmod -R 777 %s", output_dir, output_dir);
