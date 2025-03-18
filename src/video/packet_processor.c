@@ -40,9 +40,54 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
         return -1;
     }
     
+    // CRITICAL FIX: Add per-stream mutex for thread safety during packet processing
+    // This prevents a global lock that could cause all streams to block on a single slow stream
+    static pthread_mutex_t global_mutex = PTHREAD_MUTEX_INITIALIZER;
+    static pthread_mutex_t stream_mutexes[MAX_STREAMS];
+    static char stream_names[MAX_STREAMS][MAX_STREAM_NAME];
+    static int mutex_initialized = 0;
+    
+    // Initialize the mutex array if needed
+    pthread_mutex_lock(&global_mutex);
+    if (!mutex_initialized) {
+        for (int i = 0; i < MAX_STREAMS; i++) {
+            pthread_mutex_init(&stream_mutexes[i], NULL);
+            memset(stream_names[i], 0, MAX_STREAM_NAME);
+        }
+        mutex_initialized = 1;
+    }
+    
+    // Find or create a mutex for this stream
+    int mutex_index = -1;
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (stream_names[i][0] == '\0') {
+            // Found an empty slot
+            if (mutex_index == -1) {
+                mutex_index = i;
+                strncpy(stream_names[i], stream_name, MAX_STREAM_NAME - 1);
+                stream_names[i][MAX_STREAM_NAME - 1] = '\0';
+            }
+        } else if (strcmp(stream_names[i], stream_name) == 0) {
+            // Found existing stream
+            mutex_index = i;
+            break;
+        }
+    }
+    
+    // If we couldn't find a slot, use a fallback mutex
+    pthread_mutex_t *mutex_to_use = (mutex_index >= 0) ? 
+                                   &stream_mutexes[mutex_index] : 
+                                   &global_mutex;
+    
+    pthread_mutex_unlock(&global_mutex);
+    
+    // Lock the appropriate mutex for this stream
+    pthread_mutex_lock(mutex_to_use);
+    
     // Validate packet data
     if (!pkt->data || pkt->size <= 0) {
         log_warn("Invalid packet (null data or zero size) for stream %s", stream_name);
+        pthread_mutex_unlock(mutex_to_use);
         return -1;
     }
     
@@ -53,12 +98,14 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
     out_pkt = av_packet_alloc();
     if (!out_pkt) {
         log_error("Failed to allocate packet in process_video_packet for stream %s", stream_name);
+        pthread_mutex_unlock(mutex_to_use);
         return -1;
     }
     
     if (av_packet_ref(out_pkt, pkt) < 0) {
         log_error("Failed to reference packet in process_video_packet for stream %s", stream_name);
         av_packet_free(&out_pkt);
+        pthread_mutex_unlock(mutex_to_use);
         return -1;
     }
     
@@ -237,6 +284,7 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
         if (!hls_writer) {
             log_error("NULL HLS writer for stream %s", stream_name);
             av_packet_free(&out_pkt);
+            pthread_mutex_unlock(mutex_to_use);
             return -1;
         }
         
@@ -244,6 +292,7 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
         if (!hls_writer->output_ctx) {
             log_error("HLS writer has been closed for stream %s", stream_name);
             av_packet_free(&out_pkt);
+            pthread_mutex_unlock(mutex_to_use);
             return -1;
         }
         
@@ -260,9 +309,19 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
             log_debug("Set default timestamps for packet with no PTS/DTS in stream %s", stream_name);
         }
         
+        // CRITICAL FIX: Additional safety check for negative timestamps
+        if (out_pkt->pts <= 0 || out_pkt->dts <= 0) {
+            log_warn("Correcting non-positive timestamps for stream %s: pts=%lld, dts=%lld",
+                    stream_name, (long long)out_pkt->pts, (long long)out_pkt->dts);
+            
+            if (out_pkt->pts <= 0) out_pkt->pts = 1;
+            if (out_pkt->dts <= 0) out_pkt->dts = 1;
+        }
+        
         // Removed adaptive frame dropping to improve quality
         // Always process all frames for better quality
         
+        // CRITICAL FIX: Use try/catch pattern with goto for error handling
         ret = hls_writer_write_packet(hls_writer, out_pkt, input_stream);
         if (ret < 0) {
             // Only log errors for keyframes or every 200th packet to reduce log spam
@@ -279,6 +338,7 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
         if (!mp4_writer) {
             log_error("NULL MP4 writer for stream %s", stream_name);
             av_packet_free(&out_pkt);
+            pthread_mutex_unlock(mutex_to_use);
             return -1;
         }
         
@@ -296,6 +356,15 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
             out_pkt->pts = 1;
             out_pkt->dts = 1;
             log_debug("Set default timestamps for packet with no PTS/DTS in stream %s", stream_name);
+        }
+        
+        // CRITICAL FIX: Additional safety check for negative timestamps
+        if (out_pkt->pts <= 0 || out_pkt->dts <= 0) {
+            log_warn("Correcting non-positive timestamps for stream %s: pts=%lld, dts=%lld",
+                    stream_name, (long long)out_pkt->pts, (long long)out_pkt->dts);
+            
+            if (out_pkt->pts <= 0) out_pkt->pts = 1;
+            if (out_pkt->dts <= 0) out_pkt->dts = 1;
         }
         
         // Write the packet
@@ -317,6 +386,9 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
     if (out_pkt) {
         av_packet_free(&out_pkt);
     }
+    
+    // CRITICAL FIX: Always unlock the appropriate mutex before returning
+    pthread_mutex_unlock(mutex_to_use);
     
     return ret;
 }

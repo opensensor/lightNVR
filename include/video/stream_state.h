@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <pthread.h>
+#include <time.h>
 #include "core/config.h"
 #include "video/stream_manager.h"
 
@@ -14,6 +15,7 @@ typedef enum {
     STREAM_STATE_INACTIVE = 0,   // Stream is not active
     STREAM_STATE_STARTING,       // Stream is in the process of starting
     STREAM_STATE_ACTIVE,         // Stream is active and running
+    STREAM_STATE_STOPPING,       // Stream is in the process of stopping
     STREAM_STATE_ERROR,          // Stream encountered an error
     STREAM_STATE_RECONNECTING    // Stream is attempting to reconnect
 } stream_state_t;
@@ -54,6 +56,19 @@ typedef struct {
 // Use stream_stats_t from stream_manager.h
 
 /**
+ * Stream component type - identifies different components that can reference a stream
+ */
+typedef enum {
+    STREAM_COMPONENT_READER = 0,  // Stream reader
+    STREAM_COMPONENT_HLS,         // HLS streaming
+    STREAM_COMPONENT_MP4,         // MP4 recording
+    STREAM_COMPONENT_DETECTION,   // Object detection
+    STREAM_COMPONENT_API,         // API access
+    STREAM_COMPONENT_OTHER,       // Other components
+    STREAM_COMPONENT_COUNT        // Number of component types
+} stream_component_t;
+
+/**
  * Stream state manager - central structure for managing stream state
  */
 typedef struct {
@@ -65,10 +80,20 @@ typedef struct {
     stream_stats_t stats;        // Stream statistics
     stream_config_t config;      // Stream configuration
     pthread_mutex_t mutex;       // Mutex for thread-safe access
+    pthread_mutex_t state_mutex; // Mutex specifically for state transitions
+    
+    // Reference counting
+    int ref_count;               // Total reference count
+    int component_refs[STREAM_COMPONENT_COUNT]; // References by component type
+    
+    // Component contexts
     void *reader_ctx;            // Opaque pointer to reader context
     void *hls_ctx;               // Opaque pointer to HLS context
     void *mp4_ctx;               // Opaque pointer to MP4 context
     void *detection_ctx;         // Opaque pointer to detection context
+    
+    // Callback management
+    bool callbacks_enabled;      // Whether callbacks are enabled
 } stream_state_manager_t;
 
 /**
@@ -144,9 +169,10 @@ int start_stream_with_state(stream_state_manager_t *state);
  * This function stops the stream and all its features
  * 
  * @param state Stream state manager
+ * @param wait_for_completion Whether to wait for the stream to fully stop
  * @return 0 on success, non-zero on failure
  */
-int stop_stream_with_state(stream_state_manager_t *state);
+int stop_stream_with_state(stream_state_manager_t *state, bool wait_for_completion);
 
 /**
  * Get stream state
@@ -209,5 +235,65 @@ stream_state_manager_t *get_stream_state_by_index(int index);
  * @return 0 on success, non-zero on failure
  */
 int remove_stream_state(stream_state_manager_t *state);
+
+/**
+ * Add a reference to a stream state manager
+ * 
+ * @param state Stream state manager
+ * @param component Component type adding the reference
+ * @return New reference count, or -1 on error
+ */
+int stream_state_add_ref(stream_state_manager_t *state, stream_component_t component);
+
+/**
+ * Release a reference to a stream state manager
+ * 
+ * @param state Stream state manager
+ * @param component Component type releasing the reference
+ * @return New reference count, or -1 on error
+ */
+int stream_state_release_ref(stream_state_manager_t *state, stream_component_t component);
+
+/**
+ * Get the current reference count for a stream state manager
+ * 
+ * @param state Stream state manager
+ * @return Current reference count, or -1 on error
+ */
+int stream_state_get_ref_count(stream_state_manager_t *state);
+
+/**
+ * Check if a stream state indicates it is stopping
+ * 
+ * @param state Stream state manager
+ * @return true if the stream is in stopping state, false otherwise
+ */
+bool is_stream_state_stopping(stream_state_manager_t *state);
+
+/**
+ * Wait for a stream to complete its stopping process
+ * 
+ * @param state Stream state manager
+ * @param timeout_ms Timeout in milliseconds, or 0 for no timeout
+ * @return 0 on success, -1 on timeout, -2 on error
+ */
+int wait_for_stream_stop(stream_state_manager_t *state, int timeout_ms);
+
+/**
+ * Enable or disable callbacks for a stream
+ * 
+ * @param state Stream state manager
+ * @param enabled Whether callbacks should be enabled
+ * @return 0 on success, non-zero on failure
+ */
+int set_stream_callbacks_enabled(stream_state_manager_t *state, bool enabled);
+
+/**
+ * Check if callbacks are enabled for a stream
+ * 
+ * @param state Stream state manager
+ * @return true if callbacks are enabled, false otherwise
+ */
+bool are_stream_callbacks_enabled(stream_state_manager_t *state);
 
 #endif // LIGHTNVR_STREAM_STATE_H

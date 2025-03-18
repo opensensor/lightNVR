@@ -37,41 +37,73 @@ static void *stream_reader_thread(void *arg) {
     AVPacket *pkt = NULL;
     int ret;
     
+    // CRITICAL FIX: Add extra validation for context
+    if (!ctx) {
+        log_error("NULL context passed to stream reader thread");
+        return NULL;
+    }
+    
+    // CRITICAL FIX: Create a local copy of the stream name for thread safety
+    char stream_name[MAX_STREAM_NAME];
+    strncpy(stream_name, ctx->config.name, MAX_STREAM_NAME - 1);
+    stream_name[MAX_STREAM_NAME - 1] = '\0';
+    
     log_info("Starting stream reader thread for stream %s (dedicated: %d)", 
-             ctx->config.name, ctx->dedicated);
+             stream_name, ctx->dedicated);
+    
+    // CRITICAL FIX: Check if we're still running before proceeding
+    if (!ctx->running) {
+        log_warn("Stream reader thread for %s started but already marked as not running", stream_name);
+        return NULL;
+    }
     
     // Open input stream with retry logic
     int retry_count = 0;
     const int max_retries = 5;
     
-    while (retry_count < max_retries) {
+    while (retry_count < max_retries && ctx->running) {  // CRITICAL FIX: Check running state in loop condition
         ret = open_input_stream(&ctx->input_ctx, ctx->config.url, ctx->config.protocol);
         if (ret == 0) {
             // Successfully opened the stream
             
             // Set the UDP flag in the timestamp tracker based on the protocol
             // This ensures proper timestamp handling for UDP streams
-            set_timestamp_tracker_udp_flag(ctx->config.name, 
+            set_timestamp_tracker_udp_flag(stream_name, 
                                           ctx->config.protocol == STREAM_PROTOCOL_UDP);
             
             log_info("Set UDP flag to %s for stream %s timestamp tracker", 
                     ctx->config.protocol == STREAM_PROTOCOL_UDP ? "true" : "false", 
-                    ctx->config.name);
+                    stream_name);
             
             break;
         }
         
         log_error("Failed to open input stream for %s (attempt %d/%d)", 
-                 ctx->config.name, retry_count + 1, max_retries);
+                 stream_name, retry_count + 1, max_retries);
+        
+        // CRITICAL FIX: Check if we're still running before sleeping
+        if (!ctx->running) {
+            log_info("Stream reader thread for %s stopping during connection attempts", stream_name);
+            return NULL;
+        }
         
         // Wait before retrying - reduced from 1s to 250ms for more responsive handling
         av_usleep(250000);  // 250ms delay
         retry_count++;
     }
     
+    // CRITICAL FIX: Check running state again after connection attempts
+    if (!ctx->running) {
+        log_info("Stream reader thread for %s stopping after connection attempts", stream_name);
+        if (ctx->input_ctx) {
+            avformat_close_input(&ctx->input_ctx);
+        }
+        return NULL;
+    }
+    
     if (ret < 0 || !ctx->input_ctx) {
         log_error("Failed to open input stream for %s after %d attempts", 
-                 ctx->config.name, max_retries);
+                 stream_name, max_retries);
         ctx->running = 0;
         return NULL;
     }
@@ -93,6 +125,14 @@ static void *stream_reader_thread(void *arg) {
         ctx->running = 0;
         return NULL;
     }
+    
+    // CRITICAL FIX: Initialize timestamp tracking variables
+    ctx->last_pts_initialized = 0;
+    ctx->last_pts = AV_NOPTS_VALUE;
+    ctx->frame_duration = 0;
+    
+    // CRITICAL FIX: Create a mutex for thread-safe packet processing
+    pthread_mutex_t packet_mutex = PTHREAD_MUTEX_INITIALIZER;
     
     // Main packet reading loop
     while (ctx->running) {
@@ -117,6 +157,16 @@ static void *stream_reader_thread(void *arg) {
             continue;
         }
         
+        // CRITICAL FIX: Lock mutex before reading frame to prevent concurrent access
+        pthread_mutex_lock(&packet_mutex);
+        
+        // CRITICAL FIX: Check running state again after acquiring lock
+        if (!ctx->running) {
+            pthread_mutex_unlock(&packet_mutex);
+            av_usleep(5000);  // 5ms
+            continue;
+        }
+        
         ret = av_read_frame(local_input_ctx, pkt);
         
         // Handle timestamp recovery for UDP streams - AFTER reading the packet
@@ -125,23 +175,21 @@ static void *stream_reader_thread(void *arg) {
             // This prevents race conditions during shutdown
             if (!ctx->running) {
                 av_packet_unref(pkt);
+                pthread_mutex_unlock(&packet_mutex);
                 continue;
             }
             
             // Log for debugging
             log_debug("Processing packet for stream %s (protocol: %s): pts=%lld, dts=%lld, size=%d", 
-                 ctx->config.name, 
+                 stream_name, 
                  ctx->config.protocol == STREAM_PROTOCOL_UDP ? "UDP" : "TCP",
                  (long long)(pkt->pts != AV_NOPTS_VALUE ? pkt->pts : -1), 
                  (long long)(pkt->dts != AV_NOPTS_VALUE ? pkt->dts : -1), 
                  pkt->size);
             
-            // CRITICAL FIX: Use a mutex for timestamp handling in UDP streams
-            // This prevents race conditions when multiple UDP streams are active
+            // CRITICAL FIX: We're already holding packet_mutex, no need for additional mutex
+            // This simplifies the code and reduces the risk of deadlocks
             if (ctx->config.protocol == STREAM_PROTOCOL_UDP) {
-                // Use a static mutex for UDP timestamp handling
-                static pthread_mutex_t udp_timestamp_mutex = PTHREAD_MUTEX_INITIALIZER;
-                pthread_mutex_lock(&udp_timestamp_mutex);
                 
                 // For all streams, but especially UDP streams, ensure timestamps are valid
                 // Use per-context variables to avoid issues with multiple streams
@@ -150,10 +198,10 @@ static void *stream_reader_thread(void *arg) {
                     ctx->frame_duration = 0;
                     ctx->last_pts_initialized = 1;
                     log_info("Initialized timestamp tracking for stream %s (protocol: UDP)", 
-                            ctx->config.name);
+                            stream_name);
                 }
                 
-                // Calculate frame duration based on stream timebase and framerate if available
+                // CRITICAL FIX: Add additional validation for local_input_ctx and stream index
                 if (ctx->frame_duration == 0 && local_input_ctx && 
                     ctx->video_stream_idx >= 0 && ctx->video_stream_idx < local_input_ctx->nb_streams &&
                     local_input_ctx->streams[ctx->video_stream_idx]) {
@@ -166,57 +214,57 @@ static void *stream_reader_thread(void *arg) {
                         AVRational fr = local_input_ctx->streams[ctx->video_stream_idx]->avg_frame_rate;
                         
                         // Avoid division by zero
-                        if (fr.den > 0) {
+                        if (fr.den > 0 && tb.num > 0 && tb.den > 0) {  // CRITICAL FIX: Validate timebase
                             ctx->frame_duration = av_rescale_q(1, av_inv_q(fr), tb);
                         } else {
-                            // Default to a reasonable value if framerate is invalid
+                            // Default to a reasonable value if framerate or timebase is invalid
                             ctx->frame_duration = 3000; // Assume 30fps with timebase 1/90000
                         }
                         
                         log_debug("Calculated frame duration for stream %s: %lld", 
-                             ctx->config.name, (long long)ctx->frame_duration);
+                             stream_name, (long long)ctx->frame_duration);
                     } else {
                         // Default to a reasonable value if framerate is invalid
                         ctx->frame_duration = 3000; // Assume 30fps with timebase 1/90000
                         log_debug("Using default frame duration for stream %s (invalid framerate): %lld", 
-                             ctx->config.name, (long long)ctx->frame_duration);
+                             stream_name, (long long)ctx->frame_duration);
                     }
                 } else if (ctx->frame_duration == 0) {
                     // Default to a reasonable value if we can't calculate
                     ctx->frame_duration = 3000; // Assume 30fps with timebase 1/90000
                     log_debug("Using default frame duration for stream %s: %lld", 
-                         ctx->config.name, (long long)ctx->frame_duration);
+                         stream_name, (long long)ctx->frame_duration);
                 }
                 
                 // Handle missing timestamps for all streams, but especially important for UDP
                 if (pkt->pts == AV_NOPTS_VALUE && pkt->dts != AV_NOPTS_VALUE) {
                     pkt->pts = pkt->dts;
                     log_debug("Using DTS as PTS for stream %s: pts=%lld", 
-                         ctx->config.name, (long long)pkt->pts);
+                         stream_name, (long long)pkt->pts);
                 } else if (pkt->dts == AV_NOPTS_VALUE && pkt->pts != AV_NOPTS_VALUE) {
                     pkt->dts = pkt->pts;
                     log_debug("Using PTS as DTS for stream %s: dts=%lld", 
-                         ctx->config.name, (long long)pkt->dts);
+                         stream_name, (long long)pkt->dts);
                 } else if (pkt->pts == AV_NOPTS_VALUE && pkt->dts == AV_NOPTS_VALUE) {
                     // Both timestamps missing, generate based on previous packet
                     if (ctx->last_pts > 0) {
                         pkt->pts = ctx->last_pts + ctx->frame_duration;
                         pkt->dts = pkt->pts;
                         log_debug("Generated timestamps for stream %s: pts=%lld, dts=%lld", 
-                             ctx->config.name, (long long)pkt->pts, (long long)pkt->dts);
+                             stream_name, (long long)pkt->pts, (long long)pkt->dts);
                     } else {
                         // First packet with no timestamp, use a default
                         pkt->pts = 1;  // Use 1 instead of frame_duration for safer initialization
                         pkt->dts = pkt->pts;
                         log_debug("Generated initial timestamps for stream %s: pts=%lld, dts=%lld", 
-                             ctx->config.name, (long long)pkt->pts, (long long)pkt->dts);
+                             stream_name, (long long)pkt->pts, (long long)pkt->dts);
                     }
                 }
                 
                 // Additional safety check: ensure timestamps are positive
                 if (pkt->pts <= 0 || pkt->dts <= 0) {
                     log_warn("Non-positive timestamps detected in stream %s: pts=%lld, dts=%lld", 
-                            ctx->config.name, (long long)pkt->pts, (long long)pkt->dts);
+                            stream_name, (long long)pkt->pts, (long long)pkt->dts);
                     
                     // Set to safe values
                     if (pkt->pts <= 0) {
@@ -236,17 +284,15 @@ static void *stream_reader_thread(void *arg) {
                     }
                     
                     log_debug("Corrected non-positive timestamps for stream %s: pts=%lld, dts=%lld", 
-                             ctx->config.name, (long long)pkt->pts, (long long)pkt->dts);
+                             stream_name, (long long)pkt->pts, (long long)pkt->dts);
                 }
                 
                 // Store current timestamp for next packet if valid
                 if (pkt->pts != AV_NOPTS_VALUE) {
                     ctx->last_pts = pkt->pts;
                 }
-                
-                pthread_mutex_unlock(&udp_timestamp_mutex);
             } else {
-                // For TCP streams, we can handle timestamps without a mutex
+                // For TCP streams, we can handle timestamps without a separate mutex
                 // since they're more reliable and don't need as much correction
                 
                 // For all streams, ensure timestamps are valid
@@ -255,7 +301,7 @@ static void *stream_reader_thread(void *arg) {
                     ctx->frame_duration = 0;
                     ctx->last_pts_initialized = 1;
                     log_info("Initialized timestamp tracking for stream %s (protocol: TCP)", 
-                            ctx->config.name);
+                            stream_name);
                 }
                 
                 // Handle missing timestamps
@@ -269,6 +315,15 @@ static void *stream_reader_thread(void *arg) {
                     pkt->dts = 1;
                 }
                 
+                // CRITICAL FIX: Additional safety check for negative timestamps
+                if (pkt->pts <= 0 || pkt->dts <= 0) {
+                    log_warn("Non-positive timestamps detected in TCP stream %s: pts=%lld, dts=%lld", 
+                            stream_name, (long long)pkt->pts, (long long)pkt->dts);
+                    
+                    if (pkt->pts <= 0) pkt->pts = 1;
+                    if (pkt->dts <= 0) pkt->dts = 1;
+                }
+                
                 // Store current timestamp for next packet if valid
                 if (pkt->pts != AV_NOPTS_VALUE) {
                     ctx->last_pts = pkt->pts;
@@ -280,7 +335,10 @@ static void *stream_reader_thread(void *arg) {
             if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN)) {
                 // End of stream or resource temporarily unavailable
                 av_packet_unref(pkt);
-                log_warn("Stream %s disconnected, attempting to reconnect...", ctx->config.name);
+                pthread_mutex_unlock(&packet_mutex);  // CRITICAL FIX: Unlock mutex before reconnection logic
+                log_warn("Stream %s disconnected, attempting to reconnect...", stream_name);
+                
+                // CRITICAL FI
                 
                 // Use different reconnection strategies based on protocol
                 static int reconnect_attempts = 0;

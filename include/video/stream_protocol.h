@@ -3,10 +3,9 @@
 
 #include <stdbool.h>
 #include <libavformat/avformat.h>
+#include "core/config.h"
 
-// Stream protocol types
-#define STREAM_PROTOCOL_TCP 0
-#define STREAM_PROTOCOL_UDP 1
+// Stream protocol types are now defined in core/config.h as an enum
 
 // Check if a URL is a multicast address
 bool is_multicast_url(const char *url);

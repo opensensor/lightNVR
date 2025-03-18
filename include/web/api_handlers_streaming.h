@@ -29,6 +29,11 @@ void handle_webrtc_offer(const http_request_t *request, http_response_t *respons
 void handle_webrtc_ice(const http_request_t *request, http_response_t *response);
 
 /**
+ * Handle stream toggle request
+ */
+void handle_stream_toggle(const http_request_t *request, http_response_t *response);
+
+/**
  * Register streaming API handlers
  */
 void register_streaming_api_handlers(void);

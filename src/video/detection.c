@@ -754,20 +754,21 @@ int detect_objects(detection_model_t model, const unsigned char *frame_data,
         int valid_count = 0;
         for (int i = 0; i < count && valid_count < MAX_DETECTIONS; i++) {
             // Get detection data from the dynamic box structure
-            sod_box_dynamic *box = (sod_box_dynamic*)boxes_ptr[i];
+            // FIXED: boxes_ptr is an array of sod_box structures, not pointers to structures
+            sod_box_dynamic *boxes_array = (sod_box_dynamic*)boxes_ptr;
             
             char label[MAX_LABEL_LENGTH];
-            strncpy(label, box->zName ? box->zName : "face", MAX_LABEL_LENGTH - 1);
+            strncpy(label, boxes_array[i].zName ? boxes_array[i].zName : "face", MAX_LABEL_LENGTH - 1);
             label[MAX_LABEL_LENGTH - 1] = '\0';
 
-            float confidence = box->score;
+            float confidence = boxes_array[i].score;
             if (confidence > 1.0f) confidence = 1.0f;
 
             // Convert pixel coordinates to normalized 0-1 range
-            float x = (float)box->x / width;
-            float y = (float)box->y / height;
-            float w = (float)box->w / width;
-            float h = (float)box->h / height;
+            float x = (float)boxes_array[i].x / width;
+            float y = (float)boxes_array[i].y / height;
+            float w = (float)boxes_array[i].w / width;
+            float h = (float)boxes_array[i].h / height;
 
             // Apply threshold
             if (confidence < m->sod.threshold) {

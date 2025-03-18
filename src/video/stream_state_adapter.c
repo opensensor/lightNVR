@@ -305,8 +305,8 @@ int stop_stream_adapter(stream_handle_t handle) {
         return -1;
     }
     
-    // Stop the stream
-    return stop_stream_with_state(state);
+    // Stop the stream with wait_for_completion=true to ensure it fully stops
+    return stop_stream_with_state(state, true);
 }
 
 /**
@@ -335,6 +335,8 @@ stream_status_t get_stream_status_adapter(stream_handle_t handle) {
             return STREAM_STATUS_STARTING;
         case STREAM_STATE_ACTIVE:
             return STREAM_STATUS_RUNNING;
+        case STREAM_STATE_STOPPING:
+            return STREAM_STATUS_STOPPING;
         case STREAM_STATE_ERROR:
             return STREAM_STATUS_ERROR;
         case STREAM_STATE_RECONNECTING:
@@ -515,7 +517,7 @@ int set_stream_detection_params_adapter(stream_handle_t handle, int interval, fl
     
     if (detection_enabled && current_state == STREAM_STATE_ACTIVE) {
         log_info("Restarting stream '%s' to apply detection parameter changes", state->name);
-        stop_stream_with_state(state);
+        stop_stream_with_state(state, true); // Wait for completion
         start_stream_with_state(state);
     }
     

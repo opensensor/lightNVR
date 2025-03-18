@@ -4,8 +4,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-// Maximum length of stream name
-#define MAX_STREAM_NAME 128
+// Include config.h for consistent MAX_STREAM_NAME definition
+#include "core/config.h"
+
+// Use MAX_STREAM_NAME from config.h (256)
 
 // Initialize timestamp trackers
 void init_timestamp_trackers(void);

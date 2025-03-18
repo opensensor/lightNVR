@@ -288,13 +288,14 @@ int detect_with_sod_realnet(void *model, const unsigned char *frame_data,
         int h = box_array[i].h;
         #else
         // For dynamic loading, we need to access the box array differently
-        sod_box_dynamic **box_array = (sod_box_dynamic**)boxes;
-        float score = box_array[i]->score;
-        const char *name = box_array[i]->zName;
-        int x = box_array[i]->x;
-        int y = box_array[i]->y;
-        int w = box_array[i]->w;
-        int h = box_array[i]->h;
+        // FIXED: boxes is an array of sod_box structures, not pointers to structures
+        sod_box_dynamic *box_array = (sod_box_dynamic*)boxes;
+        float score = box_array[i].score;
+        const char *name = box_array[i].zName;
+        int x = box_array[i].x;
+        int y = box_array[i].y;
+        int w = box_array[i].w;
+        int h = box_array[i].h;
         #endif
         
         // Apply threshold

@@ -17,6 +17,8 @@
 #include "core/logger.h"
 #include "core/daemon.h"
 #include "video/stream_manager.h"
+#include "video/stream_state.h"
+#include "video/stream_state_adapter.h"
 #include "storage/storage_manager.h"
 #include "video/streams.h"
 #include "video/hls_streaming.h"
@@ -25,6 +27,8 @@
 #include "video/detection_stream.h"
 #include "video/detection_recording.h"
 #include "video/detection.h"
+#include "video/stream_packet_processor.h"
+#include "video/timestamp_manager.h"
 
 // External function declarations
 void init_recordings_system(void);
@@ -385,6 +389,18 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
 
+    // Initialize stream state manager
+    if (init_stream_state_manager(config.max_streams) != 0) {
+        log_error("Failed to initialize stream state manager");
+        goto cleanup;
+    }
+    
+    // Initialize stream state adapter
+    if (init_stream_state_adapter() != 0) {
+        log_error("Failed to initialize stream state adapter");
+        goto cleanup;
+    }
+    
     // Initialize stream manager
     if (init_stream_manager(config.max_streams) != 0) {
         log_error("Failed to initialize stream manager");
@@ -394,6 +410,18 @@ int main(int argc, char *argv[]) {
 
     // Initialize FFmpeg streaming backend
     init_transcoding_backend();
+    
+    // Initialize timestamp trackers
+    init_timestamp_trackers();
+    log_info("Timestamp trackers initialized");
+    
+    // Initialize packet processor
+    if (init_packet_processor() != 0) {
+        log_error("Failed to initialize packet processor");
+    } else {
+        log_info("Packet processor initialized successfully");
+    }
+    
     init_hls_streaming_backend();
     init_mp4_recording_backend();
     
@@ -659,6 +687,12 @@ cleanup:
         
         log_info("Shutting down stream manager...");
         shutdown_stream_manager();
+        
+        log_info("Shutting down stream state adapter...");
+        shutdown_stream_state_adapter();
+        
+        log_info("Shutting down stream state manager...");
+        shutdown_stream_state_manager();
         
         log_info("Shutting down storage manager...");
         shutdown_storage_manager();

@@ -11,6 +11,7 @@ typedef enum {
     STREAM_STATUS_STOPPED,
     STREAM_STATUS_STARTING,
     STREAM_STATUS_RUNNING,
+    STREAM_STATUS_STOPPING,    // Stream is in the process of stopping
     STREAM_STATUS_ERROR,
     STREAM_STATUS_RECONNECTING
 } stream_status_t;

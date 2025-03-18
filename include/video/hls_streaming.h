@@ -16,6 +16,12 @@ typedef struct {
     stream_reader_ctx_t *reader_ctx;  // Stream reader context
 } hls_stream_ctx_t;
 
+// Include all HLS component headers
+#include "video/hls/hls_context.h"
+#include "video/hls/hls_stream_thread.h"
+#include "video/hls/hls_directory.h"
+#include "video/hls/hls_api.h"
+
 /**
  * Initialize HLS streaming backend
  */
@@ -25,26 +31,5 @@ void init_hls_streaming_backend(void);
  * Cleanup HLS streaming backend
  */
 void cleanup_hls_streaming_backend(void);
-
-/**
- * Start HLS streaming for a stream
- * 
- * @param stream_name Name of the stream to stream
- * @return 0 on success, non-zero on failure
- */
-int start_hls_stream(const char *stream_name);
-
-/**
- * Stop HLS streaming for a stream
- * 
- * @param stream_name Name of the stream to stop streaming
- * @return 0 on success, non-zero on failure
- */
-int stop_hls_stream(const char *stream_name);
-
-/**
- * Clean up HLS directories during shutdown
- */
-void cleanup_hls_directories(void);
 
 #endif /* HLS_STREAMING_H */
