@@ -105,81 +105,89 @@ static void *stream_reader_thread(void *arg) {
         
         ret = av_read_frame(ctx->input_ctx, pkt);
         
-        // Handle timestamp recovery for UDP streams - AFTER reading the packet
-        if (ret >= 0 && ctx->config.protocol == STREAM_PROTOCOL_UDP) {
-            // Log for debugging
-            log_debug("Processing UDP packet for stream %s: pts=%lld, dts=%lld, size=%d", 
+            // Handle timestamp recovery for UDP streams - AFTER reading the packet
+            if (ret >= 0 && ctx->config.protocol == STREAM_PROTOCOL_UDP) {
+                // Log for debugging
+                log_debug("Processing UDP packet for stream %s: pts=%lld, dts=%lld, size=%d", 
                      ctx->config.name, 
                      (long long)(pkt->pts != AV_NOPTS_VALUE ? pkt->pts : -1), 
                      (long long)(pkt->dts != AV_NOPTS_VALUE ? pkt->dts : -1), 
                      pkt->size);
-            
-            // For UDP streams, generate timestamps if missing
-            // Use per-context variables to avoid issues with multiple streams
-            if (!ctx->last_pts_initialized) {
-                ctx->last_pts = 0;
-                ctx->frame_duration = 0;
-                ctx->last_pts_initialized = 1;
-                log_info("Initialized timestamp tracking for UDP stream %s", ctx->config.name);
-            }
-            
-            // Calculate frame duration based on stream timebase and framerate if available
-            if (ctx->frame_duration == 0 && ctx->input_ctx && 
-                ctx->video_stream_idx >= 0 && ctx->video_stream_idx < ctx->input_ctx->nb_streams &&
-                ctx->input_ctx->streams[ctx->video_stream_idx] && 
-                ctx->input_ctx->streams[ctx->video_stream_idx]->avg_frame_rate.num > 0 &&
-                ctx->input_ctx->streams[ctx->video_stream_idx]->avg_frame_rate.den > 0) {
                 
-                AVRational tb = ctx->input_ctx->streams[ctx->video_stream_idx]->time_base;
-                AVRational fr = ctx->input_ctx->streams[ctx->video_stream_idx]->avg_frame_rate;
+                // For UDP streams, generate timestamps if missing
+                // Use per-context variables to avoid issues with multiple streams
+                if (!ctx->last_pts_initialized) {
+                    ctx->last_pts = 0;
+                    ctx->frame_duration = 0;
+                    ctx->last_pts_initialized = 1;
+                    log_info("Initialized timestamp tracking for UDP stream %s", ctx->config.name);
+                }
                 
-                // Avoid division by zero
-                if (fr.den > 0) {
-                    ctx->frame_duration = av_rescale_q(1, av_inv_q(fr), tb);
-                } else {
-                    // Default to a reasonable value if framerate is invalid
+                // Calculate frame duration based on stream timebase and framerate if available
+                if (ctx->frame_duration == 0 && ctx->input_ctx && 
+                    ctx->video_stream_idx >= 0 && ctx->video_stream_idx < ctx->input_ctx->nb_streams &&
+                    ctx->input_ctx->streams[ctx->video_stream_idx]) {
+                    
+                    // Add null check for avg_frame_rate
+                    if (ctx->input_ctx->streams[ctx->video_stream_idx]->avg_frame_rate.num > 0 &&
+                        ctx->input_ctx->streams[ctx->video_stream_idx]->avg_frame_rate.den > 0) {
+                        
+                        AVRational tb = ctx->input_ctx->streams[ctx->video_stream_idx]->time_base;
+                        AVRational fr = ctx->input_ctx->streams[ctx->video_stream_idx]->avg_frame_rate;
+                        
+                        // Avoid division by zero
+                        if (fr.den > 0) {
+                            ctx->frame_duration = av_rescale_q(1, av_inv_q(fr), tb);
+                        } else {
+                            // Default to a reasonable value if framerate is invalid
+                            ctx->frame_duration = 3000; // Assume 30fps with timebase 1/90000
+                        }
+                        
+                        log_debug("Calculated frame duration for UDP stream %s: %lld", 
+                             ctx->config.name, (long long)ctx->frame_duration);
+                    } else {
+                        // Default to a reasonable value if framerate is invalid
+                        ctx->frame_duration = 3000; // Assume 30fps with timebase 1/90000
+                        log_debug("Using default frame duration for UDP stream %s (invalid framerate): %lld", 
+                             ctx->config.name, (long long)ctx->frame_duration);
+                    }
+                } else if (ctx->frame_duration == 0) {
+                    // Default to a reasonable value if we can't calculate
                     ctx->frame_duration = 3000; // Assume 30fps with timebase 1/90000
+                    log_debug("Using default frame duration for UDP stream %s: %lld", 
+                         ctx->config.name, (long long)ctx->frame_duration);
                 }
                 
-                log_debug("Calculated frame duration for UDP stream %s: %lld", 
-                         ctx->config.name, (long long)ctx->frame_duration);
-            } else if (ctx->frame_duration == 0) {
-                // Default to a reasonable value if we can't calculate
-                ctx->frame_duration = 3000; // Assume 30fps with timebase 1/90000
-                log_debug("Using default frame duration for UDP stream %s: %lld", 
-                         ctx->config.name, (long long)ctx->frame_duration);
-            }
-            
-            // Handle missing timestamps
-            if (pkt->pts == AV_NOPTS_VALUE && pkt->dts != AV_NOPTS_VALUE) {
-                pkt->pts = pkt->dts;
-                log_debug("Using DTS as PTS for UDP stream %s: pts=%lld", 
+                // Handle missing timestamps
+                if (pkt->pts == AV_NOPTS_VALUE && pkt->dts != AV_NOPTS_VALUE) {
+                    pkt->pts = pkt->dts;
+                    log_debug("Using DTS as PTS for UDP stream %s: pts=%lld", 
                          ctx->config.name, (long long)pkt->pts);
-            } else if (pkt->dts == AV_NOPTS_VALUE && pkt->pts != AV_NOPTS_VALUE) {
-                pkt->dts = pkt->pts;
-                log_debug("Using PTS as DTS for UDP stream %s: dts=%lld", 
+                } else if (pkt->dts == AV_NOPTS_VALUE && pkt->pts != AV_NOPTS_VALUE) {
+                    pkt->dts = pkt->pts;
+                    log_debug("Using PTS as DTS for UDP stream %s: dts=%lld", 
                          ctx->config.name, (long long)pkt->dts);
-            } else if (pkt->pts == AV_NOPTS_VALUE && pkt->dts == AV_NOPTS_VALUE) {
-                // Both timestamps missing, generate based on previous packet
-                if (ctx->last_pts > 0) {
-                    pkt->pts = ctx->last_pts + ctx->frame_duration;
-                    pkt->dts = pkt->pts;
-                    log_debug("Generated timestamps for UDP stream %s: pts=%lld, dts=%lld", 
+                } else if (pkt->pts == AV_NOPTS_VALUE && pkt->dts == AV_NOPTS_VALUE) {
+                    // Both timestamps missing, generate based on previous packet
+                    if (ctx->last_pts > 0) {
+                        pkt->pts = ctx->last_pts + ctx->frame_duration;
+                        pkt->dts = pkt->pts;
+                        log_debug("Generated timestamps for UDP stream %s: pts=%lld, dts=%lld", 
                              ctx->config.name, (long long)pkt->pts, (long long)pkt->dts);
-                } else {
-                    // First packet with no timestamp, use a default
-                    pkt->pts = ctx->frame_duration;
-                    pkt->dts = pkt->pts;
-                    log_debug("Generated initial timestamps for UDP stream %s: pts=%lld, dts=%lld", 
+                    } else {
+                        // First packet with no timestamp, use a default
+                        pkt->pts = ctx->frame_duration;
+                        pkt->dts = pkt->pts;
+                        log_debug("Generated initial timestamps for UDP stream %s: pts=%lld, dts=%lld", 
                              ctx->config.name, (long long)pkt->pts, (long long)pkt->dts);
+                    }
+                }
+                
+                // Store current timestamp for next packet if valid
+                if (pkt->pts != AV_NOPTS_VALUE) {
+                    ctx->last_pts = pkt->pts;
                 }
             }
-            
-            // Store current timestamp for next packet if valid
-            if (pkt->pts != AV_NOPTS_VALUE) {
-                ctx->last_pts = pkt->pts;
-            }
-        }
         
         if (ret < 0) {
             if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN)) {
@@ -274,18 +282,23 @@ static void *stream_reader_thread(void *arg) {
             // Removed packet throttling mechanism to improve quality
             // Always process all frames for better quality
             
-            // Call the callback function with the packet - but check if we're still running first
-            if (ctx->running && ctx->packet_callback) {
-                // Make a local copy of the callback to avoid race conditions
-                packet_callback_t callback = ctx->packet_callback;
-                void *callback_data = ctx->callback_data;
-                
-                if (callback) {
-                    ret = callback(pkt, ctx->input_ctx->streams[ctx->video_stream_idx], callback_data);
-                    if (ret < 0) {
-                        log_error("Packet callback failed for stream %s: %d", ctx->config.name, ret);
-                        // Continue anyway
-                    }
+            // CRITICAL FIX: Double-check that we're still running and have a valid callback
+            // This prevents use-after-free issues during shutdown
+            if (!ctx->running || !ctx->packet_callback) {
+                // Skip processing if we're shutting down or callback was cleared
+                continue;
+            }
+            
+            // Make a local copy of the callback to avoid race conditions
+            packet_callback_t callback = ctx->packet_callback;
+            void *callback_data = ctx->callback_data;
+            
+            // Final check before calling the callback
+            if (callback) {
+                ret = callback(pkt, ctx->input_ctx->streams[ctx->video_stream_idx], callback_data);
+                if (ret < 0) {
+                    log_error("Packet callback failed for stream %s: %d", ctx->config.name, ret);
+                    // Continue anyway
                 }
             }
         }
@@ -522,10 +535,14 @@ int stop_stream_reader(stream_reader_ctx_t *ctx) {
     // Store a local copy of the thread to join
     pthread_t thread_to_join = ctx->thread;
     
-    // Close input context if it exists
+    // Close input context if it exists - this will force any blocking read operations to return
     if (ctx->input_ctx) {
         avformat_close_input(&ctx->input_ctx);
+        ctx->input_ctx = NULL; // Set to NULL to prevent double-free or use-after-free
     }
+    
+    // Create a local copy of the context pointer before removing it from the array
+    stream_reader_ctx_t *ctx_copy = ctx;
     
     // Remove the context from the array before unlocking to prevent other threads from accessing it
     reader_contexts[index] = NULL;
@@ -548,7 +565,7 @@ int stop_stream_reader(stream_reader_ctx_t *ctx) {
     
     // Now it's safe to free the context since we've removed it from the array
     // and either joined the thread or at least tried to
-    free(ctx);
+    free(ctx_copy);
     
     log_info("Successfully stopped stream reader for %s", stream_name);
     

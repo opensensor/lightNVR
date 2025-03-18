@@ -428,9 +428,24 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
     int ret = 0;
     AVPacket *out_pkt = NULL;
     
-    // Validate input parameters first
-    if (!pkt || !input_stream || !writer || !stream_name) {
-        log_error("Invalid parameters passed to process_video_packet");
+    // CRITICAL FIX: Add extra validation for all parameters
+    if (!pkt) {
+        log_error("process_video_packet: NULL packet");
+        return -1;
+    }
+    
+    if (!input_stream) {
+        log_error("process_video_packet: NULL input stream");
+        return -1;
+    }
+    
+    if (!writer) {
+        log_error("process_video_packet: NULL writer");
+        return -1;
+    }
+    
+    if (!stream_name) {
+        log_error("process_video_packet: NULL stream name");
         return -1;
     }
     
@@ -565,26 +580,32 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
             }
         }
         
-        // Detect and handle timestamp discontinuities with additional safety checks
-        if (tracker->last_pts != AV_NOPTS_VALUE && out_pkt->pts != AV_NOPTS_VALUE) {
-            // Calculate expected next PTS
-            int64_t frame_duration = 0;
-            
-            // Add safety checks for input_stream
-            if (input_stream && input_stream->avg_frame_rate.num > 0 && input_stream->avg_frame_rate.den > 0) {
-                AVRational tb = input_stream->time_base;
-                AVRational fr = input_stream->avg_frame_rate;
-                frame_duration = av_rescale_q(1, av_inv_q(fr), tb);
-            } else {
-                // Default to 1/30 second if framerate not available
-                // With additional safety checks
-                if (input_stream && input_stream->time_base.num > 0 && input_stream->time_base.den > 0) {
-                    frame_duration = input_stream->time_base.den / (30 * input_stream->time_base.num);
+            // Detect and handle timestamp discontinuities with additional safety checks
+            if (tracker->last_pts != AV_NOPTS_VALUE && out_pkt->pts != AV_NOPTS_VALUE) {
+                // Calculate expected next PTS
+                int64_t frame_duration = 0;
+                
+                // Add safety checks for input_stream
+                if (input_stream && input_stream->avg_frame_rate.num > 0 && input_stream->avg_frame_rate.den > 0) {
+                    // Ensure time_base is valid before using it
+                    if (input_stream->time_base.num > 0 && input_stream->time_base.den > 0) {
+                        AVRational tb = input_stream->time_base;
+                        AVRational fr = input_stream->avg_frame_rate;
+                        frame_duration = av_rescale_q(1, av_inv_q(fr), tb);
+                    } else {
+                        // Default if time_base is invalid
+                        frame_duration = 3000; // Assume 30fps with timebase 1/90000
+                    }
                 } else {
-                    // Fallback to a reasonable default
-                    frame_duration = 3000; // Assume 30fps with timebase 1/90000
+                    // Default to 1/30 second if framerate not available
+                    // With additional safety checks
+                    if (input_stream && input_stream->time_base.num > 0 && input_stream->time_base.den > 0) {
+                        frame_duration = input_stream->time_base.den / (30 * input_stream->time_base.num);
+                    } else {
+                        // Fallback to a reasonable default
+                        frame_duration = 3000; // Assume 30fps with timebase 1/90000
+                    }
                 }
-            }
             
             // Sanity check on frame duration
             if (frame_duration <= 0) {

@@ -43,9 +43,31 @@ static void *hls_stream_thread(void *arg);
  * Removed adaptive degrading to improve quality
  */
 static int hls_packet_callback(const AVPacket *pkt, const AVStream *stream, void *user_data) {
-    hls_stream_ctx_t *streaming_ctx = (hls_stream_ctx_t *)user_data;
-    if (!streaming_ctx || !streaming_ctx->hls_writer) {
+    // CRITICAL FIX: Add extra validation for user_data to prevent segfaults
+    if (!user_data) {
+        log_error("HLS packet callback received NULL user_data");
         return -1;
+    }
+    
+    hls_stream_ctx_t *streaming_ctx = (hls_stream_ctx_t *)user_data;
+    
+    // CRITICAL FIX: Add extra validation for streaming context and writer
+    if (!streaming_ctx) {
+        log_error("HLS packet callback received invalid streaming context");
+        return -1;
+    }
+    
+    if (!streaming_ctx->hls_writer) {
+        log_error("HLS packet callback: streaming context has NULL hls_writer for stream %s", 
+                 streaming_ctx->config.name);
+        return -1;
+    }
+    
+    // CRITICAL FIX: Validate that the stream is still running
+    if (!streaming_ctx->running) {
+        log_debug("HLS packet callback: stream %s is no longer running, skipping packet", 
+                 streaming_ctx->config.name);
+        return 0; // Return success but don't process the packet
     }
     
     // Check if this is a key frame
