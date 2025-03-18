@@ -26,6 +26,7 @@
 #include "video/detection_recording.h"
 #include "video/detection.h"
 #include "video/stream_state.h"
+#include "video/stream_packet_processor.h"
 
 // External function declarations
 void init_recordings_system(void);
@@ -406,6 +407,13 @@ int main(int argc, char *argv[]) {
     init_hls_streaming_backend();
     init_mp4_recording_backend();
     
+    // Initialize packet processor
+    if (init_packet_processor() != 0) {
+        log_error("Failed to initialize packet processor");
+    } else {
+        log_info("Packet processor initialized successfully");
+    }
+    
     // Initialize detection system
     if (init_detection_system() != 0) {
         log_error("Failed to initialize detection system");
@@ -657,6 +665,10 @@ cleanup:
         // Clean up stream reader backend last to ensure all consumers are stopped
         log_info("Cleaning up stream reader backend...");
         cleanup_stream_reader_backend();
+        
+        // Clean up packet processor
+        log_info("Shutting down packet processor...");
+        shutdown_packet_processor();
         
         // Clean up FFmpeg resources
         log_info("Cleaning up transcoding backend...");

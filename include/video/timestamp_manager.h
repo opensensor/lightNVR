@@ -51,4 +51,13 @@ int remove_timestamp_tracker(const char *stream_name);
  */
 int set_timestamp_tracker_udp_flag(const char *stream_name, bool is_udp);
 
+/**
+ * Get timestamp tracker for a stream
+ * This function is provided for backward compatibility
+ * 
+ * @param stream_name Name of the stream
+ * @return Pointer to timestamp tracker, or NULL if not found
+ */
+void *get_timestamp_tracker(const char *stream_name);
+
 #endif /* TIMESTAMP_MANAGER_H */

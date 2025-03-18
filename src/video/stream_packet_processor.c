@@ -9,6 +9,7 @@
 #include "video/stream_transcoding.h"
 #include "video/hls_writer.h"
 #include "video/mp4_writer.h"
+#include "video/timestamp_manager.h"
 #include "core/logger.h"
 
 // Mutex for thread-safe access to packet processing
@@ -334,7 +335,7 @@ int process_packet_with_state(stream_state_manager_t *state, const AVPacket *pkt
 
 /**
  * Adapter function for process_video_packet
- * Instead of falling back to legacy implementation, creates a state manager if one doesn't exist
+ * Creates a state manager if one doesn't exist and uses the new state-based approach
  */
 int process_video_packet_adapter(const AVPacket *pkt, const AVStream *input_stream, 
                                 void *writer, int writer_type, const char *stream_name) {
@@ -346,7 +347,7 @@ int process_video_packet_adapter(const AVPacket *pkt, const AVStream *input_stre
     // Get the state manager by name
     stream_state_manager_t *state = get_stream_state_by_name(stream_name);
     if (!state) {
-        // Instead of falling back to legacy implementation, create a new state manager
+        // Create a new state manager
         log_info("Stream state not found for '%s', creating new state manager", stream_name);
         
         // Get stream configuration
@@ -368,6 +369,12 @@ int process_video_packet_adapter(const AVPacket *pkt, const AVStream *input_stre
             log_error("Failed to create state manager for stream '%s'", stream_name);
             return -1;
         }
+        
+        // Initialize timestamp tracker for this stream
+        init_timestamp_tracker(stream_name);
+        
+        // Set UDP flag based on protocol
+        set_timestamp_tracker_udp_flag(stream_name, (config.protocol == STREAM_PROTOCOL_UDP));
         
         log_info("Created new state manager for stream '%s'", stream_name);
     }

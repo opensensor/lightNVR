@@ -112,13 +112,6 @@ static int hls_packet_callback(const AVPacket *pkt, const AVStream *stream, void
     if (!state) {
         log_warn("Stream state not found for '%s', using adapter", streaming_ctx->config.name);
         
-        // CRITICAL FIX: Validate that process_video_packet_adapter function exists
-        if (!process_video_packet_adapter) {
-            log_error("HLS packet callback: process_video_packet_adapter function is NULL for stream %s", 
-                     streaming_ctx->config.name);
-            return -1;
-        }
-        
         // Use the adapter which will create a state if needed
         int ret = process_video_packet_adapter(pkt, stream, streaming_ctx->hls_writer, 0, streaming_ctx->config.name);
         return ret;
