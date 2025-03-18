@@ -25,7 +25,7 @@
 #include "video/stream_transcoding.h"
 #include "video/stream_reader.h"
 #include "video/detection_stream.h"
-#include "video/packet_processor.h"
+#include "video/stream_packet_processor.h"
 #include "video/thread_utils.h"
 #include "video/timestamp_manager.h"
 #include "video/hls/hls_context.h"
@@ -107,28 +107,12 @@ int hls_packet_callback(const AVPacket *pkt, const AVStream *stream, void *user_
     // Check if this is a key frame
     bool is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
 
-    // CRITICAL FIX: Validate that process_video_packet function exists
-    if (!process_video_packet) {
-        log_error("HLS packet callback: process_video_packet function is NULL for stream %s", 
-                 stream_name);
-        pthread_mutex_unlock(&hls_packet_mutex);
-        return -1;
-    }
-    
     // CRITICAL FIX: Make a local copy of the HLS writer to avoid race conditions
     hls_writer_t *local_hls_writer = streaming_ctx->hls_writer;
     
     // CRITICAL FIX: Additional validation of the HLS writer
     if (!local_hls_writer || !local_hls_writer->output_ctx) {
         log_error("HLS packet callback: invalid HLS writer for stream %s", stream_name);
-        pthread_mutex_unlock(&hls_packet_mutex);
-        return -1;
-    }
-    
-    // CRITICAL FIX: Check if process_video_packet function exists and validate parameters
-    if (!process_video_packet) {
-        log_error("HLS packet callback: process_video_packet function is NULL for stream %s", 
-                 stream_name);
         pthread_mutex_unlock(&hls_packet_mutex);
         return -1;
     }
@@ -140,8 +124,14 @@ int hls_packet_callback(const AVPacket *pkt, const AVStream *stream, void *user_
         return -1;
     }
     
-    // Process all frames for better quality
-    ret = process_video_packet(pkt, stream, local_hls_writer, 0, stream_name);
+    // Use the state manager we already retrieved earlier
+    if (state) {
+        // Use the new state-based approach
+        ret = process_packet_with_state(state, pkt, stream, 0, local_hls_writer);
+    } else {
+        // Fall back to the adapter function which will create a state if needed
+        ret = process_video_packet_adapter(pkt, stream, local_hls_writer, 0, stream_name);
+    }
     
     // Only log errors for key frames to reduce log spam
     if (ret < 0 && is_key_frame) {

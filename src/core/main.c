@@ -27,6 +27,8 @@
 #include "video/detection_stream.h"
 #include "video/detection_recording.h"
 #include "video/detection.h"
+#include "video/stream_packet_processor.h"
+#include "video/timestamp_manager.h"
 
 // External function declarations
 void init_recordings_system(void);
@@ -408,6 +410,18 @@ int main(int argc, char *argv[]) {
 
     // Initialize FFmpeg streaming backend
     init_transcoding_backend();
+    
+    // Initialize timestamp trackers
+    init_timestamp_trackers();
+    log_info("Timestamp trackers initialized");
+    
+    // Initialize packet processor
+    if (init_packet_processor() != 0) {
+        log_error("Failed to initialize packet processor");
+    } else {
+        log_info("Packet processor initialized successfully");
+    }
+    
     init_hls_streaming_backend();
     init_mp4_recording_backend();
     

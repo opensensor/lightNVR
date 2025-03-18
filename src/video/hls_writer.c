@@ -13,6 +13,7 @@
 #include "core/logger.h"
 #include "video/hls_writer.h"
 #include "video/detection_integration.h"
+#include "video/streams.h"
 
 // Direct detection processing function - no thread needed
 static void process_packet_for_detection(const char *stream_name, const AVPacket *pkt, const AVCodecParameters *codec_params) {
@@ -255,13 +256,13 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     char mkdir_cmd[MAX_PATH_LENGTH + 10];
     
     // Ensure we're using a path within our configured storage
-    extern config_t global_config;
+    config_t *global_config = get_streaming_config();
     char safe_output_dir[MAX_PATH_LENGTH];
     
     // CRITICAL FIX: Always use the consistent path structure for HLS
     // Always use /hls/ directory without /recordings/
     snprintf(safe_output_dir, sizeof(safe_output_dir), "%s/hls/%s", 
-            global_config.storage_path, stream_name);
+            global_config->storage_path, stream_name);
     
     // Update the writer's output directory
     strncpy(writer->output_dir, safe_output_dir, MAX_PATH_LENGTH - 1);
@@ -456,22 +457,26 @@ int hls_writer_initialize(hls_writer_t *writer, const AVStream *input_stream) {
  */
 static int ensure_output_directory(const char *dir_path) {
     struct stat st;
-    extern config_t global_config;
+    config_t *global_config = get_streaming_config();
     char safe_dir_path[MAX_PATH_LENGTH];
     
-    // Ensure we're using a path within our configured storage
-    if (dir_path[0] == '/' && strncmp(dir_path, global_config.storage_path, strlen(global_config.storage_path)) != 0) {
-        // Extract stream name from the path (last component)
-        const char *last_slash = strrchr(dir_path, '/');
-        const char *stream_name = last_slash ? last_slash + 1 : dir_path;
-        
-        // Create a path within our storage directory instead
-        snprintf(safe_dir_path, sizeof(safe_dir_path), "%s/hls/%s", 
-                global_config.storage_path, stream_name);
-        log_warn("Redirecting HLS directory from %s to %s to avoid overlay writes", 
+    // CRITICAL FIX: Always use the consistent path structure for HLS
+    // Extract stream name from the path (last component)
+    const char *last_slash = strrchr(dir_path, '/');
+    const char *stream_name = last_slash ? last_slash + 1 : dir_path;
+    
+    // Create a path within our storage directory
+    snprintf(safe_dir_path, sizeof(safe_dir_path), "%s/hls/%s", 
+            global_config->storage_path, stream_name);
+    
+    // Log if we're redirecting from a different path
+    if (strcmp(dir_path, safe_dir_path) != 0) {
+        log_warn("Redirecting HLS directory from %s to %s to ensure consistent path structure", 
                 dir_path, safe_dir_path);
-        dir_path = safe_dir_path;
     }
+    
+    // Always use the safe path
+    dir_path = safe_dir_path;
 
     // Check if directory exists
     if (stat(dir_path, &st) != 0 || !S_ISDIR(st.st_mode)) {

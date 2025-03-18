@@ -24,16 +24,20 @@ int ensure_hls_directory(const char *output_dir, const char *stream_name) {
         return -1;
     }
 
-    // Ensure we're using a path within our configured storage
+    // CRITICAL FIX: Always use the consistent path structure for HLS
+    // Always use the storage path from the config
     char safe_output_dir[MAX_PATH_LENGTH];
-    if (output_dir[0] == '/' && strncmp(output_dir, global_config->storage_path, strlen(global_config->storage_path)) != 0) {
-        // Create a path within our storage directory instead
-        snprintf(safe_output_dir, sizeof(safe_output_dir), "%s/hls/%s", 
-                global_config->storage_path, stream_name);
-        log_warn("Redirecting HLS output from %s to %s to avoid overlay writes", 
+    snprintf(safe_output_dir, sizeof(safe_output_dir), "%s/hls/%s", 
+            global_config->storage_path, stream_name);
+    
+    // Log if we're redirecting from a different path
+    if (strcmp(output_dir, safe_output_dir) != 0) {
+        log_warn("Redirecting HLS output from %s to %s to ensure consistent path structure", 
                 output_dir, safe_output_dir);
-        output_dir = safe_output_dir;
     }
+    
+    // Always use the safe path
+    output_dir = safe_output_dir;
 
     // Verify output directory exists and is writable
     struct stat st;

@@ -10,6 +10,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <dirent.h>
+#include <errno.h>
 
 #include "web/api_handlers_streaming.h"
 #include "web/api_handlers_common.h"
@@ -144,8 +146,9 @@ void handle_hls_manifest(const http_request_t *request, http_response_t *respons
     // Log the storage path for debugging
     log_info("API looking for HLS manifest in storage path: %s", global_config->storage_path);
     
-    // CRITICAL FIX: Use a consistent path for HLS manifests
-    // Always use the /hls/ directory structure without /recordings/
+    // CRITICAL FIX: Use the correct path for HLS manifests
+    // The storage path is already set to /var/lib/lightnvr/recordings in the config
+    // So we need to use /var/lib/lightnvr/recordings/hls/
     char manifest_path[MAX_PATH_LENGTH];
     snprintf(manifest_path, MAX_PATH_LENGTH, "%s/hls/%s/index.m3u8",
              global_config->storage_path, stream_name);
@@ -287,6 +290,9 @@ void handle_hls_manifest(const http_request_t *request, http_response_t *respons
                 long new_size = ftell(fp_retry);
                 fseek(fp_retry, 0, SEEK_SET);
                 
+                log_debug("Manifest file check (attempt %d/30): size=%ld, path=%s", 
+                         i+1, new_size, manifest_path);
+                
                 if (new_size > 0) {
                     // Free old content and allocate new buffer
                     free(content);
@@ -298,6 +304,8 @@ void handle_hls_manifest(const http_request_t *request, http_response_t *respons
                     }
                     
                     size_t new_bytes_read = fread(content, 1, new_size, fp_retry);
+                    log_debug("Read %zu bytes from manifest file (attempt %d/30)", new_bytes_read, i+1);
+                    
                     if (new_bytes_read == (size_t)new_size) {
                         content[new_size] = '\0';
                         if (strstr(content, "#EXTM3U") != NULL) {
@@ -306,10 +314,20 @@ void handle_hls_manifest(const http_request_t *request, http_response_t *respons
                             log_info("Successfully regenerated valid manifest file for %s", stream_name);
                             fclose(fp_retry);
                             break;
+                        } else {
+                            log_debug("Manifest file does not contain #EXTM3U tag (attempt %d/30)", i+1);
                         }
+                    } else {
+                        log_debug("Failed to read complete manifest file: read %zu of %ld bytes (attempt %d/30)", 
+                                 new_bytes_read, new_size, i+1);
                     }
+                } else {
+                    log_debug("Manifest file is empty (attempt %d/30)", i+1);
                 }
                 fclose(fp_retry);
+            } else {
+                log_debug("Failed to open manifest file: %s (error: %s) (attempt %d/30)", 
+                         manifest_path, strerror(errno), i+1);
             }
             
             log_debug("Waiting for valid manifest file (attempt %d/30)", i+1);
@@ -318,6 +336,34 @@ void handle_hls_manifest(const http_request_t *request, http_response_t *respons
         
         if (!manifest_valid) {
             log_error("Failed to generate valid manifest file for %s", stream_name);
+            log_error("Manifest path: %s", manifest_path);
+            
+            // Check if the directory exists and list its contents
+            char dir_path[MAX_PATH_LENGTH];
+            snprintf(dir_path, sizeof(dir_path), "%s/hls/%s", global_config->storage_path, stream_name);
+            
+            struct stat st;
+            if (stat(dir_path, &st) == 0 && S_ISDIR(st.st_mode)) {
+                log_error("HLS directory exists: %s", dir_path);
+                
+                // List directory contents
+                DIR *dir = opendir(dir_path);
+                if (dir) {
+                    struct dirent *entry;
+                    log_error("HLS directory contents:");
+                    while ((entry = readdir(dir)) != NULL) {
+                        log_error("  %s", entry->d_name);
+                    }
+                    closedir(dir);
+                } else {
+                    log_error("Failed to open HLS directory: %s (error: %s)", 
+                             dir_path, strerror(errno));
+                }
+            } else {
+                log_error("HLS directory does not exist: %s (error: %s)", 
+                         dir_path, strerror(errno));
+            }
+            
             free(content);
             create_stream_error_response(response, 500, "Failed to generate valid manifest file");
             return;
