@@ -122,12 +122,33 @@ void handle_hls_manifest(const http_request_t *request, http_response_t *respons
         return;
     }
     
-    // Get the stream state to check if it's in the process of stopping
+    // Get the stream state to check if it's in the process of stopping and create it if it doesn't exist
     stream_state_manager_t *state = get_stream_state_by_name(stream_name);
     if (state && is_stream_state_stopping(state)) {
         log_warn("Cannot start HLS stream %s while it is in the process of being stopped", stream_name);
         create_stream_error_response(response, 503, "Stream is in the process of stopping, please try again later");
         return;
+    }
+    if (!state) {
+        log_warn("Stream state not found for %s, creating one", stream_name);
+        
+        // Get the stream configuration
+        stream_config_t config;
+        if (get_stream_config(stream, &config) != 0) {
+            log_error("Failed to get stream configuration for %s", stream_name);
+            create_stream_error_response(response, 500, "Failed to get stream configuration");
+            return;
+        }
+        
+        // Create a new stream state
+        state = create_stream_state(&config);
+        if (!state) {
+            log_error("Failed to create stream state for %s", stream_name);
+            create_stream_error_response(response, 500, "Failed to create stream state");
+            return;
+        }
+        
+        log_info("Created new stream state for %s", stream_name);
     }
     
     // Start HLS if not already running - this only starts streaming, not recording

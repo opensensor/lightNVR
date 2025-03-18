@@ -64,6 +64,21 @@ int init_stream_manager(int max_streams) {
     initialized = true;
     pthread_mutex_unlock(&streams_mutex);
     
+    // Create stream state managers for all existing streams
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (streams[i].config.name[0] != '\0') {
+            stream_state_manager_t *state = get_stream_state_by_name(streams[i].config.name);
+            if (!state) {
+                state = create_stream_state(&streams[i].config);
+                if (!state) {
+                    log_warn("Failed to create stream state for '%s' during initialization", streams[i].config.name);
+                } else {
+                    log_info("Created stream state for '%s' during initialization", streams[i].config.name);
+                }
+            }
+        }
+    }
+    
     log_info("Stream manager initialized");
     return 0;
 }
