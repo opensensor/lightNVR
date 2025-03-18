@@ -339,8 +339,20 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     // CRITICAL FIX: Set a shorter segment duration for faster manifest creation
     av_dict_set(&options, "hls_init_time", "1", 0);
     
-    // CRITICAL FIX: Ensure FFmpeg creates the manifest file immediately
-    av_dict_set(&options, "hls_flags", "delete_segments+independent_segments+program_date_time+append_list", 0);
+    // CRITICAL FIX: Force FFmpeg to create an initial segment immediately
+    av_dict_set(&options, "hls_flags", "delete_segments+independent_segments+program_date_time+append_list+discont_start+split_by_time", 0);
+    
+    // CRITICAL FIX: Force FFmpeg to write the manifest file even without segments
+    av_dict_set(&options, "hls_allow_cache", "1", 0);
+    av_dict_set(&options, "hls_segment_type", "mpegts", 0);
+    av_dict_set(&options, "hls_playlist_type", "event", 0);
+    
+    // CRITICAL FIX: Create an empty segment immediately
+    av_dict_set(&options, "empty_segments_threshold", "1", 0);
+    av_dict_set(&options, "hls_start_number_source", "epoch", 0);
+    
+    // CRITICAL FIX: Force FFmpeg to write at least one segment
+    av_dict_set(&options, "hls_segment_options", "movflags=+faststart+empty_moov", 0);
     
     // Ensure the directory exists with proper permissions
     char dir_cmd[MAX_PATH_LENGTH * 2];

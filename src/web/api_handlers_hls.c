@@ -244,7 +244,11 @@ void handle_hls_manifest(const http_request_t *request, http_response_t *respons
     if (file_size == 0 || strstr(content, "#EXTM3U") == NULL) {
         log_error("Manifest file is empty or missing EXTM3U delimiter: %s", manifest_path);
         
-    // SIMPLIFIED APPROACH: Restart the stream to let FFmpeg create a fresh manifest
+        // If the manifest file is empty or invalid, restart the stream to let FFmpeg create a proper one
+        // FFmpeg is now configured to create valid manifest files with segments immediately
+        log_info("Found empty or invalid manifest file for %s, restarting stream", stream_name);
+        
+        // If creating a minimal manifest failed or the file had invalid content, restart the stream
     log_info("Restarting HLS stream for %s to generate a fresh manifest", stream_name);
     
     // Stop the stream
