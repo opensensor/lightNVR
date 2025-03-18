@@ -134,28 +134,64 @@ int pthread_join_with_timeout(pthread_t thread, void **retval, int timeout_sec) 
  * Multicast IPv4 addresses are in the range 224.0.0.0 to 239.255.255.255
  */
 static bool is_multicast_url(const char *url) {
-    // Extract IP address from URL
-    // Simple parsing for common formats like udp://239.255.0.1:1234
+    // Validate input
+    if (!url || strlen(url) < 7) {  // Minimum length for "udp://1"
+        log_warn("Invalid URL for multicast detection: %s", url ? url : "NULL");
+        return false;
+    }
+    
+    // Extract IP address from URL with more robust parsing
     const char *ip_start = NULL;
     
-    // Skip protocol prefix
+    // Skip protocol prefix with safer checks
     if (strncmp(url, "udp://", 6) == 0) {
         ip_start = url + 6;
     } else if (strncmp(url, "rtp://", 6) == 0) {
         ip_start = url + 6;
     } else {
         // Not a UDP or RTP URL
+        log_debug("Not a UDP/RTP URL for multicast detection: %s", url);
         return false;
     }
     
-    // Parse IP address
-    unsigned int a, b, c, d;
-    if (sscanf(ip_start, "%u.%u.%u.%u", &a, &b, &c, &d) == 4) {
+    // Skip any authentication info (user:pass@)
+    const char *at_sign = strchr(ip_start, '@');
+    if (at_sign) {
+        ip_start = at_sign + 1;
+    }
+    
+    // Make a copy of the IP part to avoid modifying the original
+    char ip_buffer[256];
+    strncpy(ip_buffer, ip_start, sizeof(ip_buffer) - 1);
+    ip_buffer[sizeof(ip_buffer) - 1] = '\0';
+    
+    // Remove port and path information
+    char *colon = strchr(ip_buffer, ':');
+    if (colon) {
+        *colon = '\0';
+    }
+    
+    char *slash = strchr(ip_buffer, '/');
+    if (slash) {
+        *slash = '\0';
+    }
+    
+    // Parse IP address with additional validation
+    unsigned int a = 0, b = 0, c = 0, d = 0;
+    if (sscanf(ip_buffer, "%u.%u.%u.%u", &a, &b, &c, &d) == 4) {
+        // Validate IP address components
+        if (a > 255 || b > 255 || c > 255 || d > 255) {
+            log_warn("Invalid IP address components in URL: %s", url);
+            return false;
+        }
+        
         // Check if it's in multicast range (224.0.0.0 - 239.255.255.255)
         if (a >= 224 && a <= 239) {
-            log_info("Detected multicast address: %u.%u.%u.%u", a, b, c, d);
+            log_info("Detected multicast address: %u.%u.%u.%u in URL: %s", a, b, c, d, url);
             return true;
         }
+    } else {
+        log_debug("Could not parse IP address from URL: %s", url);
     }
     
     return false;
@@ -163,14 +199,32 @@ static bool is_multicast_url(const char *url) {
 
 /**
  * Open input stream with appropriate options based on protocol
+ * Enhanced with more robust error handling and synchronization for UDP streams
  */
 int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol) {
     int ret;
     AVDictionary *input_options = NULL;
     bool is_multicast = false;
     
+    // Validate input parameters
+    if (!input_ctx || !url || strlen(url) < 5) {
+        log_error("Invalid parameters for open_input_stream: ctx=%p, url=%s", 
+                 (void*)input_ctx, url ? url : "NULL");
+        return AVERROR(EINVAL);
+    }
+    
+    // Make sure we're starting with a NULL context
+    if (*input_ctx) {
+        log_warn("Input context not NULL, closing existing context before opening new one");
+        avformat_close_input(input_ctx);
+    }
+    
+    // Log the stream opening attempt
+    log_info("Opening input stream: %s (protocol: %s)", 
+            url, protocol == STREAM_PROTOCOL_UDP ? "UDP" : "TCP");
+    
     if (protocol == STREAM_PROTOCOL_UDP) {
-        // Check if this is a multicast stream
+        // Check if this is a multicast stream with robust error handling
         is_multicast = is_multicast_url(url);
         
         log_info("Using UDP protocol for stream URL: %s (multicast: %s)", 
@@ -201,8 +255,10 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
         // UDP-specific packet reordering settings
         av_dict_set(&input_options, "max_interleave_delta", "1000000", 0); // 1 second max interleave
         
-        // Multicast-specific settings
+        // Multicast-specific settings with enhanced error handling
         if (is_multicast) {
+            log_info("Configuring multicast-specific settings for %s", url);
+            
             // Set appropriate TTL for multicast
             av_dict_set(&input_options, "ttl", "32", 0);
             
@@ -211,6 +267,10 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
             
             // Auto-detect the best network interface
             av_dict_set(&input_options, "localaddr", "0.0.0.0", 0);
+            
+            // Additional multicast settings for better reliability
+            av_dict_set(&input_options, "pkt_size", "1316", 0); // Standard UDP packet size for MPEG-TS
+            av_dict_set(&input_options, "rw_timeout", "10000000", 0); // 10 second read/write timeout
         }
     } else {
         log_info("Using TCP protocol for stream URL: %s", url);
@@ -234,13 +294,28 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
     
     // Free options
     av_dict_free(&input_options);
+    
+    // Verify that the context was created
+    if (!*input_ctx) {
+        log_error("Input context is NULL after successful open");
+        return AVERROR(EINVAL);
+    }
 
-    // Get stream info
+    // Get stream info with enhanced error handling
+    log_debug("Getting stream info for %s", url);
     ret = avformat_find_stream_info(*input_ctx, NULL);
     if (ret < 0) {
         log_ffmpeg_error(ret, "Could not find stream info");
         avformat_close_input(input_ctx);
         return ret;
+    }
+    
+    // Log successful stream opening
+    if (*input_ctx && (*input_ctx)->nb_streams > 0) {
+        log_info("Successfully opened input stream: %s with %d streams", 
+                url, (*input_ctx)->nb_streams);
+    } else {
+        log_warn("Opened input stream but no streams found: %s", url);
     }
 
     return 0;
@@ -280,6 +355,31 @@ static timestamp_tracker_t timestamp_trackers[MAX_TIMESTAMP_TRACKERS];
 static pthread_mutex_t timestamp_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /**
+ * Set the UDP flag for a stream's timestamp tracker
+ */
+void set_timestamp_tracker_udp_flag(const char *stream_name, bool is_udp) {
+    if (!stream_name) {
+        return;
+    }
+    
+    pthread_mutex_lock(&timestamp_mutex);
+    
+    // Look for existing tracker
+    for (int i = 0; i < MAX_TIMESTAMP_TRACKERS; i++) {
+        if (timestamp_trackers[i].initialized && 
+            strcmp(timestamp_trackers[i].stream_name, stream_name) == 0) {
+            // Set the UDP flag
+            timestamp_trackers[i].is_udp_stream = is_udp;
+            log_info("Set UDP flag to %s for stream %s timestamp tracker", 
+                    is_udp ? "true" : "false", stream_name);
+            break;
+        }
+    }
+    
+    pthread_mutex_unlock(&timestamp_mutex);
+}
+
+/**
  * Get or create a timestamp tracker for a stream
  */
 static timestamp_tracker_t *get_timestamp_tracker(const char *stream_name) {
@@ -304,9 +404,8 @@ static timestamp_tracker_t *get_timestamp_tracker(const char *stream_name) {
             timestamp_trackers[i].pts_discontinuity_count = 0;
             timestamp_trackers[i].expected_next_pts = AV_NOPTS_VALUE;
             
-            // Check if this is a UDP stream by looking at the stream name
-            timestamp_trackers[i].is_udp_stream = (strstr(stream_name, "udp://") != NULL || 
-                                                  strstr(stream_name, "rtp://") != NULL);
+            // We'll set this based on the actual protocol when processing packets
+            timestamp_trackers[i].is_udp_stream = false;
             
             timestamp_trackers[i].initialized = true;
             pthread_mutex_unlock(&timestamp_mutex);
@@ -329,13 +428,7 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
     int ret = 0;
     AVPacket *out_pkt = NULL;
     
-    // Get timestamp tracker for this stream
-    timestamp_tracker_t *tracker = get_timestamp_tracker(stream_name);
-    if (!tracker) {
-        log_error("Failed to get timestamp tracker for stream %s", stream_name);
-        // Continue without timestamp tracking
-    }
-    
+    // Validate input parameters first
     if (!pkt || !input_stream || !writer || !stream_name) {
         log_error("Invalid parameters passed to process_video_packet");
         return -1;
@@ -345,6 +438,65 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
     if (!pkt->data || pkt->size <= 0) {
         log_warn("Invalid packet (null data or zero size) for stream %s", stream_name);
         return -1;
+    }
+    
+    // Log entry point for debugging
+    log_debug("Processing video packet for stream %s, size=%d", stream_name, pkt->size);
+    
+    // Get timestamp tracker for this stream with proper error handling
+    timestamp_tracker_t *tracker = NULL;
+    
+    // Use a critical section to safely get the tracker
+    pthread_mutex_lock(&timestamp_mutex);
+    
+    // First look for existing tracker
+    int tracker_idx = -1;
+    for (int i = 0; i < MAX_TIMESTAMP_TRACKERS; i++) {
+        if (timestamp_trackers[i].initialized && 
+            strcmp(timestamp_trackers[i].stream_name, stream_name) == 0) {
+            tracker_idx = i;
+            break;
+        }
+    }
+    
+    // If not found, create a new one
+    if (tracker_idx == -1) {
+        for (int i = 0; i < MAX_TIMESTAMP_TRACKERS; i++) {
+            if (!timestamp_trackers[i].initialized) {
+                tracker_idx = i;
+                
+                // Initialize the new tracker
+                strncpy(timestamp_trackers[i].stream_name, stream_name, MAX_STREAM_NAME - 1);
+                timestamp_trackers[i].stream_name[MAX_STREAM_NAME - 1] = '\0';
+                timestamp_trackers[i].last_pts = AV_NOPTS_VALUE;
+                timestamp_trackers[i].last_dts = AV_NOPTS_VALUE;
+                timestamp_trackers[i].pts_discontinuity_count = 0;
+                timestamp_trackers[i].expected_next_pts = AV_NOPTS_VALUE;
+                
+                // We'll set this based on the actual protocol when processing packets
+                // Default to false for safety
+                timestamp_trackers[i].is_udp_stream = false;
+                
+                // Mark as initialized
+                timestamp_trackers[i].initialized = true;
+                
+                log_info("Created new timestamp tracker for stream %s at index %d", 
+                        stream_name, i);
+                break;
+            }
+        }
+    }
+    
+    // Get a reference to the tracker if we found or created one
+    if (tracker_idx != -1) {
+        tracker = &timestamp_trackers[tracker_idx];
+    }
+    
+    pthread_mutex_unlock(&timestamp_mutex);
+    
+    if (!tracker) {
+        log_error("Failed to get timestamp tracker for stream %s", stream_name);
+        // Continue without timestamp tracking
     }
     
     // Create a clean copy of the packet to avoid reference issues
@@ -363,8 +515,10 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
     // Check if this is a key frame - only log at debug level to reduce overhead
     bool is_key_frame = (out_pkt->flags & AV_PKT_FLAG_KEY) != 0;
     
-    // Enhanced timestamp handling for UDP streams
+    // Enhanced timestamp handling for UDP streams with additional safety checks
     if (tracker && tracker->is_udp_stream) {
+        log_debug("Applying UDP timestamp handling for stream %s", stream_name);
+        
         // Handle missing timestamps
         if (out_pkt->pts == AV_NOPTS_VALUE && out_pkt->dts != AV_NOPTS_VALUE) {
             out_pkt->pts = out_pkt->dts;
@@ -375,13 +529,33 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
             if (tracker->last_pts != AV_NOPTS_VALUE) {
                 // Calculate frame duration based on stream timebase and framerate
                 int64_t frame_duration = 0;
-                if (input_stream->avg_frame_rate.num > 0) {
+                
+                // Add safety checks for input_stream
+                if (input_stream && input_stream->avg_frame_rate.num > 0) {
                     AVRational tb = input_stream->time_base;
                     AVRational fr = input_stream->avg_frame_rate;
-                    frame_duration = av_rescale_q(1, av_inv_q(fr), tb);
+                    
+                    // Avoid division by zero
+                    if (fr.den > 0) {
+                        frame_duration = av_rescale_q(1, av_inv_q(fr), tb);
+                    } else {
+                        // Default to a reasonable value if framerate is invalid
+                        frame_duration = 3000; // Assume 30fps with timebase 1/90000
+                    }
                 } else {
                     // Default to 1/30 second if framerate not available
-                    frame_duration = input_stream->time_base.den / (30 * input_stream->time_base.num);
+                    // With additional safety checks
+                    if (input_stream && input_stream->time_base.num > 0 && input_stream->time_base.den > 0) {
+                        frame_duration = input_stream->time_base.den / (30 * input_stream->time_base.num);
+                    } else {
+                        // Fallback to a reasonable default
+                        frame_duration = 3000; // Assume 30fps with timebase 1/90000
+                    }
+                }
+                
+                // Sanity check on frame duration
+                if (frame_duration <= 0) {
+                    frame_duration = 3000; // Reasonable default
                 }
                 
                 out_pkt->pts = tracker->last_pts + frame_duration;
@@ -391,17 +565,30 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
             }
         }
         
-        // Detect and handle timestamp discontinuities
+        // Detect and handle timestamp discontinuities with additional safety checks
         if (tracker->last_pts != AV_NOPTS_VALUE && out_pkt->pts != AV_NOPTS_VALUE) {
             // Calculate expected next PTS
             int64_t frame_duration = 0;
-            if (input_stream->avg_frame_rate.num > 0) {
+            
+            // Add safety checks for input_stream
+            if (input_stream && input_stream->avg_frame_rate.num > 0 && input_stream->avg_frame_rate.den > 0) {
                 AVRational tb = input_stream->time_base;
                 AVRational fr = input_stream->avg_frame_rate;
                 frame_duration = av_rescale_q(1, av_inv_q(fr), tb);
             } else {
                 // Default to 1/30 second if framerate not available
-                frame_duration = input_stream->time_base.den / (30 * input_stream->time_base.num);
+                // With additional safety checks
+                if (input_stream && input_stream->time_base.num > 0 && input_stream->time_base.den > 0) {
+                    frame_duration = input_stream->time_base.den / (30 * input_stream->time_base.num);
+                } else {
+                    // Fallback to a reasonable default
+                    frame_duration = 3000; // Assume 30fps with timebase 1/90000
+                }
+            }
+            
+            // Sanity check on frame duration
+            if (frame_duration <= 0) {
+                frame_duration = 3000; // Reasonable default
             }
             
             if (tracker->expected_next_pts == AV_NOPTS_VALUE) {
@@ -419,7 +606,11 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
                             stream_name, 
                             (long long)tracker->expected_next_pts, 
                             (long long)out_pkt->pts,
-                            (long long)(pts_diff * 1000 * input_stream->time_base.num / input_stream->time_base.den));
+                            (long long)(pts_diff * 1000 * 
+                                       (input_stream && input_stream->time_base.den > 0 ? 
+                                        input_stream->time_base.num : 1) / 
+                                       (input_stream && input_stream->time_base.den > 0 ? 
+                                        input_stream->time_base.den : 90000)));
                 }
                 
                 // For severe discontinuities, try to correct by using expected PTS
@@ -438,8 +629,12 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
         }
         
         // Store current timestamps for next packet
-        tracker->last_pts = out_pkt->pts;
-        tracker->last_dts = out_pkt->dts;
+        pthread_mutex_lock(&timestamp_mutex);
+        if (tracker && tracker->initialized) {
+            tracker->last_pts = out_pkt->pts;
+            tracker->last_dts = out_pkt->dts;
+        }
+        pthread_mutex_unlock(&timestamp_mutex);
     }
     
     // Use direct function calls instead of conditional branching for better performance

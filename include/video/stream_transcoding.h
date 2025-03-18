@@ -35,6 +35,14 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
 int find_video_stream_index(AVFormatContext *input_ctx);
 
 /**
+ * Set the UDP flag for a stream's timestamp tracker
+ * 
+ * @param stream_name Name of the stream
+ * @param is_udp Whether the stream is using UDP protocol
+ */
+void set_timestamp_tracker_udp_flag(const char *stream_name, bool is_udp);
+
+/**
  * Process a video packet for either HLS streaming or MP4 recording
  * 
  * @param pkt The packet to process
