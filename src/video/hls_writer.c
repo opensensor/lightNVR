@@ -352,6 +352,55 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
         system(chmod_cmd);
         
         log_info("Created initial valid HLS manifest file: %s", manifest_path);
+        
+        // Verify the file was actually written with content
+        FILE *verify = fopen(manifest_path, "r");
+        if (verify) {
+            fseek(verify, 0, SEEK_END);
+            long size = ftell(verify);
+            fclose(verify);
+            
+            if (size > 0) {
+                log_info("Verified manifest file has content: %ld bytes", size);
+            } else {
+                log_error("Manifest file exists but is empty: %s", manifest_path);
+                
+                // Try writing the file again with a different method
+                FILE *retry = fopen(manifest_path, "w");
+                if (retry) {
+                    // Write content and immediately flush
+                    const char *content = "#EXTM3U\n#EXT-X-VERSION:3\n"
+                                         "#EXT-X-TARGETDURATION:%d\n"
+                                         "#EXT-X-MEDIA-SEQUENCE:0\n";
+                    char buffer[256];
+                    snprintf(buffer, sizeof(buffer), content, segment_duration);
+                    
+                    size_t written = fwrite(buffer, 1, strlen(buffer), retry);
+                    log_info("Retry write to manifest file: wrote %zu bytes", written);
+                    
+                    fflush(retry);
+                    fsync(fileno(retry));
+                    fclose(retry);
+                    
+                    // Verify again
+                    FILE *verify2 = fopen(manifest_path, "r");
+                    if (verify2) {
+                        fseek(verify2, 0, SEEK_END);
+                        size = ftell(verify2);
+                        fclose(verify2);
+                        
+                        if (size > 0) {
+                            log_info("Retry successful: manifest file now has %ld bytes", size);
+                        } else {
+                            log_error("Retry failed: manifest file still empty");
+                        }
+                    }
+                }
+            }
+        } else {
+            log_error("Failed to verify manifest file: %s (error: %s)", 
+                     manifest_path, strerror(errno));
+        }
     } else {
         log_error("Failed to create initial HLS manifest file: %s (error: %s)", 
                  manifest_path, strerror(errno));
@@ -360,6 +409,33 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
         char ls_cmd[MAX_PATH_LENGTH * 2];
         snprintf(ls_cmd, sizeof(ls_cmd), "ls -la %s", output_dir);
         system(ls_cmd);
+        
+        // Try with a different method - using system command
+        char write_cmd[MAX_PATH_LENGTH * 4];
+        snprintf(write_cmd, sizeof(write_cmd), 
+                "echo -e '#EXTM3U\\n#EXT-X-VERSION:3\\n#EXT-X-TARGETDURATION:%d\\n#EXT-X-MEDIA-SEQUENCE:0' > %s", 
+                segment_duration, manifest_path);
+        int ret_write = system(write_cmd);
+        
+        if (ret_write == 0) {
+            log_info("Created manifest file using system command: %s", manifest_path);
+            
+            // Verify the file was created with content
+            FILE *verify = fopen(manifest_path, "r");
+            if (verify) {
+                fseek(verify, 0, SEEK_END);
+                long size = ftell(verify);
+                fclose(verify);
+                
+                if (size > 0) {
+                    log_info("Verified manifest file has content: %ld bytes", size);
+                } else {
+                    log_error("Manifest file exists but is empty after system command");
+                }
+            }
+        } else {
+            log_error("Failed to create manifest file using system command: %d", ret_write);
+        }
     }
     
     // Also create a test segment file to ensure we can write to the directory
