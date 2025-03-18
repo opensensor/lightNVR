@@ -4,6 +4,7 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <time.h>
+#include <sys/time.h>
 
 #include "video/stream_state.h"
 #include "core/logger.h"
@@ -60,7 +61,7 @@ void shutdown_stream_state_manager(void) {
             // Stop the stream if it's active
             if (stream_states[i]->state == STREAM_STATE_ACTIVE || 
                 stream_states[i]->state == STREAM_STATE_STARTING) {
-                stop_stream_with_state(stream_states[i]);
+                stop_stream_with_state(stream_states[i], false);
             }
             
             // Destroy mutex
@@ -132,6 +133,15 @@ stream_state_manager_t *create_stream_state(const stream_config_t *config) {
         return NULL;
     }
     
+    // Initialize state mutex
+    if (pthread_mutex_init(&state->state_mutex, NULL) != 0) {
+        log_error("Failed to initialize stream state transition mutex");
+        pthread_mutex_destroy(&state->mutex);
+        free(state);
+        pthread_mutex_unlock(&states_mutex);
+        return NULL;
+    }
+    
     // Copy configuration
     memcpy(&state->config, config, sizeof(stream_config_t));
     
@@ -166,6 +176,14 @@ stream_state_manager_t *create_stream_state(const stream_config_t *config) {
     // Initialize stats
     memset(&state->stats, 0, sizeof(stream_stats_t));
     
+    // Initialize reference counting
+    state->ref_count = 1; // Initial reference for the creator
+    memset(state->component_refs, 0, sizeof(state->component_refs));
+    state->component_refs[STREAM_COMPONENT_API] = 1; // Initial reference is from API
+    
+    // Initialize callback management
+    state->callbacks_enabled = true;
+    
     // Initialize context pointers
     state->reader_ctx = NULL;
     state->hls_ctx = NULL;
@@ -175,7 +193,8 @@ stream_state_manager_t *create_stream_state(const stream_config_t *config) {
     // Store in global array
     stream_states[slot] = state;
     
-    log_info("Created stream state for '%s' in slot %d", config->name, slot);
+    log_info("Created stream state for '%s' in slot %d with initial reference count 1", 
+             config->name, slot);
     pthread_mutex_unlock(&states_mutex);
     
     return state;
@@ -262,7 +281,7 @@ int update_stream_state_config(stream_state_manager_t *state, const stream_confi
         log_info("Restarting stream '%s' due to configuration changes", state->name);
         
         // Stop and restart the stream
-        stop_stream_with_state(state);
+        stop_stream_with_state(state, false);
         start_stream_with_state(state);
     }
     
@@ -318,7 +337,7 @@ int update_stream_protocol(stream_state_manager_t *state, stream_protocol_t prot
         log_info("Restarting stream '%s' due to protocol change", state->name);
         
         // Stop and restart the stream
-        stop_stream_with_state(state);
+        stop_stream_with_state(state, false);
         start_stream_with_state(state);
     }
     
@@ -398,7 +417,7 @@ int set_stream_feature(stream_state_manager_t *state, const char *feature, bool 
             } else if (strcmp(feature, "detection") == 0 || strcmp(feature, "motion_detection") == 0) {
                 // For detection features, we need to restart the stream
                 log_info("Restarting stream '%s' to apply detection settings", state->name);
-                stop_stream_with_state(state);
+                stop_stream_with_state(state, false);
                 start_stream_with_state(state);
             }
         }
@@ -492,22 +511,38 @@ int start_stream_with_state(stream_state_manager_t *state) {
 /**
  * Stop stream with state
  */
-int stop_stream_with_state(stream_state_manager_t *state) {
+int stop_stream_with_state(stream_state_manager_t *state, bool wait_for_completion) {
     if (!state) {
         log_error("Invalid parameters for stop_stream_with_state");
         return -1;
     }
     
-    pthread_mutex_lock(&state->mutex);
+    // Use the state mutex for state transitions
+    pthread_mutex_lock(&state->state_mutex);
     
-    // Check if already stopped
+    // Check if already stopped or stopping
     if (state->state == STREAM_STATE_INACTIVE) {
-        pthread_mutex_unlock(&state->mutex);
+        pthread_mutex_unlock(&state->state_mutex);
         log_info("Stream '%s' is already stopped", state->name);
         return 0;
     }
     
-    // Get feature flags
+    if (state->state == STREAM_STATE_STOPPING) {
+        pthread_mutex_unlock(&state->state_mutex);
+        log_info("Stream '%s' is already in the process of stopping", state->name);
+        
+        // If we need to wait for completion, wait for it to become inactive
+        if (wait_for_completion) {
+            return wait_for_stream_stop(state, 10000); // 10 second timeout
+        }
+        return 0;
+    }
+    
+    // Update state to stopping
+    stream_state_t old_state = state->state;
+    state->state = STREAM_STATE_STOPPING;
+    
+    // Get feature flags and stream name while holding the mutex
     bool streaming_enabled = state->features.streaming_enabled;
     bool recording_enabled = state->features.recording_enabled;
     
@@ -516,7 +551,13 @@ int stop_stream_with_state(stream_state_manager_t *state) {
     strncpy(stream_name, state->name, MAX_STREAM_NAME - 1);
     stream_name[MAX_STREAM_NAME - 1] = '\0';
     
-    pthread_mutex_unlock(&state->mutex);
+    // Disable callbacks to prevent further processing
+    state->callbacks_enabled = false;
+    
+    pthread_mutex_unlock(&state->state_mutex);
+    
+    log_info("Stream '%s' transitioning from %d to STOPPING state", 
+             stream_name, old_state);
     
     // Stop HLS stream if it was started
     if (streaming_enabled) {
@@ -544,9 +585,13 @@ int stop_stream_with_state(stream_state_manager_t *state) {
     reset_timestamp_tracker(stream_name);
     
     // Update state to inactive
-    pthread_mutex_lock(&state->mutex);
+    pthread_mutex_lock(&state->state_mutex);
     state->state = STREAM_STATE_INACTIVE;
-    pthread_mutex_unlock(&state->mutex);
+    
+    // Re-enable callbacks for future use
+    state->callbacks_enabled = true;
+    
+    pthread_mutex_unlock(&state->state_mutex);
     
     log_info("Stopped stream '%s'", stream_name);
     return 0;
@@ -624,7 +669,7 @@ int handle_stream_error(stream_state_manager_t *state, int error_code, const cha
         log_info("Attempting to reconnect stream '%s'", state->name);
         
         // Stop the stream
-        stop_stream_with_state(state);
+        stop_stream_with_state(state, false);
         
         // Wait a bit before reconnecting
         sleep(1);
@@ -742,20 +787,34 @@ int remove_stream_state(stream_state_manager_t *state) {
     strncpy(stream_name, state->name, MAX_STREAM_NAME - 1);
     stream_name[MAX_STREAM_NAME - 1] = '\0';
     
+    // Check reference count
+    pthread_mutex_lock(&state->mutex);
+    int ref_count = state->ref_count;
+    pthread_mutex_unlock(&state->mutex);
+    
+    if (ref_count > 1) {
+        pthread_mutex_unlock(&states_mutex);
+        log_warn("Cannot remove stream state for '%s' with reference count %d", 
+                stream_name, ref_count);
+        return -1;
+    }
+    
     // Stop the stream if it's active
     if (state->state == STREAM_STATE_ACTIVE || 
         state->state == STREAM_STATE_STARTING || 
-        state->state == STREAM_STATE_RECONNECTING) {
+        state->state == STREAM_STATE_RECONNECTING ||
+        state->state == STREAM_STATE_STOPPING) {
         pthread_mutex_unlock(&states_mutex);
-        stop_stream_with_state(state);
+        stop_stream_with_state(state, true); // Wait for completion
         pthread_mutex_lock(&states_mutex);
     }
     
     // Remove timestamp tracker
     remove_timestamp_tracker(stream_name);
     
-    // Destroy mutex
+    // Destroy mutexes
     pthread_mutex_destroy(&state->mutex);
+    pthread_mutex_destroy(&state->state_mutex);
     
     // Free the state manager
     free(state);
@@ -765,4 +824,181 @@ int remove_stream_state(stream_state_manager_t *state) {
     
     log_info("Removed stream state for '%s' from slot %d", stream_name, slot);
     return 0;
+}
+
+/**
+ * Add a reference to a stream state manager
+ */
+int stream_state_add_ref(stream_state_manager_t *state, stream_component_t component) {
+    if (!state) {
+        return -1;
+    }
+    
+    if (component < 0 || component >= STREAM_COMPONENT_COUNT) {
+        log_error("Invalid component type %d for stream '%s'", component, state->name);
+        return -1;
+    }
+    
+    pthread_mutex_lock(&state->mutex);
+    
+    // Increment component-specific reference count
+    state->component_refs[component]++;
+    
+    // Increment total reference count
+    state->ref_count++;
+    
+    int new_ref_count = state->ref_count;
+    
+    pthread_mutex_unlock(&state->mutex);
+    
+    log_debug("Added reference to stream '%s' for component %d, new ref count: %d", 
+             state->name, component, new_ref_count);
+    
+    return new_ref_count;
+}
+
+/**
+ * Release a reference to a stream state manager
+ */
+int stream_state_release_ref(stream_state_manager_t *state, stream_component_t component) {
+    if (!state) {
+        return -1;
+    }
+    
+    if (component < 0 || component >= STREAM_COMPONENT_COUNT) {
+        log_error("Invalid component type %d for stream '%s'", component, state->name);
+        return -1;
+    }
+    
+    pthread_mutex_lock(&state->mutex);
+    
+    // Check if component has any references
+    if (state->component_refs[component] <= 0) {
+        log_warn("Component %d has no references to release for stream '%s'", 
+                component, state->name);
+        pthread_mutex_unlock(&state->mutex);
+        return state->ref_count;
+    }
+    
+    // Decrement component-specific reference count
+    state->component_refs[component]--;
+    
+    // Decrement total reference count
+    state->ref_count--;
+    
+    int new_ref_count = state->ref_count;
+    
+    pthread_mutex_unlock(&state->mutex);
+    
+    log_debug("Released reference to stream '%s' for component %d, new ref count: %d", 
+             state->name, component, new_ref_count);
+    
+    return new_ref_count;
+}
+
+/**
+ * Get the current reference count for a stream state manager
+ */
+int stream_state_get_ref_count(stream_state_manager_t *state) {
+    if (!state) {
+        return -1;
+    }
+    
+    pthread_mutex_lock(&state->mutex);
+    int ref_count = state->ref_count;
+    pthread_mutex_unlock(&state->mutex);
+    
+    return ref_count;
+}
+
+/**
+ * Check if a stream is in the process of stopping
+ */
+bool is_stream_state_stopping(stream_state_manager_t *state) {
+    if (!state) {
+        return false;
+    }
+    
+    pthread_mutex_lock(&state->state_mutex);
+    bool stopping = (state->state == STREAM_STATE_STOPPING);
+    pthread_mutex_unlock(&state->state_mutex);
+    
+    return stopping;
+}
+
+/**
+ * Wait for a stream to complete its stopping process
+ */
+int wait_for_stream_stop(stream_state_manager_t *state, int timeout_ms) {
+    if (!state) {
+        return -2;
+    }
+    
+    // Calculate end time
+    struct timeval end_time;
+    gettimeofday(&end_time, NULL);
+    
+    // Add timeout to end time
+    end_time.tv_sec += timeout_ms / 1000;
+    end_time.tv_usec += (timeout_ms % 1000) * 1000;
+    if (end_time.tv_usec >= 1000000) {
+        end_time.tv_sec += 1;
+        end_time.tv_usec -= 1000000;
+    }
+    
+    // Poll until the stream is inactive or timeout
+    while (1) {
+        pthread_mutex_lock(&state->state_mutex);
+        bool is_inactive = (state->state == STREAM_STATE_INACTIVE);
+        pthread_mutex_unlock(&state->state_mutex);
+        
+        if (is_inactive) {
+            return 0;  // Success
+        }
+        
+        // Check if we've timed out
+        struct timeval current_time;
+        gettimeofday(&current_time, NULL);
+        if (current_time.tv_sec > end_time.tv_sec || 
+            (current_time.tv_sec == end_time.tv_sec && 
+             current_time.tv_usec >= end_time.tv_usec)) {
+            return -1;  // Timeout
+        }
+        
+        // Sleep for a short time before checking again
+        usleep(10000);  // 10ms
+    }
+}
+
+/**
+ * Enable or disable callbacks for a stream
+ */
+int set_stream_callbacks_enabled(stream_state_manager_t *state, bool enabled) {
+    if (!state) {
+        return -1;
+    }
+    
+    pthread_mutex_lock(&state->mutex);
+    state->callbacks_enabled = enabled;
+    pthread_mutex_unlock(&state->mutex);
+    
+    log_info("Callbacks %s for stream '%s'", 
+            enabled ? "enabled" : "disabled", state->name);
+    
+    return 0;
+}
+
+/**
+ * Check if callbacks are enabled for a stream
+ */
+bool are_stream_callbacks_enabled(stream_state_manager_t *state) {
+    if (!state) {
+        return false;
+    }
+    
+    pthread_mutex_lock(&state->mutex);
+    bool enabled = state->callbacks_enabled;
+    pthread_mutex_unlock(&state->mutex);
+    
+    return enabled;
 }

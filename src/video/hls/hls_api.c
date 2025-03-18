@@ -11,6 +11,7 @@
 #include "core/logger.h"
 #include "core/config.h"
 #include "video/stream_manager.h"
+#include "video/stream_state.h"
 #include "video/streams.h"
 #include "video/hls_writer.h"
 #include "video/hls_streaming.h"
@@ -37,11 +38,22 @@ int start_hls_stream(const char *stream_name) {
         return -1;
     }
 
-    // CRITICAL FIX: Check if the stream is in the process of being stopped
-    if (is_stream_stopping(stream_name)) {
+    // Get the stream state manager
+    stream_state_manager_t *state = get_stream_state_by_name(stream_name);
+    if (!state) {
+        log_error("Stream state for %s not found", stream_name);
+        return -1;
+    }
+    
+    // Check if the stream is in the process of being stopped
+    if (is_stream_state_stopping(state)) {
         log_warn("Cannot start HLS stream %s while it is in the process of being stopped", stream_name);
         return -1;
     }
+    
+    // Add a reference for the HLS component
+    stream_state_add_ref(state, STREAM_COMPONENT_HLS);
+    log_info("Added HLS reference to stream %s", stream_name);
 
     // Check if already running
     pthread_mutex_lock(&hls_contexts_mutex);
@@ -154,8 +166,12 @@ int stop_hls_stream(const char *stream_name) {
     // Log that we're attempting to stop the stream
     log_info("Attempting to stop HLS stream: %s", stream_name);
     
-    // CRITICAL FIX: Mark the stream as being stopped to prevent new packets from being processed
-    mark_stream_stopping(stream_name);
+    // Get the stream state manager
+    stream_state_manager_t *state = get_stream_state_by_name(stream_name);
+    if (state) {
+        // Disable callbacks to prevent new packets from being processed
+        set_stream_callbacks_enabled(state, false);
+    }
     
     // CRITICAL FIX: Use a static mutex to prevent concurrent access during stopping
     static pthread_mutex_t stop_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -180,7 +196,10 @@ int stop_hls_stream(const char *stream_name) {
         log_warn("HLS stream %s not found for stopping", stream_name);
         pthread_mutex_unlock(&hls_contexts_mutex);
         pthread_mutex_unlock(&stop_mutex);
-        unmark_stream_stopping(stream_name); // CRITICAL FIX: Unmark the stream
+        // Re-enable callbacks if we couldn't find the stream context
+        if (state) {
+            set_stream_callbacks_enabled(state, true);
+        }
         return -1;
     }
     
@@ -189,7 +208,10 @@ int stop_hls_stream(const char *stream_name) {
         log_warn("HLS stream %s is already stopped", stream_name);
         pthread_mutex_unlock(&hls_contexts_mutex);
         pthread_mutex_unlock(&stop_mutex);
-        unmark_stream_stopping(stream_name); // CRITICAL FIX: Unmark the stream
+        // Re-enable callbacks if the stream is already stopped
+        if (state) {
+            set_stream_callbacks_enabled(state, true);
+        }
         return 0;
     }
 
@@ -261,5 +283,15 @@ int stop_hls_stream(const char *stream_name) {
     pthread_mutex_unlock(&stop_mutex);
 
     log_info("Stopped HLS stream %s", stream_name);
+    
+    // Release the HLS reference
+    if (state) {
+        stream_state_release_ref(state, STREAM_COMPONENT_HLS);
+        log_info("Released HLS reference to stream %s", stream_name);
+        
+        // Re-enable callbacks now that we're done
+        set_stream_callbacks_enabled(state, true);
+    }
+    
     return 0;
 }

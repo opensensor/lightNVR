@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include "core/logger.h"
+#include "video/stream_state.h"
 #include "video/hls/hls_context.h"
 
 // Hash map for tracking running HLS streaming contexts
@@ -20,6 +21,13 @@ int stopping_stream_count = 0;
 bool is_stream_stopping(const char *stream_name) {
     if (!stream_name) return false;
     
+    // First try to use the new state management system
+    stream_state_manager_t *state = get_stream_state_by_name(stream_name);
+    if (state) {
+        return is_stream_state_stopping(state);
+    }
+    
+    // Fall back to the old system if the state manager is not available
     pthread_mutex_lock(&stopping_mutex);
     bool stopping = false;
     for (int i = 0; i < stopping_stream_count; i++) {
@@ -38,6 +46,25 @@ bool is_stream_stopping(const char *stream_name) {
 void mark_stream_stopping(const char *stream_name) {
     if (!stream_name) return;
     
+    // First try to use the new state management system
+    stream_state_manager_t *state = get_stream_state_by_name(stream_name);
+    if (state) {
+        // Update the state to STOPPING
+        pthread_mutex_lock(&state->state_mutex);
+        if (state->state == STREAM_STATE_ACTIVE || 
+            state->state == STREAM_STATE_STARTING || 
+            state->state == STREAM_STATE_RECONNECTING) {
+            state->state = STREAM_STATE_STOPPING;
+            log_info("Updated stream %s state to STOPPING", stream_name);
+        }
+        pthread_mutex_unlock(&state->state_mutex);
+        
+        // Disable callbacks
+        set_stream_callbacks_enabled(state, false);
+        return;
+    }
+    
+    // Fall back to the old system if the state manager is not available
     pthread_mutex_lock(&stopping_mutex);
     // Check if already in the list
     for (int i = 0; i < stopping_stream_count; i++) {
@@ -52,7 +79,7 @@ void mark_stream_stopping(const char *stream_name) {
         strncpy(stopping_streams[stopping_stream_count], stream_name, MAX_STREAM_NAME - 1);
         stopping_streams[stopping_stream_count][MAX_STREAM_NAME - 1] = '\0';
         stopping_stream_count++;
-        log_info("Marked stream %s as stopping", stream_name);
+        log_info("Marked stream %s as stopping (legacy method)", stream_name);
     }
     pthread_mutex_unlock(&stopping_mutex);
 }
@@ -63,6 +90,23 @@ void mark_stream_stopping(const char *stream_name) {
 void unmark_stream_stopping(const char *stream_name) {
     if (!stream_name) return;
     
+    // First try to use the new state management system
+    stream_state_manager_t *state = get_stream_state_by_name(stream_name);
+    if (state) {
+        // Update the state to INACTIVE if it was STOPPING
+        pthread_mutex_lock(&state->state_mutex);
+        if (state->state == STREAM_STATE_STOPPING) {
+            state->state = STREAM_STATE_INACTIVE;
+            log_info("Updated stream %s state from STOPPING to INACTIVE", stream_name);
+        }
+        pthread_mutex_unlock(&state->state_mutex);
+        
+        // Re-enable callbacks
+        set_stream_callbacks_enabled(state, true);
+        return;
+    }
+    
+    // Fall back to the old system if the state manager is not available
     pthread_mutex_lock(&stopping_mutex);
     for (int i = 0; i < stopping_stream_count; i++) {
         if (strcmp(stopping_streams[i], stream_name) == 0) {
@@ -71,7 +115,7 @@ void unmark_stream_stopping(const char *stream_name) {
                 strncpy(stopping_streams[j], stopping_streams[j + 1], MAX_STREAM_NAME);
             }
             stopping_stream_count--;
-            log_info("Unmarked stream %s as stopping", stream_name);
+            log_info("Unmarked stream %s as stopping (legacy method)", stream_name);
             break;
         }
     }

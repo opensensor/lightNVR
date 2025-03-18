@@ -10,6 +10,7 @@
 #include "video/streams.h"
 #include "video/detection.h"
 #include "video/stream_reader.h"
+#include "video/stream_state.h"
 
 // Stream structure
 typedef struct {
@@ -169,6 +170,32 @@ stream_status_t get_stream_status(stream_handle_t stream) {
     
     stream_t *s = (stream_t *)stream;
     
+    // First try to use the new state management system
+    stream_state_manager_t *state = get_stream_state_by_name(s->config.name);
+    if (state) {
+        // Convert stream_state_t to stream_status_t
+        stream_state_t state_value = get_stream_operational_state(state);
+        
+        // Map state to status
+        switch (state_value) {
+            case STREAM_STATE_INACTIVE:
+                return STREAM_STATUS_STOPPED;
+            case STREAM_STATE_STARTING:
+                return STREAM_STATUS_STARTING;
+            case STREAM_STATE_ACTIVE:
+                return STREAM_STATUS_RUNNING;
+            case STREAM_STATE_STOPPING:
+                return STREAM_STATUS_STOPPING; // New status
+            case STREAM_STATE_ERROR:
+                return STREAM_STATUS_ERROR;
+            case STREAM_STATE_RECONNECTING:
+                return STREAM_STATUS_RECONNECTING;
+            default:
+                return STREAM_STATUS_UNKNOWN;
+        }
+    }
+    
+    // Fall back to the old system if the state manager is not available
     pthread_mutex_lock(&s->mutex);
     stream_status_t status = s->status;
     pthread_mutex_unlock(&s->mutex);
@@ -407,6 +434,36 @@ int start_stream(stream_handle_t handle) {
     
     stream_t *s = (stream_t *)handle;
     
+    // Get stream name for logging
+    char stream_name[MAX_STREAM_NAME];
+    pthread_mutex_lock(&s->mutex);
+    strncpy(stream_name, s->config.name, MAX_STREAM_NAME - 1);
+    stream_name[MAX_STREAM_NAME - 1] = '\0';
+    pthread_mutex_unlock(&s->mutex);
+    
+    // First try to use the new state management system
+    stream_state_manager_t *state = get_stream_state_by_name(stream_name);
+    if (state) {
+        log_info("Using new state management system to start stream '%s'", stream_name);
+        int result = start_stream_with_state(state);
+        
+        // Update the old status for backward compatibility
+        if (result == 0) {
+            pthread_mutex_lock(&s->mutex);
+            s->status = STREAM_STATUS_RUNNING;
+            pthread_mutex_unlock(&s->mutex);
+        } else {
+            pthread_mutex_lock(&s->mutex);
+            s->status = STREAM_STATUS_ERROR;
+            pthread_mutex_unlock(&s->mutex);
+        }
+        
+        return result;
+    }
+    
+    // Fall back to the old system if the state manager is not available
+    log_warn("Falling back to legacy system to start stream '%s'", stream_name);
+    
     pthread_mutex_lock(&s->mutex);
     
     // Check if already running
@@ -418,11 +475,6 @@ int start_stream(stream_handle_t handle) {
     
     // Update status to starting
     s->status = STREAM_STATUS_STARTING;
-    
-    // Get stream name for logging
-    char stream_name[MAX_STREAM_NAME];
-    strncpy(stream_name, s->config.name, MAX_STREAM_NAME - 1);
-    stream_name[MAX_STREAM_NAME - 1] = '\0';
     
     // Get streaming_enabled flag
     bool streaming_enabled = s->config.streaming_enabled;
@@ -488,6 +540,32 @@ int stop_stream(stream_handle_t handle) {
     
     stream_t *s = (stream_t *)handle;
     
+    // Get stream name for logging
+    char stream_name[MAX_STREAM_NAME];
+    pthread_mutex_lock(&s->mutex);
+    strncpy(stream_name, s->config.name, MAX_STREAM_NAME - 1);
+    stream_name[MAX_STREAM_NAME - 1] = '\0';
+    pthread_mutex_unlock(&s->mutex);
+    
+    // First try to use the new state management system
+    stream_state_manager_t *state = get_stream_state_by_name(stream_name);
+    if (state) {
+        log_info("Using new state management system to stop stream '%s'", stream_name);
+        int result = stop_stream_with_state(state, true); // Wait for completion
+        
+        // Update the old status for backward compatibility
+        if (result == 0) {
+            pthread_mutex_lock(&s->mutex);
+            s->status = STREAM_STATUS_STOPPED;
+            pthread_mutex_unlock(&s->mutex);
+        }
+        
+        return result;
+    }
+    
+    // Fall back to the old system if the state manager is not available
+    log_warn("Falling back to legacy system to stop stream '%s'", stream_name);
+    
     pthread_mutex_lock(&s->mutex);
     
     // Check if already stopped
@@ -497,10 +575,8 @@ int stop_stream(stream_handle_t handle) {
         return 0;
     }
     
-    // Get stream name for logging
-    char stream_name[MAX_STREAM_NAME];
-    strncpy(stream_name, s->config.name, MAX_STREAM_NAME - 1);
-    stream_name[MAX_STREAM_NAME - 1] = '\0';
+    // Update status to stopping
+    s->status = STREAM_STATUS_STOPPING;
     
     // Get streaming_enabled flag
     bool streaming_enabled = s->config.streaming_enabled;
@@ -654,7 +730,7 @@ int set_stream_priority(stream_handle_t handle, int priority) {
 }
 
 /**
- * Enable/disable recording for a stream
+ * Set stream recording
  */
 int set_stream_recording(stream_handle_t handle, bool enable) {
     if (!handle || !initialized) {
@@ -662,6 +738,46 @@ int set_stream_recording(stream_handle_t handle, bool enable) {
     }
     
     stream_t *s = (stream_t *)handle;
+    
+    // Get stream name for logging
+    char stream_name[MAX_STREAM_NAME];
+    pthread_mutex_lock(&s->mutex);
+    strncpy(stream_name, s->config.name, MAX_STREAM_NAME - 1);
+    stream_name[MAX_STREAM_NAME - 1] = '\0';
+    pthread_mutex_unlock(&s->mutex);
+    
+    // First try to use the new state management system
+    stream_state_manager_t *state = get_stream_state_by_name(stream_name);
+    if (state) {
+        log_info("Using new state management system to set recording for stream '%s' to %s", 
+                stream_name, enable ? "enabled" : "disabled");
+        
+        int result = set_stream_feature(state, "recording", enable);
+        
+        // Update the old config for backward compatibility
+        if (result == 0) {
+            pthread_mutex_lock(&s->mutex);
+            s->config.record = enable;
+            s->recording_enabled = enable;
+            pthread_mutex_unlock(&s->mutex);
+            
+            // Update config
+            config_t *global_config = get_streaming_config();
+            if (global_config) {
+                for (int i = 0; i < global_config->max_streams && i < MAX_STREAMS; i++) {
+                    if (strcmp(global_config->streams[i].name, stream_name) == 0) {
+                        global_config->streams[i].record = enable;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        return result;
+    }
+    
+    // Fall back to the old system if the state manager is not available
+    log_warn("Falling back to legacy system to set recording for stream '%s'", stream_name);
     
     pthread_mutex_lock(&s->mutex);
     s->config.record = enable;
@@ -672,14 +788,14 @@ int set_stream_recording(stream_handle_t handle, bool enable) {
     config_t *global_config = get_streaming_config();
     if (global_config) {
         for (int i = 0; i < global_config->max_streams && i < MAX_STREAMS; i++) {
-            if (strcmp(global_config->streams[i].name, s->config.name) == 0) {
+            if (strcmp(global_config->streams[i].name, stream_name) == 0) {
                 global_config->streams[i].record = enable;
                 break;
             }
         }
     }
     
-    log_info("Set recording for stream '%s' to %s", s->config.name, enable ? "enabled" : "disabled");
+    log_info("Set recording for stream '%s' to %s", stream_name, enable ? "enabled" : "disabled");
     return 0;
 }
 
@@ -713,6 +829,45 @@ int set_stream_streaming_enabled(stream_handle_t handle, bool enabled) {
     
     stream_t *s = (stream_t *)handle;
     
+    // Get stream name for logging
+    char stream_name[MAX_STREAM_NAME];
+    pthread_mutex_lock(&s->mutex);
+    strncpy(stream_name, s->config.name, MAX_STREAM_NAME - 1);
+    stream_name[MAX_STREAM_NAME - 1] = '\0';
+    pthread_mutex_unlock(&s->mutex);
+    
+    // First try to use the new state management system
+    stream_state_manager_t *state = get_stream_state_by_name(stream_name);
+    if (state) {
+        log_info("Using new state management system to set streaming for stream '%s' to %s", 
+                stream_name, enabled ? "enabled" : "disabled");
+        
+        int result = set_stream_feature(state, "streaming", enabled);
+        
+        // Update the old config for backward compatibility
+        if (result == 0) {
+            pthread_mutex_lock(&s->mutex);
+            s->config.streaming_enabled = enabled;
+            pthread_mutex_unlock(&s->mutex);
+            
+            // Update config
+            config_t *global_config = get_streaming_config();
+            if (global_config) {
+                for (int i = 0; i < global_config->max_streams && i < MAX_STREAMS; i++) {
+                    if (strcmp(global_config->streams[i].name, stream_name) == 0) {
+                        global_config->streams[i].streaming_enabled = enabled;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        return result;
+    }
+    
+    // Fall back to the old system if the state manager is not available
+    log_warn("Falling back to legacy system to set streaming for stream '%s'", stream_name);
+    
     pthread_mutex_lock(&s->mutex);
     s->config.streaming_enabled = enabled;
     pthread_mutex_unlock(&s->mutex);
@@ -721,13 +876,13 @@ int set_stream_streaming_enabled(stream_handle_t handle, bool enabled) {
     config_t *global_config = get_streaming_config();
     if (global_config) {
         for (int i = 0; i < global_config->max_streams && i < MAX_STREAMS; i++) {
-            if (strcmp(global_config->streams[i].name, s->config.name) == 0) {
+            if (strcmp(global_config->streams[i].name, stream_name) == 0) {
                 global_config->streams[i].streaming_enabled = enabled;
                 break;
             }
         }
     }
     
-    log_info("Set streaming enabled for stream '%s' to %s", s->config.name, enabled ? "enabled" : "disabled");
+    log_info("Set streaming enabled for stream '%s' to %s", stream_name, enabled ? "enabled" : "disabled");
     return 0;
 }

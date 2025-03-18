@@ -18,6 +18,7 @@
 #include "core/logger.h"
 #include "core/config.h"
 #include "video/stream_manager.h"
+#include "video/stream_state.h"
 #include "video/streams.h"
 #include "video/hls_writer.h"
 #include "video/hls_streaming.h"
@@ -65,11 +66,17 @@ int hls_packet_callback(const AVPacket *pkt, const AVStream *stream, void *user_
         return -1;
     }
     
-    // CRITICAL FIX: Check if the stream is in the process of being stopped
-    if (is_stream_stopping(stream_name)) {
-        log_debug("HLS packet callback: stream %s is in the process of being stopped, skipping packet", 
-                 stream_name);
-        return 0; // Return success but don't process the packet
+    // Get the stream state manager
+    stream_state_manager_t *state = get_stream_state_by_name(stream_name);
+    if (state) {
+        // Check if the stream is in the process of being stopped or callbacks are disabled
+        if (is_stream_state_stopping(state) || !are_stream_callbacks_enabled(state)) {
+            log_debug("HLS packet callback: stream %s is stopping or callbacks disabled, skipping packet", 
+                     stream_name);
+            return 0; // Return success but don't process the packet
+        }
+    } else {
+        log_warn("HLS packet callback: could not find stream state for %s", stream_name);
     }
     
     // CRITICAL FIX: Use a static mutex for thread safety during packet processing
@@ -145,6 +152,14 @@ void *hls_stream_thread(void *arg) {
     strncpy(stream_name, ctx->config.name, MAX_STREAM_NAME - 1);
     stream_name[MAX_STREAM_NAME - 1] = '\0';
 
+    // Get the stream state manager
+    stream_state_manager_t *state = get_stream_state_by_name(stream_name);
+    if (!state) {
+        log_error("Could not find stream state for %s", stream_name);
+        ctx->running = 0;
+        return NULL;
+    }
+    
     log_info("Starting HLS streaming thread for stream %s", stream_name);
     
     // CRITICAL FIX: Check if we're still running before proceeding
@@ -248,6 +263,13 @@ void *hls_stream_thread(void *arg) {
 
     // Main loop to monitor stream status
     while (ctx->running) {
+        // Check if the stream state indicates we should stop
+        if (state && is_stream_state_stopping(state)) {
+            log_info("HLS streaming thread for %s stopping due to stream state", stream_name);
+            ctx->running = 0;
+            break;
+        }
+        
         // Sleep to avoid busy waiting - reduced from 100ms to 50ms for more responsive handling
         av_usleep(50000);  // 50ms
     }
