@@ -792,22 +792,32 @@ void hls_writer_close(hls_writer_t *writer) {
     static pthread_mutex_t close_mutex = PTHREAD_MUTEX_INITIALIZER;
     pthread_mutex_lock(&close_mutex);
 
+    // Create a local copy of the output context to avoid race conditions
+    AVFormatContext *local_output_ctx = writer->output_ctx;
+    
+    // Mark the writer as closed immediately to prevent further access
+    writer->output_ctx = NULL;
+    
     // Write trailer if initialized
-    if (writer->initialized && writer->output_ctx) {
+    if (writer->initialized && local_output_ctx) {
         log_info("Writing trailer for HLS writer for stream %s", stream_name);
-        av_write_trailer(writer->output_ctx);
+        int ret = av_write_trailer(local_output_ctx);
+        if (ret < 0) {
+            char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+            av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+            log_warn("Error writing trailer for HLS writer for stream %s: %s", stream_name, error_buf);
+        }
     }
 
     // Close output context
-    if (writer->output_ctx) {
-        if (writer->output_ctx->pb) {
+    if (local_output_ctx) {
+        if (local_output_ctx->pb) {
             log_info("Closing AVIO context for HLS writer for stream %s", stream_name);
-            avio_close(writer->output_ctx->pb);
-            writer->output_ctx->pb = NULL; // Prevent double close
+            avio_close(local_output_ctx->pb);
+            local_output_ctx->pb = NULL; // Prevent double close
         }
         log_info("Freeing format context for HLS writer for stream %s", stream_name);
-        avformat_free_context(writer->output_ctx);
-        writer->output_ctx = NULL; // Prevent double free
+        avformat_free_context(local_output_ctx);
     }
 
     log_info("Closed HLS writer for stream %s", stream_name);
@@ -815,6 +825,12 @@ void hls_writer_close(hls_writer_t *writer) {
     // Unlock the mutex before freeing the writer
     pthread_mutex_unlock(&close_mutex);
 
+    // CRITICAL FIX: Use a separate mutex for freeing to prevent race conditions
+    static pthread_mutex_t free_mutex = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_lock(&free_mutex);
+    
     // Free writer
     free(writer);
+    
+    pthread_mutex_unlock(&free_mutex);
 }

@@ -59,24 +59,36 @@ static int hls_packet_callback(const AVPacket *pkt, const AVStream *stream, void
         return -1;
     }
     
+    // CRITICAL FIX: Use a static mutex for thread safety during packet processing
+    static pthread_mutex_t hls_packet_mutex = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_lock(&hls_packet_mutex);
+    
     hls_stream_ctx_t *streaming_ctx = (hls_stream_ctx_t *)user_data;
+    int ret = 0;
     
     // CRITICAL FIX: Add extra validation for streaming context and writer
     if (!streaming_ctx) {
         log_error("HLS packet callback received invalid streaming context");
+        pthread_mutex_unlock(&hls_packet_mutex);
         return -1;
     }
+    
+    // CRITICAL FIX: Create a local copy of the stream name for thread safety
+    char stream_name[MAX_STREAM_NAME];
+    strncpy(stream_name, streaming_ctx->config.name, MAX_STREAM_NAME - 1);
+    stream_name[MAX_STREAM_NAME - 1] = '\0';
     
     // CRITICAL FIX: Validate that the stream is still running and has a valid writer
     // This is a critical check to prevent segfaults when toggling streams off
     if (!streaming_ctx->running || !streaming_ctx->hls_writer) {
         if (!streaming_ctx->running) {
             log_debug("HLS packet callback: stream %s is no longer running, skipping packet", 
-                     streaming_ctx->config.name);
+                     stream_name);
         } else {
             log_error("HLS packet callback: streaming context has NULL hls_writer for stream %s", 
-                     streaming_ctx->config.name);
+                     stream_name);
         }
+        pthread_mutex_unlock(&hls_packet_mutex);
         return 0; // Return success but don't process the packet
     }
     
@@ -86,20 +98,31 @@ static int hls_packet_callback(const AVPacket *pkt, const AVStream *stream, void
     // CRITICAL FIX: Validate that process_video_packet function exists
     if (!process_video_packet) {
         log_error("HLS packet callback: process_video_packet function is NULL for stream %s", 
-                 streaming_ctx->config.name);
+                 stream_name);
+        pthread_mutex_unlock(&hls_packet_mutex);
+        return -1;
+    }
+    
+    // CRITICAL FIX: Make a local copy of the HLS writer to avoid race conditions
+    hls_writer_t *local_hls_writer = streaming_ctx->hls_writer;
+    
+    // CRITICAL FIX: Additional validation of the HLS writer
+    if (!local_hls_writer || !local_hls_writer->output_ctx) {
+        log_error("HLS packet callback: invalid HLS writer for stream %s", stream_name);
+        pthread_mutex_unlock(&hls_packet_mutex);
         return -1;
     }
     
     // Process all frames for better quality
-    int ret = process_video_packet(pkt, stream, streaming_ctx->hls_writer, 0, streaming_ctx->config.name);
+    ret = process_video_packet(pkt, stream, local_hls_writer, 0, stream_name);
     
     // Only log errors for key frames to reduce log spam
     if (ret < 0 && is_key_frame) {
-        log_error("Failed to write keyframe to HLS for stream %s: %d", streaming_ctx->config.name, ret);
-        return ret;
+        log_error("Failed to write keyframe to HLS for stream %s: %d", stream_name, ret);
     }
     
-    return 0;
+    pthread_mutex_unlock(&hls_packet_mutex);
+    return ret;
 }
 
 /**
@@ -111,7 +134,24 @@ static void *hls_stream_thread(void *arg) {
     time_t start_time = time(NULL);  // Record when we started
     stream_reader_ctx_t *reader_ctx = NULL;
 
-    log_info("Starting HLS streaming thread for stream %s", ctx->config.name);
+    // CRITICAL FIX: Add extra validation for context
+    if (!ctx) {
+        log_error("NULL context passed to HLS streaming thread");
+        return NULL;
+    }
+    
+    // CRITICAL FIX: Create a local copy of the stream name for thread safety
+    char stream_name[MAX_STREAM_NAME];
+    strncpy(stream_name, ctx->config.name, MAX_STREAM_NAME - 1);
+    stream_name[MAX_STREAM_NAME - 1] = '\0';
+
+    log_info("Starting HLS streaming thread for stream %s", stream_name);
+    
+    // CRITICAL FIX: Check if we're still running before proceeding
+    if (!ctx->running) {
+        log_warn("HLS streaming thread for %s started but already marked as not running", stream_name);
+        return NULL;
+    }
 
     // Verify output directory exists and is writable
     struct stat st;
@@ -139,6 +179,12 @@ static void *hls_stream_thread(void *arg) {
         log_info("Successfully created output directory: %s", ctx->output_path);
     }
 
+    // CRITICAL FIX: Check if we're still running after directory creation
+    if (!ctx->running) {
+        log_info("HLS streaming thread for %s stopping after directory creation", stream_name);
+        return NULL;
+    }
+
     // Check directory permissions
     if (access(ctx->output_path, W_OK) != 0) {
         log_error("Output directory is not writable: %s", ctx->output_path);
@@ -160,6 +206,12 @@ static void *hls_stream_thread(void *arg) {
         log_info("Successfully fixed permissions for output directory: %s", ctx->output_path);
     }
     
+    // CRITICAL FIX: Check if we're still running after permission check
+    if (!ctx->running) {
+        log_info("HLS streaming thread for %s stopping after permission check", stream_name);
+        return NULL;
+    }
+
     // Create a parent directory check file to ensure the parent directory exists
     char parent_dir[MAX_PATH_LENGTH];
     const char *last_slash = strrchr(ctx->output_path, '/');
@@ -193,25 +245,41 @@ static void *hls_stream_thread(void *arg) {
         }
     }
 
+    // CRITICAL FIX: Check if we're still running after parent directory check
+    if (!ctx->running) {
+        log_info("HLS streaming thread for %s stopping after parent directory check", stream_name);
+        return NULL;
+    }
+
     // Create HLS writer - adding the segment_duration parameter
     // Using a default of 4 seconds if not specified in config
     // Increased from 2 to 4 seconds for better compatibility with low-powered devices
     int segment_duration = ctx->config.segment_duration > 0 ?
                           ctx->config.segment_duration : 4;
 
-    ctx->hls_writer = hls_writer_create(ctx->output_path, ctx->config.name, segment_duration);
+    ctx->hls_writer = hls_writer_create(ctx->output_path, stream_name, segment_duration);
     if (!ctx->hls_writer) {
-        log_error("Failed to create HLS writer for %s", ctx->config.name);
+        log_error("Failed to create HLS writer for %s", stream_name);
         ctx->running = 0;
+        return NULL;
+    }
+
+    // CRITICAL FIX: Check if we're still running after HLS writer creation
+    if (!ctx->running) {
+        log_info("HLS streaming thread for %s stopping after HLS writer creation", stream_name);
+        if (ctx->hls_writer) {
+            hls_writer_close(ctx->hls_writer);
+            ctx->hls_writer = NULL;
+        }
         return NULL;
     }
 
     // Always use a dedicated stream reader for HLS streaming
     // This ensures that HLS streaming doesn't interfere with detection or recording
-    log_info("Starting new dedicated stream reader for HLS stream %s", ctx->config.name);
-    reader_ctx = start_stream_reader(ctx->config.name, 1, NULL, NULL); // 1 for dedicated stream reader
+    log_info("Starting new dedicated stream reader for HLS stream %s", stream_name);
+    reader_ctx = start_stream_reader(stream_name, 1, NULL, NULL); // 1 for dedicated stream reader
     if (!reader_ctx) {
-        log_error("Failed to start dedicated stream reader for %s", ctx->config.name);
+        log_error("Failed to start dedicated stream reader for %s", stream_name);
         
         if (ctx->hls_writer) {
             hls_writer_close(ctx->hls_writer);
@@ -221,7 +289,23 @@ static void *hls_stream_thread(void *arg) {
         ctx->running = 0;
         return NULL;
     }
-    log_info("Successfully started new dedicated stream reader for HLS stream %s", ctx->config.name);
+    log_info("Successfully started new dedicated stream reader for HLS stream %s", stream_name);
+    
+    // CRITICAL FIX: Check if we're still running after stream reader creation
+    if (!ctx->running) {
+        log_info("HLS streaming thread for %s stopping after stream reader creation", stream_name);
+        
+        if (ctx->hls_writer) {
+            hls_writer_close(ctx->hls_writer);
+            ctx->hls_writer = NULL;
+        }
+        
+        if (reader_ctx) {
+            stop_stream_reader(reader_ctx);
+        }
+        
+        return NULL;
+    }
     
     // Store the reader context first
     ctx->reader_ctx = reader_ctx;
@@ -229,7 +313,7 @@ static void *hls_stream_thread(void *arg) {
     // Now set our callback - doing this separately ensures we don't have a race condition
     // where the callback might be called before ctx->reader_ctx is set
     if (set_packet_callback(reader_ctx, hls_packet_callback, ctx) != 0) {
-        log_error("Failed to set packet callback for stream %s", ctx->config.name);
+        log_error("Failed to set packet callback for stream %s", stream_name);
         
         if (ctx->hls_writer) {
             hls_writer_close(ctx->hls_writer);
@@ -245,7 +329,7 @@ static void *hls_stream_thread(void *arg) {
         return NULL;
     }
     
-    log_info("Set packet callback for HLS stream %s", ctx->config.name);
+    log_info("Set packet callback for HLS stream %s", stream_name);
 
     // Main loop to monitor stream status
     while (ctx->running) {
@@ -253,12 +337,18 @@ static void *hls_stream_thread(void *arg) {
         av_usleep(50000);  // 50ms
     }
     
+    // CRITICAL FIX: Use a mutex to safely clear the callback
+    static pthread_mutex_t callback_mutex = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_lock(&callback_mutex);
+    
     // Remove our callback from the reader but don't stop it here
     // Let the cleanup function handle stopping the stream reader to avoid double-free
     if (ctx->reader_ctx) {
         set_packet_callback(ctx->reader_ctx, NULL, NULL);
-        log_info("Cleared packet callback for HLS stream %s on thread exit", ctx->config.name);
+        log_info("Cleared packet callback for HLS stream %s on thread exit", stream_name);
     }
+    
+    pthread_mutex_unlock(&callback_mutex);
 
     // When done, close writer
     if (ctx->hls_writer) {
@@ -266,7 +356,7 @@ static void *hls_stream_thread(void *arg) {
         ctx->hls_writer = NULL;
     }
 
-    log_info("HLS streaming thread for stream %s exited", ctx->config.name);
+    log_info("HLS streaming thread for stream %s exited", stream_name);
     return NULL;
 }
 
@@ -490,6 +580,10 @@ int stop_hls_stream(const char *stream_name) {
 
     // Log that we're attempting to stop the stream
     log_info("Attempting to stop HLS stream: %s", stream_name);
+    
+    // CRITICAL FIX: Use a static mutex to prevent concurrent access during stopping
+    static pthread_mutex_t stop_mutex = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_lock(&stop_mutex);
 
     pthread_mutex_lock(&contexts_mutex);
 
@@ -509,7 +603,16 @@ int stop_hls_stream(const char *stream_name) {
     if (!found) {
         log_warn("HLS stream %s not found for stopping", stream_name);
         pthread_mutex_unlock(&contexts_mutex);
+        pthread_mutex_unlock(&stop_mutex);
         return -1;
+    }
+    
+    // CRITICAL FIX: Check if the stream is already stopped
+    if (!ctx->running) {
+        log_warn("HLS stream %s is already stopped", stream_name);
+        pthread_mutex_unlock(&contexts_mutex);
+        pthread_mutex_unlock(&stop_mutex);
+        return 0;
     }
 
     // CRITICAL FIX: First clear the packet callback to prevent any further processing
@@ -527,12 +630,15 @@ int stop_hls_stream(const char *stream_name) {
     // This is especially important for UDP streams
     reset_timestamp_tracker(stream_name);
     log_info("Reset timestamp tracker for stream %s", stream_name);
+    
+    // Store a local copy of the thread to join
+    pthread_t thread_to_join = ctx->thread;
 
     // Unlock before joining thread to prevent deadlocks
     pthread_mutex_unlock(&contexts_mutex);
 
     // Join thread with timeout
-    int join_result = pthread_join_with_timeout(ctx->thread, NULL, 5);
+    int join_result = pthread_join_with_timeout(thread_to_join, NULL, 5);
     if (join_result != 0) {
         log_error("Failed to join thread for stream %s (error: %d), will continue cleanup",
                  stream_name, join_result);
@@ -571,6 +677,7 @@ int stop_hls_stream(const char *stream_name) {
     }
 
     pthread_mutex_unlock(&contexts_mutex);
+    pthread_mutex_unlock(&stop_mutex);
 
     log_info("Stopped HLS stream %s", stream_name);
     return 0;
