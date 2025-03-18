@@ -21,6 +21,9 @@
 #include "video/streams.h"
 #include "video/stream_reader.h"
 #include "video/stream_transcoding.h"
+#include "video/ffmpeg_utils.h"
+#include "video/timestamp_manager.h"
+#include "video/thread_utils.h"
 
 // Hash map for tracking running stream reader contexts
 static stream_reader_ctx_t *reader_contexts[MAX_STREAMS];

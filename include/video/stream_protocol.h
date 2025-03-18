@@ -1,20 +1,26 @@
 #ifndef STREAM_PROTOCOL_H
 #define STREAM_PROTOCOL_H
 
-#include <stdbool.h>
-#include <libavformat/avformat.h>
+#include "core/config.h"
 
-// Stream protocol types
-#define STREAM_PROTOCOL_TCP 0
-#define STREAM_PROTOCOL_UDP 1
+// Additional protocol types extending the ones in config.h
+#define STREAM_PROTOCOL_FILE 2 // Local file
+#define STREAM_PROTOCOL_UNKNOWN 3 // Unknown protocol
 
-// Check if a URL is a multicast address
-bool is_multicast_url(const char *url);
+/**
+ * Get the protocol type from a URL
+ * 
+ * @param url URL to check
+ * @return Protocol type
+ */
+stream_protocol_t get_protocol_from_url(const char *url);
 
-// Open input stream with appropriate options based on protocol
-int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol);
+/**
+ * Get the protocol name as a string
+ * 
+ * @param protocol Protocol type
+ * @return Protocol name as a string
+ */
+const char *get_protocol_name(stream_protocol_t protocol);
 
-// Find video stream index in the input context
-int find_video_stream_index(AVFormatContext *input_ctx);
-
-#endif // STREAM_PROTOCOL_H
+#endif /* STREAM_PROTOCOL_H */

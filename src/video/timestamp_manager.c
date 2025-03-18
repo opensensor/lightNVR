@@ -1,126 +1,139 @@
-#include "video/timestamp_manager.h"
-#include "core/logger.h"
-#include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include <libavutil/avutil.h>
+#include <pthread.h>
 
-// Structure to track timestamp information per stream
+#include "core/logger.h"
+#include "video/timestamp_manager.h"
+
+// Maximum number of streams that can have timestamp trackers
+#define MAX_TIMESTAMP_TRACKERS 32
+
+// Timestamp tracker structure
 typedef struct {
-    char stream_name[MAX_STREAM_NAME];
+    char stream_name[64];
     int64_t last_pts;
-    int64_t last_dts;
-    int64_t pts_discontinuity_count;
     int64_t expected_next_pts;
-    bool is_udp_stream;
-    bool initialized;
+    bool timestamps_initialized;
+    bool is_udp;
+    int pts_discontinuity_count;
 } timestamp_tracker_t;
 
-// Array to track timestamps for multiple streams
-#define MAX_TIMESTAMP_TRACKERS 16
+// Array of timestamp trackers
 static timestamp_tracker_t timestamp_trackers[MAX_TIMESTAMP_TRACKERS];
 static pthread_mutex_t timestamp_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /**
- * Get or create a timestamp tracker for a stream
+ * Initialize all timestamp trackers
  */
-void *get_timestamp_tracker(const char *stream_name) {
-    if (!stream_name) {
-        log_error("get_timestamp_tracker: NULL stream name");
-        return NULL;
-    }
-    
-    // Make a local copy of the stream name to avoid issues with concurrent access
-    char local_stream_name[MAX_STREAM_NAME];
-    strncpy(local_stream_name, stream_name, MAX_STREAM_NAME - 1);
-    local_stream_name[MAX_STREAM_NAME - 1] = '\0';
-    
+int init_timestamp_trackers(void) {
     pthread_mutex_lock(&timestamp_mutex);
     
-    // Look for existing tracker
-    for (int i = 0; i < MAX_TIMESTAMP_TRACKERS; i++) {
-        if (timestamp_trackers[i].initialized && 
-            strcmp(timestamp_trackers[i].stream_name, local_stream_name) == 0) {
-            pthread_mutex_unlock(&timestamp_mutex);
-            return &timestamp_trackers[i];
-        }
-    }
-    
-    // Create new tracker
-    for (int i = 0; i < MAX_TIMESTAMP_TRACKERS; i++) {
-        if (!timestamp_trackers[i].initialized) {
-            strncpy(timestamp_trackers[i].stream_name, local_stream_name, MAX_STREAM_NAME - 1);
-            timestamp_trackers[i].stream_name[MAX_STREAM_NAME - 1] = '\0';
-            timestamp_trackers[i].last_pts = AV_NOPTS_VALUE;
-            timestamp_trackers[i].last_dts = AV_NOPTS_VALUE;
-            timestamp_trackers[i].pts_discontinuity_count = 0;
-            timestamp_trackers[i].expected_next_pts = AV_NOPTS_VALUE;
-            
-            // We'll set this based on the actual protocol when processing packets
-            timestamp_trackers[i].is_udp_stream = false;
-            
-            timestamp_trackers[i].initialized = true;
-            
-            log_info("Created new timestamp tracker for stream %s at index %d", 
-                    local_stream_name, i);
-            
-            pthread_mutex_unlock(&timestamp_mutex);
-            return &timestamp_trackers[i];
-        }
-    }
-    
-    // No slots available
-    log_error("No available slots for timestamp tracker for stream %s", local_stream_name);
-    pthread_mutex_unlock(&timestamp_mutex);
-    return NULL;
-}
-
-/**
- * Initialize timestamp trackers
- */
-void init_timestamp_trackers(void) {
-    pthread_mutex_lock(&timestamp_mutex);
-    
-    // Initialize all trackers to unused state
-    for (int i = 0; i < MAX_TIMESTAMP_TRACKERS; i++) {
-        timestamp_trackers[i].initialized = false;
-        timestamp_trackers[i].last_pts = AV_NOPTS_VALUE;
-        timestamp_trackers[i].last_dts = AV_NOPTS_VALUE;
-        timestamp_trackers[i].pts_discontinuity_count = 0;
-        timestamp_trackers[i].expected_next_pts = AV_NOPTS_VALUE;
-        timestamp_trackers[i].is_udp_stream = false;
-        timestamp_trackers[i].stream_name[0] = '\0';
-    }
+    // Clear all trackers
+    memset(timestamp_trackers, 0, sizeof(timestamp_trackers));
     
     pthread_mutex_unlock(&timestamp_mutex);
+    
     log_info("Timestamp trackers initialized");
+    return 0;
 }
 
 /**
- * Set the UDP flag for a stream's timestamp tracker
- * Creates the tracker if it doesn't exist
+ * Cleanup all timestamp trackers
  */
-void set_timestamp_tracker_udp_flag(const char *stream_name, bool is_udp) {
-    if (!stream_name) {
-        log_error("set_timestamp_tracker_udp_flag: NULL stream name");
-        return;
-    }
+int cleanup_timestamp_trackers(void) {
+    pthread_mutex_lock(&timestamp_mutex);
     
-    // Make a local copy of the stream name to avoid issues with concurrent access
-    char local_stream_name[MAX_STREAM_NAME];
-    strncpy(local_stream_name, stream_name, MAX_STREAM_NAME - 1);
-    local_stream_name[MAX_STREAM_NAME - 1] = '\0';
+    // Clear all trackers
+    memset(timestamp_trackers, 0, sizeof(timestamp_trackers));
+    
+    pthread_mutex_unlock(&timestamp_mutex);
+    
+    log_info("Timestamp trackers cleaned up");
+    return 0;
+}
+
+/**
+ * Initialize the timestamp tracker for a stream
+ */
+int init_timestamp_tracker(const char *stream_name) {
+    if (!stream_name) {
+        log_error("Cannot initialize timestamp tracker: NULL stream name");
+        return -1;
+    }
     
     pthread_mutex_lock(&timestamp_mutex);
     
-    // Look for existing tracker
+    // Check if tracker already exists
+    for (int i = 0; i < MAX_TIMESTAMP_TRACKERS; i++) {
+        if (timestamp_trackers[i].stream_name[0] != '\0' && 
+            strcmp(timestamp_trackers[i].stream_name, stream_name) == 0) {
+            // Already exists, just reset it
+            timestamp_trackers[i].last_pts = 0;
+            timestamp_trackers[i].expected_next_pts = 0;
+            timestamp_trackers[i].timestamps_initialized = false;
+            timestamp_trackers[i].pts_discontinuity_count = 0;
+            // Don't change the is_udp flag
+            
+            pthread_mutex_unlock(&timestamp_mutex);
+            log_info("Reset existing timestamp tracker for stream %s", stream_name);
+            return 0;
+        }
+    }
+    
+    // Find empty slot
+    int slot = -1;
+    for (int i = 0; i < MAX_TIMESTAMP_TRACKERS; i++) {
+        if (timestamp_trackers[i].stream_name[0] == '\0') {
+            slot = i;
+            break;
+        }
+    }
+    
+    if (slot == -1) {
+        pthread_mutex_unlock(&timestamp_mutex);
+        log_error("No slot available for new timestamp tracker");
+        return -1;
+    }
+    
+    // Initialize tracker
+    strncpy(timestamp_trackers[slot].stream_name, stream_name, sizeof(timestamp_trackers[slot].stream_name) - 1);
+    timestamp_trackers[slot].stream_name[sizeof(timestamp_trackers[slot].stream_name) - 1] = '\0';
+    timestamp_trackers[slot].last_pts = 0;
+    timestamp_trackers[slot].expected_next_pts = 0;
+    timestamp_trackers[slot].timestamps_initialized = false;
+    timestamp_trackers[slot].is_udp = false;
+    timestamp_trackers[slot].pts_discontinuity_count = 0;
+    
+    pthread_mutex_unlock(&timestamp_mutex);
+    
+    log_info("Initialized timestamp tracker for stream %s in slot %d", stream_name, slot);
+    return 0;
+}
+
+/**
+ * Reset the timestamp tracker for a stream
+ */
+int reset_timestamp_tracker(const char *stream_name) {
+    if (!stream_name) {
+        log_error("Cannot reset timestamp tracker: NULL stream name");
+        return -1;
+    }
+    
+    pthread_mutex_lock(&timestamp_mutex);
+    
+    // Find tracker
     int found = 0;
     for (int i = 0; i < MAX_TIMESTAMP_TRACKERS; i++) {
-        if (timestamp_trackers[i].initialized && 
-            strcmp(timestamp_trackers[i].stream_name, local_stream_name) == 0) {
-            // Set the UDP flag
-            timestamp_trackers[i].is_udp_stream = is_udp;
-            log_info("Set UDP flag to %s for stream %s timestamp tracker", 
-                    is_udp ? "true" : "false", local_stream_name);
+        if (timestamp_trackers[i].stream_name[0] != '\0' && 
+            strcmp(timestamp_trackers[i].stream_name, stream_name) == 0) {
+            // Reset tracker
+            timestamp_trackers[i].last_pts = 0;
+            timestamp_trackers[i].expected_next_pts = 0;
+            timestamp_trackers[i].timestamps_initialized = false;
+            timestamp_trackers[i].pts_discontinuity_count = 0;
+            // Don't change the is_udp flag
+            
             found = 1;
             break;
         }
@@ -128,127 +141,139 @@ void set_timestamp_tracker_udp_flag(const char *stream_name, bool is_udp) {
     
     // If not found, create a new tracker
     if (!found) {
+        // Find empty slot
+        int slot = -1;
         for (int i = 0; i < MAX_TIMESTAMP_TRACKERS; i++) {
-            if (!timestamp_trackers[i].initialized) {
-                // Initialize the new tracker
-                strncpy(timestamp_trackers[i].stream_name, local_stream_name, MAX_STREAM_NAME - 1);
-                timestamp_trackers[i].stream_name[MAX_STREAM_NAME - 1] = '\0';
-                timestamp_trackers[i].last_pts = AV_NOPTS_VALUE;
-                timestamp_trackers[i].last_dts = AV_NOPTS_VALUE;
-                timestamp_trackers[i].pts_discontinuity_count = 0;
-                timestamp_trackers[i].expected_next_pts = AV_NOPTS_VALUE;
-                timestamp_trackers[i].is_udp_stream = is_udp;
-                timestamp_trackers[i].initialized = true;
-                
-                log_info("Created new timestamp tracker for stream %s at index %d with UDP flag %s", 
-                        local_stream_name, i, is_udp ? "true" : "false");
-                found = 1;
+            if (timestamp_trackers[i].stream_name[0] == '\0') {
+                slot = i;
                 break;
             }
         }
         
-        if (!found) {
-            log_error("No available slots for timestamp tracker for stream %s", local_stream_name);
+        if (slot != -1) {
+            // Initialize tracker
+            strncpy(timestamp_trackers[slot].stream_name, stream_name, sizeof(timestamp_trackers[slot].stream_name) - 1);
+            timestamp_trackers[slot].stream_name[sizeof(timestamp_trackers[slot].stream_name) - 1] = '\0';
+            timestamp_trackers[slot].last_pts = 0;
+            timestamp_trackers[slot].expected_next_pts = 0;
+            timestamp_trackers[slot].timestamps_initialized = false;
+            timestamp_trackers[slot].is_udp = false;
+            timestamp_trackers[slot].pts_discontinuity_count = 0;
+            
+            found = 1;
+            log_info("Created new timestamp tracker for stream %s during reset", stream_name);
+        } else {
+            log_warn("No slot available for new timestamp tracker during reset");
         }
     }
     
     pthread_mutex_unlock(&timestamp_mutex);
+    
+    if (!found) {
+        log_warn("Timestamp tracker not found for stream %s and no slots available", stream_name);
+        return -1;
+    }
+    
+    log_info("Reset timestamp tracker for stream %s", stream_name);
+    return 0;
 }
 
 /**
- * Reset timestamp tracker for a specific stream
- * This should be called when a stream is stopped to ensure clean state when restarted
+ * Remove the timestamp tracker for a stream
  */
-void reset_timestamp_tracker(const char *stream_name) {
+int remove_timestamp_tracker(const char *stream_name) {
     if (!stream_name) {
-        log_error("reset_timestamp_tracker: NULL stream name");
-        return;
+        log_error("Cannot remove timestamp tracker: NULL stream name");
+        return -1;
     }
     
     pthread_mutex_lock(&timestamp_mutex);
     
-    // Find the tracker for this stream
-    bool found = false;
+    // Find tracker
+    int found = 0;
     for (int i = 0; i < MAX_TIMESTAMP_TRACKERS; i++) {
-        if (timestamp_trackers[i].initialized && 
+        if (timestamp_trackers[i].stream_name[0] != '\0' && 
             strcmp(timestamp_trackers[i].stream_name, stream_name) == 0) {
-            // Reset the tracker but keep the stream name and initialized flag
-            // This ensures we don't lose the UDP flag setting
-            timestamp_trackers[i].last_pts = AV_NOPTS_VALUE;
-            timestamp_trackers[i].last_dts = AV_NOPTS_VALUE;
-            timestamp_trackers[i].pts_discontinuity_count = 0;
-            timestamp_trackers[i].expected_next_pts = AV_NOPTS_VALUE;
+            // Clear tracker
+            memset(&timestamp_trackers[i], 0, sizeof(timestamp_tracker_t));
             
-            log_info("Reset timestamp tracker for stream %s (UDP flag: %s)", 
-                    stream_name, timestamp_trackers[i].is_udp_stream ? "true" : "false");
-            found = true;
+            found = 1;
             break;
         }
     }
     
+    pthread_mutex_unlock(&timestamp_mutex);
+    
     if (!found) {
-        log_debug("No timestamp tracker found for stream %s during reset", stream_name);
+        log_warn("Timestamp tracker not found for stream %s, nothing to remove", stream_name);
+        // Return success even if not found, since the end result is the same
+        // (no timestamp tracker for this stream)
+        return 0;
     }
     
-    pthread_mutex_unlock(&timestamp_mutex);
+    log_info("Removed timestamp tracker for stream %s", stream_name);
+    return 0;
 }
 
 /**
- * Remove timestamp tracker for a specific stream
- * This should be called when a stream is completely removed
+ * Set the UDP flag for a stream's timestamp tracker
  */
-void remove_timestamp_tracker(const char *stream_name) {
+int set_timestamp_tracker_udp_flag(const char *stream_name, bool is_udp) {
     if (!stream_name) {
-        log_error("remove_timestamp_tracker: NULL stream name");
-        return;
+        log_error("Cannot set UDP flag: NULL stream name");
+        return -1;
     }
     
     pthread_mutex_lock(&timestamp_mutex);
     
-    // Find the tracker for this stream
-    bool found = false;
+    // Find tracker
+    int found = 0;
     for (int i = 0; i < MAX_TIMESTAMP_TRACKERS; i++) {
-        if (timestamp_trackers[i].initialized && 
+        if (timestamp_trackers[i].stream_name[0] != '\0' && 
             strcmp(timestamp_trackers[i].stream_name, stream_name) == 0) {
-            // Completely reset the tracker
-            timestamp_trackers[i].initialized = false;
-            timestamp_trackers[i].stream_name[0] = '\0';
-            timestamp_trackers[i].last_pts = AV_NOPTS_VALUE;
-            timestamp_trackers[i].last_dts = AV_NOPTS_VALUE;
-            timestamp_trackers[i].pts_discontinuity_count = 0;
-            timestamp_trackers[i].expected_next_pts = AV_NOPTS_VALUE;
-            timestamp_trackers[i].is_udp_stream = false;
+            // Set UDP flag
+            timestamp_trackers[i].is_udp = is_udp;
             
-            log_info("Removed timestamp tracker for stream %s", stream_name);
-            found = true;
+            found = 1;
             break;
         }
     }
     
+    // If not found, create a new tracker
     if (!found) {
-        log_debug("No timestamp tracker found for stream %s during removal", stream_name);
+        // Find empty slot
+        int slot = -1;
+        for (int i = 0; i < MAX_TIMESTAMP_TRACKERS; i++) {
+            if (timestamp_trackers[i].stream_name[0] == '\0') {
+                slot = i;
+                break;
+            }
+        }
+        
+        if (slot != -1) {
+            // Initialize tracker
+            strncpy(timestamp_trackers[slot].stream_name, stream_name, sizeof(timestamp_trackers[slot].stream_name) - 1);
+            timestamp_trackers[slot].stream_name[sizeof(timestamp_trackers[slot].stream_name) - 1] = '\0';
+            timestamp_trackers[slot].last_pts = 0;
+            timestamp_trackers[slot].expected_next_pts = 0;
+            timestamp_trackers[slot].timestamps_initialized = false;
+            timestamp_trackers[slot].is_udp = is_udp;
+            timestamp_trackers[slot].pts_discontinuity_count = 0;
+            
+            found = 1;
+            log_info("Created new timestamp tracker for stream %s with UDP flag %s", 
+                    stream_name, is_udp ? "true" : "false");
+        }
     }
     
     pthread_mutex_unlock(&timestamp_mutex);
-}
-
-/**
- * Cleanup all timestamp trackers
- */
-void cleanup_timestamp_trackers(void) {
-    pthread_mutex_lock(&timestamp_mutex);
     
-    // Reset all trackers to unused state
-    for (int i = 0; i < MAX_TIMESTAMP_TRACKERS; i++) {
-        timestamp_trackers[i].initialized = false;
-        timestamp_trackers[i].stream_name[0] = '\0';
-        timestamp_trackers[i].last_pts = AV_NOPTS_VALUE;
-        timestamp_trackers[i].last_dts = AV_NOPTS_VALUE;
-        timestamp_trackers[i].pts_discontinuity_count = 0;
-        timestamp_trackers[i].expected_next_pts = AV_NOPTS_VALUE;
-        timestamp_trackers[i].is_udp_stream = false;
+    if (!found) {
+        log_error("No slot available for new timestamp tracker");
+        return -1;
     }
     
-    pthread_mutex_unlock(&timestamp_mutex);
-    log_info("All timestamp trackers cleaned up");
+    log_info("Set UDP flag to %s for stream %s timestamp tracker", 
+            is_udp ? "true" : "false", stream_name);
+    return 0;
 }

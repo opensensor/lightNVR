@@ -31,6 +31,9 @@
 #include "video/detection_stream.h"
 #include "video/stream_state.h"
 #include "video/stream_packet_processor.h"
+#include "video/timestamp_manager.h"
+#include "video/thread_utils.h"
+#include "video/ffmpeg_utils.h"
 #include "database/database_manager.h"
 
 // Hash map for tracking running HLS streaming contexts
@@ -61,7 +64,9 @@ static int hls_packet_callback(const AVPacket *pkt, const AVStream *stream, void
         return -1;
     }
     
-    hls_stream_ctx_t *streaming_ctx = (hls_stream_ctx_t *)user_data;
+    // Use a local copy of the user_data pointer to prevent race conditions
+    void *local_user_data = user_data;
+    hls_stream_ctx_t *streaming_ctx = (hls_stream_ctx_t *)local_user_data;
     
     // CRITICAL FIX: Add extra validation for streaming context and writer
     if (!streaming_ctx) {
@@ -69,16 +74,30 @@ static int hls_packet_callback(const AVPacket *pkt, const AVStream *stream, void
         return -1;
     }
     
+    // CRITICAL FIX: Use a memory barrier to ensure we see the latest value of running flag
+    __sync_synchronize();
+    
+    // CRITICAL FIX: Make a local copy of the running flag to prevent race conditions
+    int is_running = streaming_ctx->running;
+    
     // CRITICAL FIX: Validate that the stream is still running and has a valid writer
     // This is a critical check to prevent segfaults when toggling streams off
-    if (!streaming_ctx->running || !streaming_ctx->hls_writer) {
-        if (!streaming_ctx->running) {
+    if (!is_running || !streaming_ctx->hls_writer) {
+        if (!is_running) {
             log_debug("HLS packet callback: stream %s is no longer running, skipping packet", 
                      streaming_ctx->config.name);
         } else {
             log_error("HLS packet callback: streaming context has NULL hls_writer for stream %s", 
                      streaming_ctx->config.name);
         }
+        return 0; // Return success but don't process the packet
+    }
+    
+    // CRITICAL FIX: Make a local copy of the hls_writer pointer to prevent race conditions
+    hls_writer_t *local_hls_writer = streaming_ctx->hls_writer;
+    if (!local_hls_writer || !local_hls_writer->output_ctx) {
+        log_error("HLS packet callback: invalid HLS writer for stream %s", 
+                 streaming_ctx->config.name);
         return 0; // Return success but don't process the packet
     }
     
@@ -316,15 +335,23 @@ void cleanup_hls_streaming_backend(void) {
             
             pthread_t thread_to_join = streaming_contexts[i]->thread;
 
-            // CRITICAL FIX: First clear the packet callback to prevent any further processing
-            // This must be done before marking the stream as not running to prevent race conditions
+            // CRITICAL FIX: First mark as not running to prevent new packets from being processed
+            streaming_contexts[i]->running = 0;
+            
+            // CRITICAL FIX: Add a memory barrier to ensure the running flag is visible to all threads
+            __sync_synchronize();
+            
+            // Then clear the packet callback to prevent any further processing
             if (streaming_contexts[i]->reader_ctx) {
                 log_info("Clearing packet callback for HLS stream %s during cleanup", stream_name);
                 set_packet_callback(streaming_contexts[i]->reader_ctx, NULL, NULL);
+                
+                // Add a small delay to ensure any in-flight packets are processed
+                usleep(10000); // 10ms delay
             }
             
-            // Now mark as not running
-            streaming_contexts[i]->running = 0;
+            // Reset the timestamp tracker for this stream
+            reset_timestamp_tracker(stream_name);
 
             // Unlock before joining thread to prevent deadlocks
             pthread_mutex_unlock(&contexts_mutex);
@@ -528,16 +555,21 @@ int stop_hls_stream(const char *stream_name) {
         return -1;
     }
 
-    // CRITICAL FIX: First clear the packet callback to prevent any further processing
-    // This must be done before marking the stream as not running to prevent race conditions
+    // CRITICAL FIX: First mark as not running to prevent new packets from being processed
+    ctx->running = 0;
+    log_info("Marked HLS stream %s as stopping (index: %d)", stream_name, index);
+    
+    // CRITICAL FIX: Add a memory barrier to ensure the running flag is visible to all threads
+    __sync_synchronize();
+    
+    // Then clear the packet callback to prevent any further processing
     if (ctx->reader_ctx) {
         log_info("Clearing packet callback for HLS stream %s", stream_name);
         set_packet_callback(ctx->reader_ctx, NULL, NULL);
+        
+        // Add a small delay to ensure any in-flight packets are processed
+        usleep(10000); // 10ms delay
     }
-    
-    // Now mark as not running
-    ctx->running = 0;
-    log_info("Marked HLS stream %s as stopping (index: %d)", stream_name, index);
     
     // Reset the timestamp tracker for this stream to ensure clean state when restarted
     // This is especially important for UDP streams

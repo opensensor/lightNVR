@@ -30,6 +30,7 @@
 #include "video/stream_transcoding.h"
 #include "storage/storage_manager.h"
 #include "utils/memory.h"
+#include "video/thread_utils.h"
 
 // Maximum number of pending connections
 #define MAX_PENDING 128

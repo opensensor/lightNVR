@@ -25,6 +25,9 @@
 #include "video/stream_reader.h"
 #include "video/stream_state.h"
 #include "video/stream_packet_processor.h"
+#include "video/timestamp_manager.h"
+#include "video/thread_utils.h"
+#include "video/ffmpeg_utils.h"
 #include "database/database_manager.h"
 #include "database/db_events.h"
 
@@ -45,9 +48,56 @@ static void *mp4_recording_thread(void *arg);
  * Removed adaptive degrading to improve quality
  */
 static int mp4_packet_callback(const AVPacket *pkt, const AVStream *stream, void *user_data) {
-    mp4_recording_ctx_t *recording_ctx = (mp4_recording_ctx_t *)user_data;
-    if (!recording_ctx || !recording_ctx->mp4_writer) {
+    // CRITICAL FIX: Add extra validation for all parameters
+    if (!pkt) {
+        log_error("MP4 packet callback received NULL packet");
         return -1;
+    }
+    
+    if (!stream) {
+        log_error("MP4 packet callback received NULL stream");
+        return -1;
+    }
+    
+    if (!user_data) {
+        log_error("MP4 packet callback received NULL user_data");
+        return -1;
+    }
+    
+    // Use a local copy of the user_data pointer to prevent race conditions
+    void *local_user_data = user_data;
+    mp4_recording_ctx_t *recording_ctx = (mp4_recording_ctx_t *)local_user_data;
+    
+    // CRITICAL FIX: Add extra validation for recording context and writer
+    if (!recording_ctx) {
+        log_error("MP4 packet callback received invalid recording context");
+        return -1;
+    }
+    
+    // CRITICAL FIX: Use a memory barrier to ensure we see the latest value of running flag
+    __sync_synchronize();
+    
+    // CRITICAL FIX: Make a local copy of the running flag to prevent race conditions
+    int is_running = recording_ctx->running;
+    
+    // CRITICAL FIX: Validate that the stream is still running and has a valid writer
+    if (!is_running || !recording_ctx->mp4_writer) {
+        if (!is_running) {
+            log_debug("MP4 packet callback: stream %s is no longer running, skipping packet", 
+                     recording_ctx->config.name);
+        } else {
+            log_error("MP4 packet callback: recording context has NULL mp4_writer for stream %s", 
+                     recording_ctx->config.name);
+        }
+        return 0; // Return success but don't process the packet
+    }
+    
+    // CRITICAL FIX: Make a local copy of the mp4_writer pointer to prevent race conditions
+    mp4_writer_t *local_mp4_writer = recording_ctx->mp4_writer;
+    if (!local_mp4_writer || !local_mp4_writer->output_ctx) {
+        log_error("MP4 packet callback: invalid MP4 writer for stream %s", 
+                 recording_ctx->config.name);
+        return 0; // Return success but don't process the packet
     }
     
     // Check if this is a key frame
@@ -333,17 +383,30 @@ void init_mp4_recording_backend(void) {
 void cleanup_mp4_recording_backend(void) {
     log_info("Starting MP4 recording backend cleanup");
 
-    // First mark all contexts as not running
+    // First mark all contexts as not running and clear callbacks
     pthread_mutex_lock(&contexts_mutex);
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (recording_contexts[i]) {
+            // First mark as not running
             recording_contexts[i]->running = 0;
             
-            // Copy thread ID for joining outside the lock
+            // Add a memory barrier to ensure the running flag is visible to all threads
+            __sync_synchronize();
+            
+            // Copy thread ID and stream name for joining outside the lock
             pthread_t thread_to_join = recording_contexts[i]->thread;
             char stream_name[MAX_STREAM_NAME];
             strncpy(stream_name, recording_contexts[i]->config.name, MAX_STREAM_NAME - 1);
             stream_name[MAX_STREAM_NAME - 1] = '\0';
+            
+            // Clear the packet callback to prevent any further processing
+            if (recording_contexts[i]->reader_ctx) {
+                log_info("Clearing packet callback for MP4 recording of stream %s during cleanup", stream_name);
+                set_packet_callback(recording_contexts[i]->reader_ctx, NULL, NULL);
+                
+                // Add a small delay to ensure any in-flight packets are processed
+                usleep(10000); // 10ms delay
+            }
             
             // Safely NULL out the mp4_writer pointer to prevent double free
             // This is critical since close_all_mp4_writers() was already called
@@ -557,9 +620,25 @@ int stop_mp4_recording(const char *stream_name) {
         return -1;
     }
 
-    // Mark as not running first
+    // CRITICAL FIX: First mark as not running to prevent new packets from being processed
     ctx->running = 0;
     log_info("Marked MP4 recording for stream %s as stopping (index: %d)", stream_name, index);
+    
+    // CRITICAL FIX: Add a memory barrier to ensure the running flag is visible to all threads
+    __sync_synchronize();
+    
+    // CRITICAL FIX: Clear the packet callback to prevent any further processing
+    if (ctx->reader_ctx) {
+        log_info("Clearing packet callback for MP4 recording of stream %s", stream_name);
+        set_packet_callback(ctx->reader_ctx, NULL, NULL);
+        
+        // Add a small delay to ensure any in-flight packets are processed
+        usleep(10000); // 10ms delay
+    }
+    
+    // Reset the timestamp tracker for this stream to ensure clean state when restarted
+    reset_timestamp_tracker(stream_name);
+    log_info("Reset timestamp tracker for stream %s", stream_name);
 
     // Unlock before joining thread to prevent deadlocks
     pthread_mutex_unlock(&contexts_mutex);

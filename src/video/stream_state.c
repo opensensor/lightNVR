@@ -13,6 +13,7 @@
 #include "video/mp4_recording.h"
 #include "video/detection.h"
 #include "video/stream_transcoding.h"
+#include "video/timestamp_manager.h"
 
 // Global array of stream state managers
 static stream_state_manager_t *stream_states[MAX_STREAMS];
