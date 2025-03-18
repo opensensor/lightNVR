@@ -26,7 +26,9 @@
 #include "video/detection_recording.h"
 #include "video/detection.h"
 #include "video/stream_state.h"
+#include "video/stream_state_adapter.h"
 #include "video/stream_packet_processor.h"
+#include "video/timestamp_manager.h"
 
 // External function declarations
 void init_recordings_system(void);
@@ -200,12 +202,32 @@ static void load_streams_from_config(const config_t *config) {
             if (stream) {
                 log_info("Stream loaded: %s", config->streams[i].name);
                 
-                // Create a state manager for this stream to ensure we're using the newer patterns
-                stream_state_manager_t *state = create_stream_state(&config->streams[i]);
-                if (state) {
-                    log_info("Created state manager for stream: %s", config->streams[i].name);
+                // Get or create a state manager for this stream to ensure we're using the newer patterns
+                stream_state_manager_t *state = get_stream_state_by_name(config->streams[i].name);
+                if (!state) {
+                    // Create a new state manager
+                    state = create_stream_state(&config->streams[i]);
+                    if (state) {
+                        log_info("Created state manager for stream: %s", config->streams[i].name);
+                        
+                        // CRITICAL FIX: Add mapping between stream handle and state manager
+                        if (add_handle_mapping(stream, state) != 0) {
+                            log_error("Failed to add handle mapping for stream: %s", config->streams[i].name);
+                        } else {
+                            log_info("Added handle mapping for stream: %s", config->streams[i].name);
+                        }
+                    } else {
+                        log_warn("Failed to create state manager for stream: %s", config->streams[i].name);
+                    }
                 } else {
-                    log_warn("Failed to create state manager for stream: %s", config->streams[i].name);
+                    log_info("Using existing state manager for stream: %s", config->streams[i].name);
+                    
+                    // CRITICAL FIX: Add mapping between stream handle and state manager
+                    if (add_handle_mapping(stream, state) != 0) {
+                        log_error("Failed to add handle mapping for stream: %s", config->streams[i].name);
+                    } else {
+                        log_info("Added handle mapping for stream: %s", config->streams[i].name);
+                    }
                 }
 
                 if (config->streams[i].enabled) {
@@ -400,10 +422,31 @@ int main(int argc, char *argv[]) {
         log_error("Failed to initialize stream manager");
         goto cleanup;
     }
+    
+    // Initialize stream state manager
+    if (init_stream_state_manager(config.max_streams) != 0) {
+        log_error("Failed to initialize stream state manager");
+        goto cleanup;
+    }
+    
+    // Initialize stream state adapter
+    if (init_stream_state_adapter() != 0) {
+        log_error("Failed to initialize stream state adapter");
+        goto cleanup;
+    }
+    
     load_streams_from_config(&config);
 
     // Initialize FFmpeg streaming backend
     init_transcoding_backend();
+    
+    // Initialize timestamp trackers
+    if (init_timestamp_trackers() != 0) {
+        log_error("Failed to initialize timestamp trackers");
+    } else {
+        log_info("Timestamp trackers initialized successfully");
+    }
+    
     init_hls_streaming_backend();
     init_mp4_recording_backend();
     
@@ -677,6 +720,9 @@ cleanup:
         // Now shut down other components
         log_info("Shutting down web server...");
         shutdown_web_server();
+        
+        log_info("Shutting down stream state adapter...");
+        shutdown_stream_state_adapter();
         
         log_info("Shutting down stream manager...");
         shutdown_stream_manager();

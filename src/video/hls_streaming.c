@@ -112,6 +112,12 @@ static int hls_packet_callback(const AVPacket *pkt, const AVStream *stream, void
     if (!state) {
         log_warn("Stream state not found for '%s', using adapter", streaming_ctx->config.name);
         
+        // Make sure timestamp tracker is initialized before using the adapter
+        if (init_timestamp_tracker(streaming_ctx->config.name) != 0) {
+            log_warn("Failed to initialize timestamp tracker for '%s', continuing anyway", 
+                    streaming_ctx->config.name);
+        }
+        
         // Use the adapter which will create a state if needed
         int ret = process_video_packet_adapter(pkt, stream, streaming_ctx->hls_writer, 0, streaming_ctx->config.name);
         return ret;

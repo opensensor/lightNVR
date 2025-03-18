@@ -25,10 +25,15 @@ int init_packet_processor(void) {
     }
     
     pthread_mutex_lock(&processor_mutex);
+    
+    // Initialize the processor
     processor_initialized = true;
+    
+    // Log initialization
+    log_info("Packet processor initialized");
+    
     pthread_mutex_unlock(&processor_mutex);
     
-    log_info("Packet processor initialized");
     return 0;
 }
 
@@ -52,7 +57,16 @@ void shutdown_packet_processor(void) {
  */
 int process_packet_with_state(stream_state_manager_t *state, const AVPacket *pkt, 
                              const AVStream *input_stream, int writer_type, void *writer) {
-    if (!state || !pkt || !input_stream || !writer || !processor_initialized) {
+    // CRITICAL FIX: Check if processor is initialized and initialize it if not
+    if (!processor_initialized) {
+        log_warn("Packet processor not initialized, initializing now");
+        if (init_packet_processor() != 0) {
+            log_error("Failed to initialize packet processor");
+            return -1;
+        }
+    }
+    
+    if (!state || !pkt || !input_stream || !writer) {
         log_error("Invalid parameters for process_packet_with_state");
         return -1;
     }
@@ -339,7 +353,16 @@ int process_packet_with_state(stream_state_manager_t *state, const AVPacket *pkt
  */
 int process_video_packet_adapter(const AVPacket *pkt, const AVStream *input_stream, 
                                 void *writer, int writer_type, const char *stream_name) {
-    if (!pkt || !input_stream || !writer || !stream_name || !processor_initialized) {
+    // CRITICAL FIX: Check if processor is initialized and initialize it if not
+    if (!processor_initialized) {
+        log_warn("Packet processor not initialized, initializing now");
+        if (init_packet_processor() != 0) {
+            log_error("Failed to initialize packet processor");
+            return -1;
+        }
+    }
+    
+    if (!pkt || !input_stream || !writer || !stream_name) {
         log_error("Invalid parameters for process_video_packet_adapter");
         return -1;
     }
@@ -371,10 +394,14 @@ int process_video_packet_adapter(const AVPacket *pkt, const AVStream *input_stre
         }
         
         // Initialize timestamp tracker for this stream
-        init_timestamp_tracker(stream_name);
+        if (init_timestamp_tracker(stream_name) != 0) {
+            log_warn("Failed to initialize timestamp tracker for stream '%s'", stream_name);
+        }
         
         // Set UDP flag based on protocol
-        set_timestamp_tracker_udp_flag(stream_name, (config.protocol == STREAM_PROTOCOL_UDP));
+        if (set_timestamp_tracker_udp_flag(stream_name, (config.protocol == STREAM_PROTOCOL_UDP)) != 0) {
+            log_warn("Failed to set UDP flag for timestamp tracker for stream '%s'", stream_name);
+        }
         
         log_info("Created new state manager for stream '%s'", stream_name);
     }

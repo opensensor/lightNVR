@@ -13,6 +13,15 @@
 int init_stream_state_adapter(void);
 
 /**
+ * Add a mapping between a stream handle and a state manager
+ * 
+ * @param handle Stream handle from the old API
+ * @param state Stream state manager
+ * @return 0 on success, non-zero on failure
+ */
+int add_handle_mapping(stream_handle_t handle, stream_state_manager_t *state);
+
+/**
  * Shutdown the stream state adapter
  */
 void shutdown_stream_state_adapter(void);

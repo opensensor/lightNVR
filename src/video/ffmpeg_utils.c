@@ -55,11 +55,17 @@ int open_input_stream(AVFormatContext **ctx, const char *url, stream_protocol_t 
     
     // Set options based on protocol
     if (protocol == STREAM_PROTOCOL_UDP) {
-        // For UDP streams, set a short timeout and buffer size
+        // For UDP streams, set a short timeout and large buffer size
         av_dict_set(&options, "timeout", "2000000", 0); // 2 seconds in microseconds
-        av_dict_set(&options, "buffer_size", "1024000", 0); // 1MB buffer
+        av_dict_set(&options, "buffer_size", "16777216", 0); // 16MB buffer - CRITICAL for UDP streams
         av_dict_set(&options, "reuse", "1", 0); // Allow port reuse
         av_dict_set(&options, "overrun_nonfatal", "1", 0); // Don't fail on buffer overrun
+        
+        // Set UDP-specific socket options
+        av_dict_set(&options, "recv_buffer_size", "16777216", 0); // 16MB socket receive buffer
+        
+        // UDP-specific packet reordering settings
+        av_dict_set(&options, "max_interleave_delta", "1000000", 0); // 1 second max interleave
     } else {
         // For TCP/RTSP streams, set a longer timeout
         av_dict_set(&options, "timeout", "5000000", 0); // 5 seconds in microseconds

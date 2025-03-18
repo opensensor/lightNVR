@@ -117,6 +117,12 @@ static int mp4_packet_callback(const AVPacket *pkt, const AVStream *stream, void
     if (!state) {
         log_warn("Stream state not found for '%s', using adapter", recording_ctx->config.name);
         
+        // Make sure timestamp tracker is initialized before using the adapter
+        if (init_timestamp_tracker(recording_ctx->config.name) != 0) {
+            log_warn("Failed to initialize timestamp tracker for '%s', continuing anyway", 
+                    recording_ctx->config.name);
+        }
+        
         // Use the adapter which will create a state if needed
         int ret = process_video_packet_adapter(pkt, stream, recording_ctx->mp4_writer, 1, recording_ctx->config.name);
         return ret;

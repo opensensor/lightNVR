@@ -61,7 +61,7 @@ void shutdown_stream_state_adapter(void) {
 /**
  * Add a mapping between a stream handle and a state manager
  */
-static int add_handle_mapping(stream_handle_t handle, stream_state_manager_t *state) {
+int add_handle_mapping(stream_handle_t handle, stream_state_manager_t *state) {
     if (!handle || !state || !adapter_initialized) {
         return -1;
     }
@@ -226,8 +226,13 @@ stream_handle_t add_stream_adapter(const stream_config_t *config) {
         return NULL;
     }
     
-    // Create a handle (just use the state pointer as the handle for simplicity)
-    stream_handle_t handle = (stream_handle_t)state;
+    // Create a handle (we need to create a real stream handle, not just use the state pointer)
+    stream_handle_t handle = add_stream(config);
+    if (!handle) {
+        log_error("Failed to create stream handle for '%s'", config->name);
+        remove_stream_state(state);
+        return NULL;
+    }
     
     // Add mapping
     if (add_handle_mapping(handle, state) != 0) {
