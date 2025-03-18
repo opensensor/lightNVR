@@ -518,6 +518,11 @@ int stop_hls_stream(const char *stream_name) {
     // Mark as not running first
     ctx->running = 0;
     log_info("Marked HLS stream %s as stopping (index: %d)", stream_name, index);
+    
+    // Reset the timestamp tracker for this stream to ensure clean state when restarted
+    // This is especially important for UDP streams
+    reset_timestamp_tracker(stream_name);
+    log_info("Reset timestamp tracker for stream %s", stream_name);
 
     // Unlock before joining thread to prevent deadlocks
     pthread_mutex_unlock(&contexts_mutex);

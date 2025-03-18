@@ -367,6 +367,12 @@ int remove_stream(stream_handle_t handle) {
     
     // Clear the stream slot
     pthread_mutex_lock(&s->mutex);
+    
+    // Save stream name for timestamp tracker cleanup
+    char stream_name_for_cleanup[MAX_STREAM_NAME];
+    strncpy(stream_name_for_cleanup, s->config.name, MAX_STREAM_NAME - 1);
+    stream_name_for_cleanup[MAX_STREAM_NAME - 1] = '\0';
+    
     memset(&s->config, 0, sizeof(stream_config_t));
     s->status = STREAM_STATUS_STOPPED;
     memset(&s->stats, 0, sizeof(stream_stats_t));

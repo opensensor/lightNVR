@@ -36,11 +36,28 @@ int find_video_stream_index(AVFormatContext *input_ctx);
 
 /**
  * Set the UDP flag for a stream's timestamp tracker
+ * Creates the tracker if it doesn't exist
  * 
  * @param stream_name Name of the stream
  * @param is_udp Whether the stream is using UDP protocol
  */
 void set_timestamp_tracker_udp_flag(const char *stream_name, bool is_udp);
+
+/**
+ * Reset timestamp tracker for a specific stream
+ * This should be called when a stream is stopped to ensure clean state when restarted
+ * 
+ * @param stream_name Name of the stream
+ */
+void reset_timestamp_tracker(const char *stream_name);
+
+/**
+ * Remove timestamp tracker for a specific stream
+ * This should be called when a stream is completely removed
+ * 
+ * @param stream_name Name of the stream
+ */
+void remove_timestamp_tracker(const char *stream_name);
 
 /**
  * Process a video packet for either HLS streaming or MP4 recording
