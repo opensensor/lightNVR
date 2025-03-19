@@ -297,8 +297,15 @@ static detection_model_t load_sod_model(const char *model_path, float threshold)
         arch = ":face";
         log_info("Using :face architecture for CNN model: %s", model_path);
     }
+    // Check if this is a VOC detection model based on filename or path
+    else if (strstr(model_path, "voc") != NULL ||
+             strstr(model_path, "VOC") != NULL ||
+             strstr(model_path, "Voc") != NULL) {
+        arch = ":voc";
+        log_info("Using :voc architecture for CNN model: %s", model_path);
+    }
 
-    // If the model file has the same name as the one in the spec, force face architecture
+    // If the model file has the same name as the one in the spec, force appropriate architecture
     const char *filename = strrchr(model_path, '/');
     if (filename) {
         filename++; // Skip the '/'
@@ -309,6 +316,10 @@ static detection_model_t load_sod_model(const char *model_path, float threshold)
     if (strcmp(filename, "face_cnn.sod") == 0) {
         arch = ":face";
         log_info("Detected face_cnn.sod, forcing :face architecture");
+    }
+    else if (strcmp(filename, "tiny20.sod") == 0) {
+        arch = ":voc";
+        log_info("Detected tiny20.sod, forcing :voc architecture");
     }
 
     #ifdef SOD_ENABLED

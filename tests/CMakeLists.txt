@@ -50,6 +50,11 @@ if(ENABLE_SOD)
         ${DETECTION_SOURCES}
     )
 
+    add_executable(test_sod_voc
+        test_sod_voc.c
+        ${DETECTION_SOURCES}
+    )
+
     # Link libraries
     target_link_libraries(test_sod_unified
         ${FFMPEG_LIBRARIES}
@@ -59,14 +64,23 @@ if(ENABLE_SOD)
         sod
     )
 
+    target_link_libraries(test_sod_voc
+        ${FFMPEG_LIBRARIES}
+        ${SQLITE_LIBRARIES}
+        pthread
+        dl
+        sod
+    )
+
     # Set output directory for test binaries
-    set_target_properties(test_sod_unified
+    set_target_properties(test_sod_unified test_sod_voc
         PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
     )
 
     # Add tests to CTest
     add_test(NAME test_sod_unified COMMAND test_sod_unified)
+    add_test(NAME test_sod_voc COMMAND test_sod_voc)
 
     message(STATUS "Building SOD tests")
 else()
