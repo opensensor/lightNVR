@@ -46,16 +46,17 @@
     <text x="825" y="360" font-family="Arial" font-size="12" text-anchor="middle">Handles MP4 recording</text>
 
     <!-- MP4 Recording Threads -->
-    <rect x="1000" y="200" width="250" height="200" rx="5" fill="#d1ecf1" stroke="#0dcaf0" stroke-width="2" />
-    <text x="1125" y="230" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle">MP4 Recording Threads</text>
-    <text x="1125" y="255" font-family="Arial" font-size="14" text-anchor="middle">mp4_recording_thread()</text>
+    <rect x="1000" y="200" width="180" height="200" rx="5" fill="#d1ecf1" stroke="#0dcaf0" stroke-width="2" />
+    <text x="1090" y="230" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle">MP4 Recording</text>
+    <text x="1090" y="250" font-family="Arial" font-size="14" text-anchor="middle">Threads</text>
+    <text x="1090" y="270" font-family="Arial" font-size="12" text-anchor="middle">mp4_recording_thread()</text>
 
     <!-- MP4 Recording Components -->
-    <rect x="1020" y="280" width="210" height="100" rx="5" fill="#e2e3e5" stroke="#6c757d" stroke-width="1" />
-    <text x="1125" y="300" font-family="Arial" font-size="12" text-anchor="middle">One thread per MP4 recording</text>
-    <text x="1125" y="320" font-family="Arial" font-size="12" text-anchor="middle">Manages file rotation</text>
-    <text x="1125" y="340" font-family="Arial" font-size="12" text-anchor="middle">Updates database metadata</text>
-    <text x="1125" y="360" font-family="Arial" font-size="12" text-anchor="middle">Handles cleanup</text>
+    <rect x="1010" y="290" width="160" height="100" rx="5" fill="#e2e3e5" stroke="#6c757d" stroke-width="1" />
+    <text x="1090" y="310" font-family="Arial" font-size="11" text-anchor="middle">One thread per recording</text>
+    <text x="1090" y="330" font-family="Arial" font-size="11" text-anchor="middle">Manages file rotation</text>
+    <text x="1090" y="350" font-family="Arial" font-size="11" text-anchor="middle">Updates DB metadata</text>
+    <text x="1090" y="370" font-family="Arial" font-size="11" text-anchor="middle">Handles cleanup</text>
 
     <!-- Detection Threads -->
     <rect x="400" y="450" width="250" height="200" rx="5" fill="#d1d4e3" stroke="#6610f2" stroke-width="2" />
@@ -98,12 +99,12 @@
     <line x1="600" y1="140" x2="225" y2="200" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
     <line x1="600" y1="140" x2="525" y2="200" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
     <line x1="600" y1="140" x2="825" y2="200" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
-    <line x1="600" y1="140" x2="1125" y2="200" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
+    <line x1="600" y1="140" x2="1090" y2="200" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
     <line x1="600" y1="140" x2="825" y2="450" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
 
     <!-- Stream Reader to HLS & MP4 -->
     <line x1="525" y1="400" x2="825" y2="400" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
-    <path d="M525,400 Q675,440 1125,400" fill="none" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
+    <path d="M525,400 Q675,440 1090,380" fill="none" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
 
     <!-- HLS to Detection -->
     <line x1="825" y1="400" x2="525" y2="450" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
@@ -118,23 +119,23 @@
     <path d="M950,350 Q1000,375 1000,350" fill="none" stroke="#dc3545" stroke-width="1.5" stroke-dasharray="5,5" />
 
     <!-- Legend -->
-    <rect x="950" y="630" width="20" height="20" fill="#cfe2ff" stroke="#0d6efd" stroke-width="1" />
-    <text x="980" y="645" font-family="Arial" font-size="12" text-anchor="start">Web Server Thread</text>
+    <rect x="830" y="570" width="20" height="20" fill="#cfe2ff" stroke="#0d6efd" stroke-width="1" />
+    <text x="860" y="585" font-family="Arial" font-size="12" text-anchor="start">Web Server Thread</text>
 
-    <rect x="950" y="660" width="20" height="20" fill="#f8d7da" stroke="#dc3545" stroke-width="1" />
-    <text x="980" y="675" font-family="Arial" font-size="12" text-anchor="start">Stream Reader Threads</text>
+    <rect x="830" y="600" width="20" height="20" fill="#f8d7da" stroke="#dc3545" stroke-width="1" />
+    <text x="860" y="615" font-family="Arial" font-size="12" text-anchor="start">Stream Reader Threads</text>
 
-    <rect x="950" y="690" width="20" height="20" fill="#fff3cd" stroke="#ffc107" stroke-width="1" />
-    <text x="980" y="705" font-family="Arial" font-size="12" text-anchor="start">HLS Streaming Threads</text>
+    <rect x="830" y="630" width="20" height="20" fill="#fff3cd" stroke="#ffc107" stroke-width="1" />
+    <text x="860" y="645" font-family="Arial" font-size="12" text-anchor="start">HLS Streaming Threads</text>
 
-    <rect x="950" y="720" width="20" height="20" fill="#d1ecf1" stroke="#0dcaf0" stroke-width="1" />
-    <text x="980" y="735" font-family="Arial" font-size="12" text-anchor="start">MP4 Recording Threads</text>
+    <rect x="830" y="660" width="20" height="20" fill="#d1ecf1" stroke="#0dcaf0" stroke-width="1" />
+    <text x="860" y="675" font-family="Arial" font-size="12" text-anchor="start">MP4 Recording Threads</text>
 
-    <rect x="950" y="750" width="20" height="20" fill="#d1d4e3" stroke="#6610f2" stroke-width="1" />
-    <text x="980" y="765" font-family="Arial" font-size="12" text-anchor="start">Detection Threads</text>
+    <rect x="830" y="690" width="20" height="20" fill="#d1d4e3" stroke="#6610f2" stroke-width="1" />
+    <text x="860" y="705" font-family="Arial" font-size="12" text-anchor="start">Detection Threads</text>
 
-    <line x1="950" y1="780" x2="970" y2="780" stroke="#dc3545" stroke-width="1.5" stroke-dasharray="5,5" />
-    <text x="980" y="785" font-family="Arial" font-size="12" text-anchor="start">Thread Synchronization</text>
+    <line x1="830" y1="720" x2="850" y2="720" stroke="#dc3545" stroke-width="1.5" stroke-dasharray="5,5" />
+    <text x="860" y="725" font-family="Arial" font-size="12" text-anchor="start">Thread Synchronization</text>
 
     <!-- Arrowhead marker -->
     <defs>
