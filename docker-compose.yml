@@ -1,0 +1,10 @@
+services:
+  lightnvr:
+    build: .
+    container_name: lightnvr
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config:/etc/lightnvr
+      - ./recordings:/var/lib/lightnvr/recordings
