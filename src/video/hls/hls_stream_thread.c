@@ -34,122 +34,25 @@
 
 /**
  * HLS packet processing callback function
- * Removed adaptive degrading to improve quality
+ * This function is kept for backward compatibility but is no longer used
+ * in the single thread approach.
  */
 int hls_packet_callback(const AVPacket *pkt, const AVStream *stream, void *user_data) {
-    // CRITICAL FIX: Add extra validation for all parameters
-    if (!pkt) {
-        log_error("HLS packet callback received NULL packet");
-        return -1;
-    }
-    
-    if (!stream) {
-        log_error("HLS packet callback received NULL stream");
-        return -1;
-    }
-    
-    if (!user_data) {
-        log_error("HLS packet callback received NULL user_data");
-        return -1;
-    }
-    
-    // CRITICAL FIX: Create a local copy of the stream name for thread safety before locking mutex
-    hls_stream_ctx_t *streaming_ctx = (hls_stream_ctx_t *)user_data;
-    char stream_name[MAX_STREAM_NAME] = {0};
-    
-    // Safely extract the stream name first
-    if (streaming_ctx) {
-        strncpy(stream_name, streaming_ctx->config.name, MAX_STREAM_NAME - 1);
-        stream_name[MAX_STREAM_NAME - 1] = '\0';
-    } else {
-        log_error("HLS packet callback received invalid streaming context");
-        return -1;
-    }
-    
-    // Get the stream state manager
-    stream_state_manager_t *state = get_stream_state_by_name(stream_name);
-    if (state) {
-        // Check if the stream is in the process of being stopped or callbacks are disabled
-        if (is_stream_state_stopping(state)) {
-            log_debug("HLS packet callback: stream %s is stopping, skipping packet", stream_name);
-            return 0; // Return success but don't process the packet
-        }
-        
-        if (!are_stream_callbacks_enabled(state)) {
-            log_debug("HLS packet callback: callbacks disabled for stream %s, skipping packet", stream_name);
-            return 0; // Return success but don't process the packet
-        }
-    } else {
-        log_warn("HLS packet callback: could not find stream state for %s", stream_name);
-    }
-    
-    // CRITICAL FIX: Check if the streaming context is still running
-    if (!streaming_ctx->running) {
-        log_debug("HLS packet callback: streaming context for %s is no longer running, skipping packet", 
-                 stream_name);
-        return 0; // Return success but don't process the packet
-    }
-    
-    // CRITICAL FIX: Use a static mutex for thread safety during packet processing
-    static pthread_mutex_t hls_packet_mutex = PTHREAD_MUTEX_INITIALIZER;
-    pthread_mutex_lock(&hls_packet_mutex);
-    
-    int ret = 0;
-    
-    // CRITICAL FIX: Validate that the stream has a valid writer
-    if (!streaming_ctx->hls_writer) {
-        log_error("HLS packet callback: streaming context has NULL hls_writer for stream %s", 
-                 stream_name);
-        pthread_mutex_unlock(&hls_packet_mutex);
-        return 0; // Return success but don't process the packet
-    }
-    
-    // Check if this is a key frame
-    bool is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
-
-    // CRITICAL FIX: Make a local copy of the HLS writer to avoid race conditions
-    hls_writer_t *local_hls_writer = streaming_ctx->hls_writer;
-    
-    // CRITICAL FIX: Additional validation of the HLS writer
-    if (!local_hls_writer || !local_hls_writer->output_ctx) {
-        log_error("HLS packet callback: invalid HLS writer for stream %s", stream_name);
-        pthread_mutex_unlock(&hls_packet_mutex);
-        return -1;
-    }
-    
-    // CRITICAL FIX: Validate the packet and stream before processing
-    if (!pkt || !stream) {
-        log_error("HLS packet callback: invalid packet or stream for %s", stream_name);
-        pthread_mutex_unlock(&hls_packet_mutex);
-        return -1;
-    }
-    
-    // Use the state manager we already retrieved earlier
-    if (state) {
-        // Use the new state-based approach
-        ret = process_packet_with_state(state, pkt, stream, 0, local_hls_writer);
-    } else {
-        // Fall back to the adapter function which will create a state if needed
-        ret = process_video_packet_adapter(pkt, stream, local_hls_writer, 0, stream_name);
-    }
-    
-    // Only log errors for key frames to reduce log spam
-    if (ret < 0 && is_key_frame) {
-        log_error("Failed to write keyframe to HLS for stream %s: %d", stream_name, ret);
-    }
-    
-    pthread_mutex_unlock(&hls_packet_mutex);
-    return ret;
+    log_warn("HLS packet callback invoked but is no longer used in the single thread approach");
+    return 0; // Return success but don't process the packet
 }
 
 /**
  * HLS streaming thread function for a single stream
+ * Simplified implementation that uses a single thread approach with improved state management
  */
 void *hls_stream_thread(void *arg) {
     hls_stream_ctx_t *ctx = (hls_stream_ctx_t *)arg;
+    AVFormatContext *input_ctx = NULL;
+    AVPacket *pkt = NULL;
+    int video_stream_idx = -1;
     int ret;
     time_t start_time = time(NULL);  // Record when we started
-    stream_reader_ctx_t *reader_ctx = NULL;
 
     // CRITICAL FIX: Add extra validation for context
     if (!ctx) {
@@ -217,13 +120,11 @@ void *hls_stream_thread(void *arg) {
     // SIMPLIFIED APPROACH: Let FFmpeg handle manifest file creation
     // Just ensure the directory exists and is writable
     log_info("Letting FFmpeg handle HLS manifest file creation for stream %s", stream_name);
-
-    // Always use a dedicated stream reader for HLS streaming
-    // This ensures that HLS streaming doesn't interfere with detection or recording
-    log_info("Starting new dedicated stream reader for HLS stream %s", stream_name);
-    reader_ctx = start_stream_reader(stream_name, 1, NULL, NULL); // 1 for dedicated stream reader
-    if (!reader_ctx) {
-        log_error("Failed to start dedicated stream reader for %s", stream_name);
+    
+    // Get stream configuration
+    stream_handle_t stream = get_stream_by_name(stream_name);
+    if (!stream) {
+        log_error("Stream %s not found", stream_name);
         
         if (ctx->hls_writer) {
             hls_writer_close(ctx->hls_writer);
@@ -233,49 +134,67 @@ void *hls_stream_thread(void *arg) {
         ctx->running = 0;
         return NULL;
     }
-    log_info("Successfully started new dedicated stream reader for HLS stream %s", stream_name);
     
-    // CRITICAL FIX: Check if we're still running after stream reader creation
-    if (!ctx->running) {
-        log_info("HLS streaming thread for %s stopping after stream reader creation", stream_name);
+    stream_config_t config;
+    if (get_stream_config(stream, &config) != 0) {
+        log_error("Failed to get config for stream %s", stream_name);
         
         if (ctx->hls_writer) {
             hls_writer_close(ctx->hls_writer);
             ctx->hls_writer = NULL;
-        }
-        
-        if (reader_ctx) {
-            stop_stream_reader(reader_ctx);
-        }
-        
-        return NULL;
-    }
-    
-    // Store the reader context first
-    ctx->reader_ctx = reader_ctx;
-    
-    // Now set our callback - doing this separately ensures we don't have a race condition
-    // where the callback might be called before ctx->reader_ctx is set
-    if (set_packet_callback(reader_ctx, hls_packet_callback, ctx) != 0) {
-        log_error("Failed to set packet callback for stream %s", stream_name);
-        
-        if (ctx->hls_writer) {
-            hls_writer_close(ctx->hls_writer);
-            ctx->hls_writer = NULL;
-        }
-        
-        // Don't stop the reader if we didn't create it
-        if (reader_ctx->dedicated) {
-            stop_stream_reader(reader_ctx);
         }
         
         ctx->running = 0;
         return NULL;
     }
     
-    log_info("Set packet callback for HLS stream %s", stream_name);
-
-    // Main loop to monitor stream status
+    // Use the stream_protocol.h functions to open the input stream with appropriate options
+    ret = open_input_stream(&input_ctx, config.url, config.protocol);
+    if (ret < 0) {
+        log_error("Could not open input stream for %s", stream_name);
+        
+        if (ctx->hls_writer) {
+            hls_writer_close(ctx->hls_writer);
+            ctx->hls_writer = NULL;
+        }
+        
+        ctx->running = 0;
+        return NULL;
+    }
+    
+    // Find video stream
+    video_stream_idx = find_video_stream_index(input_ctx);
+    if (video_stream_idx == -1) {
+        log_error("No video stream found in %s", config.url);
+        
+        avformat_close_input(&input_ctx);
+        
+        if (ctx->hls_writer) {
+            hls_writer_close(ctx->hls_writer);
+            ctx->hls_writer = NULL;
+        }
+        
+        ctx->running = 0;
+        return NULL;
+    }
+    
+    // Initialize packet
+    pkt = av_packet_alloc();
+    if (!pkt) {
+        log_error("Failed to allocate packet");
+        
+        avformat_close_input(&input_ctx);
+        
+        if (ctx->hls_writer) {
+            hls_writer_close(ctx->hls_writer);
+            ctx->hls_writer = NULL;
+        }
+        
+        ctx->running = 0;
+        return NULL;
+    }
+    
+    // Main packet reading loop
     while (ctx->running) {
         // Check if the stream state indicates we should stop
         if (state) {
@@ -292,29 +211,79 @@ void *hls_stream_thread(void *arg) {
             }
         }
         
-        // Sleep to avoid busy waiting - reduced from 100ms to 50ms for more responsive handling
-        av_usleep(50000);  // 50ms
+        ret = av_read_frame(input_ctx, pkt);
+        
+        if (ret < 0) {
+            if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN)) {
+                // End of stream or resource temporarily unavailable
+                // Try to reconnect after a short delay
+                av_packet_unref(pkt);
+                log_warn("Stream %s disconnected, attempting to reconnect...", stream_name);
+                
+                av_usleep(2000000);  // 2 second delay
+                
+                // Close and reopen input
+                avformat_close_input(&input_ctx);
+                
+                // Use the stream_protocol.h function to reopen the input stream
+                ret = open_input_stream(&input_ctx, config.url, config.protocol);
+                if (ret < 0) {
+                    log_error("Could not reconnect to input stream for %s", stream_name);
+                    continue;  // Keep trying
+                }
+                
+                // Find video stream again
+                video_stream_idx = find_video_stream_index(input_ctx);
+                if (video_stream_idx == -1) {
+                    log_error("No video stream found after reconnect for %s", stream_name);
+                    continue;  // Keep trying
+                }
+                
+                continue;
+            } else {
+                char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+                av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+                log_error("Error reading frame: %s", error_buf);
+                break;
+            }
+        }
+        
+        // Process video packets
+        if (pkt->stream_index == video_stream_idx) {
+            // Check if this is a key frame
+            bool is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
+            
+            // Write to HLS with error handling
+            ret = hls_writer_write_packet(ctx->hls_writer, pkt, input_ctx->streams[video_stream_idx]);
+            if (ret < 0) {
+                // Only log errors for key frames to reduce log spam
+                if (is_key_frame) {
+                    char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+                    av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+                    log_error("Failed to write packet to HLS for stream %s: %s", stream_name, error_buf);
+                }
+                // Continue anyway to keep the stream going
+            }
+        }
+        
+        av_packet_unref(pkt);
     }
     
-    // CRITICAL FIX: Use a mutex to safely clear the callback
-    static pthread_mutex_t callback_mutex = PTHREAD_MUTEX_INITIALIZER;
-    pthread_mutex_lock(&callback_mutex);
-    
-    // Remove our callback from the reader but don't stop it here
-    // Let the cleanup function handle stopping the stream reader to avoid double-free
-    if (ctx->reader_ctx) {
-        set_packet_callback(ctx->reader_ctx, NULL, NULL);
-        log_info("Cleared packet callback for HLS stream %s on thread exit", stream_name);
+    // Cleanup resources
+    if (pkt) {
+        av_packet_free(&pkt);
     }
     
-    pthread_mutex_unlock(&callback_mutex);
-
+    if (input_ctx) {
+        avformat_close_input(&input_ctx);
+    }
+    
     // When done, close writer
     if (ctx->hls_writer) {
         hls_writer_close(ctx->hls_writer);
         ctx->hls_writer = NULL;
     }
-
+    
     log_info("HLS streaming thread for stream %s exited", stream_name);
     return NULL;
 }

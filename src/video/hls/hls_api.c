@@ -142,6 +142,9 @@ int start_hls_stream(const char *stream_name) {
     remove(test_file);
     log_info("Verified HLS directory is writable: %s", ctx->output_path);
 
+    // Set protocol information in the context for the hybrid approach
+    ctx->config.protocol = config.protocol;
+    
     // Start streaming thread
     if (pthread_create(&ctx->thread, NULL, hls_stream_thread, ctx) != 0) {
         free(ctx);
@@ -228,15 +231,7 @@ int stop_hls_stream(const char *stream_name) {
         return 0;
     }
 
-    // CRITICAL FIX: First clear the packet callback to prevent any further processing
-    // This must be done before marking the stream as not running to prevent race conditions
-    if (ctx->reader_ctx) {
-        log_info("Clearing packet callback for stream %s", stream_name);
-        set_packet_callback(ctx->reader_ctx, NULL, NULL);
-        
-        // CRITICAL FIX: Add a small delay to ensure any in-progress callbacks complete
-        usleep(100000); // 100ms delay - increased from 50ms for better reliability
-    }
+    // No need to clear packet callbacks since we're using a single thread approach
     
     // Now mark as not running
     ctx->running = 0;
@@ -274,14 +269,7 @@ int stop_hls_stream(const char *stream_name) {
             ctx->hls_writer = NULL;
         }
         
-        // Stop the dedicated stream reader if it exists
-        if (ctx->reader_ctx) {
-            log_info("Stopping dedicated stream reader for HLS stream %s", stream_name);
-            // CRITICAL FIX: We already cleared the callback above, so the reader should be safe to stop now
-            stop_stream_reader(ctx->reader_ctx);
-            ctx->reader_ctx = NULL;
-            log_info("Successfully stopped dedicated stream reader for HLS stream %s", stream_name);
-        }
+        // No need to stop stream reader since we're using a single thread approach
 
         // Free context and clear slot
         free(ctx);

@@ -13,7 +13,7 @@ typedef struct {
     pthread_t thread;
     char output_path[MAX_PATH_LENGTH];
     hls_writer_t *hls_writer;
-    stream_reader_ctx_t *reader_ctx;  // Stream reader context
+    // Removed reader_ctx field since we're using a single thread approach
 } hls_stream_ctx_t;
 
 // Include all HLS component headers

@@ -228,19 +228,13 @@ static void cleanup_old_segments(const char *output_dir, int max_segments) {
     free(segments);
 }
 
-/**
- * Create new HLS writer
- */
 hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name, int segment_duration) {
     // Allocate writer structure
-    hls_writer_t *writer = (hls_writer_t *)malloc(sizeof(hls_writer_t));
+    hls_writer_t *writer = (hls_writer_t *)calloc(1, sizeof(hls_writer_t));
     if (!writer) {
         log_error("Failed to allocate HLS writer");
         return NULL;
     }
-
-    // Initialize structure
-    memset(writer, 0, sizeof(hls_writer_t));
 
     // Copy output directory and stream name
     strncpy(writer->output_dir, output_dir, MAX_PATH_LENGTH - 1);
@@ -248,53 +242,14 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     writer->segment_duration = segment_duration;
     writer->last_cleanup_time = time(NULL);
 
-    // Initialize DTS tracker
-    writer->dts_tracker.initialized = 0;
-
     // Create output directory if it doesn't exist
-    // Use the configured storage path to avoid writing to overlay
     char mkdir_cmd[MAX_PATH_LENGTH + 10];
-    
-    // Ensure we're using a path within our configured storage
-    config_t *global_config = get_streaming_config();
-    char safe_output_dir[MAX_PATH_LENGTH];
-    
-    // CRITICAL FIX: Always use the consistent path structure for HLS
-    // Always use /hls/ directory without /recordings/
-    snprintf(safe_output_dir, sizeof(safe_output_dir), "%s/hls/%s", 
-            global_config->storage_path, stream_name);
-    
-    // Update the writer's output directory
-    strncpy(writer->output_dir, safe_output_dir, MAX_PATH_LENGTH - 1);
-    writer->output_dir[MAX_PATH_LENGTH - 1] = '\0';
-    output_dir = safe_output_dir;
-    
-    log_info("Using consistent HLS output directory: %s", output_dir);
-    
-    // Create the HLS directory and ensure it has proper permissions
     snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p %s", output_dir);
-    int ret_mkdir = system(mkdir_cmd);
-    if (ret_mkdir != 0) {
-        log_warn("Failed to create directory: %s (return code: %d)", output_dir, ret_mkdir);
-    }
-    
-    // Set full permissions to ensure FFmpeg can write files
+    system(mkdir_cmd);
+
+    // Set permissions
     snprintf(mkdir_cmd, sizeof(mkdir_cmd), "chmod -R 777 %s", output_dir);
     system(mkdir_cmd);
-    
-    // Also ensure the parent directory exists and is writable
-    char parent_dir[MAX_PATH_LENGTH];
-    const char *last_slash = strrchr(output_dir, '/');
-    if (last_slash) {
-        size_t parent_len = last_slash - output_dir;
-        strncpy(parent_dir, output_dir, parent_len);
-        parent_dir[parent_len] = '\0';
-        
-        snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p %s && chmod -R 777 %s", 
-                parent_dir, parent_dir);
-        system(mkdir_cmd);
-        log_info("Ensured parent directory exists with proper permissions: %s", parent_dir);
-    }
 
     // Initialize output format context for HLS
     char output_path[MAX_PATH_LENGTH];
@@ -312,79 +267,16 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
         return NULL;
     }
 
-    // Set HLS options - SIMPLIFIED APPROACH: Let FFmpeg handle HLS completely
+    // Set HLS options - use minimal reliable settings
     AVDictionary *options = NULL;
     char hls_time[16];
     snprintf(hls_time, sizeof(hls_time), "%d", segment_duration);
 
-    // Basic HLS settings
     av_dict_set(&options, "hls_time", hls_time, 0);
-    av_dict_set(&options, "hls_list_size", "10", 0);  // Keep 10 segments in the playlist
-    
-    // Let FFmpeg handle segment deletion
-    av_dict_set(&options, "hls_flags", "delete_segments+independent_segments", 0);
-    
-    // Enable caching for better playback
-    av_dict_set(&options, "hls_allow_cache", "1", 0);
-    
-    // Use standard MPEG-TS segments
-    av_dict_set(&options, "hls_segment_type", "mpegts", 0);
-    
-    // Start segment numbering from 0
-    av_dict_set(&options, "start_number", "0", 0);
-    
-    // CRITICAL FIX: Force FFmpeg to flush data to disk immediately
-    av_dict_set(&options, "flush_packets", "1", 0);
-    
-    // CRITICAL FIX: Set a shorter segment duration for faster manifest creation
-    av_dict_set(&options, "hls_init_time", "1", 0);
-    
-    // CRITICAL FIX: Force FFmpeg to create an initial segment immediately
-    av_dict_set(&options, "hls_flags", "delete_segments+independent_segments+program_date_time+append_list+discont_start+split_by_time", 0);
-    
-    // CRITICAL FIX: Force FFmpeg to write the manifest file even without segments
-    av_dict_set(&options, "hls_allow_cache", "1", 0);
-    av_dict_set(&options, "hls_segment_type", "mpegts", 0);
-    av_dict_set(&options, "hls_playlist_type", "event", 0);
-    
-    // CRITICAL FIX: Create an empty segment immediately
-    av_dict_set(&options, "empty_segments_threshold", "1", 0);
-    av_dict_set(&options, "hls_start_number_source", "epoch", 0);
-    
-    // CRITICAL FIX: Force FFmpeg to write at least one segment
-    av_dict_set(&options, "hls_segment_options", "movflags=+faststart+empty_moov", 0);
-    
-    // Ensure the directory exists with proper permissions
-    char dir_cmd[MAX_PATH_LENGTH * 2];
-    snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s && chmod -R 777 %s", output_dir, output_dir);
-    system(dir_cmd);
-    
-    // Log the HLS configuration
-    log_info("Configured HLS writer with: hls_time=%s, hls_list_size=10, flags=delete_segments+independent_segments", 
-             hls_time);
-    
-    // Also create a test segment file to ensure we can write to the directory
-    char test_segment[MAX_PATH_LENGTH];
-    snprintf(test_segment, MAX_PATH_LENGTH, "%s/test_segment.ts", output_dir);
-    FILE *test_file = fopen(test_segment, "w");
-    if (test_file) {
-        // Write some dummy data
-        fwrite("TEST", 1, 4, test_file);
-        fclose(test_file);
-        
-        // Remove the test file
-        unlink(test_segment);
-        log_info("Successfully verified segment file creation in: %s", output_dir);
-    } else {
-        log_error("Failed to create test segment file: %s (error: %s)", 
-                 test_segment, strerror(errno));
-    }
+    av_dict_set(&options, "hls_list_size", "10", 0);
+    av_dict_set(&options, "hls_flags", "delete_segments", 0);
 
-    // Remove the delete_segments flag to prevent FFmpeg from automatically deleting segments
-    // This will help prevent issues with the index.m3u8.tmp file not being able to be renamed
-    // We'll handle segment cleanup ourselves in cleanup_old_segments
-
-    // Create segment filename format string
+    // Set segment filename format
     char segment_format[MAX_PATH_LENGTH + 32];
     snprintf(segment_format, sizeof(segment_format), "%s/segment_%%d.ts", output_dir);
     av_dict_set(&options, "hls_segment_filename", segment_format, 0);
@@ -403,17 +295,12 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
         return NULL;
     }
 
-    // Free options
     av_dict_free(&options);
 
     log_info("Created HLS writer for stream %s at %s", stream_name, output_dir);
     return writer;
 }
 
-
-/**
- * Initialize HLS writer with stream information
- */
 int hls_writer_initialize(hls_writer_t *writer, const AVStream *input_stream) {
     if (!writer || !input_stream) {
         return -1;
@@ -438,24 +325,40 @@ int hls_writer_initialize(hls_writer_t *writer, const AVStream *input_stream) {
     // Set stream time base
     out_stream->time_base = input_stream->time_base;
 
-    // SIMPLIFIED APPROACH: Let FFmpeg handle HLS header creation
-    AVDictionary *header_options = NULL;
-    
-    // Write stream header with minimal options
-    ret = avformat_write_header(writer->output_ctx, &header_options);
+    // SIMPLIFIED APPROACH: Let FFmpeg handle manifest file creation
+    // Just use basic options for reliability
+    AVDictionary *options = NULL;
+
+    // Write the header
+    ret = avformat_write_header(writer->output_ctx, &options);
     if (ret < 0) {
         char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
         av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
         log_error("Failed to write HLS header: %s", error_buf);
-        av_dict_free(&header_options);
+        av_dict_free(&options);
         return ret;
     }
-    
-    // Free header options
-    av_dict_free(&header_options);
-    
-    // Log success
-    log_info("FFmpeg initialized HLS writer for stream %s", writer->stream_name);
+
+    av_dict_free(&options);
+
+    // Verify the manifest file exists - if not, create a minimal one
+    char manifest_path[MAX_PATH_LENGTH];
+    snprintf(manifest_path, sizeof(manifest_path), "%s/index.m3u8", writer->output_dir);
+
+    struct stat st;
+    if (stat(manifest_path, &st) != 0 || st.st_size == 0) {
+        // Create a minimal valid manifest as a fallback
+        FILE *fp = fopen(manifest_path, "w");
+        if (fp) {
+            fprintf(fp, "#EXTM3U\n");
+            fprintf(fp, "#EXT-X-VERSION:3\n");
+            fprintf(fp, "#EXT-X-TARGETDURATION:%d\n", writer->segment_duration);
+            fprintf(fp, "#EXT-X-MEDIA-SEQUENCE:0\n");
+            fclose(fp);
+            chmod(manifest_path, 0666);
+            log_info("Created fallback HLS manifest file");
+        }
+    }
 
     writer->initialized = 1;
     log_info("Initialized HLS writer for stream %s", writer->stream_name);
