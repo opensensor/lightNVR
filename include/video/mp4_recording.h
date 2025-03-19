@@ -13,7 +13,8 @@ typedef struct {
     pthread_t thread;
     char output_path[MAX_PATH_LENGTH];
     mp4_writer_t *mp4_writer;
-    stream_reader_ctx_t *reader_ctx;  // Stream reader context
+    // CRITICAL FIX: Removed reader_ctx field since we now use the HLS streaming thread
+    // to write packets to the MP4 file instead of a dedicated stream reader
 } mp4_recording_ctx_t;
 
 /**

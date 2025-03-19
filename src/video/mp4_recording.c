@@ -93,13 +93,15 @@ static int mp4_packet_callback(const AVPacket *pkt, const AVStream *stream, void
 
 /**
  * MP4 recording thread function for a single stream
+ * 
+ * CRITICAL FIX: Simplified to work with the new architecture where the HLS streaming thread
+ * also writes to the MP4 file. This thread now just handles file rotation and metadata updates.
  */
 static void *mp4_recording_thread(void *arg) {
     mp4_recording_ctx_t *ctx = (mp4_recording_ctx_t *)arg;
     int ret;
     time_t start_time = time(NULL);  // Record when we started
     config_t *global_config = get_streaming_config();
-    stream_reader_ctx_t *reader_ctx = NULL;
 
     log_info("Starting MP4 recording thread for stream %s", ctx->config.name);
 
@@ -169,52 +171,12 @@ static void *mp4_recording_thread(void *arg) {
     }
     
     log_info("Created MP4 writer for %s at %s", ctx->config.name, ctx->output_path);
-
-    // Always start a new dedicated stream reader for MP4 recording
-    // This ensures MP4 recording has its own stream reader with its own callback
-    reader_ctx = start_stream_reader(ctx->config.name, 1, NULL, NULL); // 1 for dedicated stream reader, no callback yet
-    if (!reader_ctx) {
-        log_error("Failed to start dedicated stream reader for %s", ctx->config.name);
-        
-        if (ctx->mp4_writer) {
-            mp4_writer_close(ctx->mp4_writer);
-            ctx->mp4_writer = NULL;
-        }
-        
-        // Unregister the MP4 writer if it was registered
-        unregister_mp4_writer_for_stream(ctx->config.name);
-        
-        ctx->running = 0;
-        return NULL;
-    }
     
-    // Store the reader context
-    ctx->reader_ctx = reader_ctx;
-    
-    // Now set the callback - doing this separately ensures we don't have a race condition
-    // where the callback might be called before ctx->reader_ctx is set
-    if (set_packet_callback(reader_ctx, mp4_packet_callback, ctx) != 0) {
-        log_error("Failed to set packet callback for MP4 recording of stream %s", ctx->config.name);
-        
-        // Clean up resources
-        stop_stream_reader(reader_ctx);
-        
-        if (ctx->mp4_writer) {
-            mp4_writer_close(ctx->mp4_writer);
-            ctx->mp4_writer = NULL;
-        }
-        
-        // Unregister the MP4 writer if it was registered
-        unregister_mp4_writer_for_stream(ctx->config.name);
-        
-        ctx->running = 0;
-        return NULL;
-    }
-    
-    log_info("Started new dedicated stream reader for MP4 recording of stream %s", ctx->config.name);
-    
-    // Register the MP4 writer so it can be accessed by other parts of the system
+    // CRITICAL FIX: Register the MP4 writer so the HLS streaming thread can access it
+    // This is the key change - instead of using a dedicated stream reader, we rely on
+    // the HLS streaming thread to write packets to the MP4 file
     register_mp4_writer_for_stream(ctx->config.name, ctx->mp4_writer);
+    log_info("Registered MP4 writer for stream %s - HLS thread will write packets to it", ctx->config.name);
 
     // Variables for periodic updates
     time_t last_update = 0;
@@ -253,13 +215,14 @@ static void *mp4_recording_thread(void *arg) {
             mp4_writer_t *new_writer = mp4_writer_create(ctx->output_path, ctx->config.name);
             if (!new_writer) {
                 log_error("Failed to create new MP4 writer for stream %s during rotation", ctx->config.name);
-                // Wait a bit before trying again - reduced from 1s to 500ms
+                
+                // Re-register the old writer since we couldn't create a new one
+                register_mp4_writer_for_stream(ctx->config.name, old_writer);
+                
+                // Wait a bit before trying again
                 av_usleep(500000);  // 500ms delay
                 continue; // Try again on next iteration
             }
-            
-            // First unregister the current MP4 writer
-            unregister_mp4_writer_for_stream(ctx->config.name);
             
             // Register the new MP4 writer
             if (register_mp4_writer_for_stream(ctx->config.name, new_writer) != 0) {
@@ -271,7 +234,7 @@ static void *mp4_recording_thread(void *arg) {
                 // Re-register the old writer
                 register_mp4_writer_for_stream(ctx->config.name, old_writer);
                 
-                // Wait a bit before trying again - reduced from 1s to 500ms
+                // Wait a bit before trying again
                 av_usleep(500000);  // 500ms delay
                 continue; // Try again on next iteration
             }
@@ -296,13 +259,8 @@ static void *mp4_recording_thread(void *arg) {
             last_update = now;
         }
         
-        // Sleep to avoid busy waiting - reduced from 100ms to 50ms for more responsive handling
+        // Sleep to avoid busy waiting
         av_usleep(50000);  // 50ms
-    }
-    
-    // Remove our callback from the reader
-    if (ctx->reader_ctx) {
-        set_packet_callback(ctx->reader_ctx, NULL, NULL);
     }
 
     // When done, close writer

@@ -25,12 +25,17 @@
 #include "video/stream_transcoding.h"
 #include "video/stream_reader.h"
 #include "video/detection_stream.h"
+#include "video/detection_integration.h"
 #include "video/stream_packet_processor.h"
 #include "video/thread_utils.h"
 #include "video/timestamp_manager.h"
 #include "video/hls/hls_context.h"
 #include "video/hls/hls_stream_thread.h"
 #include "video/hls/hls_directory.h"
+#include "video/mp4_recording.h"
+
+// Forward declaration of the detection function from hls_writer.c
+extern void process_packet_for_detection(const char *stream_name, const AVPacket *pkt, const AVCodecParameters *codec_params);
 
 /**
  * HLS packet processing callback function
@@ -248,23 +253,48 @@ void *hls_stream_thread(void *arg) {
             }
         }
         
-        // Process video packets
-        if (pkt->stream_index == video_stream_idx) {
-            // Check if this is a key frame
-            bool is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
-            
-            // Write to HLS with error handling
-            ret = hls_writer_write_packet(ctx->hls_writer, pkt, input_ctx->streams[video_stream_idx]);
-            if (ret < 0) {
-                // Only log errors for key frames to reduce log spam
-                if (is_key_frame) {
-                    char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
-                    av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-                    log_error("Failed to write packet to HLS for stream %s: %s", stream_name, error_buf);
+            // Process video packets
+            if (pkt->stream_index == video_stream_idx) {
+                // Check if this is a key frame
+                bool is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
+                
+                // Write to HLS with error handling
+                ret = hls_writer_write_packet(ctx->hls_writer, pkt, input_ctx->streams[video_stream_idx]);
+                if (ret < 0) {
+                    // Only log errors for key frames to reduce log spam
+                    if (is_key_frame) {
+                        char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+                        av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+                        log_error("Failed to write packet to HLS for stream %s: %s", stream_name, error_buf);
+                    }
+                    // Continue anyway to keep the stream going
                 }
-                // Continue anyway to keep the stream going
+                
+                // CRITICAL FIX: Also write to MP4 if there's a registered MP4 writer for this stream
+                // This ensures MP4 recording works with the new HLS streaming architecture
+                mp4_writer_t *mp4_writer = get_mp4_writer_for_stream(stream_name);
+                if (mp4_writer) {
+                    ret = mp4_writer_write_packet(mp4_writer, pkt, input_ctx->streams[video_stream_idx]);
+                    if (ret < 0) {
+                        // Only log errors for key frames to reduce log spam
+                        if (is_key_frame) {
+                            char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+                            av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+                            log_error("Failed to write packet to MP4 for stream %s: %s", stream_name, error_buf);
+                        }
+                        // Continue anyway to keep the stream going
+                    } else if (is_key_frame) {
+                        log_debug("Successfully wrote key frame to MP4 for stream %s", stream_name);
+                    }
+                }
+                
+                // Process packet for detection if it's a key frame
+                // This ensures we don't overload the detection system with too many frames
+                if (is_key_frame && process_packet_for_detection) {
+                    log_debug("Processing key frame for detection for stream %s", stream_name);
+                    process_packet_for_detection(stream_name, pkt, input_ctx->streams[video_stream_idx]->codecpar);
+                }
             }
-        }
         
         av_packet_unref(pkt);
     }

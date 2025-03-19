@@ -16,7 +16,8 @@
 #include "video/streams.h"
 
 // Direct detection processing function - no thread needed
-static void process_packet_for_detection(const char *stream_name, const AVPacket *pkt, const AVCodecParameters *codec_params) {
+// Made non-static so it can be used from hls_stream_thread.c
+void process_packet_for_detection(const char *stream_name, const AVPacket *pkt, const AVCodecParameters *codec_params) {
     // CRITICAL FIX: Add extra validation for all parameters
     if (!stream_name || !pkt || !codec_params) {
         log_error("Invalid parameters in process_packet_for_detection: stream_name=%p, pkt=%p, codec_params=%p",
