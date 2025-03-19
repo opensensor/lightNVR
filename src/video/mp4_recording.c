@@ -330,6 +330,18 @@ int start_mp4_recording(const char *stream_name) {
             return 0;  // Already running
         }
     }
+    
+    // CRITICAL FIX: Ensure HLS streaming is started for this stream
+    // This is necessary because the MP4 recording relies on the HLS streaming thread
+    // to write packets to the MP4 file
+    extern int start_hls_stream(const char *stream_name);
+    int hls_result = start_hls_stream(stream_name);
+    if (hls_result != 0) {
+        log_warn("Failed to start HLS streaming for MP4 recording of stream %s", stream_name);
+        // Continue anyway, as the HLS streaming might already be running
+    } else {
+        log_info("Started HLS streaming for MP4 recording of stream %s", stream_name);
+    }
 
     // Find empty slot
     int slot = -1;
@@ -599,6 +611,9 @@ void unregister_mp4_writer_for_stream(const char *stream_name) {
 
     pthread_mutex_unlock(&mp4_writers_mutex);
 }
+
+// The get_recording_state function is already defined in src/video/recording.c
+// We'll use that implementation instead of defining it here
 
 /**
  * Close all MP4 writers during shutdown

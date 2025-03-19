@@ -72,4 +72,7 @@ void unregister_mp4_writer_for_stream(const char *stream_name);
  */
 void close_all_mp4_writers(void);
 
+// The get_recording_state function is already defined in src/video/recording.c
+// We'll use that implementation instead of defining it here
+
 #endif /* MP4_RECORDING_H */

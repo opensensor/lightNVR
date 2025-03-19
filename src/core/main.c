@@ -192,6 +192,9 @@ static int daemonize(const char *pid_file) {
     return 0;
 }
 
+// Function to check and ensure recording is active for streams that have recording enabled
+static void check_and_ensure_recording(void);
+
 // Add this to src/core/main.c after initializing the stream manager
 static void load_streams_from_config(const config_t *config) {
     for (int i = 0; i < config->max_streams; i++) {
@@ -208,10 +211,18 @@ static void load_streams_from_config(const config_t *config) {
                         
                         // Start recording if record flag is set
                         if (config->streams[i].record) {
+                            // Start HLS streaming for the stream
                             if (start_hls_stream(config->streams[i].name) == 0) {
-                                log_info("Recording started for stream: %s", config->streams[i].name);
+                                log_info("HLS streaming started for stream: %s", config->streams[i].name);
                             } else {
-                                log_warn("Failed to start recording for stream: %s", config->streams[i].name);
+                                log_warn("Failed to start HLS streaming for stream: %s", config->streams[i].name);
+                            }
+                            
+                            // Also start MP4 recording for the stream, regardless of HLS streaming status
+                            if (start_mp4_recording(config->streams[i].name) == 0) {
+                                log_info("MP4 recording started for stream: %s", config->streams[i].name);
+                            } else {
+                                log_warn("Failed to start MP4 recording for stream: %s", config->streams[i].name);
                             }
                         }
                     } else {
@@ -569,6 +580,7 @@ int main(int argc, char *argv[]) {
         // Log that the daemon is still running (maybe once per minute)
         static time_t last_log_time = 0;
         static time_t last_status_time = 0;
+        static time_t last_recording_check_time = 0;
         time_t now = time(NULL);
         
         if (now - last_log_time > 60) {
@@ -580,6 +592,12 @@ int main(int argc, char *argv[]) {
         if (now - last_status_time > 300) {
             print_detection_stream_status();
             last_status_time = now;
+        }
+        
+        // Check and ensure recording is active every minute
+        if (now - last_recording_check_time > 60) {
+            check_and_ensure_recording();
+            last_recording_check_time = now;
         }
 
         // Process events, monitor system health, etc.
@@ -767,4 +785,34 @@ cleanup:
     shutdown_logger();
 
     return EXIT_SUCCESS;
+}
+
+/**
+ * Function to check and ensure recording is active for streams that have recording enabled
+ */
+static void check_and_ensure_recording(void) {
+    for (int i = 0; i < config.max_streams; i++) {
+        if (config.streams[i].name[0] != '\0' && config.streams[i].enabled && config.streams[i].record) {
+            // Check if MP4 recording is active for this stream
+            int recording_state = get_recording_state(config.streams[i].name);
+            
+            if (recording_state == 0) {
+                // Recording is not active, start it
+                log_info("Ensuring MP4 recording is active for stream: %s", config.streams[i].name);
+                
+                // First ensure HLS streaming is active (required for MP4 recording)
+                if (start_hls_stream(config.streams[i].name) != 0) {
+                    log_warn("Failed to start HLS streaming for stream: %s", config.streams[i].name);
+                    // Continue anyway, as the HLS streaming might already be running
+                }
+                
+                // Start MP4 recording
+                if (start_mp4_recording(config.streams[i].name) != 0) {
+                    log_warn("Failed to start MP4 recording for stream: %s", config.streams[i].name);
+                } else {
+                    log_info("Successfully started MP4 recording for stream: %s", config.streams[i].name);
+                }
+            }
+        }
+    }
 }

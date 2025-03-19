@@ -241,10 +241,19 @@ void handle_post_stream(const http_request_t *request, http_response_t *response
             // Start recording if record flag is set
             if (config.record) {
                 log_info("Starting recording for stream: %s", config.name);
+                
+                // Start HLS streaming
                 if (start_hls_stream(config.name) == 0) {
-                    log_info("Recording started for stream: %s", config.name);
+                    log_info("HLS streaming started for stream: %s", config.name);
                 } else {
-                    log_warn("Failed to start recording for stream: %s", config.name);
+                    log_warn("Failed to start HLS streaming for stream: %s", config.name);
+                }
+                
+                // Also start MP4 recording, regardless of HLS streaming status
+                if (start_mp4_recording(config.name) == 0) {
+                    log_info("MP4 recording started for stream: %s", config.name);
+                } else {
+                    log_warn("Failed to start MP4 recording for stream: %s", config.name);
                 }
             }
         }
@@ -505,10 +514,19 @@ void handle_put_stream(const http_request_t *request, http_response_t *response)
             // Start recording if record flag is set
             if (config.record) {
                 log_info("Starting recording for stream: %s", config.name);
+                
+                // Start HLS streaming
                 if (start_hls_stream(config.name) == 0) {
-                    log_info("Recording started for stream: %s", config.name);
+                    log_info("HLS streaming started for stream: %s", config.name);
                 } else {
-                    log_warn("Failed to start recording for stream: %s", config.name);
+                    log_warn("Failed to start HLS streaming for stream: %s", config.name);
+                }
+                
+                // Also start MP4 recording, regardless of HLS streaming status
+                if (start_mp4_recording(config.name) == 0) {
+                    log_info("MP4 recording started for stream: %s", config.name);
+                } else {
+                    log_warn("Failed to start MP4 recording for stream: %s", config.name);
                 }
             }
         }
@@ -944,9 +962,10 @@ void handle_toggle_streaming(const http_request_t *request, http_response_t *res
         }
     }
     
-    // If recording was enabled, ensure it stays enabled regardless of streaming state
+    // Always check recording settings regardless of streaming state
+    // This ensures recording is active based on the stream's record flag
     if (recording_enabled) {
-        log_info("Ensuring recording remains active for stream %s", decoded_name);
+        log_info("Ensuring recording is active for stream %s based on record flag", decoded_name);
         
         // Check current recording state
         int recording_state = get_recording_state(decoded_name);
@@ -965,6 +984,8 @@ void handle_toggle_streaming(const http_request_t *request, http_response_t *res
         } else {
             log_warn("Could not determine recording state for stream %s", decoded_name);
         }
+    } else {
+        log_info("Recording is not enabled for stream %s", decoded_name);
     }
     
     // Create success response
