@@ -15,6 +15,10 @@
 #include "video/detection_integration.h"
 #include "video/streams.h"
 
+// Forward declarations from detection_stream.c
+extern int is_detection_stream_reader_running(const char *stream_name);
+extern int get_detection_interval(const char *stream_name);
+
 // Direct detection processing function - no thread needed
 // Made non-static so it can be used from hls_stream_thread.c
 void process_packet_for_detection(const char *stream_name, const AVPacket *pkt, const AVCodecParameters *codec_params) {
@@ -22,6 +26,12 @@ void process_packet_for_detection(const char *stream_name, const AVPacket *pkt, 
     if (!stream_name || !pkt || !codec_params) {
         log_error("Invalid parameters in process_packet_for_detection: stream_name=%p, pkt=%p, codec_params=%p",
                  (void*)stream_name, (void*)pkt, (void*)codec_params);
+        return;
+    }
+    
+    // CRITICAL FIX: Check if detection is enabled for this stream
+    if (!is_detection_stream_reader_running(stream_name)) {
+        // Detection is not enabled for this stream, skip processing
         return;
     }
     
@@ -98,10 +108,10 @@ void process_packet_for_detection(const char *stream_name, const AVPacket *pkt, 
     int ret = avcodec_receive_frame(codec_ctx, frame);
     if (ret >= 0) {
         // Process the decoded frame for detection
-        // Use a smaller detection interval (15) to improve detection quality
-        // while still maintaining reasonable performance
-        int detection_interval = 15;
-        log_debug("Sending decoded frame to detection integration for stream %s", stream_name);
+        // Get the detection interval from the detection stream configuration
+        int detection_interval = get_detection_interval(stream_name);
+        log_debug("Sending decoded frame to detection integration for stream %s (interval: %d)", 
+                 stream_name, detection_interval);
         
         // CRITICAL FIX: Check if process_decoded_frame_for_detection is available
         if (process_decoded_frame_for_detection) {

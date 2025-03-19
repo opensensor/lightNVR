@@ -57,6 +57,9 @@ void init_detection_stream_system(void) {
 
 /**
  * Shutdown detection stream system
+ * 
+ * CRITICAL FIX: Modified to work with the new architecture where the HLS streaming thread
+ * handles detection instead of using a dedicated stream reader.
  */
 void shutdown_detection_stream_system(void) {
     log_info("Shutting down detection stream system...");
@@ -65,29 +68,19 @@ void shutdown_detection_stream_system(void) {
     for (int i = 0; i < MAX_STREAMS; i++) {
         pthread_mutex_lock(&detection_streams[i].mutex);
         
-        // Store a local copy of the reader context and stream name
-        stream_reader_ctx_t *reader_ctx = detection_streams[i].reader_ctx;
-        char stream_name[MAX_STREAM_NAME] = {0};
-        
+        // Log active detection streams
         if (detection_streams[i].stream_name[0] != '\0') {
-            strncpy(stream_name, detection_streams[i].stream_name, MAX_STREAM_NAME - 1);
+            log_info("Disabling detection for stream %s during shutdown", 
+                    detection_streams[i].stream_name);
         }
         
-        // Clear the reference in the detection stream structure first
+        // Clear the detection stream data
         detection_streams[i].reader_ctx = NULL;
         detection_streams[i].stream_name[0] = '\0';
         detection_streams[i].detection_interval = 0;
         detection_streams[i].frame_counter = 0;
         
         pthread_mutex_unlock(&detection_streams[i].mutex);
-        
-        // Now stop the stream reader outside of any locks to prevent deadlocks
-        if (reader_ctx) {
-            log_info("Stopping stream reader for detection on stream %s during shutdown", 
-                    stream_name[0] != '\0' ? stream_name : "unknown");
-            stop_stream_reader(reader_ctx);
-            log_info("Successfully stopped stream reader for detection during shutdown");
-        }
         
         // Destroy the mutex
         pthread_mutex_destroy(&detection_streams[i].mutex);
@@ -212,12 +205,15 @@ static int detection_packet_callback(const AVPacket *pkt, const AVStream *stream
 /**
  * Start a detection stream reader for a stream
  * 
+ * CRITICAL FIX: Modified to work with the new architecture where the HLS streaming thread
+ * handles detection instead of using a dedicated stream reader.
+ * 
  * @param stream_name The name of the stream
  * @param detection_interval How often to process frames (e.g., every 10 frames)
  * @return 0 on success, -1 on error
  */
 int start_detection_stream_reader(const char *stream_name, int detection_interval) {
-    log_info("Starting detection stream reader for stream %s with interval %d", 
+    log_info("Starting detection for stream %s with interval %d (using HLS streaming thread)", 
              stream_name, detection_interval);
     if (!stream_name) {
         log_error("Invalid stream name for start_detection_stream_reader");
@@ -241,61 +237,46 @@ int start_detection_stream_reader(const char *stream_name, int detection_interva
                 slot = i;
             }
         } else if (strcmp(detection_streams[i].stream_name, stream_name) == 0) {
-            // Stream already has a detection stream reader, update it
+            // Stream already has detection enabled, update it
             slot = i;
             break;
         }
     }
     
     if (slot == -1) {
-        log_error("No available slots for detection stream reader");
+        log_error("No available slots for detection");
         pthread_mutex_unlock(&detection_streams_mutex);
         return -1;
     }
     
     pthread_mutex_lock(&detection_streams[slot].mutex);
     
-    // If there's an existing stream reader, stop it
-    if (detection_streams[slot].reader_ctx) {
-        stop_stream_reader(detection_streams[slot].reader_ctx);
-        detection_streams[slot].reader_ctx = NULL;
-    }
+    // CRITICAL FIX: No longer need to start a dedicated stream reader
+    // Just store the detection configuration
     
     // Initialize detection stream
     strncpy(detection_streams[slot].stream_name, stream_name, MAX_STREAM_NAME - 1);
     detection_streams[slot].detection_interval = detection_interval;
     detection_streams[slot].frame_counter = 0;
     
-    // Start a dedicated stream reader for detection
-    detection_streams[slot].reader_ctx = start_stream_reader(
-        stream_name, 
-        1, // dedicated stream reader
-        detection_packet_callback, 
-        &detection_streams[slot]
-    );
+    // CRITICAL FIX: Set reader_ctx to a non-NULL value to indicate detection is enabled
+    // This is just a marker, we don't actually use the reader
+    detection_streams[slot].reader_ctx = (stream_reader_ctx_t*)1;
     
-    if (!detection_streams[slot].reader_ctx) {
-        log_error("Failed to start stream reader for detection on stream %s", stream_name);
-        detection_streams[slot].stream_name[0] = '\0';
-        pthread_mutex_unlock(&detection_streams[slot].mutex);
-        pthread_mutex_unlock(&detection_streams_mutex);
-        return -1;
-    }
-    
-    // Verify the reader is running
-    log_info("Detection stream reader created for %s, verifying it's running...", stream_name);
+    log_info("Detection enabled for stream %s with interval %d", 
+             stream_name, detection_interval);
     
     pthread_mutex_unlock(&detection_streams[slot].mutex);
     pthread_mutex_unlock(&detection_streams_mutex);
-    
-    log_info("Started detection stream reader for stream %s with interval %d", 
-             stream_name, detection_interval);
     
     return 0;
 }
 
 /**
  * Stop a detection stream reader for a stream
+ * 
+ * CRITICAL FIX: Modified to work with the new architecture where the HLS streaming thread
+ * handles detection instead of using a dedicated stream reader.
  * 
  * @param stream_name The name of the stream
  * @return 0 on success, -1 on error
@@ -306,7 +287,7 @@ int stop_detection_stream_reader(const char *stream_name) {
         return -1;
     }
     
-    log_info("Attempting to stop detection stream reader for stream %s", stream_name);
+    log_info("Disabling detection for stream %s", stream_name);
     
     pthread_mutex_lock(&detection_streams_mutex);
     
@@ -321,20 +302,17 @@ int stop_detection_stream_reader(const char *stream_name) {
     }
     
     if (slot == -1) {
-        log_warn("No detection stream found for stream %s", stream_name);
+        log_warn("No detection configuration found for stream %s", stream_name);
         pthread_mutex_unlock(&detection_streams_mutex);
         return -1;
     }
     
     pthread_mutex_lock(&detection_streams[slot].mutex);
     
-    // Store a local copy of the reader context
-    stream_reader_ctx_t *reader_ctx = detection_streams[slot].reader_ctx;
-    
-    // Clear the reference in the detection stream structure first
-    detection_streams[slot].reader_ctx = NULL;
+    // CRITICAL FIX: No need to stop a stream reader, just clear the configuration
     
     // Clear the detection stream data
+    detection_streams[slot].reader_ctx = NULL;
     detection_streams[slot].stream_name[0] = '\0';
     detection_streams[slot].detection_interval = 0;
     detection_streams[slot].frame_counter = 0;
@@ -342,14 +320,7 @@ int stop_detection_stream_reader(const char *stream_name) {
     pthread_mutex_unlock(&detection_streams[slot].mutex);
     pthread_mutex_unlock(&detection_streams_mutex);
     
-    // Now stop the stream reader outside of any locks to prevent deadlocks
-    if (reader_ctx) {
-        log_info("Stopping stream reader for detection on stream %s", stream_name);
-        stop_stream_reader(reader_ctx);
-        log_info("Successfully stopped stream reader for detection on stream %s", stream_name);
-    }
-    
-    log_info("Stopped detection stream reader for stream %s", stream_name);
+    log_info("Detection disabled for stream %s", stream_name);
     
     return 0;
 }
@@ -380,6 +351,35 @@ int is_detection_stream_reader_running(const char *stream_name) {
     pthread_mutex_unlock(&detection_streams_mutex);
     
     return 0;
+}
+
+/**
+ * Get the detection interval for a stream
+ * 
+ * @param stream_name The name of the stream
+ * @return The detection interval, or 15 (default) if not found
+ */
+int get_detection_interval(const char *stream_name) {
+    if (!stream_name) {
+        return 15; // Default interval
+    }
+    
+    pthread_mutex_lock(&detection_streams_mutex);
+    
+    // Find the detection stream for this stream
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (detection_streams[i].stream_name[0] != '\0' && 
+            strcmp(detection_streams[i].stream_name, stream_name) == 0 &&
+            detection_streams[i].reader_ctx != NULL) {
+            int interval = detection_streams[i].detection_interval;
+            pthread_mutex_unlock(&detection_streams_mutex);
+            return interval > 0 ? interval : 15; // Use default if interval is invalid
+        }
+    }
+    
+    pthread_mutex_unlock(&detection_streams_mutex);
+    
+    return 15; // Default interval
 }
 
 /**
