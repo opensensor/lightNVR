@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <time.h>
 #include "core/config.h"
 
 // Stream status enum
