@@ -10,7 +10,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  # We'll set the image name in the steps
 
 jobs:
   build:
@@ -24,6 +24,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+
+      - name: Set lowercase image name
+        id: image-name
+        run: echo "LOWERCASE_IMAGE_NAME=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
       - name: Setup Docker buildx
         uses: docker/setup-buildx-action@v3
@@ -42,7 +46,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ env.LOWERCASE_IMAGE_NAME }}
 
       - name: Build and push Docker image
         id: build-and-push
@@ -50,5 +54,5 @@ jobs:
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          tags: ${{ steps.meta.outputs.tags }},${{ env.REGISTRY }}/${{ env.LOWERCASE_IMAGE_NAME }}:latest
           labels: ${{ steps.meta.outputs.labels }}
