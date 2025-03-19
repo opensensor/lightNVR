@@ -267,15 +267,23 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
         return NULL;
     }
 
-    // Set HLS options - use minimal reliable settings
+    // Set HLS options - use more robust settings for better compatibility
     AVDictionary *options = NULL;
     char hls_time[16];
     snprintf(hls_time, sizeof(hls_time), "%d", segment_duration);
 
+    // Basic HLS settings
     av_dict_set(&options, "hls_time", hls_time, 0);
     av_dict_set(&options, "hls_list_size", "10", 0);
-    av_dict_set(&options, "hls_flags", "delete_segments", 0);
-
+    av_dict_set(&options, "hls_flags", "delete_segments+program_date_time", 0);
+    
+    // Add additional options for better compatibility
+    av_dict_set(&options, "hls_allow_cache", "1", 0);
+    av_dict_set(&options, "start_number", "0", 0);
+    
+    // Ensure FFmpeg creates a proper manifest
+    av_dict_set(&options, "hls_playlist_type", "event", 0);
+    
     // Set segment filename format
     char segment_format[MAX_PATH_LENGTH + 32];
     snprintf(segment_format, sizeof(segment_format), "%s/segment_%%d.ts", output_dir);
@@ -341,24 +349,9 @@ int hls_writer_initialize(hls_writer_t *writer, const AVStream *input_stream) {
 
     av_dict_free(&options);
 
-    // Verify the manifest file exists - if not, create a minimal one
-    char manifest_path[MAX_PATH_LENGTH];
-    snprintf(manifest_path, sizeof(manifest_path), "%s/index.m3u8", writer->output_dir);
-
-    struct stat st;
-    if (stat(manifest_path, &st) != 0 || st.st_size == 0) {
-        // Create a minimal valid manifest as a fallback
-        FILE *fp = fopen(manifest_path, "w");
-        if (fp) {
-            fprintf(fp, "#EXTM3U\n");
-            fprintf(fp, "#EXT-X-VERSION:3\n");
-            fprintf(fp, "#EXT-X-TARGETDURATION:%d\n", writer->segment_duration);
-            fprintf(fp, "#EXT-X-MEDIA-SEQUENCE:0\n");
-            fclose(fp);
-            chmod(manifest_path, 0666);
-            log_info("Created fallback HLS manifest file");
-        }
-    }
+    // SIMPLIFIED APPROACH: Let FFmpeg handle manifest file creation completely
+    // Remove the fallback mechanism as it might interfere with FFmpeg's own manifest creation
+    log_info("Letting FFmpeg handle manifest file creation for stream %s", writer->stream_name);
 
     writer->initialized = 1;
     log_info("Initialized HLS writer for stream %s", writer->stream_name);
