@@ -245,11 +245,11 @@ int is_detection_stream_reader_running(const char *stream_name) {
  * Get the detection interval for a stream
  * 
  * @param stream_name The name of the stream
- * @return The detection interval, or 15 (default) if not found
+ * @return The detection interval, or an appropriate default if not found
  */
 int get_detection_interval(const char *stream_name) {
     if (!stream_name) {
-        return 15; // Default interval
+        return 20; // Default interval for embedded devices
     }
     
     pthread_mutex_lock(&detection_streams_mutex);
@@ -261,13 +261,32 @@ int get_detection_interval(const char *stream_name) {
             detection_streams[i].reader_ctx != NULL) {
             int interval = detection_streams[i].detection_interval;
             pthread_mutex_unlock(&detection_streams_mutex);
-            return interval > 0 ? interval : 15; // Use default if interval is invalid
+            
+            // If interval is invalid, use appropriate default
+            if (interval <= 0) {
+                // Check if we're likely on an embedded device based on stream name
+                // This is a heuristic - embedded devices often have "cam" in the name
+                if (strstr(stream_name, "cam") || strstr(stream_name, "Cam") || 
+                    strstr(stream_name, "CAM") || strstr(stream_name, "embedded")) {
+                    return 20; // Higher interval (process fewer frames) for embedded devices
+                } else {
+                    return 15; // Standard interval for desktop/server
+                }
+            }
+            
+            return interval;
         }
     }
     
     pthread_mutex_unlock(&detection_streams_mutex);
     
-    return 15; // Default interval
+    // Check if we're likely on an embedded device based on stream name
+    if (strstr(stream_name, "cam") || strstr(stream_name, "Cam") || 
+        strstr(stream_name, "CAM") || strstr(stream_name, "embedded")) {
+        return 20; // Higher interval for embedded devices
+    }
+    
+    return 15; // Standard interval for desktop/server
 }
 
 /**

@@ -536,8 +536,8 @@ void unload_detection_model(detection_model_t model) {
 }
 
 /**
- * Run detection on a frame, specifically optimized for face detection
- * This implementation exactly matches the SOD image loading process
+ * Run detection on a frame with optimized handling for pre-planarized data
+ * This implementation accepts data that's already been converted to planar format
  */
 int detect_objects(detection_model_t model, const unsigned char *frame_data,
                   int width, int height, int channels, detection_result_t *result) {
@@ -562,7 +562,6 @@ int detect_objects(detection_model_t model, const unsigned char *frame_data,
 
 #ifdef SOD_ENABLED
         // Create a color image from the frame data
-        // IMPORTANT: Follow the exact approach used in sod_img_load_from_file()
         log_info("Creating SOD image: %dx%d with %d channels", width, height, channels);
         sod_img sod_image = sod_make_image(width, height, channels);
         if (!sod_image.data) {
@@ -570,38 +569,61 @@ int detect_objects(detection_model_t model, const unsigned char *frame_data,
             return -1;
         }
 
-        // Convert pixel data with the SAME algorithm as sod_img_load_from_file()
-        // This converts from interleaved (RGB RGB) to planar (RRR GGG BBB) format
-        log_info("Converting frame data to SOD image format (planar)");
-        for (int c_idx = 0; c_idx < channels; c_idx++) {
-            for (int y = 0; y < height; y++) {
-                for (int x = 0; x < width; x++) {
-                    // Destination index in planar format (RRR..., GGG..., BBB...)
-                    int dst_index = x + width * y + width * height * c_idx;
+        // Process pre-planarized data - data is already in planar format (RRR... GGG... BBB...)
+        log_info("Processing pre-planarized frame data");
 
-                    // Source index in interleaved format (RGB, RGB, RGB...)
-                    int src_index = c_idx + channels * x + channels * width * y;
+        // Calculate plane size
+        int plane_size = width * height;
 
-                    // Normalize to 0-1 range like SOD does
-                    sod_image.data[dst_index] = (float)frame_data[src_index] / 255.0f;
-                }
+        // IMPORTANT: Check the color channel order with detailed logging
+        log_info("Raw input sample (first 3 pixels):");
+        log_info("Pixel 0: R=%d, G=%d, B=%d",
+                frame_data[0], frame_data[plane_size], frame_data[2 * plane_size]);
+        log_info("Pixel 1: R=%d, G=%d, B=%d",
+                frame_data[1], frame_data[plane_size + 1], frame_data[2 * plane_size + 1]);
+        log_info("Pixel 2: R=%d, G=%d, B=%d",
+                frame_data[2], frame_data[plane_size + 2], frame_data[2 * plane_size + 2]);
+
+        // Verify if we need to swap BGR to RGB (many CNN models expect RGB)
+        bool swap_channels = false;
+        // Detect if our input might actually be BGR instead of RGB
+        // by checking if B values are consistently higher than R values which is uncommon in real scenes
+        int r_sum = 0, b_sum = 0;
+        for (int i = 0; i < 20 && i < width; i++) {
+            r_sum += frame_data[i];
+            b_sum += frame_data[2 * plane_size + i];
+        }
+        if (b_sum > r_sum * 1.3) {
+            log_info("Detected possible BGR order instead of RGB, swapping channels");
+            swap_channels = true;
+        }
+
+        // Process each plane - R plane, G plane, B plane (or BGR if swapped)
+        for (int c = 0; c < channels; c++) {
+            // Determine source channel based on possible swap
+            int src_c = swap_channels ? (channels - 1 - c) : c;
+
+            // Determine start of this plane in the source data
+            const unsigned char *plane_start = frame_data + (src_c * plane_size);
+
+            // Determine start of this plane in SOD image
+            float *sod_plane_start = sod_image.data + (c * plane_size);
+
+            // Copy and normalize each value in this plane
+            for (int i = 0; i < plane_size; i++) {
+                sod_plane_start[i] = (float)plane_start[i] / 255.0f;
             }
         }
 
-        // Debug: log a sample of pixels to verify format
-        log_info("Sample of normalized image data (first 5 pixels):");
-        for (int i = 0; i < 5 && i < width; i++) {
-            if (channels >= 3) {
-                // In planar format, R values are first, then G, then B
-                int r_idx = i;                          // First part of the buffer has all R values
-                int g_idx = i + width * height;         // Second part has all G values
-                int b_idx = i + 2 * width * height;     // Third part has all B values
+        // Debug: log a sample of pixels to verify format after normalization
+        log_info("Sample of normalized image data (first 3 pixels):");
+        for (int i = 0; i < 3 && i < width; i++) {
+            int r_idx = i;                          // First part of the buffer has all R values
+            int g_idx = i + width * height;         // Second part has all G values
+            int b_idx = i + 2 * width * height;     // Third part has all B values
 
-                log_info("Pixel %d: R=%.3f, G=%.3f, B=%.3f",
-                        i, sod_image.data[r_idx], sod_image.data[g_idx], sod_image.data[b_idx]);
-            } else {
-                log_info("Pixel %d: %.3f", i, sod_image.data[i]);
-            }
+            log_info("Pixel %d: R=%.3f, G=%.3f, B=%.3f (normalized)",
+                    i, sod_image.data[r_idx], sod_image.data[g_idx], sod_image.data[b_idx]);
         }
 
         // Prepare for CNN detection
@@ -672,7 +694,7 @@ int detect_objects(detection_model_t model, const unsigned char *frame_data,
         log_info("Detection found %d valid objects out of %d total", valid_count, count);
 #else
         // When SOD is not directly linked, use function pointers
-        if (!sod_funcs.sod_make_image || !sod_funcs.sod_cnn_prepare_image || 
+        if (!sod_funcs.sod_make_image || !sod_funcs.sod_cnn_prepare_image ||
             !sod_funcs.sod_cnn_predict || !sod_funcs.sod_free_image) {
             log_error("Required SOD functions not available");
             return -1;
@@ -694,29 +716,20 @@ int detect_objects(detection_model_t model, const unsigned char *frame_data,
             log_error("Failed to create SOD image for detection");
             return -1;
         }
-        
+
         // Cast the void pointer to our dynamic structure
         sod_image.h = height;
         sod_image.w = width;
         sod_image.c = channels;
         sod_image.data = (float*)img_ptr;
 
-        // Convert pixel data with the SAME algorithm as sod_img_load_from_file()
-        // This converts from interleaved (RGB RGB) to planar (RRR GGG BBB) format
-        log_info("Converting frame data to SOD image format (planar)");
-        for (int c_idx = 0; c_idx < channels; c_idx++) {
-            for (int y = 0; y < height; y++) {
-                for (int x = 0; x < width; x++) {
-                    // Destination index in planar format (RRR..., GGG..., BBB...)
-                    int dst_index = x + width * y + width * height * c_idx;
-
-                    // Source index in interleaved format (RGB, RGB, RGB...)
-                    int src_index = c_idx + channels * x + channels * width * y;
-
-                    // Normalize to 0-1 range like SOD does
-                    ((float*)img_ptr)[dst_index] = (float)frame_data[src_index] / 255.0f;
-                }
-            }
+        // Process pre-planarized data - the incoming data is already in planar format
+        // So we just need to normalize the 0-255 values to 0-1 range
+        log_info("Processing pre-planarized frame data");
+        int total_pixels = width * height * channels;
+        for (int i = 0; i < total_pixels; i++) {
+            // Normalize to 0-1 range like SOD expects
+            ((float*)img_ptr)[i] = (float)frame_data[i] / 255.0f;
         }
 
         // Debug: log a sample of pixels to verify format
@@ -765,7 +778,6 @@ int detect_objects(detection_model_t model, const unsigned char *frame_data,
         int valid_count = 0;
         for (int i = 0; i < count && valid_count < MAX_DETECTIONS; i++) {
             // Get detection data from the dynamic box structure
-            // FIXED: boxes_ptr is an array of sod_box structures, not pointers to structures
             sod_box_dynamic *boxes_array = (sod_box_dynamic*)boxes_ptr;
             
             char label[MAX_LABEL_LENGTH];

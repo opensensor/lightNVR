@@ -338,43 +338,68 @@ static void *stream_reader_thread(void *arg) {
                 pthread_mutex_unlock(&packet_mutex);  // CRITICAL FIX: Unlock mutex before reconnection logic
                 log_warn("Stream %s disconnected, attempting to reconnect...", stream_name);
                 
-                // CRITICAL FI
+        // CRITICAL FIX: Improved reconnection strategy for embedded devices
+        
+        // Use different reconnection strategies based on protocol and device type
+        static int reconnect_attempts = 0;
+        int backoff_time_ms;
+        
+        // Check if we're likely on an embedded device based on stream name
+        // This is a heuristic - embedded devices often have "cam" in the name
+        bool is_embedded_device = (strstr(ctx->config.name, "cam") || 
+                                  strstr(ctx->config.name, "Cam") || 
+                                  strstr(ctx->config.name, "CAM") || 
+                                  strstr(ctx->config.name, "embedded"));
+        
+        if (ctx->config.protocol == STREAM_PROTOCOL_UDP) {
+            // For UDP streams, use a gentler fixed delay strategy
+            // UDP streams often have transient issues that resolve quickly
+            if (is_embedded_device) {
+                // Longer delay for embedded devices to reduce CPU usage
+                backoff_time_ms = 1000; // 1 second delay for embedded UDP
+            } else {
+                backoff_time_ms = 500; // 500ms delay for regular UDP
+            }
+            
+            log_info("UDP reconnection attempt %d for %s (embedded: %s), using fixed delay of %d ms", 
+                    reconnect_attempts, ctx->config.name, 
+                    is_embedded_device ? "yes" : "no", backoff_time_ms);
+            
+            // For UDP, we'll try a more conservative approach first:
+            // Instead of immediately closing and reopening, try reading again after a delay
+            if (reconnect_attempts < (is_embedded_device ? 5 : 3)) {
+                reconnect_attempts++;
+                av_usleep(backoff_time_ms * 1000);  // Convert ms to μs
+                continue; // Try reading again without closing/reopening
+            }
+            
+            // After a few attempts with the conservative approach, try a full reconnect
+            log_info("Conservative UDP reconnection failed for %s, trying full reconnect", 
+                    ctx->config.name);
+        } else {
+            // For TCP streams, use the existing exponential backoff strategy
+            if (is_embedded_device) {
+                // Longer backoff for embedded devices
+                backoff_time_ms = 500 * (1 << (reconnect_attempts > 4 ? 4 : reconnect_attempts));
                 
-                // Use different reconnection strategies based on protocol
-                static int reconnect_attempts = 0;
-                int backoff_time_ms;
-                
-                if (ctx->config.protocol == STREAM_PROTOCOL_UDP) {
-                    // For UDP streams, use a gentler fixed delay strategy
-                    // UDP streams often have transient issues that resolve quickly
-                    backoff_time_ms = 500; // Fixed 500ms delay for UDP
-                    
-                    log_info("UDP reconnection attempt %d for %s, using fixed delay of %d ms", 
-                            reconnect_attempts, ctx->config.name, backoff_time_ms);
-                    
-                    // For UDP, we'll try a more conservative approach first:
-                    // Instead of immediately closing and reopening, try reading again after a delay
-                    if (reconnect_attempts < 3) {
-                        reconnect_attempts++;
-                        av_usleep(backoff_time_ms * 1000);  // Convert ms to μs
-                        continue; // Try reading again without closing/reopening
-                    }
-                    
-                    // After a few attempts with the conservative approach, try a full reconnect
-                    log_info("Conservative UDP reconnection failed for %s, trying full reconnect", 
-                            ctx->config.name);
-                } else {
-                    // For TCP streams, use the existing exponential backoff strategy
-                    backoff_time_ms = 250 * (1 << (reconnect_attempts > 5 ? 5 : reconnect_attempts));
-                    
-                    // Cap the backoff time at 4 seconds (reduced from 8 seconds)
-                    if (backoff_time_ms > 4000) {
-                        backoff_time_ms = 4000;
-                    }
-                    
-                    log_info("TCP reconnection attempt %d for %s, waiting %d ms", 
-                            reconnect_attempts, ctx->config.name, backoff_time_ms);
+                // Cap the backoff time at 8 seconds for embedded devices
+                if (backoff_time_ms > 8000) {
+                    backoff_time_ms = 8000;
                 }
+            } else {
+                // Standard backoff for desktop/server
+                backoff_time_ms = 250 * (1 << (reconnect_attempts > 5 ? 5 : reconnect_attempts));
+                
+                // Cap the backoff time at 4 seconds
+                if (backoff_time_ms > 4000) {
+                    backoff_time_ms = 4000;
+                }
+            }
+            
+            log_info("TCP reconnection attempt %d for %s (embedded: %s), waiting %d ms", 
+                    reconnect_attempts, ctx->config.name, 
+                    is_embedded_device ? "yes" : "no", backoff_time_ms);
+        }
                 
                 reconnect_attempts++;
                 av_usleep(backoff_time_ms * 1000);  // Convert ms to μs
