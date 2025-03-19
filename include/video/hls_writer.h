@@ -28,8 +28,13 @@ typedef struct hls_writer_t {
     int initialized;
     time_t last_cleanup_time;
 
+    // Stream indexes in output context
+    int video_stream_idx;
+    int audio_stream_idx;
+
     // Per-stream DTS tracking
-    stream_dts_info_t dts_tracker;
+    stream_dts_info_t video_dts_tracker;
+    stream_dts_info_t audio_dts_tracker;
 } hls_writer_t;
 
 /**

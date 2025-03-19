@@ -47,8 +47,16 @@ mp4_writer_t *mp4_writer_create(const char *output_path, const char *stream_name
     // Initialize writer
     strncpy(writer->output_path, output_path, sizeof(writer->output_path) - 1);
     strncpy(writer->stream_name, stream_name, sizeof(writer->stream_name) - 1);
-    writer->first_dts = AV_NOPTS_VALUE;
-    writer->last_dts = AV_NOPTS_VALUE;
+    writer->video_stream_idx = -1;
+    writer->audio_stream_idx = -1;
+    writer->video_ts_info.first_dts = AV_NOPTS_VALUE;
+    writer->video_ts_info.first_pts = AV_NOPTS_VALUE;
+    writer->video_ts_info.last_dts = AV_NOPTS_VALUE;
+    writer->video_ts_info.initialized = 0;
+    writer->audio_ts_info.first_dts = AV_NOPTS_VALUE;
+    writer->audio_ts_info.first_pts = AV_NOPTS_VALUE;
+    writer->audio_ts_info.last_dts = AV_NOPTS_VALUE;
+    writer->audio_ts_info.initialized = 0;
     writer->is_initialized = 0;
     writer->creation_time = time(NULL);
 
@@ -104,21 +112,32 @@ static int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, cons
     // Log the full output path
     log_info("Initializing MP4 writer to output file: %s", writer->output_path);
 
-    // Create output format context
-    ret = avformat_alloc_output_context2(&writer->output_ctx, NULL, "mp4", writer->output_path);
-    if (ret < 0 || !writer->output_ctx) {
-        char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
-        av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-        log_error("Failed to create output format context for MP4 writer: %s", error_buf);
-        return -1;
+    // Determine if this is a video or audio stream
+    enum AVMediaType codec_type = input_stream->codecpar->codec_type;
+    
+    // Create output format context if it doesn't exist yet
+    if (!writer->output_ctx) {
+        ret = avformat_alloc_output_context2(&writer->output_ctx, NULL, "mp4", writer->output_path);
+        if (ret < 0 || !writer->output_ctx) {
+            char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+            av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+            log_error("Failed to create output format context for MP4 writer: %s", error_buf);
+            free(dir_path);
+            return -1;
+        }
+        
+        // Add metadata
+        av_dict_set(&writer->output_ctx->metadata, "title", writer->stream_name, 0);
+        av_dict_set(&writer->output_ctx->metadata, "encoder", "LightNVR", 0);
     }
 
-    // Add video stream
+    // Create output stream
     AVStream *out_stream = avformat_new_stream(writer->output_ctx, NULL);
     if (!out_stream) {
         log_error("Failed to create output stream for MP4 writer");
         avformat_free_context(writer->output_ctx);
         writer->output_ctx = NULL;
+        free(dir_path);
         return -1;
     }
 
@@ -130,67 +149,82 @@ static int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, cons
         log_error("Failed to copy codec parameters for MP4 writer: %s", error_buf);
         avformat_free_context(writer->output_ctx);
         writer->output_ctx = NULL;
+        free(dir_path);
         return -1;
     }
 
     // Set stream time base
     out_stream->time_base = input_stream->time_base;
-    writer->time_base = input_stream->time_base;
+    
+    // Store stream index and initialize timestamp tracking based on type
+    if (codec_type == AVMEDIA_TYPE_VIDEO) {
+        writer->video_stream_idx = out_stream->index;
+        writer->video_ts_info.time_base = input_stream->time_base;
+        writer->video_ts_info.initialized = 0;
+        log_info("Added video stream to MP4 output at index %d", writer->video_stream_idx);
+    } else if (codec_type == AVMEDIA_TYPE_AUDIO) {
+        writer->audio_stream_idx = out_stream->index;
+        writer->audio_ts_info.time_base = input_stream->time_base;
+        writer->audio_ts_info.initialized = 0;
+        log_info("Added audio stream to MP4 output at index %d", writer->audio_stream_idx);
+    } else {
+        log_warn("Unsupported stream type for MP4: %d", codec_type);
+        free(dir_path);
+        return -1;
+    }
 
-    // Store video stream index
-    writer->video_stream_idx = 0;  // We only have one stream
+    // Write header if this is the first initialization
+    if (!writer->is_initialized) {
+        // Set options for fast start (moov atom at beginning of file)
+        AVDictionary *opts = NULL;
+        av_dict_set(&opts, "movflags", "+faststart", 0);  // Ensure moov atom is at start of file
 
-    // Add metadata
-    av_dict_set(&writer->output_ctx->metadata, "title", writer->stream_name, 0);
-    av_dict_set(&writer->output_ctx->metadata, "encoder", "LightNVR", 0);
+        // Open output file
+        ret = avio_open(&writer->output_ctx->pb, writer->output_path, AVIO_FLAG_WRITE);
+        if (ret < 0) {
+            char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+            av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+            log_error("Failed to open output file for MP4 writer: %s (error: %s)",
+                    writer->output_path, error_buf);
 
-    // Set options for fast start (moov atom at beginning of file)
-    AVDictionary *opts = NULL;
-    av_dict_set(&opts, "movflags", "+faststart", 0);  // Ensure moov atom is at start of file
+            // Try to diagnose the issue
+            struct stat st;
+            if (stat(dir_path, &st) != 0) {
+                log_error("Directory does not exist: %s", dir_path);
+            } else if (!S_ISDIR(st.st_mode)) {
+                log_error("Path exists but is not a directory: %s", dir_path);
+            } else if (access(dir_path, W_OK) != 0) {
+                log_error("Directory is not writable: %s", dir_path);
+            }
 
-    // Open output file
-    ret = avio_open(&writer->output_ctx->pb, writer->output_path, AVIO_FLAG_WRITE);
-    if (ret < 0) {
-        char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
-        av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-        log_error("Failed to open output file for MP4 writer: %s (error: %s)",
-                writer->output_path, error_buf);
-
-        // Try to diagnose the issue
-        struct stat st;
-        if (stat(dir_path, &st) != 0) {
-            log_error("Directory does not exist: %s", dir_path);
-        } else if (!S_ISDIR(st.st_mode)) {
-            log_error("Path exists but is not a directory: %s", dir_path);
-        } else if (access(dir_path, W_OK) != 0) {
-            log_error("Directory is not writable: %s", dir_path);
+            avformat_free_context(writer->output_ctx);
+            writer->output_ctx = NULL;
+            av_dict_free(&opts);
+            free(dir_path);
+            return -1;
         }
 
-        avformat_free_context(writer->output_ctx);
-        writer->output_ctx = NULL;
+        // Write file header
+        ret = avformat_write_header(writer->output_ctx, &opts);
+        if (ret < 0) {
+            char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+            av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+            log_error("Failed to write header for MP4 writer: %s", error_buf);
+            avio_closep(&writer->output_ctx->pb);
+            avformat_free_context(writer->output_ctx);
+            writer->output_ctx = NULL;
+            av_dict_free(&opts);
+            free(dir_path);
+            return -1;
+        }
+
         av_dict_free(&opts);
-        return -1;
+        writer->is_initialized = 1;
+        log_info("Successfully initialized MP4 writer for stream %s at %s",
+                writer->stream_name, writer->output_path);
     }
 
-    // Write file header
-    ret = avformat_write_header(writer->output_ctx, &opts);
-    if (ret < 0) {
-        char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
-        av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-        log_error("Failed to write header for MP4 writer: %s", error_buf);
-        avio_closep(&writer->output_ctx->pb);
-        avformat_free_context(writer->output_ctx);
-        writer->output_ctx = NULL;
-        av_dict_free(&opts);
-        return -1;
-    }
-
-    av_dict_free(&opts);
-
-    writer->is_initialized = 1;
-    log_info("Successfully initialized MP4 writer for stream %s at %s",
-            writer->stream_name, writer->output_path);
-
+    free(dir_path);
     return 0;
 }
 
@@ -241,49 +275,69 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
         return ret;
     }
 
+    // Determine if this is a video or audio packet and use the appropriate timestamp tracker
+    enum AVMediaType codec_type = input_stream->codecpar->codec_type;
+    mp4_timestamp_info_t *ts_info;
+    int stream_idx;
+    
+    if (codec_type == AVMEDIA_TYPE_VIDEO) {
+        ts_info = &writer->video_ts_info;
+        stream_idx = writer->video_stream_idx;
+        log_debug("Processing video packet for MP4 stream %s", writer->stream_name);
+    } else if (codec_type == AVMEDIA_TYPE_AUDIO) {
+        ts_info = &writer->audio_ts_info;
+        stream_idx = writer->audio_stream_idx;
+        log_debug("Processing audio packet for MP4 stream %s", writer->stream_name);
+    } else {
+        log_warn("Unsupported packet type for MP4: %d", codec_type);
+        av_packet_unref(&pkt);
+        return -1;
+    }
+    
     // Enhanced timestamp handling to fix non-monotonic DTS issues
-    if (writer->first_dts == AV_NOPTS_VALUE) {
-        // Wait for a key frame to start if possible
-        if (!(in_pkt->flags & AV_PKT_FLAG_KEY)) {
-            // Skip non-key frames at the beginning
+    if (!ts_info->initialized) {
+        // For video, wait for a key frame to start if possible
+        if (codec_type == AVMEDIA_TYPE_VIDEO && !(in_pkt->flags & AV_PKT_FLAG_KEY)) {
+            // Skip non-key frames at the beginning for video
             log_debug("Skipping non-key frame at start of MP4 recording");
             av_packet_unref(&pkt);
             return 0; // Return success but don't process this packet
         }
         
-        // First packet (key frame) - use its DTS as reference
-        writer->first_dts = pkt.dts != AV_NOPTS_VALUE ? pkt.dts : pkt.pts;
-        writer->first_pts = pkt.pts != AV_NOPTS_VALUE ? pkt.pts : pkt.dts;
-
-        // Initialize last_dts to avoid comparison with AV_NOPTS_VALUE
-        writer->last_dts = writer->first_dts;
+        // First packet - use its DTS as reference
+        ts_info->first_dts = pkt.dts != AV_NOPTS_VALUE ? pkt.dts : pkt.pts;
+        ts_info->first_pts = pkt.pts != AV_NOPTS_VALUE ? pkt.pts : pkt.dts;
+        ts_info->last_dts = ts_info->first_dts;
+        ts_info->initialized = 1;
 
         // For the first packet, set timestamps to 0
         pkt.dts = 0;
-        pkt.pts = pkt.pts != AV_NOPTS_VALUE ? pkt.pts - writer->first_pts : 0;
+        pkt.pts = pkt.pts != AV_NOPTS_VALUE ? pkt.pts - ts_info->first_pts : 0;
         
         // Ensure PTS is valid (not less than DTS)
         if (pkt.pts < pkt.dts) {
             pkt.pts = pkt.dts;
         }
         
-        log_debug("MP4 writer initialized with first_dts=%lld, first_pts=%lld", 
-                 (long long)writer->first_dts, (long long)writer->first_pts);
+        log_debug("MP4 writer initialized %s timestamps: first_dts=%lld, first_pts=%lld", 
+                 codec_type == AVMEDIA_TYPE_VIDEO ? "video" : "audio",
+                 (long long)ts_info->first_dts, (long long)ts_info->first_pts);
     } else {
         // Check for timestamp discontinuities (common in RTSP streams)
-        int64_t expected_dts = writer->last_dts + 
-            av_rescale_q(1, input_stream->time_base, writer->time_base);
+        int64_t expected_dts = ts_info->last_dts + 
+            av_rescale_q(1, input_stream->time_base, ts_info->time_base);
         int64_t dts_diff = 0;
         
         if (pkt.dts != AV_NOPTS_VALUE) {
-            dts_diff = pkt.dts - writer->first_dts;
+            dts_diff = pkt.dts - ts_info->first_dts;
             
             // If there's a large backward jump in DTS (stream reset or loop)
-            if (dts_diff < 0 || pkt.dts < writer->last_dts) {
+            if (dts_diff < 0 || pkt.dts < ts_info->last_dts) {
                 // This is a discontinuity - log it
-                log_warn("DTS discontinuity detected: last_dts=%lld, current_dts=%lld, diff=%lld",
-                        (long long)writer->last_dts, (long long)pkt.dts, 
-                        (long long)(pkt.dts - writer->last_dts));
+                log_warn("DTS discontinuity detected in %s stream: last_dts=%lld, current_dts=%lld, diff=%lld",
+                        codec_type == AVMEDIA_TYPE_VIDEO ? "video" : "audio",
+                        (long long)ts_info->last_dts, (long long)pkt.dts, 
+                        (long long)(pkt.dts - ts_info->last_dts));
                 
                 // Handle the discontinuity by continuing from the last DTS
                 // Add a small increment to ensure monotonic increase
@@ -298,8 +352,8 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
                 pkt.dts = dts_diff;
                 
                 // Ensure monotonic increase
-                if (pkt.dts <= writer->last_dts) {
-                    pkt.dts = writer->last_dts + 1;
+                if (pkt.dts <= ts_info->last_dts) {
+                    pkt.dts = ts_info->last_dts + 1;
                 }
             }
         } else {
@@ -310,7 +364,7 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
         // Handle PTS (presentation timestamp)
         if (pkt.pts != AV_NOPTS_VALUE) {
             // Calculate proper offset from the first PTS
-            int64_t pts_diff = pkt.pts - writer->first_pts;
+            int64_t pts_diff = pkt.pts - ts_info->first_pts;
 
             // If PTS goes backwards or would be less than DTS, adjust it
             if (pts_diff < 0 || pkt.pts < pkt.dts) {
@@ -331,14 +385,17 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
     }
 
     // Update last DTS to maintain monotonic increase
-    writer->last_dts = pkt.dts;
+    ts_info->last_dts = pkt.dts;
 
-    // Write packet
-    pkt.stream_index = writer->video_stream_idx;
+    // Set the correct stream index
+    pkt.stream_index = stream_idx;
 
     // Log key frame information for debugging
-    if (pkt.flags & AV_PKT_FLAG_KEY) {
-        log_debug("Writing keyframe to MP4: pts=%lld, dts=%lld",
+    if (codec_type == AVMEDIA_TYPE_VIDEO && (pkt.flags & AV_PKT_FLAG_KEY)) {
+        log_debug("Writing video keyframe to MP4: pts=%lld, dts=%lld",
+                 (long long)pkt.pts, (long long)pkt.dts);
+    } else if (codec_type == AVMEDIA_TYPE_AUDIO) {
+        log_debug("Writing audio packet to MP4: pts=%lld, dts=%lld",
                  (long long)pkt.pts, (long long)pkt.dts);
     }
 
@@ -408,9 +465,13 @@ void mp4_writer_close(mp4_writer_t *writer) {
         // Safely copy other fields
         creation_time = writer->creation_time;
         was_initialized = writer->is_initialized;
-        first_dts = writer->first_dts;
-        last_dts = writer->last_dts;
-        time_base = writer->time_base;
+        
+        // Use video timestamp info for duration calculation
+        if (writer->video_ts_info.initialized) {
+            first_dts = writer->video_ts_info.first_dts;
+            last_dts = writer->video_ts_info.last_dts;
+            time_base = writer->video_ts_info.time_base;
+        }
         
         // Extract the output context and immediately set it to NULL to prevent double-free
         output_ctx = writer->output_ctx;
