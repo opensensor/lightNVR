@@ -16,6 +16,7 @@
 #include "web/request_response.h"
 #include "web/api_handlers_streams.h"
 #include "web/api_handlers_common.h"
+#include "video/detection_stream.h"
 
 // Forward declarations of helper functions
 static char* create_stream_json(const stream_config_t *stream);
@@ -256,6 +257,18 @@ void handle_post_stream(const http_request_t *request, http_response_t *response
                     log_warn("Failed to start MP4 recording for stream: %s", config.name);
                 }
             }
+            
+            // Start detection if detection-based recording is enabled
+            if (config.detection_based_recording && config.detection_model[0] != '\0') {
+                log_info("Starting detection for stream: %s with model %s", 
+                        config.name, config.detection_model);
+                
+                if (start_detection_stream_reader(config.name, config.detection_interval) == 0) {
+                    log_info("Detection started for stream: %s", config.name);
+                } else {
+                    log_warn("Failed to start detection for stream: %s", config.name);
+                }
+            }
         }
     } else {
         log_info("Stream is disabled, not starting: %s", config.name);
@@ -489,6 +502,34 @@ void handle_put_stream(const http_request_t *request, http_response_t *response)
              verified_config.streaming_enabled ? "true" : "false",
              verified_config.codec);
     
+    // Check if detection settings have changed
+    bool detection_settings_changed = false;
+    
+    if (verified_config.detection_based_recording != config.detection_based_recording) {
+        log_info("Detection enabled state changed: %s -> %s", 
+                verified_config.detection_based_recording ? "true" : "false", 
+                config.detection_based_recording ? "true" : "false");
+        detection_settings_changed = true;
+    }
+    
+    if (strcmp(verified_config.detection_model, config.detection_model) != 0) {
+        log_info("Detection model changed: %s -> %s", 
+                verified_config.detection_model, config.detection_model);
+        detection_settings_changed = true;
+    }
+    
+    if (verified_config.detection_threshold != config.detection_threshold) {
+        log_info("Detection threshold changed: %.2f -> %.2f", 
+                verified_config.detection_threshold, config.detection_threshold);
+        detection_settings_changed = true;
+    }
+    
+    if (verified_config.detection_interval != config.detection_interval) {
+        log_info("Detection interval changed: %d -> %d", 
+                verified_config.detection_interval, config.detection_interval);
+        detection_settings_changed = true;
+    }
+    
     // Update detection parameters in memory
     if (config.detection_based_recording) {
         log_info("Updating detection parameters: threshold=%.2f, interval=%d", 
@@ -502,6 +543,24 @@ void handle_put_stream(const http_request_t *request, http_response_t *response)
     } else {
         // Disable detection-based recording
         set_stream_detection_recording(stream, false, NULL);
+    }
+    
+    // Reload detection if settings changed
+    if (detection_settings_changed) {
+        log_info("Detection settings changed, reloading detection for stream %s", config.name);
+        
+        // First stop any existing detection stream
+        if (is_detection_stream_reader_running(config.name)) {
+            log_info("Stopping existing detection stream for %s", config.name);
+            stop_detection_stream_reader(config.name);
+        }
+        
+        // Start detection if enabled
+        if (config.detection_based_recording) {
+            log_info("Starting detection stream for %s with model %s", 
+                    config.name, config.detection_model);
+            start_detection_stream_reader(config.name, config.detection_interval);
+        }
     }
 
     // Start the stream if enabled
@@ -622,6 +681,17 @@ void handle_delete_stream(const http_request_t *request, http_response_t *respon
     stream_name[MAX_STREAM_NAME - 1] = '\0';
 
     log_info("Found stream to delete: %s (name: %s)", decoded_id, stream_name);
+
+    // Stop detection if it's running
+    if (is_detection_stream_reader_running(stream_name)) {
+        log_info("Stopping detection for stream: %s", stream_name);
+        if (stop_detection_stream_reader(stream_name) != 0) {
+            log_warn("Failed to stop detection for stream: %s", stream_name);
+            // Continue anyway
+        } else {
+            log_info("Detection stopped for stream: %s", stream_name);
+        }
+    }
 
     // Stop and remove the stream
     log_info("Stopping stream: %s", stream_name);
