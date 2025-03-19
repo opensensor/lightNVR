@@ -168,9 +168,11 @@ int set_log_file(const char *filename) {
 }
 
 // Enable or disable console logging
+// Note: With tee behavior enabled, this function is kept for API compatibility
+// but console logging is always enabled regardless of this setting
 void set_console_logging(int enable) {
     pthread_mutex_lock(&logger.mutex);
-    logger.console_logging = enable;
+    logger.console_logging = enable; // Kept for backward compatibility
     pthread_mutex_unlock(&logger.mutex);
 }
 
@@ -238,17 +240,16 @@ void log_message_v(log_level_t level, const char *format, va_list args) {
     pthread_mutex_lock(&logger.mutex);
     
     // Write to log file if available
-    if (logger.log_file) {
+    if (logger.log_file && logger.log_file != stdout && logger.log_file != stderr) {
         fprintf(logger.log_file, "[%s] [%s] %s\n", timestamp, log_level_strings[level], message);
         fflush(logger.log_file);
     }
     
-    // Write to console if enabled
-    if (logger.console_logging) {
-        FILE *console = (level == LOG_LEVEL_ERROR) ? stderr : stdout;
-        fprintf(console, "[%s] [%s] %s\n", timestamp, log_level_strings[level], message);
-        fflush(console);
-    }
+    // Always write to console (tee behavior)
+    // Use stderr for errors, stdout for other levels
+    FILE *console = (level == LOG_LEVEL_ERROR) ? stderr : stdout;
+    fprintf(console, "[%s] [%s] %s\n", timestamp, log_level_strings[level], message);
+    fflush(console);
     
     pthread_mutex_unlock(&logger.mutex);
 }

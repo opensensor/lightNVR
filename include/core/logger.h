@@ -43,7 +43,10 @@ int set_log_file(const char *filename);
 /**
  * Enable or disable console logging
  * 
- * @param enable True to enable console logging, false to disable
+ * Note: With tee behavior enabled, console logging is always active
+ * This function is kept for API compatibility but has no effect on output
+ * 
+ * @param enable True to enable console logging, false to disable (no effect with tee behavior)
  */
 void set_console_logging(int enable);
 
