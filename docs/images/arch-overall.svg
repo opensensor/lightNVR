@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800">
+    <!-- Background -->
+    <rect width="1200" height="800" fill="#f8f9fa" />
+
+    <!-- Title -->
+    <text x="600" y="40" font-family="Arial" font-size="24" font-weight="bold" text-anchor="middle">LightNVR System Architecture</text>
+
+    <!-- Core -->
+    <rect x="500" y="80" width="200" height="80" rx="5" fill="#d1e7dd" stroke="#198754" stroke-width="2" />
+    <text x="600" y="120" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle">Core</text>
+    <text x="600" y="140" font-family="Arial" font-size="14" text-anchor="middle">main.c, config.c, logger.c</text>
+
+    <!-- Stream Management Layer -->
+    <rect x="100" y="200" width="1000" height="120" rx="5" fill="#cfe2ff" stroke="#0d6efd" stroke-width="2" />
+    <text x="600" y="230" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle">Stream Management Layer</text>
+    <text x="600" y="255" font-family="Arial" font-size="14" text-anchor="middle">stream_manager.c, stream_state.c, stream_state_adapter.c</text>
+
+    <!-- Stream Processing Components -->
+    <rect x="120" y="280" width="200" height="30" rx="5" fill="#e2e3e5" stroke="#6c757d" stroke-width="1" />
+    <text x="220" y="300" font-family="Arial" font-size="12" text-anchor="middle">stream_reader.c</text>
+
+    <rect x="340" y="280" width="200" height="30" rx="5" fill="#e2e3e5" stroke="#6c757d" stroke-width="1" />
+    <text x="440" y="300" font-family="Arial" font-size="12" text-anchor="middle">stream_protocol.c</text>
+
+    <rect x="560" y="280" width="200" height="30" rx="5" fill="#e2e3e5" stroke="#6c757d" stroke-width="1" />
+    <text x="660" y="300" font-family="Arial" font-size="12" text-anchor="middle">stream_packet_processor.c</text>
+
+    <rect x="780" y="280" width="200" height="30" rx="5" fill="#e2e3e5" stroke="#6c757d" stroke-width="1" />
+    <text x="880" y="300" font-family="Arial" font-size="12" text-anchor="middle">timestamp_manager.c</text>
+
+    <!-- Feature Layers -->
+    <rect x="100" y="360" width="300" height="100" rx="5" fill="#f8d7da" stroke="#dc3545" stroke-width="2" />
+    <text x="250" y="390" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle">HLS Streaming</text>
+    <text x="250" y="410" font-family="Arial" font-size="12" text-anchor="middle">hls_streaming.c, hls_writer.c</text>
+    <text x="250" y="430" font-family="Arial" font-size="12" text-anchor="middle">hls/hls_stream_thread.c</text>
+
+    <rect x="450" y="360" width="300" height="100" rx="5" fill="#fff3cd" stroke="#ffc107" stroke-width="2" />
+    <text x="600" y="390" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle">MP4 Recording</text>
+    <text x="600" y="410" font-family="Arial" font-size="12" text-anchor="middle">mp4_recording.c, mp4_writer.c</text>
+    <text x="600" y="430" font-family="Arial" font-size="12" text-anchor="middle">recording.c</text>
+
+    <rect x="800" y="360" width="300" height="100" rx="5" fill="#d1d4e3" stroke="#6610f2" stroke-width="2" />
+    <text x="950" y="390" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle">Detection</text>
+    <text x="950" y="410" font-family="Arial" font-size="12" text-anchor="middle">detection.c, detection_stream.c</text>
+    <text x="950" y="430" font-family="Arial" font-size="12" text-anchor="middle">detection_recording.c, detection_integration.c</text>
+
+    <!-- Web Server & API -->
+    <rect x="100" y="500" width="1000" height="80" rx="5" fill="#e2e3e5" stroke="#6c757d" stroke-width="2" />
+    <text x="600" y="535" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle">Web Server &amp; API</text>
+    <text x="600" y="560" font-family="Arial" font-size="14" text-anchor="middle">web_server.c, thread_pool.c, api_handlers.c</text>
+
+    <!-- Database Layer -->
+    <rect x="300" y="620" width="600" height="60" rx="5" fill="#d1ecf1" stroke="#0dcaf0" stroke-width="2" />
+    <text x="600" y="655" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle">Database Layer (database_manager.c)</text>
+
+    <!-- Storage Layer -->
+    <rect x="300" y="700" width="600" height="60" rx="5" fill="#d6d8db" stroke="#343a40" stroke-width="2" />
+    <text x="600" y="735" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle">Storage Layer (storage_manager.c)</text>
+
+    <!-- Arrows for main connections -->
+    <!-- Core to Stream Management -->
+    <line x1="600" y1="160" x2="600" y2="200" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
+
+    <!-- Stream Management to Features -->
+    <line x1="250" y1="320" x2="250" y2="360" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
+    <line x1="600" y1="320" x2="600" y2="360" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
+    <line x1="950" y1="320" x2="950" y2="360" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
+
+    <!-- Features to Web Server -->
+    <line x1="250" y1="460" x2="250" y2="500" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
+    <line x1="600" y1="460" x2="600" y2="500" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
+    <line x1="950" y1="460" x2="950" y2="500" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
+
+    <!-- Web Server to Database -->
+    <line x1="600" y1="580" x2="600" y2="620" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
+
+    <!-- Database to Storage -->
+    <line x1="600" y1="680" x2="600" y2="700" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
+
+    <!-- Shared feature integration -->
+    <path d="M250,410 Q425,470 600,410" fill="none" stroke="#000" stroke-width="1.5" stroke-dasharray="5,5" />
+    <path d="M600,410 Q775,470 950,410" fill="none" stroke="#000" stroke-width="1.5" stroke-dasharray="5,5" />
+
+    <!-- Legend -->
+    <rect x="950" y="100" width="20" height="20" fill="#d1e7dd" stroke="#198754" stroke-width="1" />
+    <text x="980" y="115" font-family="Arial" font-size="12" text-anchor="start">Core Components</text>
+
+    <rect x="950" y="130" width="20" height="20" fill="#cfe2ff" stroke="#0d6efd" stroke-width="1" />
+    <text x="980" y="145" font-family="Arial" font-size="12" text-anchor="start">Stream Management</text>
+
+    <rect x="950" y="160" width="20" height="20" fill="#f8d7da" stroke="#dc3545" stroke-width="1" />
+    <text x="980" y="175" font-family="Arial" font-size="12" text-anchor="start">HLS Streaming</text>
+
+    <rect x="950" y="190" width="20" height="20" fill="#fff3cd" stroke="#ffc107" stroke-width="1" />
+    <text x="980" y="205" font-family="Arial" font-size="12" text-anchor="start">MP4 Recording</text>
+
+    <rect x="950" y="220" width="20" height="20" fill="#d1d4e3" stroke="#6610f2" stroke-width="1" />
+    <text x="980" y="235" font-family="Arial" font-size="12" text-anchor="start">Detection</text>
+
+    <!-- Arrowhead marker -->
+    <defs>
+        <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#000" />
+        </marker>
+    </defs>
+</svg>

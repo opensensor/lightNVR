@@ -8,7 +8,14 @@ LightNVR is designed with a modular architecture that prioritizes memory efficie
 
 *Note: A system architecture diagram should be created based on the specifications in [images/system-architecture.txt](images/system-architecture.txt)*
 
-## Core Components
+## Overall Architecture
+![LightNVR Overall Architecture](images/arch-overall.svg)
+
+## Thread Architecture
+![LightNVR Thread Architecture](images/arch-thread.svg)
+
+## State Management Architecture
+![LightNVR State Management](images/arch-state.svg)
 
 ### Core System
 
