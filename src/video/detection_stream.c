@@ -36,9 +36,6 @@ typedef struct {
 static detection_stream_t detection_streams[MAX_STREAMS];
 static pthread_mutex_t detection_streams_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-// Forward declarations
-static int detection_packet_callback(const AVPacket *pkt, const AVStream *stream, void *user_data);
-
 /**
  * Initialize detection stream system
  */
@@ -91,116 +88,7 @@ void shutdown_detection_stream_system(void) {
     log_info("Detection stream system shutdown complete");
 }
 
-/**
- * Packet callback for detection stream reader
- * This function is called for each packet read from the stream
- * It decodes the packet and passes the decoded frame to the detection integration
- */
-static int detection_packet_callback(const AVPacket *pkt, const AVStream *stream, void *user_data) {
-    detection_stream_t *detection_stream = (detection_stream_t *)user_data;
-    if (!detection_stream) {
-        log_error("Invalid user data in detection_packet_callback");
-        return -1;
-    }
-    
-    // Always log the first few callbacks to confirm it's being invoked
-    static int initial_callbacks = 0;
-    if (initial_callbacks < 5) {
-        log_error("DETECTION CALLBACK INVOKED #%d for stream %s", 
-                 ++initial_callbacks, detection_stream->stream_name);
-    } else {
-        // After the first few, log periodically to avoid spam
-        static int callback_counter = 0;
-        if (callback_counter++ % 100 == 0) {
-            log_info("Detection packet callback invoked for stream %s (frame %d)", 
-                    detection_stream->stream_name, callback_counter);
-        }
-    }
-    
-    // Only process video packets
-    if (stream->codecpar->codec_type != AVMEDIA_TYPE_VIDEO) {
-        return 0;
-    }
-    
-    // Increment frame counter
-    detection_stream->frame_counter++;
-    
-    // Skip frames based on detection interval
-    if (detection_stream->frame_counter % detection_stream->detection_interval != 0) {
-        return 0;
-    }
-    
-    log_info("PROCESSING FRAME %d FOR DETECTION (interval: %d, stream: %s)",
-             detection_stream->frame_counter, detection_stream->detection_interval,
-             detection_stream->stream_name);
-    
-    // Find decoder
-    AVCodec *codec = avcodec_find_decoder(stream->codecpar->codec_id);
-    if (!codec) {
-        log_error("Failed to find decoder for stream %s", detection_stream->stream_name);
-        return -1;
-    }
-    
-    // Create codec context
-    AVCodecContext *codec_ctx = avcodec_alloc_context3(codec);
-    if (!codec_ctx) {
-        log_error("Failed to allocate codec context for stream %s", detection_stream->stream_name);
-        return -1;
-    }
-    
-    // Copy codec parameters to codec context
-    if (avcodec_parameters_to_context(codec_ctx, stream->codecpar) < 0) {
-        log_error("Failed to copy codec parameters to context for stream %s", detection_stream->stream_name);
-        avcodec_free_context(&codec_ctx);
-        return -1;
-    }
-    
-    // Open codec
-    if (avcodec_open2(codec_ctx, codec, NULL) < 0) {
-        log_error("Failed to open codec for stream %s", detection_stream->stream_name);
-        avcodec_free_context(&codec_ctx);
-        return -1;
-    }
-    
-    // Allocate frame
-    AVFrame *frame = av_frame_alloc();
-    if (!frame) {
-        log_error("Failed to allocate frame for stream %s", detection_stream->stream_name);
-        avcodec_free_context(&codec_ctx);
-        return -1;
-    }
-    
-    // Send packet to decoder
-    int ret = avcodec_send_packet(codec_ctx, pkt);
-    if (ret < 0) {
-        log_error("Failed to send packet to decoder for stream %s: %d", detection_stream->stream_name, ret);
-        av_frame_free(&frame);
-        avcodec_free_context(&codec_ctx);
-        return -1;
-    }
-    
-    // Receive frame from decoder
-    ret = avcodec_receive_frame(codec_ctx, frame);
-    if (ret < 0) {
-        if (ret != AVERROR(EAGAIN) && ret != AVERROR_EOF) {
-            log_error("Failed to receive frame from decoder for stream %s: %d", detection_stream->stream_name, ret);
-        }
-        av_frame_free(&frame);
-        avcodec_free_context(&codec_ctx);
-        return 0;
-    }
-    
-    // Process the decoded frame for detection
-    log_debug("Sending decoded frame to detection integration for stream %s", 
-             detection_stream->stream_name);
-    process_decoded_frame_for_detection(detection_stream->stream_name, frame, detection_stream->detection_interval);
-    
-    // Cleanup
-    av_frame_free(&frame);
-    avcodec_free_context(&codec_ctx);
-    
-    return 0;
-}
+// REMOVED: detection_packet_callback function is no longer needed since we're using the HLS streaming thread for detection
 
 /**
  * Start a detection stream reader for a stream

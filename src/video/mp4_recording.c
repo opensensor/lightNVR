@@ -40,56 +40,7 @@ static pthread_mutex_t mp4_writers_mutex = PTHREAD_MUTEX_INITIALIZER;
 // Forward declarations
 static void *mp4_recording_thread(void *arg);
 
-/**
- * MP4 packet processing callback function
- * Removed adaptive degrading to improve quality
- */
-static int mp4_packet_callback(const AVPacket *pkt, const AVStream *stream, void *user_data) {
-    // Validate parameters
-    if (!pkt || !stream || !user_data) {
-        log_error("MP4 packet callback received NULL parameter");
-        return -1;
-    }
-    
-    mp4_recording_ctx_t *recording_ctx = (mp4_recording_ctx_t *)user_data;
-    if (!recording_ctx || !recording_ctx->mp4_writer) {
-        log_error("MP4 packet callback received invalid recording context");
-        return -1;
-    }
-    
-    // Check if this is a key frame
-    bool is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
-    
-    // Only log key frames at debug level to reduce logging overhead
-    if (is_key_frame) {
-        log_debug("Processing keyframe for MP4: pts=%lld, dts=%lld, size=%d",
-                 (long long)pkt->pts, (long long)pkt->dts, pkt->size);
-    }
-
-    // Get the stream name for safer access
-    char stream_name[MAX_STREAM_NAME];
-    strncpy(stream_name, recording_ctx->config.name, MAX_STREAM_NAME - 1);
-    stream_name[MAX_STREAM_NAME - 1] = '\0';
-    
-    // Get the stream state manager
-    int ret;
-    stream_state_manager_t *state = get_stream_state_by_name(stream_name);
-    if (state) {
-        // Use the new state-based approach
-        ret = process_packet_with_state(state, pkt, stream, 1, recording_ctx->mp4_writer);
-    } else {
-        // Fall back to the adapter function which will create a state if needed
-        ret = process_video_packet_adapter(pkt, stream, recording_ctx->mp4_writer, 1, stream_name);
-    }
-    
-    // Only log errors for key frames to reduce log spam
-    if (ret < 0 && is_key_frame) {
-        log_error("Failed to write keyframe to MP4 for stream %s: %d", recording_ctx->config.name, ret);
-        return ret;
-    }
-    
-    return 0;
-}
+// REMOVED: mp4_packet_callback function is no longer needed since we're using the HLS streaming thread for MP4 recording
 
 /**
  * MP4 recording thread function for a single stream

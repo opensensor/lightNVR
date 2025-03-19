@@ -37,15 +37,7 @@
 // Forward declaration of the detection function from hls_writer.c
 extern void process_packet_for_detection(const char *stream_name, const AVPacket *pkt, const AVCodecParameters *codec_params);
 
-/**
- * HLS packet processing callback function
- * This function is kept for backward compatibility but is no longer used
- * in the single thread approach.
- */
-int hls_packet_callback(const AVPacket *pkt, const AVStream *stream, void *user_data) {
-    log_warn("HLS packet callback invoked but is no longer used in the single thread approach");
-    return 0; // Return success but don't process the packet
-}
+// REMOVED: hls_packet_callback function is no longer needed since we're using the single thread approach
 
 /**
  * HLS streaming thread function for a single stream
