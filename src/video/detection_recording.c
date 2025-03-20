@@ -507,10 +507,19 @@ int process_frame_for_recording(const char *stream_name, const unsigned char *fr
 
         // If not already recording, start recording
         if (!recording_active) {
+            // CRITICAL FIX: Get the pre-buffer size from the stream config
+            int pre_buffer = config.pre_detection_buffer;
+            
             // Start MP4 recording directly, using the same file rotation settings as regular recordings
             int mp4_result = start_mp4_recording(stream_name);
             if (mp4_result == 0) {
-                log_info("Started MP4 recording for detection event on stream %s", stream_name);
+                log_info("Started MP4 recording for detection event on stream %s with pre-buffer of %d seconds", 
+                         stream_name, pre_buffer);
+                
+                // CRITICAL FIX: Flush the pre-buffered frames to the MP4 writer
+                // This function is defined in mp4_recording.c
+                extern void flush_prebuffer_to_mp4(const char *stream_name);
+                flush_prebuffer_to_mp4(stream_name);
                 
                 // Update the recording_active flag in the detection_recordings array
                 pthread_mutex_lock(&detection_recordings_mutex);

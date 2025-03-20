@@ -267,9 +267,6 @@ function initializeVideoPlayer(stream) {
 const hls = new Hls({
     maxBufferLength: 5,             // Reduced from 10 to 5 seconds to decrease latency
     maxMaxBufferLength: 10,         // Reduced from 20 to 10 seconds to decrease latency
-    liveSyncDurationCount: 1,       // Reduced from 2 to 1 segment to decrease latency
-    liveMaxLatencyDurationCount: 2, // Reduced from 4 to 2 segments to decrease latency
-    liveDurationInfinity: false,    // Don't treat live streams as infinite duration
     lowLatencyMode: true,           // Enable low latency mode to decrease latency
     enableWorker: true,
     fragLoadingTimeOut: 30000,      // Timeout for fragment loading

@@ -38,10 +38,9 @@
 extern void process_packet_for_detection(const char *stream_name, const AVPacket *pkt, const AVCodecParameters *codec_params);
 
 // REMOVED: hls_packet_callback function is no longer needed since we're using the single thread approach
-
 /**
  * HLS streaming thread function for a single stream
- * Simplified implementation that uses a single thread approach with improved state management
+ * Balanced implementation that maintains low latency while ensuring stability
  */
 void *hls_stream_thread(void *arg) {
     hls_stream_ctx_t *ctx = (hls_stream_ctx_t *)arg;
@@ -56,7 +55,7 @@ void *hls_stream_thread(void *arg) {
         log_error("NULL context passed to HLS streaming thread");
         return NULL;
     }
-    
+
     // CRITICAL FIX: Create a local copy of the stream name for thread safety
     char stream_name[MAX_STREAM_NAME];
     strncpy(stream_name, ctx->config.name, MAX_STREAM_NAME - 1);
@@ -69,9 +68,9 @@ void *hls_stream_thread(void *arg) {
         ctx->running = 0;
         return NULL;
     }
-    
+
     log_info("Starting HLS streaming thread for stream %s", stream_name);
-    
+
     // CRITICAL FIX: Check if we're still running before proceeding
     if (!ctx->running) {
         log_warn("HLS streaming thread for %s started but already marked as not running", stream_name);
@@ -84,7 +83,7 @@ void *hls_stream_thread(void *arg) {
         ctx->running = 0;
         return NULL;
     }
-    
+
     // CRITICAL FIX: Check if we're still running after directory creation
     if (!ctx->running) {
         log_info("HLS streaming thread for %s stopping after directory creation", stream_name);
@@ -92,10 +91,10 @@ void *hls_stream_thread(void *arg) {
     }
 
     // Create HLS writer - adding the segment_duration parameter
-    // Using a default of 1 second if not specified in config
-    // Reduced from 2 to 1 second to minimize latency
+    // Using a default of 2 seconds if not specified in config
+    // This is a balanced value that works well for most players
     int segment_duration = ctx->config.segment_duration > 0 ?
-                          ctx->config.segment_duration : 1;
+                          ctx->config.segment_duration : 2;
 
     ctx->hls_writer = hls_writer_create(ctx->output_path, stream_name, segment_duration);
     if (!ctx->hls_writer) {
@@ -113,84 +112,85 @@ void *hls_stream_thread(void *arg) {
         }
         return NULL;
     }
-    
-    // SIMPLIFIED APPROACH: Let FFmpeg handle manifest file creation
-    // Just ensure the directory exists and is writable
-    log_info("Letting FFmpeg handle HLS manifest file creation for stream %s", stream_name);
-    
+
     // Get stream configuration
     stream_handle_t stream = get_stream_by_name(stream_name);
     if (!stream) {
         log_error("Stream %s not found", stream_name);
-        
+
         if (ctx->hls_writer) {
             hls_writer_close(ctx->hls_writer);
             ctx->hls_writer = NULL;
         }
-        
+
         ctx->running = 0;
         return NULL;
     }
-    
+
     stream_config_t config;
     if (get_stream_config(stream, &config) != 0) {
         log_error("Failed to get config for stream %s", stream_name);
-        
+
         if (ctx->hls_writer) {
             hls_writer_close(ctx->hls_writer);
             ctx->hls_writer = NULL;
         }
-        
+
         ctx->running = 0;
         return NULL;
     }
-    
+
     // Use the stream_protocol.h functions to open the input stream with appropriate options
     ret = open_input_stream(&input_ctx, config.url, config.protocol);
     if (ret < 0) {
         log_error("Could not open input stream for %s", stream_name);
-        
+
         if (ctx->hls_writer) {
             hls_writer_close(ctx->hls_writer);
             ctx->hls_writer = NULL;
         }
-        
+
         ctx->running = 0;
         return NULL;
     }
-    
+
     // Find video stream
     video_stream_idx = find_video_stream_index(input_ctx);
     if (video_stream_idx == -1) {
         log_error("No video stream found in %s", config.url);
-        
+
         avformat_close_input(&input_ctx);
-        
+
         if (ctx->hls_writer) {
             hls_writer_close(ctx->hls_writer);
             ctx->hls_writer = NULL;
         }
-        
+
         ctx->running = 0;
         return NULL;
     }
-    
+
     // Initialize packet
     pkt = av_packet_alloc();
     if (!pkt) {
         log_error("Failed to allocate packet");
-        
+
         avformat_close_input(&input_ctx);
-        
+
         if (ctx->hls_writer) {
             hls_writer_close(ctx->hls_writer);
             ctx->hls_writer = NULL;
         }
-        
+
         ctx->running = 0;
         return NULL;
     }
-    
+
+    // Track time of last flush to avoid excessive I/O operations
+    int64_t last_flush_time = av_gettime();
+    // We'll only flush every 500ms (or on key frames)
+    const int64_t flush_interval = 500000; // 500ms in microseconds
+
     // Main packet reading loop
     while (ctx->running) {
         // Check if the stream state indicates we should stop
@@ -200,42 +200,42 @@ void *hls_stream_thread(void *arg) {
                 ctx->running = 0;
                 break;
             }
-            
+
             if (!are_stream_callbacks_enabled(state)) {
                 log_info("HLS streaming thread for %s stopping due to callbacks disabled", stream_name);
                 ctx->running = 0;
                 break;
             }
         }
-        
+
         ret = av_read_frame(input_ctx, pkt);
-        
+
         if (ret < 0) {
             if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN)) {
                 // End of stream or resource temporarily unavailable
                 // Try to reconnect after a short delay
                 av_packet_unref(pkt);
                 log_warn("Stream %s disconnected, attempting to reconnect...", stream_name);
-                
-                av_usleep(2000000);  // 2 second delay
-                
+
+                av_usleep(1000000);  // 1 second delay for more reliable reconnection
+
                 // Close and reopen input
                 avformat_close_input(&input_ctx);
-                
+
                 // Use the stream_protocol.h function to reopen the input stream
                 ret = open_input_stream(&input_ctx, config.url, config.protocol);
                 if (ret < 0) {
                     log_error("Could not reconnect to input stream for %s", stream_name);
                     continue;  // Keep trying
                 }
-                
+
                 // Find video stream again
                 video_stream_idx = find_video_stream_index(input_ctx);
                 if (video_stream_idx == -1) {
                     log_error("No video stream found after reconnect for %s", stream_name);
                     continue;  // Keep trying
                 }
-                
+
                 continue;
             } else {
                 char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
@@ -244,68 +244,78 @@ void *hls_stream_thread(void *arg) {
                 break;
             }
         }
-        
-            // Process video packets
-            if (pkt->stream_index == video_stream_idx) {
-                // Check if this is a key frame
-                bool is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
-                
-                // Write to HLS with error handling
-                ret = hls_writer_write_packet(ctx->hls_writer, pkt, input_ctx->streams[video_stream_idx]);
+
+        // Process video packets
+        if (pkt->stream_index == video_stream_idx) {
+            // Check if this is a key frame
+            bool is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
+
+            // Write packet to HLS writer
+            ret = hls_writer_write_packet(ctx->hls_writer, pkt, input_ctx->streams[video_stream_idx]);
+
+            // BALANCED APPROACH: Only flush on key frames or periodically
+            int64_t current_time = av_gettime();
+            bool should_flush = is_key_frame || (current_time - last_flush_time > flush_interval);
+
+            if (ret >= 0 && should_flush && ctx->hls_writer &&
+                ctx->hls_writer->output_ctx && ctx->hls_writer->output_ctx->pb) {
+                // Flush only when necessary to reduce I/O load
+                avio_flush(ctx->hls_writer->output_ctx->pb);
+                last_flush_time = current_time;
+
+                if (is_key_frame) {
+                    log_debug("Flushed on key frame for stream %s", stream_name);
+                }
+            } else if (ret < 0 && is_key_frame) {
+                // Only log errors for key frames to reduce log spam
+                char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+                av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+                log_error("Failed to write packet to HLS for stream %s: %s", stream_name, error_buf);
+            }
+
+            // Pre-buffer handling for MP4 recordings
+            extern void add_packet_to_prebuffer(const char *stream_name, const AVPacket *pkt, const AVStream *stream);
+            add_packet_to_prebuffer(stream_name, pkt, input_ctx->streams[video_stream_idx]);
+
+            // Check if there's an MP4 writer registered for active recordings
+            mp4_writer_t *mp4_writer = get_mp4_writer_for_stream(stream_name);
+            if (mp4_writer) {
+                // Write the packet to the MP4 writer with proper error handling
+                ret = mp4_writer_write_packet(mp4_writer, pkt, input_ctx->streams[video_stream_idx]);
                 if (ret < 0) {
                     // Only log errors for key frames to reduce log spam
                     if (is_key_frame) {
                         char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
                         av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-                        log_error("Failed to write packet to HLS for stream %s: %s", stream_name, error_buf);
+                        log_error("Failed to write packet to MP4 for stream %s: %s", stream_name, error_buf);
                     }
-                    // Continue anyway to keep the stream going
-                }
-                
-                // CRITICAL FIX: Also write to MP4 if there's a registered MP4 writer for this stream
-                // This ensures MP4 recording works with the new HLS streaming architecture
-                mp4_writer_t *mp4_writer = get_mp4_writer_for_stream(stream_name);
-                if (mp4_writer) {
-                    ret = mp4_writer_write_packet(mp4_writer, pkt, input_ctx->streams[video_stream_idx]);
-                    if (ret < 0) {
-                        // Only log errors for key frames to reduce log spam
-                        if (is_key_frame) {
-                            char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
-                            av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-                            log_error("Failed to write packet to MP4 for stream %s: %s", stream_name, error_buf);
-                        }
-                        // Continue anyway to keep the stream going
-                    } else if (is_key_frame) {
-                        log_debug("Successfully wrote key frame to MP4 for stream %s", stream_name);
-                    }
-                }
-                
-                // Process packet for detection if it's a key frame
-                // This ensures we don't overload the detection system with too many frames
-                if (is_key_frame && process_packet_for_detection) {
-                    log_debug("Processing key frame for detection for stream %s", stream_name);
-                    process_packet_for_detection(stream_name, pkt, input_ctx->streams[video_stream_idx]->codecpar);
                 }
             }
-        
+
+            // Process packet for detection only on key frames to reduce CPU load
+            if (is_key_frame && process_packet_for_detection) {
+                process_packet_for_detection(stream_name, pkt, input_ctx->streams[video_stream_idx]->codecpar);
+            }
+        }
+
         av_packet_unref(pkt);
     }
-    
+
     // Cleanup resources
     if (pkt) {
         av_packet_free(&pkt);
     }
-    
+
     if (input_ctx) {
         avformat_close_input(&input_ctx);
     }
-    
+
     // When done, close writer
     if (ctx->hls_writer) {
         hls_writer_close(ctx->hls_writer);
         ctx->hls_writer = NULL;
     }
-    
+
     log_info("HLS streaming thread for stream %s exited", stream_name);
     return NULL;
 }

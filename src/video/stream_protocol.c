@@ -125,8 +125,8 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
         // Increased max delay for UDP streams
         av_dict_set(&input_options, "max_delay", "2000000", 0); // 2000ms max delay
         
-        // More tolerant timestamp handling for UDP streams
-        av_dict_set(&input_options, "fflags", "genpts+discardcorrupt+nobuffer", 0);
+        // More tolerant timestamp handling for UDP streams with ultra-low latency flags
+        av_dict_set(&input_options, "fflags", "genpts+discardcorrupt+nobuffer+flush_packets", 0);
         
         // Set UDP-specific socket options
         av_dict_set(&input_options, "recv_buffer_size", "16777216", 0); // 16MB socket receive buffer
@@ -160,7 +160,7 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
         av_dict_set(&input_options, "probesize", "1000000", 0); // 1MB probe size
         av_dict_set(&input_options, "reconnect", "1", 0); // Enable reconnection
         av_dict_set(&input_options, "reconnect_streamed", "1", 0); // Reconnect if streaming
-        av_dict_set(&input_options, "reconnect_delay_max", "5", 0); // Max 5 seconds between reconnection attempts
+        av_dict_set(&input_options, "reconnect_delay_max", "2", 0); // Max 2 seconds between reconnection attempts (reduced from 5s)
     }
     
     // Open input with protocol-specific options
