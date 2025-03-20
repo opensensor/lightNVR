@@ -264,22 +264,22 @@ function initializeVideoPlayer(stream) {
     }
     // Use HLS.js for browsers that don't support HLS natively
     else if (Hls && Hls.isSupported()) {
-        const hls = new Hls({
-            maxBufferLength: 30,            // Increased from 10 to 30 seconds for better buffering on low-power devices
-            maxMaxBufferLength: 60,         // Increased from 20 to 60 seconds for better buffering on low-power devices
-            liveSyncDurationCount: 4,       // Increased from 3 to 4 segments for better stability
-            liveMaxLatencyDurationCount: 10, // Increased from 5 to 10 segments for better stability on low-power devices
-            liveDurationInfinity: false,    // Don't treat live streams as infinite duration
-            lowLatencyMode: false,          // Disable low latency mode for better stability on low-power devices
-            enableWorker: true,
-            fragLoadingTimeOut: 30000,      // Increased from 20 to 30 seconds timeout for fragment loading
-            manifestLoadingTimeOut: 20000,  // Increased from 15 to 20 seconds timeout for manifest loading
-            levelLoadingTimeOut: 20000,     // Increased from 15 to 20 seconds timeout for level loading
-            backBufferLength: 60,           // Add back buffer length to keep more segments in memory
-            startLevel: -1,                 // Auto-select quality level based on network conditions
-            abrEwmaDefaultEstimate: 500000, // Start with a lower bandwidth estimate (500kbps)
-            abrBandWidthFactor: 0.7,        // Be more conservative with bandwidth estimates
-            abrBandWidthUpFactor: 0.5       // Be more conservative when increasing quality
+const hls = new Hls({
+    maxBufferLength: 10,            // Reduced from 30 to 10 seconds to decrease latency
+    maxMaxBufferLength: 20,         // Reduced from 60 to 20 seconds to decrease latency
+    liveSyncDurationCount: 2,       // Reduced from 4 to 2 segments to decrease latency
+    liveMaxLatencyDurationCount: 4, // Reduced from 10 to 4 segments to decrease latency
+    liveDurationInfinity: false,    // Don't treat live streams as infinite duration
+    lowLatencyMode: true,           // Enable low latency mode to decrease latency
+    enableWorker: true,
+    fragLoadingTimeOut: 30000,      // Timeout for fragment loading
+    manifestLoadingTimeOut: 20000,  // Timeout for manifest loading
+    levelLoadingTimeOut: 20000,     // Timeout for level loading
+    backBufferLength: 30,           // Reduced from 60 to 30 seconds to decrease latency
+    startLevel: -1,                 // Auto-select quality level based on network conditions
+    abrEwmaDefaultEstimate: 500000, // Start with a lower bandwidth estimate (500kbps)
+    abrBandWidthFactor: 0.7,        // Be more conservative with bandwidth estimates
+    abrBandWidthUpFactor: 0.5       // Be more conservative when increasing quality
         });
 
         hls.loadSource(hlsStreamUrl);

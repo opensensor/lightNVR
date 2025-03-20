@@ -295,6 +295,10 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     // Ensure FFmpeg creates a proper manifest
     av_dict_set(&options, "hls_playlist_type", "event", 0);
     
+    // Add low latency options
+    av_dict_set(&options, "hls_flags", "delete_segments+program_date_time+independent_segments", 0);
+    av_dict_set(&options, "hls_segment_type", "mpegts", 0);
+    
     // Set segment filename format
     char segment_format[MAX_PATH_LENGTH + 32];
     snprintf(segment_format, sizeof(segment_format), "%s/segment_%%d.ts", output_dir);
