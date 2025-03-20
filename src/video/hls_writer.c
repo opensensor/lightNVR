@@ -285,19 +285,14 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
 
     // Basic HLS settings
     av_dict_set(&options, "hls_time", hls_time, 0);
-    av_dict_set(&options, "hls_list_size", "10", 0);
-    av_dict_set(&options, "hls_flags", "delete_segments+program_date_time", 0);
-    
-    // Add additional options for better compatibility
-    av_dict_set(&options, "hls_allow_cache", "1", 0);
-    av_dict_set(&options, "start_number", "0", 0);
-    
-    // Ensure FFmpeg creates a proper manifest
-    av_dict_set(&options, "hls_playlist_type", "event", 0);
+    av_dict_set(&options, "hls_list_size", "5", 0);  // Reduced from 10 to 5 to decrease latency
     
     // Add low latency options
-    av_dict_set(&options, "hls_flags", "delete_segments+program_date_time+independent_segments", 0);
+    av_dict_set(&options, "hls_flags", "delete_segments+program_date_time+independent_segments+discont_start", 0);
     av_dict_set(&options, "hls_segment_type", "mpegts", 0);
+    av_dict_set(&options, "hls_init_time", "0", 0);  // Start segments immediately
+    av_dict_set(&options, "hls_allow_cache", "0", 0);  // Disable caching to ensure fresh content
+    av_dict_set(&options, "start_number", "0", 0);
     
     // Set segment filename format
     char segment_format[MAX_PATH_LENGTH + 32];

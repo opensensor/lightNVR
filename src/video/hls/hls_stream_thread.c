@@ -92,10 +92,10 @@ void *hls_stream_thread(void *arg) {
     }
 
     // Create HLS writer - adding the segment_duration parameter
-    // Using a default of 2 seconds if not specified in config
-    // Reduced from 4 to 2 seconds to decrease latency
+    // Using a default of 1 second if not specified in config
+    // Reduced from 2 to 1 second to minimize latency
     int segment_duration = ctx->config.segment_duration > 0 ?
-                          ctx->config.segment_duration : 2;
+                          ctx->config.segment_duration : 1;
 
     ctx->hls_writer = hls_writer_create(ctx->output_path, stream_name, segment_duration);
     if (!ctx->hls_writer) {

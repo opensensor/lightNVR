@@ -265,21 +265,22 @@ function initializeVideoPlayer(stream) {
     // Use HLS.js for browsers that don't support HLS natively
     else if (Hls && Hls.isSupported()) {
 const hls = new Hls({
-    maxBufferLength: 10,            // Reduced from 30 to 10 seconds to decrease latency
-    maxMaxBufferLength: 20,         // Reduced from 60 to 20 seconds to decrease latency
-    liveSyncDurationCount: 2,       // Reduced from 4 to 2 segments to decrease latency
-    liveMaxLatencyDurationCount: 4, // Reduced from 10 to 4 segments to decrease latency
+    maxBufferLength: 5,             // Reduced from 10 to 5 seconds to decrease latency
+    maxMaxBufferLength: 10,         // Reduced from 20 to 10 seconds to decrease latency
+    liveSyncDurationCount: 1,       // Reduced from 2 to 1 segment to decrease latency
+    liveMaxLatencyDurationCount: 2, // Reduced from 4 to 2 segments to decrease latency
     liveDurationInfinity: false,    // Don't treat live streams as infinite duration
     lowLatencyMode: true,           // Enable low latency mode to decrease latency
     enableWorker: true,
     fragLoadingTimeOut: 30000,      // Timeout for fragment loading
     manifestLoadingTimeOut: 20000,  // Timeout for manifest loading
     levelLoadingTimeOut: 20000,     // Timeout for level loading
-    backBufferLength: 30,           // Reduced from 60 to 30 seconds to decrease latency
+    backBufferLength: 10,           // Reduced from 30 to 10 seconds to decrease latency
     startLevel: -1,                 // Auto-select quality level based on network conditions
     abrEwmaDefaultEstimate: 500000, // Start with a lower bandwidth estimate (500kbps)
     abrBandWidthFactor: 0.7,        // Be more conservative with bandwidth estimates
-    abrBandWidthUpFactor: 0.5       // Be more conservative when increasing quality
+    abrBandWidthUpFactor: 0.5,      // Be more conservative when increasing quality
+    liveSyncDuration: 0.5           // Target live sync point 0.5 seconds from live edge
         });
 
         hls.loadSource(hlsStreamUrl);
