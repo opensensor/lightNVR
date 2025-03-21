@@ -630,14 +630,14 @@ function deleteRecording(recordingId) {
         })
         .then(data => {
             // Show success message
-            alert('Recording deleted successfully');
+            showStatusMessage('Recording deleted successfully', 5000);
 
             // Reload recordings
             loadRecordings();
         })
         .catch(error => {
             console.error('Error deleting recording:', error);
-            alert('Error deleting recording: ' + error.message);
+            showStatusMessage('Error deleting recording: ' + error.message, 5000);
 
             if (recordingsTable) {
                 hideLoading(recordingsTable);

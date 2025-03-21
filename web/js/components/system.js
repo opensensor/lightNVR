@@ -162,14 +162,14 @@ function restartService() {
             document.getElementById('status-text').textContent = 'System restarting...';
 
             // Show message
-            alert('Service restart initiated. The system will be unavailable for a few moments.');
+            showStatusMessage('Service restart initiated. The system will be unavailable for a few moments.', 5000);
 
             // After a delay, check system status
             setTimeout(checkSystemStatus, 5000);
         })
         .catch(error => {
             console.error('Error restarting service:', error);
-            alert('Error restarting service: ' + error.message);
+            showStatusMessage('Error restarting service: ' + error.message, 5000);
 
             if (systemContainer) {
                 hideLoading(systemContainer);
@@ -208,11 +208,11 @@ function shutdownService() {
             document.getElementById('status-text').textContent = 'System shutting down...';
 
             // Show message
-            alert('Service shutdown initiated. The system will become unavailable shortly.');
+            showStatusMessage('Service shutdown initiated. The system will become unavailable shortly.', 5000);
         })
         .catch(error => {
             console.error('Error shutting down service:', error);
-            alert('Error shutting down service: ' + error.message);
+            showStatusMessage('Error shutting down service: ' + error.message, 5000);
 
             if (systemContainer) {
                 hideLoading(systemContainer);
@@ -248,11 +248,11 @@ function clearLogs() {
             logsContainer.textContent = 'Logs cleared';
 
             // Show message
-            alert('Logs cleared successfully');
+            showStatusMessage('Logs cleared successfully', 5000);
         })
         .catch(error => {
             console.error('Error clearing logs:', error);
-            alert('Error clearing logs: ' + error.message);
+            showStatusMessage('Error clearing logs: ' + error.message, 5000);
         })
         .finally(() => {
             hideLoading(logsContainer.parentElement);
@@ -289,14 +289,14 @@ function backupConfig() {
                 document.body.removeChild(link);
 
                 // Show message
-                alert('Configuration backup created and downloaded successfully');
+                showStatusMessage('Configuration backup created and downloaded successfully', 5000);
             } else {
-                alert('Configuration backup created successfully');
+                showStatusMessage('Configuration backup created successfully', 5000);
             }
         })
         .catch(error => {
             console.error('Error creating backup:', error);
-            alert('Error creating backup: ' + error.message);
+            showStatusMessage('Error creating backup: ' + error.message, 5000);
         })
         .finally(() => {
             if (systemContainer) {

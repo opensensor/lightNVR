@@ -525,7 +525,7 @@ function toggleStreamFullscreen(streamName) {
     if (!document.fullscreenElement) {
         videoCell.requestFullscreen().catch(err => {
             console.error(`Error attempting to enable fullscreen: ${err.message}`);
-            alert(`Could not enable fullscreen mode: ${err.message}`);
+            showStatusMessage(`Could not enable fullscreen mode: ${err.message}`, 5000);
         });
     } else {
         document.exitFullscreen();
@@ -582,7 +582,7 @@ function takeSnapshot(streamId) {
     // Check if we have valid dimensions
     if (canvas.width === 0 || canvas.height === 0) {
         console.error('Invalid video dimensions:', canvas.width, canvas.height);
-        alert('Cannot take snapshot: Video not loaded or has invalid dimensions');
+        showStatusMessage('Cannot take snapshot: Video not loaded or has invalid dimensions', 5000);
         return;
     }
 
@@ -598,7 +598,7 @@ function takeSnapshot(streamId) {
         showSnapshotPreview(imageData, streamName);
     } catch (error) {
         console.error('Error creating snapshot:', error);
-        alert('Failed to create snapshot: ' + error.message);
+        showStatusMessage('Failed to create snapshot: ' + error.message, 5000);
     }
 }
 
@@ -1061,7 +1061,7 @@ function updateVideoGrid(streams) {
                 })
                 .catch(error => {
                     console.error('Error toggling stream:', error);
-                    alert('Error toggling stream: ' + error.message);
+                    showStatusMessage('Error toggling stream: ' + error.message, 5000);
                     
                     // Revert the toggle state in the UI
                     this.checked = !enabled;

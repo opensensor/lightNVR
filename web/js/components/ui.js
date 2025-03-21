@@ -208,7 +208,7 @@ function downloadSnapshotFromPreview(imageData, streamName) {
         showStatusMessage(`Snapshot saved: ${filename}`);
     } catch (error) {
         console.error('Error downloading snapshot:', error);
-        alert('Error downloading snapshot: ' + error.message);
+        showStatusMessage('Error downloading snapshot: ' + error.message, 5000);
     }
 }
 
@@ -595,11 +595,11 @@ function handleApiError(error, fallbackMessage) {
             if (data && data.error) {
                 errorMessage = data.error;
             }
-            alert(errorMessage);
+            showStatusMessage(errorMessage, 5000);
         }).catch(() => {
-            alert(errorMessage);
+            showStatusMessage(errorMessage, 5000);
         });
     } else {
-        alert(errorMessage);
+        showStatusMessage(errorMessage, 5000);
     }
 }

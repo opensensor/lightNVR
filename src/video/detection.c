@@ -478,18 +478,18 @@ detection_model_t load_detection_model(const char *model_path, float threshold) 
         return NULL;
     } else {
         fclose(model_file);
-        log_error("MODEL FILE EXISTS IN DETECTION.C: %s", model_path);
+        log_info("MODEL FILE EXISTS IN DETECTION.C: %s", model_path);
         
         // Get file size
         struct stat st;
         if (stat(model_path, &st) == 0) {
-            log_error("MODEL FILE SIZE: %ld bytes", (long)st.st_size);
+            log_info("MODEL FILE SIZE: %ld bytes", (long)st.st_size);
         }
     }
 
     // Get model type
     const char *model_type = get_model_type(model_path);
-    log_error("MODEL TYPE: %s", model_type);
+    log_info("MODEL TYPE: %s", model_type);
 
     // Load appropriate model type
     if (strcmp(model_type, MODEL_TYPE_SOD_REALNET) == 0) {
