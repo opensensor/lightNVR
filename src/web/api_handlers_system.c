@@ -15,7 +15,7 @@
 #include "core/logger.h"
 #include "core/config.h"
 #include "core/version.h"
-#include "../external/mongoose/mongoose.h"
+#include "mongoose.h"
 
 /**
  * @brief Direct handler for GET /api/system/info

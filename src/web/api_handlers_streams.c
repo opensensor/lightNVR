@@ -13,7 +13,7 @@
 #include "video/stream_manager.h"
 #include "video/streams.h"
 #include "video/stream_state.h"
-#include "../external/mongoose/mongoose.h"
+#include "mongoose.h"
 #include "video/detection_stream.h"
 #include "database/database_manager.h"
 

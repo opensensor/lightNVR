@@ -39,7 +39,7 @@ void register_detection_api_handlers(void);
 #include "web/mongoose_server.h"
 #include "web/api_handlers.h"
 #include "video/streams.h"
-#include "../external/mongoose/mongoose.h"
+#include "mongoose.h"
 
 // Include necessary headers for signal handling
 #include <signal.h>

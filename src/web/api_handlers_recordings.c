@@ -13,7 +13,7 @@
 #include "web/mongoose_adapter.h"
 #include "core/logger.h"
 #include "core/config.h"
-#include "../external/mongoose/mongoose.h"
+#include "mongoose.h"
 #include "database/database_manager.h"
 #include "database/db_recordings.h"
 

@@ -23,19 +23,15 @@ if(EMBEDDED_A1_DEVICE)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Os -fno-exceptions -fomit-frame-pointer")
 endif()
 
-# Include directories
-include_directories(
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-)
+# Create project-specific include directory
+set(LIGHTNVR_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 # Find required packages
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(FFMPEG REQUIRED libavcodec libavformat libavutil libswscale)
 pkg_check_modules(SQLITE REQUIRED sqlite3)
 
-# Use Mongoose for web server implementation
-set(USE_MONGOOSE ON)
+# Mongoose is required for web server implementation
 add_definitions(-DUSE_MONGOOSE)
 
 # Find cJSON
@@ -45,74 +41,86 @@ if(NOT cJSON_FOUND)
     pkg_check_modules(CJSON cjson)
     if(NOT CJSON_FOUND)
         message(STATUS "cJSON not found via find_package or pkg-config, will use bundled version")
-        set(CJSON_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/external/cjson")
+        set(CJSON_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/cjson")
         set(CJSON_LIBRARIES "cjson")
         set(CJSON_BUNDLED TRUE)
     endif()
 endif()
 
-# Add SOD subdirectory if enabled
+# Set up SOD library if enabled
 if(ENABLE_SOD)
     add_subdirectory(src/sod)
     add_definitions(-DSOD_ENABLED)
+    set(SOD_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/sod")
 endif()
 
-# Add Mongoose if enabled
-if(USE_MONGOOSE)
-    # Check if Mongoose is already in external directory, if not download it
-    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose/mongoose.c")
-        message(STATUS "Mongoose not found, will download it")
-        file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose")
-        file(DOWNLOAD 
+# Set up Mongoose (required component)
+# Check if Mongoose is already in external directory, if not download it
+if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose/mongoose.c")
+    message(STATUS "Mongoose not found, will download it")
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose")
+    file(DOWNLOAD
             "https://raw.githubusercontent.com/cesanta/mongoose/master/mongoose.c"
             "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose/mongoose.c"
             SHOW_PROGRESS
-        )
-        file(DOWNLOAD 
+    )
+    file(DOWNLOAD
             "https://raw.githubusercontent.com/cesanta/mongoose/master/mongoose.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose/mongoose.h"
             SHOW_PROGRESS
-        )
-    endif()
-    add_definitions(-DUSE_MONGOOSE)
-    set(MONGOOSE_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose")
-    set(MONGOOSE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose/mongoose.c")
+    )
 endif()
+set(MONGOOSE_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose")
+set(MONGOOSE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose/mongoose.c")
 
-# Add cJSON if using bundled version
+# Set up cJSON if using bundled version
 if(CJSON_BUNDLED)
     # Check if cJSON is already in external directory, if not download it
     if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/cjson/cJSON.c")
         message(STATUS "cJSON not found, will download it")
         file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/external/cjson")
-        file(DOWNLOAD 
-            "https://raw.githubusercontent.com/DaveGamble/cJSON/master/cJSON.c"
-            "${CMAKE_CURRENT_SOURCE_DIR}/external/cjson/cJSON.c"
-            SHOW_PROGRESS
+        file(DOWNLOAD
+                "https://raw.githubusercontent.com/DaveGamble/cJSON/master/cJSON.c"
+                "${CMAKE_CURRENT_SOURCE_DIR}/external/cjson/cJSON.c"
+                SHOW_PROGRESS
         )
-        file(DOWNLOAD 
-            "https://raw.githubusercontent.com/DaveGamble/cJSON/master/cJSON.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/external/cjson/cJSON.h"
-            SHOW_PROGRESS
+        file(DOWNLOAD
+                "https://raw.githubusercontent.com/DaveGamble/cJSON/master/cJSON.h"
+                "${CMAKE_CURRENT_SOURCE_DIR}/external/cjson/cJSON.h"
+                SHOW_PROGRESS
         )
     endif()
     set(CJSON_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/external/cjson/cJSON.c")
 endif()
 
-# Add include directories for dependencies
-include_directories(
-    ${FFMPEG_INCLUDE_DIRS}
-    ${SQLITE_INCLUDE_DIRS}
-    ${CMAKE_CURRENT_SOURCE_DIR}/external/inih
-    ${CJSON_INCLUDE_DIRS}
+# Set up inih library
+set(INIH_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/inih")
+
+# Define all include directories in one place
+set(LIGHTNVR_INCLUDE_DIRS
+        ${LIGHTNVR_INCLUDE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${FFMPEG_INCLUDE_DIRS}
+        ${SQLITE_INCLUDE_DIRS}
+        ${INIH_INCLUDE_DIR}
 )
 
-# Add Mongoose include directory if enabled
-if(USE_MONGOOSE)
-    include_directories(${MONGOOSE_INCLUDE_DIRS})
+# Add conditional include directories
+if(ENABLE_SOD)
+    list(APPEND LIGHTNVR_INCLUDE_DIRS ${SOD_INCLUDE_DIR})
 endif()
 
-# No libmicrohttpd needed
+# Mongoose is required, always include it
+list(APPEND LIGHTNVR_INCLUDE_DIRS ${MONGOOSE_INCLUDE_DIR})
+
+if(CJSON_FOUND AND NOT CJSON_BUNDLED)
+    list(APPEND LIGHTNVR_INCLUDE_DIRS ${CJSON_INCLUDE_DIRS})
+else()
+    list(APPEND LIGHTNVR_INCLUDE_DIRS ${CJSON_INCLUDE_DIR})
+endif()
+
+# Apply include directories
+include_directories(${LIGHTNVR_INCLUDE_DIRS})
 
 # Define source files, excluding SOD sources which are built separately
 file(GLOB_RECURSE CORE_SOURCES "src/core/*.c")
@@ -126,24 +134,20 @@ file(GLOB_RECURSE ROOT_SOURCES "src/*.c")
 file(GLOB VIDEO_SOURCES "src/video/*.c")
 list(FILTER VIDEO_SOURCES EXCLUDE REGEX ".*motion_detection_optimized\\.c$")
 
-# We've replaced mongoose_server.c with our direct implementation
-
 # Combine all sources
 set(SOURCES
-    ${CORE_SOURCES}
-    ${DATABASE_SOURCES}
-    ${STORAGE_SOURCES}
-    ${UTILS_SOURCES}
-    ${VIDEO_SOURCES}
-    ${WEB_SOURCES}
-    ${ROOT_SOURCES}
-    "external/inih/ini.c"
+        ${CORE_SOURCES}
+        ${DATABASE_SOURCES}
+        ${STORAGE_SOURCES}
+        ${UTILS_SOURCES}
+        ${VIDEO_SOURCES}
+        ${WEB_SOURCES}
+        ${ROOT_SOURCES}
+        "${INIH_INCLUDE_DIR}/ini.c"
 )
 
-# Add Mongoose source if enabled
-if(USE_MONGOOSE)
-    list(APPEND SOURCES ${MONGOOSE_SOURCES})
-endif()
+# Add Mongoose source (required component)
+list(APPEND SOURCES ${MONGOOSE_SOURCES})
 
 # Add cJSON source if using bundled version
 if(CJSON_BUNDLED)
@@ -155,11 +159,11 @@ add_executable(lightnvr ${SOURCES})
 
 # Link libraries
 target_link_libraries(lightnvr
-    ${FFMPEG_LIBRARIES}
-    ${SQLITE_LIBRARIES}
-    pthread
-    dl
-    m
+        ${FFMPEG_LIBRARIES}
+        ${SQLITE_LIBRARIES}
+        pthread
+        dl
+        m
 )
 
 # Link cJSON if not using bundled version
@@ -188,10 +192,17 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # Create a version.h file
 configure_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/core/version.h.in
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/core/version.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/core/version.h.in
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/core/version.h
 )
 
-# Print memory usage warning
-message(STATUS "Building LightNVR for memory-constrained environment...")
+# Print build information
+message(STATUS "Building LightNVR ${PROJECT_VERSION} with the following configuration:")
+message(STATUS "- SOD object detection: ${ENABLE_SOD}")
+message(STATUS "- Mongoose web server: Enabled (required)")
+message(STATUS "- Embedded A1 device optimizations: ${EMBEDDED_A1_DEVICE}")
+message(STATUS "- Include directories:")
+foreach(dir ${LIGHTNVR_INCLUDE_DIRS})
+    message(STATUS "  * ${dir}")
+endforeach()
 message(STATUS "Ensure all dependencies are optimized for low memory usage")

@@ -13,7 +13,7 @@
 #include "utils/memory.h"
 
 // Include Mongoose
-#include "../external/mongoose/mongoose.h"
+#include "mongoose.h"
 #include "web/mongoose_adapter.h"
 #include "web/api_handlers.h"
 

@@ -12,7 +12,7 @@
 #include "web/mongoose_server_handlers.h"
 #include "core/logger.h"
 #include "core/config.h"
-#include "../external/mongoose/mongoose.h"
+#include "mongoose.h"
 
 // We'll use the existing mg_handle_* functions directly
 

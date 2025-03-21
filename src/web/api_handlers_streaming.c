@@ -11,13 +11,13 @@
 
 #include "web/api_handlers.h"
 #include "web/mongoose_adapter.h"
-#include "../../include/core/logger.h"
-#include "../../include/core/config.h"
-#include "../external/mongoose/mongoose.h"
-#include "../../include/video/hls_streaming.h"
-#include "../../include/video/streams.h"
-#include "../../include/video/stream_manager.h"
-#include "../../include/video/stream_state.h"
+#include "core/logger.h"
+#include "core/config.h"
+#include "mongoose.h"
+#include "video/hls_streaming.h"
+#include "video/streams.h"
+#include "video/stream_manager.h"
+#include "video/stream_state.h"
 
 /**
  * @brief Direct handler for GET /api/streaming/:stream/hls/index.m3u8

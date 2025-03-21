@@ -11,7 +11,7 @@
 #include "core/logger.h"
 #include "video/stream_manager.h"
 #include "video/streams.h"
-#include "../external/mongoose/mongoose.h"
+#include "mongoose.h"
 
 /**
  * @brief Direct handler for POST /api/streaming/:stream/webrtc/offer

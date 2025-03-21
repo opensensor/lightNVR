@@ -511,18 +511,17 @@ function createProgressIndicator(container, message) {
     const progressContainer = document.createElement('div');
     progressContainer.className = 'progress-container';
     
-    const spinner = document.createElement('div');
-    spinner.className = 'spinner';
-    progressContainer.appendChild(spinner);
+    // Create progress bar
+    const progressBar = document.createElement('div');
+    progressBar.className = 'progress-bar';
+    progressBar.innerHTML = '<div class="progress-fill" style="width: 0%"></div>';
+    progressContainer.appendChild(progressBar);
     
-    const messageElement = document.createElement('p');
+    // Create message element
+    const messageElement = document.createElement('div');
+    messageElement.className = 'progress-message';
     messageElement.textContent = message || 'Loading...';
     progressContainer.appendChild(messageElement);
-    
-    const progressElement = document.createElement('div');
-    progressElement.className = 'progress-bar';
-    progressElement.innerHTML = '<div class="progress-fill" style="width: 0%"></div>';
-    progressContainer.appendChild(progressElement);
     
     container.appendChild(progressContainer);
     return progressContainer;
@@ -543,13 +542,25 @@ function updateProgress(progressContainer, percent, message, isError = false) {
         }
     }
     
-    const messageElement = progressContainer.querySelector('p');
+    const messageElement = progressContainer.querySelector('.progress-message');
     if (messageElement && message) {
         messageElement.textContent = message;
         
         if (isError) {
             messageElement.style.color = '#f44336';
+            messageElement.style.backgroundColor = 'rgba(244, 67, 54, 0.1)';
+            messageElement.style.border = '1px solid #f44336';
         }
+    }
+    
+    // Auto-hide message after 100% completion if not an error
+    if (percent >= 100 && !isError) {
+        setTimeout(() => {
+            if (messageElement) {
+                messageElement.style.opacity = '0';
+                messageElement.style.transform = 'translateY(-10px)';
+            }
+        }, 1000);
     }
 }
 

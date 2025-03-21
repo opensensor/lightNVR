@@ -6,7 +6,7 @@
 #ifndef API_HANDLERS_H
 #define API_HANDLERS_H
 
-#include "../external/mongoose/mongoose.h"
+#include "mongoose.h"
 #include "web/json_helpers.h"
 
 /**

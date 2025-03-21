@@ -11,13 +11,13 @@
 
 #include "web/api_handlers.h"
 #include "web/mongoose_adapter.h"
-#include "../../include/core/logger.h"
-#include "../../include/core/config.h"
-#include "../external/mongoose/mongoose.h"
-#include "../../include/video/detection.h"
-#include "../../include/video/detection_result.h"
-#include "../../include/video/stream_manager.h"
-#include "../../include/database/database_manager.h"
+#include "core/logger.h"
+#include "core/config.h"
+#include "mongoose.h"
+#include "video/detection.h"
+#include "video/detection_result.h"
+#include "video/stream_manager.h"
+#include "database/database_manager.h"
 
 // Maximum age of detections to return (in seconds)
 #define MAX_DETECTION_AGE 60

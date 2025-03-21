@@ -6,13 +6,13 @@
 #include <string.h>
 #include <ctype.h>
 
-#include "../external/cjson/cJSON.h"
+#include "cJSON.h"
 
 #include "web/api_handlers.h"
 #include "web/mongoose_adapter.h"
 #include "core/logger.h"
 #include "core/config.h"
-#include "../external/mongoose/mongoose.h"
+#include "mongoose.h"
 
 /**
  * @brief Create a JSON string from a config structure
