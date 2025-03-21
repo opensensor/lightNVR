@@ -400,9 +400,6 @@ int http_server_start(http_server_handle_t server) {
         mg_tls_init(c, &opts);
     }
 
-    // Register direct mongoose handlers
-    register_api_handlers(server->mgr);
-
     server->running = true;
     log_info("HTTP server started on port %d", server->config.port);
 

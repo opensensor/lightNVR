@@ -199,7 +199,6 @@ configure_file(
 # Print build information
 message(STATUS "Building LightNVR ${PROJECT_VERSION} with the following configuration:")
 message(STATUS "- SOD object detection: ${ENABLE_SOD}")
-message(STATUS "- Mongoose web server: Enabled (required)")
 message(STATUS "- Embedded A1 device optimizations: ${EMBEDDED_A1_DEVICE}")
 message(STATUS "- Include directories:")
 foreach(dir ${LIGHTNVR_INCLUDE_DIRS})

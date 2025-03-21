@@ -14,51 +14,6 @@
 #include "core/config.h"
 #include "mongoose.h"
 
-// We'll use the existing mg_handle_* functions directly
-
-/**
- * @brief Register direct Mongoose API handlers
- */
-void register_api_handlers(struct mg_mgr *mgr) {
-    if (!mgr) {
-        log_error("Invalid Mongoose manager for registering direct API handlers");
-        return;
-    }
-    
-    log_info("Registering direct Mongoose API handlers");
-    
-    // Note: The actual registration happens in mongoose_server.c in the s_api_routes table
-    // This function is called during server initialization to perform any additional setup
-    
-    // Log the handlers that are being registered
-    log_info("Registered handler: GET /api/streams");
-    log_info("Registered handler: POST /api/streams");
-    log_info("Registered handler: GET /api/streams/:id");
-    log_info("Registered handler: PUT /api/streams/:id");
-    log_info("Registered handler: DELETE /api/streams/:id");
-    log_info("Registered handler: POST /api/streams/:id/toggle_streaming");
-    log_info("Registered handler: GET /api/settings");
-    log_info("Registered handler: POST /api/settings");
-    log_info("Registered handler: GET /api/system/info");
-    log_info("Registered handler: GET /api/system/logs");
-    log_info("Registered handler: POST /api/system/restart");
-    log_info("Registered handler: POST /api/system/shutdown");
-    log_info("Registered handler: GET /api/recordings");
-    log_info("Registered handler: GET /api/recordings/:id");
-    log_info("Registered handler: DELETE /api/recordings/:id");
-    log_info("Registered handler: GET /api/recordings/download/:id");
-    log_info("Registered handler: GET /api/streaming/:stream/hls/index.m3u8");
-    log_info("Registered handler: GET /api/streaming/:stream/hls/stream.m3u8");
-    log_info("Registered handler: GET /api/streaming/:stream/hls/segment_:id.ts");
-    log_info("Registered handler: GET /api/detection/results/:stream");
-    log_info("Registered handler: POST /api/system/clear_logs");
-    log_info("Registered handler: POST /api/system/backup");
-    log_info("Registered handler: GET /api/system/status");
-    log_info("Registered handler: POST /api/streaming/:stream/webrtc/offer");
-    log_info("Registered handler: POST /api/streaming/:stream/webrtc/ice");
-    
-    log_info("Direct Mongoose API handlers registered");
-}
 
 /**
  * @brief Helper function to extract path parameter from URL

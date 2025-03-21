@@ -191,8 +191,32 @@ void mg_handle_get_system_logs(struct mg_connection *c, struct mg_http_message *
 void mg_handle_post_system_restart(struct mg_connection *c, struct mg_http_message *hm) {
     log_info("Handling POST /api/system/restart request");
     
-    // Send response before restarting
-    mg_send_json_response(c, 200, "{\"success\": true, \"message\": \"System is restarting\"}");
+    // Create success response using cJSON
+    cJSON *success = cJSON_CreateObject();
+    if (!success) {
+        log_error("Failed to create success JSON object");
+        mg_send_json_error(c, 500, "Failed to create success JSON");
+        return;
+    }
+    
+    cJSON_AddBoolToObject(success, "success", true);
+    cJSON_AddStringToObject(success, "message", "System is restarting");
+    
+    // Convert to string
+    char *json_str = cJSON_PrintUnformatted(success);
+    if (!json_str) {
+        log_error("Failed to convert success JSON to string");
+        cJSON_Delete(success);
+        mg_send_json_error(c, 500, "Failed to convert success JSON to string");
+        return;
+    }
+    
+    // Send response
+    mg_send_json_response(c, 200, json_str);
+    
+    // Clean up
+    free(json_str);
+    cJSON_Delete(success);
     
     // Flush response
     c->is_resp = 0;
@@ -213,8 +237,32 @@ void mg_handle_post_system_restart(struct mg_connection *c, struct mg_http_messa
 void mg_handle_post_system_shutdown(struct mg_connection *c, struct mg_http_message *hm) {
     log_info("Handling POST /api/system/shutdown request");
     
-    // Send response before shutting down
-    mg_send_json_response(c, 200, "{\"success\": true, \"message\": \"System is shutting down\"}");
+    // Create success response using cJSON
+    cJSON *success = cJSON_CreateObject();
+    if (!success) {
+        log_error("Failed to create success JSON object");
+        mg_send_json_error(c, 500, "Failed to create success JSON");
+        return;
+    }
+    
+    cJSON_AddBoolToObject(success, "success", true);
+    cJSON_AddStringToObject(success, "message", "System is shutting down");
+    
+    // Convert to string
+    char *json_str = cJSON_PrintUnformatted(success);
+    if (!json_str) {
+        log_error("Failed to convert success JSON to string");
+        cJSON_Delete(success);
+        mg_send_json_error(c, 500, "Failed to convert success JSON to string");
+        return;
+    }
+    
+    // Send response
+    mg_send_json_response(c, 200, json_str);
+    
+    // Clean up
+    free(json_str);
+    cJSON_Delete(success);
     
     // Flush response
     c->is_resp = 0;
@@ -270,15 +318,61 @@ void mg_handle_post_system_clear_logs(struct mg_connection *c, struct mg_http_me
         close(fd);
         log_info("Log file cleared via API: %s", log_file);
         
-        mg_send_json_response(c, 200, "{\"success\": true, \"message\": \"Logs cleared successfully\"}");
+        // Create success response using cJSON
+        cJSON *success = cJSON_CreateObject();
+        if (!success) {
+            log_error("Failed to create success JSON object");
+            mg_send_json_error(c, 500, "Failed to create success JSON");
+            return;
+        }
+        
+        cJSON_AddBoolToObject(success, "success", true);
+        cJSON_AddStringToObject(success, "message", "Logs cleared successfully");
+        
+        // Convert to string
+        char *json_str = cJSON_PrintUnformatted(success);
+        if (!json_str) {
+            log_error("Failed to convert success JSON to string");
+            cJSON_Delete(success);
+            mg_send_json_error(c, 500, "Failed to convert success JSON to string");
+            return;
+        }
+        
+        // Send response
+        mg_send_json_response(c, 200, json_str);
+        
+        // Clean up
+        free(json_str);
+        cJSON_Delete(success);
     } else {
         log_error("Failed to clear log file %s: %s", log_file, strerror(errno));
         
-        char error_json[256];
-        snprintf(error_json, sizeof(error_json), 
-                 "{\"success\": false, \"message\": \"Failed to clear logs: %s\"}", 
-                 strerror(errno));
-        mg_send_json_error(c, 500, error_json);
+        // Create error response using cJSON
+        cJSON *error = cJSON_CreateObject();
+        if (!error) {
+            log_error("Failed to create error JSON object");
+            mg_send_json_error(c, 500, "Failed to create error JSON");
+            return;
+        }
+        
+        cJSON_AddBoolToObject(error, "success", false);
+        cJSON_AddStringToObject(error, "message", "Failed to clear logs");
+        
+        // Convert to string
+        char *json_str = cJSON_PrintUnformatted(error);
+        if (!json_str) {
+            log_error("Failed to convert error JSON to string");
+            cJSON_Delete(error);
+            mg_send_json_error(c, 500, "Failed to convert error JSON to string");
+            return;
+        }
+        
+        // Send response
+        mg_send_json_error(c, 500, json_str);
+        
+        // Clean up
+        free(json_str);
+        cJSON_Delete(error);
     }
     
     log_info("Successfully handled POST /api/system/clear_logs request");
@@ -318,11 +412,36 @@ void mg_handle_post_system_backup(struct mg_connection *c, struct mg_http_messag
     if (!backup_file) {
         log_error("Failed to create backup file: %s", strerror(errno));
         
-        char error_json[256];
-        snprintf(error_json, sizeof(error_json), 
-                 "{\"success\": false, \"message\": \"Failed to create backup: %s\"}", 
-                 strerror(errno));
-        mg_send_json_error(c, 500, error_json);
+        // Create error response using cJSON
+        cJSON *error = cJSON_CreateObject();
+        if (!error) {
+            log_error("Failed to create error JSON object");
+            mg_send_json_error(c, 500, "Failed to create error JSON");
+            return;
+        }
+        
+        cJSON_AddBoolToObject(error, "success", false);
+        
+        // Create error message with the specific error
+        char error_msg[256];
+        snprintf(error_msg, sizeof(error_msg), "Failed to create backup: %s", strerror(errno));
+        cJSON_AddStringToObject(error, "message", error_msg);
+        
+        // Convert to string
+        char *json_str = cJSON_PrintUnformatted(error);
+        if (!json_str) {
+            log_error("Failed to convert error JSON to string");
+            cJSON_Delete(error);
+            mg_send_json_error(c, 500, "Failed to convert error JSON to string");
+            return;
+        }
+        
+        // Send response
+        mg_send_json_error(c, 500, json_str);
+        
+        // Clean up
+        free(json_str);
+        cJSON_Delete(error);
         return;
     }
     
@@ -420,12 +539,38 @@ void mg_handle_post_system_backup(struct mg_connection *c, struct mg_http_messag
     
     log_info("Configuration backup created: %s", backup_path);
     
-    // Create success response with download URL
-    char json[512];
-    snprintf(json, sizeof(json), 
-             "{\"success\": true, \"message\": \"Backup created successfully\", \"backupUrl\": \"/backups/%s\", \"filename\": \"%s\"}",
-             backup_filename, backup_filename);
-    mg_send_json_response(c, 200, json);
+    // Create success response with download URL using cJSON
+    cJSON *success = cJSON_CreateObject();
+    if (!success) {
+        log_error("Failed to create success JSON object");
+        mg_send_json_error(c, 500, "Failed to create success JSON");
+        return;
+    }
+    
+    cJSON_AddBoolToObject(success, "success", true);
+    cJSON_AddStringToObject(success, "message", "Backup created successfully");
+    
+    // Add backup URL and filename
+    char backup_url[256];
+    snprintf(backup_url, sizeof(backup_url), "/backups/%s", backup_filename);
+    cJSON_AddStringToObject(success, "backupUrl", backup_url);
+    cJSON_AddStringToObject(success, "filename", backup_filename);
+    
+    // Convert to string
+    json_str = cJSON_PrintUnformatted(success);
+    if (!json_str) {
+        log_error("Failed to convert success JSON to string");
+        cJSON_Delete(success);
+        mg_send_json_error(c, 500, "Failed to convert success JSON to string");
+        return;
+    }
+    
+    // Send response
+    mg_send_json_response(c, 200, json_str);
+    
+    // Clean up
+    free(json_str);
+    cJSON_Delete(success);
     
     log_info("Successfully handled POST /api/system/backup request");
 }
@@ -436,8 +581,32 @@ void mg_handle_post_system_backup(struct mg_connection *c, struct mg_http_messag
 void mg_handle_get_system_status(struct mg_connection *c, struct mg_http_message *hm) {
     log_info("Handling GET /api/system/status request");
     
-    // Simple status check - if we're responding, the system is running
-    mg_send_json_response(c, 200, "{\"status\": \"ok\", \"message\": \"System running normally\"}");
+    // Create status response using cJSON
+    cJSON *status = cJSON_CreateObject();
+    if (!status) {
+        log_error("Failed to create status JSON object");
+        mg_send_json_error(c, 500, "Failed to create status JSON");
+        return;
+    }
+    
+    cJSON_AddStringToObject(status, "status", "ok");
+    cJSON_AddStringToObject(status, "message", "System running normally");
+    
+    // Convert to string
+    char *json_str = cJSON_PrintUnformatted(status);
+    if (!json_str) {
+        log_error("Failed to convert status JSON to string");
+        cJSON_Delete(status);
+        mg_send_json_error(c, 500, "Failed to convert status JSON to string");
+        return;
+    }
+    
+    // Send response
+    mg_send_json_response(c, 200, json_str);
+    
+    // Clean up
+    free(json_str);
+    cJSON_Delete(status);
     
     log_info("Successfully handled GET /api/system/status request");
 }

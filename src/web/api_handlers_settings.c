@@ -202,8 +202,31 @@ void mg_handle_post_settings(struct mg_connection *c, struct mg_http_message *hm
     // Clean up
     cJSON_Delete(settings);
     
-    // Send success response
-    mg_send_json_response(c, 200, "{\"success\": true}");
+    // Create success response using cJSON
+    cJSON *success = cJSON_CreateObject();
+    if (!success) {
+        log_error("Failed to create success JSON object");
+        mg_send_json_error(c, 500, "Failed to create success JSON");
+        return;
+    }
+    
+    cJSON_AddBoolToObject(success, "success", true);
+    
+    // Convert to string
+    char *json_str = cJSON_PrintUnformatted(success);
+    if (!json_str) {
+        log_error("Failed to convert success JSON to string");
+        cJSON_Delete(success);
+        mg_send_json_error(c, 500, "Failed to convert success JSON to string");
+        return;
+    }
+    
+    // Send response
+    mg_send_json_response(c, 200, json_str);
+    
+    // Clean up
+    free(json_str);
+    cJSON_Delete(success);
     
     log_info("Successfully handled POST /api/settings request");
 }

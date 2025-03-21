@@ -406,8 +406,31 @@ void mg_handle_post_stream(struct mg_connection *c, struct mg_http_message *hm) 
         }
     }
     
-    // Send success response
-    mg_send_json_response(c, 201, "{\"success\": true}");
+    // Create success response using cJSON
+    cJSON *success = cJSON_CreateObject();
+    if (!success) {
+        log_error("Failed to create success JSON object");
+        mg_send_json_error(c, 500, "Failed to create success JSON");
+        return;
+    }
+    
+    cJSON_AddBoolToObject(success, "success", true);
+    
+    // Convert to string
+    char *json_str = cJSON_PrintUnformatted(success);
+    if (!json_str) {
+        log_error("Failed to convert success JSON to string");
+        cJSON_Delete(success);
+        mg_send_json_error(c, 500, "Failed to convert success JSON to string");
+        return;
+    }
+    
+    // Send response
+    mg_send_json_response(c, 201, json_str);
+    
+    // Clean up
+    free(json_str);
+    cJSON_Delete(success);
     
     log_info("Successfully created stream: %s", config.name);
 }
@@ -598,8 +621,31 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
         }
     }
     
-    // Send success response
-    mg_send_json_response(c, 200, "{\"success\": true}");
+    // Create success response using cJSON
+    cJSON *success = cJSON_CreateObject();
+    if (!success) {
+        log_error("Failed to create success JSON object");
+        mg_send_json_error(c, 500, "Failed to create success JSON");
+        return;
+    }
+    
+    cJSON_AddBoolToObject(success, "success", true);
+    
+    // Convert to string
+    char *json_str = cJSON_PrintUnformatted(success);
+    if (!json_str) {
+        log_error("Failed to convert success JSON to string");
+        cJSON_Delete(success);
+        mg_send_json_error(c, 500, "Failed to convert success JSON to string");
+        return;
+    }
+    
+    // Send response
+    mg_send_json_response(c, 200, json_str);
+    
+    // Clean up
+    free(json_str);
+    cJSON_Delete(success);
     
     log_info("Successfully updated stream: %s", decoded_id);
 }
@@ -660,8 +706,31 @@ void mg_handle_delete_stream(struct mg_connection *c, struct mg_http_message *hm
         return;
     }
     
-    // Send success response
-    mg_send_json_response(c, 200, "{\"success\": true}");
+    // Create success response using cJSON
+    cJSON *success = cJSON_CreateObject();
+    if (!success) {
+        log_error("Failed to create success JSON object");
+        mg_send_json_error(c, 500, "Failed to create success JSON");
+        return;
+    }
+    
+    cJSON_AddBoolToObject(success, "success", true);
+    
+    // Convert to string
+    char *json_str = cJSON_PrintUnformatted(success);
+    if (!json_str) {
+        log_error("Failed to convert success JSON to string");
+        cJSON_Delete(success);
+        mg_send_json_error(c, 500, "Failed to convert success JSON to string");
+        return;
+    }
+    
+    // Send response
+    mg_send_json_response(c, 200, json_str);
+    
+    // Clean up
+    free(json_str);
+    cJSON_Delete(success);
     
     log_info("Successfully deleted stream: %s", decoded_id);
 }
@@ -742,14 +811,32 @@ void mg_handle_toggle_streaming(struct mg_connection *c, struct mg_http_message 
         return;
     }
     
-    // Create response
-    char response[128];
-    snprintf(response, sizeof(response), 
-             "{\"success\": true, \"streaming_enabled\": %s}", 
-             config.streaming_enabled ? "true" : "false");
+    // Create response using cJSON
+    cJSON *response = cJSON_CreateObject();
+    if (!response) {
+        log_error("Failed to create response JSON object");
+        mg_send_json_error(c, 500, "Failed to create response JSON");
+        return;
+    }
+    
+    cJSON_AddBoolToObject(response, "success", true);
+    cJSON_AddBoolToObject(response, "streaming_enabled", config.streaming_enabled);
+    
+    // Convert to string
+    char *json_str = cJSON_PrintUnformatted(response);
+    if (!json_str) {
+        log_error("Failed to convert response JSON to string");
+        cJSON_Delete(response);
+        mg_send_json_error(c, 500, "Failed to convert response JSON to string");
+        return;
+    }
     
     // Send response
-    mg_send_json_response(c, 200, response);
+    mg_send_json_response(c, 200, json_str);
+    
+    // Clean up
+    free(json_str);
+    cJSON_Delete(response);
     
     log_info("Successfully %s streaming for stream: %s", 
             config.streaming_enabled ? "enabled" : "disabled", decoded_id);

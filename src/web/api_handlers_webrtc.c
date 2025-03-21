@@ -79,8 +79,32 @@ void mg_handle_webrtc_offer(struct mg_connection *c, struct mg_http_message *hm)
     // 2. Use the libWebRTC or similar library to create an answer
     // 3. Send the answer back to the client
     
-    // For now, just acknowledge the request with a placeholder
-    mg_send_json_response(c, 200, "{\"status\": \"acknowledged\", \"message\": \"WebRTC not yet implemented\"}");
+    // Create response using cJSON
+    cJSON *response = cJSON_CreateObject();
+    if (!response) {
+        log_error("Failed to create response JSON object");
+        mg_send_json_error(c, 500, "Failed to create response JSON");
+        return;
+    }
+    
+    cJSON_AddStringToObject(response, "status", "acknowledged");
+    cJSON_AddStringToObject(response, "message", "WebRTC not yet implemented");
+    
+    // Convert to string
+    char *json_str = cJSON_PrintUnformatted(response);
+    if (!json_str) {
+        log_error("Failed to convert response JSON to string");
+        cJSON_Delete(response);
+        mg_send_json_error(c, 500, "Failed to convert response JSON to string");
+        return;
+    }
+    
+    // Send response
+    mg_send_json_response(c, 200, json_str);
+    
+    // Clean up
+    free(json_str);
+    cJSON_Delete(response);
     
     log_info("Successfully handled WebRTC offer request for stream: %s", decoded_name);
 }

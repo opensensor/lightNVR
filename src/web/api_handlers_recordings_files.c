@@ -21,6 +21,45 @@
 #include "database/database_manager.h"
 #include "storage/storage_manager.h"
 #include "web/request_response.h"
+#include "cJSON.h"
+
+/**
+ * @brief Create a JSON error response for recordings files
+ * 
+ * @param response HTTP response
+ * @param status_code HTTP status code
+ * @param error_message Error message
+ */
+static void create_recordings_error_response(http_response_t *response, int status_code, const char *error_message) {
+    if (!response || !error_message) {
+        return;
+    }
+    
+    // Create JSON object using cJSON
+    cJSON *error = cJSON_CreateObject();
+    if (!error) {
+        log_error("Failed to create error JSON object");
+        return;
+    }
+    
+    // Add error message
+    cJSON_AddStringToObject(error, "error", error_message);
+    
+    // Convert to string
+    char *json_str = cJSON_PrintUnformatted(error);
+    if (!json_str) {
+        log_error("Failed to convert error JSON to string");
+        cJSON_Delete(error);
+        return;
+    }
+    
+    // Create response
+    create_json_response(response, status_code, json_str);
+    
+    // Clean up
+    free(json_str);
+    cJSON_Delete(error);
+}
 
 /**
  * Serve an MP4 file with proper headers for download
@@ -30,14 +69,14 @@ void serve_mp4_file(http_response_t *response, const char *file_path, const char
     struct stat st;
     if (stat(file_path, &st) != 0 || access(file_path, R_OK) != 0) {
         log_error("MP4 file not accessible: %s (error: %s)", file_path, strerror(errno));
-        create_json_response(response, 404, "{\"error\": \"Recording file not found\"}");
+        create_recordings_error_response(response, 404, "Recording file not found");
         return;
     }
 
     // Check file size
     if (st.st_size == 0) {
         log_error("MP4 file is empty: %s", file_path);
-        create_json_response(response, 500, "{\"error\": \"Recording file is empty\"}");
+        create_recordings_error_response(response, 500, "Recording file is empty");
         return;
     }
 
@@ -63,7 +102,7 @@ void serve_mp4_file(http_response_t *response, const char *file_path, const char
     int fd = open(file_path, O_RDONLY);
     if (fd < 0) {
         log_error("Failed to open MP4 file: %s (error: %s)", file_path, strerror(errno));
-        create_json_response(response, 500, "{\"error\": \"Failed to read recording file\"}");
+        create_recordings_error_response(response, 500, "Failed to read recording file");
         return;
     }
 
@@ -72,7 +111,7 @@ void serve_mp4_file(http_response_t *response, const char *file_path, const char
     if (!response->body) {
         log_error("Failed to allocate memory for response body");
         close(fd);
-        create_json_response(response, 500, "{\"error\": \"Server memory allocation failed\"}");
+        create_recordings_error_response(response, 500, "{\"error\": \"Server memory allocation failed\"}");
         return;
     }
 
@@ -84,7 +123,7 @@ void serve_mp4_file(http_response_t *response, const char *file_path, const char
         log_error("Failed to read complete file: %s (read %zd of %lld bytes)",
                 file_path, bytes_read, (long long)st.st_size);
         free(response->body);
-        create_json_response(response, 500, "{\"error\": \"Failed to read complete recording file\"}");
+        create_recordings_error_response(response, 500, "{\"error\": \"Failed to read complete recording file\"}");
         return;
     }
 
@@ -104,7 +143,7 @@ void serve_file_for_download(http_response_t *response, const char *file_path, c
     if (fd < 0) {
         log_error("Failed to open file for download: %s (error: %s)",
                 file_path, strerror(errno));
-        create_json_response(response, 500, "{\"error\": \"Failed to read file\"}");
+        create_recordings_error_response(response, 500, "{\"error\": \"Failed to read file\"}");
         return;
     }
 
@@ -137,7 +176,7 @@ void serve_file_for_download(http_response_t *response, const char *file_path, c
         log_error("Failed to allocate memory for file: %s (size: %lld bytes)",
                 file_path, (long long)file_size);
         close(fd);
-        create_json_response(response, 500, "{\"error\": \"Server memory allocation failed\"}");
+        create_recordings_error_response(response, 500, "{\"error\": \"Server memory allocation failed\"}");
         return;
     }
 
@@ -149,7 +188,7 @@ void serve_file_for_download(http_response_t *response, const char *file_path, c
         log_error("Failed to read complete file: %s (read %zd of %lld bytes)",
                 file_path, bytes_read, (long long)file_size);
         free(response->body);
-        create_json_response(response, 500, "{\"error\": \"Failed to read complete file\"}");
+        create_recordings_error_response(response, 500, "{\"error\": \"Failed to read complete file\"}");
         return;
     }
 
@@ -212,19 +251,19 @@ void serve_download_file(http_response_t *response, const char *file_path, const
     struct stat st;
     if (stat(file_path, &st) != 0) {
         log_error("File not found: %s", file_path);
-        create_json_response(response, 404, "{\"error\": \"Recording file not found\"}");
+        create_recordings_error_response(response, 404, "{\"error\": \"Recording file not found\"}");
         return;
     }
 
     if (access(file_path, R_OK) != 0) {
         log_error("File not readable: %s", file_path);
-        create_json_response(response, 403, "{\"error\": \"Recording file not readable\"}");
+        create_recordings_error_response(response, 403, "{\"error\": \"Recording file not readable\"}");
         return;
     }
 
     if (st.st_size == 0) {
         log_error("File is empty: %s", file_path);
-        create_json_response(response, 500, "{\"error\": \"Recording file is empty\"}");
+        create_recordings_error_response(response, 500, "{\"error\": \"Recording file is empty\"}");
         return;
     }
 
@@ -260,7 +299,7 @@ void serve_download_file(http_response_t *response, const char *file_path, const
     int result = create_file_response(response, 200, file_path, "application/octet-stream");
     if (result != 0) {
         log_error("Failed to serve file: %s", file_path);
-        create_json_response(response, 500, "{\"error\": \"Failed to serve recording file\"}");
+        create_recordings_error_response(response, 500, "{\"error\": \"Failed to serve recording file\"}");
         return;
     }
 
@@ -318,7 +357,7 @@ void serve_direct_download(http_response_t *response, uint64_t id, recording_met
             int result = create_file_response(response, 200, mp4_path, "application/octet-stream");
             if (result != 0) {
                 log_error("Failed to create file response: %s", mp4_path);
-                create_json_response(response, 500, "{\"error\": \"Failed to serve recording file\"}");
+                create_recordings_error_response(response, 500, "{\"error\": \"Failed to serve recording file\"}");
                 return;
             }
 
@@ -358,7 +397,7 @@ void serve_direct_download(http_response_t *response, uint64_t id, recording_met
             cmd_result = system(ffmpeg_cmd);
             if (cmd_result != 0) {
                 log_error("Alternative FFmpeg command failed with status %d", cmd_result);
-                create_json_response(response, 500, "{\"error\": \"Failed to convert recording\"}");
+                create_recordings_error_response(response, 500, "{\"error\": \"Failed to convert recording\"}");
                 return;
             }
         }
@@ -367,7 +406,7 @@ void serve_direct_download(http_response_t *response, uint64_t id, recording_met
         struct stat st;
         if (stat(output_path, &st) != 0 || st.st_size == 0) {
             log_error("Converted MP4 file not found or empty: %s", output_path);
-            create_json_response(response, 500, "{\"error\": \"Failed to convert recording\"}");
+            create_recordings_error_response(response, 500, "{\"error\": \"Failed to convert recording\"}");
             return;
         }
 
@@ -392,7 +431,7 @@ void serve_direct_download(http_response_t *response, uint64_t id, recording_met
         int result = create_file_response(response, 200, output_path, "application/octet-stream");
         if (result != 0) {
             log_error("Failed to create file response: %s", output_path);
-            create_json_response(response, 500, "{\"error\": \"Failed to serve converted MP4 file\"}");
+            create_recordings_error_response(response, 500, "{\"error\": \"Failed to serve converted MP4 file\"}");
             return;
         }
 
@@ -420,7 +459,7 @@ void serve_direct_download(http_response_t *response, uint64_t id, recording_met
         struct stat st;
         if (stat(metadata->file_path, &st) != 0) {
             log_error("Failed to stat file: %s", metadata->file_path);
-            create_json_response(response, 500, "{\"error\": \"Failed to access recording file\"}");
+            create_recordings_error_response(response, 500, "{\"error\": \"Failed to access recording file\"}");
             return;
         }
 
@@ -437,7 +476,7 @@ void serve_direct_download(http_response_t *response, uint64_t id, recording_met
         int result = create_file_response(response, 200, metadata->file_path, "application/octet-stream");
         if (result != 0) {
             log_error("Failed to create file response: %s", metadata->file_path);
-            create_json_response(response, 500, "{\"error\": \"Failed to serve recording file\"}");
+            create_recordings_error_response(response, 500, "{\"error\": \"Failed to serve recording file\"}");
             return;
         }
 

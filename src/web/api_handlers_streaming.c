@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include <dirent.h>
 
+#include "cJSON.h"
 #include "web/api_handlers.h"
 #include "web/mongoose_adapter.h"
 #include "core/logger.h"
