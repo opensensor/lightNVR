@@ -181,6 +181,14 @@ void mg_handle_hls_segment(struct mg_connection *c, struct mg_http_message *hm);
 void mg_handle_get_detection_results(struct mg_connection *c, struct mg_http_message *hm);
 
 /**
+ * @brief Direct handler for GET /api/detection/models
+ * 
+ * @param c Mongoose connection
+ * @param hm Mongoose HTTP message
+ */
+void mg_handle_get_detection_models(struct mg_connection *c, struct mg_http_message *hm);
+
+/**
  * @brief Direct handler for POST /api/system/clear_logs
  * 
  * @param c Mongoose connection

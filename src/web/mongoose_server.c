@@ -99,6 +99,7 @@ static const mg_api_route_t s_api_routes[] = {
     
     // Detection API
     {"GET", "/api/detection/results/#", mg_handle_get_detection_results},
+    {"GET", "/api/detection/models", mg_handle_get_detection_models},
     
     // End of table marker
     {NULL, NULL, NULL}
@@ -197,6 +198,7 @@ static void init_route_table(void) {
     
     // Detection API
     add_route("GET", "^/api/detection/results/([^/]+)$", mg_handle_get_detection_results);
+    add_route("GET", "^/api/detection/models$", mg_handle_get_detection_models);
     
     log_info("Route table initialized with %d routes", s_route_count);
 }

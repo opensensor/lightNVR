@@ -730,31 +730,16 @@ function setupStreamsHandlers() {
     const detectionEnabled = document.getElementById('stream-detection-enabled');
     if (detectionEnabled) {
         detectionEnabled.addEventListener('change', function() {
-            const detectionOptions = document.querySelectorAll('.detection-options');
-            detectionOptions.forEach(el => {
-                el.style.display = this.checked ? 'block' : 'none';
-            });
-            
             // Always load detection models when checkbox is toggled
             loadDetectionModels();
             
-            // If checked, make sure the model dropdown is visible and populated
-            if (this.checked) {
-                console.log('Detection enabled, ensuring models are loaded');
-                
-                // Force display of detection options
-                detectionOptions.forEach(el => {
-                    el.style.display = 'block';
-                });
-                
-                // Update threshold slider value display to match the current slider value
-                const thresholdSlider = document.getElementById('stream-detection-threshold');
-                if (thresholdSlider) {
-                    // Trigger the oninput event to update the display
-                    const event = new Event('input', { bubbles: true });
-                    thresholdSlider.dispatchEvent(event);
-                    console.log('Updated threshold display via input event on checkbox toggle');
-                }
+            // Update threshold slider value display to match the current slider value
+            const thresholdSlider = document.getElementById('stream-detection-threshold');
+            if (thresholdSlider) {
+                // Trigger the oninput event to update the display
+                const event = new Event('input', { bubbles: true });
+                thresholdSlider.dispatchEvent(event);
+                console.log('Updated threshold display via input event on checkbox toggle');
             }
         });
     }

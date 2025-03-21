@@ -588,37 +588,64 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
     
     // If configuration changed, update and restart stream
     if (config_changed) {
-        // Update stream configuration
-        if (update_stream_config(config.name, &config) != 0) {
-            log_error("Failed to update stream configuration in database");
-            mg_send_json_error(c, 500, "Failed to update stream configuration");
-            return;
+    // Log detection settings before update
+    log_info("Detection settings before update - Model: %s, Threshold: %.2f, Interval: %d, Pre-buffer: %d, Post-buffer: %d",
+             config.detection_model, config.detection_threshold, config.detection_interval,
+             config.pre_detection_buffer, config.post_detection_buffer);
+    
+    // Update stream configuration in database
+    if (update_stream_config(config.name, &config) != 0) {
+        log_error("Failed to update stream configuration in database");
+        mg_send_json_error(c, 500, "Failed to update stream configuration");
+        return;
+    }
+    
+    // Update global configuration
+    config_t *global_config = get_streaming_config();
+    if (global_config) {
+        for (int i = 0; i < global_config->max_streams && i < MAX_STREAMS; i++) {
+            if (strcmp(global_config->streams[i].name, config.name) == 0) {
+                log_info("Updating global configuration for stream %s", config.name);
+                memcpy(&global_config->streams[i], &config, sizeof(stream_config_t));
+                break;
+            }
+        }
+    } else {
+        log_warn("Failed to get global configuration for updating stream %s", config.name);
+    }
+    
+    // Verify the update by reading back the configuration
+    stream_config_t updated_config;
+    if (get_stream_config(stream, &updated_config) == 0) {
+        log_info("Detection settings after update - Model: %s, Threshold: %.2f, Interval: %d, Pre-buffer: %d, Post-buffer: %d",
+                 updated_config.detection_model, updated_config.detection_threshold, updated_config.detection_interval,
+                 updated_config.pre_detection_buffer, updated_config.post_detection_buffer);
+    }
+    
+    // Restart stream if it's running
+    stream_status_t status = get_stream_status(stream);
+    if (status == STREAM_STATUS_RUNNING || status == STREAM_STATUS_STARTING) {
+        // Stop stream
+        if (stop_stream(stream) != 0) {
+            log_error("Failed to stop stream: %s", decoded_id);
+            // Continue anyway
         }
         
-        // Restart stream if it's running
-        stream_status_t status = get_stream_status(stream);
-        if (status == STREAM_STATUS_RUNNING || status == STREAM_STATUS_STARTING) {
-            // Stop stream
-            if (stop_stream(stream) != 0) {
-                log_error("Failed to stop stream: %s", decoded_id);
+        // Wait for stream to stop
+        int timeout = 30; // 3 seconds
+        while (get_stream_status(stream) != STREAM_STATUS_STOPPED && timeout > 0) {
+            usleep(100000); // 100ms
+            timeout--;
+        }
+        
+        // Start stream if enabled
+        if (config.enabled) {
+            if (start_stream(stream) != 0) {
+                log_error("Failed to restart stream: %s", decoded_id);
                 // Continue anyway
             }
-            
-            // Wait for stream to stop
-            int timeout = 30; // 3 seconds
-            while (get_stream_status(stream) != STREAM_STATUS_STOPPED && timeout > 0) {
-                usleep(100000); // 100ms
-                timeout--;
-            }
-            
-            // Start stream if enabled
-            if (config.enabled) {
-                if (start_stream(stream) != 0) {
-                    log_error("Failed to restart stream: %s", decoded_id);
-                    // Continue anyway
-                }
-            }
         }
+    }
     }
     
     // Create success response using cJSON
