@@ -13,6 +13,9 @@
 #include "core/logger.h"
 #include "database/database_manager.h"
 
+// Global configuration variable
+config_t g_config;
+
 // Default configuration values
 void load_default_config(config_t *config) {
     if (!config) return;
@@ -30,6 +33,9 @@ void load_default_config(config_t *config) {
     config->max_storage_size = 0; // 0 means unlimited
     config->retention_days = 30;
     config->auto_delete_oldest = true;
+    
+    // Models settings
+    snprintf(config->models_path, MAX_PATH_LENGTH, "/var/lib/lightnvr/models");
     
     // Database settings
     snprintf(config->db_path, MAX_PATH_LENGTH, "/var/lib/lightnvr/lightnvr.db");
@@ -116,6 +122,12 @@ static int ensure_directories(const config_t *config) {
         return -1;
     }
     
+    // Models directory
+    if (create_directory(config->models_path) != 0) {
+        log_error("Failed to create models directory: %s", config->models_path);
+        return -1;
+    }
+    
     // Database directory
     char db_dir[MAX_PATH_LENGTH];
     strncpy(db_dir, config->db_path, MAX_PATH_LENGTH);
@@ -162,6 +174,11 @@ int validate_config(const config_t *config) {
     // Check for required paths
     if (strlen(config->storage_path) == 0) {
         log_error("Storage path is required");
+        return -1;
+    }
+    
+    if (strlen(config->models_path) == 0) {
+        log_error("Models path is required");
         return -1;
     }
     
@@ -226,6 +243,12 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             config->retention_days = atoi(value);
         } else if (strcmp(name, "auto_delete_oldest") == 0) {
             config->auto_delete_oldest = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        }
+    }
+    // Models settings
+    else if (strcmp(section, "models") == 0) {
+        if (strcmp(name, "path") == 0) {
+            strncpy(config->models_path, value, MAX_PATH_LENGTH - 1);
         }
     }
     // Database settings
@@ -642,6 +665,10 @@ int reload_config(config_t *config) {
         log_info("Storage path changed: %s -> %s", old_config.storage_path, config->storage_path);
     }
     
+    if (strcmp(old_config.models_path, config->models_path) != 0) {
+        log_info("Models path changed: %s -> %s", old_config.models_path, config->models_path);
+    }
+    
     if (old_config.max_storage_size != config->max_storage_size) {
         log_info("Max storage size changed: %lu -> %lu bytes", 
                 (unsigned long)old_config.max_storage_size, 
@@ -651,6 +678,9 @@ int reload_config(config_t *config) {
     if (old_config.retention_days != config->retention_days) {
         log_info("Retention days changed: %d -> %d", old_config.retention_days, config->retention_days);
     }
+    
+    // Update global config
+    memcpy(&g_config, config, sizeof(config_t));
     
     log_info("Configuration reloaded successfully");
     return 0;
@@ -717,6 +747,10 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "max_size = %llu  ; 0 means unlimited, otherwise bytes\n", (unsigned long long)config->max_storage_size);
     fprintf(file, "retention_days = %d\n", config->retention_days);
     fprintf(file, "auto_delete_oldest = %s\n\n", config->auto_delete_oldest ? "true" : "false");
+    
+    // Write models settings
+    fprintf(file, "[models]\n");
+    fprintf(file, "path = %s\n\n", config->models_path);
     
     // Write database settings
     fprintf(file, "[database]\n");
@@ -791,6 +825,9 @@ void print_config(const config_t *config) {
     printf("    Max Storage Size: %llu bytes\n", (unsigned long long)config->max_storage_size);
     printf("    Retention Days: %d\n", config->retention_days);
     printf("    Auto Delete Oldest: %s\n", config->auto_delete_oldest ? "true" : "false");
+    
+    printf("  Models Settings:\n");
+    printf("    Models Path: %s\n", config->models_path);
     
     printf("  Database Settings:\n");
     printf("    Database Path: %s\n", config->db_path);

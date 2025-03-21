@@ -553,10 +553,7 @@ function saveStream() {
  */
 function deleteStream(streamId) {
     console.log('Deleting stream:', streamId);
-    if (!confirm('Are you sure you want to delete this stream?')) {
-        return;
-    }
-
+    
     const streamsTable = document.getElementById('streams-table');
     if (streamsTable) {
         showLoading(streamsTable);
@@ -770,5 +767,4 @@ function setupStreamsHandlers() {
             loadDetectionModels();
         });
     }
-    
 }

@@ -59,6 +59,9 @@ typedef struct {
     char mp4_storage_path[256];      // Path for MP4 recordings storage
     int mp4_segment_duration;        // Duration of each MP4 segment in seconds
     int mp4_retention_days;          // Number of days to keep MP4 recordings
+    
+    // Models settings
+    char models_path[MAX_PATH_LENGTH]; // Path to detection models directory
 
     // Database settings
     char db_path[MAX_PATH_LENGTH];
@@ -168,4 +171,7 @@ void set_custom_config_path(const char *path);
  */
 const char* get_custom_config_path(void);
 
-#endif // LIGHTNVR_CONFIG_H
+// Global configuration variable
+extern config_t g_config;
+
+#endif /* LIGHTNVR_CONFIG_H */

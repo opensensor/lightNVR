@@ -41,7 +41,7 @@ void mg_handle_get_system_info(struct mg_connection *c, struct mg_http_message *
         cJSON_AddStringToObject(info, "system", system_info.sysname);
         cJSON_AddStringToObject(info, "node", system_info.nodename);
         cJSON_AddStringToObject(info, "release", system_info.release);
-        cJSON_AddStringToObject(info, "version", system_info.version);
+        cJSON_AddStringToObject(info, "system_version", system_info.version);
         cJSON_AddStringToObject(info, "machine", system_info.machine);
     }
     
