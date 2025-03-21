@@ -294,7 +294,7 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
             char cwd[MAX_PATH_LENGTH];
             if (getcwd(cwd, sizeof(cwd)) != NULL) {
                 const char *locations[] = {
-                    "/etc/lightnvr/models/", // Default system location
+                    "/var/lib/lightnvr/models/", // Default system location
                 };
 
                 for (int i = 0; i < sizeof(locations)/sizeof(locations[0]); i++) {
@@ -444,7 +444,7 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                     
                     // Try alternative locations
                         const char *locations[] = {
-                            "/etc/lightnvr/models/"
+                            "/var/lib/lightnvr/models/"
                         };
                     
                     bool found = false;

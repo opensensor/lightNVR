@@ -32,18 +32,39 @@
 
 #define LIGHTNVR_VERSION_STRING "0.2.0"
 
-// Define a local config variable to work with
-static config_t local_config;
-
-// Global configuration - to be accessed from other modules if needed
-config_t global_config;
-
 /**
- * Get current global configuration
+ * Get current streaming configuration from database
+ * 
+ * This function queries the database for all stream configurations
+ * and returns a pointer to a static config_t structure containing
+ * the latest stream configurations.
+ * 
+ * @return Pointer to a static config_t structure with the latest stream configurations
  */
 config_t* get_streaming_config(void) {
-    // For now, just use our global config
-    return &global_config;
+    static config_t db_config;
+    static pthread_mutex_t config_mutex = PTHREAD_MUTEX_INITIALIZER;
+    
+    pthread_mutex_lock(&config_mutex);
+    
+    // Initialize the config with defaults
+    load_default_config(&db_config);
+    
+    // Load stream configurations from database
+    stream_config_t db_streams[MAX_STREAMS];
+    int count = get_all_stream_configs(db_streams, MAX_STREAMS);
+    
+    if (count > 0) {
+        // Copy stream configurations to the config structure
+        for (int i = 0; i < count && i < MAX_STREAMS; i++) {
+            memcpy(&db_config.streams[i], &db_streams[i], sizeof(stream_config_t));
+        }
+        db_config.max_streams = count;
+    }
+    
+    pthread_mutex_unlock(&config_mutex);
+    
+    return &db_config;
 }
 
 /**

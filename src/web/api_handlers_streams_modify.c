@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <unistd.h>
 
 #include "web/api_handlers.h"
 #include "web/mongoose_adapter.h"
@@ -16,229 +17,6 @@
 #include "mongoose.h"
 #include "video/detection_stream.h"
 #include "database/database_manager.h"
-
-/**
- * @brief Direct handler for GET /api/streams
- */
-void mg_handle_get_streams(struct mg_connection *c, struct mg_http_message *hm) {
-    log_info("Handling GET /api/streams request");
-    
-    // Get all stream configurations from database
-    stream_config_t db_streams[MAX_STREAMS];
-    int count = get_all_stream_configs(db_streams, MAX_STREAMS);
-    
-    if (count < 0) {
-        log_error("Failed to get stream configurations from database");
-        mg_send_json_error(c, 500, "Failed to get stream configurations");
-        return;
-    }
-    
-    // Create JSON array
-    cJSON *streams_array = cJSON_CreateArray();
-    if (!streams_array) {
-        log_error("Failed to create streams JSON array");
-        mg_send_json_error(c, 500, "Failed to create streams JSON");
-        return;
-    }
-    
-    // Add each stream to the array
-    for (int i = 0; i < count; i++) {
-        cJSON *stream_obj = cJSON_CreateObject();
-        if (!stream_obj) {
-            log_error("Failed to create stream JSON object");
-            cJSON_Delete(streams_array);
-            mg_send_json_error(c, 500, "Failed to create stream JSON");
-            return;
-        }
-        
-        // Add stream properties
-        cJSON_AddStringToObject(stream_obj, "name", db_streams[i].name);
-        cJSON_AddStringToObject(stream_obj, "url", db_streams[i].url);
-        cJSON_AddBoolToObject(stream_obj, "enabled", db_streams[i].enabled);
-        cJSON_AddBoolToObject(stream_obj, "streaming_enabled", db_streams[i].streaming_enabled);
-        cJSON_AddNumberToObject(stream_obj, "width", db_streams[i].width);
-        cJSON_AddNumberToObject(stream_obj, "height", db_streams[i].height);
-        cJSON_AddNumberToObject(stream_obj, "fps", db_streams[i].fps);
-        cJSON_AddStringToObject(stream_obj, "codec", db_streams[i].codec);
-        cJSON_AddNumberToObject(stream_obj, "priority", db_streams[i].priority);
-        cJSON_AddBoolToObject(stream_obj, "record", db_streams[i].record);
-        cJSON_AddNumberToObject(stream_obj, "segment_duration", db_streams[i].segment_duration);
-        
-        // Add detection settings
-        cJSON_AddBoolToObject(stream_obj, "detection_based_recording", db_streams[i].detection_based_recording);
-        cJSON_AddStringToObject(stream_obj, "detection_model", db_streams[i].detection_model);
-        
-        // Convert threshold from 0.0-1.0 to percentage (0-100)
-        int threshold_percent = (int)(db_streams[i].detection_threshold * 100.0f);
-        cJSON_AddNumberToObject(stream_obj, "detection_threshold", threshold_percent);
-        
-        cJSON_AddNumberToObject(stream_obj, "detection_interval", db_streams[i].detection_interval);
-        cJSON_AddNumberToObject(stream_obj, "pre_detection_buffer", db_streams[i].pre_detection_buffer);
-        cJSON_AddNumberToObject(stream_obj, "post_detection_buffer", db_streams[i].post_detection_buffer);
-        cJSON_AddNumberToObject(stream_obj, "protocol", (int)db_streams[i].protocol);
-        
-        // Get stream status
-        stream_handle_t stream = get_stream_by_name(db_streams[i].name);
-        const char *status = "Unknown";
-        if (stream) {
-            stream_status_t stream_status = get_stream_status(stream);
-            switch (stream_status) {
-                case STREAM_STATUS_STOPPED:
-                    status = "Stopped";
-                    break;
-                case STREAM_STATUS_STARTING:
-                    status = "Starting";
-                    break;
-                case STREAM_STATUS_RUNNING:
-                    status = "Running";
-                    break;
-                case STREAM_STATUS_STOPPING:
-                    status = "Stopping";
-                    break;
-                case STREAM_STATUS_ERROR:
-                    status = "Error";
-                    break;
-                default:
-                    status = "Unknown";
-                    break;
-            }
-        }
-        cJSON_AddStringToObject(stream_obj, "status", status);
-        
-        // Add stream to array
-        cJSON_AddItemToArray(streams_array, stream_obj);
-    }
-    
-    // Convert to string
-    char *json_str = cJSON_PrintUnformatted(streams_array);
-    if (!json_str) {
-        log_error("Failed to convert streams JSON to string");
-        cJSON_Delete(streams_array);
-        mg_send_json_error(c, 500, "Failed to convert streams JSON to string");
-        return;
-    }
-    
-    // Send response
-    mg_send_json_response(c, 200, json_str);
-    
-    // Clean up
-    free(json_str);
-    cJSON_Delete(streams_array);
-    
-    log_info("Successfully handled GET /api/streams request");
-}
-
-/**
- * @brief Direct handler for GET /api/streams/:id
- */
-void mg_handle_get_stream(struct mg_connection *c, struct mg_http_message *hm) {
-    // Extract stream ID from URL
-    char stream_id[MAX_STREAM_NAME];
-    if (mg_extract_path_param(hm, "/api/streams/", stream_id, sizeof(stream_id)) != 0) {
-        log_error("Failed to extract stream ID from URL");
-        mg_send_json_error(c, 400, "Invalid request path");
-        return;
-    }
-    
-    log_info("Handling GET /api/streams/%s request", stream_id);
-    
-    // URL-decode the stream identifier
-    char decoded_id[MAX_STREAM_NAME];
-    mg_url_decode(stream_id, strlen(stream_id), decoded_id, sizeof(decoded_id), 0);
-    
-    // Find the stream by name
-    stream_handle_t stream = get_stream_by_name(decoded_id);
-    if (!stream) {
-        log_error("Stream not found: %s", decoded_id);
-        mg_send_json_error(c, 404, "Stream not found");
-        return;
-    }
-    
-    // Get stream configuration
-    stream_config_t config;
-    if (get_stream_config(stream, &config) != 0) {
-        log_error("Failed to get stream configuration for: %s", decoded_id);
-        mg_send_json_error(c, 500, "Failed to get stream configuration");
-        return;
-    }
-    
-    // Create JSON object
-    cJSON *stream_obj = cJSON_CreateObject();
-    if (!stream_obj) {
-        log_error("Failed to create stream JSON object");
-        mg_send_json_error(c, 500, "Failed to create stream JSON");
-        return;
-    }
-    
-    // Add stream properties
-    cJSON_AddStringToObject(stream_obj, "name", config.name);
-    cJSON_AddStringToObject(stream_obj, "url", config.url);
-    cJSON_AddBoolToObject(stream_obj, "enabled", config.enabled);
-    cJSON_AddBoolToObject(stream_obj, "streaming_enabled", config.streaming_enabled);
-    cJSON_AddNumberToObject(stream_obj, "width", config.width);
-    cJSON_AddNumberToObject(stream_obj, "height", config.height);
-    cJSON_AddNumberToObject(stream_obj, "fps", config.fps);
-    cJSON_AddStringToObject(stream_obj, "codec", config.codec);
-    cJSON_AddNumberToObject(stream_obj, "priority", config.priority);
-    cJSON_AddBoolToObject(stream_obj, "record", config.record);
-    cJSON_AddNumberToObject(stream_obj, "segment_duration", config.segment_duration);
-    
-    // Add detection settings
-    cJSON_AddBoolToObject(stream_obj, "detection_based_recording", config.detection_based_recording);
-    cJSON_AddStringToObject(stream_obj, "detection_model", config.detection_model);
-    
-    // Convert threshold from 0.0-1.0 to percentage (0-100)
-    int threshold_percent = (int)(config.detection_threshold * 100.0f);
-    cJSON_AddNumberToObject(stream_obj, "detection_threshold", threshold_percent);
-    
-    cJSON_AddNumberToObject(stream_obj, "detection_interval", config.detection_interval);
-    cJSON_AddNumberToObject(stream_obj, "pre_detection_buffer", config.pre_detection_buffer);
-    cJSON_AddNumberToObject(stream_obj, "post_detection_buffer", config.post_detection_buffer);
-    cJSON_AddNumberToObject(stream_obj, "protocol", (int)config.protocol);
-    
-    // Get stream status
-    stream_status_t stream_status = get_stream_status(stream);
-    const char *status = "Unknown";
-    switch (stream_status) {
-        case STREAM_STATUS_STOPPED:
-            status = "Stopped";
-            break;
-        case STREAM_STATUS_STARTING:
-            status = "Starting";
-            break;
-        case STREAM_STATUS_RUNNING:
-            status = "Running";
-            break;
-        case STREAM_STATUS_STOPPING:
-            status = "Stopping";
-            break;
-        case STREAM_STATUS_ERROR:
-            status = "Error";
-            break;
-        default:
-            status = "Unknown";
-            break;
-    }
-    cJSON_AddStringToObject(stream_obj, "status", status);
-    
-    // Convert to string
-    char *json_str = cJSON_PrintUnformatted(stream_obj);
-    if (!json_str) {
-        log_error("Failed to convert stream JSON to string");
-        cJSON_Delete(stream_obj);
-        mg_send_json_error(c, 500, "Failed to convert stream JSON to string");
-        return;
-    }
-    
-    // Send response
-    mg_send_json_response(c, 200, json_str);
-    
-    // Clean up
-    free(json_str);
-    cJSON_Delete(stream_obj);
-    
-    log_info("Successfully handled GET /api/streams/%s request", decoded_id);
-}
 
 /**
  * @brief Direct handler for POST /api/streams
@@ -349,7 +127,7 @@ void mg_handle_post_stream(struct mg_connection *c, struct mg_http_message *hm) 
     cJSON *detection_threshold = cJSON_GetObjectItem(stream_json, "detection_threshold");
     if (detection_threshold && cJSON_IsNumber(detection_threshold)) {
         // Convert from percentage (0-100) to float (0.0-1.0)
-        config.detection_threshold = detection_threshold->valueint / 100.0f;
+        config.detection_threshold = detection_threshold->valuedouble / 100.0f;
     }
     
     cJSON *detection_interval = cJSON_GetObjectItem(stream_json, "detection_interval");
@@ -384,16 +162,19 @@ void mg_handle_post_stream(struct mg_connection *c, struct mg_http_message *hm) 
     }
     
     // Add stream to database
-    if (add_stream_config(&config) == 0) {
+    uint64_t stream_id = add_stream_config(&config);
+    if (stream_id == 0) {
         log_error("Failed to add stream configuration to database");
         mg_send_json_error(c, 500, "Failed to add stream configuration");
         return;
     }
     
-    // Create stream
+    // Create stream in memory from the database configuration
     stream_handle_t stream = add_stream(&config);
     if (!stream) {
         log_error("Failed to create stream: %s", config.name);
+        // Delete from database since we couldn't create it in memory
+        delete_stream_config(config.name);
         mg_send_json_error(c, 500, "Failed to create stream");
         return;
     }
@@ -555,7 +336,7 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
     cJSON *detection_threshold = cJSON_GetObjectItem(stream_json, "detection_threshold");
     if (detection_threshold && cJSON_IsNumber(detection_threshold)) {
         // Convert from percentage (0-100) to float (0.0-1.0)
-        config.detection_threshold = detection_threshold->valueint / 100.0f;
+        config.detection_threshold = detection_threshold->valuedouble / 100.0f;
         config_changed = true;
     }
     
@@ -586,66 +367,81 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
     // Clean up JSON
     cJSON_Delete(stream_json);
     
-    // If configuration changed, update and restart stream
-    if (config_changed) {
-    // Log detection settings before update
+    // Always update stream configuration in database, even if no changes detected
+    // This ensures the database and memory state are in sync
     log_info("Detection settings before update - Model: %s, Threshold: %.2f, Interval: %d, Pre-buffer: %d, Post-buffer: %d",
              config.detection_model, config.detection_threshold, config.detection_interval,
              config.pre_detection_buffer, config.post_detection_buffer);
     
-    // Update stream configuration in database
-    if (update_stream_config(config.name, &config) != 0) {
+    // Update stream configuration in database first
+    if (update_stream_config(decoded_id, &config) != 0) {
         log_error("Failed to update stream configuration in database");
         mg_send_json_error(c, 500, "Failed to update stream configuration");
         return;
     }
     
-    // Update global configuration
-    config_t *global_config = get_streaming_config();
-    if (global_config) {
-        for (int i = 0; i < global_config->max_streams && i < MAX_STREAMS; i++) {
-            if (strcmp(global_config->streams[i].name, config.name) == 0) {
-                log_info("Updating global configuration for stream %s", config.name);
-                memcpy(&global_config->streams[i], &config, sizeof(stream_config_t));
-                break;
-            }
-        }
-    } else {
-        log_warn("Failed to get global configuration for updating stream %s", config.name);
+    // Force update of stream configuration in memory to ensure it matches the database
+    // This ensures the stream handle has the latest configuration
+    if (set_stream_detection_params(stream, 
+                                   config.detection_interval, 
+                                   config.detection_threshold, 
+                                   config.pre_detection_buffer, 
+                                   config.post_detection_buffer) != 0) {
+        log_warn("Failed to update detection parameters for stream %s", config.name);
     }
     
-    // Verify the update by reading back the configuration
-    stream_config_t updated_config;
-    if (get_stream_config(stream, &updated_config) == 0) {
-        log_info("Detection settings after update - Model: %s, Threshold: %.2f, Interval: %d, Pre-buffer: %d, Post-buffer: %d",
-                 updated_config.detection_model, updated_config.detection_threshold, updated_config.detection_interval,
-                 updated_config.pre_detection_buffer, updated_config.post_detection_buffer);
+    if (set_stream_detection_recording(stream, 
+                                      config.detection_based_recording, 
+                                      config.detection_model) != 0) {
+        log_warn("Failed to update detection recording for stream %s", config.name);
     }
     
-    // Restart stream if it's running
-    stream_status_t status = get_stream_status(stream);
-    if (status == STREAM_STATUS_RUNNING || status == STREAM_STATUS_STARTING) {
-        // Stop stream
-        if (stop_stream(stream) != 0) {
-            log_error("Failed to stop stream: %s", decoded_id);
-            // Continue anyway
+    // Update other stream properties in memory
+    if (set_stream_recording(stream, config.record) != 0) {
+        log_warn("Failed to update recording setting for stream %s", config.name);
+    }
+    
+    if (set_stream_streaming_enabled(stream, config.streaming_enabled) != 0) {
+        log_warn("Failed to update streaming setting for stream %s", config.name);
+    }
+    
+    // Only restart the stream if configuration changed
+    if (config_changed) {
+        
+        log_info("Updated stream configuration in memory for stream %s", config.name);
+        
+        // Verify the update by reading back the configuration
+        stream_config_t updated_config;
+        if (get_stream_config(stream, &updated_config) == 0) {
+            log_info("Detection settings after update - Model: %s, Threshold: %.2f, Interval: %d, Pre-buffer: %d, Post-buffer: %d",
+                     updated_config.detection_model, updated_config.detection_threshold, updated_config.detection_interval,
+                     updated_config.pre_detection_buffer, updated_config.post_detection_buffer);
         }
         
-        // Wait for stream to stop
-        int timeout = 30; // 3 seconds
-        while (get_stream_status(stream) != STREAM_STATUS_STOPPED && timeout > 0) {
-            usleep(100000); // 100ms
-            timeout--;
-        }
-        
-        // Start stream if enabled
-        if (config.enabled) {
-            if (start_stream(stream) != 0) {
-                log_error("Failed to restart stream: %s", decoded_id);
+        // Restart stream if it's running
+        stream_status_t status = get_stream_status(stream);
+        if (status == STREAM_STATUS_RUNNING || status == STREAM_STATUS_STARTING) {
+            // Stop stream
+            if (stop_stream(stream) != 0) {
+                log_error("Failed to stop stream: %s", decoded_id);
                 // Continue anyway
             }
+            
+            // Wait for stream to stop
+            int timeout = 30; // 3 seconds
+            while (get_stream_status(stream) != STREAM_STATUS_STOPPED && timeout > 0) {
+                usleep(100000); // 100ms
+                timeout--;
+            }
+            
+            // Start stream if enabled
+            if (config.enabled) {
+                if (start_stream(stream) != 0) {
+                    log_error("Failed to restart stream: %s", decoded_id);
+                    // Continue anyway
+                }
+            }
         }
-    }
     }
     
     // Create success response using cJSON
@@ -760,111 +556,4 @@ void mg_handle_delete_stream(struct mg_connection *c, struct mg_http_message *hm
     cJSON_Delete(success);
     
     log_info("Successfully deleted stream: %s", decoded_id);
-}
-
-/**
- * @brief Direct handler for POST /api/streams/:id/toggle_streaming
- */
-void mg_handle_toggle_streaming(struct mg_connection *c, struct mg_http_message *hm) {
-    // Extract stream ID from URL
-    char stream_id[MAX_STREAM_NAME];
-    char *toggle_path = "/api/streams/";
-    char *toggle_suffix = "/toggle_streaming";
-    
-    // Extract stream ID from URL (between prefix and suffix)
-    struct mg_str uri = hm->uri;
-    const char *uri_ptr = mg_str_get_ptr(&uri);
-    size_t uri_len = mg_str_get_len(&uri);
-    
-    size_t prefix_len = strlen(toggle_path);
-    size_t suffix_len = strlen(toggle_suffix);
-    
-    if (uri_len <= prefix_len + suffix_len || 
-        strncmp(uri_ptr, toggle_path, prefix_len) != 0 ||
-        strncmp(uri_ptr + uri_len - suffix_len, toggle_suffix, suffix_len) != 0) {
-        log_error("Invalid toggle_streaming URL format");
-        mg_send_json_error(c, 400, "Invalid request path");
-        return;
-    }
-    
-    // Extract stream ID
-    size_t id_len = uri_len - prefix_len - suffix_len;
-    if (id_len >= sizeof(stream_id)) {
-        log_error("Stream ID too long");
-        mg_send_json_error(c, 400, "Stream ID too long");
-        return;
-    }
-    
-    memcpy(stream_id, uri_ptr + prefix_len, id_len);
-    stream_id[id_len] = '\0';
-    
-    // URL-decode the stream identifier
-    char decoded_id[MAX_STREAM_NAME];
-    mg_url_decode(stream_id, strlen(stream_id), decoded_id, sizeof(decoded_id), 0);
-    
-    log_info("Handling POST /api/streams/%s/toggle_streaming request", decoded_id);
-    
-    // Find the stream by name
-    stream_handle_t stream = get_stream_by_name(decoded_id);
-    if (!stream) {
-        log_error("Stream not found: %s", decoded_id);
-        mg_send_json_error(c, 404, "Stream not found");
-        return;
-    }
-    
-    // Get stream configuration
-    stream_config_t config;
-    if (get_stream_config(stream, &config) != 0) {
-        log_error("Failed to get stream configuration for: %s", decoded_id);
-        mg_send_json_error(c, 500, "Failed to get stream configuration");
-        return;
-    }
-    
-    // Toggle streaming_enabled flag
-    config.streaming_enabled = !config.streaming_enabled;
-    
-    // Update stream configuration
-    if (update_stream_config(config.name, &config) != 0) {
-        log_error("Failed to update stream configuration in database");
-        mg_send_json_error(c, 500, "Failed to update stream configuration");
-        return;
-    }
-    
-    // Apply changes to stream
-    if (set_stream_streaming_enabled(stream, config.streaming_enabled) != 0) {
-        log_error("Failed to %s streaming for stream: %s", 
-                 config.streaming_enabled ? "enable" : "disable", decoded_id);
-        mg_send_json_error(c, 500, "Failed to toggle streaming");
-        return;
-    }
-    
-    // Create response using cJSON
-    cJSON *response = cJSON_CreateObject();
-    if (!response) {
-        log_error("Failed to create response JSON object");
-        mg_send_json_error(c, 500, "Failed to create response JSON");
-        return;
-    }
-    
-    cJSON_AddBoolToObject(response, "success", true);
-    cJSON_AddBoolToObject(response, "streaming_enabled", config.streaming_enabled);
-    
-    // Convert to string
-    char *json_str = cJSON_PrintUnformatted(response);
-    if (!json_str) {
-        log_error("Failed to convert response JSON to string");
-        cJSON_Delete(response);
-        mg_send_json_error(c, 500, "Failed to convert response JSON to string");
-        return;
-    }
-    
-    // Send response
-    mg_send_json_response(c, 200, json_str);
-    
-    // Clean up
-    free(json_str);
-    cJSON_Delete(response);
-    
-    log_info("Successfully %s streaming for stream: %s", 
-            config.streaming_enabled ? "enabled" : "disabled", decoded_id);
 }

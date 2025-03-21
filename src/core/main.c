@@ -318,9 +318,8 @@ int main(int argc, char *argv[]) {
     // regardless of the configured log level
     log_error("Log level set to %d (%s)", config.log_level, get_log_level_string(config.log_level));
 
-    // Copy configuration to global streaming config
-    extern config_t global_config;  // Declared in streams.c
-    memcpy(&global_config, &config, sizeof(config_t));
+    // Copy configuration to global config
+    memcpy(&g_config, &config, sizeof(config_t));
 
     // Verify web root directory exists and is readable
     struct stat st;

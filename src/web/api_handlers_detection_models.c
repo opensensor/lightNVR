@@ -16,7 +16,7 @@
 #include "video/detection.h"
 
 // Default models directory
-#define DEFAULT_MODELS_DIR "/etc/lightnvr/models"
+#define DEFAULT_MODELS_DIR "/var/lib/lightnvr/models"
 
 /**
  * @brief Direct handler for GET /api/detection/models
@@ -82,9 +82,30 @@ void mg_handle_get_detection_models(struct mg_connection *c, struct mg_http_mess
         return;
     }
     
+    // Initialize model count
+    int model_count = 0;
+    
+    // Add built-in motion detection model
+    cJSON *motion_model = cJSON_CreateObject();
+    if (motion_model) {
+        cJSON_AddStringToObject(motion_model, "name", "motion");
+        cJSON_AddStringToObject(motion_model, "path", "builtin://motion");
+        cJSON_AddStringToObject(motion_model, "type", "builtin");
+        cJSON_AddBoolToObject(motion_model, "supported", true);
+        cJSON_AddStringToObject(motion_model, "description", "Built-in motion detection");
+        
+        // Add model to array
+        cJSON_AddItemToArray(models_array, motion_model);
+        model_count = 1;
+        
+        log_info("Added built-in motion detection model");
+    } else {
+        log_error("Failed to create motion model JSON object");
+        model_count = 0;
+    }
+    
     // Scan models directory
     struct dirent *entry;
-    int model_count = 0;
     
     while ((entry = readdir(dir)) != NULL) {
         // Skip . and ..

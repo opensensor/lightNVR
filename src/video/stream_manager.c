@@ -11,6 +11,7 @@
 #include "video/detection.h"
 #include "video/stream_reader.h"
 #include "video/stream_state.h"
+#include "database/db_streams.h"
 
 // Stream structure
 typedef struct {
@@ -48,12 +49,16 @@ int init_stream_manager(int max_streams) {
         streams[i].detection_recording_enabled = false;
     }
     
-    // Load stream configurations from config
-    config_t *config = get_streaming_config();
-    if (config) {
-        for (int i = 0; i < config->max_streams && i < MAX_STREAMS; i++) {
-            if (config->streams[i].name[0] != '\0') {
-                memcpy(&streams[i].config, &config->streams[i], sizeof(stream_config_t));
+    // Load stream configurations directly from database
+    stream_config_t db_streams[MAX_STREAMS];
+    int count = get_all_stream_configs(db_streams, MAX_STREAMS);
+    
+    if (count > 0) {
+        for (int i = 0; i < count && i < MAX_STREAMS; i++) {
+            if (db_streams[i].name[0] != '\0') {
+                memcpy(&streams[i].config, &db_streams[i], sizeof(stream_config_t));
+                streams[i].recording_enabled = db_streams[i].record;
+                streams[i].detection_recording_enabled = db_streams[i].detection_based_recording;
             }
         }
     }
@@ -154,6 +159,26 @@ stream_handle_t get_stream_by_name(const char *name) {
         }
     }
     
+    // If stream not found in memory, check if it exists in the database
+    stream_config_t db_config;
+    if (get_stream_config_by_name(name, &db_config) == 0) {
+        // Found in database, add to memory
+        for (int i = 0; i < MAX_STREAMS; i++) {
+            if (streams[i].config.name[0] == '\0') {
+                // Found empty slot
+                memcpy(&streams[i].config, &db_config, sizeof(stream_config_t));
+                streams[i].status = STREAM_STATUS_STOPPED;
+                streams[i].recording_enabled = db_config.record;
+                streams[i].detection_recording_enabled = db_config.detection_based_recording;
+                
+                pthread_mutex_unlock(&streams_mutex);
+                return (stream_handle_t)&streams[i];
+            }
+        }
+        // No empty slots available
+        log_error("No available slots for stream from database: %s", name);
+    }
+    
     pthread_mutex_unlock(&streams_mutex);
     return NULL;
 }
@@ -168,11 +193,18 @@ int get_stream_config(stream_handle_t stream, stream_config_t *config) {
     
     stream_t *s = (stream_t *)stream;
     
-    pthread_mutex_lock(&s->mutex);
-    memcpy(config, &s->config, sizeof(stream_config_t));
-    pthread_mutex_unlock(&s->mutex);
+    // Get the configuration directly from the database
+    if (get_stream_config_by_name(s->config.name, config) == 0) {
+        // Update the in-memory configuration to stay in sync
+        pthread_mutex_lock(&s->mutex);
+        memcpy(&s->config, config, sizeof(stream_config_t));
+        pthread_mutex_unlock(&s->mutex);
+        return 0;
+    }
     
-    return 0;
+    // Return error if database query fails
+    log_error("Failed to get stream configuration from database for stream %s", s->config.name);
+    return -1;
 }
 
 /**
@@ -238,23 +270,27 @@ int set_stream_detection_recording(stream_handle_t stream, bool enabled, const c
         s->config.detection_model[MAX_PATH_LENGTH - 1] = '\0';
     }
     
+    // Get a copy of the config for database update
+    stream_config_t config_copy;
+    memcpy(&config_copy, &s->config, sizeof(stream_config_t));
+    
     pthread_mutex_unlock(&s->mutex);
     
-    // Save configuration to config file
-    config_t *config = get_streaming_config();
-    if (config) {
-        for (int i = 0; i < config->max_streams && i < MAX_STREAMS; i++) {
-            if (strcmp(config->streams[i].name, s->config.name) == 0) {
-                pthread_mutex_lock(&s->mutex);
-                memcpy(&config->streams[i], &s->config, sizeof(stream_config_t));
-                pthread_mutex_unlock(&s->mutex);
-                break;
-            }
-        }
+    // Update the database directly
+    if (update_stream_config(config_copy.name, &config_copy) != 0) {
+        log_error("Failed to update stream configuration in database for stream %s", config_copy.name);
+        return -1;
+    }
+    
+    // Also update the stream state manager if it exists
+    stream_state_manager_t *state = get_stream_state_by_name(config_copy.name);
+    if (state) {
+        update_stream_state_config(state, &config_copy);
+        log_info("Updated stream state configuration for stream %s", config_copy.name);
     }
     
     log_info("Set detection recording for stream %s: enabled=%s, model=%s", 
-             s->config.name, enabled ? "true" : "false", model_path ? model_path : "none");
+             config_copy.name, enabled ? "true" : "false", model_path ? model_path : "none");
     
     return 0;
 }
@@ -289,22 +325,26 @@ int set_stream_detection_params(stream_handle_t stream, int interval, float thre
         s->config.post_detection_buffer = post_buffer;
     }
     
+    // Get a copy of the config for database update
+    stream_config_t config_copy;
+    memcpy(&config_copy, &s->config, sizeof(stream_config_t));
+    
     pthread_mutex_unlock(&s->mutex);
     
-    // Save configuration to config file
-    config_t *config = get_streaming_config();
-    if (config) {
-        for (int i = 0; i < config->max_streams && i < MAX_STREAMS; i++) {
-            if (strcmp(config->streams[i].name, s->config.name) == 0) {
-                pthread_mutex_lock(&s->mutex);
-                memcpy(&config->streams[i], &s->config, sizeof(stream_config_t));
-                pthread_mutex_unlock(&s->mutex);
-                break;
-            }
-        }
+    // Update the database directly
+    if (update_stream_config(config_copy.name, &config_copy) != 0) {
+        log_error("Failed to update stream configuration in database for stream %s", config_copy.name);
+        return -1;
     }
     
-    log_info("Set detection parameters for stream %s", s->config.name);
+    // Also update the stream state manager if it exists
+    stream_state_manager_t *state = get_stream_state_by_name(config_copy.name);
+    if (state) {
+        update_stream_state_config(state, &config_copy);
+        log_info("Updated stream state configuration for stream %s", config_copy.name);
+    }
+    
+    log_info("Set detection parameters for stream %s", config_copy.name);
     
     return 0;
 }
@@ -364,16 +404,8 @@ stream_handle_t add_stream(const stream_config_t *config) {
         }
     }
     
-    // Save to config
-    config_t *global_config = get_streaming_config();
-    if (global_config) {
-        for (int i = 0; i < global_config->max_streams && i < MAX_STREAMS; i++) {
-            if (global_config->streams[i].name[0] == '\0') {
-                memcpy(&global_config->streams[i], config, sizeof(stream_config_t));
-                break;
-            }
-        }
-    }
+    // Note: We don't need to update the global configuration anymore
+    // as it's now retrieved directly from the database
     
     log_info("Added stream '%s' in slot %d", config->name, slot);
     pthread_mutex_unlock(&streams_mutex);
@@ -418,6 +450,12 @@ int remove_stream(stream_handle_t handle) {
     strncpy(stream_name, s->config.name, MAX_STREAM_NAME - 1);
     stream_name[MAX_STREAM_NAME - 1] = '\0';
     
+    // Delete the stream from the database
+    if (delete_stream_config(stream_name) != 0) {
+        log_error("Failed to delete stream configuration from database for stream %s", stream_name);
+        // Continue anyway to clean up the local state
+    }
+    
     // Clear the stream slot
     pthread_mutex_lock(&s->mutex);
     
@@ -432,17 +470,6 @@ int remove_stream(stream_handle_t handle) {
     s->recording_enabled = false;
     s->detection_recording_enabled = false;
     pthread_mutex_unlock(&s->mutex);
-    
-    // Remove from config
-    config_t *global_config = get_streaming_config();
-    if (global_config) {
-        for (int i = 0; i < global_config->max_streams && i < MAX_STREAMS; i++) {
-            if (strcmp(global_config->streams[i].name, stream_name) == 0) {
-                memset(&global_config->streams[i], 0, sizeof(stream_config_t));
-                break;
-            }
-        }
-    }
     
     log_info("Removed stream '%s' from slot %d", stream_name, slot);
     pthread_mutex_unlock(&streams_mutex);
@@ -738,20 +765,27 @@ int set_stream_priority(stream_handle_t handle, int priority) {
     
     pthread_mutex_lock(&s->mutex);
     s->config.priority = priority;
+    
+    // Get a copy of the config for database update
+    stream_config_t config_copy;
+    memcpy(&config_copy, &s->config, sizeof(stream_config_t));
+    
     pthread_mutex_unlock(&s->mutex);
     
-    // Update config
-    config_t *global_config = get_streaming_config();
-    if (global_config) {
-        for (int i = 0; i < global_config->max_streams && i < MAX_STREAMS; i++) {
-            if (strcmp(global_config->streams[i].name, s->config.name) == 0) {
-                global_config->streams[i].priority = priority;
-                break;
-            }
-        }
+    // Update the database directly
+    if (update_stream_config(config_copy.name, &config_copy) != 0) {
+        log_error("Failed to update stream configuration in database for stream %s", config_copy.name);
+        return -1;
     }
     
-    log_info("Set priority for stream '%s' to %d", s->config.name, priority);
+    // Also update the stream state manager if it exists
+    stream_state_manager_t *state = get_stream_state_by_name(config_copy.name);
+    if (state) {
+        update_stream_state_config(state, &config_copy);
+        log_info("Updated stream state configuration for stream %s", config_copy.name);
+    }
+    
+    log_info("Set priority for stream '%s' to %d", config_copy.name, priority);
     return 0;
 }
 
@@ -780,22 +814,22 @@ int set_stream_recording(stream_handle_t handle, bool enable) {
         
         int result = set_stream_feature(state, "recording", enable);
         
-        // Update the old config for backward compatibility
+        // Update the local config
         if (result == 0) {
             pthread_mutex_lock(&s->mutex);
             s->config.record = enable;
             s->recording_enabled = enable;
+            
+            // Get a copy of the config for database update
+            stream_config_t config_copy;
+            memcpy(&config_copy, &s->config, sizeof(stream_config_t));
+            
             pthread_mutex_unlock(&s->mutex);
             
-            // Update config
-            config_t *global_config = get_streaming_config();
-            if (global_config) {
-                for (int i = 0; i < global_config->max_streams && i < MAX_STREAMS; i++) {
-                    if (strcmp(global_config->streams[i].name, stream_name) == 0) {
-                        global_config->streams[i].record = enable;
-                        break;
-                    }
-                }
+            // Update the database directly
+            if (update_stream_config(config_copy.name, &config_copy) != 0) {
+                log_error("Failed to update stream configuration in database for stream %s", config_copy.name);
+                // Continue anyway, the feature was set successfully
             }
         }
         
@@ -808,17 +842,24 @@ int set_stream_recording(stream_handle_t handle, bool enable) {
     pthread_mutex_lock(&s->mutex);
     s->config.record = enable;
     s->recording_enabled = enable;
+    
+    // Get a copy of the config for database update
+    stream_config_t config_copy;
+    memcpy(&config_copy, &s->config, sizeof(stream_config_t));
+    
     pthread_mutex_unlock(&s->mutex);
     
-    // Update config
-    config_t *global_config = get_streaming_config();
-    if (global_config) {
-        for (int i = 0; i < global_config->max_streams && i < MAX_STREAMS; i++) {
-            if (strcmp(global_config->streams[i].name, stream_name) == 0) {
-                global_config->streams[i].record = enable;
-                break;
-            }
-        }
+    // Update the database directly
+    if (update_stream_config(config_copy.name, &config_copy) != 0) {
+        log_error("Failed to update stream configuration in database for stream %s", config_copy.name);
+        return -1;
+    }
+    
+    // Also update the stream state manager if it exists
+    state = get_stream_state_by_name(config_copy.name);
+    if (state) {
+        update_stream_state_config(state, &config_copy);
+        log_info("Updated stream state configuration for stream %s", config_copy.name);
     }
     
     log_info("Set recording for stream '%s' to %s", stream_name, enable ? "enabled" : "disabled");
@@ -870,21 +911,21 @@ int set_stream_streaming_enabled(stream_handle_t handle, bool enabled) {
         
         int result = set_stream_feature(state, "streaming", enabled);
         
-        // Update the old config for backward compatibility
+        // Update the local config
         if (result == 0) {
             pthread_mutex_lock(&s->mutex);
             s->config.streaming_enabled = enabled;
+            
+            // Get a copy of the config for database update
+            stream_config_t config_copy;
+            memcpy(&config_copy, &s->config, sizeof(stream_config_t));
+            
             pthread_mutex_unlock(&s->mutex);
             
-            // Update config
-            config_t *global_config = get_streaming_config();
-            if (global_config) {
-                for (int i = 0; i < global_config->max_streams && i < MAX_STREAMS; i++) {
-                    if (strcmp(global_config->streams[i].name, stream_name) == 0) {
-                        global_config->streams[i].streaming_enabled = enabled;
-                        break;
-                    }
-                }
+            // Update the database directly
+            if (update_stream_config(config_copy.name, &config_copy) != 0) {
+                log_error("Failed to update stream configuration in database for stream %s", config_copy.name);
+                // Continue anyway, the feature was set successfully
             }
         }
         
@@ -896,17 +937,24 @@ int set_stream_streaming_enabled(stream_handle_t handle, bool enabled) {
     
     pthread_mutex_lock(&s->mutex);
     s->config.streaming_enabled = enabled;
+    
+    // Get a copy of the config for database update
+    stream_config_t config_copy;
+    memcpy(&config_copy, &s->config, sizeof(stream_config_t));
+    
     pthread_mutex_unlock(&s->mutex);
     
-    // Update config
-    config_t *global_config = get_streaming_config();
-    if (global_config) {
-        for (int i = 0; i < global_config->max_streams && i < MAX_STREAMS; i++) {
-            if (strcmp(global_config->streams[i].name, stream_name) == 0) {
-                global_config->streams[i].streaming_enabled = enabled;
-                break;
-            }
-        }
+    // Update the database directly
+    if (update_stream_config(config_copy.name, &config_copy) != 0) {
+        log_error("Failed to update stream configuration in database for stream %s", config_copy.name);
+        return -1;
+    }
+    
+    // Also update the stream state manager if it exists
+    state = get_stream_state_by_name(config_copy.name);
+    if (state) {
+        update_stream_state_config(state, &config_copy);
+        log_info("Updated stream state configuration for stream %s", config_copy.name);
     }
     
     log_info("Set streaming enabled for stream '%s' to %s", stream_name, enabled ? "enabled" : "disabled");
