@@ -368,7 +368,7 @@ function editStream(streamId) {
         })
         .catch(error => {
             console.error('Error loading stream details:', error);
-            alert('Error loading stream details: ' + error.message);
+            showStatusMessage('Error loading stream details: ' + error.message, 5000);
         })
         .finally(() => {
             hideLoading(streamModal);
@@ -423,7 +423,7 @@ function saveStream() {
                 
                 // Only show alert and return if detection is enabled
                 if (detectionEnabled.checked) {
-                    alert('No detection models available. Please make sure models are installed in the models directory.');
+                    showStatusMessage('No detection models available. Please make sure models are installed in the models directory.', 5000);
                     hideLoading(streamModal);
                     return;
                 }
@@ -468,7 +468,7 @@ function saveStream() {
 
     // Validate required fields
     if (!streamData.name || !streamData.url) {
-        alert('Name and URL are required');
+        showStatusMessage('Name and URL are required', 5000);
         hideLoading(streamModal);
         return;
     }
@@ -479,9 +479,9 @@ function saveStream() {
             // Check if models are available
             const modelSelect = document.getElementById('stream-detection-model');
             if (modelSelect && modelSelect.options.length <= 1) {
-                alert('No detection models available. Please make sure models are installed in the models directory.');
+                showStatusMessage('No detection models available. Please make sure models are installed in the models directory.', 5000);
             } else {
-                alert('Please select a detection model');
+                showStatusMessage('Please select a detection model', 5000);
             }
             
             // Make sure detection options are visible
@@ -537,11 +537,11 @@ function saveStream() {
                 loadStreams(true); // For live view page
             }
 
-            alert('Stream saved successfully');
+            showStatusMessage('Stream saved successfully', 5000);
         })
         .catch(error => {
             console.error('Error saving stream:', error);
-            alert('Error saving stream: ' + error.message);
+            showStatusMessage('Error saving stream: ' + error.message, 5000);
         })
         .finally(() => {
             hideLoading(streamModal);
@@ -581,11 +581,11 @@ function deleteStream(streamId) {
                 loadStreams(true); // For live view page
             }
 
-            alert('Stream deleted successfully');
+            showStatusMessage('Stream deleted successfully', 5000);
         })
         .catch(error => {
             console.error('Error deleting stream:', error);
-            alert('Error deleting stream: ' + error.message);
+            showStatusMessage('Error deleting stream: ' + error.message, 5000);
 
             if (streamsTable) {
                 hideLoading(streamsTable);
@@ -603,7 +603,7 @@ function testStream() {
     // Get URL from form
     const url = document.getElementById('stream-url').value;
     if (!url) {
-        alert('Please enter a stream URL');
+        showStatusMessage('Please enter a stream URL', 5000);
         return;
     }
 
@@ -625,7 +625,7 @@ function testStream() {
         })
         .then(data => {
             if (data.success) {
-                alert(`Stream connection test successful for URL: ${url}`);
+                showStatusMessage(`Stream connection test successful for URL: ${url}`, 5000);
 
                 // Optionally auto-fill some form fields based on detected stream info
                 if (data.details) {
@@ -641,12 +641,12 @@ function testStream() {
                     }
                 }
             } else {
-                alert(`Stream connection test failed: ${data.error || 'Unknown error'}`);
+                showStatusMessage(`Stream connection test failed: ${data.error || 'Unknown error'}`, 5000);
             }
         })
         .catch(error => {
             console.error('Error testing stream connection:', error);
-            alert('Error testing stream connection: ' + error.message);
+            showStatusMessage('Error testing stream connection: ' + error.message, 5000);
         })
         .finally(() => {
             hideLoading(streamModal);

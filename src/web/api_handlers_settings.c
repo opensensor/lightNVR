@@ -4,317 +4,229 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <pthread.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <errno.h>
-#include <unistd.h>
-#include <signal.h>
-#include <libgen.h>
+#include <ctype.h>
+#include "cJSON.h"
 
-#include "web/api_handlers_settings.h"
-#include "web/api_handlers_common.h"
-#include "core/config.h"
+#include "web/api_handlers.h"
+#include "web/mongoose_adapter.h"
 #include "core/logger.h"
-#include "storage/storage_manager.h"
+#include "core/config.h"
+#include "mongoose.h"
 
-// Forward declaration of helper function to get current configuration
-static config_t* get_current_config(void);
-
-// Flag to track if a save operation timed out
-static volatile int save_timeout_occurred = 0;
-
-// Signal handler for save timeout
-static void handle_save_timeout(int sig) {
-    save_timeout_occurred = 1;
-    log_error("Save operation timed out (signal received)");
-}
-
-// Recursive directory creation function
-static int create_directory_recursive(const char *path) {
-    char tmp[MAX_PATH_LENGTH];
-    char *p = NULL;
-    size_t len;
+/**
+ * @brief Direct handler for GET /api/settings
+ */
+void mg_handle_get_settings(struct mg_connection *c, struct mg_http_message *hm) {
+    log_info("Handling GET /api/settings request");
     
-    if (!path || strlen(path) == 0) {
-        return -1;
-    }
-    
-    snprintf(tmp, sizeof(tmp), "%s", path);
-    len = strlen(tmp);
-    
-    // Remove trailing slash
-    if (tmp[len - 1] == '/') {
-        tmp[len - 1] = 0;
-    }
-    
-    // Check if directory already exists
-    struct stat st = {0};
-    if (stat(tmp, &st) == 0) {
-        if (S_ISDIR(st.st_mode)) {
-            return 0; // Directory exists
-        } else {
-            return -1; // Path exists but is not a directory
-        }
-    }
-    
-    // Create parent directories recursively
-    for (p = tmp + 1; *p; p++) {
-        if (*p == '/') {
-            *p = 0;
-            
-            // Create this directory segment
-            if (stat(tmp, &st) != 0) {
-                if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
-                    log_error("Failed to create directory: %s (error: %s)", tmp, strerror(errno));
-                    return -1;
-                }
-            } else if (!S_ISDIR(st.st_mode)) {
-                log_error("Path exists but is not a directory: %s", tmp);
-                return -1;
-            }
-            
-            *p = '/';
-        }
-    }
-    
-    // Create the final directory
-    if (stat(tmp, &st) != 0) {
-        if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
-            log_error("Failed to create directory: %s (error: %s)", tmp, strerror(errno));
-            return -1;
-        }
-    } else if (!S_ISDIR(st.st_mode)) {
-        log_error("Path exists but is not a directory: %s", tmp);
-        return -1;
-    }
-    
-    return 0;
-}
-
-// Helper function to get current configuration
-static config_t* get_current_config(void) {
-    // The global config is declared in streams.c
+    // Get global configuration
     extern config_t global_config;
     
-    // Add defensive checks here
-    log_debug("Accessing global config structure");
-
-    // Make sure the memory is valid
-    if (global_config.web_port == 0) {
-        log_warn("Global config appears to be uninitialized (web_port is 0)");
-    }
-
-    // Return a pointer to the global config
-    return &global_config;
-}
-
-void handle_get_settings(const http_request_t *request, http_response_t *response) {
-    log_info("Processing settings request...");
-
-    // Use a local config variable to work with
-    config_t local_config;
-    
-    // Lock the mutex for thread-safe access
-
-    // Get the global config
-    config_t *global_config = get_current_config();
-
-    if (!global_config) {
-        log_error("Failed to get global config - null pointer returned");
-        create_json_response(response, 500, "{\"error\": \"Failed to access global configuration\"}");
+    // Create JSON object
+    cJSON *settings = cJSON_CreateObject();
+    if (!settings) {
+        log_error("Failed to create settings JSON object");
+        mg_send_json_error(c, 500, "Failed to create settings JSON");
         return;
     }
-
-    // Safely copy the configuration
-    memset(&local_config, 0, sizeof(config_t));  // Clear first to prevent partial data
-    memcpy(&local_config, global_config, sizeof(config_t));
-
-    // Add logging to debug the issue
-    log_debug("Creating JSON for settings: log_level=%d, web_port=%d, storage_path=%s",
-              local_config.log_level, local_config.web_port, local_config.storage_path);
-
-    // Create JSON string with settings
-    char *json_str = create_json_string(&local_config);
+    
+    // Add settings properties
+    cJSON_AddNumberToObject(settings, "web_port", global_config.web_port);
+    cJSON_AddStringToObject(settings, "web_root", global_config.web_root);
+    cJSON_AddBoolToObject(settings, "web_auth_enabled", global_config.web_auth_enabled);
+    cJSON_AddStringToObject(settings, "web_username", global_config.web_username);
+    
+    // Don't include the password for security reasons
+    cJSON_AddStringToObject(settings, "web_password", "********");
+    
+    cJSON_AddStringToObject(settings, "storage_path", global_config.storage_path);
+    cJSON_AddNumberToObject(settings, "max_storage_size", global_config.max_storage_size);
+    cJSON_AddNumberToObject(settings, "max_streams", global_config.max_streams);
+    cJSON_AddStringToObject(settings, "log_file", global_config.log_file);
+    cJSON_AddNumberToObject(settings, "log_level", global_config.log_level);
+    cJSON_AddStringToObject(settings, "pid_file", global_config.pid_file);
+    cJSON_AddStringToObject(settings, "db_path", global_config.db_path);
+    
+    // Convert to string
+    char *json_str = cJSON_PrintUnformatted(settings);
     if (!json_str) {
-        log_error("Failed to create settings JSON - memory allocation error");
-        create_json_response(response, 500, "{\"error\": \"Failed to serialize settings\"}");
+        log_error("Failed to convert settings JSON to string");
+        cJSON_Delete(settings);
+        mg_send_json_error(c, 500, "Failed to convert settings JSON to string");
         return;
     }
-
-    // Log a portion of the JSON for debugging (safe truncation)
-    size_t json_len = strlen(json_str);
-    size_t log_len = json_len > 300 ? 300 : json_len;
-    char *debug_json = malloc(log_len + 4);  // +4 for "...\0"
-
-    if (debug_json) {
-        memcpy(debug_json, json_str, log_len);
-        if (json_len > 300) {
-            strcpy(debug_json + log_len, "...");
-        } else {
-            debug_json[log_len] = '\0';
-        }
-
-        log_debug("Settings JSON (may be truncated): %s", debug_json);
-        free(debug_json);
-    }
-
-    // Create response
-    log_debug("Creating JSON response, status 200");
-    create_json_response(response, 200, json_str);
-
-    // Free resources
+    
+    // Send response
+    mg_send_json_response(c, 200, json_str);
+    
+    // Clean up
     free(json_str);
-    log_info("Settings request processed successfully");
+    cJSON_Delete(settings);
+    
+    log_info("Successfully handled GET /api/settings request");
 }
 
-void handle_post_settings(const http_request_t *request, http_response_t *response) {
-    log_info("Processing settings update request");
-
-    // Basic request check and JSON parsing
-    if (!request->body || request->content_length == 0) {
-        response->status_code = 400;
-        strncpy(response->content_type, "application/json", sizeof(response->content_type) - 1);
-        response->content_type[sizeof(response->content_type) - 1] = '\0';
-        response->body = strdup("{\"error\": \"Empty request body\"}");
-        response->body_length = strlen(response->body);
+/**
+ * @brief Direct handler for POST /api/settings
+ */
+void mg_handle_post_settings(struct mg_connection *c, struct mg_http_message *hm) {
+    log_info("Handling POST /api/settings request");
+    
+    // Parse JSON from request body
+    cJSON *settings = mg_parse_json_body(hm);
+    if (!settings) {
+        log_error("Failed to parse settings JSON from request body");
+        mg_send_json_error(c, 400, "Invalid JSON in request body");
         return;
     }
-
-    // Log the request body for debugging
-    log_debug("Received settings request body: %.*s", 
-              (int)request->content_length > 1000 ? 1000 : (int)request->content_length, 
-              (char*)request->body);
-
-    char *json = malloc(request->content_length + 1);
-    if (!json) {
-        response->status_code = 500;
-        strncpy(response->content_type, "application/json", sizeof(response->content_type) - 1);
-        response->content_type[sizeof(response->content_type) - 1] = '\0';
-        response->body = strdup("{\"error\": \"Memory allocation failed\"}");
-        response->body_length = strlen(response->body);
-        return;
-    }
-
-    memcpy(json, request->body, request->content_length);
-    json[request->content_length] = '\0';
-
-    // Get config and modify it
-    config_t *global_config = get_current_config();
-    if (!global_config) {
-        log_error("Failed to get global config");
-        free(json);
-        response->status_code = 500;
-        strncpy(response->content_type, "application/json", sizeof(response->content_type) - 1);
-        response->content_type[sizeof(response->content_type) - 1] = '\0';
-        response->body = strdup("{\"error\": \"Failed to access global configuration\"}");
-        response->body_length = strlen(response->body);
-        return;
-    }
-
-    // Create a local copy of the config to work with
-    config_t local_config;
-    memcpy(&local_config, global_config, sizeof(config_t));
-
-    // Update all settings from the JSON request
-    log_debug("Parsing settings from JSON request");
-
-    // General settings
-    local_config.log_level = get_json_integer_value(json, "log_level", local_config.log_level);
     
-    // Storage settings
-    char *storage_path = get_json_string_value(json, "storage_path");
-    if (storage_path) {
-        strncpy(local_config.storage_path, storage_path, sizeof(local_config.storage_path) - 1);
-        local_config.storage_path[sizeof(local_config.storage_path) - 1] = '\0';
-        free(storage_path);
+    // Get global configuration
+    extern config_t global_config;
+    
+    // Update settings
+    bool settings_changed = false;
+    
+    // Web port
+    cJSON *web_port = cJSON_GetObjectItem(settings, "web_port");
+    if (web_port && cJSON_IsNumber(web_port)) {
+        global_config.web_port = web_port->valueint;
+        settings_changed = true;
+        log_info("Updated web_port: %d", global_config.web_port);
     }
     
-    // Convert max_storage from GB to bytes
-    long long max_storage_gb = get_json_integer_value(json, "max_storage", 
-                                                     local_config.max_storage_size / (1024 * 1024 * 1024));
-    local_config.max_storage_size = max_storage_gb * (uint64_t)(1024 * 1024 * 1024);
-    
-    local_config.retention_days = get_json_integer_value(json, "retention", local_config.retention_days);
-    local_config.auto_delete_oldest = get_json_boolean_value(json, "auto_delete", local_config.auto_delete_oldest);
-    
-    // Web server settings
-    local_config.web_port = get_json_integer_value(json, "web_port", local_config.web_port);
-    local_config.web_auth_enabled = get_json_boolean_value(json, "auth_enabled", local_config.web_auth_enabled);
-    
-    char *username = get_json_string_value(json, "username");
-    if (username) {
-        strncpy(local_config.web_username, username, sizeof(local_config.web_username) - 1);
-        local_config.web_username[sizeof(local_config.web_username) - 1] = '\0';
-        free(username);
+    // Web root
+    cJSON *web_root = cJSON_GetObjectItem(settings, "web_root");
+    if (web_root && cJSON_IsString(web_root)) {
+        strncpy(global_config.web_root, web_root->valuestring, sizeof(global_config.web_root) - 1);
+        global_config.web_root[sizeof(global_config.web_root) - 1] = '\0';
+        settings_changed = true;
+        log_info("Updated web_root: %s", global_config.web_root);
     }
     
-    char *password = get_json_string_value(json, "password");
-    if (password && strcmp(password, "********") != 0) {
-        // Only update password if it's not the placeholder
-        strncpy(local_config.web_password, password, sizeof(local_config.web_password) - 1);
-        local_config.web_password[sizeof(local_config.web_password) - 1] = '\0';
-        free(password);
+    // Web auth enabled
+    cJSON *web_auth_enabled = cJSON_GetObjectItem(settings, "web_auth_enabled");
+    if (web_auth_enabled && cJSON_IsBool(web_auth_enabled)) {
+        global_config.web_auth_enabled = cJSON_IsTrue(web_auth_enabled);
+        settings_changed = true;
+        log_info("Updated web_auth_enabled: %s", global_config.web_auth_enabled ? "true" : "false");
     }
     
-    // Memory optimization
-    local_config.buffer_size = get_json_integer_value(json, "buffer_size", local_config.buffer_size);
-    local_config.use_swap = get_json_boolean_value(json, "use_swap", local_config.use_swap);
+    // Web username
+    cJSON *web_username = cJSON_GetObjectItem(settings, "web_username");
+    if (web_username && cJSON_IsString(web_username)) {
+        strncpy(global_config.web_username, web_username->valuestring, sizeof(global_config.web_username) - 1);
+        global_config.web_username[sizeof(global_config.web_username) - 1] = '\0';
+        settings_changed = true;
+        log_info("Updated web_username: %s", global_config.web_username);
+    }
     
-    // Convert swap_size from MB to bytes
-    long long swap_size_mb = get_json_integer_value(json, "swap_size", 
-                                                  local_config.swap_size / (1024 * 1024));
-    local_config.swap_size = swap_size_mb * (uint64_t)(1024 * 1024);
-
-    // Update global config directly first
-    memcpy(global_config, &local_config, sizeof(config_t));
+    // Web password
+    cJSON *web_password = cJSON_GetObjectItem(settings, "web_password");
+    if (web_password && cJSON_IsString(web_password) && strcmp(web_password->valuestring, "********") != 0) {
+        strncpy(global_config.web_password, web_password->valuestring, sizeof(global_config.web_password) - 1);
+        global_config.web_password[sizeof(global_config.web_password) - 1] = '\0';
+        settings_changed = true;
+        log_info("Updated web_password");
+    }
     
-    // Apply log level setting to the logger
-    set_log_level(global_config->log_level);
+    // Storage path
+    cJSON *storage_path = cJSON_GetObjectItem(settings, "storage_path");
+    if (storage_path && cJSON_IsString(storage_path)) {
+        strncpy(global_config.storage_path, storage_path->valuestring, sizeof(global_config.storage_path) - 1);
+        global_config.storage_path[sizeof(global_config.storage_path) - 1] = '\0';
+        settings_changed = true;
+        log_info("Updated storage_path: %s", global_config.storage_path);
+    }
     
-    // Update storage manager with new settings
-    set_max_storage_size(global_config->max_storage_size);
-    set_retention_days(global_config->retention_days);
+    // Max storage size
+    cJSON *max_storage_size = cJSON_GetObjectItem(settings, "max_storage_size");
+    if (max_storage_size && cJSON_IsNumber(max_storage_size)) {
+        global_config.max_storage_size = max_storage_size->valueint;
+        settings_changed = true;
+        log_info("Updated max_storage_size: %d", global_config.max_storage_size);
+    }
     
-    // Save configuration to disk - ONLY use INI format
-    const char *config_path = "./lightnvr.ini";  // Default path in current directory
+    // Max streams
+    cJSON *max_streams = cJSON_GetObjectItem(settings, "max_streams");
+    if (max_streams && cJSON_IsNumber(max_streams)) {
+        global_config.max_streams = max_streams->valueint;
+        settings_changed = true;
+        log_info("Updated max_streams: %d", global_config.max_streams);
+    }
     
-    // Try to save the configuration
-    int save_result = save_config(&local_config, config_path);
-    if (save_result != 0) {
-        log_warn("Failed to save configuration to %s, but settings were applied in memory", config_path);
+    // Log file
+    cJSON *log_file = cJSON_GetObjectItem(settings, "log_file");
+    if (log_file && cJSON_IsString(log_file)) {
+        strncpy(global_config.log_file, log_file->valuestring, sizeof(global_config.log_file) - 1);
+        global_config.log_file[sizeof(global_config.log_file) - 1] = '\0';
+        settings_changed = true;
+        log_info("Updated log_file: %s", global_config.log_file);
+    }
+    
+    // Log level
+    cJSON *log_level = cJSON_GetObjectItem(settings, "log_level");
+    if (log_level && cJSON_IsNumber(log_level)) {
+        global_config.log_level = log_level->valueint;
+        set_log_level(global_config.log_level);
+        settings_changed = true;
+        log_info("Updated log_level: %d", global_config.log_level);
+    }
+    
+    // Save settings if changed
+    if (settings_changed) {
+        // Get the custom config path if set, otherwise use default paths
+        const char *config_path = get_custom_config_path();
+        if (!config_path) {
+            // Try to use the system path first if it exists and is writable
+            if (access("/etc/lightnvr", W_OK) == 0) {
+                config_path = "/etc/lightnvr/lightnvr.ini";
+            } else {
+                // Fall back to current directory
+                config_path = "./lightnvr.ini";
+            }
+        }
+        
+        log_info("Saving configuration to %s", config_path);
+        if (save_config(&global_config, config_path) != 0) {
+            log_error("Failed to save configuration to %s", config_path);
+            cJSON_Delete(settings);
+            mg_send_json_error(c, 500, "Failed to save configuration");
+            return;
+        }
+        
+        log_info("Configuration saved successfully to %s", config_path);
     } else {
-        log_info("Configuration saved to %s", config_path);
+        log_info("No settings changed");
     }
     
-    // Log the updated settings
-    log_info("Settings updated: log_level=%d, max_storage=%lu GB, retention=%d days", 
-            global_config->log_level, 
-            (unsigned long long)(global_config->max_storage_size / (1024 * 1024 * 1024)),
-            global_config->retention_days);
+    // Clean up
+    cJSON_Delete(settings);
     
-    free(json);
-    
-    // Create success response
-    response->status_code = 200;
-    strncpy(response->content_type, "application/json", sizeof(response->content_type) - 1);
-    response->content_type[sizeof(response->content_type) - 1] = '\0';
-    
-    // Free any existing response body to prevent memory leaks
-    if (response->body) {
-        free(response->body);
-        response->body = NULL;
+    // Create success response using cJSON
+    cJSON *success = cJSON_CreateObject();
+    if (!success) {
+        log_error("Failed to create success JSON object");
+        mg_send_json_error(c, 500, "Failed to create success JSON");
+        return;
     }
     
-    // Simple success response
-    response->body = strdup("{\"success\": true}");
-    if (!response->body) {
-        log_error("Failed to allocate memory for response body");
-        response->status_code = 500;
-        response->body = strdup("{\"error\": \"Memory allocation failed\"}");
+    cJSON_AddBoolToObject(success, "success", true);
+    
+    // Convert to string
+    char *json_str = cJSON_PrintUnformatted(success);
+    if (!json_str) {
+        log_error("Failed to convert success JSON to string");
+        cJSON_Delete(success);
+        mg_send_json_error(c, 500, "Failed to convert success JSON to string");
+        return;
     }
     
-    response->body_length = strlen(response->body);
-    log_debug("Response body set: %s", response->body);
-    log_info("Settings update completed successfully");
+    // Send response
+    mg_send_json_response(c, 200, json_str);
+    
+    // Clean up
+    free(json_str);
+    cJSON_Delete(success);
+    
+    log_info("Successfully handled POST /api/settings request");
 }

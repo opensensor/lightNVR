@@ -430,7 +430,7 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                 }
                 
                 // Load the new model
-                log_error("LOADING DETECTION MODEL: %s with threshold: %.2f", full_model_path, threshold);
+                log_info("LOADING DETECTION MODEL: %s with threshold: %.2f", full_model_path, threshold);
                 
                 // Check if file exists before loading
                 FILE *model_file = fopen(full_model_path, "r");
@@ -455,7 +455,7 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                         FILE *alt_file = fopen(alt_path, "r");
                         if (alt_file) {
                             fclose(alt_file);
-                            log_error("MODEL FOUND AT ALTERNATIVE LOCATION: %s", alt_path);
+                            log_info("MODEL FOUND AT ALTERNATIVE LOCATION: %s", alt_path);
                             strncpy(full_model_path, alt_path, MAX_PATH_LENGTH - 1);
                             found = true;
                             break;
@@ -467,7 +467,7 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                     }
                 } else {
                     fclose(model_file);
-                    log_error("MODEL FILE EXISTS: %s", full_model_path);
+                    log_info("MODEL FILE EXISTS: %s", full_model_path);
                 }
                 
                 model = load_detection_model(full_model_path, threshold);
@@ -487,17 +487,17 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
             log_error("Failed to load detection model: %s", full_model_path);
         } else {
             // Use our improved detect_objects function for ALL model types
-            log_error("RUNNING DETECTION with unified detect_objects function");
+            log_info("RUNNING DETECTION with unified detect_objects function");
             detect_ret = detect_objects(model, packed_buffer, frame->width, frame->height, channels, &result);
             
             if (detect_ret != 0) {
                 log_error("Detection failed (error code: %d)", detect_ret);
             } else {
-                log_error("DETECTION COMPLETED SUCCESSFULLY, found %d objects", result.count);
+                log_info("DETECTION COMPLETED SUCCESSFULLY, found %d objects", result.count);
                 
                 // Log detection results
                 for (int i = 0; i < result.count; i++) {
-                    log_error("DETECTION %d: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]",
+                    log_debug("DETECTION %d: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]",
                              i+1, result.detections[i].label,
                              result.detections[i].confidence * 100.0f,
                              result.detections[i].x, result.detections[i].y,

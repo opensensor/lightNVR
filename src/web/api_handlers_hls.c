@@ -13,6 +13,7 @@
 #include <dirent.h>
 #include <errno.h>
 
+#include "cJSON.h"
 #include "web/api_handlers_streaming.h"
 #include "web/api_handlers_common.h"
 #include "web/request_response.h"
@@ -636,8 +637,25 @@ void handle_stream_toggle(const http_request_t *request, http_response_t *respon
     memcpy(json, request->body, request->content_length);
     json[request->content_length] = '\0';
     
-    // Parse the enabled flag from the JSON
-    bool enabled = get_json_boolean_value(json, "enabled", true);
+    // Parse the enabled flag from the JSON using cJSON
+    cJSON *json_obj = cJSON_Parse(json);
+    if (!json_obj) {
+        log_error("Failed to parse JSON: %s", json);
+        free(json);
+        create_stream_error_response(response, 400, "Invalid JSON format");
+        return;
+    }
+    
+    // Get the enabled flag
+    cJSON *enabled_item = cJSON_GetObjectItemCaseSensitive(json_obj, "enabled");
+    bool enabled = true; // Default value
+    
+    if (cJSON_IsBool(enabled_item)) {
+        enabled = cJSON_IsTrue(enabled_item);
+    }
+    
+    // Clean up
+    cJSON_Delete(json_obj);
     free(json);
     
     log_info("Toggle streaming request for stream %s: enabled=%s", stream_name, enabled ? "true" : "false");
@@ -691,11 +709,32 @@ void handle_stream_toggle(const http_request_t *request, http_response_t *respon
         }
     }
     
-    // Create success response
-    char response_json[256];
-    snprintf(response_json, sizeof(response_json),
-             "{\"success\": true, \"name\": \"%s\", \"streaming_enabled\": %s, \"recording_enabled\": %s}",
-             stream_name, enabled ? "true" : "false", recording_enabled ? "true" : "false");
+    // Create success response using cJSON
+    cJSON *success_response = cJSON_CreateObject();
+    if (!success_response) {
+        log_error("Failed to create success response JSON object");
+        create_stream_error_response(response, 500, "Failed to create response");
+        return;
+    }
     
-    create_json_response(response, 200, response_json);
+    cJSON_AddBoolToObject(success_response, "success", true);
+    cJSON_AddStringToObject(success_response, "name", stream_name);
+    cJSON_AddBoolToObject(success_response, "streaming_enabled", enabled);
+    cJSON_AddBoolToObject(success_response, "recording_enabled", recording_enabled);
+    
+    // Convert to string
+    char *json_str = cJSON_PrintUnformatted(success_response);
+    if (!json_str) {
+        log_error("Failed to convert success response JSON to string");
+        cJSON_Delete(success_response);
+        create_stream_error_response(response, 500, "Failed to create response");
+        return;
+    }
+    
+    // Create response
+    create_json_response(response, 200, json_str);
+    
+    // Clean up
+    free(json_str);
+    cJSON_Delete(success_response);
 }

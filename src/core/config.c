@@ -462,6 +462,23 @@ int save_stream_configs(const config_t *config) {
     return saved;
 }
 
+// Global variable to store the custom config path
+static char g_custom_config_path[MAX_PATH_LENGTH] = {0};
+
+// Function to set the custom config path
+void set_custom_config_path(const char *path) {
+    if (path && path[0] != '\0') {
+        strncpy(g_custom_config_path, path, MAX_PATH_LENGTH - 1);
+        g_custom_config_path[MAX_PATH_LENGTH - 1] = '\0';
+        log_info("Custom config path set to: %s", g_custom_config_path);
+    }
+}
+
+// Function to get the custom config path
+const char* get_custom_config_path(void) {
+    return g_custom_config_path[0] != '\0' ? g_custom_config_path : NULL;
+}
+
 // Load configuration
 int load_config(config_t *config) {
     if (!config) return -1;
@@ -469,20 +486,38 @@ int load_config(config_t *config) {
     // Load default configuration
     load_default_config(config);
     
-    // Try to load from config file - ONLY use INI format
-    const char *config_paths[] = {
-        "./lightnvr.ini", // Current directory INI format
-        "/etc/lightnvr/lightnvr.ini", // System directory INI format
-        NULL
-    };
-    
     int loaded = 0;
-    for (int i = 0; config_paths[i] != NULL; i++) {
-        if (access(config_paths[i], R_OK) == 0) {
-            if (load_config_from_file(config_paths[i], config) == 0) {
-                log_info("Loaded configuration from %s", config_paths[i]);
+    
+    // First try to load from custom config path if specified
+    if (g_custom_config_path[0] != '\0') {
+        if (access(g_custom_config_path, R_OK) == 0) {
+            if (load_config_from_file(g_custom_config_path, config) == 0) {
+                log_info("Loaded configuration from custom path: %s", g_custom_config_path);
                 loaded = 1;
-                break;
+            } else {
+                log_error("Failed to load configuration from custom path: %s", g_custom_config_path);
+            }
+        } else {
+            log_error("Custom config file not accessible: %s", g_custom_config_path);
+        }
+    }
+    
+    // If no custom config or failed to load, try default paths
+    if (!loaded) {
+        // Try to load from config file - ONLY use INI format
+        const char *config_paths[] = {
+            "./lightnvr.ini", // Current directory INI format
+            "/etc/lightnvr/lightnvr.ini", // System directory INI format
+            NULL
+        };
+        
+        for (int i = 0; config_paths[i] != NULL && !loaded; i++) {
+            if (access(config_paths[i], R_OK) == 0) {
+                if (load_config_from_file(config_paths[i], config) == 0) {
+                    log_info("Loaded configuration from %s", config_paths[i]);
+                    loaded = 1;
+                    break;
+                }
             }
         }
     }
@@ -734,11 +769,9 @@ int save_config(const config_t *config, const char *path) {
     
     fclose(file);
     
-    // Save stream configurations to database
-    if (save_stream_configs(config) < 0) {
-        log_error("Failed to save stream configurations to database");
-        return -1;
-    }
+    // We don't need to save stream configurations when saving settings
+    // This was causing the server to hang due to database locks
+    // Stream configurations are managed separately through the streams API
     
     return 0;
 }

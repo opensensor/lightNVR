@@ -4,22 +4,13 @@
  */
 
 /**
- * Load settings with improved error handling and progress indication
+ * Load settings with error handling
  */
 function loadSettings() {
     const settingsContainer = document.querySelector('.settings-container');
     if (!settingsContainer) return;
 
-    // Create and show progress indicator
-    const progressContainer = createProgressIndicator(settingsContainer, 'Loading settings');
-    updateProgress(progressContainer, 10, 'Connecting to server...');
-
-    // Set a timeout to detect slow server responses
-    const timeoutId = setTimeout(() => {
-        updateProgress(progressContainer, 30, 'Server is taking longer than expected...');
-    }, 2000);
-
-    // Fetch settings from the server with improved error handling
+    // Fetch settings from the server with error handling
     fetch('/api/settings', {
         method: 'GET',
         headers: {
@@ -28,8 +19,6 @@ function loadSettings() {
         }
     })
         .then(response => {
-            updateProgress(progressContainer, 50, 'Received server response...');
-            
             if (!response.ok) {
                 return response.text().then(text => {
                     console.error('Server returned error:', text);
@@ -38,7 +27,6 @@ function loadSettings() {
             }
             
             return response.text().then(text => {
-                updateProgress(progressContainer, 70, 'Processing data...');
                 try {
                     return JSON.parse(text);
                 } catch (e) {
@@ -48,7 +36,6 @@ function loadSettings() {
             });
         })
         .then(settings => {
-            updateProgress(progressContainer, 80, 'Applying settings...');
             console.log('Received settings:', settings); // Debug log
 
             if (!settings || typeof settings !== 'object') {
@@ -104,7 +91,6 @@ function loadSettings() {
                 if (swapSize) swapSize.value = typeof settings.swap_size === 'number' ?
                     settings.swap_size : 128;
 
-                updateProgress(progressContainer, 100, 'Settings loaded successfully');
                 console.log('Settings loaded successfully');
             } catch (error) {
                 console.error('Error processing settings:', error);
@@ -113,40 +99,35 @@ function loadSettings() {
         })
         .catch(error => {
             console.error('Error loading settings:', error);
-            updateProgress(progressContainer, 100, 'Error: ' + error.message, true);
             showStatusMessage('Error loading settings: ' + error.message, 'error');
             
-            // Add retry button
-            const retryButton = document.createElement('button');
-            retryButton.textContent = 'Retry';
-            retryButton.className = 'btn-primary';
-            retryButton.style.marginTop = '10px';
-            retryButton.addEventListener('click', () => {
-                removeProgressIndicator(progressContainer);
-                loadSettings();
-            });
-            progressContainer.appendChild(retryButton);
-        })
-        .finally(() => {
-            clearTimeout(timeoutId);
-            
-            // Remove progress indicator after a delay
-            setTimeout(() => {
-                removeProgressIndicator(progressContainer);
-            }, 1000);
+            // Show error in status area
+            const statusEl = document.getElementById('settings-status');
+            if (statusEl) {
+                statusEl.textContent = 'Error loading settings: ' + error.message;
+                statusEl.className = 'status-message error';
+                statusEl.style.display = 'block';
+                
+                // Add retry button
+                const retryButton = document.createElement('button');
+                retryButton.textContent = 'Retry';
+                retryButton.className = 'btn-primary';
+                retryButton.style.marginTop = '10px';
+                retryButton.addEventListener('click', () => {
+                    statusEl.style.display = 'none';
+                    loadSettings();
+                });
+                statusEl.appendChild(retryButton);
+            }
         });
 }
 
 /**
- * Save settings with improved timeout handling and error recovery
+ * Save settings with error handling
  */
 function saveSettings() {
     const settingsContainer = document.querySelector('.settings-container');
     if (!settingsContainer) return;
-
-    // Create and show progress indicator
-    const progressContainer = createProgressIndicator(settingsContainer, 'Saving settings...');
-    updateProgress(progressContainer, 10, 'Preparing settings data...');
 
     try {
         // Collect all settings from the form with validation
@@ -178,8 +159,6 @@ function saveSettings() {
             throw new Error('Swap size must be at least 32 MB');
         }
 
-        updateProgress(progressContainer, 30, 'Sending settings to server...');
-
         // Set up a timeout for the fetch operation
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
@@ -198,7 +177,7 @@ function saveSettings() {
             console.warn('Failed to save settings backup to localStorage:', e);
         }
         
-        // Send settings to the server with improved error handling and timeout
+        // Send settings to the server with error handling and timeout
         fetch('/api/settings', {
             method: 'POST',
             headers: {
@@ -211,7 +190,6 @@ function saveSettings() {
         })
         .then(response => {
             console.log('Received response from server:', response.status, response.statusText);
-            updateProgress(progressContainer, 70, 'Processing server response...');
             
             // Log the raw response for debugging
             return response.text().then(text => {
@@ -239,7 +217,6 @@ function saveSettings() {
         .then(data => {
             clearTimeout(timeoutId);
             console.log('Settings saved successfully:', data);
-            updateProgress(progressContainer, 100, 'Settings saved successfully!');
             
             // Show success message
             const statusEl = document.getElementById('settings-status');
@@ -261,11 +238,6 @@ function saveSettings() {
             setTimeout(() => {
                 loadSettings();
             }, 1000);
-            
-            // Remove progress indicator after a delay
-            setTimeout(() => {
-                removeProgressIndicator(progressContainer);
-            }, 1500);
         })
         .catch(error => {
             clearTimeout(timeoutId);
@@ -275,8 +247,6 @@ function saveSettings() {
             if (error.name === 'AbortError') {
                 errorMessage = 'Request timed out. The server may still be processing your request.';
             }
-            
-            updateProgress(progressContainer, 100, 'Error: ' + errorMessage, true);
             
             // Show error message
             const statusEl = document.getElementById('settings-status');
@@ -292,7 +262,6 @@ function saveSettings() {
                 retryButton.style.marginTop = '10px';
                 retryButton.addEventListener('click', () => {
                     statusEl.style.display = 'none';
-                    removeProgressIndicator(progressContainer);
                     saveSettings();
                 });
                 statusEl.appendChild(retryButton);
@@ -300,12 +269,9 @@ function saveSettings() {
                 // Fallback to the global status message
                 showStatusMessage('Error saving settings: ' + errorMessage, 'error');
             }
-            
-            // Keep the progress indicator visible with the error
         });
     } catch (error) {
         console.error('Error preparing settings:', error);
-        updateProgress(progressContainer, 100, 'Error: ' + error.message, true);
         
         // Show error message
         const statusEl = document.getElementById('settings-status');
@@ -321,7 +287,6 @@ function saveSettings() {
             retryButton.style.marginTop = '10px';
             retryButton.addEventListener('click', () => {
                 statusEl.style.display = 'none';
-                removeProgressIndicator(progressContainer);
                 saveSettings();
             });
             statusEl.appendChild(retryButton);

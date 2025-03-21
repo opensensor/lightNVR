@@ -427,24 +427,24 @@ int process_frame_for_recording(const char *stream_name, const unsigned char *fr
     }
     
     // Store with the original stream name
-    log_error("STORING DETECTION RESULTS with original stream name: %s (count: %d)", stream_name, result->count);
+    log_info("STORING DETECTION RESULTS with original stream name: %s (count: %d)", stream_name, result->count);
 
     // Call store_detection_result but don't try to capture the return value since it's void
     store_detection_result(stream_name, result);
-    log_error("DETECTION RESULT STORED");
+    log_info("DETECTION RESULT STORED");
 
     // Check if any objects were detected above threshold
     bool detection_triggered = false;
     for (int i = 0; i < result->count; i++) {
         if (result->detections[i].confidence >= threshold) {
             detection_triggered = true;
-            log_error("DETECTION TRIGGERED for stream %s: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]",
+            log_info("DETECTION TRIGGERED for stream %s: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]",
                     stream_name, result->detections[i].label,
                     result->detections[i].confidence * 100.0f,
                     result->detections[i].x, result->detections[i].y,
                     result->detections[i].width, result->detections[i].height);
         } else {
-            log_error("DETECTION BELOW THRESHOLD for stream %s: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]",
+            log_debug("DETECTION BELOW THRESHOLD for stream %s: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]",
                     stream_name, result->detections[i].label,
                     result->detections[i].confidence * 100.0f,
                     result->detections[i].x, result->detections[i].y,
@@ -453,7 +453,7 @@ int process_frame_for_recording(const char *stream_name, const unsigned char *fr
     }
 
     if (result->count == 0) {
-        log_error("NO OBJECTS DETECTED for stream %s", stream_name);
+        log_debug("NO OBJECTS DETECTED for stream %s", stream_name);
     }
 
     // Update last detection time if triggered

@@ -20,6 +20,7 @@
 #include <libavutil/avutil.h>
 #include <libavutil/time.h>
 
+#include "cJSON.h"
 #include "web/web_server.h"
 #include "core/logger.h"
 #include "core/config.h"
@@ -54,20 +55,89 @@ void serve_video_file(http_response_t *response, const char *file_path, const ch
     struct stat st;
     if (stat(file_path, &st) != 0) {
         log_error("Video file not found: %s (error: %s)", file_path, strerror(errno));
-        create_json_response(response, 404, "{\"error\": \"Video file not found\"}");
+        
+        // Create error response using cJSON
+        cJSON *error = cJSON_CreateObject();
+        if (!error) {
+            log_error("Failed to create error JSON object");
+            return;
+        }
+        
+        cJSON_AddStringToObject(error, "error", "Video file not found");
+        
+        // Convert to string
+        char *json_str = cJSON_PrintUnformatted(error);
+        if (!json_str) {
+            log_error("Failed to convert error JSON to string");
+            cJSON_Delete(error);
+            return;
+        }
+        
+        // Create response
+        create_json_response(response, 404, json_str);
+        
+        // Clean up
+        free(json_str);
+        cJSON_Delete(error);
         return;
     }
 
     if (access(file_path, R_OK) != 0) {
         log_error("Video file not readable: %s (error: %s)", file_path, strerror(errno));
-        create_json_response(response, 403, "{\"error\": \"Video file not accessible\"}");
+        
+        // Create error response using cJSON
+        cJSON *error = cJSON_CreateObject();
+        if (!error) {
+            log_error("Failed to create error JSON object");
+            return;
+        }
+        
+        cJSON_AddStringToObject(error, "error", "Video file not accessible");
+        
+        // Convert to string
+        char *json_str = cJSON_PrintUnformatted(error);
+        if (!json_str) {
+            log_error("Failed to convert error JSON to string");
+            cJSON_Delete(error);
+            return;
+        }
+        
+        // Create response
+        create_json_response(response, 403, json_str);
+        
+        // Clean up
+        free(json_str);
+        cJSON_Delete(error);
         return;
     }
 
     // Check file size
     if (st.st_size == 0) {
         log_error("Video file is empty: %s", file_path);
-        create_json_response(response, 500, "{\"error\": \"Video file is empty\"}");
+        
+        // Create error response using cJSON
+        cJSON *error = cJSON_CreateObject();
+        if (!error) {
+            log_error("Failed to create error JSON object");
+            return;
+        }
+        
+        cJSON_AddStringToObject(error, "error", "Video file is empty");
+        
+        // Convert to string
+        char *json_str = cJSON_PrintUnformatted(error);
+        if (!json_str) {
+            log_error("Failed to convert error JSON to string");
+            cJSON_Delete(error);
+            return;
+        }
+        
+        // Create response
+        create_json_response(response, 500, json_str);
+        
+        // Clean up
+        free(json_str);
+        cJSON_Delete(error);
         return;
     }
 
@@ -77,7 +147,30 @@ void serve_video_file(http_response_t *response, const char *file_path, const ch
     int fd = open(file_path, O_RDONLY);
     if (fd < 0) {
         log_error("Failed to open video file: %s (error: %s)", file_path, strerror(errno));
-        create_json_response(response, 500, "{\"error\": \"Failed to open video file\"}");
+        
+        // Create error response using cJSON
+        cJSON *error = cJSON_CreateObject();
+        if (!error) {
+            log_error("Failed to create error JSON object");
+            return;
+        }
+        
+        cJSON_AddStringToObject(error, "error", "Failed to open video file");
+        
+        // Convert to string
+        char *json_str = cJSON_PrintUnformatted(error);
+        if (!json_str) {
+            log_error("Failed to convert error JSON to string");
+            cJSON_Delete(error);
+            return;
+        }
+        
+        // Create response
+        create_json_response(response, 500, json_str);
+        
+        // Clean up
+        free(json_str);
+        cJSON_Delete(error);
         return;
     }
 
@@ -165,7 +258,30 @@ void serve_video_file(http_response_t *response, const char *file_path, const ch
     if (lseek(fd, start_pos, SEEK_SET) == -1) {
         log_error("Failed to seek in file: %s (error: %s)", file_path, strerror(errno));
         close(fd);
-        create_json_response(response, 500, "{\"error\": \"Failed to read from video file\"}");
+        
+        // Create error response using cJSON
+        cJSON *error = cJSON_CreateObject();
+        if (!error) {
+            log_error("Failed to create error JSON object");
+            return;
+        }
+        
+        cJSON_AddStringToObject(error, "error", "Failed to read from video file");
+        
+        // Convert to string
+        char *json_str = cJSON_PrintUnformatted(error);
+        if (!json_str) {
+            log_error("Failed to convert error JSON to string");
+            cJSON_Delete(error);
+            return;
+        }
+        
+        // Create response
+        create_json_response(response, 500, json_str);
+        
+        // Clean up
+        free(json_str);
+        cJSON_Delete(error);
         return;
     }
 
@@ -174,7 +290,30 @@ void serve_video_file(http_response_t *response, const char *file_path, const ch
     if (!response->body) {
         log_error("Failed to allocate response body of size %zu bytes", content_length);
         close(fd);
-        create_json_response(response, 500, "{\"error\": \"Server memory allocation failed\"}");
+        
+        // Create error response using cJSON
+        cJSON *error = cJSON_CreateObject();
+        if (!error) {
+            log_error("Failed to create error JSON object");
+            return;
+        }
+        
+        cJSON_AddStringToObject(error, "error", "Server memory allocation failed");
+        
+        // Convert to string
+        char *json_str = cJSON_PrintUnformatted(error);
+        if (!json_str) {
+            log_error("Failed to convert error JSON to string");
+            cJSON_Delete(error);
+            return;
+        }
+        
+        // Create response
+        create_json_response(response, 500, json_str);
+        
+        // Clean up
+        free(json_str);
+        cJSON_Delete(error);
         return;
     }
 
@@ -186,7 +325,30 @@ void serve_video_file(http_response_t *response, const char *file_path, const ch
         log_error("Failed to read complete file: %s (read %zd of %zu bytes)",
                 file_path, bytes_read, content_length);
         free(response->body);
-        create_json_response(response, 500, "{\"error\": \"Failed to read complete video file\"}");
+        
+        // Create error response using cJSON
+        cJSON *error = cJSON_CreateObject();
+        if (!error) {
+            log_error("Failed to create error JSON object");
+            return;
+        }
+        
+        cJSON_AddStringToObject(error, "error", "Failed to read complete video file");
+        
+        // Convert to string
+        char *json_str = cJSON_PrintUnformatted(error);
+        if (!json_str) {
+            log_error("Failed to convert error JSON to string");
+            cJSON_Delete(error);
+            return;
+        }
+        
+        // Create response
+        create_json_response(response, 500, json_str);
+        
+        // Clean up
+        free(json_str);
+        cJSON_Delete(error);
         return;
     }
 

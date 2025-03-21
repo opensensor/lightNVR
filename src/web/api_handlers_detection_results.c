@@ -10,6 +10,7 @@
 #include <pthread.h>
 #include <time.h>
 
+#include "cJSON.h"
 #include "web/api_handlers_detection.h"
 #include "web/api_handlers_common.h"
 #include "core/logger.h"
@@ -77,7 +78,29 @@ void handle_get_detection_results(const http_request_t *request, http_response_t
     const char *results_pos = strstr(path, "/results/");
     
     if (!results_pos) {
-        create_json_response(response, 400, "{\"error\":\"Invalid request path\"}");
+        // Create error response using cJSON
+        cJSON *error = cJSON_CreateObject();
+        if (!error) {
+            log_error("Failed to create error JSON object");
+            return;
+        }
+        
+        cJSON_AddStringToObject(error, "error", "Invalid request path");
+        
+        // Convert to string
+        char *json_str = cJSON_PrintUnformatted(error);
+        if (!json_str) {
+            log_error("Failed to convert error JSON to string");
+            cJSON_Delete(error);
+            return;
+        }
+        
+        // Create response
+        create_json_response(response, 400, json_str);
+        
+        // Clean up
+        free(json_str);
+        cJSON_Delete(error);
         return;
     }
     
@@ -97,7 +120,29 @@ void handle_get_detection_results(const http_request_t *request, http_response_t
     // Check if stream exists
     stream_handle_t stream = get_stream_by_name(stream_name);
     if (!stream) {
-        create_json_response(response, 404, "{\"error\":\"Stream not found\"}");
+        // Create error response using cJSON
+        cJSON *error = cJSON_CreateObject();
+        if (!error) {
+            log_error("Failed to create error JSON object");
+            return;
+        }
+        
+        cJSON_AddStringToObject(error, "error", "Stream not found");
+        
+        // Convert to string
+        char *json_str = cJSON_PrintUnformatted(error);
+        if (!json_str) {
+            log_error("Failed to convert error JSON to string");
+            cJSON_Delete(error);
+            return;
+        }
+        
+        // Create response
+        create_json_response(response, 404, json_str);
+        
+        // Clean up
+        free(json_str);
+        cJSON_Delete(error);
         return;
     }
     
@@ -113,39 +158,88 @@ void handle_get_detection_results(const http_request_t *request, http_response_t
     if (count < 0) {
         log_error("Failed to get detections from database for stream '%s'", stream_name);
         
-        // Create empty response JSON
-        char json[256];
-        snprintf(json, sizeof(json), "{\"stream\":\"%s\",\"detections\":[],\"timestamp\":0}", stream_name);
-        create_json_response(response, 200, json);
+        // Create empty response JSON using cJSON
+        cJSON *empty_response = cJSON_CreateObject();
+        if (!empty_response) {
+            log_error("Failed to create empty response JSON object");
+            return;
+        }
+        
+        cJSON_AddStringToObject(empty_response, "stream", stream_name);
+        cJSON_AddNumberToObject(empty_response, "timestamp", 0);
+        cJSON_AddArrayToObject(empty_response, "detections");
+        
+        // Convert to string
+        char *json_str = cJSON_PrintUnformatted(empty_response);
+        if (!json_str) {
+            log_error("Failed to convert empty response JSON to string");
+            cJSON_Delete(empty_response);
+            return;
+        }
+        
+        // Create response
+        create_json_response(response, 200, json_str);
+        
+        // Clean up
+        free(json_str);
+        cJSON_Delete(empty_response);
+        
         log_warn("API: Error getting detection results for stream '%s', returning empty array", stream_name);
         return;
     }
     
     if (count == 0) {
         // No detection results for this stream
-        char json[256];
-        snprintf(json, sizeof(json), "{\"stream\":\"%s\",\"detections\":[],\"timestamp\":0}", stream_name);
-        create_json_response(response, 200, json);
+        // Create empty response JSON using cJSON
+        cJSON *empty_response = cJSON_CreateObject();
+        if (!empty_response) {
+            log_error("Failed to create empty response JSON object");
+            return;
+        }
+        
+        cJSON_AddStringToObject(empty_response, "stream", stream_name);
+        cJSON_AddNumberToObject(empty_response, "timestamp", 0);
+        cJSON_AddArrayToObject(empty_response, "detections");
+        
+        // Convert to string
+        char *json_str = cJSON_PrintUnformatted(empty_response);
+        if (!json_str) {
+            log_error("Failed to convert empty response JSON to string");
+            cJSON_Delete(empty_response);
+            return;
+        }
+        
+        // Create response
+        create_json_response(response, 200, json_str);
+        
+        // Clean up
+        free(json_str);
+        cJSON_Delete(empty_response);
+        
         log_warn("API: No detection results found for stream '%s', returning empty array", stream_name);
         return;
     }
     
-    // Build JSON response with detection results
-    char json[4096] = "{";
+    // Build JSON response with detection results using cJSON
+    cJSON *response_json = cJSON_CreateObject();
+    if (!response_json) {
+        log_error("Failed to create response JSON object");
+        return;
+    }
     
     // Add stream name
-    char stream_json[MAX_STREAM_NAME + 32];
-    snprintf(stream_json, sizeof(stream_json), "\"stream\":\"%s\",", stream_name);
-    strcat(json, stream_json);
+    cJSON_AddStringToObject(response_json, "stream", stream_name);
     
     // Add timestamp (use current time since we're getting recent detections)
-    char timestamp_json[64];
-    snprintf(timestamp_json, sizeof(timestamp_json), "\"timestamp\":%lld,", 
-             (long long)time(NULL));
-    strcat(json, timestamp_json);
+    cJSON_AddNumberToObject(response_json, "timestamp", (double)time(NULL));
     
-    // Add detections array
-    strcat(json, "\"detections\":[");
+    // Create detections array
+    cJSON *detections_array = cJSON_AddArrayToObject(response_json, "detections");
+    if (!detections_array) {
+        log_error("Failed to create detections array");
+        cJSON_Delete(response_json);
+        return;
+    }
     
     // Get the stream's configured detection threshold
     stream_config_t stream_config;
@@ -170,30 +264,41 @@ void handle_get_detection_results(const http_request_t *request, http_response_t
             continue;
         }
         
-        if (valid_count > 0) {
-            strcat(json, ",");
+        // Create detection object
+        cJSON *detection = cJSON_CreateObject();
+        if (!detection) {
+            log_error("Failed to create detection JSON object");
+            continue;
         }
         
-        char detection_json[512];
-        snprintf(detection_json, sizeof(detection_json),
-                "{\"label\":\"%s\",\"confidence\":%.2f,\"x\":%.4f,\"y\":%.4f,\"width\":%.4f,\"height\":%.4f}",
-                result.detections[i].label,
-                result.detections[i].confidence,
-                result.detections[i].x,
-                result.detections[i].y,
-                result.detections[i].width,
-                result.detections[i].height);
+        // Add detection properties
+        cJSON_AddStringToObject(detection, "label", result.detections[i].label);
+        cJSON_AddNumberToObject(detection, "confidence", result.detections[i].confidence);
+        cJSON_AddNumberToObject(detection, "x", result.detections[i].x);
+        cJSON_AddNumberToObject(detection, "y", result.detections[i].y);
+        cJSON_AddNumberToObject(detection, "width", result.detections[i].width);
+        cJSON_AddNumberToObject(detection, "height", result.detections[i].height);
         
-        strcat(json, detection_json);
+        // Add detection to array
+        cJSON_AddItemToArray(detections_array, detection);
         valid_count++;
     }
     
-    // Close JSON
-    strcat(json, "]}");
+    // Convert to string
+    char *json_str = cJSON_PrintUnformatted(response_json);
+    if (!json_str) {
+        log_error("Failed to convert response JSON to string");
+        cJSON_Delete(response_json);
+        return;
+    }
     
     // Create response
-    log_debug("Creating JSON response with status 200: %s", json);
-    create_json_response(response, 200, json);
+    log_debug("Creating JSON response with status 200: %s", json_str);
+    create_json_response(response, 200, json_str);
+    
+    // Clean up
+    free(json_str);
+    cJSON_Delete(response_json);
 }
 
 /**

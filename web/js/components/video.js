@@ -246,7 +246,7 @@ function initializeVideoPlayer(stream) {
     // Build the HLS stream URL with cache-busting timestamp to prevent stale data
     // Your backend needs to convert RTSP to HLS using FFmpeg
     const timestamp = Date.now();
-    const hlsStreamUrl = `/api/streaming/${encodeURIComponent(stream.name)}/hls/index.m3u8?_t=${timestamp}`;
+    const hlsStreamUrl = `/hls/${encodeURIComponent(stream.name)}/index.m3u8?_t=${timestamp}`;
 
     // Check if HLS is supported natively
     if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
@@ -345,7 +345,7 @@ function initializeVideoPlayer(stream) {
             if (videoCell && videoCell.hlsPlayer) {
                 console.log(`Refreshing HLS stream for ${stream.name}`);
                 const newTimestamp = Date.now();
-                const newUrl = `/api/streaming/${encodeURIComponent(stream.name)}/hls/index.m3u8?_t=${newTimestamp}`;
+                const newUrl = `/hls/${encodeURIComponent(stream.name)}/index.m3u8?_t=${newTimestamp}`;
                 videoCell.hlsPlayer.loadSource(newUrl);
             } else {
                 // Clear interval if video cell or player no longer exists
@@ -525,7 +525,7 @@ function toggleStreamFullscreen(streamName) {
     if (!document.fullscreenElement) {
         videoCell.requestFullscreen().catch(err => {
             console.error(`Error attempting to enable fullscreen: ${err.message}`);
-            alert(`Could not enable fullscreen mode: ${err.message}`);
+            showStatusMessage(`Could not enable fullscreen mode: ${err.message}`, 5000);
         });
     } else {
         document.exitFullscreen();
@@ -582,7 +582,7 @@ function takeSnapshot(streamId) {
     // Check if we have valid dimensions
     if (canvas.width === 0 || canvas.height === 0) {
         console.error('Invalid video dimensions:', canvas.width, canvas.height);
-        alert('Cannot take snapshot: Video not loaded or has invalid dimensions');
+        showStatusMessage('Cannot take snapshot: Video not loaded or has invalid dimensions', 5000);
         return;
     }
 
@@ -598,7 +598,7 @@ function takeSnapshot(streamId) {
         showSnapshotPreview(imageData, streamName);
     } catch (error) {
         console.error('Error creating snapshot:', error);
-        alert('Failed to create snapshot: ' + error.message);
+        showStatusMessage('Failed to create snapshot: ' + error.message, 5000);
     }
 }
 
@@ -1061,7 +1061,7 @@ function updateVideoGrid(streams) {
                 })
                 .catch(error => {
                     console.error('Error toggling stream:', error);
-                    alert('Error toggling stream: ' + error.message);
+                    showStatusMessage('Error toggling stream: ' + error.message, 5000);
                     
                     // Revert the toggle state in the UI
                     this.checked = !enabled;
