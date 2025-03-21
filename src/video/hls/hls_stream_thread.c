@@ -91,10 +91,8 @@ void *hls_stream_thread(void *arg) {
     }
 
     // Create HLS writer - adding the segment_duration parameter
-    // Using a default of 2 seconds if not specified in config
-    // This is a balanced value that works well for most players
     int segment_duration = ctx->config.segment_duration > 0 ?
-                          ctx->config.segment_duration : 2;
+                          ctx->config.segment_duration : 1;
 
     ctx->hls_writer = hls_writer_create(ctx->output_path, stream_name, segment_duration);
     if (!ctx->hls_writer) {

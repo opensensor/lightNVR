@@ -154,7 +154,7 @@ static void *mp4_recording_thread(void *arg) {
     while (ctx->running) {
         // Check if we need to rotate the MP4 file based on segment duration
         time_t current_time = time(NULL);
-        int segment_duration = ctx->config.segment_duration > 0 ? ctx->config.segment_duration : 900; // Default to 15 minutes
+        int segment_duration = ctx->config.segment_duration > 0 ? ctx->config.segment_duration : 30;
         
         // If the MP4 file has been open for longer than the segment duration, rotate it
         if (ctx->mp4_writer && (current_time - ctx->mp4_writer->creation_time) >= segment_duration) {

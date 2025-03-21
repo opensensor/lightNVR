@@ -255,11 +255,11 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     if (segment_duration < 1) {
         log_warn("HLS segment duration too low (%d), setting to 2 seconds for stability",
                 segment_duration);
-        segment_duration = 2;  // Minimum 2 seconds for stability
+        segment_duration = 1;  // Minimum 2 seconds for stability
     } else if (segment_duration > 10) {
         log_warn("HLS segment duration too high (%d), capping at 10 seconds",
                 segment_duration);
-        segment_duration = 10;  // Maximum 10 seconds
+        segment_duration = 2;  // Maximum 10 seconds
     }
 
     writer->segment_duration = segment_duration;
@@ -290,19 +290,19 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
         return NULL;
     }
 
-    // Set HLS options - use balanced settings for better compatibility and stability
+    // Set HLS options - optimized for lower latency while maintaining stability
     AVDictionary *options = NULL;
     char hls_time[16];
-    snprintf(hls_time, sizeof(hls_time), "%d", segment_duration);
+    snprintf(hls_time, sizeof(hls_time), "1");  // 1 second segments for lower latency
 
-    // CRITICAL FIX: Use balanced HLS settings
+    // Enable low latency HLS mode
     av_dict_set(&options, "hls_time", hls_time, 0);
-    // Increase list size to 5 for better buffering and stability
-    av_dict_set(&options, "hls_list_size", "5", 0);
-    // Restored original flags for better compatibility
-    av_dict_set(&options, "hls_flags", "delete_segments+program_date_time+independent_segments+discont_start", 0);
-    av_dict_set(&options, "hls_segment_type", "mpegts", 0);
+    av_dict_set(&options, "hls_list_size", "3", 0);  // Keep fewer segments to reduce latency
+    av_dict_set(&options, "hls_flags", "delete_segments+program_date_time+independent_segments+discont_start+low_latency", 0);
+    av_dict_set(&options, "hls_segment_type", "fmp4", 0);  // fMP4 segments for low latency
+    av_dict_set(&options, "hls_fmp4_init_filename", "init.mp4", 0);
 
+    // Additional optimizations for lower latency
     av_dict_set(&options, "hls_init_time", "0", 0);  // Start segments immediately
     av_dict_set(&options, "hls_allow_cache", "0", 0);  // Disable caching to ensure fresh content
     av_dict_set(&options, "start_number", "0", 0);

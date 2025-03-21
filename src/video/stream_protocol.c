@@ -113,8 +113,8 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
         // Expanded protocol whitelist to support more UDP variants
         av_dict_set(&input_options, "protocol_whitelist", "file,udp,rtp,rtsp,tcp,https,tls,http", 0);
         
-        // Increased buffer size to 16MB as recommended for UDP jitter handling
-        av_dict_set(&input_options, "buffer_size", "16777216", 0); // 16MB buffer
+        av_dict_set(&input_options, "buffer_size", "8388608", 0); // 8MB buffer
+        av_dict_set(&input_options, "max_delay", "1000000", 0); // 1000ms max delay
         
         // Allow port reuse
         av_dict_set(&input_options, "reuse", "1", 0);
