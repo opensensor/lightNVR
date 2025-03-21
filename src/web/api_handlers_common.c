@@ -6,278 +6,236 @@
 #include <string.h>
 #include <ctype.h>
 
-#include "web/api_handlers_common.h"
-#include "core/config.h"
+#include "../external/cjson/cJSON.h"
+
+#include "web/api_handlers.h"
+#include "web/mongoose_adapter.h"
 #include "core/logger.h"
+#include "core/config.h"
+#include "../external/mongoose/mongoose.h"
 
 /**
- * Append to a dynamically allocated string
- * Returns 1 on success, 0 on failure
+ * @brief Create a JSON string from a config structure
+ * 
+ * @param config Configuration structure
+ * @return char* JSON string (must be freed by caller)
  */
-static int append_to_string(char **str, size_t *size, size_t *capacity, const char *format, ...) {
-    va_list args;
-    va_start(args, format);
-
-    // Calculate required space
-    va_list args_copy;
-    va_copy(args_copy, args);
-    int required = vsnprintf(NULL, 0, format, args_copy);
-    va_end(args_copy);
-
-    if (required < 0) {
-        va_end(args);
-        return 0;
-    }
-
-    // Ensure we have space
-    size_t new_size = *size + required + 1;
-    if (new_size > *capacity) {
-        size_t new_capacity = *capacity * 2;
-        if (new_capacity < new_size) {
-            new_capacity = new_size + 256;  // Some extra space
-        }
-
-        char *new_str = realloc(*str, new_capacity);
-        if (!new_str) {
-            va_end(args);
-            return 0;
-        }
-
-        *str = new_str;
-        *capacity = new_capacity;
-    }
-
-    // Append the formatted string
-    int written = vsnprintf(*str + *size, *capacity - *size, format, args);
-    va_end(args);
-
-    if (written < 0) {
-        return 0;
-    }
-
-    *size += written;
-    return 1;
-}
-
-/**
- * Create a JSON string from a config structure
- * Returns a dynamically allocated string that must be freed by the caller
- */
-char* create_json_string(const config_t *config) {
+char* mg_create_config_json(const config_t *config) {
     if (!config) {
         return NULL;
     }
-
-    size_t capacity = 1024;  // Initial capacity
-    size_t size = 0;
-    char *json = malloc(capacity);
-
+    
+    // Create JSON object
+    cJSON *json = cJSON_CreateObject();
     if (!json) {
+        log_error("Failed to create config JSON object");
         return NULL;
     }
-
-    // Start the JSON object
-    if (!append_to_string(&json, &size, &capacity, "{\n")) {
-        free(json);
-        return NULL;
-    }
-
-    // Add fields one by one, checking for errors
-    if (!append_to_string(&json, &size, &capacity, "  \"log_level\": %d,\n", config->log_level)) {
-        free(json);
-        return NULL;
-    }
-
-    if (!append_to_string(&json, &size, &capacity, "  \"storage_path\": \"%s\",\n", config->storage_path)) {
-        free(json);
-        return NULL;
-    }
-
-    if (!append_to_string(&json, &size, &capacity, "  \"max_storage\": %lu,\n",
-                         (unsigned long)(config->max_storage_size / (1024 * 1024 * 1024)))) {
-        free(json);
-        return NULL;
-    }
-
-    if (!append_to_string(&json, &size, &capacity, "  \"retention\": %d,\n", config->retention_days)) {
-        free(json);
-        return NULL;
-    }
-
-    if (!append_to_string(&json, &size, &capacity, "  \"auto_delete\": %s,\n",
-                         config->auto_delete_oldest ? "true" : "false")) {
-        free(json);
-        return NULL;
-    }
-
-    if (!append_to_string(&json, &size, &capacity, "  \"web_port\": %d,\n", config->web_port)) {
-        free(json);
-        return NULL;
-    }
-
-    if (!append_to_string(&json, &size, &capacity, "  \"auth_enabled\": %s,\n",
-                         config->web_auth_enabled ? "true" : "false")) {
-        free(json);
-        return NULL;
-    }
-
-    if (!append_to_string(&json, &size, &capacity, "  \"username\": \"%s\",\n", config->web_username)) {
-        free(json);
-        return NULL;
-    }
-
-    if (!append_to_string(&json, &size, &capacity, "  \"password\": \"********\",\n")) {
-        free(json);
-        return NULL;
-    }
-
-    if (!append_to_string(&json, &size, &capacity, "  \"buffer_size\": %d,\n", config->buffer_size)) {
-        free(json);
-        return NULL;
-    }
-
-    if (!append_to_string(&json, &size, &capacity, "  \"use_swap\": %s,\n",
-                         config->use_swap ? "true" : "false")) {
-        free(json);
-        return NULL;
-    }
-
-    // Last field doesn't have a trailing comma
-    if (!append_to_string(&json, &size, &capacity, "  \"swap_size\": %lu\n",
-                         (unsigned long)(config->swap_size / (1024 * 1024)))) {
-        free(json);
-        return NULL;
-    }
-
-    // Close the JSON object
-    if (!append_to_string(&json, &size, &capacity, "}\n")) {
-        free(json);
-        return NULL;
-    }
-
-    return json;
+    
+    // Add config properties
+    cJSON_AddNumberToObject(json, "log_level", config->log_level);
+    cJSON_AddStringToObject(json, "storage_path", config->storage_path);
+    cJSON_AddNumberToObject(json, "max_storage", config->max_storage_size / (1024 * 1024 * 1024)); // Convert to GB
+    cJSON_AddNumberToObject(json, "retention", config->retention_days);
+    cJSON_AddBoolToObject(json, "auto_delete", config->auto_delete_oldest);
+    cJSON_AddNumberToObject(json, "web_port", config->web_port);
+    cJSON_AddBoolToObject(json, "auth_enabled", config->web_auth_enabled);
+    cJSON_AddStringToObject(json, "username", config->web_username);
+    cJSON_AddStringToObject(json, "password", "********"); // Don't include actual password
+    cJSON_AddNumberToObject(json, "buffer_size", config->buffer_size);
+    cJSON_AddBoolToObject(json, "use_swap", config->use_swap);
+    cJSON_AddNumberToObject(json, "swap_size", config->swap_size / (1024 * 1024)); // Convert to MB
+    
+    // Convert to string
+    char *json_str = cJSON_PrintUnformatted(json);
+    
+    // Clean up
+    cJSON_Delete(json);
+    
+    return json_str;
 }
 
-// Helper function to parse a JSON value
-char* get_json_string_value(const char *json, const char *key) {
-    char search_key[256];
-    snprintf(search_key, sizeof(search_key), "\"%s\"", key);
-    
-    char *key_pos = strstr(json, search_key);
-    if (!key_pos) {
-        return NULL;
+/**
+ * @brief Create a JSON error response
+ * 
+ * @param c Mongoose connection
+ * @param status_code HTTP status code
+ * @param message Error message
+ */
+void mg_create_error_response(struct mg_connection *c, int status_code, const char *message) {
+    // Create JSON object
+    cJSON *error = cJSON_CreateObject();
+    if (!error) {
+        mg_http_reply(c, 500, "Content-Type: application/json\r\n", "{\"error\": \"Failed to create error JSON\"}");
+        return;
     }
     
-    // Move past the key and colon
-    key_pos += strlen(search_key);
-    while (*key_pos && (*key_pos == ' ' || *key_pos == ':')) {
-        key_pos++;
+    // Add error message
+    cJSON_AddStringToObject(error, "error", message);
+    
+    // Convert to string
+    char *json_str = cJSON_PrintUnformatted(error);
+    if (!json_str) {
+        cJSON_Delete(error);
+        mg_http_reply(c, 500, "Content-Type: application/json\r\n", "{\"error\": \"Failed to convert error JSON to string\"}");
+        return;
     }
     
-    // Check if it's a string value
-    if (*key_pos == '"') {
-        key_pos++; // Skip opening quote
-        
-        // Find closing quote
-        char *end_pos = key_pos;
-        while (*end_pos && *end_pos != '"') {
-            if (*end_pos == '\\' && *(end_pos + 1)) {
-                end_pos += 2; // Skip escaped character
-            } else {
-                end_pos++;
-            }
-        }
-        
-        if (*end_pos == '"') {
-            size_t len = end_pos - key_pos;
-            char *value = malloc(len + 1);
-            if (value) {
-                strncpy(value, key_pos, len);
-                value[len] = '\0';
-                return value;
-            }
-        }
-    }
+    // Send response
+    mg_http_reply(c, status_code, "Content-Type: application/json\r\n", "%s", json_str);
     
-    return NULL;
+    // Clean up
+    free(json_str);
+    cJSON_Delete(error);
 }
 
-// Helper function to get a boolean value from JSON
-int get_json_boolean_value(const char *json, const char *key, int default_value) {
-    char search_key[256];
-    snprintf(search_key, sizeof(search_key), "\"%s\"", key);
+/**
+ * @brief URL decode a string
+ * 
+ * @param src Source string
+ * @param dst Destination buffer
+ * @param dst_size Destination buffer size
+ */
+void mg_url_decode_string(const char *src, char *dst, size_t dst_size) {
+    if (!src || !dst || dst_size == 0) {
+        return;
+    }
     
-    char *key_pos = strstr(json, search_key);
-    if (!key_pos) {
+    // Use Mongoose's URL decode function
+    mg_url_decode(src, strlen(src), dst, dst_size, 0);
+}
+
+/**
+ * @brief Extract a parameter from a URL path
+ * 
+ * @param path URL path
+ * @param prefix Path prefix to skip
+ * @param param_buf Buffer to store the parameter
+ * @param buf_size Buffer size
+ * @return int 0 on success, non-zero on error
+ */
+int mg_extract_path_parameter(const char *path, const char *prefix, char *param_buf, size_t buf_size) {
+    if (!path || !prefix || !param_buf || buf_size == 0) {
+        return -1;
+    }
+    
+    // Check if path starts with prefix
+    size_t prefix_len = strlen(prefix);
+    if (strncmp(path, prefix, prefix_len) != 0) {
+        return -1;
+    }
+    
+    // Extract parameter (everything after the prefix)
+    const char *param = path + prefix_len;
+    
+    // Skip any leading slashes
+    while (*param == '/') {
+        param++;
+    }
+    
+    // Find query string if present and truncate
+    const char *query = strchr(param, '?');
+    if (query) {
+        size_t param_len = query - param;
+        if (param_len >= buf_size) {
+            return -1;
+        }
+        
+        strncpy(param_buf, param, param_len);
+        param_buf[param_len] = '\0';
+    } else {
+        // No query string
+        if (strlen(param) >= buf_size) {
+            return -1;
+        }
+        
+        strcpy(param_buf, param);
+    }
+    
+    return 0;
+}
+
+/**
+ * @brief Parse a JSON boolean value
+ * 
+ * @param json JSON object
+ * @param key Key to look for
+ * @param default_value Default value if key is not found
+ * @return int Boolean value (0 or 1)
+ */
+int mg_parse_json_boolean(const cJSON *json, const char *key, int default_value) {
+    if (!json || !key) {
         return default_value;
     }
     
-    // Move past the key and colon
-    key_pos += strlen(search_key);
-    while (*key_pos && (*key_pos == ' ' || *key_pos == ':')) {
-        key_pos++;
-    }
-    
-    if (strncmp(key_pos, "true", 4) == 0) {
-        return 1;
-    } else if (strncmp(key_pos, "false", 5) == 0) {
-        return 0;
-    }
-    
-    return default_value;
-}
-
-// Helper function to check if a key exists in JSON
-int get_json_has_key(const char *json, const char *key) {
-    char search_key[256];
-    snprintf(search_key, sizeof(search_key), "\"%s\"", key);
-    
-    char *key_pos = strstr(json, search_key);
-    return (key_pos != NULL);
-}
-
-// Helper function to get an integer value from JSON
-long long get_json_integer_value(const char *json, const char *key, long long default_value) {
-    char search_key[256];
-    snprintf(search_key, sizeof(search_key), "\"%s\"", key);
-    
-    char *key_pos = strstr(json, search_key);
-    if (!key_pos) {
+    cJSON *value = cJSON_GetObjectItem(json, key);
+    if (!value) {
         return default_value;
     }
     
-    // Move past the key and colon
-    key_pos += strlen(search_key);
-    while (*key_pos && (*key_pos == ' ' || *key_pos == ':')) {
-        key_pos++;
-    }
-    
-    // Check if it's a number
-    if (isdigit(*key_pos) || *key_pos == '-') {
-        return strtoll(key_pos, NULL, 10);
+    if (cJSON_IsBool(value)) {
+        return cJSON_IsTrue(value) ? 1 : 0;
     }
     
     return default_value;
 }
 
 /**
- * Create error response with appropriate content type
+ * @brief Parse a JSON integer value
+ * 
+ * @param json JSON object
+ * @param key Key to look for
+ * @param default_value Default value if key is not found
+ * @return long long Integer value
  */
-void create_stream_error_response(http_response_t *response, int status_code, const char *message) {
-    char error_json[512];
-    snprintf(error_json, sizeof(error_json), "{\"error\": \"%s\"}", message);
+long long mg_parse_json_integer(const cJSON *json, const char *key, long long default_value) {
+    if (!json || !key) {
+        return default_value;
+    }
+    
+    cJSON *value = cJSON_GetObjectItem(json, key);
+    if (!value) {
+        return default_value;
+    }
+    
+    if (cJSON_IsNumber(value)) {
+        return (long long)value->valuedouble;
+    }
+    
+    return default_value;
+}
 
-    response->status_code = status_code;
+/**
+ * @brief Parse a JSON string value
+ * 
+ * @param json JSON object
+ * @param key Key to look for
+ * @return char* String value (must be freed by caller) or NULL if not found
+ */
+char* mg_parse_json_string(const cJSON *json, const char *key) {
+    if (!json || !key) {
+        return NULL;
+    }
+    
+    cJSON *value = cJSON_GetObjectItem(json, key);
+    if (!value || !cJSON_IsString(value)) {
+        return NULL;
+    }
+    
+    return strdup(value->valuestring);
+}
 
-    // Use strncpy for the content type field which appears to be an array
-    strncpy(response->content_type, "application/json", sizeof(response->content_type) - 1);
-    response->content_type[sizeof(response->content_type) - 1] = '\0';
-
-    // Allocate and set body
-    response->body = strdup(error_json);
-
-    // Add proper cleanup handling - your response structure likely has a different flag
-    // for indicating the body should be freed
-    // Check if your http_response_t has a needs_free or similar field
-    // response->needs_free = 1;
+/**
+ * @brief Check if a JSON object has a key
+ * 
+ * @param json JSON object
+ * @param key Key to look for
+ * @return int 1 if key exists, 0 otherwise
+ */
+int mg_json_has_key(const cJSON *json, const char *key) {
+    if (!json || !key) {
+        return 0;
+    }
+    
+    return cJSON_HasObjectItem(json, key) ? 1 : 0;
 }

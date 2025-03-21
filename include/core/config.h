@@ -153,4 +153,19 @@ int load_stream_configs(config_t *config);
  */
 int save_stream_configs(const config_t *config);
 
+/**
+ * Set a custom configuration file path
+ * This path will be checked first when loading configuration
+ * 
+ * @param path Path to the custom configuration file
+ */
+void set_custom_config_path(const char *path);
+
+/**
+ * Get the current custom configuration file path
+ * 
+ * @return The custom configuration file path, or NULL if not set
+ */
+const char* get_custom_config_path(void);
+
 #endif // LIGHTNVR_CONFIG_H

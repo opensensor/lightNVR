@@ -35,7 +35,11 @@ void init_recordings_system(void);
 void register_detection_api_handlers(void);
 #include "database/database_manager.h"
 #include "web/web_server.h"
+#include "web/http_server.h"
+#include "web/mongoose_server.h"
+#include "web/api_handlers.h"
 #include "video/streams.h"
+#include "../external/mongoose/mongoose.h"
 
 // Include necessary headers for signal handling
 #include <signal.h>
@@ -48,7 +52,7 @@ volatile bool running = true;
 bool daemon_mode = false;
 
 // Declare a global variable to store the web server socket
-static int web_server_socket = -1;
+int web_server_socket = -1;
 
 // global config
 config_t config;
@@ -249,6 +253,9 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
+    // Define a variable to store the custom config path
+    char custom_config_path[MAX_PATH_LENGTH] = {0};
+
     // Parse command line arguments
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-d") == 0 || strcmp(argv[i], "--daemon") == 0) {
@@ -256,6 +263,8 @@ int main(int argc, char *argv[]) {
         } else if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--config") == 0) {
             if (i + 1 < argc) {
                 // Set config file path
+                strncpy(custom_config_path, argv[i+1], MAX_PATH_LENGTH - 1);
+                custom_config_path[MAX_PATH_LENGTH - 1] = '\0';
                 i++;
             } else {
                 log_error("Missing config file path");
@@ -273,6 +282,12 @@ int main(int argc, char *argv[]) {
             // Version already printed in banner
             return EXIT_SUCCESS;
         }
+    }
+
+    // Set custom config path if specified
+    if (custom_config_path[0] != '\0') {
+        set_custom_config_path(custom_config_path);
+        log_info("Using custom config path: %s", custom_config_path);
     }
 
     // Load configuration
@@ -547,28 +562,45 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // Initialize web server
-    if (init_web_server(config.web_port, config.web_root) != 0) {
-        log_error("Failed to initialize web server");
+    // Initialize Mongoose web server with direct handlers
+    http_server_config_t server_config = {
+        .port = config.web_port,
+        .web_root = config.web_root,
+        .auth_enabled = config.web_auth_enabled,
+        .cors_enabled = true,
+        .ssl_enabled = false,
+        .max_connections = 100,
+        .connection_timeout = 30,
+        .daemon_mode = daemon_mode
+    };
+    
+    // Set CORS allowed origins, methods, and headers
+    strncpy(server_config.allowed_origins, "*", sizeof(server_config.allowed_origins) - 1);
+    strncpy(server_config.allowed_methods, "GET, POST, PUT, DELETE, OPTIONS", sizeof(server_config.allowed_methods) - 1);
+    strncpy(server_config.allowed_headers, "Content-Type, Authorization", sizeof(server_config.allowed_headers) - 1);
+    
+    if (config.web_auth_enabled) {
+        strncpy(server_config.username, config.web_username, sizeof(server_config.username) - 1);
+        strncpy(server_config.password, config.web_password, sizeof(server_config.password) - 1);
+    }
+    
+    // Use the direct mongoose server implementation
+    http_server_handle_t http_server = mongoose_server_init(&server_config);
+    if (!http_server) {
+        log_error("Failed to initialize Mongoose web server");
         goto cleanup;
     }
-
-    // Set authentication if enabled in config
-    if (config.web_auth_enabled) {
-        log_info("Enabling web authentication");
-        if (set_authentication(true, config.web_username, config.web_password) != 0) {
-            log_error("Failed to set authentication");
-            // Continue anyway, authentication will be disabled
-        }
-    } else {
-        log_info("Web authentication is disabled");
-    }
-
-    // Register streaming API handlers
-    register_streaming_api_handlers();
     
-    // Register detection API handlers
-    register_detection_api_handlers();
+    if (http_server_start(http_server) != 0) {
+        log_error("Failed to start Mongoose web server");
+        http_server_destroy(http_server);
+        goto cleanup;
+    }
+    
+    log_info("Mongoose web server started on port %d", config.web_port);
+    
+    // No need to register API handlers with the Mongoose server
+    // Direct handlers are registered in register_api_handlers
 
     log_info("LightNVR initialized successfully");
 
@@ -701,7 +733,8 @@ cleanup:
         
         // Now shut down other components
         log_info("Shutting down web server...");
-        shutdown_web_server();
+        http_server_stop(http_server);
+        http_server_destroy(http_server);
         
         log_info("Shutting down stream manager...");
         shutdown_stream_manager();
@@ -761,8 +794,11 @@ cleanup:
         cleanup_transcoding_backend();
         
         // Shut down remaining components
-        shutdown_web_server();
+        http_server_stop(http_server);
+        http_server_destroy(http_server);
         shutdown_stream_manager();
+        shutdown_stream_state_adapter();
+        shutdown_stream_state_manager();
         shutdown_storage_manager();
         shutdown_database();
         

@@ -34,10 +34,69 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(FFMPEG REQUIRED libavcodec libavformat libavutil libswscale)
 pkg_check_modules(SQLITE REQUIRED sqlite3)
 
+# Use Mongoose for web server implementation
+set(USE_MONGOOSE ON)
+add_definitions(-DUSE_MONGOOSE)
+
+# Find cJSON
+find_package(cJSON QUIET)
+if(NOT cJSON_FOUND)
+    # If not found via find_package, try pkg-config
+    pkg_check_modules(CJSON cjson)
+    if(NOT CJSON_FOUND)
+        message(STATUS "cJSON not found via find_package or pkg-config, will use bundled version")
+        set(CJSON_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/external/cjson")
+        set(CJSON_LIBRARIES "cjson")
+        set(CJSON_BUNDLED TRUE)
+    endif()
+endif()
+
 # Add SOD subdirectory if enabled
 if(ENABLE_SOD)
     add_subdirectory(src/sod)
     add_definitions(-DSOD_ENABLED)
+endif()
+
+# Add Mongoose if enabled
+if(USE_MONGOOSE)
+    # Check if Mongoose is already in external directory, if not download it
+    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose/mongoose.c")
+        message(STATUS "Mongoose not found, will download it")
+        file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose")
+        file(DOWNLOAD 
+            "https://raw.githubusercontent.com/cesanta/mongoose/master/mongoose.c"
+            "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose/mongoose.c"
+            SHOW_PROGRESS
+        )
+        file(DOWNLOAD 
+            "https://raw.githubusercontent.com/cesanta/mongoose/master/mongoose.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose/mongoose.h"
+            SHOW_PROGRESS
+        )
+    endif()
+    add_definitions(-DUSE_MONGOOSE)
+    set(MONGOOSE_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose")
+    set(MONGOOSE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose/mongoose.c")
+endif()
+
+# Add cJSON if using bundled version
+if(CJSON_BUNDLED)
+    # Check if cJSON is already in external directory, if not download it
+    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/cjson/cJSON.c")
+        message(STATUS "cJSON not found, will download it")
+        file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/external/cjson")
+        file(DOWNLOAD 
+            "https://raw.githubusercontent.com/DaveGamble/cJSON/master/cJSON.c"
+            "${CMAKE_CURRENT_SOURCE_DIR}/external/cjson/cJSON.c"
+            SHOW_PROGRESS
+        )
+        file(DOWNLOAD 
+            "https://raw.githubusercontent.com/DaveGamble/cJSON/master/cJSON.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/external/cjson/cJSON.h"
+            SHOW_PROGRESS
+        )
+    endif()
+    set(CJSON_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/external/cjson/cJSON.c")
 endif()
 
 # Add include directories for dependencies
@@ -45,7 +104,15 @@ include_directories(
     ${FFMPEG_INCLUDE_DIRS}
     ${SQLITE_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}/external/inih
+    ${CJSON_INCLUDE_DIRS}
 )
+
+# Add Mongoose include directory if enabled
+if(USE_MONGOOSE)
+    include_directories(${MONGOOSE_INCLUDE_DIRS})
+endif()
+
+# No libmicrohttpd needed
 
 # Define source files, excluding SOD sources which are built separately
 file(GLOB_RECURSE CORE_SOURCES "src/core/*.c")
@@ -59,6 +126,8 @@ file(GLOB_RECURSE ROOT_SOURCES "src/*.c")
 file(GLOB VIDEO_SOURCES "src/video/*.c")
 list(FILTER VIDEO_SOURCES EXCLUDE REGEX ".*motion_detection_optimized\\.c$")
 
+# We've replaced mongoose_server.c with our direct implementation
+
 # Combine all sources
 set(SOURCES
     ${CORE_SOURCES}
@@ -71,6 +140,16 @@ set(SOURCES
     "external/inih/ini.c"
 )
 
+# Add Mongoose source if enabled
+if(USE_MONGOOSE)
+    list(APPEND SOURCES ${MONGOOSE_SOURCES})
+endif()
+
+# Add cJSON source if using bundled version
+if(CJSON_BUNDLED)
+    list(APPEND SOURCES ${CJSON_SOURCES})
+endif()
+
 # Define the executable
 add_executable(lightnvr ${SOURCES})
 
@@ -82,6 +161,11 @@ target_link_libraries(lightnvr
     dl
     m
 )
+
+# Link cJSON if not using bundled version
+if(NOT CJSON_BUNDLED AND CJSON_FOUND)
+    target_link_libraries(lightnvr ${CJSON_LIBRARIES})
+endif()
 
 # Link SOD library if enabled
 if(ENABLE_SOD)

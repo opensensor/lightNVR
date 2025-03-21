@@ -83,8 +83,8 @@ int init_daemon(const char *pid_file) {
     int max_fd = sysconf(_SC_OPEN_MAX);
     for (int i = 3; i < max_fd; i++) {
         // Skip the server socket if it's already set up
-        extern int server_socket;  // From web_server.c
-        if (i != server_socket || server_socket < 0) {
+        extern int web_server_socket;  // From main.c
+        if (i != web_server_socket || web_server_socket < 0) {
             close(i);
         }
     }
@@ -153,20 +153,20 @@ static void daemon_signal_handler(int sig) {
         running = false;
 
         // Also signal the web server to shut down
-        extern int server_socket;
-        if (server_socket >= 0) {
+        extern int web_server_socket;
+        if (web_server_socket >= 0) {
             // Use a more robust approach for Linux 4.4 embedded systems
             // First try to shutdown the socket
-            if (shutdown(server_socket, SHUT_RDWR) != 0) {
+            if (shutdown(web_server_socket, SHUT_RDWR) != 0) {
                 log_warn("Failed to shutdown server socket: %s", strerror(errno));
             }
             
             // Then close it
-            if (close(server_socket) != 0) {
+            if (close(web_server_socket) != 0) {
                 log_warn("Failed to close server socket: %s", strerror(errno));
             }
             
-            server_socket = -1; // Update the global reference
+            web_server_socket = -1; // Update the global reference
         }
         
         // On Linux 4.4 embedded, we might need to force exit if signals aren't handled well

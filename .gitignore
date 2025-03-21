@@ -75,3 +75,6 @@ Makefile
 # Models
 /models
 *.so*
+
+# External Dependencies
+/external

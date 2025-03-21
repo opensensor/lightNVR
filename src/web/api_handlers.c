@@ -4,57 +4,176 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 #include "web/api_handlers.h"
-#include "web/web_server.h"
+#include "web/mongoose_adapter.h"
+#include "web/http_router.h"
+#include "web/mongoose_server_handlers.h"
 #include "core/logger.h"
-#include "web/api_handlers_detection_results.h"
+#include "core/config.h"
+#include "../external/mongoose/mongoose.h"
+
+// We'll use the existing mg_handle_* functions directly
 
 /**
- * Register fixed API handlers to ensure proper URL handling
+ * @brief Register direct Mongoose API handlers
  */
-void register_api_handlers(void) {
-    // Register settings API handlers
-    register_request_handler("/api/settings", "POST", handle_post_settings);
-    register_request_handler("/api/settings", "GET", handle_get_settings);
-
-    // Register stream API handlers
-    register_request_handler("/api/streams", "GET", handle_get_streams);
-    register_request_handler("/api/streams", "POST", handle_post_stream);
-
-    // Register improved stream-specific API handlers for individual streams
-    // Use a more specific pattern that matches the exact pattern of IDs
-    register_request_handler("/api/streams/*/toggle_streaming", "POST", handle_toggle_streaming);
-    register_request_handler("/api/streams/*", "GET", handle_get_stream);
-    register_request_handler("/api/streams/*", "PUT", handle_put_stream);
-    register_request_handler("/api/streams/*", "DELETE", handle_delete_stream);
-
-    // Register system API handlers
-    register_request_handler("/api/system/info", "GET", handle_get_system_info);
-    register_request_handler("/api/system/logs", "GET", handle_get_system_logs);
-    register_request_handler("/api/system/restart", "POST", handle_post_system_restart);
-    register_request_handler("/api/system/shutdown", "POST", handle_post_system_shutdown);
-    register_request_handler("/api/system/logs/clear", "POST", handle_post_system_clear_logs);
-    register_request_handler("/api/system/backup", "POST", handle_post_system_backup);
-    register_request_handler("/api/system/status", "GET", handle_get_system_status);
-
-    // Register recording API handlers
-    // IMPORTANT: Register more specific routes first to avoid conflicts
-    register_request_handler("/api/recordings/download/*", "GET", handle_download_recording);
-    register_request_handler("/api/recordings", "GET", handle_get_recordings);
+void register_api_handlers(struct mg_mgr *mgr) {
+    if (!mgr) {
+        log_error("Invalid Mongoose manager for registering direct API handlers");
+        return;
+    }
     
-    // These must come last as they're more general patterns
-    register_request_handler("/api/recordings/*", "GET", handle_get_recording);
-    register_request_handler("/api/recordings/*", "DELETE", handle_delete_recording);
-
-    // Register streaming API handlers
-    register_streaming_api_handlers();
+    log_info("Registering direct Mongoose API handlers");
     
-    // Register detection API handlers
-    register_detection_api_handlers();
+    // Note: The actual registration happens in mongoose_server.c in the s_api_routes table
+    // This function is called during server initialization to perform any additional setup
     
-    // Register detection results API handlers
-    register_detection_results_api_handlers();
+    // Log the handlers that are being registered
+    log_info("Registered handler: GET /api/streams");
+    log_info("Registered handler: POST /api/streams");
+    log_info("Registered handler: GET /api/streams/:id");
+    log_info("Registered handler: PUT /api/streams/:id");
+    log_info("Registered handler: DELETE /api/streams/:id");
+    log_info("Registered handler: POST /api/streams/:id/toggle_streaming");
+    log_info("Registered handler: GET /api/settings");
+    log_info("Registered handler: POST /api/settings");
+    log_info("Registered handler: GET /api/system/info");
+    log_info("Registered handler: GET /api/system/logs");
+    log_info("Registered handler: POST /api/system/restart");
+    log_info("Registered handler: POST /api/system/shutdown");
+    log_info("Registered handler: GET /api/recordings");
+    log_info("Registered handler: GET /api/recordings/:id");
+    log_info("Registered handler: DELETE /api/recordings/:id");
+    log_info("Registered handler: GET /api/recordings/download/:id");
+    log_info("Registered handler: GET /api/streaming/:stream/hls/index.m3u8");
+    log_info("Registered handler: GET /api/streaming/:stream/hls/stream.m3u8");
+    log_info("Registered handler: GET /api/streaming/:stream/hls/segment_:id.ts");
+    log_info("Registered handler: GET /api/detection/results/:stream");
+    log_info("Registered handler: POST /api/system/clear_logs");
+    log_info("Registered handler: POST /api/system/backup");
+    log_info("Registered handler: GET /api/system/status");
+    log_info("Registered handler: POST /api/streaming/:stream/webrtc/offer");
+    log_info("Registered handler: POST /api/streaming/:stream/webrtc/ice");
+    
+    log_info("Direct Mongoose API handlers registered");
+}
 
-    log_info("API handlers registered with improved URL handling and route priority");
+/**
+ * @brief Helper function to extract path parameter from URL
+ */
+int mg_extract_path_param(struct mg_http_message *hm, const char *prefix, char *param_buf, size_t buf_size) {
+    if (!hm || !prefix || !param_buf || buf_size == 0) {
+        return -1;
+    }
+    
+    // Extract URI from HTTP message
+    char uri[MAX_PATH_LENGTH];
+    size_t uri_len = hm->uri.len < sizeof(uri) - 1 ? hm->uri.len : sizeof(uri) - 1;
+    memcpy(uri, hm->uri.buf, uri_len);
+    uri[uri_len] = '\0';
+    
+    // Check if URI starts with prefix
+    size_t prefix_len = strlen(prefix);
+    if (strncmp(uri, prefix, prefix_len) != 0) {
+        return -1;
+    }
+    
+    // Extract parameter (everything after the prefix)
+    const char *param = uri + prefix_len;
+    
+    // Skip any leading slashes
+    while (*param == '/') {
+        param++;
+    }
+    
+    // Find query string if present and truncate
+    char *query = strchr(param, '?');
+    if (query) {
+        *query = '\0';
+    }
+    
+    // Copy parameter to buffer
+    size_t param_len = strlen(param);
+    if (param_len >= buf_size) {
+        return -1;
+    }
+    
+    strcpy(param_buf, param);
+    
+    return 0;
+}
+
+/**
+ * @brief Helper function to send a JSON response
+ */
+void mg_send_json_response(struct mg_connection *c, int status_code, const char *json_str) {
+    if (!c || !json_str) {
+        return;
+    }
+    
+    mg_http_reply(c, status_code, "Content-Type: application/json\r\n", "%s", json_str);
+}
+
+/**
+ * @brief Helper function to send a JSON error response
+ */
+void mg_send_json_error(struct mg_connection *c, int status_code, const char *error_message) {
+    if (!c || !error_message) {
+        return;
+    }
+    
+    // Create error JSON
+    cJSON *error = cJSON_CreateObject();
+    if (!error) {
+        mg_http_reply(c, 500, "Content-Type: application/json\r\n", 
+                     "{\"error\": \"Failed to create error JSON\"}\n");
+        return;
+    }
+    
+    cJSON_AddStringToObject(error, "error", error_message);
+    
+    char *json_str = cJSON_PrintUnformatted(error);
+    if (!json_str) {
+        cJSON_Delete(error);
+        mg_http_reply(c, 500, "Content-Type: application/json\r\n", 
+                     "{\"error\": \"Failed to convert error JSON to string\"}\n");
+        return;
+    }
+    
+    mg_http_reply(c, status_code, "Content-Type: application/json\r\n", "%s", json_str);
+    
+    free(json_str);
+    cJSON_Delete(error);
+}
+
+/**
+ * @brief Helper function to parse JSON from request body
+ */
+cJSON* mg_parse_json_body(struct mg_http_message *hm) {
+    if (!hm || !hm->body.len) {
+        return NULL;
+    }
+    
+    // Make a null-terminated copy of the request body
+    char *body = malloc(hm->body.len + 1);
+    if (!body) {
+        log_error("Failed to allocate memory for request body");
+        return NULL;
+    }
+    
+    memcpy(body, hm->body.buf, hm->body.len);
+    body[hm->body.len] = '\0';
+    
+    // Parse JSON
+    cJSON *json = cJSON_Parse(body);
+    free(body);
+    
+    if (!json) {
+        log_error("Failed to parse JSON from request body");
+        return NULL;
+    }
+    
+    return json;
 }

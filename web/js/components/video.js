@@ -246,7 +246,7 @@ function initializeVideoPlayer(stream) {
     // Build the HLS stream URL with cache-busting timestamp to prevent stale data
     // Your backend needs to convert RTSP to HLS using FFmpeg
     const timestamp = Date.now();
-    const hlsStreamUrl = `/api/streaming/${encodeURIComponent(stream.name)}/hls/index.m3u8?_t=${timestamp}`;
+    const hlsStreamUrl = `/hls/${encodeURIComponent(stream.name)}/index.m3u8?_t=${timestamp}`;
 
     // Check if HLS is supported natively
     if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
@@ -345,7 +345,7 @@ function initializeVideoPlayer(stream) {
             if (videoCell && videoCell.hlsPlayer) {
                 console.log(`Refreshing HLS stream for ${stream.name}`);
                 const newTimestamp = Date.now();
-                const newUrl = `/api/streaming/${encodeURIComponent(stream.name)}/hls/index.m3u8?_t=${newTimestamp}`;
+                const newUrl = `/hls/${encodeURIComponent(stream.name)}/index.m3u8?_t=${newTimestamp}`;
                 videoCell.hlsPlayer.loadSource(newUrl);
             } else {
                 // Clear interval if video cell or player no longer exists
