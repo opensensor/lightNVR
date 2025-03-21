@@ -475,8 +475,13 @@ int main(int argc, char *argv[]) {
             // Check if model file exists
             char model_path[MAX_PATH_LENGTH];
             if (config.streams[i].detection_model[0] != '/') {
-                // Relative path, use configured models path
-                snprintf(model_path, MAX_PATH_LENGTH, "%s/%s", config.models_path, config.streams[i].detection_model);
+                // Relative path, use configured models path from INI if it exists
+                if (config.models_path && strlen(config.models_path) > 0) {
+                    snprintf(model_path, MAX_PATH_LENGTH, "%s/%s", config.models_path, config.streams[i].detection_model);
+                } else {
+                    // Fall back to default path if INI config doesn't exist
+                    snprintf(model_path, MAX_PATH_LENGTH, "/etc/lightnvr/models/%s", config.streams[i].detection_model);
+                }
             } else {
                 // Absolute path
                 strncpy(model_path, config.streams[i].detection_model, MAX_PATH_LENGTH - 1);

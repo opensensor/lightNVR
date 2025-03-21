@@ -275,8 +275,13 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     // Check if model_path is a relative path
     char full_model_path[MAX_PATH_LENGTH];
     if (config.detection_model[0] != '/') {
-        // Construct full path using configured models path
-        snprintf(full_model_path, MAX_PATH_LENGTH, "%s/%s", g_config.models_path, config.detection_model);
+        // Construct full path using configured models path from INI if it exists
+        if (g_config.models_path && strlen(g_config.models_path) > 0) {
+            snprintf(full_model_path, MAX_PATH_LENGTH, "%s/%s", g_config.models_path, config.detection_model);
+        } else {
+            // Fall back to default path if INI config doesn't exist
+            snprintf(full_model_path, MAX_PATH_LENGTH, "/etc/lightnvr/models/%s", config.detection_model);
+        }
 
         // Validate path exists
         if (!file_exists(full_model_path)) {
@@ -289,16 +294,12 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
             char cwd[MAX_PATH_LENGTH];
             if (getcwd(cwd, sizeof(cwd)) != NULL) {
                 const char *locations[] = {
-                    "./", // Current directory
-                    "./models/", // Models subdirectory
-                    "./build/models/", // Build directory
-                    "../models/", // Parent directory
+                    "/etc/lightnvr/models/", // Default system location
                 };
 
                 for (int i = 0; i < sizeof(locations)/sizeof(locations[0]); i++) {
-                    snprintf(alt_path, MAX_PATH_LENGTH, "%s%s%s", 
-                             cwd, 
-                             locations[i] + (locations[i][0] == '.' ? 1 : 0), // Skip the dot if it exists
+                    snprintf(alt_path, MAX_PATH_LENGTH, "%s%s", 
+                             locations[i],
                              config.detection_model);
                     if (file_exists(alt_path)) {
                         log_info("Found model at alternative location: %s", alt_path);
@@ -442,12 +443,9 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                     log_error("MODEL FILE NOT FOUND: %s", full_model_path);
                     
                     // Try alternative locations
-                    const char *locations[] = {
-                        "./", // Current directory
-                        "./build/models/", // Build directory
-                        "../models/", // Parent directory
-                        "/var/lib/lightnvr/models/" // System directory
-                    };
+                        const char *locations[] = {
+                            "/etc/lightnvr/models/"
+                        };
                     
                     bool found = false;
                     for (int j = 0; j < sizeof(locations)/sizeof(locations[0]); j++) {
