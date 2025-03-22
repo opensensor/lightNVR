@@ -108,7 +108,7 @@ function removeToast(toast) {
  * @param {number} duration - Duration in milliseconds before auto-hiding
  * @returns {HTMLElement} - The created toast element
  */
-function showSuccessToast(message, duration = 5000) {
+function showSuccessToast(message, duration = 3000) {
     return createToast(message, 'success', duration);
 }
 
@@ -118,7 +118,7 @@ function showSuccessToast(message, duration = 5000) {
  * @param {number} duration - Duration in milliseconds before auto-hiding
  * @returns {HTMLElement} - The created toast element
  */
-function showErrorToast(message, duration = 8000) {
+function showErrorToast(message, duration = 3000) {
     return createToast(message, 'error', duration);
 }
 
@@ -131,19 +131,19 @@ function initAlpineToast() {
             // Toast notification store
             Alpine.store('toast', {
                 // Show success toast
-                success(message, duration = 5000) {
+                success(message, duration = 3000) {
                     showSuccessToast(message, duration);
                 },
                 
                 // Show error toast
-                error(message, duration = 8000) {
+                error(message, duration = 3000) {
                     showErrorToast(message, duration);
                 }
             });
             
             // Replace the statusMessage store with toast functionality
             Alpine.store('statusMessage', {
-                show(message, duration = 5000, isError = false) {
+                show(message, duration = 3000, isError = false) {
                     if (isError) {
                         showErrorToast(message, duration);
                     } else {

@@ -326,18 +326,24 @@ async function saveStream() {
         // Close the modal
         closeStreamModal();
         
-        // First reload streams immediately
+        // Store success message for after refresh
+        const successMessage = 'Stream saved successfully';
+        
+        // Refresh data first
         const streamsManager = document.getElementById('streams-page')?.__x;
         if (streamsManager && streamsManager.$data && typeof streamsManager.$data.loadStreams === 'function') {
             await streamsManager.$data.loadStreams();
+            // Show toast after data is refreshed
+            showSuccessToast(successMessage, 3000);
         } else {
-            // Fallback to window reload if we can't find the component
+            // For page reload, we need to store the message in sessionStorage
+            // so it can be shown after the page reloads
+            sessionStorage.setItem('streamToast', JSON.stringify({
+                type: 'success',
+                message: successMessage
+            }));
             window.location.reload();
-            return; // Exit early if we're reloading the page
         }
-        
-        // Show success message
-        showSuccessToast('Stream saved successfully', 5000);
     } catch (error) {
         console.error('Error saving stream:', error);
         showErrorToast('Error saving stream: ' + error.message);

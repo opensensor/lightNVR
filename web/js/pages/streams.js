@@ -138,11 +138,14 @@ document.addEventListener('alpine:init', () => {
                     throw new Error('Failed to delete stream');
                 }
                 
-                // First reload streams immediately
+                // Store success message for after refresh
+                const successMessage = 'Stream deleted successfully';
+                
+                // Refresh data first
                 await this.loadStreams();
                 
-                // Show success message
-                showSuccessToast('Stream deleted successfully', 5000);
+                // Show toast after data is refreshed
+                showSuccessToast(successMessage, 3000);
             } catch (error) {
                 console.error('Error deleting stream:', error);
                 showErrorToast('Error deleting stream: ' + error.message);
@@ -150,6 +153,26 @@ document.addEventListener('alpine:init', () => {
         }
     }));
 });
+
+// Check for stored toast messages on page load
+function checkStoredToastMessages() {
+    const storedToast = sessionStorage.getItem('streamToast');
+    if (storedToast) {
+        try {
+            const toast = JSON.parse(storedToast);
+            if (toast.type === 'success') {
+                showSuccessToast(toast.message, 3000);
+            } else if (toast.type === 'error') {
+                showErrorToast(toast.message, 3000);
+            }
+            // Clear the stored toast message
+            sessionStorage.removeItem('streamToast');
+        } catch (e) {
+            console.error('Error parsing stored toast message:', e);
+            sessionStorage.removeItem('streamToast');
+        }
+    }
+}
 
 // Load the required scripts in the correct order
 document.addEventListener('DOMContentLoaded', function() {
@@ -180,6 +203,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Function to load stream-specific scripts
 function loadStreamScripts() {
+    // Check for stored toast messages now that toast.js is loaded
+    setTimeout(checkStoredToastMessages, 100);
+    
     // Load streams-part1.js (vanilla JS functions)
     const part1Script = document.createElement('script');
     part1Script.src = '/js/pages/streams-part1.js';
