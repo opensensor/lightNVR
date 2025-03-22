@@ -4,7 +4,7 @@ This document describes the REST API endpoints provided by LightNVR.
 
 ## API Overview
 
-LightNVR provides a RESTful API that allows you to interact with the system programmatically. The API is accessible via HTTP and returns JSON responses.
+LightNVR provides a RESTful API that allows you to interact with the system programmatically. The API is accessible via HTTP and returns JSON responses using the cJSON library. The API is served by the Mongoose web server.
 
 ## Authentication
 
@@ -439,3 +439,57 @@ fetch('http://your-lightnvr-ip:8080/api/v1/streams', {
 })
 .then(response => response.json())
 .then(data => console.log(data));
+```
+
+### Preact Component Example
+
+```javascript
+import { h } from 'preact';
+import { useState, useEffect } from 'preact/hooks';
+
+function StreamsList() {
+  const [streams, setStreams] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    // Fetch streams when component mounts
+    fetch('/api/v1/streams')
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Network response was not ok');
+        }
+        return response.json();
+      })
+      .then(data => {
+        setStreams(data.streams);
+        setLoading(false);
+      })
+      .catch(error => {
+        setError(error.message);
+        setLoading(false);
+      });
+  }, []);
+
+  if (loading) return <div>Loading streams...</div>;
+  if (error) return <div>Error: {error}</div>;
+
+  return (
+    <div class="streams-list">
+      <h2>Streams</h2>
+      {streams.length === 0 ? (
+        <p>No streams configured</p>
+      ) : (
+        <ul>
+          {streams.map(stream => (
+            <li key={stream.id}>
+              <strong>{stream.name}</strong> - {stream.status}
+              <p>URL: {stream.url}</p>
+              <p>Resolution: {stream.width}x{stream.height} @ {stream.fps}fps</p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}

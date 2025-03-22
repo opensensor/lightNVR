@@ -79,10 +79,10 @@ The web interface provides:
 - REST API for programmatic access
 
 Key files:
-- `src/web/web_server.c`: Web server implementation
+- `src/web/mongoose_server.c`: Web server implementation using Mongoose
 - `src/web/api_handlers.c`: API request handling
 - `src/web/api_handlers_*.c`: Specific API endpoint implementations
-- `web/`: HTML, CSS, and JavaScript files for the web interface
+- `web/`: HTML, CSS, JavaScript, and Preact components for the web interface
 
 ## Memory Management
 
@@ -206,11 +206,24 @@ The LightNVR API follows RESTful principles:
 
 - Resources are identified by URLs
 - Standard HTTP methods (GET, POST, PUT, DELETE) for CRUD operations
-- JSON for data exchange
+- JSON for data exchange using cJSON library
 - Authentication via HTTP Basic Auth
 - Proper status codes for success/error conditions
 
 See [API.md](API.md) for detailed API documentation.
+
+## Frontend Architecture
+
+The frontend uses modern web technologies:
+
+- Tailwind CSS for styling and responsive design
+- Preact for component-based UI development
+- Modular JavaScript for better organization and maintainability
+
+Key components:
+- `web/js/components/preact/`: Preact components for different views
+- `web/css/`: Tailwind CSS stylesheets
+- `web/js/`: JavaScript modules and utilities
 
 ## Configuration System
 

@@ -21,7 +21,7 @@ LightNVR provides a lightweight yet powerful solution for recording and managing
 - **Resolution Support**: Up to 1080p per stream (configurable lower resolutions)
 - **Frame Rate Control**: Configurable from 1-15 FPS per stream to reduce resource usage
 - **Standard Formats**: Records in standard MP4/MKV containers with proper indexing
-- **Web Interface**: Ultra-lightweight interface for management and viewing
+- **Modern Web Interface**: Responsive UI built with Tailwind CSS and Preact
 - **Storage Management**: Automatic retention policies and disk space management
 - **Reliability**: Automatic recovery after power loss or system failure
 - **Resource Optimization**: Stream prioritization to manage limited RAM
@@ -93,6 +93,7 @@ docker run -d \
 - [Build Instructions](docs/BUILD.md)
 - [Configuration Guide](docs/CONFIGURATION.md)
 - [API Documentation](docs/API.md)
+- [Frontend Architecture](docs/FRONTEND.md)
 - [Troubleshooting Guide](docs/TROUBLESHOOTING.md)
 - [Architecture Overview](docs/ARCHITECTURE.md)
 - [SOD Integration](docs/SOD_INTEGRATION.md)
@@ -112,7 +113,10 @@ docker run -d \
 - `config/` - Configuration files
 - `docs/` - Documentation
 - `tests/` - Test suite
-- `web/` - Web interface files (HTML, CSS, JavaScript)
+- `web/` - Web interface files
+  - `css/` - Tailwind CSS stylesheets
+  - `js/` - JavaScript and Preact components
+  - `*.html` - HTML entry points
 
 ## Memory Optimization
 
@@ -142,5 +146,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - FFmpeg for video processing capabilities
 - SQLite for efficient database storage
-- libmicrohttpd for the web server
+- Mongoose for the web server
+- cJSON for JSON parsing
+- Tailwind CSS for frontend styling
+- Preact for frontend components
 - All contributors who have helped with the project
