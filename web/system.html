@@ -282,8 +282,8 @@
                         throw new Error('Failed to load system logs');
                     }
                     
-                    const data = await response.json();
-                    this.logs = data.logs || 'No logs available';
+            const data = await response.json();
+            this.logs = Array.isArray(data.logs) ? data.logs.join('\n') : (data.logs || 'No logs available');
                     
                     // Scroll to bottom of logs
                     const logContainer = document.querySelector('.log-container');

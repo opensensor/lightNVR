@@ -74,11 +74,12 @@ static const mg_api_route_t s_api_routes[] = {
     {"POST", "/api/settings", mg_handle_post_settings},
     
     // System API
-    {"GET", "/api/system/info", mg_handle_get_system_info},
+    {"GET", "/api/system", mg_handle_get_system_info},
+    {"GET", "/api/system/info", mg_handle_get_system_info}, // Keep for backward compatibility
     {"GET", "/api/system/logs", mg_handle_get_system_logs},
     {"POST", "/api/system/restart", mg_handle_post_system_restart},
     {"POST", "/api/system/shutdown", mg_handle_post_system_shutdown},
-    {"POST", "/api/system/clear_logs", mg_handle_post_system_clear_logs},
+    {"POST", "/api/system/logs/clear", mg_handle_post_system_logs_clear},
     {"POST", "/api/system/backup", mg_handle_post_system_backup},
     {"GET", "/api/system/status", mg_handle_get_system_status},
     
@@ -174,11 +175,12 @@ static void init_route_table(void) {
     add_route("POST", "^/api/settings$", mg_handle_post_settings);
     
     // System API
-    add_route("GET", "^/api/system/info$", mg_handle_get_system_info);
+    add_route("GET", "^/api/system$", mg_handle_get_system_info);
+    add_route("GET", "^/api/system/info$", mg_handle_get_system_info); // Keep for backward compatibility
     add_route("GET", "^/api/system/logs$", mg_handle_get_system_logs);
     add_route("POST", "^/api/system/restart$", mg_handle_post_system_restart);
     add_route("POST", "^/api/system/shutdown$", mg_handle_post_system_shutdown);
-    add_route("POST", "^/api/system/clear_logs$", mg_handle_post_system_clear_logs);
+    add_route("POST", "^/api/system/logs/clear$", mg_handle_post_system_logs_clear);
     add_route("POST", "^/api/system/backup$", mg_handle_post_system_backup);
     add_route("GET", "^/api/system/status$", mg_handle_get_system_status);
     

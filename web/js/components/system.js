@@ -51,7 +51,7 @@ function loadSystemInfo() {
     showLoading(systemContainer);
 
     // Fetch system information from API
-    fetch('/api/system/info')
+    fetch('/api/system')
         .then(response => {
             if (!response.ok) {
                 throw new Error('Failed to load system information');

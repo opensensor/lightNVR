@@ -15,7 +15,12 @@
 #include "core/logger.h"
 #include "core/config.h"
 #include "core/version.h"
+#include "video/stream_manager.h"
+#include "database/db_streams.h"
 #include "mongoose.h"
+
+// External declarations
+extern bool daemon_mode;
 
 /**
  * @brief Direct handler for GET /api/system/info
@@ -48,25 +53,54 @@ void mg_handle_get_system_info(struct mg_connection *c, struct mg_http_message *
     // Get memory information
     struct sysinfo sys_info;
     if (sysinfo(&sys_info) == 0) {
-        cJSON *memory = cJSON_CreateObject();
-        if (memory) {
-            cJSON_AddNumberToObject(memory, "total", sys_info.totalram * sys_info.mem_unit);
-            cJSON_AddNumberToObject(memory, "free", sys_info.freeram * sys_info.mem_unit);
-            cJSON_AddNumberToObject(memory, "used", (sys_info.totalram - sys_info.freeram) * sys_info.mem_unit);
-            cJSON_AddItemToObject(info, "memory", memory);
+        // Calculate memory usage in MB
+        unsigned long memory_total_mb = (sys_info.totalram * sys_info.mem_unit) / (1024 * 1024);
+        unsigned long memory_used_mb = ((sys_info.totalram - sys_info.freeram) * sys_info.mem_unit) / (1024 * 1024);
+        
+        // Add memory information in the format expected by the frontend
+        cJSON_AddNumberToObject(info, "memory_total", memory_total_mb);
+        cJSON_AddNumberToObject(info, "memory_usage", memory_used_mb);
+        
+        // Calculate memory usage percentage
+        double memory_percentage = 0;
+        if (sys_info.totalram > 0) {
+            memory_percentage = ((double)(sys_info.totalram - sys_info.freeram) / (double)sys_info.totalram) * 100.0;
         }
+        cJSON_AddNumberToObject(info, "memory_percentage", memory_percentage);
+        
+        // Calculate CPU usage (simplified)
+        double cpu_usage = 0.0;
+        FILE *fp = fopen("/proc/stat", "r");
+        if (fp) {
+            unsigned long user, nice, system, idle, iowait, irq, softirq;
+            if (fscanf(fp, "cpu %lu %lu %lu %lu %lu %lu %lu", 
+                      &user, &nice, &system, &idle, &iowait, &irq, &softirq) == 7) {
+                unsigned long total = user + nice + system + idle + iowait + irq + softirq;
+                unsigned long active = user + nice + system + irq + softirq;
+                cpu_usage = (double)active / (double)total * 100.0;
+            }
+            fclose(fp);
+        }
+        cJSON_AddNumberToObject(info, "cpu_usage", cpu_usage);
     }
     
     // Get disk information
     struct statvfs disk_info;
-    if (statvfs("/", &disk_info) == 0) {
-        cJSON *disk = cJSON_CreateObject();
-        if (disk) {
-            cJSON_AddNumberToObject(disk, "total", disk_info.f_blocks * disk_info.f_frsize);
-            cJSON_AddNumberToObject(disk, "free", disk_info.f_bfree * disk_info.f_frsize);
-            cJSON_AddNumberToObject(disk, "used", (disk_info.f_blocks - disk_info.f_bfree) * disk_info.f_frsize);
-            cJSON_AddItemToObject(info, "disk", disk);
+    if (statvfs(g_config.storage_path, &disk_info) == 0) {
+        // Calculate storage usage in GB
+        unsigned long storage_total_gb = (disk_info.f_blocks * disk_info.f_frsize) / (1024 * 1024 * 1024);
+        unsigned long storage_used_gb = ((disk_info.f_blocks - disk_info.f_bfree) * disk_info.f_frsize) / (1024 * 1024 * 1024);
+        
+        // Add storage information in the format expected by the frontend
+        cJSON_AddNumberToObject(info, "storage_total", storage_total_gb);
+        cJSON_AddNumberToObject(info, "storage_usage", storage_used_gb);
+        
+        // Calculate storage usage percentage
+        double storage_percentage = 0;
+        if (disk_info.f_blocks > 0) {
+            storage_percentage = ((double)(disk_info.f_blocks - disk_info.f_bfree) / (double)disk_info.f_blocks) * 100.0;
         }
+        cJSON_AddNumberToObject(info, "storage_percentage", storage_percentage);
     }
     
     // Get uptime
@@ -74,6 +108,56 @@ void mg_handle_get_system_info(struct mg_connection *c, struct mg_http_message *
     
     // Get process information
     cJSON_AddNumberToObject(info, "pid", getpid());
+    
+    // Add daemon mode information
+    cJSON_AddBoolToObject(info, "daemon_mode", daemon_mode);
+    
+    // Add stream statistics
+    int active_streams = 0;
+    int recording_streams = 0;
+    unsigned long total_received = 0;
+    unsigned long total_recorded = 0;
+    
+    // Get all stream configurations
+    stream_config_t streams[MAX_STREAMS];
+    int stream_count = get_all_stream_configs(streams, MAX_STREAMS);
+    
+    if (stream_count > 0) {
+        for (int i = 0; i < stream_count; i++) {
+            stream_handle_t stream = get_stream_by_name(streams[i].name);
+            if (stream) {
+                stream_status_t status = get_stream_status(stream);
+                if (status == STREAM_STATUS_RUNNING) {
+                    active_streams++;
+                    
+                    // Check if recording
+                    if (streams[i].record) {
+                        recording_streams++;
+                    }
+                    
+                    // Get stream statistics
+                    stream_stats_t stats;
+                    if (get_stream_stats(stream, &stats) == 0) {
+                        total_received += stats.bytes_received;
+                        // Use frames_received as a proxy for recorded data if bytes_recorded is not available
+                        total_recorded += stats.frames_received * 1024; // Rough estimate
+                    }
+                }
+            }
+        }
+    }
+    
+    // Add stream statistics in the format expected by the frontend
+    cJSON_AddNumberToObject(info, "active_streams", active_streams);
+    cJSON_AddNumberToObject(info, "max_streams", g_config.max_streams);
+    cJSON_AddNumberToObject(info, "recording_streams", recording_streams);
+    
+    // Convert bytes to MB
+    double data_received_mb = total_received / (1024.0 * 1024.0);
+    double data_recorded_mb = total_recorded / (1024.0 * 1024.0);
+    
+    cJSON_AddNumberToObject(info, "data_received", data_received_mb);
+    cJSON_AddNumberToObject(info, "data_recorded", data_recorded_mb);
     
     // Convert to string
     char *json_str = cJSON_PrintUnformatted(info);
@@ -146,26 +230,45 @@ void mg_handle_get_system_logs(struct mg_connection *c, struct mg_http_message *
     fclose(log_file);
     
     // Create JSON object
-    cJSON *logs = cJSON_CreateObject();
-    if (!logs) {
+    cJSON *logs_obj = cJSON_CreateObject();
+    if (!logs_obj) {
         log_error("Failed to create logs JSON object");
         free(buffer);
         mg_send_json_error(c, 500, "Failed to create logs JSON");
         return;
     }
     
-    // Add logs
-    cJSON_AddStringToObject(logs, "file", g_config.log_file);
-    cJSON_AddNumberToObject(logs, "size", file_size);
-    cJSON_AddNumberToObject(logs, "offset", offset);
-    cJSON_AddStringToObject(logs, "content", buffer);
+    // Split log content into lines
+    cJSON *logs_array = cJSON_CreateArray();
+    if (!logs_array) {
+        log_error("Failed to create logs array");
+        free(buffer);
+        cJSON_Delete(logs_obj);
+        mg_send_json_error(c, 500, "Failed to create logs array");
+        return;
+    }
+    
+    // Split buffer into lines and add to array
+    char *line = strtok(buffer, "\n");
+    while (line != NULL) {
+        cJSON_AddItemToArray(logs_array, cJSON_CreateString(line));
+        line = strtok(NULL, "\n");
+    }
+    
+    // Add logs array to response
+    cJSON_AddItemToObject(logs_obj, "logs", logs_array);
+    
+    // Add metadata
+    cJSON_AddStringToObject(logs_obj, "file", g_config.log_file);
+    cJSON_AddNumberToObject(logs_obj, "size", file_size);
+    cJSON_AddNumberToObject(logs_obj, "offset", offset);
     
     // Convert to string
-    char *json_str = cJSON_PrintUnformatted(logs);
+    char *json_str = cJSON_PrintUnformatted(logs_obj);
     
     // Clean up
     free(buffer);
-    cJSON_Delete(logs);
+    cJSON_Delete(logs_obj);
     
     if (!json_str) {
         log_error("Failed to convert logs JSON to string");
@@ -275,10 +378,10 @@ void mg_handle_post_system_shutdown(struct mg_connection *c, struct mg_http_mess
 }
 
 /**
- * @brief Direct handler for POST /api/system/clear_logs
+ * @brief Direct handler for POST /api/system/logs/clear
  */
-void mg_handle_post_system_clear_logs(struct mg_connection *c, struct mg_http_message *hm) {
-    log_info("Handling POST /api/system/clear_logs request");
+void mg_handle_post_system_logs_clear(struct mg_connection *c, struct mg_http_message *hm) {
+    log_info("Handling POST /api/system/logs/clear request");
     
     // Get log file path
     const char* log_file = "/var/log/lightnvr.log"; // Default log file path
@@ -369,7 +472,7 @@ void mg_handle_post_system_clear_logs(struct mg_connection *c, struct mg_http_me
         cJSON_Delete(error);
     }
     
-    log_info("Successfully handled POST /api/system/clear_logs request");
+    log_info("Successfully handled POST /api/system/logs/clear request");
 }
 
 /**

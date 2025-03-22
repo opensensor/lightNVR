@@ -197,12 +197,12 @@ void mg_handle_get_detection_results(struct mg_connection *c, struct mg_http_mes
 void mg_handle_get_detection_models(struct mg_connection *c, struct mg_http_message *hm);
 
 /**
- * @brief Direct handler for POST /api/system/clear_logs
+ * @brief Direct handler for POST /api/system/logs/clear
  * 
  * @param c Mongoose connection
  * @param hm Mongoose HTTP message
  */
-void mg_handle_post_system_clear_logs(struct mg_connection *c, struct mg_http_message *hm);
+void mg_handle_post_system_logs_clear(struct mg_connection *c, struct mg_http_message *hm);
 
 /**
  * @brief Direct handler for POST /api/system/backup
