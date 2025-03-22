@@ -69,11 +69,11 @@ function updateVersionDisplay() {
         })
         .then(data => {
             // Update version display with 'v' prefix
-            versionDisplay.textContent = `v${data.version || '0.2.0'}`;
+            versionDisplay.textContent = `v${data.version || ''}`;
         })
         .catch(error => {
             console.error('Error loading version information:', error);
             // Use fallback version if API call fails
-            versionDisplay.textContent = 'v0.2.0';
+            versionDisplay.textContent = '';
         });
 }

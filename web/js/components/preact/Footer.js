@@ -13,7 +13,7 @@ import { html } from '../../preact-app.js';
  */
 export function Footer() {
   const [year] = useState(new Date().getFullYear());
-  const [version, setVersion] = useState('0.2.0');
+  const [version, setVersion] = useState('');
   
   // Fetch system version on mount
   useEffect(() => {

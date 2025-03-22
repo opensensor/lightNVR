@@ -1,3 +1,11 @@
+/* Live Video Styles - Hybrid approach with Tailwind and custom CSS */
+
+/* 
+ * This file contains styles for the live video page.
+ * Using a hybrid approach to ensure detection overlays work correctly
+ * while still leveraging Tailwind where appropriate.
+ */
+
 /* Video grid styles */
 .video-container {
     display: grid;
@@ -70,6 +78,17 @@
     background-color: #111;
 }
 
+/* Detection overlay canvas - critical for detection bounding boxes */
+.detection-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 10;
+}
+
 /* Adjust padding in fullscreen mode for better visibility */
 .fullscreen-mode .video-cell video {
     padding: 0;
@@ -92,6 +111,7 @@
     transition: all 0.3s ease;
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
+    z-index: 20;
 }
 
 .video-cell:hover .stream-info {
@@ -125,24 +145,11 @@
 }
 
 .placeholder {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    height: 100%;
-    background-color: #f5f5f5;
-    border-radius: 0.5rem;
-    grid-column: 1 / -1;
-    grid-row: 1 / -1;
-    text-align: center;
-    padding: 2rem;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    @apply flex flex-col justify-center items-center h-full bg-gray-100 dark:bg-gray-800 rounded-lg col-span-full row-span-full text-center p-8 shadow;
 }
 
 .placeholder p {
-    margin-bottom: 1.5rem;
-    color: #555;
-    font-size: 1.1rem;
+    @apply mb-6 text-gray-600 dark:text-gray-300 text-lg;
 }
 
 /* Fullscreen mode */
@@ -172,6 +179,7 @@
     flex-direction: column;
     align-items: center;
     color: white;
+    z-index: 15;
 }
 
 .loading-spinner {
@@ -204,6 +212,7 @@
     border-radius: 8px;
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
+    z-index: 15;
 }
 
 .error-icon {
@@ -252,39 +261,13 @@
     }
 }
 
-/* Dark mode support */
-@media (prefers-color-scheme: dark) {
-    .placeholder {
-        background-color: #222;
-    }
-    
-    .placeholder p {
-        color: #ccc;
-    }
-}
-
 /* Status message styles */
 .status-message {
-    position: fixed;
-    top: 20px;
-    left: 50%;
-    transform: translateX(-50%) translateY(-20px);
-    background-color: #4CAF50;
-    color: white;
-    padding: 10px 15px;
-    border-radius: 4px;
-    z-index: 1000;
-    font-size: 14px;
-    opacity: 0;
-    transition: opacity 0.3s, transform 0.3s;
-    max-width: 80%;
-    text-align: center;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    @apply fixed top-5 left-1/2 -translate-x-1/2 -translate-y-5 bg-green-500 text-white py-2.5 px-4 rounded z-50 text-sm opacity-0 transition-all duration-300 max-w-[80%] text-center shadow-lg;
 }
 
 .status-message.visible {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
+    @apply opacity-100 -translate-y-0;
 }
 
 /* Modal styles - ensure visibility */
@@ -323,6 +306,7 @@
     justify-content: center;
     cursor: pointer;
     transition: all 0.2s ease;
+    z-index: 15;
 }
 
 .play-overlay:hover {

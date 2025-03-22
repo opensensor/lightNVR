@@ -1,177 +1,115 @@
-/* LightNVR Layout Styles */
+/* LightNVR Layout Styles - Tailwind-based */
+
+/* 
+ * This file contains Tailwind-compatible styles for layout components.
+ * Using @apply to leverage Tailwind's utility classes while maintaining
+ * the component-based structure.
+ */
 
 /* Header styles */
 header {
-    background-color: var(--secondary-color);
-    color: white;
-    padding: 0.5rem 1rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    @apply bg-gray-800 text-white py-2 px-4 flex justify-between items-center shadow-md;
 }
 
 .logo {
-    display: flex;
-    align-items: baseline;
+    @apply flex items-baseline;
 }
 
 .logo h1 {
-    margin: 0;
-    font-size: 1.8rem;
+    @apply m-0 text-2xl font-bold;
 }
 
 .version {
-    color: #bbdefb;
-    font-size: 0.8rem;
-    margin-left: 0.5rem;
+    @apply text-blue-200 text-xs ml-2;
 }
 
 nav ul {
-    display: flex;
-    list-style: none;
+    @apply flex list-none;
 }
 
 nav a {
-    color: white;
-    text-decoration: none;
-    padding: 0.5rem 1rem;
-    margin: 0 0.2rem;
-    border-radius: 4px;
-    transition: background-color 0.3s;
+    @apply text-white no-underline py-2 px-4 mx-0.5 rounded transition-colors duration-300;
 }
 
 nav a:hover,
 nav a.active {
-    background-color: var(--primary-color);
+    @apply bg-blue-600;
 }
 
 .user-menu {
-    display: flex;
-    align-items: center;
+    @apply flex items-center;
 }
 
 .user-menu span {
-    margin-right: 1rem;
+    @apply mr-4;
 }
 
 .user-menu a {
-    color: white;
-    text-decoration: none;
+    @apply text-white no-underline;
 }
 
 /* Footer styles */
 footer {
-    background-color: var(--secondary-color);
-    color: white;
-    padding: 0.75rem 1rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 0.9rem;
+    @apply bg-gray-800 text-white py-3 px-4 flex justify-between items-center text-sm;
 }
 
 footer a {
-    color: #bbdefb;
-    text-decoration: none;
-}
-
-footer a:hover {
-    text-decoration: underline;
+    @apply text-blue-200 no-underline hover:underline;
 }
 
 /* Table styles */
 table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-bottom: 1rem;
+    @apply w-full border-collapse mb-4;
 }
 
 th, td {
-    padding: 0.75rem;
-    text-align: left;
-    border-bottom: 1px solid var(--border-color);
+    @apply py-3 px-6 text-left border-b border-gray-200 dark:border-gray-700;
 }
 
 th {
-    background-color: #f9f9f9;
-    font-weight: 600;
+    @apply bg-gray-50 dark:bg-gray-700 font-semibold;
 }
 
 .empty-message {
-    text-align: center;
-    color: var(--inactive-color);
-    padding: 2rem;
+    @apply text-center text-gray-500 dark:text-gray-400 py-8;
 }
 
 /* Pagination styles */
 .pagination-controls {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1rem 0;
-    flex-wrap: wrap;
-    gap: 1rem;
+    @apply flex justify-between items-center py-4 flex-wrap gap-4;
 }
 
 .pagination-info {
-    color: var(--secondary-color);
-    font-size: 0.9rem;
+    @apply text-gray-600 dark:text-gray-300 text-sm;
 }
 
 .pagination-buttons {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
+    @apply flex items-center gap-2;
 }
 
 .pagination-buttons button {
-    min-width: 2rem;
-    height: 2rem;
-    padding: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background-color: #f0f0f0;
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 1rem;
-}
-
-.pagination-buttons button:hover {
-    background-color: #e0e0e0;
-}
-
-.pagination-buttons button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+    @apply min-w-8 h-8 p-0 flex items-center justify-center bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded cursor-pointer text-base disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-200 dark:hover:bg-gray-600;
 }
 
 .pagination-buttons button.active {
-    background-color: var(--primary-color);
-    color: white;
+    @apply bg-blue-600 text-white;
 }
 
 #pagination-current {
-    padding: 0 0.5rem;
-    font-size: 0.9rem;
+    @apply px-2 text-sm text-gray-700 dark:text-gray-300;
 }
 
 /* Responsive layout styles */
 @media (max-width: 768px) {
     header {
-        flex-direction: column;
-        align-items: flex-start;
+        @apply flex-col items-start;
     }
 
     nav ul {
-        flex-wrap: wrap;
-        margin-top: 0.5rem;
+        @apply flex-wrap mt-2;
     }
 
     .user-menu {
-        margin-top: 0.5rem;
-        align-self: flex-end;
+        @apply mt-2 self-end;
     }
 }

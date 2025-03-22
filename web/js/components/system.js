@@ -56,7 +56,7 @@ function loadSystemInfo() {
         })
         .then(data => {
             // Update system information
-            document.getElementById('system-version').textContent = data.version || '0.2.0';
+            document.getElementById('system-version').textContent = data.version || '';
 
             // Format uptime
             const uptime = data.uptime || 0;
@@ -84,7 +84,7 @@ function loadSystemInfo() {
         .catch(error => {
             console.error('Error loading system information:', error);
             // Use placeholder data
-            document.getElementById('system-version').textContent = '0.2.0';
+            document.getElementById('system-version').textContent = '';
             document.getElementById('system-uptime').textContent = '0d 0h 0m';
             document.getElementById('system-cpu').textContent = '0%';
             document.getElementById('system-memory').textContent = '0 MB / 0 MB';

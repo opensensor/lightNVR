@@ -14,7 +14,7 @@ import { html } from '../../preact-app.js';
  * @returns {JSX.Element} Header component
  */
 export function Header({ activeNav = '' }) {
-  const [version, setVersion] = useState('0.2.0');
+  const [version, setVersion] = useState('');
   const [username, setUsername] = useState('Admin');
   
   // Fetch system version on mount

@@ -128,6 +128,68 @@ int ensure_hls_directory(const char *output_dir, const char *stream_name) {
 }
 
 /**
+ * Clear HLS segments for a specific stream
+ * This is used when a stream's URL is changed to ensure the player sees the new stream
+ */
+int clear_stream_hls_segments(const char *stream_name) {
+    if (!stream_name) {
+        log_error("Cannot clear HLS segments: stream name is NULL");
+        return -1;
+    }
+    
+    config_t *global_config = get_streaming_config();
+    if (!global_config || !global_config->storage_path) {
+        log_error("Cannot clear HLS segments: global config or storage path is NULL");
+        return -1;
+    }
+    
+    char stream_hls_dir[MAX_PATH_LENGTH];
+    snprintf(stream_hls_dir, MAX_PATH_LENGTH, "%s/hls/%s", 
+             global_config->storage_path, stream_name);
+    
+    // Check if the directory exists
+    struct stat st;
+    if (stat(stream_hls_dir, &st) != 0 || !S_ISDIR(st.st_mode)) {
+        log_info("HLS directory for stream %s does not exist, nothing to clear", stream_name);
+        return 0;
+    }
+    
+    log_info("Clearing HLS segments for stream: %s in directory: %s", stream_name, stream_hls_dir);
+    
+    // Remove all .ts segment files
+    char rm_cmd[MAX_PATH_LENGTH * 2];
+    snprintf(rm_cmd, sizeof(rm_cmd), "rm -f %s/*.ts", stream_hls_dir);
+    int ret = system(rm_cmd);
+    if (ret != 0) {
+        log_warn("Failed to remove HLS segment files in %s (return code: %d)", 
+                stream_hls_dir, ret);
+    } else {
+        log_info("Removed HLS segment files in %s", stream_hls_dir);
+    }
+    
+    // Remove all .m3u8 playlist files
+    snprintf(rm_cmd, sizeof(rm_cmd), "rm -f %s/*.m3u8*", stream_hls_dir);
+    ret = system(rm_cmd);
+    if (ret != 0) {
+        log_warn("Failed to remove HLS playlist files in %s (return code: %d)", 
+                stream_hls_dir, ret);
+    } else {
+        log_info("Removed HLS playlist files in %s", stream_hls_dir);
+    }
+    
+    // Ensure the directory has proper permissions
+    char chmod_cmd[MAX_PATH_LENGTH * 2];
+    snprintf(chmod_cmd, sizeof(chmod_cmd), "chmod -R 777 %s", stream_hls_dir);
+    int ret_chmod = system(chmod_cmd);
+    if (ret_chmod != 0) {
+        log_warn("Failed to set permissions on directory: %s (return code: %d)", 
+                stream_hls_dir, ret_chmod);
+    }
+    
+    return 0;
+}
+
+/**
  * Clean up HLS directories during shutdown
  */
 void cleanup_hls_directories(void) {

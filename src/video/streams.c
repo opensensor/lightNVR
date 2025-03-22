@@ -30,8 +30,6 @@
 #include "video/mp4_writer.h"
 #include "database/database_manager.h"
 
-#define LIGHTNVR_VERSION_STRING "0.2.0"
-
 /**
  * Get current streaming configuration from database
  * 
