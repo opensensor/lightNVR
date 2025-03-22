@@ -754,8 +754,8 @@
                 }
                 
                 try {
-                    const response = await fetch(`/api/recordings/delete/${recording.id}`, {
-                        method: 'POST'
+                    const response = await fetch(`/api/recordings/${recording.id}`, {
+                        method: 'DELETE'
                     });
                     
                     if (!response.ok) {

@@ -188,6 +188,7 @@ static void init_route_table(void) {
     add_route("GET", "^/api/recordings$", mg_handle_get_recordings);
     add_route("GET", "^/api/recordings/([^/]+)$", mg_handle_get_recording);
     add_route("DELETE", "^/api/recordings/([^/]+)$", mg_handle_delete_recording);
+    add_route("POST", "^/api/recordings/delete/([^/]+)$", mg_handle_delete_recording);
     add_route("GET", "^/api/recordings/download/([^/]+)$", mg_handle_download_recording);
     add_route("GET", "^/api/recordings/play/([^/]+)$", mg_handle_play_recording);
     
