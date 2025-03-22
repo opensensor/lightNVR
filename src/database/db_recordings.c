@@ -242,7 +242,7 @@ int get_recording_metadata(time_t start_time, time_t end_time,
                  "FROM recordings WHERE is_complete = 1"); // Only complete recordings
     
     if (start_time > 0) {
-        strcat(sql, " AND (end_time >= ? OR end_time IS NULL)");
+        strcat(sql, " AND start_time >= ?");
     }
     
     if (end_time > 0) {
@@ -372,11 +372,13 @@ int get_recording_count(time_t start_time, time_t end_time,
     }
     
     if (start_time > 0) {
-        strcat(sql, " AND (end_time >= ? OR end_time IS NULL)");
+        strcat(sql, " AND start_time >= ?");
+        log_info("Adding start_time filter: %ld", (long)start_time);
     }
     
     if (end_time > 0) {
         strcat(sql, " AND start_time <= ?");
+        log_info("Adding end_time filter: %ld", (long)end_time);
     }
     
     if (stream_name) {
@@ -386,6 +388,8 @@ int get_recording_count(time_t start_time, time_t end_time,
             strcat(sql, " AND stream_name = ?");
         }
     }
+    
+    log_info("SQL query for get_recording_count: %s", sql);
     
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -498,10 +502,11 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
     
     if (start_time > 0) {
         if (has_detection) {
-            strcat(sql, " AND (r.end_time >= ? OR r.end_time IS NULL)");
+            strcat(sql, " AND r.start_time >= ?");
         } else {
-            strcat(sql, " AND (end_time >= ? OR end_time IS NULL)");
+            strcat(sql, " AND start_time >= ?");
         }
+        log_info("Adding start_time filter to paginated query: %ld", (long)start_time);
     }
     
     if (end_time > 0) {
@@ -510,6 +515,7 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
         } else {
             strcat(sql, " AND start_time <= ?");
         }
+        log_info("Adding end_time filter to paginated query: %ld", (long)end_time);
     }
     
     if (stream_name) {
@@ -533,6 +539,8 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
     char limit_clause[64];
     snprintf(limit_clause, sizeof(limit_clause), " LIMIT ? OFFSET ?");
     strcat(sql, limit_clause);
+    
+    log_info("SQL query for get_recording_metadata_paginated: %s", sql);
     
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {

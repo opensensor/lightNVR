@@ -616,6 +616,7 @@ export function RecordingsView() {
 
   // Handle delete confirmation
   const handleDeleteConfirm = () => {
+    closeDeleteModal();
     if (deleteMode === 'selected') {
       deleteSelectedRecordings();
     } else {
@@ -777,55 +778,38 @@ export function RecordingsView() {
   const deleteAllFilteredRecordings = async () => {
     
     try {
-      // Build query parameters for the current filter
-      const params = new URLSearchParams();
+      // Create filter object
+      const filter = {};
       
       // Add date range filters
       if (filters.dateRange === 'custom') {
-        params.append('start', `${filters.startDate}T${filters.startTime}:00`);
-        params.append('end', `${filters.endDate}T${filters.endTime}:00`);
+        filter.start = `${filters.startDate}T${filters.startTime}:00`;
+        filter.end = `${filters.endDate}T${filters.endTime}:00`;
       } else {
         // Convert predefined range to actual dates
         const { start, end } = getDateRangeFromPreset(filters.dateRange);
-        params.append('start', start);
-        params.append('end', end);
+        filter.start = start;
+        filter.end = end;
       }
       
       // Add stream filter
       if (filters.streamId !== 'all') {
-        params.append('stream', filters.streamId);
+        filter.stream = filters.streamId;
       }
       
       // Add recording type filter
       if (filters.recordingType === 'detection') {
-        params.append('detection', '1');
+        filter.detection = 1;
       }
       
-      // Make a request to get all recordings matching the filter
-      const response = await fetch(`/api/recordings?${params.toString()}&limit=1000`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch recordings for deletion');
-      }
-      
-      const data = await response.json();
-      const recordingsToDelete = data.recordings || [];
-      
-      if (recordingsToDelete.length === 0) {
-        showStatusMessage('No recordings match the current filter');
-        return;
-      }
-      
-      // Extract IDs from recordings
-      const idsToDelete = recordingsToDelete.map(recording => recording.id);
-      
-      // Use the batch delete endpoint
+      // Use the batch delete endpoint with filter
       const deleteResponse = await fetch('/api/recordings/batch-delete', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          ids: idsToDelete
+          filter: filter
         })
       });
       
@@ -1283,7 +1267,6 @@ export function RecordingsView() {
         </div>
       </div>
       
-      {/* Delete Confirmation Modal */}
       <${DeleteConfirmationModal}
         isOpen=${isDeleteModalOpen}
         onClose=${closeDeleteModal}
