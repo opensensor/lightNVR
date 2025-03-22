@@ -2,8 +2,7 @@ name: Docker
 
 on:
   push:
-    branches: [ "main" ]
-    # Publish semver tags as releases.
+    # Only build Docker images when a tag is pushed
     tags: [ '*.*.*' ]
 
 env:

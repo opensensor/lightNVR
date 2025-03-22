@@ -239,10 +239,10 @@ int get_recording_metadata(time_t start_time, time_t end_time,
     char sql[1024];
     strcpy(sql, "SELECT id, stream_name, file_path, start_time, end_time, "
                  "size_bytes, width, height, fps, codec, is_complete "
-                 "FROM recordings WHERE is_complete = 1"); // Only complete recordings
+                 "FROM recordings WHERE is_complete = 1 AND end_time IS NOT NULL"); // Only complete recordings with end_time set
     
     if (start_time > 0) {
-        strcat(sql, " AND (end_time >= ? OR end_time IS NULL)");
+        strcat(sql, " AND start_time >= ?");
     }
     
     if (end_time > 0) {
@@ -364,19 +364,21 @@ int get_recording_count(time_t start_time, time_t end_time,
         // Use a JOIN with the detections table to filter recordings with detections
         strcpy(sql, "SELECT COUNT(DISTINCT r.id) FROM recordings r "
                     "INNER JOIN detections d ON r.stream_name = d.stream_name "
-                    "WHERE r.is_complete = 1 "
+                    "WHERE r.is_complete = 1 AND r.end_time IS NOT NULL "
                     "AND d.timestamp BETWEEN r.start_time AND r.end_time");
     } else {
         // Simple query without detection filter
-        strcpy(sql, "SELECT COUNT(*) FROM recordings WHERE is_complete = 1");
+        strcpy(sql, "SELECT COUNT(*) FROM recordings WHERE is_complete = 1 AND end_time IS NOT NULL");
     }
     
     if (start_time > 0) {
-        strcat(sql, " AND (end_time >= ? OR end_time IS NULL)");
+        strcat(sql, " AND start_time >= ?");
+        log_info("Adding start_time filter: %ld", (long)start_time);
     }
     
     if (end_time > 0) {
         strcat(sql, " AND start_time <= ?");
+        log_info("Adding end_time filter: %ld", (long)end_time);
     }
     
     if (stream_name) {
@@ -386,6 +388,8 @@ int get_recording_count(time_t start_time, time_t end_time,
             strcat(sql, " AND stream_name = ?");
         }
     }
+    
+    log_info("SQL query for get_recording_count: %s", sql);
     
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -486,22 +490,23 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
                 "r.size_bytes, r.width, r.height, r.fps, r.codec, r.is_complete "
                 "FROM recordings r "
                 "INNER JOIN detections d ON r.stream_name = d.stream_name "
-                "WHERE r.is_complete = 1 "
+                "WHERE r.is_complete = 1 AND r.end_time IS NOT NULL "
                 "AND d.timestamp BETWEEN r.start_time AND r.end_time");
     } else {
         // Simple query without detection filter
         snprintf(sql, sizeof(sql), 
                 "SELECT id, stream_name, file_path, start_time, end_time, "
                 "size_bytes, width, height, fps, codec, is_complete "
-                "FROM recordings WHERE is_complete = 1");
+                "FROM recordings WHERE is_complete = 1 AND end_time IS NOT NULL");
     }
     
     if (start_time > 0) {
         if (has_detection) {
-            strcat(sql, " AND (r.end_time >= ? OR r.end_time IS NULL)");
+            strcat(sql, " AND r.start_time >= ?");
         } else {
-            strcat(sql, " AND (end_time >= ? OR end_time IS NULL)");
+            strcat(sql, " AND start_time >= ?");
         }
+        log_info("Adding start_time filter to paginated query: %ld", (long)start_time);
     }
     
     if (end_time > 0) {
@@ -510,6 +515,7 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
         } else {
             strcat(sql, " AND start_time <= ?");
         }
+        log_info("Adding end_time filter to paginated query: %ld", (long)end_time);
     }
     
     if (stream_name) {
@@ -533,6 +539,8 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
     char limit_clause[64];
     snprintf(limit_clause, sizeof(limit_clause), " LIMIT ? OFFSET ?");
     strcat(sql, limit_clause);
+    
+    log_info("SQL query for get_recording_metadata_paginated: %s", sql);
     
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
