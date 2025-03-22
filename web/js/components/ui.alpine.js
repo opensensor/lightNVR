@@ -4,42 +4,38 @@
  */
 
 document.addEventListener('alpine:init', () => {
-    // Status message component
+    // Status message component - for backward compatibility
+    // This redirects to the new toast system
     Alpine.store('statusMessage', {
         message: '',
         visible: false,
         timeout: null,
         
         show(message, duration = 3000) {
-            this.message = message;
-            this.visible = true;
-            
-            // Clear any existing timeout
-            if (this.timeout) {
-                clearTimeout(this.timeout);
+            // Use the new toast system if available
+            if (typeof showSuccessToast === 'function') {
+                showSuccessToast(message, duration);
+            } else {
+                // Fallback to old behavior
+                this.message = message;
+                this.visible = true;
+                
+                // Clear any existing timeout
+                if (this.timeout) {
+                    clearTimeout(this.timeout);
+                }
+                
+                // Set timeout to hide the message
+                this.timeout = setTimeout(() => {
+                    this.visible = false;
+                }, duration);
             }
-            
-            // Set timeout to hide the message
-            this.timeout = setTimeout(() => {
-                this.visible = false;
-            }, duration);
         },
         
         hide() {
             this.visible = false;
         }
     });
-    
-    // Status message component data
-    Alpine.data('statusMessage', () => ({
-        get visible() {
-            return Alpine.store('statusMessage').visible;
-        },
-        
-        get message() {
-            return Alpine.store('statusMessage').message;
-        }
-    }));
     
     // Modal component
     Alpine.data('modal', (id) => ({

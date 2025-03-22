@@ -99,25 +99,13 @@ function loadSettings() {
         })
         .catch(error => {
             console.error('Error loading settings:', error);
-            showStatusMessage('Error loading settings: ' + error.message, 'error');
             
-            // Show error in status area
-            const statusEl = document.getElementById('settings-status');
-            if (statusEl) {
-                statusEl.textContent = 'Error loading settings: ' + error.message;
-                statusEl.className = 'status-message error';
-                statusEl.style.display = 'block';
-                
-                // Add retry button
-                const retryButton = document.createElement('button');
-                retryButton.textContent = 'Retry';
-                retryButton.className = 'btn-primary';
-                retryButton.style.marginTop = '10px';
-                retryButton.addEventListener('click', () => {
-                    statusEl.style.display = 'none';
-                    loadSettings();
-                });
-                statusEl.appendChild(retryButton);
+            // Use the new toast system if available
+            if (typeof showErrorToast === 'function') {
+                showErrorToast('Error loading settings: ' + error.message);
+            } else {
+                // Fallback to old method
+                showStatusMessage('Error loading settings: ' + error.message, 5000, true);
             }
         });
 }
@@ -218,19 +206,11 @@ function saveSettings() {
             clearTimeout(timeoutId);
             console.log('Settings saved successfully:', data);
             
-            // Show success message
-            const statusEl = document.getElementById('settings-status');
-            if (statusEl) {
-                statusEl.textContent = 'Settings saved successfully';
-                statusEl.className = 'status-message success';
-                statusEl.style.display = 'block';
-                
-                // Hide after 3 seconds
-                setTimeout(() => {
-                    statusEl.style.display = 'none';
-                }, 3000);
+            // Show success message using the toast system
+            if (typeof showSuccessToast === 'function') {
+                showSuccessToast('Settings saved successfully');
             } else {
-                // Fallback to the global status message
+                // Fallback to old method
                 showStatusMessage('Settings saved successfully');
             }
             
@@ -248,50 +228,23 @@ function saveSettings() {
                 errorMessage = 'Request timed out. The server may still be processing your request.';
             }
             
-            // Show error message
-            const statusEl = document.getElementById('settings-status');
-            if (statusEl) {
-                statusEl.textContent = 'Error saving settings: ' + errorMessage;
-                statusEl.className = 'status-message error';
-                statusEl.style.display = 'block';
-                
-                // Add retry button
-                const retryButton = document.createElement('button');
-                retryButton.textContent = 'Retry';
-                retryButton.className = 'btn-primary';
-                retryButton.style.marginTop = '10px';
-                retryButton.addEventListener('click', () => {
-                    statusEl.style.display = 'none';
-                    saveSettings();
-                });
-                statusEl.appendChild(retryButton);
+            // Show error message using the toast system
+            if (typeof showErrorToast === 'function') {
+                showErrorToast('Error saving settings: ' + errorMessage);
             } else {
-                // Fallback to the global status message
-                showStatusMessage('Error saving settings: ' + errorMessage, 'error');
+                // Fallback to old method
+                showStatusMessage('Error saving settings: ' + errorMessage, 5000, true);
             }
         });
     } catch (error) {
         console.error('Error preparing settings:', error);
         
-        // Show error message
-        const statusEl = document.getElementById('settings-status');
-        if (statusEl) {
-            statusEl.textContent = 'Error: ' + error.message;
-            statusEl.className = 'status-message error';
-            statusEl.style.display = 'block';
-            
-            // Add retry button
-            const retryButton = document.createElement('button');
-            retryButton.textContent = 'Retry';
-            retryButton.className = 'btn-primary';
-            retryButton.style.marginTop = '10px';
-            retryButton.addEventListener('click', () => {
-                statusEl.style.display = 'none';
-                saveSettings();
-            });
-            statusEl.appendChild(retryButton);
+        // Show error message using the toast system
+        if (typeof showErrorToast === 'function') {
+            showErrorToast('Error: ' + error.message);
         } else {
-            showStatusMessage('Error: ' + error.message, 'error');
+            // Fallback to old method
+            showStatusMessage('Error: ' + error.message, 5000, true);
         }
     }
 }

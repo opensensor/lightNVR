@@ -130,14 +130,7 @@
     </footer>
 </div>
 
-<!-- Status message component -->
-<div id="status-message" 
-     x-data="statusMessage"
-     x-show="visible"
-     x-text="message"
-     class="status-message"
-     :class="{ 'visible': visible }">
-</div>
+<!-- Toast notifications will be handled by toast.js -->
 
 <!-- Confirmation Modal -->
 <div id="confirm-modal" 
@@ -171,6 +164,7 @@
 <script src="js/tailwind.cdn.min.js"></script>
 <script src="js/core.js"></script>
 <script src="js/components/layout.alpine.js"></script>
+<script src="js/components/toast.js"></script>
 <script src="js/components/ui.alpine.js"></script>
 <script src="js/components/ui.js"></script>
 <script src="js/components/system.js"></script>
@@ -367,8 +361,13 @@
                                 throw new Error('Failed to clear logs');
                             }
                             
-                            // Use vanilla JS to show status message and reload logs
-                            showStatusMessage('System logs cleared', 5000);
+                            // Use the new toast system if available
+                            if (typeof showSuccessToast === 'function') {
+                                showSuccessToast('System logs cleared');
+                            } else {
+                                // Fallback to old method
+                                showStatusMessage('System logs cleared', 5000);
+                            }
                             
                             // Reload logs to show the cleared state
                             fetch('/api/system/logs')
@@ -390,10 +389,17 @@
                                 })
                                 .catch(error => {
                                     console.error('Error loading system logs:', error);
+                                    if (typeof showErrorToast === 'function') {
+                                        showErrorToast('Error loading system logs: ' + error.message);
+                                    }
                                 });
                         } catch (error) {
                             console.error('Error clearing logs:', error);
-                            Alpine.store('statusMessage').show('Error clearing logs: ' + error.message);
+                            if (typeof showErrorToast === 'function') {
+                                showErrorToast('Error clearing logs: ' + error.message);
+                            } else {
+                                Alpine.store('statusMessage').show('Error clearing logs: ' + error.message);
+                            }
                         }
                     }
                 );
@@ -449,8 +455,19 @@
         }));
     });
 
-    // Function to show status message using vanilla JS
-    function showStatusMessage(message, duration = 3000) {
+    // Function to show status message using vanilla JS with toast fallback
+    function showStatusMessage(message, duration = 5000, isError = false) {
+        // Use the new toast system if available
+        if (typeof showSuccessToast === 'function' && typeof showErrorToast === 'function') {
+            if (isError) {
+                showErrorToast(message, duration);
+            } else {
+                showSuccessToast(message, duration);
+            }
+            return;
+        }
+        
+        // Fallback to old method if toast system not available
         const statusMessage = document.getElementById('status-message');
         if (!statusMessage) return;
         
@@ -495,7 +512,13 @@
                     })
                     .then(data => {
                         console.log('Clear logs success:', data);
-                        showStatusMessage('System logs cleared', 5000);
+                        
+                        // Use the new toast system if available with longer duration
+                        if (typeof showSuccessToast === 'function') {
+                            showSuccessToast('System logs cleared', 8000);
+                        } else {
+                            showStatusMessage('System logs cleared', 5000);
+                        }
                         
                         // Reload logs to show the cleared state
                         return fetch('/api/system/logs');
@@ -519,7 +542,12 @@
                     })
                     .catch(error => {
                         console.error('Error clearing logs:', error);
-                        showStatusMessage('Error clearing logs: ' + error.message, 5000);
+                        // Use the new toast system if available
+                        if (typeof showErrorToast === 'function') {
+                            showErrorToast('Error clearing logs: ' + error.message, 8000);
+                        } else {
+                            showStatusMessage('Error clearing logs: ' + error.message, 5000);
+                        }
                     });
                 }
             });

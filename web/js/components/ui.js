@@ -213,9 +213,20 @@ function downloadSnapshotFromPreview(imageData, streamName) {
 }
 
 /**
- * Show status message
+ * Show status message (legacy function, redirects to toast system)
  */
-function showStatusMessage(message, duration = 5000) {
+function showStatusMessage(message, duration = 5000, isError = false) {
+    // Use the new toast system if available
+    if (typeof showSuccessToast === 'function' && typeof showErrorToast === 'function') {
+        if (isError) {
+            showErrorToast(message, duration);
+        } else {
+            showSuccessToast(message, duration);
+        }
+        return;
+    }
+    
+    // Fallback to old implementation if toast.js is not loaded
     // Check if status message element exists
     let statusMessage = document.getElementById('status-message');
 
@@ -240,9 +251,14 @@ function showStatusMessage(message, duration = 5000) {
 }
 
 /**
- * Add status message styles
+ * Add status message styles (legacy function)
  */
 function addStatusMessageStyles() {
+    // If toast.js is loaded, we don't need to add these styles
+    if (typeof showSuccessToast === 'function') {
+        return;
+    }
+    
     // Check if styles already exist
     if (document.getElementById('status-message-styles')) {
         return;

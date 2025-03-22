@@ -57,14 +57,7 @@
     </footer>
 </div>
 
-<!-- Status message component -->
-<div id="status-message" 
-     x-show="$store.statusMessage.visible"
-     x-text="$store.statusMessage.message"
-     class="fixed top-5 left-1/2 transform -translate-x-1/2 bg-green-500 text-white px-4 py-2 rounded shadow-lg z-50 opacity-0 transition-opacity duration-300"
-     :class="{ 'opacity-100': $store.statusMessage.visible }"
-     x-cloak>
-</div>
+<!-- Toast notifications will be handled by toast.js -->
 
 <!-- Modal for stream configuration -->
 <div id="stream-modal" 
@@ -260,6 +253,9 @@
 <script src="js/tailwind.cdn.min.js"></script>
 <script src="js/core.js"></script>
 <script src="js/components/layout.alpine.js"></script>
+<script src="js/components/toast.js"></script>
+<script src="js/components/ui.alpine.js"></script>
+<script src="js/components/ui.js"></script>
 <script src="js/pages/streams.js"></script>
 </body>
 </html>
