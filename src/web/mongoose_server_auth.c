@@ -23,6 +23,19 @@ int mongoose_server_basic_auth_check(struct mg_http_message *hm, http_server_t *
     memcpy(uri, hm->uri.buf, uri_len);
     uri[uri_len] = '\0';
     
+    // Debug log for HLS requests
+    if (strncmp(uri, "/hls/", 5) == 0) {
+        log_info("Checking authentication for HLS request: %s", uri);
+        
+        // Log all headers for debugging
+        for (int i = 0; i < MG_MAX_HTTP_HEADERS; i++) {
+            if (hm->headers[i].name.len == 0) break;
+            log_info("HLS request header: %.*s: %.*s", 
+                    (int)hm->headers[i].name.len, hm->headers[i].name.buf,
+                    (int)hm->headers[i].value.len, hm->headers[i].value.buf);
+        }
+    }
+    
     // Skip authentication for login endpoints and login page
     if (strcmp(uri, "/api/auth/login") == 0 || 
         strcmp(uri, "/login") == 0 || 

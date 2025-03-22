@@ -804,16 +804,28 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
             is_static_asset = true;
         }
         
-        // Skip authentication for static assets, HLS requests, and HTML pages
-        if ((is_static_asset || 
-             strncmp(uri, "/hls/", 5) == 0 || 
-             strstr(uri, ".html") != NULL) && 
-            server->config.auth_enabled) {
+        // Check if this is an HLS request
+        bool is_hls_request = (strncmp(uri, "/hls/", 5) == 0);
+        
+        // Skip authentication for static assets and HTML pages
+        if (is_static_asset || strstr(uri, ".html") != NULL) {
             log_debug("Bypassing authentication for asset: %s", uri);
             // Continue processing without authentication check
         }
-        // For non-static assets, check authentication if enabled
-        else if (server->config.auth_enabled && mongoose_server_basic_auth_check(hm, server) != 0) {
+        // TEMPORARILY BYPASS AUTHENTICATION FOR HLS REQUESTS
+        else if (is_hls_request) {
+            log_info("TEMPORARILY BYPASSING AUTHENTICATION FOR HLS REQUEST IN EVENT HANDLER: %s", uri);
+            
+            // Log all headers for debugging
+            for (int i = 0; i < MG_MAX_HTTP_HEADERS; i++) {
+                if (hm->headers[i].name.len == 0) break;
+                log_info("HLS request header in event handler: %.*s: %.*s", 
+                        (int)hm->headers[i].name.len, hm->headers[i].name.buf,
+                        (int)hm->headers[i].value.len, hm->headers[i].value.buf);
+            }
+        }
+        // For non-static assets and non-HLS requests, check authentication if enabled
+        else if (!is_hls_request && server->config.auth_enabled && mongoose_server_basic_auth_check(hm, server) != 0) {
             // Authentication failed
             log_info("Authentication failed for request: %s", uri);
             

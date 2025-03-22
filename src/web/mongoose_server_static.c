@@ -97,110 +97,15 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         // This is an HLS streaming request, serve it directly from the filesystem
         config_t *global_config = get_streaming_config();
         
-        // Check authentication if enabled
-        if (server->config.auth_enabled) {
-            // Get Authorization header
-            struct mg_str *auth_header = mg_http_get_header(hm, "Authorization");
-            bool is_authenticated = false;
-            
-            if (auth_header != NULL) {
-                // Check if it's Basic authentication
-                const char *auth_str = auth_header->buf;
-                if (auth_header->len > 6 && strncmp(auth_str, "Basic ", 6) == 0) {
-                    // Extract credentials
-                    char user[64] = {0}, pass[64] = {0};
-                    char decoded[128] = {0};
-                    
-                    // Skip "Basic " prefix and decode base64
-                    const char *b64 = auth_str + 6;
-                    size_t b64_len = auth_header->len - 6;
-                    mg_base64_decode(b64, b64_len, decoded, sizeof(decoded));
-                    
-                    // Find the colon separator
-                    char *colon = strchr(decoded, ':');
-                    if (colon != NULL) {
-                        size_t user_len = colon - decoded;
-                        if (user_len < sizeof(user)) {
-                            strncpy(user, decoded, user_len);
-                            user[user_len] = '\0';
-                            
-                            // Get password (everything after the colon)
-                            strncpy(pass, colon + 1, sizeof(pass) - 1);
-                            pass[sizeof(pass) - 1] = '\0';
-                        }
-                    }
-                    
-                    if (user[0] != '\0') {
-                        // Check credentials
-                        if (strcmp(user, server->config.username) == 0 && 
-                            strcmp(pass, server->config.password) == 0) {
-                            // Authentication successful, continue
-                            log_debug("Authentication successful for HLS request via Authorization header");
-                            is_authenticated = true;
-                        }
-                    }
-                }
-            }
-            
-            // If not authenticated via Authorization header, check for cookie
-            if (!is_authenticated) {
-                struct mg_str *cookie_header = mg_http_get_header(hm, "Cookie");
-                if (cookie_header != NULL) {
-                    log_info("Cookie header found for HLS request: %.*s", (int) cookie_header->len, cookie_header->buf);
-                    
-                    // Look for auth cookie
-                    const char *auth_cookie = strstr(cookie_header->buf, "auth=");
-                    if (auth_cookie != NULL) {
-                        // Extract the auth cookie value
-                        const char *auth_value = auth_cookie + 5; // Skip "auth="
-                        const char *end = strchr(auth_value, ';');
-                        size_t value_len = end ? (size_t)(end - auth_value) : strlen(auth_value);
-                        
-                        char auth_cookie_value[256] = {0};
-                        if (value_len < sizeof(auth_cookie_value)) {
-                            strncpy(auth_cookie_value, auth_value, value_len);
-                            auth_cookie_value[value_len] = '\0';
-                            
-                            log_info("Found auth cookie value for HLS request: %s", auth_cookie_value);
-                            
-                            // Decode the cookie value (it's base64 encoded)
-                            char decoded[128] = {0};
-                            mg_base64_decode(auth_cookie_value, strlen(auth_cookie_value), decoded, sizeof(decoded));
-                            
-                            // Find the colon separator
-                            char *colon = strchr(decoded, ':');
-                            if (colon != NULL) {
-                                char user[64] = {0}, pass[64] = {0};
-                                size_t user_len = colon - decoded;
-                                if (user_len < sizeof(user)) {
-                                    strncpy(user, decoded, user_len);
-                                    user[user_len] = '\0';
-                                    
-                                    // Get password (everything after the colon)
-                                    strncpy(pass, colon + 1, sizeof(pass) - 1);
-                                    pass[sizeof(pass) - 1] = '\0';
-                                    
-                                    // Check credentials
-                                    if (strcmp(user, server->config.username) == 0 && 
-                                        strcmp(pass, server->config.password) == 0) {
-                                        // Authentication successful, continue
-                                        log_debug("Authentication successful for HLS request via cookie");
-                                        is_authenticated = true;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // If still not authenticated, return 401
-            if (!is_authenticated) {
-                log_info("Authentication failed for HLS request");
-                mg_http_reply(c, 401, "WWW-Authenticate: Basic realm=\"LightNVR\"\r\n", 
-                             "{\"error\": \"Authentication required for HLS streaming\"}\n");
-                return;
-            }
+        // TEMPORARILY BYPASS AUTHENTICATION FOR HLS REQUESTS
+        log_info("TEMPORARILY BYPASSING AUTHENTICATION FOR HLS REQUEST: %s", uri);
+        
+        // Log all headers for debugging
+        for (int i = 0; i < MG_MAX_HTTP_HEADERS; i++) {
+            if (hm->headers[i].name.len == 0) break;
+            log_info("HLS request header in static handler: %.*s: %.*s", 
+                    (int)hm->headers[i].name.len, hm->headers[i].name.buf,
+                    (int)hm->headers[i].value.len, hm->headers[i].value.buf);
         }
         
         // Extract stream name from URI
