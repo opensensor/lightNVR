@@ -51,8 +51,14 @@ export function LoginView() {
       const auth = btoa(`${username}:${password}`);
       localStorage.setItem('auth', auth);
       
-      // Login successful, redirect to home page
-      window.location.href = '/';
+      // Login successful, redirect to home page with cache-busting parameter
+      // This helps ensure the browser makes a fresh request with the new auth headers
+      
+      // Add a small delay to ensure the cookie is set before redirecting
+      setTimeout(() => {
+        // Force a reload to ensure the browser sends the cookie
+        window.location.href = '/live.html?t=' + new Date().getTime();
+      }, 500);
     } catch (error) {
       console.error('Login error:', error);
       setErrorMessage(error.message || 'Login failed. Please try again.');

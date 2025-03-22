@@ -21,9 +21,11 @@ void mg_handle_auth_logout(struct mg_connection *c, struct mg_http_message *hm) 
     
     // Send a 401 Unauthorized response with WWW-Authenticate header
     // This will clear the browser's basic auth cache
+    // Also clear the auth cookie by setting it to expire in the past
     mg_printf(c, "HTTP/1.1 401 Unauthorized\r\n"
               "WWW-Authenticate: Basic realm=\"LightNVR\", stale=true\r\n"
               "Content-Type: application/json\r\n"
+              "Set-Cookie: auth=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict\r\n"
               "Content-Length: 29\r\n\r\n"
               "{\"success\":true,\"logged_out\":true}");
     
@@ -83,8 +85,25 @@ void mg_handle_auth_login(struct mg_connection *c, struct mg_http_message *hm) {
             return;
         }
         
-        // Send response
-        mg_send_json_response(c, 200, json_str);
+        // Create Basic Auth header value
+        char auth_header_value[256];
+        char auth_credentials[128];
+        snprintf(auth_credentials, sizeof(auth_credentials), "%s:%s", username->valuestring, password->valuestring);
+        
+        // Base64 encode the credentials
+        char encoded_auth[256];
+        mg_base64_encode((unsigned char *)auth_credentials, strlen(auth_credentials), encoded_auth, sizeof(encoded_auth));
+        
+        // Send response with auth header and Set-Cookie header
+        mg_printf(c, "HTTP/1.1 200 OK\r\n");
+        mg_printf(c, "Content-Type: application/json\r\n");
+        mg_printf(c, "Content-Length: %d\r\n", (int)strlen(json_str));
+        mg_printf(c, "Authorization: Basic %s\r\n", encoded_auth);
+        // Set a cookie with the auth token to help maintain session across pages
+        // Make sure the cookie is not HttpOnly so JavaScript can access it
+        mg_printf(c, "Set-Cookie: auth=%s; Path=/; Max-Age=86400; SameSite=Lax\r\n", encoded_auth);
+        mg_printf(c, "\r\n");
+        mg_printf(c, "%s", json_str);
         
         // Clean up
         free(json_str);

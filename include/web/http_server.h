@@ -16,8 +16,9 @@ struct mg_mgr;
 struct mg_connection;
 struct mg_http_message;
 
-// Forward declaration of thread pool structure
+// Forward declarations
 typedef struct thread_pool thread_pool_t;
+typedef struct connection_mutex_pool connection_mutex_pool_t;
 
 /**
  * @brief HTTP server configuration
@@ -53,7 +54,8 @@ typedef struct http_server {
     thread_pool_t *thread_pool;     // Thread pool for handling requests
     
     // Synchronization
-    pthread_mutex_t mutex;          // Mutex for thread safety
+    pthread_mutex_t mutex;          // Global mutex for thread safety
+    connection_mutex_pool_t *conn_mutex_pool; // Connection-specific mutex pool
     
     // Statistics
     int active_connections;         // Number of active connections

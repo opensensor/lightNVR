@@ -23,17 +23,81 @@ int mongoose_server_basic_auth_check(struct mg_http_message *hm, http_server_t *
     memcpy(uri, hm->uri.buf, uri_len);
     uri[uri_len] = '\0';
     
-    // Skip authentication for login endpoint
-    if (strcmp(uri, "/api/auth/login") == 0) {
-        log_debug("Skipping authentication for login endpoint");
+    // Skip authentication for login endpoints and login page
+    if (strcmp(uri, "/api/auth/login") == 0 || 
+        strcmp(uri, "/login") == 0 || 
+        strcmp(uri, "/login.html") == 0) {
+        log_debug("Skipping authentication for login endpoint or page: %s", uri);
         return 0;
     }
 
     // Get Authorization header
     struct mg_str *auth_header = mg_http_get_header(hm, "Authorization");
+    
+    // If no Authorization header, check for auth cookie
     if (auth_header == NULL) {
-        log_debug("No Authorization header found");
-        return -1;
+        log_info("No Authorization header found for URI: %s, checking for cookie", uri);
+        struct mg_str *cookie_header = mg_http_get_header(hm, "Cookie");
+        if (cookie_header != NULL) {
+            log_info("Cookie header found: %.*s", (int)cookie_header->len, cookie_header->buf);
+            
+            // Parse the cookie header manually
+            char cookie_str[1024] = {0};
+            if (cookie_header->len < sizeof(cookie_str) - 1) {
+                memcpy(cookie_str, cookie_header->buf, cookie_header->len);
+                cookie_str[cookie_header->len] = '\0';
+                
+                // Look for auth cookie
+                char *auth_cookie_start = strstr(cookie_str, "auth=");
+                if (auth_cookie_start) {
+                    auth_cookie_start += 5; // Skip "auth="
+                    char *auth_cookie_end = strchr(auth_cookie_start, ';');
+                    if (!auth_cookie_end) {
+                        auth_cookie_end = auth_cookie_start + strlen(auth_cookie_start);
+                    }
+                    
+                    // Extract auth cookie value
+                    size_t auth_cookie_len = auth_cookie_end - auth_cookie_start;
+                    char auth_cookie_value[512] = {0};
+                    if (auth_cookie_len < sizeof(auth_cookie_value) - 1) {
+                        memcpy(auth_cookie_value, auth_cookie_start, auth_cookie_len);
+                        auth_cookie_value[auth_cookie_len] = '\0';
+                        
+                        log_info("Found auth cookie value: %s", auth_cookie_value);
+                        
+                        // Create a temporary buffer for the Authorization header value
+                        char auth_value[512];
+                        snprintf(auth_value, sizeof(auth_value), "Basic %s", auth_cookie_value);
+                        
+                        // Create a static buffer for the header
+                        static char auth_header_buf[512];
+                        strncpy(auth_header_buf, auth_value, sizeof(auth_header_buf) - 1);
+                        auth_header_buf[sizeof(auth_header_buf) - 1] = '\0';
+                        
+                        // Create a static mg_str for the header
+                        static struct mg_str static_auth_header;
+                        static_auth_header.buf = auth_header_buf;
+                        static_auth_header.len = strlen(auth_header_buf);
+                        
+                        // Use the cookie value as the Authorization header
+                        auth_header = &static_auth_header;
+                        log_info("Using auth cookie for authentication: %s", auth_header_buf);
+                    }
+                } else {
+                    log_info("No auth cookie found in cookie string: %s", cookie_str);
+                }
+            } else {
+                log_info("Cookie header too long to process");
+            }
+        } else {
+            log_info("No Cookie header found");
+        }
+        
+        // If still no auth header, authentication fails
+        if (auth_header == NULL) {
+            log_debug("No Authorization header or auth cookie found");
+            return -1;
+        }
     }
 
     // Check if it's Basic authentication
@@ -62,13 +126,20 @@ int mongoose_server_basic_auth_check(struct mg_http_message *hm, http_server_t *
             }
         }
         
-        if (user[0] != '\0') {
-            // Check credentials
-            if (strcmp(user, server->config.username) == 0 && 
-                strcmp(pass, server->config.password) == 0) {
-                return 0; // Authentication successful
-            }
-        }
+                if (user[0] != '\0') {
+                    // Check credentials against server config
+                    if (strcmp(user, server->config.username) == 0 && 
+                        strcmp(pass, server->config.password) == 0) {
+                        return 0; // Authentication successful
+                    }
+                    
+                    // Also check against global config (for API login compatibility)
+                    extern config_t g_config;
+                    if (strcmp(user, g_config.web_username) == 0 && 
+                        strcmp(pass, g_config.web_password) == 0) {
+                        return 0; // Authentication successful
+                    }
+                }
     }
 
     log_debug("Authentication failed");

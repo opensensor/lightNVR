@@ -6,6 +6,8 @@
 #include <fcntl.h>
 
 #include "web/mongoose_server_static.h"
+#include "web/mongoose_adapter.h"
+#include "web/mongoose_server_auth.h"
 #include "core/logger.h"
 #include "core/config.h"
 #include "video/streams.h"
@@ -27,13 +29,61 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
     // Special case: handle "/%s" path which is causing redirection issues
     // This is likely coming from a client-side formatting issue
     if (strcmp(uri, "/%s") == 0) {
-        log_info("Detected problematic '/%%s' path, redirecting to root '/'");
+        log_info("Detected problematic '/%%s' path, redirecting to /live.html");
+        
+        // Get Authorization header if present
+        struct mg_str *auth_header = mg_http_get_header(hm, "Authorization");
+        
         mg_printf(c, "HTTP/1.1 302 Found\r\n");
-        mg_printf(c, "Location: /\r\n");
+        mg_printf(c, "Location: /live.html\r\n");
+        
+        // If there's an Authorization header, include it in the redirect
+        if (auth_header != NULL) {
+            mg_printf(c, "Authorization: %.*s\r\n", (int) auth_header->len, auth_header->buf);
+        }
+        
         mg_printf(c, "Content-Length: 0\r\n");
         mg_printf(c, "\r\n");
         return;
     }
+    
+    // Special case: handle root path "/" directly
+    if (strcmp(uri, "/") == 0) {
+        log_info("Handling root path '/', redirecting to /live.html");
+        mg_printf(c, "HTTP/1.1 302 Found\r\n");
+        mg_printf(c, "Location: /live.html\r\n");
+        mg_printf(c, "Content-Length: 0\r\n");
+        mg_printf(c, "\r\n");
+        return;
+    }
+    
+    // Check if this is a static asset that should bypass authentication
+    bool is_static_asset = false;
+    if (strncmp(uri, "/js/", 4) == 0 || 
+        strncmp(uri, "/css/", 5) == 0 || 
+        strncmp(uri, "/img/", 5) == 0 || 
+        strncmp(uri, "/fonts/", 7) == 0 ||
+        strstr(uri, ".js.map") != NULL ||
+        strstr(uri, ".css.map") != NULL ||
+        strstr(uri, ".ico") != NULL) {
+        is_static_asset = true;
+    }
+    
+    // Debug log to check URI
+    log_info("Processing request for URI: %s, is_static_asset: %d", uri, is_static_asset);
+    
+    // Always allow login page without authentication
+    if (strcmp(uri, "/login") == 0 || strcmp(uri, "/login.html") == 0) {
+        log_info("Login page requested, bypassing authentication");
+        // Continue processing without authentication check
+    }
+    // Skip authentication for static assets
+    else if (is_static_asset) {
+        log_debug("Bypassing authentication for static asset: %s", uri);
+        // Continue processing without authentication check
+    }
+    // Authentication is already checked in the main event handler
+    // No need to check it again here
 
     // Check if this is an API request
     if (strncmp(uri, "/api/", 5) == 0) {
@@ -51,65 +101,104 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         if (server->config.auth_enabled) {
             // Get Authorization header
             struct mg_str *auth_header = mg_http_get_header(hm, "Authorization");
-            if (auth_header == NULL) {
-                // No auth header, return 401 Unauthorized
-                log_info("No Authorization header for HLS request, returning 401");
-                mg_http_reply(c, 401, "WWW-Authenticate: Basic realm=\"LightNVR\"\r\n", 
-                             "{\"error\": \"Authentication required for HLS streaming\"}\n");
-                return;
+            bool is_authenticated = false;
+            
+            if (auth_header != NULL) {
+                // Check if it's Basic authentication
+                const char *auth_str = auth_header->buf;
+                if (auth_header->len > 6 && strncmp(auth_str, "Basic ", 6) == 0) {
+                    // Extract credentials
+                    char user[64] = {0}, pass[64] = {0};
+                    char decoded[128] = {0};
+                    
+                    // Skip "Basic " prefix and decode base64
+                    const char *b64 = auth_str + 6;
+                    size_t b64_len = auth_header->len - 6;
+                    mg_base64_decode(b64, b64_len, decoded, sizeof(decoded));
+                    
+                    // Find the colon separator
+                    char *colon = strchr(decoded, ':');
+                    if (colon != NULL) {
+                        size_t user_len = colon - decoded;
+                        if (user_len < sizeof(user)) {
+                            strncpy(user, decoded, user_len);
+                            user[user_len] = '\0';
+                            
+                            // Get password (everything after the colon)
+                            strncpy(pass, colon + 1, sizeof(pass) - 1);
+                            pass[sizeof(pass) - 1] = '\0';
+                        }
+                    }
+                    
+                    if (user[0] != '\0') {
+                        // Check credentials
+                        if (strcmp(user, server->config.username) == 0 && 
+                            strcmp(pass, server->config.password) == 0) {
+                            // Authentication successful, continue
+                            log_debug("Authentication successful for HLS request via Authorization header");
+                            is_authenticated = true;
+                        }
+                    }
+                }
             }
             
-            // Check if it's Basic authentication
-            const char *auth_str = auth_header->buf;
-            if (auth_header->len > 6 && strncmp(auth_str, "Basic ", 6) == 0) {
-                // Extract credentials
-                char user[64] = {0}, pass[64] = {0};
-                char decoded[128] = {0};
-                
-                // Skip "Basic " prefix and decode base64
-                const char *b64 = auth_str + 6;
-                size_t b64_len = auth_header->len - 6;
-                mg_base64_decode(b64, b64_len, decoded, sizeof(decoded));
-                
-                // Find the colon separator
-                char *colon = strchr(decoded, ':');
-                if (colon != NULL) {
-                    size_t user_len = colon - decoded;
-                    if (user_len < sizeof(user)) {
-                        strncpy(user, decoded, user_len);
-                        user[user_len] = '\0';
+            // If not authenticated via Authorization header, check for cookie
+            if (!is_authenticated) {
+                struct mg_str *cookie_header = mg_http_get_header(hm, "Cookie");
+                if (cookie_header != NULL) {
+                    log_info("Cookie header found for HLS request: %.*s", (int) cookie_header->len, cookie_header->buf);
+                    
+                    // Look for auth cookie
+                    const char *auth_cookie = strstr(cookie_header->buf, "auth=");
+                    if (auth_cookie != NULL) {
+                        // Extract the auth cookie value
+                        const char *auth_value = auth_cookie + 5; // Skip "auth="
+                        const char *end = strchr(auth_value, ';');
+                        size_t value_len = end ? (size_t)(end - auth_value) : strlen(auth_value);
                         
-                        // Get password (everything after the colon)
-                        strncpy(pass, colon + 1, sizeof(pass) - 1);
-                        pass[sizeof(pass) - 1] = '\0';
+                        char auth_cookie_value[256] = {0};
+                        if (value_len < sizeof(auth_cookie_value)) {
+                            strncpy(auth_cookie_value, auth_value, value_len);
+                            auth_cookie_value[value_len] = '\0';
+                            
+                            log_info("Found auth cookie value for HLS request: %s", auth_cookie_value);
+                            
+                            // Decode the cookie value (it's base64 encoded)
+                            char decoded[128] = {0};
+                            mg_base64_decode(auth_cookie_value, strlen(auth_cookie_value), decoded, sizeof(decoded));
+                            
+                            // Find the colon separator
+                            char *colon = strchr(decoded, ':');
+                            if (colon != NULL) {
+                                char user[64] = {0}, pass[64] = {0};
+                                size_t user_len = colon - decoded;
+                                if (user_len < sizeof(user)) {
+                                    strncpy(user, decoded, user_len);
+                                    user[user_len] = '\0';
+                                    
+                                    // Get password (everything after the colon)
+                                    strncpy(pass, colon + 1, sizeof(pass) - 1);
+                                    pass[sizeof(pass) - 1] = '\0';
+                                    
+                                    // Check credentials
+                                    if (strcmp(user, server->config.username) == 0 && 
+                                        strcmp(pass, server->config.password) == 0) {
+                                        // Authentication successful, continue
+                                        log_debug("Authentication successful for HLS request via cookie");
+                                        is_authenticated = true;
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
-                
-                if (user[0] != '\0') {
-                    // Check credentials
-                    if (strcmp(user, server->config.username) == 0 && 
-                        strcmp(pass, server->config.password) == 0) {
-                        // Authentication successful, continue
-                        log_debug("Authentication successful for HLS request");
-                    } else {
-                        // Authentication failed
-                        log_info("Authentication failed for HLS request");
-                        mg_http_reply(c, 401, "WWW-Authenticate: Basic realm=\"LightNVR\"\r\n", 
-                                     "{\"error\": \"Invalid credentials\"}\n");
-                        return;
-                    }
-                } else {
-                    // Invalid format
-                    log_info("Invalid authentication format for HLS request");
-                    mg_http_reply(c, 401, "WWW-Authenticate: Basic realm=\"LightNVR\"\r\n", 
-                                 "{\"error\": \"Invalid authentication format\"}\n");
-                    return;
-                }
-            } else {
-                // Not Basic authentication
-                log_info("Not Basic authentication for HLS request");
+            }
+            
+            // If still not authenticated, return 401
+            if (!is_authenticated) {
+                log_info("Authentication failed for HLS request");
                 mg_http_reply(c, 401, "WWW-Authenticate: Basic realm=\"LightNVR\"\r\n", 
-                             "{\"error\": \"Basic authentication required\"}\n");
+                             "{\"error\": \"Authentication required for HLS streaming\"}\n");
                 return;
             }
         }
@@ -354,15 +443,19 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
                 // Read file content
                 char *content = malloc(size);
                 if (content) {
-                    fread(content, 1, size, fp);
-                    
-                    // Send HTTP response with file content
-                    mg_printf(c, "HTTP/1.1 200 OK\r\n");
-                    mg_printf(c, "Content-Type: text/html\r\n");
-                    mg_printf(c, "Content-Length: %ld\r\n", size);
-                    mg_printf(c, "\r\n");
-                    mg_send(c, content, size);
-                    
+                    size_t bytes_read = fread(content, 1, size, fp);
+                    if (bytes_read == size) {
+                        // Send HTTP response with file content
+                        mg_printf(c, "HTTP/1.1 200 OK\r\n");
+                        mg_printf(c, "Content-Type: text/html\r\n");
+                        mg_printf(c, "Content-Length: %ld\r\n", size);
+                        mg_printf(c, "\r\n");
+                        mg_send(c, content, size);
+                    } else {
+                        // Error reading file
+                        log_error("Error reading file: %s (read %zu of %ld bytes)", index_path, bytes_read, size);
+                        mg_http_reply(c, 500, "", "Internal Server Error - File read error\n");
+                    }
                     free(content);
                 } else {
                     mg_http_reply(c, 500, "", "Internal Server Error\n");

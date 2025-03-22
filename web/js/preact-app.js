@@ -15,6 +15,7 @@ import { loadSystemView } from './components/preact/SystemView.js';
 import { loadLoginView } from './components/preact/LoginView.js';
 import { loadIndexView } from './components/preact/IndexView.js';
 import { setupModals, addStatusMessageStyles, addModalStyles } from './components/preact/UI.js';
+import './components/auth.js';  // Import authentication module
 
 // Initialize htm with Preact's h
 export const html = htm.bind(h);

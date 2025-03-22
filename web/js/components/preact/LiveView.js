@@ -263,11 +263,27 @@ export function LiveView() {
     // Check if HLS is supported natively
     if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
       // Native HLS support (Safari)
-      videoElement.src = hlsStreamUrl;
-      videoElement.addEventListener('loadedmetadata', function() {
-        if (loadingIndicator) {
-          loadingIndicator.style.display = 'none';
+      // Use fetch with credentials to load the HLS stream
+      fetch(hlsStreamUrl, {
+        credentials: 'include' // Include cookies in the request
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`Failed to load HLS stream: ${response.status}`);
         }
+        return response.url; // Get the final URL after any redirects
+      })
+      .then(finalUrl => {
+        videoElement.src = finalUrl;
+        videoElement.addEventListener('loadedmetadata', function() {
+          if (loadingIndicator) {
+            loadingIndicator.style.display = 'none';
+          }
+        });
+      })
+      .catch(error => {
+        console.error('Error loading HLS stream:', error);
+        handleVideoError(stream.name, error.message);
       });
       
       videoElement.addEventListener('error', () => {
@@ -276,6 +292,10 @@ export function LiveView() {
     }
     // Use HLS.js for browsers that don't support HLS natively
     else if (window.Hls && window.Hls.isSupported()) {
+      // Get auth from localStorage
+      const auth = localStorage.getItem('auth');
+      
+      // Configure HLS.js with authentication headers
       const hls = new window.Hls({
         maxBufferLength: 30,
         maxMaxBufferLength: 60,
@@ -291,7 +311,16 @@ export function LiveView() {
         startLevel: -1,
         abrEwmaDefaultEstimate: 500000,
         abrBandWidthFactor: 0.7,
-        abrBandWidthUpFactor: 0.5
+        abrBandWidthUpFactor: 0.5,
+        // Add custom headers to all HLS requests
+        xhrSetup: function(xhr, url) {
+          // Add Authorization header if we have auth in localStorage
+          if (auth) {
+            xhr.setRequestHeader('Authorization', 'Basic ' + auth);
+          }
+          // Always include credentials (cookies)
+          xhr.withCredentials = true;
+        }
       });
       
       hls.loadSource(hlsStreamUrl);

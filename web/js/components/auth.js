@@ -13,15 +13,26 @@ function checkAuthentication() {
     // Get stored credentials
     const auth = localStorage.getItem('auth');
     
-    // Make a test request to check if authentication is required
+    // Also check for auth cookie
+    const hasCookie = document.cookie.split(';').some(item => item.trim().startsWith('auth='));
+    
+    // If we have neither auth in localStorage nor a cookie, redirect to login
+    if (!auth && !hasCookie) {
+        window.location.href = 'login.html';
+        return;
+    }
+    
+    // Make a test request to check if authentication is valid
     fetch('/api/settings', {
         headers: auth ? {
             'Authorization': 'Basic ' + auth
-        } : {}
+        } : {},
+        credentials: 'include' // Include cookies in the request
     })
     .then(response => {
         if (response.status === 401) {
-            // Authentication required but no credentials or invalid credentials
+            // Authentication required but invalid credentials
+            localStorage.removeItem('auth'); // Clear invalid auth
             window.location.href = 'login.html';
         }
     })
@@ -38,6 +49,9 @@ function setupAuthInterceptor() {
     window.fetch = function(url, options = {}) {
         const auth = localStorage.getItem('auth');
         
+        // Set credentials to include cookies
+        options.credentials = options.credentials || 'include';
+        
         if (auth) {
             options.headers = options.headers || {};
             options.headers['Authorization'] = 'Basic ' + auth;
@@ -47,11 +61,38 @@ function setupAuthInterceptor() {
             .then(response => {
                 // If we get a 401, redirect to login page
                 if (response.status === 401 && !window.location.pathname.endsWith('login.html')) {
-                    window.location.href = 'login.html';
+                    window.location.href = 'login.html?t=' + new Date().getTime();
                 }
                 return response;
             });
     };
+    
+    // Also intercept link clicks to add authentication
+    document.addEventListener('click', function(e) {
+        // Check if the clicked element is a link
+        let target = e.target;
+        while (target && target.tagName !== 'A') {
+            target = target.parentElement;
+        }
+        
+        // If it's a link and not an external link or anchor
+        if (target && target.tagName === 'A' && 
+            !target.getAttribute('href').startsWith('http') && 
+            !target.getAttribute('href').startsWith('#') &&
+            !target.getAttribute('href').startsWith('javascript:')) {
+            
+            // Get the current href
+            let href = target.getAttribute('href');
+            
+            // If it doesn't already have a timestamp parameter
+            if (!href.includes('t=')) {
+                // Add a timestamp parameter to force a fresh request
+                const separator = href.includes('?') ? '&' : '?';
+                href = href + separator + 't=' + new Date().getTime();
+                target.setAttribute('href', href);
+            }
+        }
+    });
 }
 
 // Handle logout
@@ -63,11 +104,11 @@ function logout() {
     fetch('/api/auth/logout', {
         method: 'POST'
     }).then(() => {
-        // Redirect to login page
-        window.location.href = 'login.html?logout=true';
+        // Redirect to login page with cache-busting parameter
+        window.location.href = 'login.html?logout=true&t=' + new Date().getTime();
     }).catch(() => {
         // Redirect even if the request fails
-        window.location.href = 'login.html?logout=true';
+        window.location.href = 'login.html?logout=true&t=' + new Date().getTime();
     });
 }
 

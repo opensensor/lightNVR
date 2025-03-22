@@ -68,7 +68,7 @@ export function Header({ activeNav = '' }) {
         <ul class="flex list-none m-0 p-0">
           <li class="mx-1">
             <a 
-              href="live.html" 
+              href="live.html?t=${new Date().getTime()}" 
               id="nav-live" 
               class=${`text-white no-underline px-3 py-2 rounded transition-colors ${activeNav === 'nav-live' ? 'bg-blue-600' : 'hover:bg-blue-700'}`}
             >
@@ -77,7 +77,7 @@ export function Header({ activeNav = '' }) {
           </li>
           <li class="mx-1">
             <a 
-              href="recordings.html" 
+              href="recordings.html?t=${new Date().getTime()}" 
               id="nav-recordings" 
               class=${`text-white no-underline px-3 py-2 rounded transition-colors ${activeNav === 'nav-recordings' ? 'bg-blue-600' : 'hover:bg-blue-700'}`}
             >
@@ -86,7 +86,7 @@ export function Header({ activeNav = '' }) {
           </li>
           <li class="mx-1">
             <a 
-              href="streams.html" 
+              href="streams.html?t=${new Date().getTime()}" 
               id="nav-streams" 
               class=${`text-white no-underline px-3 py-2 rounded transition-colors ${activeNav === 'nav-streams' ? 'bg-blue-600' : 'hover:bg-blue-700'}`}
             >
@@ -95,7 +95,7 @@ export function Header({ activeNav = '' }) {
           </li>
           <li class="mx-1">
             <a 
-              href="settings.html" 
+              href="settings.html?t=${new Date().getTime()}" 
               id="nav-settings" 
               class=${`text-white no-underline px-3 py-2 rounded transition-colors ${activeNav === 'nav-settings' ? 'bg-blue-600' : 'hover:bg-blue-700'}`}
             >
@@ -104,7 +104,7 @@ export function Header({ activeNav = '' }) {
           </li>
           <li class="mx-1">
             <a 
-              href="system.html" 
+              href="system.html?t=${new Date().getTime()}" 
               id="nav-system" 
               class=${`text-white no-underline px-3 py-2 rounded transition-colors ${activeNav === 'nav-system' ? 'bg-blue-600' : 'hover:bg-blue-700'}`}
             >

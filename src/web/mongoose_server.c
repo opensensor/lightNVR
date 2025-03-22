@@ -12,6 +12,7 @@
 #include "core/logger.h"
 #include "utils/memory.h"
 #include "web/thread_pool.h"
+#include "web/mongoose_server_thread.h"
 
 // Include Mongoose
 #include "mongoose.h"
@@ -133,7 +134,7 @@ static const mg_api_route_t s_api_routes[] = {
  * @return true if request was handled, false otherwise
  */
 static bool handle_api_request(struct mg_connection *c, struct mg_http_message *hm) {
-    // Note: The mutex is already locked in the calling function (process_request_task or handle_http_request)
+    // Note: The connection mutex is already locked in the calling function (process_request_task)
     
     // Extract URI and method
     char uri[MAX_PATH_LENGTH];
@@ -361,6 +362,7 @@ typedef struct {
     struct mg_connection *connection;
     struct mg_http_message *message;
     http_server_t *server;
+    uintptr_t conn_id;  // Connection ID for mutex pool
 } request_data_t;
 
 /**
@@ -386,6 +388,7 @@ static void process_request_task(void *arg) {
     struct mg_connection *c = req_data->connection;
     struct mg_http_message *hm = req_data->message;
     http_server_t *server = req_data->server;
+    uintptr_t conn_id = req_data->conn_id;
     
     // Extract URI
     char uri[MAX_PATH_LENGTH];
@@ -399,37 +402,25 @@ static void process_request_task(void *arg) {
     
     log_info("Processing request in thread pool: uri=%s, is_api_request=%d", uri, is_api_request);
     
-    // Lock the connection to ensure only one thread can write to it at a time
-    pthread_mutex_lock(&server->mutex);
+    // Lock the connection-specific mutex to ensure only one thread can write to this connection at a time
+    connection_mutex_pool_lock(server->conn_mutex_pool, conn_id);
     
     // If this is an API request, try to handle it with direct handlers
     if (is_api_request) {
-        // Check authentication if enabled
-        if (server->config.auth_enabled && mongoose_server_basic_auth_check(hm, server) != 0) {
-            // Authentication failed
-            log_info("Authentication failed for request: %s", uri);
-            mg_http_reply(c, 401, "WWW-Authenticate: Basic realm=\"LightNVR\"\r\n", 
-                         "{\"error\": \"Unauthorized\"}\n");
-            
-            // Update statistics and free resources
-            server->active_connections--;
-            
-            pthread_mutex_unlock(&server->mutex);
-            
-            free(req_data->message);
-            free(req_data);
-            return;
-        }
+        // Authentication is already checked in the main event handler
+        // No need to check it again here
         
         // Handle CORS preflight request
         if (server->config.cors_enabled && mg_match(hm->method, mg_str("OPTIONS"), NULL)) {
             log_info("Handling CORS preflight request: %s", uri);
             mongoose_server_handle_cors_preflight(c, hm, server);
             
-            // Update statistics and free resources
+            // Update statistics (use global mutex for this)
+            pthread_mutex_lock(&server->mutex);
             server->active_connections--;
-            
             pthread_mutex_unlock(&server->mutex);
+            
+            connection_mutex_pool_unlock(server->conn_mutex_pool, conn_id);
             
             free(req_data->message);
             free(req_data);
@@ -446,11 +437,13 @@ static void process_request_task(void *arg) {
         mongoose_server_handle_static_file(c, hm, server);
     }
     
-    // Update statistics and free resources
+    // Update statistics (use global mutex for this)
+    pthread_mutex_lock(&server->mutex);
     server->active_connections--;
-    
-    // Unlock the connection
     pthread_mutex_unlock(&server->mutex);
+    
+    // Unlock the connection-specific mutex
+    connection_mutex_pool_unlock(server->conn_mutex_pool, conn_id);
     
     free(req_data->message);
     free(req_data);
@@ -511,9 +504,35 @@ http_server_handle_t mongoose_server_init(const http_server_config_t *config) {
         return NULL;
     }
     
-    // Initialize mutex for thread safety
+    // Initialize connection mutex pool
+    server->conn_mutex_pool = calloc(1, sizeof(connection_mutex_pool_t));
+    if (!server->conn_mutex_pool) {
+        log_error("Failed to allocate memory for connection mutex pool");
+        thread_pool_shutdown(server->thread_pool);
+        free(server->handlers);
+        mg_mgr_free(server->mgr);
+        free(server->mgr);
+        free(server);
+        return NULL;
+    }
+    
+    // Use a reasonable number of mutexes (e.g., 32)
+    if (connection_mutex_pool_init(server->conn_mutex_pool, 32) != 0) {
+        log_error("Failed to initialize connection mutex pool");
+        free(server->conn_mutex_pool);
+        thread_pool_shutdown(server->thread_pool);
+        free(server->handlers);
+        mg_mgr_free(server->mgr);
+        free(server->mgr);
+        free(server);
+        return NULL;
+    }
+    
+    // Initialize global mutex for thread safety (for shared resources)
     if (pthread_mutex_init(&server->mutex, NULL) != 0) {
         log_error("Failed to initialize mutex");
+        connection_mutex_pool_destroy(server->conn_mutex_pool);
+        free(server->conn_mutex_pool);
         thread_pool_shutdown(server->thread_pool);
         free(server->handlers);
         mg_mgr_free(server->mgr);
@@ -637,7 +656,14 @@ void http_server_destroy(http_server_handle_t server) {
         // Note: thread_pool_shutdown also frees the memory
     }
 
-    // Destroy mutex
+    // Destroy connection mutex pool
+    if (server->conn_mutex_pool) {
+        log_info("Destroying connection mutex pool");
+        connection_mutex_pool_destroy(server->conn_mutex_pool);
+        free(server->conn_mutex_pool);
+    }
+
+    // Destroy global mutex
     pthread_mutex_destroy(&server->mutex);
 
     // Free resources
@@ -766,12 +792,46 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
         // Handle CORS preflight requests and authentication directly in the event loop
         // as they are quick operations and don't need to be dispatched to the thread pool
         
-        // Check authentication if enabled
-        if (server->config.auth_enabled && mongoose_server_basic_auth_check(hm, server) != 0) {
+        // Check if this is a static asset that should bypass authentication
+        bool is_static_asset = false;
+        if (strncmp(uri, "/js/", 4) == 0 || 
+            strncmp(uri, "/css/", 5) == 0 || 
+            strncmp(uri, "/img/", 5) == 0 || 
+            strncmp(uri, "/fonts/", 7) == 0 ||
+            strstr(uri, ".js.map") != NULL ||
+            strstr(uri, ".css.map") != NULL ||
+            strstr(uri, ".ico") != NULL) {
+            is_static_asset = true;
+        }
+        
+        // Skip authentication for static assets, HLS requests, and HTML pages
+        if ((is_static_asset || 
+             strncmp(uri, "/hls/", 5) == 0 || 
+             strstr(uri, ".html") != NULL) && 
+            server->config.auth_enabled) {
+            log_debug("Bypassing authentication for asset: %s", uri);
+            // Continue processing without authentication check
+        }
+        // For non-static assets, check authentication if enabled
+        else if (server->config.auth_enabled && mongoose_server_basic_auth_check(hm, server) != 0) {
             // Authentication failed
             log_info("Authentication failed for request: %s", uri);
-            mg_http_reply(c, 401, "WWW-Authenticate: Basic realm=\"LightNVR\"\r\n", 
-                         "{\"error\": \"Unauthorized\"}\n");
+            
+            // For API requests, return 401 Unauthorized
+            if (strncmp(uri, "/api/", 5) == 0) {
+                mg_printf(c, "HTTP/1.1 401 Unauthorized\r\n");
+                mg_printf(c, "WWW-Authenticate: Basic realm=\"LightNVR\"\r\n");
+                mg_printf(c, "Content-Type: application/json\r\n");
+                mg_printf(c, "Content-Length: 29\r\n");
+                mg_printf(c, "\r\n");
+                mg_printf(c, "{\"error\": \"Unauthorized\"}\n");
+            } else {
+                // For other requests, redirect to login page
+                mg_printf(c, "HTTP/1.1 302 Found\r\n");
+                mg_printf(c, "Location: /login.html\r\n");
+                mg_printf(c, "Content-Length: 0\r\n");
+                mg_printf(c, "\r\n");
+            }
             
             pthread_mutex_lock(&server->mutex);
             server->active_connections--;
@@ -792,44 +852,56 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
             return;
         }
         
-    // Create a deep copy of the HTTP message for the thread pool
-    struct mg_http_message *hm_copy = malloc(sizeof(*hm));
-    if (!hm_copy) {
-        log_error("Failed to allocate memory for HTTP message copy");
-        mg_http_reply(c, 500, "", "{\"error\": \"Internal Server Error\"}\n");
-        
-        pthread_mutex_lock(&server->mutex);
-        server->active_connections--;
-        pthread_mutex_unlock(&server->mutex);
-        
-        return;
-    }
-    
-    // Copy the entire structure
-    memcpy(hm_copy, hm, sizeof(*hm));
-    
-    // Create deep copies of string fields to prevent issues with dangling pointers
-    if (hm->uri.len > 0) {
-        char *uri_copy = malloc(hm->uri.len + 1);
-        if (uri_copy) {
-            memcpy(uri_copy, hm->uri.buf, hm->uri.len);
-            uri_copy[hm->uri.len] = '\0';
-            hm_copy->uri.buf = uri_copy;
-            // Make sure the length is set correctly
-            hm_copy->uri.len = hm->uri.len;
+        // Create a deep copy of the HTTP message for the thread pool
+        struct mg_http_message *hm_copy = malloc(sizeof(*hm));
+        if (!hm_copy) {
+            log_error("Failed to allocate memory for HTTP message copy");
+            mg_http_reply(c, 500, "", "{\"error\": \"Internal Server Error\"}\n");
+            
+            pthread_mutex_lock(&server->mutex);
+            server->active_connections--;
+            pthread_mutex_unlock(&server->mutex);
+            
+            return;
         }
-    }
-    
-    // Also copy the method to ensure it's properly preserved
-    if (hm->method.len > 0) {
-        char *method_copy = malloc(hm->method.len + 1);
-        if (method_copy) {
-            memcpy(method_copy, hm->method.buf, hm->method.len);
-            method_copy[hm->method.len] = '\0';
-            hm_copy->method.buf = method_copy;
-            hm_copy->method.len = hm->method.len;
+        
+        // Copy the entire structure
+        memcpy(hm_copy, hm, sizeof(*hm));
+        
+        // Create deep copies of string fields to prevent issues with dangling pointers
+        if (hm->uri.len > 0) {
+            char *uri_copy = malloc(hm->uri.len + 1);
+            if (uri_copy) {
+                memcpy(uri_copy, hm->uri.buf, hm->uri.len);
+                uri_copy[hm->uri.len] = '\0';
+                hm_copy->uri.buf = uri_copy;
+                // Make sure the length is set correctly
+                hm_copy->uri.len = hm->uri.len;
+            }
         }
-    }
+        
+        // Also copy the method to ensure it's properly preserved
+        if (hm->method.len > 0) {
+            char *method_copy = malloc(hm->method.len + 1);
+            if (method_copy) {
+                memcpy(method_copy, hm->method.buf, hm->method.len);
+                method_copy[hm->method.len] = '\0';
+                hm_copy->method.buf = method_copy;
+                hm_copy->method.len = hm->method.len;
+            }
+        }
+        
+        // Copy the body to ensure it's properly preserved
+        if (hm->body.len > 0) {
+            char *body_copy = malloc(hm->body.len + 1);
+            if (body_copy) {
+                memcpy(body_copy, hm->body.buf, hm->body.len);
+                body_copy[hm->body.len] = '\0';
+                hm_copy->body.buf = body_copy;
+                // Make sure the length is set correctly
+                hm_copy->body.len = hm->body.len;
+            }
+        }
         
         // Create request data for the thread pool
         request_data_t *req_data = malloc(sizeof(request_data_t));
@@ -848,6 +920,7 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
         req_data->connection = c;
         req_data->message = hm_copy;
         req_data->server = server;
+        req_data->conn_id = (uintptr_t)c; // Use connection pointer as ID for mutex pool
         
         // Add task to thread pool
         pthread_mutex_lock(&server->mutex);
@@ -938,22 +1011,23 @@ static void handle_http_request(struct mg_connection *c, struct mg_http_message 
         *query = '\0';
     }
 
-    // Lock the connection to ensure only one thread can write to it at a time
-    pthread_mutex_lock(&server->mutex);
+    // Lock the connection-specific mutex
+    uintptr_t conn_id = (uintptr_t)c;
+    connection_mutex_pool_lock(server->conn_mutex_pool, conn_id);
 
     // Check authentication if enabled
     if (server->config.auth_enabled && mongoose_server_basic_auth_check(hm, server) != 0) {
         // Authentication failed
         mg_http_reply(c, 401, "WWW-Authenticate: Basic realm=\"LightNVR\"\r\n", 
                      "{\"error\": \"Unauthorized\"}\n");
-        pthread_mutex_unlock(&server->mutex);
+        connection_mutex_pool_unlock(server->conn_mutex_pool, conn_id);
         return;
     }
 
     // Handle CORS preflight request
     if (server->config.cors_enabled && mg_match(hm->method, mg_str("OPTIONS"), NULL)) {
         mongoose_server_handle_cors_preflight(c, hm, server);
-        pthread_mutex_unlock(&server->mutex);
+        connection_mutex_pool_unlock(server->conn_mutex_pool, conn_id);
         return;
     }
 
@@ -975,7 +1049,7 @@ static void handle_http_request(struct mg_connection *c, struct mg_http_message 
                 http_request_t request;
                 if (mongoose_server_mg_to_request(c, hm, &request) != 0) {
                     mg_http_reply(c, 400, "", "{\"error\": \"Bad Request\"}\n");
-                    pthread_mutex_unlock(&server->mutex);
+                    connection_mutex_pool_unlock(server->conn_mutex_pool, conn_id);
                     return;
                 }
 
@@ -995,7 +1069,9 @@ static void handle_http_request(struct mg_connection *c, struct mg_http_message 
                 mongoose_server_send_response(c, &response);
 
                 // Update statistics
+                pthread_mutex_lock(&server->mutex);
                 server->bytes_sent += response.body_length;
+                pthread_mutex_unlock(&server->mutex);
 
                 // Free request and response resources
                 if (request.body) {
@@ -1011,7 +1087,7 @@ static void handle_http_request(struct mg_connection *c, struct mg_http_message 
                     free(response.headers);
                 }
 
-                pthread_mutex_unlock(&server->mutex);
+                connection_mutex_pool_unlock(server->conn_mutex_pool, conn_id);
                 return;
             }
         }
@@ -1022,5 +1098,5 @@ static void handle_http_request(struct mg_connection *c, struct mg_http_message 
         mongoose_server_handle_static_file(c, hm, server);
     }
     
-    pthread_mutex_unlock(&server->mutex);
+    connection_mutex_pool_unlock(server->conn_mutex_pool, conn_id);
 }
