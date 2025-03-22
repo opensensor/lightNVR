@@ -575,8 +575,6 @@ export function StreamsView() {
                       onChange=${handleInputChange}
                     >
                       <option value="">Select a model</option>
-                      <option value="motion">Motion Detection</option>
-                      <option value="motion_optimized">Optimized Motion Detection</option>
                       ${detectionModels.map(model => html`
                         <option key=${model.id} value=${model.id}>${model.name}</option>
                       `)}
