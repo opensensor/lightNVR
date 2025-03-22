@@ -295,6 +295,9 @@ int main(int argc, char *argv[]) {
         log_error("Failed to load configuration");
         return EXIT_FAILURE;
     }
+    
+    // Copy to global config
+    memcpy(&g_config, &config, sizeof(config_t));
 
     // Set log file from configuration
     if (config.log_file[0] != '\0') {
@@ -315,9 +318,8 @@ int main(int argc, char *argv[]) {
     // regardless of the configured log level
     log_error("Log level set to %d (%s)", config.log_level, get_log_level_string(config.log_level));
 
-    // Copy configuration to global streaming config
-    extern config_t global_config;  // Declared in streams.c
-    memcpy(&global_config, &config, sizeof(config_t));
+    // Copy configuration to global config
+    memcpy(&g_config, &config, sizeof(config_t));
 
     // Verify web root directory exists and is readable
     struct stat st;
@@ -472,12 +474,12 @@ int main(int argc, char *argv[]) {
             // Check if model file exists
             char model_path[MAX_PATH_LENGTH];
             if (config.streams[i].detection_model[0] != '/') {
-                // Relative path, check in models directory
-                char cwd[MAX_PATH_LENGTH];
-                if (getcwd(cwd, sizeof(cwd)) != NULL) {
-                    snprintf(model_path, MAX_PATH_LENGTH, "%s/models/%s", cwd, config.streams[i].detection_model);
+                // Relative path, use configured models path from INI if it exists
+                if (config.models_path && strlen(config.models_path) > 0) {
+                    snprintf(model_path, MAX_PATH_LENGTH, "%s/%s", config.models_path, config.streams[i].detection_model);
                 } else {
-                    snprintf(model_path, MAX_PATH_LENGTH, "/var/lib/lightnvr/models/%s", config.streams[i].detection_model);
+                    // Fall back to default path if INI config doesn't exist
+                    snprintf(model_path, MAX_PATH_LENGTH, "/etc/lightnvr/models/%s", config.streams[i].detection_model);
                 }
             } else {
                 // Absolute path
@@ -491,32 +493,13 @@ int main(int argc, char *argv[]) {
                 log_info("Detection model found: %s", model_path);
             } else {
                 log_error("Detection model not found: %s", model_path);
+                log_error("Detection will not work properly!");
                 
-                // Try alternative locations
-                const char *locations[] = {
-                    "./", // Current directory
-                    "./build/models/", // Build directory
-                    "../models/", // Parent directory
-                    "/var/lib/lightnvr/models/" // System directory
-                };
-                
-                bool found = false;
-                for (int j = 0; j < sizeof(locations)/sizeof(locations[0]); j++) {
-                    char alt_path[MAX_PATH_LENGTH];
-                    snprintf(alt_path, MAX_PATH_LENGTH, "%s%s", locations[j], config.streams[i].detection_model);
-                    
-                    FILE *alt_file = fopen(alt_path, "r");
-                    if (alt_file) {
-                        fclose(alt_file);
-                        log_info("Detection model found at alternative location: %s", alt_path);
-                        found = true;
-                        break;
-                    }
-                }
-                
-                if (!found) {
-                    log_error("Detection model not found in any location: %s", config.streams[i].detection_model);
-                    log_error("Detection will not work properly!");
+                // Create the models directory if it doesn't exist
+                if (mkdir(config.models_path, 0755) != 0 && errno != EEXIST) {
+                    log_error("Failed to create models directory: %s", strerror(errno));
+                } else {
+                    log_info("Created models directory: %s", config.models_path);
                 }
             }
             

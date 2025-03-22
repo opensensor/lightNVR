@@ -41,7 +41,7 @@ void mg_handle_get_system_info(struct mg_connection *c, struct mg_http_message *
         cJSON_AddStringToObject(info, "system", system_info.sysname);
         cJSON_AddStringToObject(info, "node", system_info.nodename);
         cJSON_AddStringToObject(info, "release", system_info.release);
-        cJSON_AddStringToObject(info, "version", system_info.version);
+        cJSON_AddStringToObject(info, "system_version", system_info.version);
         cJSON_AddStringToObject(info, "machine", system_info.machine);
     }
     
@@ -100,19 +100,16 @@ void mg_handle_get_system_info(struct mg_connection *c, struct mg_http_message *
 void mg_handle_get_system_logs(struct mg_connection *c, struct mg_http_message *hm) {
     log_info("Handling GET /api/system/logs request");
     
-    // Get global configuration
-    extern config_t global_config;
-    
     // Check if log file is set
-    if (global_config.log_file[0] == '\0') {
+    if (g_config.log_file[0] == '\0') {
         mg_send_json_error(c, 404, "Log file not configured");
         return;
     }
     
     // Open log file
-    FILE *log_file = fopen(global_config.log_file, "r");
+    FILE *log_file = fopen(g_config.log_file, "r");
     if (!log_file) {
-        log_error("Failed to open log file: %s", global_config.log_file);
+        log_error("Failed to open log file: %s", g_config.log_file);
         mg_send_json_error(c, 500, "Failed to open log file");
         return;
     }
@@ -158,7 +155,7 @@ void mg_handle_get_system_logs(struct mg_connection *c, struct mg_http_message *
     }
     
     // Add logs
-    cJSON_AddStringToObject(logs, "file", global_config.log_file);
+    cJSON_AddStringToObject(logs, "file", g_config.log_file);
     cJSON_AddNumberToObject(logs, "size", file_size);
     cJSON_AddNumberToObject(logs, "offset", offset);
     cJSON_AddStringToObject(logs, "content", buffer);
@@ -283,16 +280,13 @@ void mg_handle_post_system_shutdown(struct mg_connection *c, struct mg_http_mess
 void mg_handle_post_system_clear_logs(struct mg_connection *c, struct mg_http_message *hm) {
     log_info("Handling POST /api/system/clear_logs request");
     
-    // Get global configuration
-    extern config_t global_config;
-    
     // Get log file path
     const char* log_file = "/var/log/lightnvr.log"; // Default log file path
     const char* fallback_log_file = "./lightnvr.log"; // Fallback log file in current directory
     
     // Check if config has a log file path
-    if (global_config.log_file[0] != '\0') {
-        log_file = global_config.log_file;
+    if (g_config.log_file[0] != '\0') {
+        log_file = g_config.log_file;
     }
     
     // Check if log file exists and is writable
@@ -384,9 +378,6 @@ void mg_handle_post_system_clear_logs(struct mg_connection *c, struct mg_http_me
 void mg_handle_post_system_backup(struct mg_connection *c, struct mg_http_message *hm) {
     log_info("Handling POST /api/system/backup request");
     
-    // Get global configuration
-    extern config_t global_config;
-    
     // Create a timestamp for the backup filename
     time_t now = time(NULL);
     struct tm* tm_info = localtime(&now);
@@ -399,13 +390,13 @@ void mg_handle_post_system_backup(struct mg_connection *c, struct mg_http_messag
     
     // Create backup path in the web root directory
     char backup_path[512];
-    snprintf(backup_path, sizeof(backup_path), "%s/backups", global_config.web_root);
+    snprintf(backup_path, sizeof(backup_path), "%s/backups", g_config.web_root);
     
     // Create backups directory if it doesn't exist
     mkdir(backup_path, 0755);
     
     // Append filename to path
-    snprintf(backup_path, sizeof(backup_path), "%s/backups/%s", global_config.web_root, backup_filename);
+    snprintf(backup_path, sizeof(backup_path), "%s/backups/%s", g_config.web_root, backup_filename);
     
     // Open backup file
     FILE* backup_file = fopen(backup_path, "w");
@@ -469,14 +460,14 @@ void mg_handle_post_system_backup(struct mg_connection *c, struct mg_http_messag
     }
     
     // Add config properties
-    cJSON_AddNumberToObject(config, "web_port", global_config.web_port);
-    cJSON_AddStringToObject(config, "web_root", global_config.web_root);
-    cJSON_AddStringToObject(config, "log_file", global_config.log_file);
-    cJSON_AddStringToObject(config, "pid_file", global_config.pid_file);
-    cJSON_AddStringToObject(config, "db_path", global_config.db_path);
-    cJSON_AddStringToObject(config, "storage_path", global_config.storage_path);
-    cJSON_AddNumberToObject(config, "max_storage_size", global_config.max_storage_size);
-    cJSON_AddNumberToObject(config, "max_streams", global_config.max_streams);
+    cJSON_AddNumberToObject(config, "web_port", g_config.web_port);
+    cJSON_AddStringToObject(config, "web_root", g_config.web_root);
+    cJSON_AddStringToObject(config, "log_file", g_config.log_file);
+    cJSON_AddStringToObject(config, "pid_file", g_config.pid_file);
+    cJSON_AddStringToObject(config, "db_path", g_config.db_path);
+    cJSON_AddStringToObject(config, "storage_path", g_config.storage_path);
+    cJSON_AddNumberToObject(config, "max_storage_size", g_config.max_storage_size);
+    cJSON_AddNumberToObject(config, "max_streams", g_config.max_streams);
     
     // Add streams array
     cJSON *streams = cJSON_CreateArray();
@@ -490,24 +481,24 @@ void mg_handle_post_system_backup(struct mg_connection *c, struct mg_http_messag
     }
     
     // Add streams to array
-    for (int i = 0; i < global_config.max_streams; i++) {
-        if (global_config.streams[i].name[0] != '\0') {
+    for (int i = 0; i < g_config.max_streams; i++) {
+        if (g_config.streams[i].name[0] != '\0') {
             cJSON *stream = cJSON_CreateObject();
             if (!stream) {
                 log_error("Failed to create stream JSON object");
                 continue;
             }
             
-            cJSON_AddStringToObject(stream, "name", global_config.streams[i].name);
-            cJSON_AddStringToObject(stream, "url", global_config.streams[i].url);
-            cJSON_AddBoolToObject(stream, "enabled", global_config.streams[i].enabled);
-            cJSON_AddNumberToObject(stream, "width", global_config.streams[i].width);
-            cJSON_AddNumberToObject(stream, "height", global_config.streams[i].height);
-            cJSON_AddNumberToObject(stream, "fps", global_config.streams[i].fps);
-            cJSON_AddStringToObject(stream, "codec", global_config.streams[i].codec);
-            cJSON_AddBoolToObject(stream, "record", global_config.streams[i].record);
-            cJSON_AddNumberToObject(stream, "priority", global_config.streams[i].priority);
-            cJSON_AddNumberToObject(stream, "segment_duration", global_config.streams[i].segment_duration);
+            cJSON_AddStringToObject(stream, "name", g_config.streams[i].name);
+            cJSON_AddStringToObject(stream, "url", g_config.streams[i].url);
+            cJSON_AddBoolToObject(stream, "enabled", g_config.streams[i].enabled);
+            cJSON_AddNumberToObject(stream, "width", g_config.streams[i].width);
+            cJSON_AddNumberToObject(stream, "height", g_config.streams[i].height);
+            cJSON_AddNumberToObject(stream, "fps", g_config.streams[i].fps);
+            cJSON_AddStringToObject(stream, "codec", g_config.streams[i].codec);
+            cJSON_AddBoolToObject(stream, "record", g_config.streams[i].record);
+            cJSON_AddNumberToObject(stream, "priority", g_config.streams[i].priority);
+            cJSON_AddNumberToObject(stream, "segment_duration", g_config.streams[i].segment_duration);
             
             cJSON_AddItemToArray(streams, stream);
         }

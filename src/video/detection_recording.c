@@ -117,17 +117,18 @@ int start_detection_recording(const char *stream_name, const char *model_path, f
         return -1;
     }
     
+    // Get global config to access models path
+    extern config_t g_config;
+    
     // Check if model_path is a relative path (doesn't start with /)
     char full_model_path[MAX_PATH_LENGTH];
     if (model_path[0] != '/') {
-        // Get current working directory
-        char cwd[MAX_PATH_LENGTH];
-        if (getcwd(cwd, sizeof(cwd)) != NULL) {
-            // Construct full path: CWD/models/model_path
-            snprintf(full_model_path, MAX_PATH_LENGTH, "%s/models/%s", cwd, model_path);
+        // Construct full path using configured models path from INI if it exists
+        if (g_config.models_path && strlen(g_config.models_path) > 0) {
+            snprintf(full_model_path, MAX_PATH_LENGTH, "%s/%s", g_config.models_path, model_path);
         } else {
-            // Fallback to absolute path if getcwd fails
-            snprintf(full_model_path, MAX_PATH_LENGTH, "/var/lib/lightnvr/models/%s", model_path);
+            // Fall back to default path if INI config doesn't exist
+            snprintf(full_model_path, MAX_PATH_LENGTH, "/etc/lightnvr/models/%s", model_path);
         }
         log_info("Using full model path: %s", full_model_path);
     } else {

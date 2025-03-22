@@ -215,7 +215,7 @@ function downloadSnapshotFromPreview(imageData, streamName) {
 /**
  * Show status message
  */
-function showStatusMessage(message, duration = 3000) {
+function showStatusMessage(message, duration = 5000) {
     // Check if status message element exists
     let statusMessage = document.getElementById('status-message');
 

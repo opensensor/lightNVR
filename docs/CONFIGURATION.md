@@ -45,6 +45,9 @@ auto_delete_oldest = true
 [database]
 path = /var/lib/lightnvr/lightnvr.db
 
+[models]
+path = /var/lib/lightnvr/models
+
 [web]
 port = 8080
 root = /var/lib/lightnvr/www
@@ -120,6 +123,15 @@ auto_delete_oldest=true
 - `max_storage_size`: Maximum storage size in bytes (0 means unlimited)
 - `retention_days`: Number of days to keep recordings
 - `auto_delete_oldest`: Whether to automatically delete the oldest recordings when storage is full
+
+### Models Settings
+
+```
+# Models Settings
+models_path=/var/lib/lightnvr/models
+```
+
+- `models_path`: Directory where detection models are stored
 
 ### Database Settings
 
@@ -231,6 +243,9 @@ auto_delete_oldest=true
 
 # Database Settings
 db_path=/var/lib/lightnvr/lightnvr.db
+
+# Models Settings
+models_path=/var/lib/lightnvr/models
 
 # Web Server Settings
 web_port=8080
