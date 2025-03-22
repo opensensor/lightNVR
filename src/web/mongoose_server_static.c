@@ -17,11 +17,23 @@
  * @brief Handle static file request
  */
 void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_message *hm, http_server_t *server) {
+    // Note: The mutex is already locked in the calling function (process_request_task or handle_http_request)
     // Extract URI
     char uri[MAX_PATH_LENGTH];
     size_t uri_len = hm->uri.len < sizeof(uri) - 1 ? hm->uri.len : sizeof(uri) - 1;
     memcpy(uri, hm->uri.buf, uri_len);
     uri[uri_len] = '\0';
+    
+    // Special case: handle "/%s" path which is causing redirection issues
+    // This is likely coming from a client-side formatting issue
+    if (strcmp(uri, "/%s") == 0) {
+        log_info("Detected problematic '/%%s' path, redirecting to root '/'");
+        mg_printf(c, "HTTP/1.1 302 Found\r\n");
+        mg_printf(c, "Location: /\r\n");
+        mg_printf(c, "Content-Length: 0\r\n");
+        mg_printf(c, "\r\n");
+        return;
+    }
 
     // Check if this is an API request
     if (strncmp(uri, "/api/", 5) == 0) {
@@ -169,7 +181,7 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
 
     // If path ends with '/', append 'live.html' (which serves as our index)
     size_t path_len = strlen(file_path);
-    if (file_path[path_len - 1] == '/') {
+    if (path_len > 0 && file_path[path_len - 1] == '/') {
         strncat(file_path, "live.html", sizeof(file_path) - path_len - 1);
     }
 
@@ -180,9 +192,15 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         if (S_ISDIR(st.st_mode)) {
             // Redirect to add trailing slash if needed
             if (uri[strlen(uri) - 1] != '/') {
+                // Create a fixed redirect URL with the trailing slash
                 char redirect_path[MAX_PATH_LENGTH * 2];
                 snprintf(redirect_path, sizeof(redirect_path), "%s/", uri);
-                mg_http_reply(c, 301, "Location: %s\r\n", redirect_path);
+                
+                // Use a complete HTTP response with fixed headers to avoid any string formatting issues
+                mg_printf(c, "HTTP/1.1 301 Moved Permanently\r\n");
+                mg_printf(c, "Location: %s\r\n", redirect_path);
+                mg_printf(c, "Content-Length: 0\r\n");
+                mg_printf(c, "\r\n");
                 return;
             } else {
                 // Try to serve live.html as the index
@@ -241,7 +259,10 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
             if (auth_header == NULL) {
                 // No auth header, redirect to login page
                 log_info("No authentication, redirecting to login page");
-                mg_http_reply(c, 302, "Location: /login.html\r\n", "");
+                mg_printf(c, "HTTP/1.1 302 Found\r\n");
+                mg_printf(c, "Location: /login.html\r\n");
+                mg_printf(c, "Content-Length: 0\r\n");
+                mg_printf(c, "\r\n");
                 return;
             }
             
@@ -280,25 +301,38 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
                     } else {
                         // Authentication failed, redirect to login page
                         log_info("Authentication failed for web page request");
-                        mg_http_reply(c, 302, "Location: /login.html\r\n", "");
+                        mg_printf(c, "HTTP/1.1 302 Found\r\n");
+                        mg_printf(c, "Location: /login.html\r\n");
+                        mg_printf(c, "Content-Length: 0\r\n");
+                        mg_printf(c, "\r\n");
                         return;
                     }
                 } else {
                     // Invalid format, redirect to login page
                     log_info("Invalid authentication format for web page request");
-                    mg_http_reply(c, 302, "Location: /login.html\r\n", "");
+                    mg_printf(c, "HTTP/1.1 302 Found\r\n");
+                    mg_printf(c, "Location: /login.html\r\n");
+                    mg_printf(c, "Content-Length: 0\r\n");
+                    mg_printf(c, "\r\n");
                     return;
                 }
             } else {
                 // Not Basic authentication, redirect to login page
                 log_info("Not Basic authentication for web page request");
-                mg_http_reply(c, 302, "Location: /login.html\r\n", "");
+                mg_printf(c, "HTTP/1.1 302 Found\r\n");
+                mg_printf(c, "Location: /login.html\r\n");
+                mg_printf(c, "Content-Length: 0\r\n");
+                mg_printf(c, "\r\n");
                 return;
             }
         }
 
+        // For SPA routes, directly serve live.html without redirection
         char index_path[MAX_PATH_LENGTH * 2];
         snprintf(index_path, sizeof(index_path), "%s/live.html", server->config.web_root);
+        
+        // Log the path we're trying to serve
+        log_info("Serving SPA route %s with index file: %s", uri, index_path);
 
         // Check if live.html exists
         if (stat(index_path, &st) == 0 && S_ISREG(st.st_mode)) {
@@ -307,7 +341,40 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
                 .root_dir = server->config.web_root,
                 .mime_types = "html=text/html"
             };
-            mg_http_serve_file(c, hm, index_path, &opts);
+            
+            // Use direct file serving instead of mg_http_serve_file
+            // to avoid any potential redirection issues
+            FILE *fp = fopen(index_path, "rb");
+            if (fp != NULL) {
+                // Get file size
+                fseek(fp, 0, SEEK_END);
+                long size = ftell(fp);
+                fseek(fp, 0, SEEK_SET);
+                
+                // Read file content
+                char *content = malloc(size);
+                if (content) {
+                    fread(content, 1, size, fp);
+                    
+                    // Send HTTP response with file content
+                    mg_printf(c, "HTTP/1.1 200 OK\r\n");
+                    mg_printf(c, "Content-Type: text/html\r\n");
+                    mg_printf(c, "Content-Length: %ld\r\n", size);
+                    mg_printf(c, "\r\n");
+                    mg_send(c, content, size);
+                    
+                    free(content);
+                } else {
+                    mg_http_reply(c, 500, "", "Internal Server Error\n");
+                }
+                fclose(fp);
+            } else {
+                mg_http_reply(c, 500, "", "Internal Server Error\n");
+            }
+            return;
+        } else {
+            log_error("SPA index file not found: %s", index_path);
+            mg_http_reply(c, 404, "", "404 Not Found - SPA index file missing\n");
             return;
         }
     }

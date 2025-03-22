@@ -16,6 +16,9 @@ struct mg_mgr;
 struct mg_connection;
 struct mg_http_message;
 
+// Forward declaration of thread pool structure
+typedef struct thread_pool thread_pool_t;
+
 /**
  * @brief HTTP server configuration
  */
@@ -45,6 +48,12 @@ typedef struct http_server {
     struct mg_mgr *mgr;             // Mongoose event manager
     http_server_config_t config;    // Server configuration
     bool running;                   // Server running flag
+    
+    // Thread pool for concurrent request handling
+    thread_pool_t *thread_pool;     // Thread pool for handling requests
+    
+    // Synchronization
+    pthread_mutex_t mutex;          // Mutex for thread safety
     
     // Statistics
     int active_connections;         // Number of active connections

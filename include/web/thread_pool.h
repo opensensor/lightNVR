@@ -11,7 +11,7 @@ typedef struct {
     void *argument;
 } task_t;
 
-typedef struct {
+typedef struct thread_pool {
     task_t *queue;
     int queue_size;
     int head;

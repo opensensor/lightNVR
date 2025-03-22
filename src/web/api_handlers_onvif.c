@@ -56,97 +56,12 @@ void mg_handle_get_onvif_discovery_status(struct mg_connection *c, struct mg_htt
 }
 
 /**
- * @brief Handle POST request to start ONVIF discovery
+ * @brief Handle POST request to start ONVIF discovery (deprecated)
  */
 void mg_handle_post_start_onvif_discovery(struct mg_connection *c, struct mg_http_message *hm) {
-    log_info("Handling POST /api/onvif/discovery/start request");
+    log_info("Handling POST /api/onvif/discovery/start request (deprecated)");
     
-    // Parse JSON request
-    cJSON *root = mg_parse_json_body(hm);
-    if (!root) {
-        log_error("Invalid JSON request");
-        mg_send_json_error(c, 400, "Invalid JSON request");
-        return;
-    }
-    
-    // Extract parameters
-    cJSON *network_json = cJSON_GetObjectItem(root, "network");
-    cJSON *interval_json = cJSON_GetObjectItem(root, "interval");
-    
-    // Interval is required, network is optional (auto-detection will be used if not provided)
-    if (!interval_json || !cJSON_IsNumber(interval_json)) {
-        cJSON_Delete(root);
-        log_error("Missing or invalid interval parameter");
-        mg_send_json_error(c, 400, "Missing or invalid interval parameter");
-        return;
-    }
-    
-    // Get network parameter (can be NULL for auto-detection)
-    const char *network = NULL;
-    if (network_json && cJSON_IsString(network_json)) {
-        network = network_json->valuestring;
-    } else {
-        log_info("Network parameter not provided, will use auto-detection");
-    }
-    
-    int interval = interval_json->valueint;
-    
-    // Validate interval parameter
-    if (interval <= 0) {
-        cJSON_Delete(root);
-        log_error("Invalid interval parameter");
-        mg_send_json_error(c, 400, "Invalid interval parameter");
-        return;
-    }
-    
-    // Start ONVIF discovery
-    int result = start_onvif_discovery(network, interval);
-    cJSON_Delete(root);
-    
-    if (result != 0) {
-        log_error("Failed to start ONVIF discovery");
-        mg_send_json_error(c, 500, "Failed to start ONVIF discovery");
-        return;
-    }
-    
-    // Update configuration
-    g_config.onvif_discovery_enabled = true;
-    
-    // If network was auto-detected, get the actual network that was used
-    if (!network || strlen(network) == 0 || strcmp(network, "auto") == 0) {
-        // Get the network from the discovery thread
-        pthread_mutex_t *discovery_mutex = get_discovery_mutex();
-        if (discovery_mutex) {
-            pthread_mutex_lock(discovery_mutex);
-            const char *actual_network = get_current_discovery_network();
-            if (actual_network && strlen(actual_network) > 0) {
-                strncpy(g_config.onvif_discovery_network, actual_network, 
-                        sizeof(g_config.onvif_discovery_network) - 1);
-                g_config.onvif_discovery_network[sizeof(g_config.onvif_discovery_network) - 1] = '\0';
-            } else {
-                // If we can't get the actual network, just store "auto"
-                strncpy(g_config.onvif_discovery_network, "auto", 
-                        sizeof(g_config.onvif_discovery_network) - 1);
-            }
-            pthread_mutex_unlock(discovery_mutex);
-        } else {
-            // If we can't get the mutex, just store "auto"
-            strncpy(g_config.onvif_discovery_network, "auto", 
-                    sizeof(g_config.onvif_discovery_network) - 1);
-        }
-    } else {
-        // Use the provided network
-        strncpy(g_config.onvif_discovery_network, network, 
-                sizeof(g_config.onvif_discovery_network) - 1);
-        g_config.onvif_discovery_network[sizeof(g_config.onvif_discovery_network) - 1] = '\0';
-    }
-    
-    g_config.onvif_discovery_interval = interval;
-    
-    // Save configuration
-    save_config(&g_config, get_loaded_config_path());
-    
-    // Create success response
+    // Create response indicating this API is deprecated
     cJSON *response_json = cJSON_CreateObject();
     if (!response_json) {
         log_error("Failed to create JSON response");
@@ -154,8 +69,8 @@ void mg_handle_post_start_onvif_discovery(struct mg_connection *c, struct mg_htt
         return;
     }
     
-    cJSON_AddBoolToObject(response_json, "success", true);
-    cJSON_AddStringToObject(response_json, "message", "ONVIF discovery started successfully");
+    cJSON_AddBoolToObject(response_json, "success", false);
+    cJSON_AddStringToObject(response_json, "message", "This API is deprecated. Use /api/onvif/discovery/discover instead for direct discovery.");
     
     // Convert to string
     char *json_str = cJSON_PrintUnformatted(response_json);
@@ -168,36 +83,21 @@ void mg_handle_post_start_onvif_discovery(struct mg_connection *c, struct mg_htt
     }
     
     // Send response
-    mg_send_json_response(c, 200, json_str);
+    mg_send_json_response(c, 400, json_str);
     
     // Clean up
     free(json_str);
     
-    log_info("Successfully handled POST /api/onvif/discovery/start request");
+    log_info("Successfully handled deprecated POST /api/onvif/discovery/start request");
 }
 
 /**
- * @brief Handle POST request to stop ONVIF discovery
+ * @brief Handle POST request to stop ONVIF discovery (deprecated)
  */
 void mg_handle_post_stop_onvif_discovery(struct mg_connection *c, struct mg_http_message *hm) {
-    log_info("Handling POST /api/onvif/discovery/stop request");
+    log_info("Handling POST /api/onvif/discovery/stop request (deprecated)");
     
-    // Stop ONVIF discovery
-    int result = stop_onvif_discovery();
-    
-    if (result != 0) {
-        log_error("Failed to stop ONVIF discovery");
-        mg_send_json_error(c, 500, "Failed to stop ONVIF discovery");
-        return;
-    }
-    
-    // Update configuration
-    g_config.onvif_discovery_enabled = false;
-    
-    // Save configuration
-    save_config(&g_config, get_loaded_config_path());
-    
-    // Create success response
+    // Create response indicating this API is deprecated
     cJSON *response_json = cJSON_CreateObject();
     if (!response_json) {
         log_error("Failed to create JSON response");
@@ -205,8 +105,8 @@ void mg_handle_post_stop_onvif_discovery(struct mg_connection *c, struct mg_http
         return;
     }
     
-    cJSON_AddBoolToObject(response_json, "success", true);
-    cJSON_AddStringToObject(response_json, "message", "ONVIF discovery stopped successfully");
+    cJSON_AddBoolToObject(response_json, "success", false);
+    cJSON_AddStringToObject(response_json, "message", "This API is deprecated. The discovery process is now direct and does not need to be stopped.");
     
     // Convert to string
     char *json_str = cJSON_PrintUnformatted(response_json);
@@ -219,12 +119,12 @@ void mg_handle_post_stop_onvif_discovery(struct mg_connection *c, struct mg_http
     }
     
     // Send response
-    mg_send_json_response(c, 200, json_str);
+    mg_send_json_response(c, 400, json_str);
     
     // Clean up
     free(json_str);
     
-    log_info("Successfully handled POST /api/onvif/discovery/stop request");
+    log_info("Successfully handled deprecated POST /api/onvif/discovery/stop request");
 }
 
 /**
