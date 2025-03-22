@@ -1,216 +1,52 @@
-/* Recordings Page Specific Styles */
+/* Recordings Page Specific Styles - Tailwind-based */
 
-/* Sortable table headers */
+/* 
+ * This file contains Tailwind-compatible styles for the recordings page.
+ * Most styles have been converted to Tailwind utility classes in the HTML/JSX.
+ * Only styles that can't be easily represented with Tailwind utilities remain here.
+ */
+
+/* Sortable table headers - using @apply for Tailwind integration */
 .sortable {
-    cursor: pointer;
-    position: relative;
-    user-select: none;
+    @apply cursor-pointer relative select-none;
 }
 
 .sortable:hover {
-    background-color: #f0f0f0;
-}
-
-@media (prefers-color-scheme: dark) {
-    .sortable:hover {
-        background-color: #2d3748;
-    }
+    @apply bg-gray-100 dark:bg-gray-700;
 }
 
 .sort-icon {
-    display: inline-block;
-    width: 10px;
-    margin-left: 5px;
-    opacity: 0.5;
+    @apply inline-block w-2.5 ml-1.5 opacity-50;
 }
 
-.sort-asc .sort-icon {
-    opacity: 1;
-}
-
+.sort-asc .sort-icon,
 .sort-desc .sort-icon {
-    opacity: 1;
+    @apply opacity-100;
 }
 
-/* Layout for recordings page with sidebar */
-.recordings-layout {
-    display: flex;
-    flex-direction: row;
-    gap: 1rem;
-    position: relative;
-}
-
-/* Sidebar styles */
+/* Transition effects for sidebar */
 .filters-sidebar {
-    width: 280px;
-    border-radius: 6px;
-    padding: 1rem;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    flex-shrink: 0;
+    @apply w-full md:w-72 rounded-lg p-4 shadow flex-shrink-0;
     transition: transform 0.3s ease, opacity 0.3s ease, width 0.3s ease;
 }
 
-/* Filter groups */
-.filter-group {
-    margin-bottom: 1.5rem;
+/* Collapsed sidebar state */
+.filters-sidebar.collapsed {
+    @apply max-h-0 overflow-hidden py-0 my-0 opacity-0;
 }
 
-.filter-group h3 {
-    font-size: 1rem;
-    margin-top: 0;
-    margin-bottom: 0.75rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid var(--border-color);
-    color: var(--secondary-color);
-}
-
-.filter-option {
-    margin-bottom: 1rem;
-}
-
-.filter-option label {
-    display: block;
-    margin-bottom: 0.25rem;
-    font-size: 0.9rem;
-    color: var(--text-color);
-}
-
-.filter-option select,
-.filter-option input {
-    width: 100%;
-    padding: 0.5rem;
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    font-size: 0.9rem;
-}
-
-/* Date-time picker styles */
-.date-time-picker {
-    margin-bottom: 0.75rem;
-}
-
-.time-picker {
-    margin-top: 0.5rem;
-}
-
-/* Filter actions */
-.filter-actions {
-    display: flex;
-    gap: 0.5rem;
-    margin-top: 1.5rem;
-}
-
-/* Main content area */
-.recordings-content {
-    flex: 1;
-    min-width: 0; /* Prevent flex item from overflowing */
-}
-
-/* Active filters display */
-.active-filters {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
-    padding: 0.5rem 0;
-}
-
+/* Filter tag styling - using Tailwind colors instead of custom variables */
 .filter-tag {
-    display: inline-flex;
-    align-items: center;
-    background-color: #e3f2fd;
-    border-radius: 16px;
-    padding: 0.25rem 0.75rem;
-    font-size: 0.85rem;
-    color: var(--primary-color);
-}
-
-/* Dark mode support for filter tags */
-@media (prefers-color-scheme: dark) {
-    .filter-tag {
-        background-color: rgba(30, 136, 229, 0.2);
-        color: #64b5f6;
-    }
+    @apply inline-flex items-center bg-blue-100 dark:bg-blue-900/30 rounded-full py-1 px-3 text-sm text-blue-700 dark:text-blue-300;
 }
 
 .filter-tag .remove-filter {
-    margin-left: 0.5rem;
-    cursor: pointer;
-    font-weight: bold;
-    font-size: 1rem;
-    line-height: 1;
+    @apply ml-2 cursor-pointer font-bold text-base leading-none;
 }
 
-/* Toggle filters button (mobile) */
-#toggle-filters-btn {
-    display: none;
-}
-
-/* Responsive styles */
-@media (max-width: 992px) {
-    .recordings-layout {
-        flex-direction: column;
-    }
-    
-    .filters-sidebar {
-        width: 100%;
-        margin-bottom: 1rem;
-    }
-    
-    /* Show toggle button on smaller screens */
-    #toggle-filters-btn {
-        display: inline-flex;
-    }
-    
-    /* Hide sidebar by default on mobile */
-    .filters-sidebar.collapsed {
-        max-height: 0;
-        overflow: hidden;
-        padding-top: 0;
-        padding-bottom: 0;
-        margin-bottom: 0;
-        opacity: 0;
-    }
-}
-
-@media (max-width: 768px) {
-    .page-header {
-        flex-direction: row;
-        justify-content: space-between;
-        align-items: center;
-    }
-    
-    .filter-actions {
-        flex-direction: column;
-    }
-    
-    .filter-actions button {
-        width: 100%;
-    }
-    
-    .pagination-controls {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-    
-    .pagination-buttons {
-        margin-top: 0.5rem;
-        width: 100%;
-        justify-content: space-between;
-    }
-}
-
+/* Ensure tables don't get too compressed on small screens */
 @media (max-width: 576px) {
-    .recordings-container {
-        overflow-x: auto;
-    }
-    
     #recordings-table {
-        min-width: 500px; /* Ensure table doesn't get too compressed */
-    }
-    
-    .date-time-picker {
-        display: flex;
-        flex-direction: column;
+        @apply min-w-[500px];
     }
 }
