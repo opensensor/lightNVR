@@ -26,7 +26,7 @@ function loadHeader(activePageId) {
         </nav>
         <div class="user-menu">
             <span id="username">Admin</span>
-            <a href="index.html?logout=true" id="logout">Logout</a>
+            <a href="live.html?logout=true" id="logout">Logout</a>
         </div>
     `;
     
@@ -47,7 +47,7 @@ function loadFooter() {
             <span id="status-text">System running normally</span>
         </div>
         <div class="copyright">
-            &copy; 2025 LightNVR - <a href="https://github.com/opensensor/lightnvr" target="_blank">GitHub</a>
+            © 2025 LightNVR - <a href="https://github.com/opensensor/lightnvr" target="_blank">GitHub</a>
         </div>
     `;
 }

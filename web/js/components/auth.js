@@ -67,10 +67,10 @@ function logout() {
         }
     }).then(() => {
         // Redirect to logout page
-        window.location.href = 'index.html?logout=true';
+        window.location.href = 'live.html?logout=true';
     }).catch(() => {
         // Redirect even if the request fails
-        window.location.href = 'index.html?logout=true';
+        window.location.href = 'live.html?logout=true';
     });
 }
 
