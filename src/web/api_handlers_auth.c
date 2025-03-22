@@ -19,11 +19,9 @@
 void mg_handle_auth_logout(struct mg_connection *c, struct mg_http_message *hm) {
     log_info("Handling POST /api/auth/logout request");
     
-    // Send a 401 Unauthorized response with WWW-Authenticate header
-    // This will clear the browser's basic auth cache
-    // Also clear the auth cookie by setting it to expire in the past
-    mg_printf(c, "HTTP/1.1 401 Unauthorized\r\n"
-              "WWW-Authenticate: Basic realm=\"LightNVR\", stale=true\r\n"
+    // Send a 200 OK response with Set-Cookie header to clear the auth cookie
+    // This avoids the browser prompting for basic auth
+    mg_printf(c, "HTTP/1.1 200 OK\r\n"
               "Content-Type: application/json\r\n"
               "Set-Cookie: auth=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict\r\n"
               "Content-Length: 29\r\n\r\n"
