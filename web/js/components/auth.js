@@ -33,7 +33,7 @@ function checkAuthentication() {
         if (response.status === 401) {
             // Authentication required but invalid credentials
             localStorage.removeItem('auth'); // Clear invalid auth
-            window.location.href = 'login.html';
+            window.location.href = 'login.html?auth_required=1';
         }
     })
     .catch(error => {
@@ -70,7 +70,7 @@ function setupAuthInterceptor() {
             .then(response => {
                 // If we get a 401, redirect to login page
                 if (response.status === 401 && !window.location.pathname.endsWith('login.html')) {
-                    window.location.href = 'login.html?t=' + new Date().getTime();
+                    window.location.href = 'login.html?auth_required=1&t=' + new Date().getTime();
                 }
                 return response;
             });

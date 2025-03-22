@@ -18,11 +18,13 @@ export function LoginView() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   
-  // Check URL for error parameter
+  // Check URL for error or auth_required parameter
   useState(() => {
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.has('error')) {
       setErrorMessage('Invalid username or password');
+    } else if (urlParams.has('auth_required')) {
+      setErrorMessage('Authentication required. Please log in to continue.');
     }
   }, []);
   

@@ -9,6 +9,20 @@
     <script>
         // Redirect to live.html if already authenticated
         document.addEventListener('DOMContentLoaded', function() {
+            // Check if we're being redirected due to auth requirements
+            const urlParams = new URLSearchParams(window.location.search);
+            const authRequired = urlParams.has('auth_required');
+            
+            // If auth is required, don't auto-redirect even if we have credentials
+            // This prevents redirect loops when credentials are invalid
+            if (authRequired) {
+                console.log('Auth required, staying on login page');
+                // Clear any potentially invalid credentials
+                localStorage.removeItem('auth');
+                document.cookie = "auth=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict";
+                return;
+            }
+            
             const auth = localStorage.getItem('auth');
             const hasCookie = document.cookie.split(';').some(item => item.trim().startsWith('auth='));
             

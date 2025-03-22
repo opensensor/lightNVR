@@ -751,13 +751,21 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
                 mg_printf(c, "\r\n");
                 mg_printf(c, "{\"error\": \"Unauthorized\"}\n");
             } else {
-                // For other requests, redirect to login page
-                mg_printf(c, "HTTP/1.1 302 Found\r\n");
-                mg_printf(c, "Location: /login.html\r\n");
-                mg_printf(c, "Content-Length: 0\r\n");
-                mg_printf(c, "\r\n");
+                // Check if this is already the login page
+                if (strcmp(uri, "/login.html") == 0 || 
+                    strncmp(uri, "/login.html?", 12) == 0) {
+                    // Already on login page, serve it without authentication
+                    log_info("Serving login page without authentication");
+                    // Continue processing without redirecting
+                } else {
+                    // For other requests, redirect to login page
+                    mg_printf(c, "HTTP/1.1 302 Found\r\n");
+                    mg_printf(c, "Location: /login.html\r\n");
+                    mg_printf(c, "Content-Length: 0\r\n");
+                    mg_printf(c, "\r\n");
+                    return;
+                }
             }
-            return;
         }
 
         // Handle CORS preflight request
