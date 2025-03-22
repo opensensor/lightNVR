@@ -3,84 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LightNVR - Login</title>
+    <title>Login - LightNVR</title>
     <link rel="stylesheet" href="css/main.css">
     <link rel="icon" href="img/favicon.ico" type="image/x-icon">
-    <script src="/js/components/auth.js"></script>
 </head>
-<body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
-    <div class="max-w-md mx-auto mt-24 p-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
-        <div class="text-center mb-6">
-            <h1 class="text-2xl font-bold text-blue-600 dark:text-blue-400">LightNVR</h1>
-            <p class="text-gray-600 dark:text-gray-300 mt-2">Please log in to continue</p>
-        </div>
-        
-        <div id="error-message" class="hidden mb-4 p-3 bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200 rounded-md text-center">
-            Invalid username or password
-        </div>
-        
-        <form id="login-form" class="space-y-4">
-            <div>
-                <label for="username" class="block mb-1 font-medium">Username</label>
-                <input type="text" id="username" name="username" required 
-                       class="w-full p-2 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-            </div>
-            
-            <div>
-                <label for="password" class="block mb-1 font-medium">Password</label>
-                <input type="password" id="password" name="password" required 
-                       class="w-full p-2 border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-            </div>
-            
-            <button type="submit" 
-                    class="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
-                Login
-            </button>
-        </form>
-    </div>
-    
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // Check if there's a login error parameter
-            const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.get('error') === 'auth') {
-                document.getElementById('error-message').classList.remove('hidden');
-            }
-            
-            // Handle form submission
-            document.getElementById('login-form').addEventListener('submit', function(e) {
-                e.preventDefault();
-                
-                const username = document.getElementById('username').value;
-                const password = document.getElementById('password').value;
-                
-                // Create Basic Auth header
-                const credentials = btoa(username + ':' + password);
-                
-                // Try to access a protected resource
-                fetch('/api/settings', {
-                    headers: {
-                        'Authorization': 'Basic ' + credentials
-                    }
-                })
-                .then(response => {
-                    if (response.ok) {
-                        // Store credentials in localStorage
-                        localStorage.setItem('auth', credentials);
-                        
-                        // Redirect to the main page
-                        window.location.href = 'live.html';
-                    } else {
-                        // Show error message
-                        document.getElementById('error-message').classList.remove('hidden');
-                    }
-                })
-                .catch(error => {
-                    console.error('Login error:', error);
-                    document.getElementById('error-message').classList.remove('hidden');
-                });
-            });
-        });
-    </script>
+<body class="flex flex-col min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+<div class="container mx-auto px-4 flex flex-col min-h-screen">
+    <main id="main-content" class="flex-grow">
+        <!-- LoginView component will be rendered here -->
+    </main>
+</div>
+
+<!-- UI components will be rendered here -->
+<div id="status-message-container"></div>
+
+<!-- Scripts -->
+<script src="js/tailwind.cdn.min.js"></script>
+<script type="module" src="js/preact-app.js"></script>
 </body>
 </html>

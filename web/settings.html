@@ -14,143 +14,7 @@
     </header>
 
     <main id="main-content" class="flex-grow">
-        <section id="settings-page" class="page">
-            <div class="page-header flex justify-between items-center mb-4 p-4 bg-white dark:bg-gray-800 rounded-lg shadow">
-                <h2 class="text-xl font-bold">Settings</h2>
-                <div class="controls">
-                    <button id="save-settings-btn" class="btn-primary">Save Settings</button>
-                </div>
-            </div>
-            <!-- Toast notifications will be handled by toast.js -->
-            
-            <div class="settings-container space-y-6">
-                <div class="settings-group bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-                    <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">General Settings</h3>
-                    <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-                        <label for="setting-log-level" class="font-medium">Log Level</label>
-                        <select id="setting-log-level" class="col-span-2 p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                            <option value="0">Error</option>
-                            <option value="1">Warning</option>
-                            <option value="2" selected>Info</option>
-                            <option value="3">Debug</option>
-                        </select>
-                    </div>
-                </div>
-                
-                <div class="settings-group bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-                    <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">Storage Settings</h3>
-                    <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-                        <label for="setting-storage-path" class="font-medium">Storage Path</label>
-                        <input type="text" id="setting-storage-path" value="/var/lib/lightnvr/recordings" class="col-span-2 p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                    </div>
-                    <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-                        <label for="setting-max-storage" class="font-medium">Maximum Storage Size (GB)</label>
-                        <div class="col-span-2 flex items-center">
-                            <input type="number" id="setting-max-storage" value="0" min="0" class="p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                            <span class="hint ml-2 text-sm text-gray-500 dark:text-gray-400">0 = unlimited</span>
-                        </div>
-                    </div>
-                    <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-                        <label for="setting-retention" class="font-medium">Retention Period (days)</label>
-                        <input type="number" id="setting-retention" value="30" min="1" class="col-span-2 p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                    </div>
-                    <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-                        <label for="setting-auto-delete" class="font-medium">Auto Delete Oldest</label>
-                        <div class="col-span-2">
-                            <input type="checkbox" id="setting-auto-delete" checked class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 dark:bg-gray-700 dark:border-gray-600">
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="settings-group bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-                    <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">Web Interface Settings</h3>
-                    <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-                        <label for="setting-web-port" class="font-medium">Web Port</label>
-                        <input type="number" id="setting-web-port" value="8080" min="1" max="65535" class="col-span-2 p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                    </div>
-                    <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-                        <label for="setting-auth-enabled" class="font-medium">Enable Authentication</label>
-                        <div class="col-span-2">
-                            <input type="checkbox" id="setting-auth-enabled" checked class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 dark:bg-gray-700 dark:border-gray-600">
-                        </div>
-                    </div>
-                    <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-                        <label for="setting-username" class="font-medium">Username</label>
-                        <input type="text" id="setting-username" value="admin" class="col-span-2 p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                    </div>
-                    <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-                        <label for="setting-password" class="font-medium">Password</label>
-                        <input type="password" id="setting-password" value="admin" class="col-span-2 p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                    </div>
-                </div>
-                
-                <div class="settings-group bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-                    <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">Memory Optimization</h3>
-                    <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-                        <label for="setting-buffer-size" class="font-medium">Buffer Size (KB)</label>
-                        <input type="number" id="setting-buffer-size" value="1024" min="128" class="col-span-2 p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                    </div>
-                    <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-                        <label for="setting-use-swap" class="font-medium">Use Swap File</label>
-                        <div class="col-span-2">
-                            <input type="checkbox" id="setting-use-swap" checked class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 dark:bg-gray-700 dark:border-gray-600">
-                        </div>
-                    </div>
-                    <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-                        <label for="setting-swap-size" class="font-medium">Swap Size (MB)</label>
-                        <input type="number" id="setting-swap-size" value="128" min="32" class="col-span-2 p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                    </div>
-                </div>
-                
-                <div class="settings-group bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-                    <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">Detection-Based Recording</h3>
-                    <div class="setting mb-4">
-                        <p class="setting-description mb-2 text-gray-700 dark:text-gray-300">
-                            Configure detection-based recording for streams. When enabled, recordings will only be saved when objects are detected.
-                        </p>
-                        <p class="setting-description mb-2 text-gray-700 dark:text-gray-300">
-                            <strong>Motion Detection:</strong> Built-in motion detection is available without requiring any external models. 
-                            Select "motion" as the detection model in stream settings to use this feature.
-                        </p>
-                        <p class="setting-description mb-2 text-gray-700 dark:text-gray-300">
-                            <strong>Optimized Motion Detection:</strong> Memory and CPU optimized motion detection for embedded devices.
-                            Select "motion" as the detection model in stream settings to use this feature.
-                        </p>
-                    </div>
-                    <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-                        <label for="setting-detection-models-path" class="font-medium">Detection Models Path</label>
-                        <div class="col-span-2">
-                            <input type="text" id="setting-detection-models-path" placeholder="/var/lib/lightnvr/models" class="w-full p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                            <span class="hint text-sm text-gray-500 dark:text-gray-400">Directory where detection models are stored</span>
-                        </div>
-                    </div>
-                    <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-                        <label for="setting-default-detection-threshold" class="font-medium">Default Detection Threshold</label>
-                        <div class="col-span-2">
-                            <div class="flex items-center">
-                                <input type="range" id="setting-default-detection-threshold" min="0" max="100" value="50" step="1" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700">
-                                <span id="threshold-value" class="ml-2 min-w-[3rem] text-center">50%</span>
-                            </div>
-                            <span class="hint text-sm text-gray-500 dark:text-gray-400">Confidence threshold for detection (0-100%)</span>
-                        </div>
-                    </div>
-                    <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-                        <label for="setting-default-pre-buffer" class="font-medium">Default Pre-detection Buffer (seconds)</label>
-                        <div class="col-span-2">
-                            <input type="number" id="setting-default-pre-buffer" value="5" min="0" max="60" class="p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                            <span class="hint text-sm text-gray-500 dark:text-gray-400">Seconds of video to keep before detection</span>
-                        </div>
-                    </div>
-                    <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-                        <label for="setting-default-post-buffer" class="font-medium">Default Post-detection Buffer (seconds)</label>
-                        <div class="col-span-2">
-                            <input type="number" id="setting-default-post-buffer" value="10" min="0" max="300" class="p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                            <span class="hint text-sm text-gray-500 dark:text-gray-400">Seconds of video to keep after detection</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
+        <!-- SettingsView component will be rendered here -->
     </main>
 
     <footer id="footer-container" class="mt-auto">
@@ -158,25 +22,13 @@
     </footer>
 </div>
 
-<script src="js/alpine.cdn.min.js" defer></script>
+<!-- UI components will be rendered here -->
+<div id="status-message-container"></div>
+<div id="snapshot-modal-container"></div>
+<div id="video-modal-container"></div>
+
+<!-- Scripts -->
 <script src="js/tailwind.cdn.min.js"></script>
-<script src="js/core.js"></script>
-<script src="js/components/layout.alpine.js"></script>
-<script src="js/components/toast.js"></script>
-<script src="js/components/ui.alpine.js"></script>
-<script src="js/components/ui.js"></script>
-<script src="js/components/settings.js"></script>
-<script src="js/pages/pages.js"></script>
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
-        // Load header and footer
-        loadHeader('nav-settings');
-        loadFooter();
-        
-        // Initialize the settings view
-        setupSettingsHandlers();
-        loadSettings();
-    });
-</script>
+<script type="module" src="js/preact-app.js"></script>
 </body>
 </html>

@@ -8,6 +8,12 @@ import htm from './htm.module.js';
 import { loadHeader } from './components/preact/Header.js';
 import { loadFooter } from './components/preact/Footer.js';
 import { loadLiveView } from './components/preact/LiveView.js';
+import { loadRecordingsView } from './components/preact/RecordingsView.js';
+import { loadSettingsView } from './components/preact/SettingsView.js';
+import { loadStreamsView } from './components/preact/StreamsView.js';
+import { loadSystemView } from './components/preact/SystemView.js';
+import { loadLoginView } from './components/preact/LoginView.js';
+import { loadIndexView } from './components/preact/IndexView.js';
 import { setupModals, addStatusMessageStyles } from './components/preact/UI.js';
 
 // Initialize htm with Preact's h
@@ -75,7 +81,6 @@ function initApp() {
   
   switch (currentPage) {
     case 'live.html':
-    case 'live.preact.html':
       activeNav = 'nav-live';
       break;
     case 'recordings.html':
@@ -97,8 +102,20 @@ function initApp() {
   loadFooter();
   
   // Load page-specific content
-  if (currentPage === 'live.html' || currentPage === 'live.preact.html') {
+  if (currentPage === 'live.html') {
     loadLiveView();
+  } else if (currentPage === 'recordings.html') {
+    loadRecordingsView();
+  } else if (currentPage === 'settings.html') {
+    loadSettingsView();
+  } else if (currentPage === 'streams.html') {
+    loadStreamsView();
+  } else if (currentPage === 'system.html') {
+    loadSystemView();
+  } else if (currentPage === 'login.html') {
+    loadLoginView();
+  } else if (currentPage === 'index.html' || currentPage === '') {
+    loadIndexView();
   }
   
   // Setup UI components

@@ -3,22 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LightNVR</title>
+    <title>Dashboard - LightNVR</title>
     <link rel="stylesheet" href="css/main.css">
     <link rel="icon" href="img/favicon.ico" type="image/x-icon">
-    <script>
-        // Redirect to live view
-        window.location.href = 'live.html';
-    </script>
 </head>
-<body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
-    <div class="flex items-center justify-center min-h-screen">
-        <div class="text-center">
-            <h1 class="text-3xl font-bold text-blue-600 dark:text-blue-400 mb-4">LightNVR</h1>
-            <p class="mb-4">Redirecting to Live View...</p>
-            <div class="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto"></div>
-            <p class="mt-4">If you are not redirected automatically, <a href="live.html" class="text-blue-600 hover:underline dark:text-blue-400">click here</a>.</p>
-        </div>
-    </div>
+<body class="flex flex-col min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+<div class="container mx-auto px-4 flex flex-col min-h-screen">
+    <header id="header-container">
+        <!-- Header content will be loaded by JavaScript -->
+    </header>
+
+    <main id="main-content" class="flex-grow">
+        <!-- IndexView component will be rendered here -->
+    </main>
+
+    <footer id="footer-container" class="mt-auto">
+        <!-- Footer content will be loaded by JavaScript -->
+    </footer>
+</div>
+
+<!-- UI components will be rendered here -->
+<div id="status-message-container"></div>
+<div id="snapshot-modal-container"></div>
+<div id="video-modal-container"></div>
+
+<!-- Scripts -->
+<script src="js/tailwind.cdn.min.js"></script>
+<script type="module" src="js/preact-app.js"></script>
 </body>
 </html>
