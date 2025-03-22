@@ -642,26 +642,24 @@ export function RecordingsView() {
       const currentSortDirection = currentUrlParams.get('order') || sortDirection;
       const currentPage = parseInt(currentUrlParams.get('page'), 10) || pagination.currentPage;
       
-      let successCount = 0;
-      let errorCount = 0;
+      // Use the batch delete endpoint
+      const response = await fetch('/api/recordings/batch-delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          ids: selectedIds
+        })
+      });
       
-      // Delete each selected recording
-      for (const id of selectedIds) {
-        try {
-          const response = await fetch(`/api/recordings/${id}`, {
-            method: 'DELETE'
-          });
-          
-          if (response.ok) {
-            successCount++;
-          } else {
-            errorCount++;
-          }
-        } catch (error) {
-          console.error(`Error deleting recording ${id}:`, error);
-          errorCount++;
-        }
+      if (!response.ok) {
+        throw new Error('Failed to delete recordings');
       }
+      
+      const result = await response.json();
+      const successCount = result.succeeded;
+      const errorCount = result.failed;
       
       // Show status message
       if (successCount > 0 && errorCount === 0) {
@@ -817,26 +815,27 @@ export function RecordingsView() {
         return;
       }
       
-      let successCount = 0;
-      let errorCount = 0;
+      // Extract IDs from recordings
+      const idsToDelete = recordingsToDelete.map(recording => recording.id);
       
-      // Delete each recording
-      for (const recording of recordingsToDelete) {
-        try {
-          const deleteResponse = await fetch(`/api/recordings/${recording.id}`, {
-            method: 'DELETE'
-          });
-          
-          if (deleteResponse.ok) {
-            successCount++;
-          } else {
-            errorCount++;
-          }
-        } catch (error) {
-          console.error(`Error deleting recording ${recording.id}:`, error);
-          errorCount++;
-        }
+      // Use the batch delete endpoint
+      const deleteResponse = await fetch('/api/recordings/batch-delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          ids: idsToDelete
+        })
+      });
+      
+      if (!deleteResponse.ok) {
+        throw new Error('Failed to delete recordings');
       }
+      
+      const result = await deleteResponse.json();
+      const successCount = result.succeeded;
+      const errorCount = result.failed;
       
       // Show status message
       if (successCount > 0 && errorCount === 0) {

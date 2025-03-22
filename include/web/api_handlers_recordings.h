@@ -57,6 +57,11 @@ void handle_get_recording(const http_request_t *request, http_response_t *respon
 void handle_delete_recording(const http_request_t *request, http_response_t *response);
 
 /**
+ * Handle POST request to batch delete recordings
+ */
+void handle_batch_delete_recordings(const http_request_t *request, http_response_t *response);
+
+/**
  * Handle GET request to download a recording
  */
 void handle_download_recording(const http_request_t *request, http_response_t *response);

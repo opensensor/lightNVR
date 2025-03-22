@@ -338,6 +338,134 @@ void mg_handle_get_recording(struct mg_connection *c, struct mg_http_message *hm
 }
 
 /**
+ * @brief Direct handler for batch delete recordings
+ */
+void mg_handle_batch_delete_recordings(struct mg_connection *c, struct mg_http_message *hm) {
+    log_info("Handling POST /api/recordings/batch-delete request");
+    
+    // Parse JSON body
+    cJSON *json = mg_parse_json_body(hm);
+    if (!json) {
+        log_error("Failed to parse JSON body");
+        mg_send_json_error(c, 400, "Invalid JSON body");
+        return;
+    }
+    
+    // Extract recording IDs
+    cJSON *ids_array = cJSON_GetObjectItem(json, "ids");
+    if (!ids_array || !cJSON_IsArray(ids_array)) {
+        log_error("Missing or invalid 'ids' array in request");
+        cJSON_Delete(json);
+        mg_send_json_error(c, 400, "Missing or invalid 'ids' array");
+        return;
+    }
+    
+    int array_size = cJSON_GetArraySize(ids_array);
+    if (array_size == 0) {
+        log_warn("Empty 'ids' array in batch delete request");
+        cJSON_Delete(json);
+        mg_send_json_error(c, 400, "Empty 'ids' array");
+        return;
+    }
+    
+    // Process each ID
+    int success_count = 0;
+    int error_count = 0;
+    cJSON *results_array = cJSON_CreateArray();
+    
+    for (int i = 0; i < array_size; i++) {
+        cJSON *id_item = cJSON_GetArrayItem(ids_array, i);
+        if (!id_item || !cJSON_IsNumber(id_item)) {
+            log_warn("Invalid ID at index %d", i);
+            error_count++;
+            continue;
+        }
+        
+        uint64_t id = (uint64_t)id_item->valuedouble;
+        
+        // Get recording from database
+        recording_metadata_t recording;
+        if (get_recording_metadata_by_id(id, &recording) != 0) {
+            log_warn("Recording not found: %llu", (unsigned long long)id);
+            
+            // Add result to array
+            cJSON *result = cJSON_CreateObject();
+            cJSON_AddNumberToObject(result, "id", id);
+            cJSON_AddBoolToObject(result, "success", false);
+            cJSON_AddStringToObject(result, "error", "Recording not found");
+            cJSON_AddItemToArray(results_array, result);
+            
+            error_count++;
+            continue;
+        }
+        
+        // Delete file
+        bool file_deleted = true;
+        if (unlink(recording.file_path) != 0) {
+            log_warn("Failed to delete recording file: %s", recording.file_path);
+            file_deleted = false;
+        } else {
+            log_info("Deleted recording file: %s", recording.file_path);
+        }
+        
+        // Delete from database
+        if (delete_recording_metadata(id) != 0) {
+            log_error("Failed to delete recording from database: %llu", (unsigned long long)id);
+            
+            // Add result to array
+            cJSON *result = cJSON_CreateObject();
+            cJSON_AddNumberToObject(result, "id", id);
+            cJSON_AddBoolToObject(result, "success", false);
+            cJSON_AddStringToObject(result, "error", "Failed to delete from database");
+            cJSON_AddItemToArray(results_array, result);
+            
+            error_count++;
+        } else {
+            // Add success result to array
+            cJSON *result = cJSON_CreateObject();
+            cJSON_AddNumberToObject(result, "id", id);
+            cJSON_AddBoolToObject(result, "success", true);
+            if (!file_deleted) {
+                cJSON_AddStringToObject(result, "warning", "File not deleted but removed from database");
+            }
+            cJSON_AddItemToArray(results_array, result);
+            
+            success_count++;
+            log_info("Successfully deleted recording: %llu", (unsigned long long)id);
+        }
+    }
+    
+    // Create response
+    cJSON *response = cJSON_CreateObject();
+    cJSON_AddBoolToObject(response, "success", error_count == 0);
+    cJSON_AddNumberToObject(response, "total", array_size);
+    cJSON_AddNumberToObject(response, "succeeded", success_count);
+    cJSON_AddNumberToObject(response, "failed", error_count);
+    cJSON_AddItemToObject(response, "results", results_array);
+    
+    // Convert to string
+    char *json_str = cJSON_PrintUnformatted(response);
+    if (!json_str) {
+        log_error("Failed to convert response JSON to string");
+        cJSON_Delete(json);
+        cJSON_Delete(response);
+        mg_send_json_error(c, 500, "Failed to create response");
+        return;
+    }
+    
+    // Send response
+    mg_send_json_response(c, 200, json_str);
+    
+    // Clean up
+    free(json_str);
+    cJSON_Delete(json);
+    cJSON_Delete(response);
+    
+    log_info("Successfully handled batch delete request: %d succeeded, %d failed", 
+             success_count, error_count);
+}
+
+/**
  * @brief Direct handler for DELETE /api/recordings/:id
  */
 void mg_handle_delete_recording(struct mg_connection *c, struct mg_http_message *hm) {
