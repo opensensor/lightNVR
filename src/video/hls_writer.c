@@ -325,6 +325,14 @@ int hls_writer_initialize(hls_writer_t *writer, const AVStream *input_stream) {
         return -1;
     }
 
+    // Determine if this is a video or audio stream
+    enum AVMediaType codec_type = input_stream->codecpar->codec_type;
+    
+    if (codec_type != AVMEDIA_TYPE_VIDEO && codec_type != AVMEDIA_TYPE_AUDIO) {
+        log_warn("Unsupported stream type for HLS: %d", codec_type);
+        return -1;
+    }
+    
     // Create output stream
     AVStream *out_stream = avformat_new_stream(writer->output_ctx, NULL);
     if (!out_stream) {
@@ -343,29 +351,46 @@ int hls_writer_initialize(hls_writer_t *writer, const AVStream *input_stream) {
 
     // Set stream time base
     out_stream->time_base = input_stream->time_base;
-
-    // SIMPLIFIED APPROACH: Let FFmpeg handle manifest file creation
-    // Just use basic options for reliability
-    AVDictionary *options = NULL;
-
-    // Write the header
-    ret = avformat_write_header(writer->output_ctx, &options);
-    if (ret < 0) {
-        char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
-        av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-        log_error("Failed to write HLS header: %s", error_buf);
-        av_dict_free(&options);
-        return ret;
+    
+    // Store the stream index based on type
+    if (codec_type == AVMEDIA_TYPE_VIDEO) {
+        writer->video_stream_idx = out_stream->index;
+        writer->video_dts_tracker.time_base = input_stream->time_base;
+        writer->video_dts_tracker.initialized = 0;
+        log_info("Added video stream to HLS output at index %d", writer->video_stream_idx);
+    } else if (codec_type == AVMEDIA_TYPE_AUDIO) {
+        writer->audio_stream_idx = out_stream->index;
+        writer->audio_dts_tracker.time_base = input_stream->time_base;
+        writer->audio_dts_tracker.initialized = 0;
+        log_info("Added audio stream to HLS output at index %d", writer->audio_stream_idx);
     }
 
-    av_dict_free(&options);
+    // If this is the first stream, write the header
+    if (!writer->initialized) {
+        // SIMPLIFIED APPROACH: Let FFmpeg handle manifest file creation
+        // Just use basic options for reliability
+        AVDictionary *options = NULL;
 
-    // SIMPLIFIED APPROACH: Let FFmpeg handle manifest file creation completely
-    // Remove the fallback mechanism as it might interfere with FFmpeg's own manifest creation
-    log_info("Letting FFmpeg handle manifest file creation for stream %s", writer->stream_name);
+        // Write the header
+        ret = avformat_write_header(writer->output_ctx, &options);
+        if (ret < 0) {
+            char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+            av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+            log_error("Failed to write HLS header: %s", error_buf);
+            av_dict_free(&options);
+            return ret;
+        }
 
-    writer->initialized = 1;
-    log_info("Initialized HLS writer for stream %s", writer->stream_name);
+        av_dict_free(&options);
+
+        // SIMPLIFIED APPROACH: Let FFmpeg handle manifest file creation completely
+        // Remove the fallback mechanism as it might interfere with FFmpeg's own manifest creation
+        log_info("Letting FFmpeg handle manifest file creation for stream %s", writer->stream_name);
+
+        writer->initialized = 1;
+        log_info("Initialized HLS writer for stream %s", writer->stream_name);
+    }
+    
     return 0;
 }
 
@@ -502,15 +527,33 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
         return -1;
     }
 
+    // Determine if this is a video or audio packet and use the appropriate DTS tracker
+    enum AVMediaType codec_type = input_stream->codecpar->codec_type;
+    stream_dts_info_t *dts_tracker;
+    
+    if (codec_type == AVMEDIA_TYPE_VIDEO) {
+        dts_tracker = &writer->video_dts_tracker;
+        out_pkt.stream_index = writer->video_stream_idx;
+        log_debug("Processing video packet for HLS stream %s", writer->stream_name);
+    } else if (codec_type == AVMEDIA_TYPE_AUDIO) {
+        dts_tracker = &writer->audio_dts_tracker;
+        out_pkt.stream_index = writer->audio_stream_idx;
+        log_debug("Processing audio packet for HLS stream %s", writer->stream_name);
+    } else {
+        log_warn("Unsupported packet type for HLS: %d", codec_type);
+        av_packet_unref(&out_pkt);
+        return -1;
+    }
+    
     // Initialize DTS tracker for this stream if needed
-    stream_dts_info_t *dts_tracker = &writer->dts_tracker;
     if (!dts_tracker->initialized) {
         dts_tracker->first_dts = pkt->dts != AV_NOPTS_VALUE ? pkt->dts : pkt->pts;
         dts_tracker->last_dts = dts_tracker->first_dts;
         dts_tracker->time_base = input_stream->time_base;
         dts_tracker->initialized = 1;
 
-        log_debug("Initialized DTS tracker for HLS stream %s: first_dts=%lld, time_base=%d/%d",
+        log_debug("Initialized DTS tracker for HLS %s stream %s: first_dts=%lld, time_base=%d/%d",
+                 codec_type == AVMEDIA_TYPE_VIDEO ? "video" : "audio",
                  writer->stream_name,
                  (long long)dts_tracker->first_dts,
                  dts_tracker->time_base.num,

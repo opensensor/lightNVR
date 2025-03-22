@@ -117,6 +117,14 @@ static void *stream_reader_thread(void *arg) {
         return NULL;
     }
     
+    // Find audio stream (optional)
+    ctx->audio_stream_idx = find_audio_stream_index(ctx->input_ctx);
+    if (ctx->audio_stream_idx == -1) {
+        log_info("No audio stream found in %s", ctx->config.url);
+    } else {
+        log_info("Found audio stream at index %d in %s", ctx->audio_stream_idx, ctx->config.url);
+    }
+    
     // Initialize packet
     pkt = av_packet_alloc();
     if (!pkt) {
@@ -407,6 +415,15 @@ static void *stream_reader_thread(void *arg) {
                     continue;  // Keep trying
                 }
                 
+                // Find audio stream again (optional)
+                ctx->audio_stream_idx = find_audio_stream_index(ctx->input_ctx);
+                if (ctx->audio_stream_idx == -1) {
+                    log_info("No audio stream found in %s after reconnect", ctx->config.url);
+                } else {
+                    log_info("Found audio stream at index %d in %s after reconnect", 
+                            ctx->audio_stream_idx, ctx->config.url);
+                }
+                
                 continue;
             } else {
                 log_ffmpeg_error(ret, "Error reading frame");
@@ -414,18 +431,23 @@ static void *stream_reader_thread(void *arg) {
             }
         }
         
-        // Process video packets directly
-        if (pkt->stream_index == ctx->video_stream_idx) {
-            // Check if this is a key frame (for logging)
-            int is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) ? 1 : 0;
+        // Process video and audio packets
+        if (pkt->stream_index == ctx->video_stream_idx || 
+            (ctx->audio_stream_idx != -1 && pkt->stream_index == ctx->audio_stream_idx)) {
             
-            if (is_key_frame) {
-                log_debug("Processing keyframe: pts=%lld, dts=%lld, size=%d",
+            // Check if this is a key frame (for logging, video only)
+            if (pkt->stream_index == ctx->video_stream_idx) {
+                int is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) ? 1 : 0;
+                
+                if (is_key_frame) {
+                    log_debug("Processing video keyframe: pts=%lld, dts=%lld, size=%d",
+                             (long long)pkt->pts, (long long)pkt->dts, pkt->size);
+                }
+            } else {
+                // Log audio packets at debug level
+                log_debug("Processing audio packet: pts=%lld, dts=%lld, size=%d",
                          (long long)pkt->pts, (long long)pkt->dts, pkt->size);
             }
-            
-            // Removed packet throttling mechanism to improve quality
-            // Always process all frames for better quality
             
             // CRITICAL FIX: Double-check that we're still running and have a valid callback
             // This prevents use-after-free issues during shutdown
@@ -438,9 +460,14 @@ static void *stream_reader_thread(void *arg) {
             packet_callback_t callback = ctx->packet_callback;
             void *callback_data = ctx->callback_data;
             
+            // Get the appropriate stream based on packet type
+            const AVStream *stream = (pkt->stream_index == ctx->video_stream_idx) ? 
+                ctx->input_ctx->streams[ctx->video_stream_idx] : 
+                ctx->input_ctx->streams[ctx->audio_stream_idx];
+            
             // Final check before calling the callback
             if (callback) {
-                ret = callback(pkt, ctx->input_ctx->streams[ctx->video_stream_idx], callback_data);
+                ret = callback(pkt, stream, callback_data);
                 if (ret < 0) {
                     log_error("Packet callback failed for stream %s: %d", ctx->config.name, ret);
                     // Continue anyway

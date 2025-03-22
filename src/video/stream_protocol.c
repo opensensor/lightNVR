@@ -216,3 +216,20 @@ int find_video_stream_index(AVFormatContext *input_ctx) {
 
     return -1;
 }
+
+/**
+ * Find audio stream index in the input context
+ */
+int find_audio_stream_index(AVFormatContext *input_ctx) {
+    if (!input_ctx) {
+        return -1;
+    }
+
+    for (unsigned int i = 0; i < input_ctx->nb_streams; i++) {
+        if (input_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
+            return i;
+        }
+    }
+
+    return -1;
+}

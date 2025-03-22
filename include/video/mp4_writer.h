@@ -11,17 +11,29 @@
 // Forward declaration of the MP4 writer structure
 typedef struct mp4_writer mp4_writer_t;
 
+// Forward declaration for the timestamp tracking structure
+typedef struct {
+    int64_t first_dts;
+    int64_t first_pts;
+    int64_t last_dts;
+    AVRational time_base;
+    int initialized;
+} mp4_timestamp_info_t;
+
 // Full definition of the MP4 writer structure
 struct mp4_writer {
     char output_path[MAX_PATH_LENGTH];
     char stream_name[MAX_STREAM_NAME];
     AVFormatContext *output_ctx;
+    
+    // Stream indexes in output context
     int video_stream_idx;
-    int has_audio;
-    int64_t first_dts;
-    int64_t first_pts;
-    int64_t last_dts;
-    AVRational time_base;
+    int audio_stream_idx;
+    
+    // Per-stream timestamp tracking
+    mp4_timestamp_info_t video_ts_info;
+    mp4_timestamp_info_t audio_ts_info;
+    
     int is_initialized;
     time_t creation_time;
 };
