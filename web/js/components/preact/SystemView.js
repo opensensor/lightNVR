@@ -98,6 +98,31 @@ export function SystemView() {
     }
   };
   
+  // Clear logs
+  const clearLogs = async () => {
+    if (!confirm('Are you sure you want to clear all logs?')) {
+      return;
+    }
+    
+    try {
+      showStatusMessage('Clearing logs...');
+      
+      const response = await fetch('/api/system/logs/clear', {
+        method: 'POST'
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to clear logs');
+      }
+      
+      showStatusMessage('Logs cleared successfully');
+      loadLogs(); // Reload logs after clearing
+    } catch (error) {
+      console.error('Error clearing logs:', error);
+      showStatusMessage('Error clearing logs: ' + error.message);
+    }
+  };
+  
   // Restart system
   const restartSystem = async () => {
     if (!confirm('Are you sure you want to restart the system?')) {
@@ -348,6 +373,13 @@ export function SystemView() {
               onClick=${loadLogs}
             >
               Refresh
+            </button>
+            <button 
+              id="clear-logs-btn" 
+              class="px-3 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+              onClick=${clearLogs}
+            >
+              Clear Logs
             </button>
           </div>
         </div>

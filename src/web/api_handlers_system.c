@@ -9,6 +9,14 @@
 #include <sys/utsname.h>
 #include <sys/sysinfo.h>
 #include <sys/statvfs.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <ifaddrs.h>
+#include <net/if.h>
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <errno.h>
 
 #include "web/api_handlers.h"
 #include "web/mongoose_adapter.h"
@@ -71,30 +79,85 @@ void mg_handle_get_system_info(struct mg_connection *c, struct mg_http_message *
         }
     }
     
-    // Get memory information
-    struct sysinfo sys_info;
-    if (sysinfo(&sys_info) == 0) {
-        // Create memory object
-        cJSON *memory = cJSON_CreateObject();
-        if (memory) {
-            // Calculate memory values in bytes for consistency
-            unsigned long long total = sys_info.totalram * sys_info.mem_unit;
-            unsigned long long used = (sys_info.totalram - sys_info.freeram) * sys_info.mem_unit;
-            unsigned long long free = sys_info.freeram * sys_info.mem_unit;
-            
-            cJSON_AddNumberToObject(memory, "total", total);
-            cJSON_AddNumberToObject(memory, "used", used);
-            cJSON_AddNumberToObject(memory, "free", free);
-            
-            // Add memory object to info
-            cJSON_AddItemToObject(info, "memory", memory);
+    // Get memory information for the LightNVR process
+    cJSON *memory = cJSON_CreateObject();
+    if (memory) {
+        // Get process memory usage using /proc/self/status
+        FILE *fp = fopen("/proc/self/status", "r");
+        unsigned long vm_size = 0;
+        unsigned long vm_rss = 0;
+        
+        if (fp) {
+            char line[256];
+            while (fgets(line, sizeof(line), fp)) {
+                if (strncmp(line, "VmSize:", 7) == 0) {
+                    // VmSize is in kB
+                    sscanf(line + 7, "%lu", &vm_size);
+                } else if (strncmp(line, "VmRSS:", 6) == 0) {
+                    // VmRSS is in kB
+                    sscanf(line + 6, "%lu", &vm_rss);
+                }
+            }
+            fclose(fp);
         }
         
-        // Get uptime
-        cJSON_AddNumberToObject(info, "uptime", sys_info.uptime);
+        // Convert kB to bytes
+        unsigned long long total = vm_size * 1024;
+        unsigned long long used = vm_rss * 1024;
+        unsigned long long free = total - used;
+        
+        cJSON_AddNumberToObject(memory, "total", total);
+        cJSON_AddNumberToObject(memory, "used", used);
+        cJSON_AddNumberToObject(memory, "free", free);
+        
+        // Add memory object to info
+        cJSON_AddItemToObject(info, "memory", memory);
     }
     
-    // Get disk information
+    // Get uptime of the LightNVR process
+    // Use /proc/self/stat to get process start time
+    FILE *stat_file = fopen("/proc/self/stat", "r");
+    if (stat_file) {
+        // Fields in /proc/self/stat
+        char comm[256];
+        char state;
+        int ppid, pgrp, session, tty_nr, tpgid;
+        unsigned long flags, minflt, cminflt, majflt, cmajflt, utime, stime;
+        long cutime, cstime, priority, nice, num_threads, itrealvalue;
+        unsigned long long starttime;
+        
+        // Read the stat file
+        fscanf(stat_file, "%*d %s %c %d %d %d %d %d %lu %lu %lu %lu %lu %lu %lu %ld %ld %ld %ld %ld %ld %llu",
+               comm, &state, &ppid, &pgrp, &session, &tty_nr, &tpgid,
+               &flags, &minflt, &cminflt, &majflt, &cmajflt, &utime, &stime,
+               &cutime, &cstime, &priority, &nice, &num_threads, &itrealvalue, &starttime);
+        fclose(stat_file);
+        
+        // Get system uptime
+        FILE *uptime_file = fopen("/proc/uptime", "r");
+        double system_uptime = 0;
+        if (uptime_file) {
+            fscanf(uptime_file, "%lf", &system_uptime);
+            fclose(uptime_file);
+        }
+        
+        // Calculate process uptime in seconds
+        // starttime is in clock ticks since system boot
+        // Convert to seconds by dividing by sysconf(_SC_CLK_TCK)
+        long clock_ticks = sysconf(_SC_CLK_TCK);
+        double process_uptime = system_uptime - ((double)starttime / clock_ticks);
+        
+        // Add process uptime to info
+        cJSON_AddNumberToObject(info, "uptime", process_uptime);
+    } else {
+        // Fallback to system uptime if process uptime can't be determined
+        struct sysinfo sys_info;
+        if (sysinfo(&sys_info) == 0) {
+            cJSON_AddNumberToObject(info, "uptime", sys_info.uptime);
+        }
+    }
+    
+    // Get disk information for the configured storage path
     struct statvfs disk_info;
     if (statvfs(g_config.storage_path, &disk_info) == 0) {
         // Create disk object
@@ -102,8 +165,23 @@ void mg_handle_get_system_info(struct mg_connection *c, struct mg_http_message *
         if (disk) {
             // Calculate disk values in bytes for consistency
             unsigned long long total = disk_info.f_blocks * disk_info.f_frsize;
-            unsigned long long used = (disk_info.f_blocks - disk_info.f_bfree) * disk_info.f_frsize;
             unsigned long long free = disk_info.f_bfree * disk_info.f_frsize;
+            
+            // Get actual usage of the storage directory
+            unsigned long long used = 0;
+            char command[512];
+            snprintf(command, sizeof(command), "du -sb %s 2>/dev/null | cut -f1", g_config.storage_path);
+            FILE *fp = popen(command, "r");
+            if (fp) {
+                if (fscanf(fp, "%llu", &used) != 1) {
+                    // If du command fails, fall back to statvfs calculation
+                    used = (disk_info.f_blocks - disk_info.f_bfree) * disk_info.f_frsize;
+                }
+                pclose(fp);
+            } else {
+                // Fallback if popen fails
+                used = (disk_info.f_blocks - disk_info.f_bfree) * disk_info.f_frsize;
+            }
             
             cJSON_AddNumberToObject(disk, "total", total);
             cJSON_AddNumberToObject(disk, "used", used);
@@ -120,44 +198,147 @@ void mg_handle_get_system_info(struct mg_connection *c, struct mg_http_message *
         // Create interfaces array
         cJSON *interfaces = cJSON_CreateArray();
         if (interfaces) {
-            // Get network interfaces (simplified example)
-            FILE *fp = fopen("/proc/net/dev", "r");
-            if (fp) {
-                char line[256];
-                // Skip header lines
-                fgets(line, sizeof(line), fp);
-                fgets(line, sizeof(line), fp);
-                
-                // Read interfaces
-                while (fgets(line, sizeof(line), fp)) {
-                    char *name = strtok(line, ":");
-                    if (name) {
-                        // Trim whitespace
-                        while (*name == ' ') name++;
-                        
-                        // Skip loopback
-                        if (strcmp(name, "lo") != 0) {
-                            cJSON *iface = cJSON_CreateObject();
-                            if (iface) {
-                                cJSON_AddStringToObject(iface, "name", name);
-                                
-                                // Get IP address (simplified)
-                                char address[128] = "Unknown";
-                                char mac[128] = "Unknown";
-                                bool up = true;
-                                
-                                // Try to get more info with getifaddrs in a real implementation
-                                
-                                cJSON_AddStringToObject(iface, "address", address);
-                                cJSON_AddStringToObject(iface, "mac", mac);
-                                cJSON_AddBoolToObject(iface, "up", up);
-                                
-                                cJSON_AddItemToArray(interfaces, iface);
+            // Get network interfaces with IP addresses using getifaddrs
+            struct ifaddrs *ifaddr, *ifa;
+            int family;
+            char host[NI_MAXHOST];
+            
+            if (getifaddrs(&ifaddr) == 0) {
+                // Walk through linked list, maintaining head pointer so we can free list later
+                for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+                    if (ifa->ifa_addr == NULL)
+                        continue;
+                    
+                    family = ifa->ifa_addr->sa_family;
+                    
+                    // Skip loopback interface
+                    if (strcmp(ifa->ifa_name, "lo") == 0)
+                        continue;
+                    
+                    // Check if this is an IPv4 address
+                    if (family == AF_INET) {
+                        // Get IP address
+                        int s = getnameinfo(ifa->ifa_addr, sizeof(struct sockaddr_in),
+                                           host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
+                        if (s == 0) {
+                            // Check if we already have this interface in our array
+                            bool found = false;
+                            cJSON *existing_iface = NULL;
+                            
+                            for (int i = 0; i < cJSON_GetArraySize(interfaces); i++) {
+                                existing_iface = cJSON_GetArrayItem(interfaces, i);
+                                cJSON *name_obj = cJSON_GetObjectItem(existing_iface, "name");
+                                if (name_obj && name_obj->valuestring && strcmp(name_obj->valuestring, ifa->ifa_name) == 0) {
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            
+                            if (!found) {
+                                // Create new interface object
+                                cJSON *iface = cJSON_CreateObject();
+                                if (iface) {
+                                    cJSON_AddStringToObject(iface, "name", ifa->ifa_name);
+                                    cJSON_AddStringToObject(iface, "address", host);
+                                    
+                                    // Get MAC address (simplified)
+                                    char mac[128] = "Unknown";
+                                    char mac_path[256];
+                                    snprintf(mac_path, sizeof(mac_path), "/sys/class/net/%s/address", ifa->ifa_name);
+                                    FILE *mac_file = fopen(mac_path, "r");
+                                    if (mac_file) {
+                                        if (fgets(mac, sizeof(mac), mac_file)) {
+                                            // Remove newline
+                                            mac[strcspn(mac, "\n")] = 0;
+                                        }
+                                        fclose(mac_file);
+                                    }
+                                    
+                                    cJSON_AddStringToObject(iface, "mac", mac);
+                                    cJSON_AddBoolToObject(iface, "up", (ifa->ifa_flags & IFF_UP) != 0);
+                                    
+                                    cJSON_AddItemToArray(interfaces, iface);
+                                }
                             }
                         }
                     }
                 }
-                fclose(fp);
+                
+                freeifaddrs(ifaddr);
+            } else {
+                // Fallback to /proc/net/dev if getifaddrs fails
+                FILE *fp = fopen("/proc/net/dev", "r");
+                if (fp) {
+                    char line[256];
+                    // Skip header lines
+                    fgets(line, sizeof(line), fp);
+                    fgets(line, sizeof(line), fp);
+                    
+                    // Read interfaces
+                    while (fgets(line, sizeof(line), fp)) {
+                        char *name = strtok(line, ":");
+                        if (name) {
+                            // Trim whitespace
+                            while (*name == ' ') name++;
+                            
+                            // Skip loopback
+                            if (strcmp(name, "lo") != 0) {
+                                cJSON *iface = cJSON_CreateObject();
+                                if (iface) {
+                                    cJSON_AddStringToObject(iface, "name", name);
+                                    
+                                    // Try to get IP address using ip command
+                                    char ip_cmd[256];
+                                    char ip_addr[128] = "Unknown";
+                                    snprintf(ip_cmd, sizeof(ip_cmd), "ip -4 addr show %s | grep -oP '(?<=inet\\s)\\d+(\\.\\d+){3}'", name);
+                                    FILE *ip_fp = popen(ip_cmd, "r");
+                                    if (ip_fp) {
+                                        if (fgets(ip_addr, sizeof(ip_addr), ip_fp)) {
+                                            // Remove newline
+                                            ip_addr[strcspn(ip_addr, "\n")] = 0;
+                                        }
+                                        pclose(ip_fp);
+                                    }
+                                    
+                                    cJSON_AddStringToObject(iface, "address", ip_addr);
+                                    
+                                    // Get MAC address
+                                    char mac[128] = "Unknown";
+                                    char mac_path[256];
+                                    snprintf(mac_path, sizeof(mac_path), "/sys/class/net/%s/address", name);
+                                    FILE *mac_file = fopen(mac_path, "r");
+                                    if (mac_file) {
+                                        if (fgets(mac, sizeof(mac), mac_file)) {
+                                            // Remove newline
+                                            mac[strcspn(mac, "\n")] = 0;
+                                        }
+                                        fclose(mac_file);
+                                    }
+                                    
+                                    cJSON_AddStringToObject(iface, "mac", mac);
+                                    
+                                    // Check if interface is up
+                                    char flags_path[256];
+                                    snprintf(flags_path, sizeof(flags_path), "/sys/class/net/%s/flags", name);
+                                    FILE *flags_file = fopen(flags_path, "r");
+                                    bool is_up = false;
+                                    if (flags_file) {
+                                        unsigned int flags;
+                                        if (fscanf(flags_file, "%x", &flags) == 1) {
+                                            is_up = (flags & 1) != 0; // IFF_UP is 0x1
+                                        }
+                                        fclose(flags_file);
+                                    }
+                                    
+                                    cJSON_AddBoolToObject(iface, "up", is_up);
+                                    
+                                    cJSON_AddItemToArray(interfaces, iface);
+                                }
+                            }
+                        }
+                    }
+                    fclose(fp);
+                }
             }
             
             // Add interfaces array to network object
