@@ -19,7 +19,7 @@
  * @brief Handle static file request
  */
 void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_message *hm, http_server_t *server) {
-    // Note: The mutex is already locked in the calling function (process_request_task or handle_http_request)
+    // Note: No mutex locking needed as each connection is handled by a single thread
     // Extract URI
     char uri[MAX_PATH_LENGTH];
     size_t uri_len = hm->uri.len < sizeof(uri) - 1 ? hm->uri.len : sizeof(uri) - 1;

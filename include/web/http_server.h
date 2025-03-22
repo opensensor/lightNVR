@@ -17,8 +17,7 @@ struct mg_connection;
 struct mg_http_message;
 
 // Forward declarations
-typedef struct thread_pool thread_pool_t;
-typedef struct connection_mutex_pool connection_mutex_pool_t;
+typedef struct connection_pool connection_pool_t;
 
 /**
  * @brief HTTP server configuration
@@ -50,12 +49,11 @@ typedef struct http_server {
     http_server_config_t config;    // Server configuration
     bool running;                   // Server running flag
     
-    // Thread pool for concurrent request handling
-    thread_pool_t *thread_pool;     // Thread pool for handling requests
+    // Connection pool for handling connections
+    connection_pool_t *conn_pool;   // Connection pool for handling connections
     
     // Synchronization
     pthread_mutex_t mutex;          // Global mutex for thread safety
-    connection_mutex_pool_t *conn_mutex_pool; // Connection-specific mutex pool
     
     // Statistics
     int active_connections;         // Number of active connections

@@ -11,8 +11,7 @@
 #include "web/http_server.h"
 #include "core/logger.h"
 #include "utils/memory.h"
-#include "web/thread_pool.h"
-#include "web/mongoose_server_thread.h"
+#include "web/connection_pool.h"
 
 // Include Mongoose
 #include "mongoose.h"
@@ -134,8 +133,6 @@ static const mg_api_route_t s_api_routes[] = {
  * @return true if request was handled, false otherwise
  */
 static bool handle_api_request(struct mg_connection *c, struct mg_http_message *hm) {
-    // Note: The connection mutex is already locked in the calling function (process_request_task)
-    
     // Extract URI and method
     char uri[MAX_PATH_LENGTH];
     size_t uri_len = hm->uri.len < sizeof(uri) - 1 ? hm->uri.len : sizeof(uri) - 1;
@@ -357,103 +354,6 @@ http_server_handle_t http_server_init(const http_server_config_t *config) {
     return mongoose_server_init(config);
 }
 
-// Structure to hold request processing data
-typedef struct {
-    struct mg_connection *connection;
-    struct mg_http_message *message;
-    http_server_t *server;
-    uintptr_t conn_id;  // Connection ID for mutex pool
-} request_data_t;
-
-/**
- * @brief Thread pool worker function to process HTTP requests
- * 
- * @param arg Request data (request_data_t*)
- */
-static void process_request_task(void *arg) {
-    request_data_t *req_data = (request_data_t *)arg;
-    
-    if (!req_data) {
-        log_error("Invalid request data");
-        return;
-    }
-    
-    // Ensure we have valid data
-    if (!req_data->connection || !req_data->message || !req_data->server) {
-        log_error("Invalid request data fields");
-        free(req_data);
-        return;
-    }
-    
-    struct mg_connection *c = req_data->connection;
-    struct mg_http_message *hm = req_data->message;
-    http_server_t *server = req_data->server;
-    uintptr_t conn_id = req_data->conn_id;
-    
-    // Extract URI
-    char uri[MAX_PATH_LENGTH];
-    size_t uri_len = hm->uri.len < sizeof(uri) - 1 ? hm->uri.len : sizeof(uri) - 1;
-    memcpy(uri, hm->uri.buf, uri_len);
-    uri[uri_len] = '\0';
-    
-    // Check if this is an API request
-    bool is_api_request = strncasecmp(uri, "/api/", 5) == 0;
-    bool handled = false;
-    
-    log_info("Processing request in thread pool: uri=%s, is_api_request=%d", uri, is_api_request);
-    
-    // Only lock the connection mutex when we're actually writing to the connection
-    // This allows parallel processing of requests until the response is ready
-    
-    // If this is an API request, try to handle it with direct handlers
-    if (is_api_request) {
-        // Authentication is already checked in the main event handler
-        // No need to check it again here
-        
-        // Handle CORS preflight request
-        if (server->config.cors_enabled && mg_match(hm->method, mg_str("OPTIONS"), NULL)) {
-            log_info("Handling CORS preflight request: %s", uri);
-            
-            // Lock the connection mutex only when writing the response
-            connection_mutex_pool_lock(server->conn_mutex_pool, conn_id);
-            mongoose_server_handle_cors_preflight(c, hm, server);
-            connection_mutex_pool_unlock(server->conn_mutex_pool, conn_id);
-            
-            // Update statistics (use global mutex for this)
-            pthread_mutex_lock(&server->mutex);
-            server->active_connections--;
-            pthread_mutex_unlock(&server->mutex);
-            
-            free(req_data->message);
-            free(req_data);
-            return;
-        }
-        
-        // Try to handle the API request using the routes table
-        // Lock the connection mutex only when writing the response
-        connection_mutex_pool_lock(server->conn_mutex_pool, conn_id);
-        handled = handle_api_request(c, hm);
-        connection_mutex_pool_unlock(server->conn_mutex_pool, conn_id);
-    }
-    
-    // If not handled by API handlers, serve static file or return 404
-    if (!handled) {
-        // Try to serve static file
-        // Lock the connection mutex only when writing the response
-        connection_mutex_pool_lock(server->conn_mutex_pool, conn_id);
-        mongoose_server_handle_static_file(c, hm, server);
-        connection_mutex_pool_unlock(server->conn_mutex_pool, conn_id);
-    }
-    
-    // Update statistics (use global mutex for this)
-    pthread_mutex_lock(&server->mutex);
-    server->active_connections--;
-    pthread_mutex_unlock(&server->mutex);
-    
-    free(req_data->message);
-    free(req_data);
-}
-
 /**
  * @brief Initialize HTTP server using Mongoose
  */
@@ -494,38 +394,13 @@ http_server_handle_t mongoose_server_init(const http_server_config_t *config) {
         return NULL;
     }
     
-    // Initialize thread pool for request handling
+    // Initialize connection pool for connection handling
     // Use a reasonable number of threads (e.g., number of CPU cores)
     int num_threads = 3; // Can be adjusted based on system capabilities
-    int queue_size = 8; // Can be adjusted based on expected load
     
-    server->thread_pool = thread_pool_init(num_threads, queue_size);
-    if (!server->thread_pool) {
-        log_error("Failed to initialize thread pool");
-        free(server->handlers);
-        mg_mgr_free(server->mgr);
-        free(server->mgr);
-        free(server);
-        return NULL;
-    }
-    
-    // Initialize connection mutex pool
-    server->conn_mutex_pool = calloc(1, sizeof(connection_mutex_pool_t));
-    if (!server->conn_mutex_pool) {
-        log_error("Failed to allocate memory for connection mutex pool");
-        thread_pool_shutdown(server->thread_pool);
-        free(server->handlers);
-        mg_mgr_free(server->mgr);
-        free(server->mgr);
-        free(server);
-        return NULL;
-    }
-    
-    // Use a reasonable number of mutexes (e.g., 32)
-    if (connection_mutex_pool_init(server->conn_mutex_pool, 32) != 0) {
-        log_error("Failed to initialize connection mutex pool");
-        free(server->conn_mutex_pool);
-        thread_pool_shutdown(server->thread_pool);
+    server->conn_pool = connection_pool_init(num_threads);
+    if (!server->conn_pool) {
+        log_error("Failed to initialize connection pool");
         free(server->handlers);
         mg_mgr_free(server->mgr);
         free(server->mgr);
@@ -536,9 +411,7 @@ http_server_handle_t mongoose_server_init(const http_server_config_t *config) {
     // Initialize global mutex for thread safety (for shared resources)
     if (pthread_mutex_init(&server->mutex, NULL) != 0) {
         log_error("Failed to initialize mutex");
-        connection_mutex_pool_destroy(server->conn_mutex_pool);
-        free(server->conn_mutex_pool);
-        thread_pool_shutdown(server->thread_pool);
+        connection_pool_shutdown(server->conn_pool);
         free(server->handlers);
         mg_mgr_free(server->mgr);
         free(server->mgr);
@@ -546,7 +419,7 @@ http_server_handle_t mongoose_server_init(const http_server_config_t *config) {
         return NULL;
     }
     
-    log_info("Thread pool initialized with %d threads and queue size %d", num_threads, queue_size);
+    log_info("Connection pool initialized with %d threads", num_threads);
 
     server->handler_capacity = INITIAL_HANDLER_CAPACITY;
     server->handler_count = 0;
@@ -654,18 +527,11 @@ void http_server_destroy(http_server_handle_t server) {
         http_server_stop(server);
     }
 
-    // Shutdown thread pool if initialized
-    if (server->thread_pool) {
-        log_info("Shutting down thread pool");
-        thread_pool_shutdown(server->thread_pool);
-        // Note: thread_pool_shutdown also frees the memory
-    }
-
-    // Destroy connection mutex pool
-    if (server->conn_mutex_pool) {
-        log_info("Destroying connection mutex pool");
-        connection_mutex_pool_destroy(server->conn_mutex_pool);
-        free(server->conn_mutex_pool);
+    // Shutdown connection pool if initialized
+    if (server->conn_pool) {
+        log_info("Shutting down connection pool");
+        connection_pool_shutdown(server->conn_pool);
+        // Note: connection_pool_shutdown also frees the memory
     }
 
     // Destroy global mutex
@@ -774,13 +640,23 @@ int http_server_get_stats(http_server_handle_t server, int *active_connections,
 static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_data) {
     http_server_t *server = (http_server_t *)c->fn_data;
 
-    if (ev == MG_EV_HTTP_MSG) {
+    if (ev == MG_EV_ACCEPT) {
+        // New connection accepted
+        log_debug("New connection accepted");
+        
+        // Update statistics
+        pthread_mutex_lock(&server->mutex);
+        server->active_connections++;
+        pthread_mutex_unlock(&server->mutex);
+        
+    // We don't need to add the connection to a pool
+    // The main event loop will handle all events
+    } else if (ev == MG_EV_HTTP_MSG) {
         // HTTP request received
         struct mg_http_message *hm = (struct mg_http_message *)ev_data;
 
         // Update statistics
         pthread_mutex_lock(&server->mutex);
-        server->active_connections++;
         server->total_requests++;
         server->bytes_received += hm->message.len;
         pthread_mutex_unlock(&server->mutex);
@@ -794,9 +670,6 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
         // Log request details
         log_info("Received request: uri=%s", uri);
 
-        // Handle CORS preflight requests and authentication directly in the event loop
-        // as they are quick operations and don't need to be dispatched to the thread pool
-        
         // Check if this is a static asset that should bypass authentication
         bool is_static_asset = false;
         if (strncmp(uri, "/js/", 4) == 0 || 
@@ -861,11 +734,6 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
                 mg_printf(c, "Content-Length: 29\r\n");
                 mg_printf(c, "\r\n");
                 mg_printf(c, "{\"error\": \"Unauthorized\"}\n");
-                
-                pthread_mutex_lock(&server->mutex);
-                server->active_connections--;
-                pthread_mutex_unlock(&server->mutex);
-                
                 return;
             }
         }
@@ -889,11 +757,6 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
                 mg_printf(c, "Content-Length: 0\r\n");
                 mg_printf(c, "\r\n");
             }
-            
-            pthread_mutex_lock(&server->mutex);
-            server->active_connections--;
-            pthread_mutex_unlock(&server->mutex);
-            
             return;
         }
 
@@ -901,116 +764,35 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
         if (server->config.cors_enabled && mg_match(hm->method, mg_str("OPTIONS"), NULL)) {
             log_info("Handling CORS preflight request: %s", uri);
             mongoose_server_handle_cors_preflight(c, hm, server);
-            
-            pthread_mutex_lock(&server->mutex);
-            server->active_connections--;
-            pthread_mutex_unlock(&server->mutex);
-            
             return;
         }
         
-        // Create a deep copy of the HTTP message for the thread pool
-        struct mg_http_message *hm_copy = malloc(sizeof(*hm));
-        if (!hm_copy) {
-            log_error("Failed to allocate memory for HTTP message copy");
-            mg_http_reply(c, 500, "", "{\"error\": \"Internal Server Error\"}\n");
-            
-            pthread_mutex_lock(&server->mutex);
-            server->active_connections--;
-            pthread_mutex_unlock(&server->mutex);
-            
-            return;
+        // Process the request
+        // Check if this is an API request
+        bool is_api_request = strncasecmp(uri, "/api/", 5) == 0;
+        bool handled = false;
+        
+        // If this is an API request, try to handle it with direct handlers
+        if (is_api_request) {
+            // Try to handle the API request using the routes table
+            handled = handle_api_request(c, hm);
         }
         
-        // Copy the entire structure
-        memcpy(hm_copy, hm, sizeof(*hm));
-        
-        // Create deep copies of string fields to prevent issues with dangling pointers
-        if (hm->uri.len > 0) {
-            char *uri_copy = malloc(hm->uri.len + 1);
-            if (uri_copy) {
-                memcpy(uri_copy, hm->uri.buf, hm->uri.len);
-                uri_copy[hm->uri.len] = '\0';
-                hm_copy->uri.buf = uri_copy;
-                // Make sure the length is set correctly
-                hm_copy->uri.len = hm->uri.len;
-            }
+        // If not handled by API handlers, serve static file or return 404
+        if (!handled) {
+            // Try to serve static file
+            mongoose_server_handle_static_file(c, hm, server);
         }
-        
-        // Also copy the method to ensure it's properly preserved
-        if (hm->method.len > 0) {
-            char *method_copy = malloc(hm->method.len + 1);
-            if (method_copy) {
-                memcpy(method_copy, hm->method.buf, hm->method.len);
-                method_copy[hm->method.len] = '\0';
-                hm_copy->method.buf = method_copy;
-                hm_copy->method.len = hm->method.len;
-            }
-        }
-        
-        // Copy the body to ensure it's properly preserved
-        if (hm->body.len > 0) {
-            char *body_copy = malloc(hm->body.len + 1);
-            if (body_copy) {
-                memcpy(body_copy, hm->body.buf, hm->body.len);
-                body_copy[hm->body.len] = '\0';
-                hm_copy->body.buf = body_copy;
-                // Make sure the length is set correctly
-                hm_copy->body.len = hm->body.len;
-            }
-        }
-        
-        // Create request data for the thread pool
-        request_data_t *req_data = malloc(sizeof(request_data_t));
-        if (!req_data) {
-            log_error("Failed to allocate memory for request data");
-            free(hm_copy);
-            mg_http_reply(c, 500, "", "{\"error\": \"Internal Server Error\"}\n");
-            
-            pthread_mutex_lock(&server->mutex);
-            server->active_connections--;
-            pthread_mutex_unlock(&server->mutex);
-            
-            return;
-        }
-        
-        req_data->connection = c;
-        req_data->message = hm_copy;
-        req_data->server = server;
-        req_data->conn_id = (uintptr_t)c; // Use connection pointer as ID for mutex pool
-        
-        // Add task to thread pool
-        pthread_mutex_lock(&server->mutex);
-        bool task_added = thread_pool_add_task(server->thread_pool, process_request_task, req_data);
-        pthread_mutex_unlock(&server->mutex);
-        
-        if (!task_added) {
-            log_error("Failed to add request to thread pool");
-            free(hm_copy);
-            free(req_data);
-            
-            pthread_mutex_lock(&server->mutex);
-            mg_http_reply(c, 503, "", "{\"error\": \"Server Busy\"}\n");
-            server->active_connections--;
-            pthread_mutex_unlock(&server->mutex);
-            
-            return;
-        }
-        
-        log_debug("Request dispatched to thread pool: %s", uri);
-        
-        // Note: active_connections will be decremented in the thread pool task
-    } else if (ev == MG_EV_ACCEPT) {
-        // New connection accepted
-        log_debug("New connection accepted");
     } else if (ev == MG_EV_CLOSE) {
         // Connection closed
         log_debug("Connection closed");
+        
+        // Update statistics
+        pthread_mutex_lock(&server->mutex);
         if (server->active_connections > 0) {
-            pthread_mutex_lock(&server->mutex);
             server->active_connections--;
-            pthread_mutex_unlock(&server->mutex);
         }
+        pthread_mutex_unlock(&server->mutex);
     } else if (ev == MG_EV_ERROR) {
         // Connection error
         log_error("Connection error: %s", (char *)ev_data);
@@ -1068,23 +850,17 @@ static void handle_http_request(struct mg_connection *c, struct mg_http_message 
         *query = '\0';
     }
 
-    // Lock the connection-specific mutex
-    uintptr_t conn_id = (uintptr_t)c;
-    connection_mutex_pool_lock(server->conn_mutex_pool, conn_id);
-
     // Check authentication if enabled
     if (server->config.auth_enabled && mongoose_server_basic_auth_check(hm, server) != 0) {
         // Authentication failed
         mg_http_reply(c, 401, "WWW-Authenticate: Basic realm=\"LightNVR\"\r\n", 
                      "{\"error\": \"Unauthorized\"}\n");
-        connection_mutex_pool_unlock(server->conn_mutex_pool, conn_id);
         return;
     }
 
     // Handle CORS preflight request
     if (server->config.cors_enabled && mg_match(hm->method, mg_str("OPTIONS"), NULL)) {
         mongoose_server_handle_cors_preflight(c, hm, server);
-        connection_mutex_pool_unlock(server->conn_mutex_pool, conn_id);
         return;
     }
 
@@ -1106,7 +882,6 @@ static void handle_http_request(struct mg_connection *c, struct mg_http_message 
                 http_request_t request;
                 if (mongoose_server_mg_to_request(c, hm, &request) != 0) {
                     mg_http_reply(c, 400, "", "{\"error\": \"Bad Request\"}\n");
-                    connection_mutex_pool_unlock(server->conn_mutex_pool, conn_id);
                     return;
                 }
 
@@ -1144,7 +919,6 @@ static void handle_http_request(struct mg_connection *c, struct mg_http_message 
                     free(response.headers);
                 }
 
-                connection_mutex_pool_unlock(server->conn_mutex_pool, conn_id);
                 return;
             }
         }
@@ -1154,6 +928,4 @@ static void handle_http_request(struct mg_connection *c, struct mg_http_message 
     if (!handler_found) {
         mongoose_server_handle_static_file(c, hm, server);
     }
-    
-    connection_mutex_pool_unlock(server->conn_mutex_pool, conn_id);
 }

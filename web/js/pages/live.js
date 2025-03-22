@@ -78,7 +78,7 @@ document.addEventListener('alpine:init', () => {
                 this.$refs.videoGrid.innerHTML = `
                     <div class="placeholder flex flex-col justify-center items-center col-span-full row-span-full bg-white dark:bg-gray-800 rounded-lg shadow-md text-center p-8">
                         <p class="mb-6 text-gray-600 dark:text-gray-300 text-lg">Error loading streams</p>
-                        <a href="streams.tailwind.html" class="btn-primary px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">Configure Streams</a>
+                        <a href="streams.html" class="btn-primary px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">Configure Streams</a>
                     </div>
                 `;
             } finally {
