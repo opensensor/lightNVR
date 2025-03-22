@@ -45,8 +45,9 @@ config_t* get_streaming_config(void) {
     
     pthread_mutex_lock(&config_mutex);
     
-    // Initialize the config with defaults
-    load_default_config(&db_config);
+    // Use the global configuration instead of loading defaults
+    // This ensures we get the latest configuration including the database path
+    memcpy(&db_config, &g_config, sizeof(config_t));
     
     // Load stream configurations from database
     stream_config_t db_streams[MAX_STREAMS];
@@ -59,6 +60,10 @@ config_t* get_streaming_config(void) {
         }
         db_config.max_streams = count;
     }
+    
+    // Log the storage path for debugging
+    log_info("get_streaming_config: Using storage path: %s", db_config.storage_path);
+    log_info("get_streaming_config: Using database path: %s", db_config.db_path);
     
     pthread_mutex_unlock(&config_mutex);
     

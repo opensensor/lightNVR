@@ -11,6 +11,10 @@
 #include "web/mongoose_adapter.h"
 #include "core/logger.h"
 #include "core/config.h"
+#include "database/db_core.h"
+#include "database/db_streams.h"
+#include "video/stream_manager.h"
+#include "video/hls_streaming.h"
 #include "mongoose.h"
 
 /**
@@ -222,29 +226,411 @@ void mg_handle_post_settings(struct mg_connection *c, struct mg_http_message *hm
         log_info("Updated swap_size: %llu bytes", (unsigned long long)g_config.swap_size);
     }
     
-    // Save settings if changed
-    if (settings_changed) {
-        // Use the loaded config path - save_config will handle this automatically
-        log_info("Saving configuration to the loaded config file");
-        if (save_config(&g_config, NULL) != 0) {
-            log_error("Failed to save configuration");
+    // Database path
+    cJSON *db_path = cJSON_GetObjectItem(settings, "db_path");
+    if (db_path && cJSON_IsString(db_path) && 
+        strcmp(g_config.db_path, db_path->valuestring) != 0) {
+        
+        char old_db_path[MAX_PATH_LENGTH];
+        strncpy(old_db_path, g_config.db_path, sizeof(old_db_path) - 1);
+        old_db_path[sizeof(old_db_path) - 1] = '\0';
+        
+        // Update the config with the new path
+        strncpy(g_config.db_path, db_path->valuestring, sizeof(g_config.db_path) - 1);
+        g_config.db_path[sizeof(g_config.db_path) - 1] = '\0';
+        settings_changed = true;
+        log_info("Database path changed from %s to %s", old_db_path, g_config.db_path);
+        
+        // First, stop all HLS streams explicitly to ensure they're properly shut down
+        log_info("Stopping all HLS streams before changing database path...");
+        
+        // Get a list of all active streams
+        char active_streams[MAX_STREAMS][MAX_STREAM_NAME];
+        int active_stream_count = 0;
+        
+        log_info("Scanning for active streams...");
+        for (int i = 0; i < g_config.max_streams; i++) {
+            log_info("Checking stream slot %d: name='%s', enabled=%d", 
+                    i, g_config.streams[i].name, g_config.streams[i].enabled);
+            
+            if (g_config.streams[i].name[0] != '\0') {
+                // Explicitly stop HLS streaming for all streams, even if they're not enabled
+                log_info("Explicitly stopping HLS streaming for stream: %s", g_config.streams[i].name);
+                stop_hls_stream(g_config.streams[i].name);
+                
+                // Only add enabled streams to the active list
+                if (g_config.streams[i].enabled) {
+                    // Copy the stream name for later use
+                    strncpy(active_streams[active_stream_count], g_config.streams[i].name, MAX_STREAM_NAME - 1);
+                    active_streams[active_stream_count][MAX_STREAM_NAME - 1] = '\0';
+                    log_info("Added active stream %d: %s", active_stream_count, active_streams[active_stream_count]);
+                    active_stream_count++;
+                    
+                    // Stop the stream
+                    log_info("Stopping stream: %s", g_config.streams[i].name);
+                    
+                    // Get the stream handle
+                    stream_handle_t stream = get_stream_by_name(g_config.streams[i].name);
+                    if (stream) {
+                        // Stop the stream
+                        if (stop_stream(stream) == 0) {
+                            log_info("Stream stopped: %s", g_config.streams[i].name);
+                        } else {
+                            log_warn("Failed to stop stream: %s", g_config.streams[i].name);
+                        }
+                    } else {
+                        log_warn("Failed to get stream handle for: %s", g_config.streams[i].name);
+                    }
+                }
+            }
+        }
+        
+        log_info("Found %d active streams", active_stream_count);
+        
+        // Wait a bit to ensure all streams are fully stopped
+        log_info("Waiting for streams to fully stop...");
+        sleep(2);
+        
+        // We need to restart the database and stream manager
+        log_info("Shutting down stream manager to change database path...");
+        shutdown_stream_manager();
+        
+        log_info("Shutting down database...");
+        shutdown_database();
+        
+        log_info("Initializing database with new path: %s", g_config.db_path);
+        if (init_database(g_config.db_path) != 0) {
+            log_error("Failed to initialize database with new path, reverting to old path");
+            
+            // Revert to the old path
+            strncpy(g_config.db_path, old_db_path, sizeof(g_config.db_path) - 1);
+            g_config.db_path[sizeof(g_config.db_path) - 1] = '\0';
+            
+            // Try to reinitialize with the old path
+            if (init_database(g_config.db_path) != 0) {
+                log_error("Failed to reinitialize database with old path, database may be unavailable");
+            } else {
+                log_info("Successfully reinitialized database with old path");
+            }
+            
+            // Reinitialize stream manager
+            if (init_stream_manager(g_config.max_streams) != 0) {
+                log_error("Failed to reinitialize stream manager");
+            } else {
+                log_info("Successfully reinitialized stream manager");
+            }
+            
+            // Send error response
             cJSON_Delete(settings);
-            mg_send_json_error(c, 500, "Failed to save configuration");
+            mg_send_json_error(c, 500, "Failed to initialize database with new path");
             return;
         }
         
-        log_info("Configuration saved successfully");
-        
-        // Reload the configuration to ensure changes are applied
-        log_info("Reloading configuration after save");
-        if (reload_config(&g_config) != 0) {
-            log_warn("Failed to reload configuration after save, changes may not be applied until restart");
-        } else {
-            log_info("Configuration reloaded successfully");
+        log_info("Reinitializing stream manager...");
+        if (init_stream_manager(g_config.max_streams) != 0) {
+            log_error("Failed to reinitialize stream manager");
+            
+            // Send error response
+            cJSON_Delete(settings);
+            mg_send_json_error(c, 500, "Failed to reinitialize stream manager");
+            return;
         }
-    } else {
-        log_info("No settings changed");
+        
+        // Restart streams from configuration
+        log_info("Restarting streams from configuration...");
+        
+        // Restart all streams that were previously active
+        log_info("Active stream count: %d", active_stream_count);
+        for (int i = 0; i < active_stream_count; i++) {
+            log_info("Processing active stream %d: %s", i, active_streams[i]);
+            log_info("Restarting stream: %s", active_streams[i]);
+            
+            // Get the stream handle
+            stream_handle_t stream = get_stream_by_name(active_streams[i]);
+            if (stream) {
+                // Get the stream configuration
+                stream_config_t config;
+                if (get_stream_config(stream, &config) != 0) {
+                    log_error("Failed to get stream configuration for %s", active_streams[i]);
+                    continue;
+                }
+                
+                // Start the stream
+                if (start_stream(stream) == 0) {
+                    log_info("Stream restarted: %s", active_streams[i]);
+                    
+                    // Explicitly start HLS streaming if enabled
+                    if (config.streaming_enabled) {
+                        log_info("Starting HLS streaming for stream: %s", active_streams[i]);
+                        
+                        // Try multiple times to start HLS streaming
+                        bool hls_started = false;
+                        for (int retry = 0; retry < 3 && !hls_started; retry++) {
+                            if (retry > 0) {
+                                log_info("Retry %d starting HLS streaming for stream: %s", retry, active_streams[i]);
+                                // Wait a bit before retrying
+                                usleep(500000); // 500ms
+                            }
+                            
+                            if (start_hls_stream(active_streams[i]) == 0) {
+                                log_info("HLS streaming started for stream: %s", active_streams[i]);
+                                hls_started = true;
+                            } else {
+                                log_warn("Failed to start HLS streaming for stream: %s (attempt %d/3)", 
+                                        active_streams[i], retry + 1);
+                            }
+                        }
+                        
+                        if (!hls_started) {
+                            log_error("Failed to start HLS streaming for stream: %s after multiple attempts", 
+                                    active_streams[i]);
+                        }
+                    }
+                } else {
+                    log_warn("Failed to restart stream: %s", active_streams[i]);
+                }
+            } else {
+                log_warn("Failed to get stream handle for: %s", active_streams[i]);
+                
+                // Try to find the stream configuration in the global config
+                stream_config_t *config = NULL;
+                for (int j = 0; j < g_config.max_streams; j++) {
+                    if (strcmp(g_config.streams[j].name, active_streams[i]) == 0) {
+                        config = &g_config.streams[j];
+                        break;
+                    }
+                }
+                
+                if (config) {
+                    // Try to add the stream first
+                    stream = add_stream(config);
+                    if (stream) {
+                        log_info("Added stream: %s", active_streams[i]);
+                        
+                        // Start the stream
+                        if (start_stream(stream) == 0) {
+                            log_info("Stream started: %s", active_streams[i]);
+                            
+                            // Explicitly start HLS streaming if enabled
+                            if (config->streaming_enabled) {
+                                log_info("Starting HLS streaming for stream: %s", active_streams[i]);
+                                
+                                // Try multiple times to start HLS streaming
+                                bool hls_started = false;
+                                for (int retry = 0; retry < 3 && !hls_started; retry++) {
+                                    if (retry > 0) {
+                                        log_info("Retry %d starting HLS streaming for stream: %s", retry, active_streams[i]);
+                                        // Wait a bit before retrying
+                                        usleep(500000); // 500ms
+                                    }
+                                    
+                                    if (start_hls_stream(active_streams[i]) == 0) {
+                                        log_info("HLS streaming started for stream: %s", active_streams[i]);
+                                        hls_started = true;
+                                    } else {
+                                        log_warn("Failed to start HLS streaming for stream: %s (attempt %d/3)", 
+                                                active_streams[i], retry + 1);
+                                    }
+                                }
+                                
+                                if (!hls_started) {
+                                    log_error("Failed to start HLS streaming for stream: %s after multiple attempts", 
+                                            active_streams[i]);
+                                }
+                            }
+                        } else {
+                            log_warn("Failed to start stream: %s", active_streams[i]);
+                        }
+                    } else {
+                        log_error("Failed to add stream: %s", active_streams[i]);
+                    }
+                } else {
+                    log_error("Failed to find configuration for stream: %s", active_streams[i]);
+                }
+            }
+        }
+        
+        // Wait a bit to ensure all streams have time to start
+        log_info("Waiting for streams to fully start...");
+        sleep(2);
+        
+        // Force restart all HLS streams to ensure they're properly started
+        log_info("Force restarting all HLS streams to ensure they're properly started...");
+        for (int i = 0; i < active_stream_count; i++) {
+            log_info("Force restarting HLS for active stream %d: %s", i, active_streams[i]);
+            
+            // Get the stream handle
+            stream_handle_t stream = get_stream_by_name(active_streams[i]);
+            if (stream) {
+                // Get the stream configuration
+                stream_config_t config;
+                if (get_stream_config(stream, &config) != 0) {
+                    log_error("Failed to get stream configuration for %s", active_streams[i]);
+                    continue;
+                }
+                
+                // Explicitly restart HLS streaming if enabled
+                if (config.streaming_enabled) {
+                    log_info("Force restarting HLS streaming for stream: %s", active_streams[i]);
+                    
+                    // First stop the HLS stream
+                    if (stop_hls_stream(active_streams[i]) != 0) {
+                        log_warn("Failed to stop HLS stream for restart: %s", active_streams[i]);
+                    }
+                    
+                    // Wait a bit to ensure the stream is fully stopped
+                    usleep(500000); // 500ms
+                    
+                    // Start the HLS stream again
+                    if (start_hls_stream(active_streams[i]) == 0) {
+                        log_info("HLS streaming force restarted for stream: %s", active_streams[i]);
+                    } else {
+                        log_warn("Failed to force restart HLS streaming for stream: %s", active_streams[i]);
+                    }
+                } else {
+                    log_warn("Streaming not enabled for stream: %s", active_streams[i]);
+                }
+            } else {
+                log_warn("Failed to get stream handle for force restart: %s", active_streams[i]);
+            }
+        }
+        
+        // Always start all streams from the database after changing the database path
+        log_info("Starting all streams from the database after changing database path...");
+        
+        // Get all stream configurations from the database
+        stream_config_t db_streams[MAX_STREAMS];
+        int count = get_all_stream_configs(db_streams, MAX_STREAMS);
+        
+        if (count > 0) {
+            log_info("Found %d streams in the database", count);
+            
+            // Start each stream
+            for (int i = 0; i < count; i++) {
+                if (db_streams[i].name[0] != '\0' && db_streams[i].enabled) {
+                    log_info("Starting stream from database: %s (streaming_enabled=%d)", 
+                            db_streams[i].name, db_streams[i].streaming_enabled);
+                    
+                    // Add the stream
+                    stream_handle_t stream = add_stream(&db_streams[i]);
+                    if (stream) {
+                        log_info("Added stream from database: %s", db_streams[i].name);
+                        
+                        // Start the stream
+                        if (start_stream(stream) == 0) {
+                            log_info("Started stream from database: %s", db_streams[i].name);
+                            
+                            // Explicitly start HLS streaming if enabled
+                            if (db_streams[i].streaming_enabled) {
+                                log_info("Starting HLS streaming for database stream: %s", db_streams[i].name);
+                                
+                                // Try multiple times to start HLS streaming
+                                bool hls_started = false;
+                                for (int retry = 0; retry < 3 && !hls_started; retry++) {
+                                    if (retry > 0) {
+                                        log_info("Retry %d starting HLS streaming for database stream: %s", 
+                                                retry, db_streams[i].name);
+                                        // Wait a bit before retrying
+                                        usleep(500000); // 500ms
+                                    }
+                                    
+                                    if (start_hls_stream(db_streams[i].name) == 0) {
+                                        log_info("HLS streaming started for database stream: %s", db_streams[i].name);
+                                        hls_started = true;
+                                    } else {
+                                        log_warn("Failed to start HLS streaming for database stream: %s (attempt %d/3)", 
+                                                db_streams[i].name, retry + 1);
+                                    }
+                                }
+                                
+                                if (!hls_started) {
+                                    log_error("Failed to start HLS streaming for database stream: %s after multiple attempts", 
+                                            db_streams[i].name);
+                                }
+                            } else {
+                                log_warn("HLS streaming not enabled for database stream: %s", db_streams[i].name);
+                            }
+                        } else {
+                            log_warn("Failed to start stream from database: %s", db_streams[i].name);
+                        }
+                    } else {
+                        log_error("Failed to add stream from database: %s", db_streams[i].name);
+                    }
+                }
+            }
+            
+            // Wait a bit to ensure all streams have time to start
+            log_info("Waiting for database streams to fully start...");
+            sleep(2);
+            
+            // Force restart all HLS streams to ensure they're properly started
+            log_info("Force restarting all HLS streams from database to ensure they're properly started...");
+            for (int i = 0; i < count; i++) {
+                if (db_streams[i].name[0] != '\0' && db_streams[i].enabled && db_streams[i].streaming_enabled) {
+                    log_info("Force restarting HLS for database stream: %s", db_streams[i].name);
+                    
+                    // First stop the HLS stream
+                    if (stop_hls_stream(db_streams[i].name) != 0) {
+                        log_warn("Failed to stop HLS stream for restart: %s", db_streams[i].name);
+                    }
+                    
+                    // Wait a bit to ensure the stream is fully stopped
+                    usleep(500000); // 500ms
+                    
+                    // Start the HLS stream again
+                    if (start_hls_stream(db_streams[i].name) == 0) {
+                        log_info("HLS streaming force restarted for database stream: %s", db_streams[i].name);
+                    } else {
+                        log_warn("Failed to force restart HLS streaming for database stream: %s", db_streams[i].name);
+                    }
+                }
+            }
+        } else {
+            log_warn("No streams found in the database");
+        }
+        
+        log_info("Database path changed successfully");
     }
+    
+        // Save settings if changed
+        if (settings_changed) {
+            // Use the loaded config path - save_config will handle this automatically
+            const char* config_path = get_loaded_config_path();
+            log_info("Saving configuration to file: %s", config_path ? config_path : "default path");
+            
+            // Print the current database path to verify it's set correctly
+            log_info("Current database path before saving: %s", g_config.db_path);
+            
+            // Save to the specific config file path if available
+            int save_result;
+            if (config_path) {
+                save_result = save_config(&g_config, config_path);
+            } else {
+                save_result = save_config(&g_config, NULL);
+            }
+            
+            if (save_result != 0) {
+                log_error("Failed to save configuration, error code: %d", save_result);
+                cJSON_Delete(settings);
+                mg_send_json_error(c, 500, "Failed to save configuration");
+                return;
+            }
+            
+            log_info("Configuration saved successfully");
+            
+            // Reload the configuration to ensure changes are applied
+            log_info("Reloading configuration after save");
+            if (reload_config(&g_config) != 0) {
+                log_warn("Failed to reload configuration after save, changes may not be applied until restart");
+            } else {
+                log_info("Configuration reloaded successfully");
+                
+                // Verify the database path after reload
+                log_info("Database path after reload: %s", g_config.db_path);
+            }
+        } else {
+            log_info("No settings changed");
+        }
     
     // Clean up
     cJSON_Delete(settings);
