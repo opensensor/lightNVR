@@ -1,7 +1,7 @@
 /* LightNVR Main Tailwind CSS */
 
 /* Import base styles */
-@import 'base.tailwind.css';
+@import 'base.css';
 
 /* Additional custom styles */
 .page {

@@ -105,9 +105,113 @@
 <script src="js/core.js"></script>
 <script src="js/components/layout.alpine.js"></script>
 <script src="js/components/ui.alpine.js"></script>
+<script src="js/components/ui.js"></script>
 <script src="js/components/streams.js"></script>
 <script src="js/components/video.js"></script>
 <script src="js/pages/pages.js"></script>
 <script src="js/pages/live.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Load header and footer
+        loadHeader('nav-live');
+        loadFooter();
+        
+        // Set up modals
+        setupModals();
+        setupSnapshotModal();
+        
+        // Add status message styles for toast notifications
+        addStatusMessageStyles();
+        
+        // Initialize the live view
+        setupLiveViewHandlers();
+
+        // Load streams for display
+        loadStreams(true);
+        
+        // Set initial layout
+        updateVideoLayout(document.getElementById('layout-selector').value);
+        
+        // Set up layout selector change event
+        const layoutSelector = document.getElementById('layout-selector');
+        if (layoutSelector) {
+            layoutSelector.addEventListener('change', function() {
+                updateVideoLayout(this.value);
+                
+                // If switching to single view, make sure the stream selector works
+                if (this.value === '1') {
+                    const streamSelector = document.getElementById('stream-selector');
+                    if (streamSelector && streamSelector.value) {
+                        // Trigger the change event on the stream selector
+                        const event = new Event('change');
+                        streamSelector.dispatchEvent(event);
+                    }
+                }
+            });
+        }
+        
+        // Set up fullscreen button click event
+        const fullscreenBtn = document.getElementById('fullscreen-btn');
+        if (fullscreenBtn) {
+            fullscreenBtn.addEventListener('click', toggleFullscreen);
+        }
+        
+        // Set up Escape key to exit fullscreen mode
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                const livePage = document.getElementById('live-page');
+                if (livePage && livePage.classList.contains('fullscreen-mode')) {
+                    toggleFullscreen();
+                }
+            }
+        });
+        
+        // Add event listener to stop streams when leaving the page
+        window.addEventListener('beforeunload', function() {
+            // Stop all streams when leaving the page
+            stopAllStreams();
+        });
+    });
+    
+    // Toggle fullscreen mode
+    function toggleFullscreen() {
+        const livePage = document.getElementById('live-page');
+        const videoGrid = document.getElementById('video-grid');
+        
+        if (!livePage || !videoGrid) return;
+        
+        if (livePage.classList.contains('fullscreen-mode')) {
+            // Exit fullscreen
+            livePage.classList.remove('fullscreen-mode');
+            document.body.style.overflow = '';
+            
+            // Remove exit button
+            const exitBtn = document.querySelector('.fullscreen-exit');
+            if (exitBtn) {
+                exitBtn.remove();
+            }
+        } else {
+            // Enter fullscreen
+            livePage.classList.add('fullscreen-mode');
+            document.body.style.overflow = 'hidden';
+            
+            // Add exit button
+            const exitBtn = document.createElement('button');
+            exitBtn.className = 'fullscreen-exit';
+            exitBtn.innerHTML = '✕';
+            exitBtn.addEventListener('click', toggleFullscreen);
+            livePage.appendChild(exitBtn);
+        }
+        
+        // Refresh video layout
+        updateVideoLayout(document.getElementById('layout-selector').value);
+    }
+    
+    // Function to set up live view handlers (placeholder for any additional handlers)
+    function setupLiveViewHandlers() {
+        // This function can be expanded later if needed
+        console.log('Setting up live view handlers');
+    }
+</script>
 </body>
 </html>

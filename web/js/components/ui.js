@@ -255,23 +255,25 @@ function addStatusMessageStyles() {
     style.textContent = `
         .status-message {
             position: fixed;
-            bottom: 20px;
-            right: 20px;
-            background-color: rgba(0, 0, 0, 0.8);
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-20px);
+            background-color: #4CAF50;
             color: white;
             padding: 10px 15px;
             border-radius: 4px;
             z-index: 1000;
             font-size: 14px;
             opacity: 0;
-            transform: translateY(20px);
             transition: opacity 0.3s, transform 0.3s;
             max-width: 80%;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
         }
         
         .status-message.visible {
             opacity: 1;
-            transform: translateY(0);
+            transform: translateX(-50%) translateY(0);
         }
     `;
 

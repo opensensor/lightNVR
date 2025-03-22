@@ -288,51 +288,9 @@ function setupSettingsHandlers() {
 }
 
 function setupSystemHandlers() {
-    // Refresh system button
-    const refreshSystemBtn = document.getElementById('refresh-system-btn');
-    if (refreshSystemBtn) {
-        refreshSystemBtn.addEventListener('click', function() {
-            loadSystemInfo();
-        });
-    }
-
-    // Restart service button
-    const restartBtn = document.getElementById('restart-btn');
-    if (restartBtn) {
-        restartBtn.addEventListener('click', function() {
-            if (confirm('Are you sure you want to restart the LightNVR service?')) {
-                restartService();
-            }
-        });
-    }
-
-    // Shutdown service button
-    const shutdownBtn = document.getElementById('shutdown-btn');
-    if (shutdownBtn) {
-        shutdownBtn.addEventListener('click', function() {
-            if (confirm('Are you sure you want to shutdown the LightNVR service?')) {
-                shutdownService();
-            }
-        });
-    }
-
-    // Clear logs button
-    const clearLogsBtn = document.getElementById('clear-logs-btn');
-    if (clearLogsBtn) {
-        clearLogsBtn.addEventListener('click', function() {
-            if (confirm('Are you sure you want to clear the logs?')) {
-                clearLogs();
-            }
-        });
-    }
-
-    // Backup configuration button
-    const backupConfigBtn = document.getElementById('backup-config-btn');
-    if (backupConfigBtn) {
-        backupConfigBtn.addEventListener('click', function() {
-            backupConfig();
-        });
-    }
+    // This function is intentionally left empty as the system page now uses Alpine.js for all event handling
+    // The event handlers are defined in the Alpine.js component in system.html
+    console.log('System page handlers are now managed by Alpine.js');
 }
 
 function setupDebugHandlers() {

@@ -25,11 +25,7 @@ function setupSystemHandlers() {
         shutdownBtn.addEventListener('click', shutdownService);
     }
     
-    // Set up clear logs button
-    const clearLogsBtn = document.getElementById('clear-logs-btn');
-    if (clearLogsBtn) {
-        clearLogsBtn.addEventListener('click', clearLogs);
-    }
+    // Clear logs button is now handled by Alpine.js in system.html
     
     // Set up backup config button
     const backupConfigBtn = document.getElementById('backup-config-btn');
@@ -220,44 +216,7 @@ function shutdownService() {
         });
 }
 
-/**
- * Clear logs
- */
-function clearLogs() {
-    if (!confirm('Are you sure you want to clear the logs?')) {
-        return;
-    }
-
-    const logsContainer = document.getElementById('system-logs');
-    if (!logsContainer) return;
-
-    showLoading(logsContainer.parentElement);
-
-    // Send clear logs request to API
-    fetch('/api/system/logs/clear', {
-        method: 'POST'
-    })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Failed to clear logs');
-            }
-            return response.json();
-        })
-        .then(data => {
-            // Clear logs display
-            logsContainer.textContent = 'Logs cleared';
-
-            // Show message
-            showStatusMessage('Logs cleared successfully', 5000);
-        })
-        .catch(error => {
-            console.error('Error clearing logs:', error);
-            showStatusMessage('Error clearing logs: ' + error.message, 5000);
-        })
-        .finally(() => {
-            hideLoading(logsContainer.parentElement);
-        });
-}
+// The clearLogs function has been removed as it's now handled by the Alpine.js component in system.html
 
 /**
  * Backup configuration

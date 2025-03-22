@@ -172,6 +172,7 @@
 <script src="js/core.js"></script>
 <script src="js/components/layout.alpine.js"></script>
 <script src="js/components/ui.alpine.js"></script>
+<script src="js/components/ui.js"></script>
 <script src="js/components/system.js"></script>
 <script src="js/pages/pages.js"></script>
 <script>
@@ -366,8 +367,30 @@
                                 throw new Error('Failed to clear logs');
                             }
                             
-                            Alpine.store('statusMessage').show('System logs cleared');
-                            this.logs = 'Logs cleared';
+                            // Use vanilla JS to show status message and reload logs
+                            showStatusMessage('System logs cleared', 5000);
+                            
+                            // Reload logs to show the cleared state
+                            fetch('/api/system/logs')
+                                .then(response => {
+                                    if (!response.ok) {
+                                        throw new Error('Failed to load system logs');
+                                    }
+                                    return response.json();
+                                })
+                                .then(data => {
+                                    const logsContainer = document.getElementById('system-logs');
+                                    if (logsContainer) {
+                                        if (data.logs && Array.isArray(data.logs)) {
+                                            logsContainer.textContent = data.logs.join('\n');
+                                        } else {
+                                            logsContainer.textContent = 'No logs available';
+                                        }
+                                    }
+                                })
+                                .catch(error => {
+                                    console.error('Error loading system logs:', error);
+                                });
                         } catch (error) {
                             console.error('Error clearing logs:', error);
                             Alpine.store('statusMessage').show('Error clearing logs: ' + error.message);
@@ -426,10 +449,196 @@
         }));
     });
 
+    // Function to show status message using vanilla JS
+    function showStatusMessage(message, duration = 3000) {
+        const statusMessage = document.getElementById('status-message');
+        if (!statusMessage) return;
+        
+        statusMessage.textContent = message;
+        statusMessage.classList.add('visible');
+        
+        setTimeout(() => {
+            statusMessage.classList.remove('visible');
+        }, duration);
+    }
+    
     document.addEventListener('DOMContentLoaded', function() {
         // Load header and footer
         loadHeader('nav-system');
         loadFooter();
+        
+
+        // Add status message styles for toast notifications
+        addStatusMessageStyles();
+        
+        // Initialize the system view
+        setupSystemHandlers();
+        
+        // Add direct event listeners for system action buttons
+        
+        // Clear logs button
+        const clearLogsBtn = document.getElementById('clear-logs-btn');
+        if (clearLogsBtn) {
+            clearLogsBtn.addEventListener('click', function() {
+                console.log('Clear logs button clicked');
+                if (confirm('Are you sure you want to clear all system logs?')) {
+                    console.log('Clearing logs...');
+                    fetch('/api/system/logs/clear', {
+                        method: 'POST'
+                    })
+                    .then(response => {
+                        console.log('Clear logs response:', response);
+                        if (!response.ok) {
+                            throw new Error('Failed to clear logs');
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log('Clear logs success:', data);
+                        showStatusMessage('System logs cleared', 5000);
+                        
+                        // Reload logs to show the cleared state
+                        return fetch('/api/system/logs');
+                    })
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Failed to load system logs');
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log('Logs reloaded:', data);
+                        const logsContainer = document.getElementById('system-logs');
+                        if (logsContainer) {
+                            if (data.logs && Array.isArray(data.logs)) {
+                                logsContainer.textContent = data.logs.join('\n');
+                            } else {
+                                logsContainer.textContent = 'No logs available';
+                            }
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error clearing logs:', error);
+                        showStatusMessage('Error clearing logs: ' + error.message, 5000);
+                    });
+                }
+            });
+        }
+        
+        // Restart service button
+        const restartBtn = document.getElementById('restart-btn');
+        if (restartBtn) {
+            restartBtn.addEventListener('click', function() {
+                console.log('Restart button clicked');
+                if (confirm('Are you sure you want to restart the LightNVR service? All active streams will be disconnected.')) {
+                    console.log('Restarting service...');
+                    fetch('/api/system/restart', {
+                        method: 'POST'
+                    })
+                    .then(response => {
+                        console.log('Restart response:', response);
+                        if (!response.ok) {
+                            throw new Error('Failed to restart service');
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log('Restart success:', data);
+                        showStatusMessage('Service restart initiated. Please wait...', 5000);
+                        
+                        // Wait for service to restart
+                        setTimeout(() => {
+                            // Reload system info
+                            fetch('/api/system')
+                                .then(response => {
+                                    if (!response.ok) {
+                                        throw new Error('Failed to load system information');
+                                    }
+                                    return response.json();
+                                })
+                                .then(data => {
+                                    console.log('System info reloaded after restart:', data);
+                                    // Update UI with new system info
+                                    // This will be handled by Alpine.js
+                                })
+                                .catch(error => {
+                                    console.error('Error loading system info after restart:', error);
+                                });
+                        }, 5000);
+                    })
+                    .catch(error => {
+                        console.error('Error restarting service:', error);
+                        showStatusMessage('Error restarting service: ' + error.message, 5000);
+                    });
+                }
+            });
+        }
+        
+        // Shutdown service button
+        const shutdownBtn = document.getElementById('shutdown-btn');
+        if (shutdownBtn) {
+            shutdownBtn.addEventListener('click', function() {
+                console.log('Shutdown button clicked');
+                if (confirm('Are you sure you want to shutdown the LightNVR service? All active streams will be disconnected and the service will stop running.')) {
+                    console.log('Shutting down service...');
+                    fetch('/api/system/shutdown', {
+                        method: 'POST'
+                    })
+                    .then(response => {
+                        console.log('Shutdown response:', response);
+                        if (!response.ok) {
+                            throw new Error('Failed to shutdown service');
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log('Shutdown success:', data);
+                        showStatusMessage('Service shutdown initiated. The service is now stopping...', 5000);
+                    })
+                    .catch(error => {
+                        console.error('Error shutting down service:', error);
+                        showStatusMessage('Error shutting down service: ' + error.message, 5000);
+                    });
+                }
+            });
+        }
+        
+        // Backup configuration button
+        const backupConfigBtn = document.getElementById('backup-config-btn');
+        if (backupConfigBtn) {
+            backupConfigBtn.addEventListener('click', function() {
+                console.log('Backup config button clicked');
+                console.log('Creating backup...');
+                fetch('/api/system/backup')
+                    .then(response => {
+                        console.log('Backup response:', response);
+                        if (!response.ok) {
+                            throw new Error('Failed to create backup');
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log('Backup success:', data);
+                        if (data.backup_path) {
+                            // Create download link
+                            const link = document.createElement('a');
+                            link.href = `/api/system/backup/download?path=${encodeURIComponent(data.backup_path)}`;
+                            link.download = `lightnvr_backup_${new Date().toISOString().slice(0, 10)}.zip`;
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                            
+                            showStatusMessage('Configuration backup created and download started', 5000);
+                        } else {
+                            throw new Error('Backup path not provided');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error creating backup:', error);
+                        showStatusMessage('Error creating backup: ' + error.message, 5000);
+                    });
+            });
+        }
     });
 </script>
 </body>
