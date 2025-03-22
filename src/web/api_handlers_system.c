@@ -460,39 +460,53 @@ void mg_handle_get_system_info(struct mg_connection *c, struct mg_http_message *
         
         // Check if we have a recordings directory
         char recordings_dir[512];
-        snprintf(recordings_dir, sizeof(recordings_dir), "%s/recordings", g_config.storage_path);
+        snprintf(recordings_dir, sizeof(recordings_dir), "%s/", g_config.storage_path);
         
         struct stat st;
         if (stat(recordings_dir, &st) == 0 && S_ISDIR(st.st_mode)) {
             // Get size of recordings directory using du command
             char command[512];
             snprintf(command, sizeof(command), "du -sb %s 2>/dev/null | cut -f1", recordings_dir);
+            log_debug("Executing command: %s", command);
+            
             FILE *fp = popen(command, "r");
             if (fp) {
                 if (fscanf(fp, "%llu", &recording_size) != 1) {
-                    // If du command fails, try to get size using stat
+                    log_error("Failed to parse du command output");
                     recording_size = 0;
-                    log_error("Failed to get recordings size using du command");
+                } else {
+                    log_debug("Recordings size from du command: %llu bytes", recording_size);
                 }
                 pclose(fp);
+            } else {
+                log_error("Failed to execute du command");
             }
             
-            // If we still don't have a size, try to get it using stat
+            // If du command failed, try to get size using stat
             if (recording_size == 0) {
-                recording_size = st.st_size;
-                log_debug("Using stat to get recordings size: %llu", recording_size);
+                log_debug("Trying to get recordings size using stat");
+                
+                // Use a different approach - recursively list all files and sum their sizes
+                char find_command[512];
+                snprintf(find_command, sizeof(find_command), 
+                        "find %s -type f -name \"*.mp4\" -exec stat -c %%s {} \\; | awk '{sum+=$1} END {print sum}'", 
+                        recordings_dir);
+                log_debug("Executing command: %s", find_command);
+                
+                FILE *find_fp = popen(find_command, "r");
+                if (find_fp) {
+                    if (fscanf(find_fp, "%llu", &recording_size) != 1) {
+                        log_error("Failed to parse find command output");
+                        recording_size = 0;
+                    } else {
+                        log_debug("Recordings size from find command: %llu bytes", recording_size);
+                    }
+                    pclose(find_fp);
+                } else {
+                    log_error("Failed to execute find command");
+                }
             }
-            
-            // If we still don't have a size, set a default value for testing
-            if (recording_size == 0) {
-                // For testing/debugging, set a non-zero value
-                // This is approximately 10GB
-                recording_size = 10ULL * 1024 * 1024 * 1024;
-                log_debug("Using default recordings size for testing: %llu", recording_size);
-            }
-        } else {
-            log_error("Recordings directory not found: %s", recordings_dir);
-        }
+        } 
         
         cJSON_AddNumberToObject(recordings, "count", recording_count);
         cJSON_AddNumberToObject(recordings, "size", recording_size);
