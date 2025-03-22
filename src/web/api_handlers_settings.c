@@ -224,27 +224,16 @@ void mg_handle_post_settings(struct mg_connection *c, struct mg_http_message *hm
     
     // Save settings if changed
     if (settings_changed) {
-        // Get the custom config path if set, otherwise use default paths
-        const char *config_path = get_custom_config_path();
-        if (!config_path) {
-            // Try to use the system path first if it exists and is writable
-            if (access("/etc/lightnvr", W_OK) == 0) {
-                config_path = "/etc/lightnvr/lightnvr.ini";
-            } else {
-                // Fall back to current directory
-                config_path = "./lightnvr.ini";
-            }
-        }
-        
-        log_info("Saving configuration to %s", config_path);
-        if (save_config(&g_config, config_path) != 0) {
-            log_error("Failed to save configuration to %s", config_path);
+        // Use the loaded config path - save_config will handle this automatically
+        log_info("Saving configuration to the loaded config file");
+        if (save_config(&g_config, NULL) != 0) {
+            log_error("Failed to save configuration");
             cJSON_Delete(settings);
             mg_send_json_error(c, 500, "Failed to save configuration");
             return;
         }
         
-        log_info("Configuration saved successfully to %s", config_path);
+        log_info("Configuration saved successfully");
         
         // Reload the configuration to ensure changes are applied
         log_info("Reloading configuration after save");

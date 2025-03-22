@@ -488,6 +488,9 @@ int save_stream_configs(const config_t *config) {
 // Global variable to store the custom config path
 static char g_custom_config_path[MAX_PATH_LENGTH] = {0};
 
+// Global variable to store the actual loaded config path
+static char g_loaded_config_path[MAX_PATH_LENGTH] = {0};
+
 // Function to set the custom config path
 void set_custom_config_path(const char *path) {
     if (path && path[0] != '\0') {
@@ -500,6 +503,20 @@ void set_custom_config_path(const char *path) {
 // Function to get the custom config path
 const char* get_custom_config_path(void) {
     return g_custom_config_path[0] != '\0' ? g_custom_config_path : NULL;
+}
+
+// Function to get the actual loaded config path
+const char* get_loaded_config_path(void) {
+    return g_loaded_config_path[0] != '\0' ? g_loaded_config_path : NULL;
+}
+
+// Function to set the loaded config path
+static void set_loaded_config_path(const char *path) {
+    if (path && path[0] != '\0') {
+        strncpy(g_loaded_config_path, path, MAX_PATH_LENGTH - 1);
+        g_loaded_config_path[MAX_PATH_LENGTH - 1] = '\0';
+        log_info("Loaded config path set to: %s", g_loaded_config_path);
+    }
 }
 
 // Load configuration
@@ -516,6 +533,7 @@ int load_config(config_t *config) {
         if (access(g_custom_config_path, R_OK) == 0) {
             if (load_config_from_file(g_custom_config_path, config) == 0) {
                 log_info("Loaded configuration from custom path: %s", g_custom_config_path);
+                set_loaded_config_path(g_custom_config_path);
                 loaded = 1;
             } else {
                 log_error("Failed to load configuration from custom path: %s", g_custom_config_path);
@@ -538,6 +556,7 @@ int load_config(config_t *config) {
             if (access(config_paths[i], R_OK) == 0) {
                 if (load_config_from_file(config_paths[i], config) == 0) {
                     log_info("Loaded configuration from %s", config_paths[i]);
+                    set_loaded_config_path(config_paths[i]);
                     loaded = 1;
                     break;
                 }
@@ -688,16 +707,26 @@ int reload_config(config_t *config) {
 
 // Save configuration to file in INI format
 int save_config(const config_t *config, const char *path) {
-    if (!config || !path) {
-        log_error("Invalid parameters for save_config: config=%p, path=%p", config, path);
+    if (!config) {
+        log_error("Invalid config parameter for save_config: config=%p", config);
         return -1;
     }
     
-    log_info("Attempting to save configuration to %s", path);
+    // If no path is specified, use the loaded config path
+    const char *save_path = path;
+    if (!save_path || save_path[0] == '\0') {
+        save_path = get_loaded_config_path();
+        if (!save_path) {
+            log_error("No path specified and no loaded config path available");
+            return -1;
+        }
+    }
+    
+    log_info("Attempting to save configuration to %s", save_path);
     
     // Check if directory exists and is writable
     char dir_path[MAX_PATH_LENGTH];
-    strncpy(dir_path, path, MAX_PATH_LENGTH - 1);
+    strncpy(dir_path, save_path, MAX_PATH_LENGTH - 1);
     dir_path[MAX_PATH_LENGTH - 1] = '\0';
     
     // Get directory part
@@ -726,9 +755,9 @@ int save_config(const config_t *config, const char *path) {
     }
     
     // Try to open the file for writing
-    FILE *file = fopen(path, "w");
+    FILE *file = fopen(save_path, "w");
     if (!file) {
-        log_error("Could not open config file for writing: %s (error: %s)", path, strerror(errno));
+        log_error("Could not open config file for writing: %s (error: %s)", save_path, strerror(errno));
         return -1;
     }
     

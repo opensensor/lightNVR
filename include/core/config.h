@@ -171,6 +171,13 @@ void set_custom_config_path(const char *path);
  */
 const char* get_custom_config_path(void);
 
+/**
+ * Get the actual loaded configuration file path
+ * 
+ * @return The loaded configuration file path, or NULL if not set
+ */
+const char* get_loaded_config_path(void);
+
 // Global configuration variable
 extern config_t g_config;
 
