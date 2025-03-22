@@ -18,4 +18,12 @@ struct mg_http_message;
  */
 void mg_handle_auth_login(struct mg_connection *c, struct mg_http_message *hm);
 
+/**
+ * @brief Handle POST /api/auth/logout
+ * 
+ * @param c Mongoose connection
+ * @param hm Mongoose HTTP message
+ */
+void mg_handle_auth_logout(struct mg_connection *c, struct mg_http_message *hm);
+
 #endif /* API_HANDLERS_AUTH_H */

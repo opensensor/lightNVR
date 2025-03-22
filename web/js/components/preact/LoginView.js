@@ -47,6 +47,10 @@ export function LoginView() {
         throw new Error(data.message || 'Invalid username or password');
       }
       
+      // Store credentials in localStorage for future requests
+      const auth = btoa(`${username}:${password}`);
+      localStorage.setItem('auth', auth);
+      
       // Login successful, redirect to home page
       window.location.href = '/';
     } catch (error) {

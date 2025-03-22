@@ -22,6 +22,25 @@ export function Header({ activeNav = '' }) {
     fetchSystemVersion();
   }, []);
   
+  // Handle logout
+  const handleLogout = (e) => {
+    e.preventDefault();
+    
+    // Clear localStorage
+    localStorage.removeItem('auth');
+    
+    // Call the logout endpoint to clear browser's basic auth cache
+    fetch('/api/auth/logout', {
+      method: 'POST'
+    }).then(() => {
+      // Redirect to login page
+      window.location.href = 'login.html?logout=true';
+    }).catch(() => {
+      // Redirect even if the request fails
+      window.location.href = 'login.html?logout=true';
+    });
+  };
+  
   // Fetch system version from API
   async function fetchSystemVersion() {
     try {
@@ -96,7 +115,7 @@ export function Header({ activeNav = '' }) {
       </nav>
       <div class="user-menu">
         <span class="mr-4">${username}</span>
-        <a href="login.html" class="text-white no-underline hover:underline">Logout</a>
+        <a href="#" onClick=${handleLogout} class="text-white no-underline hover:underline">Logout</a>
       </div>
     </header>
   `;

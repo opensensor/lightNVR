@@ -59,18 +59,15 @@ function logout() {
     // Clear localStorage
     localStorage.removeItem('auth');
     
-    // Clear browser's basic auth cache by sending a request with invalid credentials
-    // This will trigger a 401 response, causing the browser to forget the cached credentials
-    fetch('/api/settings', {
-        headers: {
-            'Authorization': 'Basic ' + btoa('invalid:credentials')
-        }
+    // Call the logout endpoint to clear browser's basic auth cache
+    fetch('/api/auth/logout', {
+        method: 'POST'
     }).then(() => {
-        // Redirect to logout page
-        window.location.href = 'live.html?logout=true';
+        // Redirect to login page
+        window.location.href = 'login.html?logout=true';
     }).catch(() => {
         // Redirect even if the request fails
-        window.location.href = 'live.html?logout=true';
+        window.location.href = 'login.html?logout=true';
     });
 }
 

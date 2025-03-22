@@ -64,6 +64,7 @@ typedef struct {
 static const mg_api_route_t s_api_routes[] = {
     // Auth API
     {"POST", "/api/auth/login", mg_handle_auth_login},
+    {"POST", "/api/auth/logout", mg_handle_auth_logout},
     
     // Streams API
     {"GET", "/api/streams", mg_handle_get_streams},
@@ -180,6 +181,7 @@ static void init_route_table(void) {
     
     // Auth API
     add_route("POST", "^/api/auth/login$", mg_handle_auth_login);
+    add_route("POST", "^/api/auth/logout$", mg_handle_auth_logout);
     
     // Streams API
     add_route("GET", "^/api/streams$", mg_handle_get_streams);

@@ -35,6 +35,73 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         // This is an HLS streaming request, serve it directly from the filesystem
         config_t *global_config = get_streaming_config();
         
+        // Check authentication if enabled
+        if (server->config.auth_enabled) {
+            // Get Authorization header
+            struct mg_str *auth_header = mg_http_get_header(hm, "Authorization");
+            if (auth_header == NULL) {
+                // No auth header, return 401 Unauthorized
+                log_info("No Authorization header for HLS request, returning 401");
+                mg_http_reply(c, 401, "WWW-Authenticate: Basic realm=\"LightNVR\"\r\n", 
+                             "{\"error\": \"Authentication required for HLS streaming\"}\n");
+                return;
+            }
+            
+            // Check if it's Basic authentication
+            const char *auth_str = auth_header->buf;
+            if (auth_header->len > 6 && strncmp(auth_str, "Basic ", 6) == 0) {
+                // Extract credentials
+                char user[64] = {0}, pass[64] = {0};
+                char decoded[128] = {0};
+                
+                // Skip "Basic " prefix and decode base64
+                const char *b64 = auth_str + 6;
+                size_t b64_len = auth_header->len - 6;
+                mg_base64_decode(b64, b64_len, decoded, sizeof(decoded));
+                
+                // Find the colon separator
+                char *colon = strchr(decoded, ':');
+                if (colon != NULL) {
+                    size_t user_len = colon - decoded;
+                    if (user_len < sizeof(user)) {
+                        strncpy(user, decoded, user_len);
+                        user[user_len] = '\0';
+                        
+                        // Get password (everything after the colon)
+                        strncpy(pass, colon + 1, sizeof(pass) - 1);
+                        pass[sizeof(pass) - 1] = '\0';
+                    }
+                }
+                
+                if (user[0] != '\0') {
+                    // Check credentials
+                    if (strcmp(user, server->config.username) == 0 && 
+                        strcmp(pass, server->config.password) == 0) {
+                        // Authentication successful, continue
+                        log_debug("Authentication successful for HLS request");
+                    } else {
+                        // Authentication failed
+                        log_info("Authentication failed for HLS request");
+                        mg_http_reply(c, 401, "WWW-Authenticate: Basic realm=\"LightNVR\"\r\n", 
+                                     "{\"error\": \"Invalid credentials\"}\n");
+                        return;
+                    }
+                } else {
+                    // Invalid format
+                    log_info("Invalid authentication format for HLS request");
+                    mg_http_reply(c, 401, "WWW-Authenticate: Basic realm=\"LightNVR\"\r\n", 
+                                 "{\"error\": \"Invalid authentication format\"}\n");
+                    return;
+                }
+            } else {
+                // Not Basic authentication
+                log_info("Not Basic authentication for HLS request");
+                mg_http_reply(c, 401, "WWW-Authenticate: Basic realm=\"LightNVR\"\r\n", 
+                             "{\"error\": \"Basic authentication required\"}\n");
+                return;
+            }
+        }
+        
         // Extract stream name from URI
         // URI format: /hls/{stream_name}/{file}
         char stream_name[MAX_STREAM_NAME];
@@ -168,12 +235,63 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         strncmp(uri, "/streams/", 9) == 0) {
 
         // If authentication is enabled and this is not the login page, redirect to login
-        if (server->config.auth_enabled && strcmp(uri, "/login") != 0) {
+        if (server->config.auth_enabled && strcmp(uri, "/login") != 0 && strcmp(uri, "/login.html") != 0) {
             // Check if the request has valid authentication
             struct mg_str *auth_header = mg_http_get_header(hm, "Authorization");
             if (auth_header == NULL) {
                 // No auth header, redirect to login page
                 log_info("No authentication, redirecting to login page");
+                mg_http_reply(c, 302, "Location: /login.html\r\n", "");
+                return;
+            }
+            
+            // Validate the authentication credentials
+            const char *auth_str = auth_header->buf;
+            if (auth_header->len > 6 && strncmp(auth_str, "Basic ", 6) == 0) {
+                // Extract credentials
+                char user[64] = {0}, pass[64] = {0};
+                char decoded[128] = {0};
+                
+                // Skip "Basic " prefix and decode base64
+                const char *b64 = auth_str + 6;
+                size_t b64_len = auth_header->len - 6;
+                mg_base64_decode(b64, b64_len, decoded, sizeof(decoded));
+                
+                // Find the colon separator
+                char *colon = strchr(decoded, ':');
+                if (colon != NULL) {
+                    size_t user_len = colon - decoded;
+                    if (user_len < sizeof(user)) {
+                        strncpy(user, decoded, user_len);
+                        user[user_len] = '\0';
+                        
+                        // Get password (everything after the colon)
+                        strncpy(pass, colon + 1, sizeof(pass) - 1);
+                        pass[sizeof(pass) - 1] = '\0';
+                    }
+                }
+                
+                if (user[0] != '\0') {
+                    // Check credentials
+                    if (strcmp(user, server->config.username) == 0 && 
+                        strcmp(pass, server->config.password) == 0) {
+                        // Authentication successful, continue
+                        log_debug("Authentication successful for web page request");
+                    } else {
+                        // Authentication failed, redirect to login page
+                        log_info("Authentication failed for web page request");
+                        mg_http_reply(c, 302, "Location: /login.html\r\n", "");
+                        return;
+                    }
+                } else {
+                    // Invalid format, redirect to login page
+                    log_info("Invalid authentication format for web page request");
+                    mg_http_reply(c, 302, "Location: /login.html\r\n", "");
+                    return;
+                }
+            } else {
+                // Not Basic authentication, redirect to login page
+                log_info("Not Basic authentication for web page request");
                 mg_http_reply(c, 302, "Location: /login.html\r\n", "");
                 return;
             }

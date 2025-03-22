@@ -14,6 +14,23 @@
 #include "mongoose.h"
 
 /**
+ * @brief Direct handler for POST /api/auth/logout
+ */
+void mg_handle_auth_logout(struct mg_connection *c, struct mg_http_message *hm) {
+    log_info("Handling POST /api/auth/logout request");
+    
+    // Send a 401 Unauthorized response with WWW-Authenticate header
+    // This will clear the browser's basic auth cache
+    mg_printf(c, "HTTP/1.1 401 Unauthorized\r\n"
+              "WWW-Authenticate: Basic realm=\"LightNVR\", stale=true\r\n"
+              "Content-Type: application/json\r\n"
+              "Content-Length: 29\r\n\r\n"
+              "{\"success\":true,\"logged_out\":true}");
+    
+    log_info("Successfully handled POST /api/auth/logout request");
+}
+
+/**
  * @brief Direct handler for POST /api/auth/login
  */
 void mg_handle_auth_login(struct mg_connection *c, struct mg_http_message *hm) {
