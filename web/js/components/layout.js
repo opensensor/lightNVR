@@ -26,7 +26,7 @@ function loadHeader(activePageId) {
         </nav>
         <div class="user-menu">
             <span id="username">Admin</span>
-            <a href="index.html?logout=true" id="logout">Logout</a>
+            <a href="live.html?logout=true" id="logout">Logout</a>
         </div>
     `;
     

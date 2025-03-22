@@ -100,10 +100,10 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
     char file_path[MAX_PATH_LENGTH * 2];
     snprintf(file_path, sizeof(file_path), "%s%s", server->config.web_root, uri);
 
-    // If path ends with '/', append 'index.html'
+    // If path ends with '/', append 'live.html' (which serves as our index)
     size_t path_len = strlen(file_path);
     if (file_path[path_len - 1] == '/') {
-        strncat(file_path, "index.html", sizeof(file_path) - path_len - 1);
+        strncat(file_path, "live.html", sizeof(file_path) - path_len - 1);
     }
 
     // Check if file exists
@@ -118,8 +118,8 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
                 mg_http_reply(c, 301, "Location: %s\r\n", redirect_path);
                 return;
             } else {
-                // Try to serve index.html
-                strncat(file_path, "index.html", sizeof(file_path) - strlen(file_path) - 1);
+                // Try to serve live.html as the index
+                strncat(file_path, "live.html", sizeof(file_path) - strlen(file_path) - 1);
                 if (stat(file_path, &st) != 0 || !S_ISREG(st.st_mode)) {
                     mg_http_reply(c, 403, "", "403 Forbidden\n");
                     return;
@@ -167,12 +167,24 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         strncmp(uri, "/recordings/", 12) == 0 ||
         strncmp(uri, "/streams/", 9) == 0) {
 
-        char index_path[MAX_PATH_LENGTH * 2];
-        snprintf(index_path, sizeof(index_path), "%s/index.html", server->config.web_root);
+        // If authentication is enabled and this is not the login page, redirect to login
+        if (server->config.auth_enabled && strcmp(uri, "/login") != 0) {
+            // Check if the request has valid authentication
+            struct mg_str *auth_header = mg_http_get_header(hm, "Authorization");
+            if (auth_header == NULL) {
+                // No auth header, redirect to login page
+                log_info("No authentication, redirecting to login page");
+                mg_http_reply(c, 302, "Location: /login.html\r\n", "");
+                return;
+            }
+        }
 
-        // Check if index.html exists
+        char index_path[MAX_PATH_LENGTH * 2];
+        snprintf(index_path, sizeof(index_path), "%s/live.html", server->config.web_root);
+
+        // Check if live.html exists
         if (stat(index_path, &st) == 0 && S_ISREG(st.st_mode)) {
-            // Serve index.html
+            // Serve live.html as the index
             struct mg_http_serve_opts opts = {
                 .root_dir = server->config.web_root,
                 .mime_types = "html=text/html"

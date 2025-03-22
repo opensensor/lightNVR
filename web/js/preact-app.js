@@ -115,8 +115,8 @@ function initApp() {
     loadSystemView();
   } else if (currentPage === 'login.html') {
     loadLoginView();
-  } else if (currentPage === 'index.html' || currentPage === '') {
-    loadIndexView();
+  } else if (currentPage === '' || currentPage === 'live.html') {
+    loadLiveView();
   }
   
   // Setup UI components

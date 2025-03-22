@@ -16,6 +16,18 @@ int mongoose_server_basic_auth_check(struct mg_http_message *hm, http_server_t *
     if (!server->config.auth_enabled) {
         return 0; // Authentication not required
     }
+    
+    // Extract URI to check for login endpoint
+    char uri[256];
+    size_t uri_len = hm->uri.len < sizeof(uri) - 1 ? hm->uri.len : sizeof(uri) - 1;
+    memcpy(uri, hm->uri.buf, uri_len);
+    uri[uri_len] = '\0';
+    
+    // Skip authentication for login endpoint
+    if (strcmp(uri, "/api/auth/login") == 0) {
+        log_debug("Skipping authentication for login endpoint");
+        return 0;
+    }
 
     // Get Authorization header
     struct mg_str *auth_header = mg_http_get_header(hm, "Authorization");
