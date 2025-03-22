@@ -237,6 +237,14 @@ void mg_handle_webrtc_offer(struct mg_connection *c, struct mg_http_message *hm)
 void mg_handle_webrtc_ice(struct mg_connection *c, struct mg_http_message *hm);
 
 /**
+ * @brief Direct handler for POST /api/streams/test
+ * 
+ * @param c Mongoose connection
+ * @param hm Mongoose HTTP message
+ */
+void mg_handle_test_stream(struct mg_connection *c, struct mg_http_message *hm);
+
+/**
  * @brief Helper function to extract path parameter from URL
  * 
  * @param hm Mongoose HTTP message

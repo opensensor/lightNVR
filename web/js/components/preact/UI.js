@@ -28,7 +28,7 @@ export function StatusMessage() {
   return html`
     <div 
       id="status-message"
-      class=${`status-message ${state.visible ? 'visible' : ''}`}
+      class=${`status-message ${state.type === 'error' ? 'error' : ''} ${state.visible ? 'visible' : ''}`}
     >
       ${state.message}
     </div>
@@ -351,8 +351,9 @@ export function VideoModal() {
  * Show status message
  * @param {string} message - Message to show
  * @param {number} duration - Duration in milliseconds
+ * @param {string} type - Message type ('success' or 'error')
  */
-export function showStatusMessage(message, duration = 3000) {
+export function showStatusMessage(message, duration = 3000, type = 'success') {
   const state = statusMessageStore.getState();
   
   // Clear any existing timeout
@@ -364,6 +365,7 @@ export function showStatusMessage(message, duration = 3000) {
   statusMessageStore.setState({
     message,
     visible: true,
+    type,
     timeout: setTimeout(() => {
       statusMessageStore.setState(state => ({ ...state, visible: false }));
     }, duration)
@@ -505,6 +507,10 @@ export function addStatusMessageStyles() {
       max-width: 80%;
       text-align: center;
       box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    }
+    
+    .status-message.error {
+      background-color: #F44336;
     }
     
     .status-message.visible {

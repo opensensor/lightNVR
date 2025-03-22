@@ -55,7 +55,8 @@ function createStore(initialState = {}) {
 export const statusMessageStore = createStore({
   message: '',
   visible: false,
-  timeout: null
+  timeout: null,
+  type: 'success'
 });
 
 export const snapshotModalStore = createStore({

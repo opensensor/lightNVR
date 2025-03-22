@@ -245,11 +245,11 @@ export function StreamsView() {
           }));
         }
       } else {
-        showStatusMessage(`Stream test failed: ${data.message || 'Unknown error'}`);
+        showStatusMessage(`Stream test failed: ${data.message || 'Unknown error'}`, 3000, 'error');
       }
     } catch (error) {
       console.error('Error testing stream:', error);
-      showStatusMessage('Error testing stream: ' + error.message);
+      showStatusMessage('Error testing stream: ' + error.message, 3000, 'error');
     }
   };
   
