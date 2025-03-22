@@ -9,6 +9,69 @@ import { html } from '../../preact-app.js';
 import { statusMessageStore, snapshotModalStore, videoModalStore } from '../../preact-app.js';
 
 /**
+ * Delete confirmation modal component
+ * @param {Object} props - Component props
+ * @param {boolean} props.isOpen - Whether the modal is open
+ * @param {Function} props.onClose - Function to call when the modal is closed
+ * @param {Function} props.onConfirm - Function to call when the delete is confirmed
+ * @param {string} props.mode - Delete mode ('selected' or 'all')
+ * @param {number} props.count - Number of items to delete (for 'selected' mode)
+ * @returns {JSX.Element} Delete confirmation modal component
+ */
+export function DeleteConfirmationModal({ isOpen, onClose, onConfirm, mode, count }) {
+  const getTitle = () => {
+    if (mode === 'selected') {
+      return `Delete ${count} Selected Recording${count !== 1 ? 's' : ''}`;
+    } else {
+      return 'Delete All Filtered Recordings';
+    }
+  };
+
+  const getMessage = () => {
+    if (mode === 'selected') {
+      return `Are you sure you want to delete ${count} selected recording${count !== 1 ? 's' : ''}? This action cannot be undone.`;
+    } else {
+      return 'Are you sure you want to delete ALL recordings matching your current filter? This action cannot be undone.';
+    }
+  };
+
+  const footer = html`
+    <button 
+      class="px-5 py-2.5 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50 font-medium"
+      onClick=${onClose}
+    >
+      Cancel
+    </button>
+    <button 
+      class="px-5 py-2.5 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50 font-medium"
+      onClick=${onConfirm}
+    >
+      Delete
+    </button>
+  `;
+  
+  return html`
+    <${Modal}
+      id="delete-confirmation-modal"
+      title=${getTitle()}
+      isOpen=${isOpen}
+      onClose=${onClose}
+      footer=${footer}
+    >
+      <div class="p-4 text-center">
+        <div class="mb-4">
+          <svg class="w-16 h-16 mx-auto text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+          </svg>
+        </div>
+        <p class="text-lg font-medium text-gray-800 dark:text-gray-200 mb-2">Warning: This action cannot be undone</p>
+        <p class="text-gray-600 dark:text-gray-400">${getMessage()}</p>
+      </div>
+    </${Modal}>
+  `;
+}
+
+/**
  * Status message component
  * @returns {JSX.Element} Status message component
  */
@@ -463,6 +526,14 @@ export function setupModals() {
       console.log('videoModalContainer already exists');
       render(html`<${VideoModal} />`, videoModalContainer);
       console.log('VideoModal rendered to existing container');
+    }
+    
+    // Delete confirmation modal container
+    const deleteModalContainer = document.getElementById('delete-modal-container');
+    if (!deleteModalContainer) {
+      const container = document.createElement('div');
+      container.id = 'delete-modal-container';
+      document.body.appendChild(container);
     }
   }).catch(error => {
     console.error('Error importing preact.min.js:', error);

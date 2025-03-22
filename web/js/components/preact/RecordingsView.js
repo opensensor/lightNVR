@@ -6,7 +6,7 @@
 import { h } from '../../preact.min.js';
 import { html } from '../../preact-app.js';
 import { useState, useEffect, useRef, useCallback } from '../../preact.hooks.module.js';
-import { showStatusMessage, showVideoModal } from './UI.js';
+import { showStatusMessage, showVideoModal, DeleteConfirmationModal } from './UI.js';
 
 /**
  * RecordingsView component
@@ -37,6 +37,10 @@ export function RecordingsView() {
   });
   const [hasActiveFilters, setHasActiveFilters] = useState(false);
   const [activeFiltersDisplay, setActiveFiltersDisplay] = useState([]);
+  const [selectedRecordings, setSelectedRecordings] = useState({});
+  const [selectAll, setSelectAll] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteMode, setDeleteMode] = useState('selected'); // 'selected' or 'all'
   const recordingsTableBodyRef = useRef(null);
   
   // Initialize component
@@ -571,7 +575,291 @@ export function RecordingsView() {
     showStatusMessage('Download started');
   };
   
-  // Delete recording
+  // Toggle selection of a recording
+  const toggleRecordingSelection = (recordingId) => {
+    setSelectedRecordings(prev => ({
+      ...prev,
+      [recordingId]: !prev[recordingId]
+    }));
+  };
+
+  // Toggle select all recordings
+  const toggleSelectAll = () => {
+    const newSelectAll = !selectAll;
+    setSelectAll(newSelectAll);
+    
+    const newSelectedRecordings = {};
+    if (newSelectAll) {
+      // Select all recordings
+      recordings.forEach(recording => {
+        newSelectedRecordings[recording.id] = true;
+      });
+    }
+    setSelectedRecordings(newSelectedRecordings);
+  };
+
+  // Get count of selected recordings
+  const getSelectedCount = () => {
+    return Object.values(selectedRecordings).filter(Boolean).length;
+  };
+
+  // Open delete confirmation modal
+  const openDeleteModal = (mode) => {
+    setDeleteMode(mode);
+    setIsDeleteModalOpen(true);
+  };
+
+  // Close delete confirmation modal
+  const closeDeleteModal = () => {
+    setIsDeleteModalOpen(false);
+  };
+
+  // Handle delete confirmation
+  const handleDeleteConfirm = () => {
+    if (deleteMode === 'selected') {
+      deleteSelectedRecordings();
+    } else {
+      deleteAllFilteredRecordings();
+    }
+  };
+
+  // Delete selected recordings
+  const deleteSelectedRecordings = async () => {
+    
+    const selectedIds = Object.entries(selectedRecordings)
+      .filter(([_, isSelected]) => isSelected)
+      .map(([id, _]) => parseInt(id, 10));
+    
+    if (selectedIds.length === 0) {
+      showStatusMessage('No recordings selected');
+      return;
+    }
+    
+    try {
+      // Save current URL parameters before deletion
+      const currentUrlParams = new URLSearchParams(window.location.search);
+      const currentSortField = currentUrlParams.get('sort') || sortField;
+      const currentSortDirection = currentUrlParams.get('order') || sortDirection;
+      const currentPage = parseInt(currentUrlParams.get('page'), 10) || pagination.currentPage;
+      
+      let successCount = 0;
+      let errorCount = 0;
+      
+      // Delete each selected recording
+      for (const id of selectedIds) {
+        try {
+          const response = await fetch(`/api/recordings/${id}`, {
+            method: 'DELETE'
+          });
+          
+          if (response.ok) {
+            successCount++;
+          } else {
+            errorCount++;
+          }
+        } catch (error) {
+          console.error(`Error deleting recording ${id}:`, error);
+          errorCount++;
+        }
+      }
+      
+      // Show status message
+      if (successCount > 0 && errorCount === 0) {
+        showStatusMessage(`Successfully deleted ${successCount} recording${successCount !== 1 ? 's' : ''}`);
+      } else if (successCount > 0 && errorCount > 0) {
+        showStatusMessage(`Deleted ${successCount} recording${successCount !== 1 ? 's' : ''}, but failed to delete ${errorCount}`);
+      } else {
+        showStatusMessage(`Failed to delete ${errorCount} recording${errorCount !== 1 ? 's' : ''}`);
+      }
+      
+      // Reset selection
+      setSelectedRecordings({});
+      setSelectAll(false);
+      
+      // Reload recordings with preserved parameters
+      const reloadWithPreservedParams = async () => {
+        // Set the sort parameters directly
+        const tempSortField = currentSortField;
+        const tempSortDirection = currentSortDirection;
+        
+        // Set state with the saved values
+        setSortField(tempSortField);
+        setSortDirection(tempSortDirection);
+        setPagination(prev => ({
+          ...prev,
+          currentPage: currentPage
+        }));
+        
+        // Wait for state to update
+        setTimeout(() => {
+          // Build query parameters manually
+          const params = new URLSearchParams();
+          params.append('page', currentPage);
+          params.append('limit', pagination.pageSize);
+          params.append('sort', tempSortField);
+          params.append('order', tempSortDirection);
+          
+          // Add date range filters
+          if (filters.dateRange === 'custom') {
+            params.append('start', `${filters.startDate}T${filters.startTime}:00`);
+            params.append('end', `${filters.endDate}T${filters.endTime}:00`);
+          } else {
+            // Convert predefined range to actual dates
+            const { start, end } = getDateRangeFromPreset(filters.dateRange);
+            params.append('start', start);
+            params.append('end', end);
+          }
+          
+          // Add stream filter
+          if (filters.streamId !== 'all') {
+            params.append('stream', filters.streamId);
+          }
+          
+          // Add recording type filter
+          if (filters.recordingType === 'detection') {
+            params.append('detection', '1');
+          }
+          
+          // Update URL with preserved parameters
+          const newUrl = `${window.location.pathname}?${params.toString()}`;
+          window.history.pushState({ path: newUrl }, '', newUrl);
+          
+          // Fetch recordings with preserved parameters
+          fetch(`/api/recordings?${params.toString()}`)
+            .then(response => {
+              if (!response.ok) {
+                throw new Error('Failed to load recordings');
+              }
+              return response.json();
+            })
+            .then(data => {
+              console.log('Recordings data received:', data);
+              
+              // Store recordings in the component state
+              setRecordings(data.recordings || []);
+              
+              // Update pagination without changing the current page
+              if (data.pagination) {
+                setPagination(prev => ({
+                  ...prev,
+                  totalItems: data.pagination.total || 0,
+                  totalPages: data.pagination.pages || 1,
+                  // Keep the current page
+                  pageSize: data.pagination.limit || 20,
+                  startItem: data.recordings.length > 0 ? (currentPage - 1) * data.pagination.limit + 1 : 0,
+                  endItem: Math.min((currentPage - 1) * data.pagination.limit + data.recordings.length, data.pagination.total)
+                }));
+              } else {
+                setPagination(prev => ({
+                  ...prev,
+                  totalItems: data.total || 0,
+                  totalPages: Math.ceil(data.total / prev.pageSize) || 1,
+                  // Keep the current page
+                  startItem: data.recordings.length > 0 ? (currentPage - 1) * prev.pageSize + 1 : 0,
+                  endItem: Math.min((currentPage - 1) * prev.pageSize + data.recordings.length, data.total)
+                }));
+              }
+            })
+            .catch(error => {
+              console.error('Error loading recordings:', error);
+              showStatusMessage('Error loading recordings: ' + error.message);
+            });
+        }, 0);
+      };
+      
+      // Execute the reload function
+      reloadWithPreservedParams();
+    } catch (error) {
+      console.error('Error in batch delete operation:', error);
+      showStatusMessage('Error in batch delete operation: ' + error.message);
+    }
+  };
+
+  // Delete all recordings matching current filter
+  const deleteAllFilteredRecordings = async () => {
+    
+    try {
+      // Build query parameters for the current filter
+      const params = new URLSearchParams();
+      
+      // Add date range filters
+      if (filters.dateRange === 'custom') {
+        params.append('start', `${filters.startDate}T${filters.startTime}:00`);
+        params.append('end', `${filters.endDate}T${filters.endTime}:00`);
+      } else {
+        // Convert predefined range to actual dates
+        const { start, end } = getDateRangeFromPreset(filters.dateRange);
+        params.append('start', start);
+        params.append('end', end);
+      }
+      
+      // Add stream filter
+      if (filters.streamId !== 'all') {
+        params.append('stream', filters.streamId);
+      }
+      
+      // Add recording type filter
+      if (filters.recordingType === 'detection') {
+        params.append('detection', '1');
+      }
+      
+      // Make a request to get all recordings matching the filter
+      const response = await fetch(`/api/recordings?${params.toString()}&limit=1000`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch recordings for deletion');
+      }
+      
+      const data = await response.json();
+      const recordingsToDelete = data.recordings || [];
+      
+      if (recordingsToDelete.length === 0) {
+        showStatusMessage('No recordings match the current filter');
+        return;
+      }
+      
+      let successCount = 0;
+      let errorCount = 0;
+      
+      // Delete each recording
+      for (const recording of recordingsToDelete) {
+        try {
+          const deleteResponse = await fetch(`/api/recordings/${recording.id}`, {
+            method: 'DELETE'
+          });
+          
+          if (deleteResponse.ok) {
+            successCount++;
+          } else {
+            errorCount++;
+          }
+        } catch (error) {
+          console.error(`Error deleting recording ${recording.id}:`, error);
+          errorCount++;
+        }
+      }
+      
+      // Show status message
+      if (successCount > 0 && errorCount === 0) {
+        showStatusMessage(`Successfully deleted ${successCount} recording${successCount !== 1 ? 's' : ''}`);
+      } else if (successCount > 0 && errorCount > 0) {
+        showStatusMessage(`Deleted ${successCount} recording${successCount !== 1 ? 's' : ''}, but failed to delete ${errorCount}`);
+      } else {
+        showStatusMessage(`Failed to delete ${errorCount} recording${errorCount !== 1 ? 's' : ''}`);
+      }
+      
+      // Reset selection
+      setSelectedRecordings({});
+      setSelectAll(false);
+      
+      // Reload recordings
+      loadRecordings();
+    } catch (error) {
+      console.error('Error in delete all operation:', error);
+      showStatusMessage('Error in delete all operation: ' + error.message);
+    }
+  };
+
+  // Delete a single recording
   const deleteRecording = async (recording) => {
     if (!confirm(`Are you sure you want to delete this recording from ${recording.stream}?`)) {
       return;
@@ -838,10 +1126,36 @@ export function RecordingsView() {
           `}
           
           <div class="recordings-container bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+            <div class="batch-actions p-3 border-b border-gray-200 dark:border-gray-700 flex flex-wrap gap-2 items-center">
+              <div class="selected-count text-sm text-gray-600 dark:text-gray-400 mr-2">
+                ${getSelectedCount() > 0 ? 
+                  `${getSelectedCount()} recording${getSelectedCount() !== 1 ? 's' : ''} selected` : 
+                  'No recordings selected'}
+              </div>
+              <button 
+                class="px-3 py-1.5 bg-red-600 text-white rounded hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled=${getSelectedCount() === 0}
+                onClick=${() => openDeleteModal('selected')}>
+                Delete Selected
+              </button>
+              <button 
+                class="px-3 py-1.5 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+                onClick=${() => openDeleteModal('all')}>
+                Delete All Filtered
+              </button>
+            </div>
             <div class="overflow-x-auto">
               <table id="recordings-table" class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead class="bg-gray-50 dark:bg-gray-700">
                   <tr>
+                    <th class="w-10 px-4 py-3">
+                      <input 
+                        type="checkbox" 
+                        checked=${selectAll}
+                        onChange=${toggleSelectAll}
+                        class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 dark:focus:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                      />
+                    </th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer"
                         onClick=${() => sortBy('stream_name')}>
                       <div class="flex items-center">
@@ -880,12 +1194,20 @@ export function RecordingsView() {
                 <tbody ref=${recordingsTableBodyRef} class="bg-white divide-y divide-gray-200 dark:bg-gray-800 dark:divide-gray-700">
                   ${recordings.length === 0 ? html`
                     <tr>
-                      <td colspan="5" class="px-6 py-4 text-center text-gray-500 dark:text-gray-400">
+                      <td colspan="6" class="px-6 py-4 text-center text-gray-500 dark:text-gray-400">
                         ${pagination.totalItems === 0 ? 'No recordings found' : 'Loading recordings...'}
                       </td>
                     </tr>
                   ` : recordings.map(recording => html`
                     <tr key=${recording.id} class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                      <td class="px-4 py-4 whitespace-nowrap">
+                        <input 
+                          type="checkbox" 
+                          checked=${!!selectedRecordings[recording.id]}
+                          onChange=${() => toggleRecordingSelection(recording.id)}
+                          class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 dark:focus:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                        />
+                      </td>
                       <td class="px-6 py-4 whitespace-nowrap">${recording.stream || ''}</td>
                       <td class="px-6 py-4 whitespace-nowrap">${formatDateTime(recording.start_time)}</td>
                       <td class="px-6 py-4 whitespace-nowrap">${formatDuration(recording.duration)}</td>
@@ -961,6 +1283,15 @@ export function RecordingsView() {
           </div>
         </div>
       </div>
+      
+      {/* Delete Confirmation Modal */}
+      <${DeleteConfirmationModal}
+        isOpen=${isDeleteModalOpen}
+        onClose=${closeDeleteModal}
+        onConfirm=${handleDeleteConfirm}
+        mode=${deleteMode}
+        count=${getSelectedCount()}
+      />
     </section>
   `;
 }
