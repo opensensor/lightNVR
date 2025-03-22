@@ -26,7 +26,17 @@ export function SystemView() {
       used: 0,
       free: 0
     },
+    systemMemory: {
+      total: 0,
+      used: 0,
+      free: 0
+    },
     disk: {
+      total: 0,
+      used: 0,
+      free: 0
+    },
+    systemDisk: {
       total: 0,
       used: 0,
       free: 0
@@ -284,7 +294,7 @@ export function SystemView() {
           <div class="space-y-4">
             <div>
               <div class="flex justify-between mb-1">
-                <span class="font-medium">Memory:</span>
+                <span class="font-medium">LightNVR Memory:</span>
                 <span>${systemInfo.memory?.used ? formatBytes(systemInfo.memory.used) : '0'} / ${systemInfo.memory?.total ? formatBytes(systemInfo.memory.total) : '0'}</span>
               </div>
               <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
@@ -293,11 +303,29 @@ export function SystemView() {
             </div>
             <div>
               <div class="flex justify-between mb-1">
-                <span class="font-medium">Disk:</span>
+                <span class="font-medium">System Memory:</span>
+                <span>${systemInfo.systemMemory?.used ? formatBytes(systemInfo.systemMemory.used) : '0'} / ${systemInfo.systemMemory?.total ? formatBytes(systemInfo.systemMemory.total) : '0'}</span>
+              </div>
+              <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
+                <div class="bg-blue-600 h-2.5 rounded-full" style=${`width: ${systemInfo.systemMemory?.total ? (systemInfo.systemMemory.used / systemInfo.systemMemory.total * 100).toFixed(1) : 0}%`}></div>
+              </div>
+            </div>
+            <div>
+              <div class="flex justify-between mb-1">
+                <span class="font-medium">LightNVR Storage:</span>
                 <span>${systemInfo.disk?.used ? formatBytes(systemInfo.disk.used) : '0'} / ${systemInfo.disk?.total ? formatBytes(systemInfo.disk.total) : '0'}</span>
               </div>
               <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
                 <div class="bg-blue-600 h-2.5 rounded-full" style=${`width: ${systemInfo.disk?.total ? (systemInfo.disk.used / systemInfo.disk.total * 100).toFixed(1) : 0}%`}></div>
+              </div>
+            </div>
+            <div>
+              <div class="flex justify-between mb-1">
+                <span class="font-medium">System Storage:</span>
+                <span>${systemInfo.systemDisk?.used ? formatBytes(systemInfo.systemDisk.used) : '0'} / ${systemInfo.systemDisk?.total ? formatBytes(systemInfo.systemDisk.total) : '0'}</span>
+              </div>
+              <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
+                <div class="bg-blue-600 h-2.5 rounded-full" style=${`width: ${systemInfo.systemDisk?.total ? (systemInfo.systemDisk.used / systemInfo.systemDisk.total * 100).toFixed(1) : 0}%`}></div>
               </div>
             </div>
           </div>
@@ -409,5 +437,25 @@ export function loadSystemView() {
   // Render the SystemView component to the container
   import('../../preact.min.js').then(({ render }) => {
     render(html`<${SystemView} />`, mainContent);
+    
+    // Refresh system info immediately after rendering
+    setTimeout(() => {
+      const event = new CustomEvent('refresh-system-info');
+      window.dispatchEvent(event);
+    }, 100);
   });
 }
+
+// Add a global event listener for refreshing system info
+window.addEventListener('load', () => {
+  window.addEventListener('refresh-system-info', async () => {
+    try {
+      const response = await fetch('/api/system/info');
+      if (response.ok) {
+        console.log('System info refreshed');
+      }
+    } catch (error) {
+      console.error('Error refreshing system info:', error);
+    }
+  });
+});
