@@ -16,7 +16,8 @@
 // Stream protocol enum
 typedef enum {
     STREAM_PROTOCOL_TCP = 0,
-    STREAM_PROTOCOL_UDP = 1
+    STREAM_PROTOCOL_UDP = 1,
+    STREAM_PROTOCOL_ONVIF = 2
 } stream_protocol_t;
 
 // Stream configuration structure
@@ -38,7 +39,13 @@ typedef struct {
     int pre_detection_buffer; // Seconds to keep before detection
     int post_detection_buffer; // Seconds to keep after detection
     bool streaming_enabled; // Whether HLS streaming is enabled for this stream
-    stream_protocol_t protocol; // Stream protocol (TCP or UDP)
+    stream_protocol_t protocol; // Stream protocol (TCP, UDP, or ONVIF)
+    
+    // ONVIF specific fields
+    char onvif_username[64];
+    char onvif_password[64];
+    char onvif_profile[64];
+    bool onvif_discovery_enabled; // Whether this camera should be included in discovery
 } stream_config_t;
 
 // Main configuration structure
@@ -72,6 +79,11 @@ typedef struct {
     bool web_auth_enabled;
     char web_username[32];
     char web_password[32]; // Stored as hash in actual implementation
+    
+    // ONVIF settings
+    bool onvif_discovery_enabled;    // Whether ONVIF discovery is enabled
+    int onvif_discovery_interval;    // Interval in seconds between discovery attempts
+    char onvif_discovery_network[64]; // Network to scan for ONVIF devices (e.g., "192.168.1.0/24")
     
     // Stream settings
     int max_streams;

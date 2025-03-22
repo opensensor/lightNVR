@@ -15,6 +15,16 @@ import { showStatusMessage } from './UI.js';
 export function StreamsView() {
   const [streams, setStreams] = useState([]);
   const [modalVisible, setModalVisible] = useState(false);
+  const [onvifModalVisible, setOnvifModalVisible] = useState(false);
+  const [discoveredDevices, setDiscoveredDevices] = useState([]);
+  const [deviceProfiles, setDeviceProfiles] = useState([]);
+  const [selectedDevice, setSelectedDevice] = useState(null);
+  const [selectedProfile, setSelectedProfile] = useState(null);
+  const [isDiscovering, setIsDiscovering] = useState(false);
+  const [onvifCredentials, setOnvifCredentials] = useState({
+    username: '',
+    password: ''
+  });
   const [currentStream, setCurrentStream] = useState({
     name: '',
     url: '',
@@ -503,6 +513,7 @@ export function StreamsView() {
                     >
                       <option value="0">TCP</option>
                       <option value="1">UDP</option>
+                      <option value="2">ONVIF</option>
                     </select>
                     <span class="text-xs text-gray-500 dark:text-gray-400">Connection protocol</span>
                   </div>

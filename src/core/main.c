@@ -29,6 +29,7 @@
 #include "video/detection.h"
 #include "video/stream_packet_processor.h"
 #include "video/timestamp_manager.h"
+#include "video/onvif_discovery.h"
 
 // External function declarations
 void init_recordings_system(void);
@@ -466,6 +467,25 @@ int main(int argc, char *argv[]) {
     // Initialize detection stream system
     init_detection_stream_system();
     
+    // Initialize ONVIF discovery module
+    if (init_onvif_discovery() != 0) {
+        log_error("Failed to initialize ONVIF discovery module");
+    } else {
+        log_info("ONVIF discovery module initialized successfully");
+        
+        // Start ONVIF discovery if enabled in configuration
+        if (config.onvif_discovery_enabled) {
+            log_info("Starting ONVIF discovery on network %s with interval %d seconds", 
+                    config.onvif_discovery_network, config.onvif_discovery_interval);
+            
+            if (start_onvif_discovery(config.onvif_discovery_network, config.onvif_discovery_interval) != 0) {
+                log_error("Failed to start ONVIF discovery");
+            } else {
+                log_info("ONVIF discovery started successfully");
+            }
+        }
+    }
+    
     // Check if detection models exist and start detection-based recording
     for (int i = 0; i < config.max_streams; i++) {
         if (config.streams[i].name[0] != '\0' && config.streams[i].enabled && 
@@ -713,6 +733,10 @@ cleanup:
         // Clean up FFmpeg resources
         log_info("Cleaning up transcoding backend...");
         cleanup_transcoding_backend();
+        
+        // Shutdown ONVIF discovery
+        log_info("Shutting down ONVIF discovery module...");
+        shutdown_onvif_discovery();
         
         // Now shut down other components
         log_info("Shutting down web server...");

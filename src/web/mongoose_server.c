@@ -16,6 +16,7 @@
 #include "mongoose.h"
 #include "web/mongoose_adapter.h"
 #include "web/api_handlers.h"
+#include "web/api_handlers_onvif.h"
 
 // Default initial handler capacity
 #define INITIAL_HANDLER_CAPACITY 32
@@ -107,6 +108,16 @@ static const mg_api_route_t s_api_routes[] = {
     // Detection API
     {"GET", "/api/detection/results/#", mg_handle_get_detection_results},
     {"GET", "/api/detection/models", mg_handle_get_detection_models},
+    
+    // ONVIF API
+    {"GET", "/api/onvif/discovery/status", mg_handle_get_onvif_discovery_status},
+    {"GET", "/api/onvif/devices", mg_handle_get_discovered_onvif_devices},
+    {"GET", "/api/onvif/device/profiles", mg_handle_get_onvif_device_profiles},
+    {"POST", "/api/onvif/discovery/start", mg_handle_post_start_onvif_discovery},
+    {"POST", "/api/onvif/discovery/stop", mg_handle_post_stop_onvif_discovery},
+    {"POST", "/api/onvif/discovery/discover", mg_handle_post_discover_onvif_devices},
+    {"POST", "/api/onvif/device/add", mg_handle_post_add_onvif_device_as_stream},
+    {"POST", "/api/onvif/device/test", mg_handle_post_test_onvif_connection},
     
     // End of table marker
     {NULL, NULL, NULL}
@@ -214,6 +225,16 @@ static void init_route_table(void) {
     // Detection API
     add_route("GET", "^/api/detection/results/([^/]+)$", mg_handle_get_detection_results);
     add_route("GET", "^/api/detection/models$", mg_handle_get_detection_models);
+    
+    // ONVIF API
+    add_route("GET", "^/api/onvif/discovery/status$", mg_handle_get_onvif_discovery_status);
+    add_route("GET", "^/api/onvif/devices$", mg_handle_get_discovered_onvif_devices);
+    add_route("GET", "^/api/onvif/device/profiles$", mg_handle_get_onvif_device_profiles);
+    add_route("POST", "^/api/onvif/discovery/start$", mg_handle_post_start_onvif_discovery);
+    add_route("POST", "^/api/onvif/discovery/stop$", mg_handle_post_stop_onvif_discovery);
+    add_route("POST", "^/api/onvif/discovery/discover$", mg_handle_post_discover_onvif_devices);
+    add_route("POST", "^/api/onvif/device/add$", mg_handle_post_add_onvif_device_as_stream);
+    add_route("POST", "^/api/onvif/device/test$", mg_handle_post_test_onvif_connection);
     
     log_info("Route table initialized with %d routes", s_route_count);
 }

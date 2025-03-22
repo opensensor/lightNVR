@@ -100,7 +100,14 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
     
     // Log the stream opening attempt
     log_info("Opening input stream: %s (protocol: %s)", 
-            url, protocol == STREAM_PROTOCOL_UDP ? "UDP" : "TCP");
+            url, protocol == STREAM_PROTOCOL_UDP ? "UDP" : 
+                (protocol == STREAM_PROTOCOL_ONVIF ? "ONVIF" : "TCP"));
+    
+    // Set common options for all protocols
+    av_dict_set(&input_options, "protocol_whitelist", "file,udp,rtp,rtsp,tcp,https,tls,http", 0);
+    av_dict_set(&input_options, "reconnect", "1", 0); // Enable reconnection
+    av_dict_set(&input_options, "reconnect_streamed", "1", 0); // Reconnect if streaming
+    av_dict_set(&input_options, "reconnect_delay_max", "5", 0); // Max 5 seconds between reconnection attempts
     
     if (protocol == STREAM_PROTOCOL_UDP) {
         // Check if this is a multicast stream with robust error handling
@@ -110,9 +117,6 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
                 url, is_multicast ? "yes" : "no");
         
         // UDP-specific options with improved buffering for smoother playback
-        // Expanded protocol whitelist to support more UDP variants
-        av_dict_set(&input_options, "protocol_whitelist", "file,udp,rtp,rtsp,tcp,https,tls,http", 0);
-        
         // Increased buffer size to 16MB as recommended for UDP jitter handling
         av_dict_set(&input_options, "buffer_size", "16777216", 0); // 16MB buffer
         
@@ -151,6 +155,22 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
             av_dict_set(&input_options, "pkt_size", "1316", 0); // Standard UDP packet size for MPEG-TS
             av_dict_set(&input_options, "rw_timeout", "10000000", 0); // 10 second read/write timeout
         }
+    } else if (protocol == STREAM_PROTOCOL_ONVIF) {
+        log_info("Using ONVIF protocol for stream URL: %s", url);
+        
+        // ONVIF typically uses RTSP over TCP
+        av_dict_set(&input_options, "rtsp_transport", "tcp", 0); // Force TCP for RTSP
+        
+        // ONVIF-specific options for better reliability
+        av_dict_set(&input_options, "stimeout", "10000000", 0); // 10 second timeout in microseconds
+        av_dict_set(&input_options, "analyzeduration", "3000000", 0); // 3 seconds analyze duration
+        av_dict_set(&input_options, "probesize", "2000000", 0); // 2MB probe size
+        
+        // More tolerant timestamp handling for ONVIF streams
+        av_dict_set(&input_options, "fflags", "genpts+discardcorrupt", 0);
+        
+        // ONVIF streams may need more time to start
+        av_dict_set(&input_options, "rw_timeout", "15000000", 0); // 15 second read/write timeout
     } else {
         log_info("Using TCP protocol for stream URL: %s", url);
         // TCP-specific options with improved reliability
@@ -158,9 +178,6 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
         av_dict_set(&input_options, "rtsp_transport", "tcp", 0); // Force TCP for RTSP
         av_dict_set(&input_options, "analyzeduration", "2000000", 0); // 2 seconds analyze duration
         av_dict_set(&input_options, "probesize", "1000000", 0); // 1MB probe size
-        av_dict_set(&input_options, "reconnect", "1", 0); // Enable reconnection
-        av_dict_set(&input_options, "reconnect_streamed", "1", 0); // Reconnect if streaming
-        av_dict_set(&input_options, "reconnect_delay_max", "5", 0); // Max 5 seconds between reconnection attempts
     }
     
     // Open input with protocol-specific options
