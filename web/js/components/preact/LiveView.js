@@ -27,8 +27,31 @@ export function LiveView() {
     
     // Set up Escape key to exit fullscreen mode
     const handleEscape = (e) => {
-      if (e.key === 'Escape' && isFullscreen) {
-        toggleFullscreen();
+      if (e.key === 'Escape') {
+        console.log("Escape key pressed, current fullscreen state:", isFullscreen);
+        // Check if we're in fullscreen mode by checking the DOM directly
+        const livePage = document.getElementById('live-page');
+        if (livePage && livePage.classList.contains('fullscreen-mode')) {
+          console.log("Detected fullscreen mode via DOM, exiting fullscreen");
+          // Force exit fullscreen mode
+          livePage.classList.remove('fullscreen-mode');
+          document.body.style.overflow = '';
+          
+          // Remove exit button
+          const exitBtn = document.querySelector('.fullscreen-exit');
+          if (exitBtn) {
+            exitBtn.remove();
+          }
+          
+          // Show the fullscreen button again
+          const fullscreenBtn = document.getElementById('fullscreen-btn');
+          if (fullscreenBtn) {
+            fullscreenBtn.style.display = '';
+          }
+          
+          // Update state
+          setIsFullscreen(false);
+        }
       }
     };
     
@@ -47,7 +70,7 @@ export function LiveView() {
       window.removeEventListener('beforeunload', handleBeforeUnload);
       stopAllStreams();
     };
-  }, [isFullscreen]);
+  }, []);
   
   // Update video grid when layout or streams change
   useEffect(() => {
@@ -710,35 +733,96 @@ export function LiveView() {
     }
   };
   
+  // Direct function to exit fullscreen mode
+  function exitFullscreenMode(e) {
+    // If this was called from an event, stop propagation
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    
+    console.log("DIRECT EXIT FUNCTION CALLED");
+    
+    const livePage = document.getElementById('live-page');
+    if (!livePage) {
+      console.error("Live page element not found");
+      return;
+    }
+    
+    // Exit fullscreen
+    livePage.classList.remove('fullscreen-mode');
+    document.body.style.overflow = '';
+    
+    // Remove exit button
+    const exitBtn = document.querySelector('.fullscreen-exit');
+    if (exitBtn) {
+      exitBtn.remove();
+    } else {
+      console.warn("Exit button not found when trying to remove it");
+    }
+    
+    // Show the fullscreen button again
+    const fullscreenBtn = document.getElementById('fullscreen-btn');
+    if (fullscreenBtn) {
+      fullscreenBtn.style.display = '';
+    } else {
+      console.warn("Fullscreen button not found when trying to show it again");
+    }
+    
+    // Update state
+    setIsFullscreen(false);
+    
+    console.log("Fullscreen mode exited, state set to false");
+  }
+  
   // Toggle fullscreen
   function toggleFullscreen() {
-    setIsFullscreen(prev => !prev);
+    console.log("toggleFullscreen called, current state:", isFullscreen);
     
     const livePage = document.getElementById('live-page');
     
-    if (!livePage) return;
+    if (!livePage) {
+      console.error("Live page element not found");
+      return;
+    }
     
-    if (!isFullscreen) {
+    // Check the actual DOM state rather than relying on the React state
+    const isCurrentlyInFullscreen = livePage.classList.contains('fullscreen-mode');
+    console.log("DOM check for fullscreen mode:", isCurrentlyInFullscreen);
+    
+    if (!isCurrentlyInFullscreen) {
+      console.log("Entering fullscreen mode");
       // Enter fullscreen
       livePage.classList.add('fullscreen-mode');
       document.body.style.overflow = 'hidden';
       
-      // Add exit button
+      // Add exit button - IMPORTANT: Use a standalone function for the click handler
       const exitBtn = document.createElement('button');
       exitBtn.className = 'fullscreen-exit fixed top-4 right-4 w-10 h-10 bg-black/70 text-white rounded-full flex justify-center items-center cursor-pointer z-50 transition-all duration-200 hover:bg-black/85 hover:scale-110 shadow-md';
       exitBtn.innerHTML = '✕';
-      exitBtn.addEventListener('click', toggleFullscreen);
-      livePage.appendChild(exitBtn);
-    } else {
-      // Exit fullscreen
-      livePage.classList.remove('fullscreen-mode');
-      document.body.style.overflow = '';
       
-      // Remove exit button
-      const exitBtn = document.querySelector('.fullscreen-exit');
-      if (exitBtn) {
-        exitBtn.remove();
+      // Create a standalone function for the click handler
+      const exitClickHandler = function(e) {
+        console.log("Exit button clicked - STANDALONE HANDLER");
+        exitFullscreenMode(e);
+      };
+      
+      // Add the event listener with the standalone function
+      exitBtn.addEventListener('click', exitClickHandler);
+      
+      livePage.appendChild(exitBtn);
+      
+      // Hide the fullscreen button in the controls when in fullscreen mode
+      const fullscreenBtn = document.getElementById('fullscreen-btn');
+      if (fullscreenBtn) {
+        fullscreenBtn.style.display = 'none';
       }
+      
+      // Update state
+      setIsFullscreen(true);
+      console.log("Fullscreen mode entered, state set to true");
+    } else {
+      exitFullscreenMode();
     }
   };
   
@@ -802,7 +886,16 @@ export function LiveView() {
   return html`
     <section id="live-page" class="page">
       <div class="page-header flex justify-between items-center mb-4 p-4 bg-white dark:bg-gray-800 rounded-lg shadow">
-        <h2 class="text-xl font-bold">Live View</h2>
+        <div class="flex items-center space-x-2">
+          <h2 class="text-xl font-bold mr-4">Live View</h2>
+          <button 
+            id="fullscreen-btn" 
+            class="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+            onClick=${toggleFullscreen}
+          >
+            Fullscreen
+          </button>
+        </div>
         <div class="controls flex items-center space-x-2">
           <select 
             id="layout-selector" 
@@ -828,14 +921,6 @@ export function LiveView() {
               `)}
             </select>
           `}
-          
-          <button 
-            id="fullscreen-btn" 
-            class="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
-            onClick=${toggleFullscreen}
-          >
-            Fullscreen
-          </button>
         </div>
       </div>
       
