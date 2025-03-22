@@ -244,7 +244,7 @@ int main(int argc, char *argv[]) {
     int pid_fd = -1;
 
     // Print banner
-    printf("LightNVR v%s - Lightweight NVR for Ingenic A1\n", LIGHTNVR_VERSION_STRING);
+    printf("LightNVR v%s - Lightweight NVR\n");
     printf("Build date: %s\n", LIGHTNVR_BUILD_DATE);
 
     // Initialize logging
