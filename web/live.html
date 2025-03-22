@@ -15,48 +15,7 @@
     </header>
 
     <main id="main-content" class="flex-grow">
-        <section id="live-page" class="page" x-data="liveViewManager">
-            <div class="page-header flex justify-between items-center mb-4 p-4 bg-white dark:bg-gray-800 rounded-lg shadow">
-                <h2 class="text-xl font-bold">Live View</h2>
-                <div class="controls flex items-center space-x-2">
-                    <select id="layout-selector" 
-                            class="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600"
-                            x-model="layout"
-                            @change="updateLayout">
-                        <option value="1">Single View</option>
-                        <option value="4" selected>2x2 Grid</option>
-                        <option value="9">3x3 Grid</option>
-                        <option value="16">4x4 Grid</option>
-                    </select>
-                    <select id="stream-selector" 
-                            class="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600"
-                            x-show="layout === '1'"
-                            x-model="selectedStream"
-                            @change="updateSelectedStream">
-                        <template x-for="stream in streams" :key="stream.name">
-                            <option :value="stream.name" x-text="stream.name"></option>
-                        </template>
-                    </select>
-                    <button id="fullscreen-btn" 
-                            class="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
-                            @click="toggleFullscreen">
-                        Fullscreen
-                    </button>
-                </div>
-            </div>
-            
-            <div id="video-grid" 
-                 class="video-container"
-                 :class="'layout-' + layout"
-                 x-ref="videoGrid">
-                <div class="placeholder flex flex-col justify-center items-center col-span-full row-span-full bg-white dark:bg-gray-800 rounded-lg shadow-md text-center p-8"
-                     x-show="streams.length === 0">
-                    <p class="mb-6 text-gray-600 dark:text-gray-300 text-lg">No streams configured</p>
-                    <a href="streams.html" class="btn-primary px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">Configure Streams</a>
-                </div>
-                <!-- Video cells will be dynamically added by the updateVideoGrid function -->
-            </div>
-        </section>
+        <!-- LiveView component will be rendered here -->
     </main>
 
     <footer id="footer-container" class="mt-auto">
@@ -64,154 +23,14 @@
     </footer>
 </div>
 
-<!-- Status message component -->
-<div id="status-message" 
-     x-data="statusMessage"
-     x-show="visible"
-     x-text="message"
-     class="status-message"
-     :class="{ 'visible': visible }">
-</div>
+<!-- UI components will be rendered here -->
+<div id="status-message-container"></div>
+<div id="snapshot-modal-container"></div>
+<div id="video-modal-container"></div>
 
-<!-- Snapshot Preview Modal (Vanilla JS version) -->
-<div id="snapshot-preview-modal" class="modal hidden fixed inset-0 z-50 overflow-auto bg-black bg-opacity-70 backdrop-blur-sm flex items-center justify-center transition-opacity duration-300">
-    <div class="modal-content bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-3xl mx-4 overflow-hidden transform transition-transform duration-300 scale-95 opacity-0">
-        <div class="modal-header flex justify-between items-center p-5 border-b border-gray-200 dark:border-gray-700">
-            <h3 id="snapshot-preview-title" class="text-xl font-semibold text-gray-800 dark:text-gray-100">Snapshot Preview</h3>
-            <span class="close text-2xl font-bold text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 cursor-pointer hover:scale-110 transition-transform">&times;</span>
-        </div>
-        <div class="modal-body p-6 bg-gray-50 dark:bg-gray-900">
-            <div class="relative rounded-lg overflow-hidden shadow-inner bg-black">
-                <img id="snapshot-preview-image" src="" alt="Snapshot Preview" class="w-full h-auto max-h-[70vh] object-contain mx-auto">
-            </div>
-        </div>
-        <div class="modal-footer flex justify-end gap-3 p-5 border-t border-gray-200 dark:border-gray-700">
-            <button id="snapshot-download-btn" class="btn-primary px-5 py-2.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 font-medium">
-                <svg class="w-4 h-4 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
-                </svg>
-                Download
-            </button>
-            <button id="snapshot-close-btn" class="btn-secondary px-5 py-2.5 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50 font-medium">
-                Close
-            </button>
-        </div>
-    </div>
-</div>
-
-<script src="js/alpine.cdn.min.js" defer></script>
+<!-- Scripts -->
 <script src="js/tailwind.cdn.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-<script src="js/core.js"></script>
-<script src="js/components/layout.alpine.js"></script>
-<script src="js/components/ui.alpine.js"></script>
-<script src="js/components/ui.js"></script>
-<script src="js/components/streams.js"></script>
-<script src="js/components/video.js"></script>
-<script src="js/pages/pages.js"></script>
-<script src="js/pages/live.js"></script>
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
-        // Load header and footer
-        loadHeader('nav-live');
-        loadFooter();
-        
-        // Set up modals
-        setupModals();
-        setupSnapshotModal();
-        
-        // Add status message styles for toast notifications
-        addStatusMessageStyles();
-        
-        // Initialize the live view
-        setupLiveViewHandlers();
-
-        // Load streams for display
-        loadStreams(true);
-        
-        // Set initial layout
-        updateVideoLayout(document.getElementById('layout-selector').value);
-        
-        // Set up layout selector change event
-        const layoutSelector = document.getElementById('layout-selector');
-        if (layoutSelector) {
-            layoutSelector.addEventListener('change', function() {
-                updateVideoLayout(this.value);
-                
-                // If switching to single view, make sure the stream selector works
-                if (this.value === '1') {
-                    const streamSelector = document.getElementById('stream-selector');
-                    if (streamSelector && streamSelector.value) {
-                        // Trigger the change event on the stream selector
-                        const event = new Event('change');
-                        streamSelector.dispatchEvent(event);
-                    }
-                }
-            });
-        }
-        
-        // Set up fullscreen button click event
-        const fullscreenBtn = document.getElementById('fullscreen-btn');
-        if (fullscreenBtn) {
-            fullscreenBtn.addEventListener('click', toggleFullscreen);
-        }
-        
-        // Set up Escape key to exit fullscreen mode
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') {
-                const livePage = document.getElementById('live-page');
-                if (livePage && livePage.classList.contains('fullscreen-mode')) {
-                    toggleFullscreen();
-                }
-            }
-        });
-        
-        // Add event listener to stop streams when leaving the page
-        window.addEventListener('beforeunload', function() {
-            // Stop all streams when leaving the page
-            stopAllStreams();
-        });
-    });
-    
-    // Toggle fullscreen mode
-    function toggleFullscreen() {
-        const livePage = document.getElementById('live-page');
-        const videoGrid = document.getElementById('video-grid');
-        
-        if (!livePage || !videoGrid) return;
-        
-        if (livePage.classList.contains('fullscreen-mode')) {
-            // Exit fullscreen
-            livePage.classList.remove('fullscreen-mode');
-            document.body.style.overflow = '';
-            
-            // Remove exit button
-            const exitBtn = document.querySelector('.fullscreen-exit');
-            if (exitBtn) {
-                exitBtn.remove();
-            }
-        } else {
-            // Enter fullscreen
-            livePage.classList.add('fullscreen-mode');
-            document.body.style.overflow = 'hidden';
-            
-            // Add exit button
-            const exitBtn = document.createElement('button');
-            exitBtn.className = 'fullscreen-exit';
-            exitBtn.innerHTML = '✕';
-            exitBtn.addEventListener('click', toggleFullscreen);
-            livePage.appendChild(exitBtn);
-        }
-        
-        // Refresh video layout
-        updateVideoLayout(document.getElementById('layout-selector').value);
-    }
-    
-    // Function to set up live view handlers (placeholder for any additional handlers)
-    function setupLiveViewHandlers() {
-        // This function can be expanded later if needed
-        console.log('Setting up live view handlers');
-    }
-</script>
+<script type="module" src="js/preact-app.js"></script>
 </body>
 </html>

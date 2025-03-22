@@ -4,8 +4,8 @@
  */
 
 import { h } from '../../preact.min.js';
+import { useState, useEffect } from '../../preact.hooks.module.js';
 import { html } from '../../preact-app.js';
-import { useState, useEffect } from '../../preact/hooks.js';
 
 /**
  * Header component

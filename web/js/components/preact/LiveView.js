@@ -5,7 +5,7 @@
 
 import { h } from '../../preact.min.js';
 import { html } from '../../preact-app.js';
-import { useState, useEffect, useRef, useCallback } from '../../preact/hooks.js';
+import { useState, useEffect, useRef, useCallback } from '../../preact.hooks.module.js';
 import { showStatusMessage, showSnapshotPreview } from './UI.js';
 
 /**
