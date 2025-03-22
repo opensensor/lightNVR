@@ -163,6 +163,33 @@ int start_hls_stream(const char *stream_name) {
 }
 
 /**
+ * Force restart of HLS streaming for a stream
+ * This is used when a stream's URL is changed to ensure the stream thread is restarted
+ */
+int restart_hls_stream(const char *stream_name) {
+    log_info("Force restarting HLS stream for %s", stream_name);
+    
+    // First stop the stream if it's running
+    int stop_result = stop_hls_stream(stream_name);
+    if (stop_result != 0) {
+        log_warn("Failed to stop HLS stream %s for restart, continuing anyway", stream_name);
+    }
+    
+    // Wait a bit to ensure resources are released
+    usleep(500000); // 500ms
+    
+    // Start the stream again
+    int start_result = start_hls_stream(stream_name);
+    if (start_result != 0) {
+        log_error("Failed to restart HLS stream %s", stream_name);
+        return -1;
+    }
+    
+    log_info("Successfully restarted HLS stream %s", stream_name);
+    return 0;
+}
+
+/**
  * Stop HLS streaming for a stream
  */
 int stop_hls_stream(const char *stream_name) {

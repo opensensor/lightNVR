@@ -17,6 +17,8 @@
 #include "mongoose.h"
 #include "video/detection_stream.h"
 #include "database/database_manager.h"
+#include "video/hls/hls_directory.h"
+#include "video/hls/hls_api.h"
 
 /**
  * @brief Direct handler for POST /api/streams
@@ -260,11 +262,23 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
     
     // Update configuration with provided values
     bool config_changed = false;
+    bool requires_restart = false;  // Flag for changes that require stream restart
+    
+    // Save original values for comparison
+    char original_url[MAX_URL_LENGTH];
+    strncpy(original_url, config.url, MAX_URL_LENGTH - 1);
+    original_url[MAX_URL_LENGTH - 1] = '\0';
+    
+    stream_protocol_t original_protocol = config.protocol;
     
     cJSON *url = cJSON_GetObjectItem(stream_json, "url");
     if (url && cJSON_IsString(url)) {
-        strncpy(config.url, url->valuestring, sizeof(config.url) - 1);
-        config_changed = true;
+        if (strcmp(config.url, url->valuestring) != 0) {
+            strncpy(config.url, url->valuestring, sizeof(config.url) - 1);
+            config_changed = true;
+            requires_restart = true;  // URL changes always require restart
+            log_info("URL changed from '%s' to '%s' - restart required", original_url, config.url);
+        }
     }
     
     cJSON *enabled = cJSON_GetObjectItem(stream_json, "enabled");
@@ -360,8 +374,14 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
     
     cJSON *protocol = cJSON_GetObjectItem(stream_json, "protocol");
     if (protocol && cJSON_IsNumber(protocol)) {
-        config.protocol = (stream_protocol_t)protocol->valueint;
-        config_changed = true;
+        stream_protocol_t new_protocol = (stream_protocol_t)protocol->valueint;
+        if (config.protocol != new_protocol) {
+            config.protocol = new_protocol;
+            config_changed = true;
+            requires_restart = true;  // Protocol changes always require restart
+            log_info("Protocol changed from %d to %d - restart required", 
+                    original_protocol, config.protocol);
+        }
     }
     
     // Clean up JSON
@@ -382,6 +402,16 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
     
     // Force update of stream configuration in memory to ensure it matches the database
     // This ensures the stream handle has the latest configuration
+    
+    // IMPORTANT: Ensure the in-memory configuration is fully updated from the database
+    // This is critical for URL changes to take effect
+    stream_config_t updated_config;
+    if (get_stream_config(stream, &updated_config) != 0) {
+        log_error("Failed to refresh stream configuration from database for stream %s", config.name);
+        mg_send_json_error(c, 500, "Failed to refresh stream configuration");
+        return;
+    }
+    
     if (set_stream_detection_params(stream, 
                                    config.detection_interval, 
                                    config.detection_threshold, 
@@ -405,43 +435,83 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
         log_warn("Failed to update streaming setting for stream %s", config.name);
     }
     
-    // Only restart the stream if configuration changed
-    if (config_changed) {
+    log_info("Updated stream configuration in memory for stream %s", config.name);
+    
+    // Verify the update by reading back the configuration
+    if (get_stream_config(stream, &updated_config) == 0) {
+        log_info("Detection settings after update - Model: %s, Threshold: %.2f, Interval: %d, Pre-buffer: %d, Post-buffer: %d",
+                 updated_config.detection_model, updated_config.detection_threshold, updated_config.detection_interval,
+                 updated_config.pre_detection_buffer, updated_config.post_detection_buffer);
+    }
+    
+    // Restart stream if configuration changed and either:
+    // 1. Critical parameters requiring restart were changed (URL, protocol)
+    // 2. The stream is currently running
+    stream_status_t status = get_stream_status(stream);
+    bool is_running = (status == STREAM_STATUS_RUNNING || status == STREAM_STATUS_STARTING);
+    
+    if (config_changed && (requires_restart || is_running)) {
+        log_info("Restarting stream %s (requires_restart=%s, is_running=%s)", 
+                config.name, 
+                requires_restart ? "true" : "false",
+                is_running ? "true" : "false");
         
-        log_info("Updated stream configuration in memory for stream %s", config.name);
+        // If URL or protocol changed, we need to force restart the HLS stream thread
+        bool url_changed = strcmp(original_url, config.url) != 0;
+        bool protocol_changed = original_protocol != config.protocol;
         
-        // Verify the update by reading back the configuration
-        stream_config_t updated_config;
-        if (get_stream_config(stream, &updated_config) == 0) {
-            log_info("Detection settings after update - Model: %s, Threshold: %.2f, Interval: %d, Pre-buffer: %d, Post-buffer: %d",
-                     updated_config.detection_model, updated_config.detection_threshold, updated_config.detection_interval,
-                     updated_config.pre_detection_buffer, updated_config.post_detection_buffer);
+        // First clear HLS segments if URL changed
+        if (url_changed) {
+            log_info("URL changed for stream %s, clearing HLS segments", config.name);
+            if (clear_stream_hls_segments(config.name) != 0) {
+                log_warn("Failed to clear HLS segments for stream %s", config.name);
+                // Continue anyway
+            }
         }
         
-        // Restart stream if it's running
-        stream_status_t status = get_stream_status(stream);
-        if (status == STREAM_STATUS_RUNNING || status == STREAM_STATUS_STARTING) {
+        // Stop stream if it's running
+        if (is_running) {
+            log_info("Stopping stream %s for restart", config.name);
+            
             // Stop stream
             if (stop_stream(stream) != 0) {
                 log_error("Failed to stop stream: %s", decoded_id);
                 // Continue anyway
             }
             
-            // Wait for stream to stop
-            int timeout = 30; // 3 seconds
+            // Wait for stream to stop with increased timeout for critical parameter changes
+            int timeout = requires_restart ? 50 : 30; // 5 seconds for critical changes, 3 seconds otherwise
             while (get_stream_status(stream) != STREAM_STATUS_STOPPED && timeout > 0) {
                 usleep(100000); // 100ms
                 timeout--;
             }
             
-            // Start stream if enabled
-            if (config.enabled) {
-                if (start_stream(stream) != 0) {
-                    log_error("Failed to restart stream: %s", decoded_id);
+            if (timeout == 0) {
+                log_warn("Timeout waiting for stream %s to stop, continuing anyway", config.name);
+            }
+        }
+        
+        // Start stream if enabled
+        if (config.enabled) {
+            log_info("Starting stream %s after configuration update", config.name);
+            if (start_stream(stream) != 0) {
+                log_error("Failed to restart stream: %s", decoded_id);
+                // Continue anyway
+            }
+            
+            // If URL or protocol changed, force restart the HLS stream thread
+            if ((url_changed || protocol_changed) && config.streaming_enabled) {
+                log_info("URL or protocol changed for stream %s, force restarting HLS stream thread", config.name);
+                if (restart_hls_stream(config.name) != 0) {
+                    log_warn("Failed to force restart HLS stream for %s", config.name);
                     // Continue anyway
+                } else {
+                    log_info("Successfully force restarted HLS stream for %s", config.name);
                 }
             }
         }
+    } else if (config_changed) {
+        log_info("Configuration changed for stream %s but restart not required", config.name);
     }
     
     // Create success response using cJSON
