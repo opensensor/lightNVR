@@ -402,8 +402,8 @@ static void process_request_task(void *arg) {
     
     log_info("Processing request in thread pool: uri=%s, is_api_request=%d", uri, is_api_request);
     
-    // Lock the connection-specific mutex to ensure only one thread can write to this connection at a time
-    connection_mutex_pool_lock(server->conn_mutex_pool, conn_id);
+    // Only lock the connection mutex when we're actually writing to the connection
+    // This allows parallel processing of requests until the response is ready
     
     // If this is an API request, try to handle it with direct handlers
     if (is_api_request) {
@@ -413,14 +413,16 @@ static void process_request_task(void *arg) {
         // Handle CORS preflight request
         if (server->config.cors_enabled && mg_match(hm->method, mg_str("OPTIONS"), NULL)) {
             log_info("Handling CORS preflight request: %s", uri);
+            
+            // Lock the connection mutex only when writing the response
+            connection_mutex_pool_lock(server->conn_mutex_pool, conn_id);
             mongoose_server_handle_cors_preflight(c, hm, server);
+            connection_mutex_pool_unlock(server->conn_mutex_pool, conn_id);
             
             // Update statistics (use global mutex for this)
             pthread_mutex_lock(&server->mutex);
             server->active_connections--;
             pthread_mutex_unlock(&server->mutex);
-            
-            connection_mutex_pool_unlock(server->conn_mutex_pool, conn_id);
             
             free(req_data->message);
             free(req_data);
@@ -428,22 +430,25 @@ static void process_request_task(void *arg) {
         }
         
         // Try to handle the API request using the routes table
+        // Lock the connection mutex only when writing the response
+        connection_mutex_pool_lock(server->conn_mutex_pool, conn_id);
         handled = handle_api_request(c, hm);
+        connection_mutex_pool_unlock(server->conn_mutex_pool, conn_id);
     }
     
     // If not handled by API handlers, serve static file or return 404
     if (!handled) {
         // Try to serve static file
+        // Lock the connection mutex only when writing the response
+        connection_mutex_pool_lock(server->conn_mutex_pool, conn_id);
         mongoose_server_handle_static_file(c, hm, server);
+        connection_mutex_pool_unlock(server->conn_mutex_pool, conn_id);
     }
     
     // Update statistics (use global mutex for this)
     pthread_mutex_lock(&server->mutex);
     server->active_connections--;
     pthread_mutex_unlock(&server->mutex);
-    
-    // Unlock the connection-specific mutex
-    connection_mutex_pool_unlock(server->conn_mutex_pool, conn_id);
     
     free(req_data->message);
     free(req_data);
@@ -491,8 +496,8 @@ http_server_handle_t mongoose_server_init(const http_server_config_t *config) {
     
     // Initialize thread pool for request handling
     // Use a reasonable number of threads (e.g., number of CPU cores)
-    int num_threads = 4; // Can be adjusted based on system capabilities
-    int queue_size = 32; // Can be adjusted based on expected load
+    int num_threads = 3; // Can be adjusted based on system capabilities
+    int queue_size = 8; // Can be adjusted based on expected load
     
     server->thread_pool = thread_pool_init(num_threads, queue_size);
     if (!server->thread_pool) {

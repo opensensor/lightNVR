@@ -79,6 +79,7 @@ pthread_mutex_t *connection_mutex_pool_get(connection_mutex_pool_t *pool, uintpt
     
     // Use connection ID to determine which mutex to use
     // This ensures the same connection always gets the same mutex
+    // No need to lock the pool mutex for this simple calculation
     int index = conn_id % pool->size;
     
     return &pool->mutexes[index];

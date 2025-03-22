@@ -100,14 +100,6 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         // COMPLETELY BYPASS AUTHENTICATION FOR HLS REQUESTS
         log_info("COMPLETELY BYPASSING AUTHENTICATION FOR HLS REQUEST: %s", uri);
         
-        // Log all headers for debugging
-        for (int i = 0; i < MG_MAX_HTTP_HEADERS; i++) {
-            if (hm->headers[i].name.len == 0) break;
-            log_info("HLS request header in static handler: %.*s: %.*s", 
-                    (int)hm->headers[i].name.len, hm->headers[i].name.buf,
-                    (int)hm->headers[i].value.len, hm->headers[i].value.buf);
-        }
-        
         // Extract stream name from URI
         // URI format: /hls/{stream_name}/{file}
         char stream_name[MAX_STREAM_NAME];
@@ -149,6 +141,7 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
             }
             
             // Serve the file with appropriate headers
+            // Use a more efficient approach for HLS files to reduce overhead
             mg_http_serve_file(c, hm, hls_file_path, &(struct mg_http_serve_opts){
                 .mime_types = "",
                 .extra_headers = "Cache-Control: no-cache, no-store, must-revalidate\r\n"
