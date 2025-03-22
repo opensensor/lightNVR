@@ -38,126 +38,180 @@ void mg_handle_get_system_info(struct mg_connection *c, struct mg_http_message *
     
     // Add version information
     cJSON_AddStringToObject(info, "version", LIGHTNVR_VERSION_STRING);
-    cJSON_AddStringToObject(info, "build_date", LIGHTNVR_BUILD_DATE);
     
     // Get system information
     struct utsname system_info;
     if (uname(&system_info) == 0) {
-        cJSON_AddStringToObject(info, "system", system_info.sysname);
-        cJSON_AddStringToObject(info, "node", system_info.nodename);
-        cJSON_AddStringToObject(info, "release", system_info.release);
-        cJSON_AddStringToObject(info, "system_version", system_info.version);
-        cJSON_AddStringToObject(info, "machine", system_info.machine);
+        // Create CPU object
+        cJSON *cpu = cJSON_CreateObject();
+        if (cpu) {
+            cJSON_AddStringToObject(cpu, "model", system_info.machine);
+            
+            // Get CPU cores
+            int cores = sysconf(_SC_NPROCESSORS_ONLN);
+            cJSON_AddNumberToObject(cpu, "cores", cores);
+            
+            // Calculate CPU usage (simplified)
+            double cpu_usage = 0.0;
+            FILE *fp = fopen("/proc/stat", "r");
+            if (fp) {
+                unsigned long user, nice, system, idle, iowait, irq, softirq;
+                if (fscanf(fp, "cpu %lu %lu %lu %lu %lu %lu %lu", 
+                          &user, &nice, &system, &idle, &iowait, &irq, &softirq) == 7) {
+                    unsigned long total = user + nice + system + idle + iowait + irq + softirq;
+                    unsigned long active = user + nice + system + irq + softirq;
+                    cpu_usage = (double)active / (double)total * 100.0;
+                }
+                fclose(fp);
+            }
+            cJSON_AddNumberToObject(cpu, "usage", cpu_usage);
+            
+            // Add CPU object to info
+            cJSON_AddItemToObject(info, "cpu", cpu);
+        }
     }
     
     // Get memory information
     struct sysinfo sys_info;
     if (sysinfo(&sys_info) == 0) {
-        // Calculate memory usage in MB
-        unsigned long memory_total_mb = (sys_info.totalram * sys_info.mem_unit) / (1024 * 1024);
-        unsigned long memory_used_mb = ((sys_info.totalram - sys_info.freeram) * sys_info.mem_unit) / (1024 * 1024);
-        
-        // Add memory information in the format expected by the frontend
-        cJSON_AddNumberToObject(info, "memory_total", memory_total_mb);
-        cJSON_AddNumberToObject(info, "memory_usage", memory_used_mb);
-        
-        // Calculate memory usage percentage
-        double memory_percentage = 0;
-        if (sys_info.totalram > 0) {
-            memory_percentage = ((double)(sys_info.totalram - sys_info.freeram) / (double)sys_info.totalram) * 100.0;
+        // Create memory object
+        cJSON *memory = cJSON_CreateObject();
+        if (memory) {
+            // Calculate memory values in bytes for consistency
+            unsigned long long total = sys_info.totalram * sys_info.mem_unit;
+            unsigned long long used = (sys_info.totalram - sys_info.freeram) * sys_info.mem_unit;
+            unsigned long long free = sys_info.freeram * sys_info.mem_unit;
+            
+            cJSON_AddNumberToObject(memory, "total", total);
+            cJSON_AddNumberToObject(memory, "used", used);
+            cJSON_AddNumberToObject(memory, "free", free);
+            
+            // Add memory object to info
+            cJSON_AddItemToObject(info, "memory", memory);
         }
-        cJSON_AddNumberToObject(info, "memory_percentage", memory_percentage);
         
-        // Calculate CPU usage (simplified)
-        double cpu_usage = 0.0;
-        FILE *fp = fopen("/proc/stat", "r");
-        if (fp) {
-            unsigned long user, nice, system, idle, iowait, irq, softirq;
-            if (fscanf(fp, "cpu %lu %lu %lu %lu %lu %lu %lu", 
-                      &user, &nice, &system, &idle, &iowait, &irq, &softirq) == 7) {
-                unsigned long total = user + nice + system + idle + iowait + irq + softirq;
-                unsigned long active = user + nice + system + irq + softirq;
-                cpu_usage = (double)active / (double)total * 100.0;
-            }
-            fclose(fp);
-        }
-        cJSON_AddNumberToObject(info, "cpu_usage", cpu_usage);
+        // Get uptime
+        cJSON_AddNumberToObject(info, "uptime", sys_info.uptime);
     }
     
     // Get disk information
     struct statvfs disk_info;
     if (statvfs(g_config.storage_path, &disk_info) == 0) {
-        // Calculate storage usage in GB
-        unsigned long storage_total_gb = (disk_info.f_blocks * disk_info.f_frsize) / (1024 * 1024 * 1024);
-        unsigned long storage_used_gb = ((disk_info.f_blocks - disk_info.f_bfree) * disk_info.f_frsize) / (1024 * 1024 * 1024);
-        
-        // Add storage information in the format expected by the frontend
-        cJSON_AddNumberToObject(info, "storage_total", storage_total_gb);
-        cJSON_AddNumberToObject(info, "storage_usage", storage_used_gb);
-        
-        // Calculate storage usage percentage
-        double storage_percentage = 0;
-        if (disk_info.f_blocks > 0) {
-            storage_percentage = ((double)(disk_info.f_blocks - disk_info.f_bfree) / (double)disk_info.f_blocks) * 100.0;
+        // Create disk object
+        cJSON *disk = cJSON_CreateObject();
+        if (disk) {
+            // Calculate disk values in bytes for consistency
+            unsigned long long total = disk_info.f_blocks * disk_info.f_frsize;
+            unsigned long long used = (disk_info.f_blocks - disk_info.f_bfree) * disk_info.f_frsize;
+            unsigned long long free = disk_info.f_bfree * disk_info.f_frsize;
+            
+            cJSON_AddNumberToObject(disk, "total", total);
+            cJSON_AddNumberToObject(disk, "used", used);
+            cJSON_AddNumberToObject(disk, "free", free);
+            
+            // Add disk object to info
+            cJSON_AddItemToObject(info, "disk", disk);
         }
-        cJSON_AddNumberToObject(info, "storage_percentage", storage_percentage);
     }
     
-    // Get uptime
-    cJSON_AddNumberToObject(info, "uptime", sys_info.uptime);
-    
-    // Get process information
-    cJSON_AddNumberToObject(info, "pid", getpid());
-    
-    // Add daemon mode information
-    cJSON_AddBoolToObject(info, "daemon_mode", daemon_mode);
-    
-    // Add stream statistics
-    int active_streams = 0;
-    int recording_streams = 0;
-    unsigned long total_received = 0;
-    unsigned long total_recorded = 0;
-    
-    // Get all stream configurations
-    stream_config_t streams[MAX_STREAMS];
-    int stream_count = get_all_stream_configs(streams, MAX_STREAMS);
-    
-    if (stream_count > 0) {
-        for (int i = 0; i < stream_count; i++) {
-            stream_handle_t stream = get_stream_by_name(streams[i].name);
-            if (stream) {
-                stream_status_t status = get_stream_status(stream);
-                if (status == STREAM_STATUS_RUNNING) {
-                    active_streams++;
-                    
-                    // Check if recording
-                    if (streams[i].record) {
-                        recording_streams++;
+    // Create network object
+    cJSON *network = cJSON_CreateObject();
+    if (network) {
+        // Create interfaces array
+        cJSON *interfaces = cJSON_CreateArray();
+        if (interfaces) {
+            // Get network interfaces (simplified example)
+            FILE *fp = fopen("/proc/net/dev", "r");
+            if (fp) {
+                char line[256];
+                // Skip header lines
+                fgets(line, sizeof(line), fp);
+                fgets(line, sizeof(line), fp);
+                
+                // Read interfaces
+                while (fgets(line, sizeof(line), fp)) {
+                    char *name = strtok(line, ":");
+                    if (name) {
+                        // Trim whitespace
+                        while (*name == ' ') name++;
+                        
+                        // Skip loopback
+                        if (strcmp(name, "lo") != 0) {
+                            cJSON *iface = cJSON_CreateObject();
+                            if (iface) {
+                                cJSON_AddStringToObject(iface, "name", name);
+                                
+                                // Get IP address (simplified)
+                                char address[128] = "Unknown";
+                                char mac[128] = "Unknown";
+                                bool up = true;
+                                
+                                // Try to get more info with getifaddrs in a real implementation
+                                
+                                cJSON_AddStringToObject(iface, "address", address);
+                                cJSON_AddStringToObject(iface, "mac", mac);
+                                cJSON_AddBoolToObject(iface, "up", up);
+                                
+                                cJSON_AddItemToArray(interfaces, iface);
+                            }
+                        }
                     }
-                    
-                    // Get stream statistics
-                    stream_stats_t stats;
-                    if (get_stream_stats(stream, &stats) == 0) {
-                        total_received += stats.bytes_received;
-                        // Use frames_received as a proxy for recorded data if bytes_recorded is not available
-                        total_recorded += stats.frames_received * 1024; // Rough estimate
+                }
+                fclose(fp);
+            }
+            
+            // Add interfaces array to network object
+            cJSON_AddItemToObject(network, "interfaces", interfaces);
+        }
+        
+        // Add network object to info
+        cJSON_AddItemToObject(info, "network", network);
+    }
+    
+    // Create streams object
+    cJSON *streams_obj = cJSON_CreateObject();
+    if (streams_obj) {
+        // Get stream statistics
+        int active_streams = 0;
+        
+        // Get all stream configurations
+        stream_config_t streams[MAX_STREAMS];
+        int stream_count = get_all_stream_configs(streams, MAX_STREAMS);
+        
+        if (stream_count > 0) {
+            for (int i = 0; i < stream_count; i++) {
+                stream_handle_t stream = get_stream_by_name(streams[i].name);
+                if (stream) {
+                    stream_status_t status = get_stream_status(stream);
+                    if (status == STREAM_STATUS_RUNNING) {
+                        active_streams++;
                     }
                 }
             }
         }
+        
+        cJSON_AddNumberToObject(streams_obj, "active", active_streams);
+        cJSON_AddNumberToObject(streams_obj, "total", g_config.max_streams);
+        
+        // Add streams object to info
+        cJSON_AddItemToObject(info, "streams", streams_obj);
     }
     
-    // Add stream statistics in the format expected by the frontend
-    cJSON_AddNumberToObject(info, "active_streams", active_streams);
-    cJSON_AddNumberToObject(info, "max_streams", g_config.max_streams);
-    cJSON_AddNumberToObject(info, "recording_streams", recording_streams);
-    
-    // Convert bytes to MB
-    double data_received_mb = total_received / (1024.0 * 1024.0);
-    double data_recorded_mb = total_recorded / (1024.0 * 1024.0);
-    
-    cJSON_AddNumberToObject(info, "data_received", data_received_mb);
-    cJSON_AddNumberToObject(info, "data_recorded", data_recorded_mb);
+    // Create recordings object
+    cJSON *recordings = cJSON_CreateObject();
+    if (recordings) {
+        // Get recordings count and size (simplified)
+        int recording_count = 0;
+        unsigned long long recording_size = 0;
+        
+        // In a real implementation, you would query the database or file system
+        
+        cJSON_AddNumberToObject(recordings, "count", recording_count);
+        cJSON_AddNumberToObject(recordings, "size", recording_size);
+        
+        // Add recordings object to info
+        cJSON_AddItemToObject(info, "recordings", recordings);
+    }
     
     // Convert to string
     char *json_str = cJSON_PrintUnformatted(info);
@@ -248,11 +302,113 @@ void mg_handle_get_system_logs(struct mg_connection *c, struct mg_http_message *
         return;
     }
     
-    // Split buffer into lines and add to array
-    char *line = strtok(buffer, "\n");
-    while (line != NULL) {
-        cJSON_AddItemToArray(logs_array, cJSON_CreateString(line));
-        line = strtok(NULL, "\n");
+    // Parse query parameters for log level and count
+    char level[16] = "info"; // Default level
+    int count = 100; // Default count
+    
+    // Extract level parameter
+    char level_buf[16] = {0};
+    if (mg_http_get_var(&hm->query, "level", level_buf, sizeof(level_buf)) > 0) {
+        strncpy(level, level_buf, sizeof(level) - 1);
+        level[sizeof(level) - 1] = '\0';
+    }
+    
+    // Extract count parameter
+    char count_buf[16] = {0};
+    if (mg_http_get_var(&hm->query, "count", count_buf, sizeof(count_buf)) > 0) {
+        int parsed_count = atoi(count_buf);
+        if (parsed_count > 0) {
+            count = parsed_count;
+        }
+    }
+    
+    // Split buffer into lines and parse into structured log objects
+    char *saveptr;
+    char *line = strtok_r(buffer, "\n", &saveptr);
+    int log_count = 0;
+    
+    while (line != NULL && log_count < count) {
+        // Parse log line (format: [TIMESTAMP] [LEVEL] MESSAGE)
+        char timestamp[32] = "";
+        char log_level[16] = "";
+        char *message = NULL;
+        
+        // Try to extract timestamp and level
+        if (line[0] == '[') {
+            char *timestamp_end = strchr(line + 1, ']');
+            if (timestamp_end) {
+                size_t timestamp_len = timestamp_end - (line + 1);
+                if (timestamp_len < sizeof(timestamp)) {
+                    memcpy(timestamp, line + 1, timestamp_len);
+                    timestamp[timestamp_len] = '\0';
+                    
+                    // Look for level
+                    char *level_start = strchr(timestamp_end + 1, '[');
+                    if (level_start) {
+                        char *level_end = strchr(level_start + 1, ']');
+                        if (level_end) {
+                            size_t level_len = level_end - (level_start + 1);
+                            if (level_len < sizeof(log_level)) {
+                                memcpy(log_level, level_start + 1, level_len);
+                                log_level[level_len] = '\0';
+                                
+                                // Convert to lowercase for comparison
+                                for (int i = 0; log_level[i]; i++) {
+                                    log_level[i] = tolower(log_level[i]);
+                                }
+                                
+                                // Message starts after level
+                                message = level_end + 1;
+                                while (*message == ' ') message++; // Skip leading spaces
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // If parsing failed, use defaults
+        if (!message) {
+            message = line;
+            strcpy(log_level, "info");
+        }
+        
+        // Filter by log level if needed
+        bool include_log = true;
+        if (strcmp(level, "error") == 0) {
+            include_log = (strcmp(log_level, "error") == 0);
+        } else if (strcmp(level, "warning") == 0) {
+            include_log = (strcmp(log_level, "error") == 0 || 
+                          strcmp(log_level, "warning") == 0 ||
+                          strcmp(log_level, "warn") == 0);
+        } else if (strcmp(level, "info") == 0) {
+            include_log = (strcmp(log_level, "error") == 0 || 
+                          strcmp(log_level, "warning") == 0 || 
+                          strcmp(log_level, "warn") == 0 || 
+                          strcmp(log_level, "info") == 0);
+        }
+        
+        if (include_log) {
+            // Create log entry object
+            cJSON *log_entry = cJSON_CreateObject();
+            if (log_entry) {
+                cJSON_AddStringToObject(log_entry, "timestamp", timestamp[0] ? timestamp : "Unknown");
+                
+                // Normalize log level
+                if (strcmp(log_level, "warn") == 0) {
+                    cJSON_AddStringToObject(log_entry, "level", "warning");
+                } else {
+                    cJSON_AddStringToObject(log_entry, "level", log_level);
+                }
+                
+                cJSON_AddStringToObject(log_entry, "message", message);
+                
+                cJSON_AddItemToArray(logs_array, log_entry);
+                log_count++;
+            }
+        }
+        
+        line = strtok_r(NULL, "\n", &saveptr);
     }
     
     // Add logs array to response
