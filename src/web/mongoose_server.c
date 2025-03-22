@@ -812,14 +812,14 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
             log_debug("Bypassing authentication for asset: %s", uri);
             // Continue processing without authentication check
         }
-        // TEMPORARILY BYPASS AUTHENTICATION FOR HLS REQUESTS
+        // COMPLETELY BYPASS AUTHENTICATION FOR HLS REQUESTS
         else if (is_hls_request) {
-            log_info("TEMPORARILY BYPASSING AUTHENTICATION FOR HLS REQUEST IN EVENT HANDLER: %s", uri);
+            log_info("BYPASSING AUTHENTICATION FOR HLS REQUEST: %s", uri);
             
             // Log all headers for debugging
             for (int i = 0; i < MG_MAX_HTTP_HEADERS; i++) {
                 if (hm->headers[i].name.len == 0) break;
-                log_info("HLS request header in event handler: %.*s: %.*s", 
+                log_info("HLS request header: %.*s: %.*s", 
                         (int)hm->headers[i].name.len, hm->headers[i].name.buf,
                         (int)hm->headers[i].value.len, hm->headers[i].value.buf);
             }

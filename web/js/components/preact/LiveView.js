@@ -260,18 +260,40 @@ export function LiveView() {
     const timestamp = Date.now();
     const hlsStreamUrl = `/hls/${encodeURIComponent(stream.name)}/index.m3u8?_t=${timestamp}`;
     
+    // Get auth from localStorage
+    const auth = localStorage.getItem('auth');
+    
     // Check if HLS is supported natively
     if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
       // Native HLS support (Safari)
-      // Use fetch with credentials to load the HLS stream
+      // Use fetch with credentials and auth header to load the HLS stream
+      const headers = {};
+      if (auth) {
+        headers['Authorization'] = 'Basic ' + auth;
+      }
+      
       fetch(hlsStreamUrl, {
-        credentials: 'include' // Include cookies in the request
+        credentials: 'include', // Include cookies in the request
+        headers: headers
       })
       .then(response => {
         if (!response.ok) {
           throw new Error(`Failed to load HLS stream: ${response.status}`);
         }
-        return response.url; // Get the final URL after any redirects
+        
+        // For Safari, we need to create a proxy URL that includes auth
+        // This is because Safari doesn't send auth headers for subsequent segment requests
+        if (auth) {
+          // Create a blob URL with embedded credentials
+          return fetch(response.url, {
+            headers: { 'Authorization': 'Basic ' + auth },
+            credentials: 'include'
+          })
+          .then(r => r.blob())
+          .then(blob => URL.createObjectURL(blob));
+        } else {
+          return response.url; // Get the final URL after any redirects
+        }
       })
       .then(finalUrl => {
         videoElement.src = finalUrl;

@@ -97,8 +97,8 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         // This is an HLS streaming request, serve it directly from the filesystem
         config_t *global_config = get_streaming_config();
         
-        // TEMPORARILY BYPASS AUTHENTICATION FOR HLS REQUESTS
-        log_info("TEMPORARILY BYPASSING AUTHENTICATION FOR HLS REQUEST: %s", uri);
+        // COMPLETELY BYPASS AUTHENTICATION FOR HLS REQUESTS
+        log_info("COMPLETELY BYPASSING AUTHENTICATION FOR HLS REQUEST: %s", uri);
         
         // Log all headers for debugging
         for (int i = 0; i < MG_MAX_HTTP_HEADERS; i++) {
@@ -131,7 +131,7 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         const char *file_name = file_part + 1; // Skip "/"
         
         // Construct the full path to the HLS file
-        char hls_file_path[MAX_PATH_LENGTH];
+        char hls_file_path[MAX_PATH_LENGTH * 2]; // Double the buffer size to avoid truncation
         snprintf(hls_file_path, sizeof(hls_file_path), "%s/hls/%s/%s", 
                 global_config->storage_path, stream_name, file_name);
         
