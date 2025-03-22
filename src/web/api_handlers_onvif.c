@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <pthread.h>
 
 #include "web/api_handlers_onvif.h"
 #include "web/api_handlers.h"
@@ -15,9 +16,6 @@
 #include "video/stream_manager.h"
 #include "../../external/mongoose/mongoose.h"
 #include "cJSON.h"
-
-// Global mutex for config access
-extern pthread_mutex_t g_config_mutex;
 
 /**
  * @brief Handle GET request for ONVIF discovery status
@@ -75,22 +73,29 @@ void mg_handle_post_start_onvif_discovery(struct mg_connection *c, struct mg_htt
     cJSON *network_json = cJSON_GetObjectItem(root, "network");
     cJSON *interval_json = cJSON_GetObjectItem(root, "interval");
     
-    if (!network_json || !cJSON_IsString(network_json) || 
-        !interval_json || !cJSON_IsNumber(interval_json)) {
+    // Interval is required, network is optional (auto-detection will be used if not provided)
+    if (!interval_json || !cJSON_IsNumber(interval_json)) {
         cJSON_Delete(root);
-        log_error("Missing or invalid parameters");
-        mg_send_json_error(c, 400, "Missing or invalid parameters");
+        log_error("Missing or invalid interval parameter");
+        mg_send_json_error(c, 400, "Missing or invalid interval parameter");
         return;
     }
     
-    const char *network = network_json->valuestring;
+    // Get network parameter (can be NULL for auto-detection)
+    const char *network = NULL;
+    if (network_json && cJSON_IsString(network_json)) {
+        network = network_json->valuestring;
+    } else {
+        log_info("Network parameter not provided, will use auto-detection");
+    }
+    
     int interval = interval_json->valueint;
     
-    // Validate parameters
-    if (strlen(network) == 0 || interval <= 0) {
+    // Validate interval parameter
+    if (interval <= 0) {
         cJSON_Delete(root);
-        log_error("Invalid parameters");
-        mg_send_json_error(c, 400, "Invalid parameters");
+        log_error("Invalid interval parameter");
+        mg_send_json_error(c, 400, "Invalid interval parameter");
         return;
     }
     
@@ -105,12 +110,38 @@ void mg_handle_post_start_onvif_discovery(struct mg_connection *c, struct mg_htt
     }
     
     // Update configuration
-    pthread_mutex_lock(&g_config_mutex);
     g_config.onvif_discovery_enabled = true;
-    strncpy(g_config.onvif_discovery_network, network, sizeof(g_config.onvif_discovery_network) - 1);
-    g_config.onvif_discovery_network[sizeof(g_config.onvif_discovery_network) - 1] = '\0';
+    
+    // If network was auto-detected, get the actual network that was used
+    if (!network || strlen(network) == 0 || strcmp(network, "auto") == 0) {
+        // Get the network from the discovery thread
+        pthread_mutex_t *discovery_mutex = get_discovery_mutex();
+        if (discovery_mutex) {
+            pthread_mutex_lock(discovery_mutex);
+            const char *actual_network = get_current_discovery_network();
+            if (actual_network && strlen(actual_network) > 0) {
+                strncpy(g_config.onvif_discovery_network, actual_network, 
+                        sizeof(g_config.onvif_discovery_network) - 1);
+                g_config.onvif_discovery_network[sizeof(g_config.onvif_discovery_network) - 1] = '\0';
+            } else {
+                // If we can't get the actual network, just store "auto"
+                strncpy(g_config.onvif_discovery_network, "auto", 
+                        sizeof(g_config.onvif_discovery_network) - 1);
+            }
+            pthread_mutex_unlock(discovery_mutex);
+        } else {
+            // If we can't get the mutex, just store "auto"
+            strncpy(g_config.onvif_discovery_network, "auto", 
+                    sizeof(g_config.onvif_discovery_network) - 1);
+        }
+    } else {
+        // Use the provided network
+        strncpy(g_config.onvif_discovery_network, network, 
+                sizeof(g_config.onvif_discovery_network) - 1);
+        g_config.onvif_discovery_network[sizeof(g_config.onvif_discovery_network) - 1] = '\0';
+    }
+    
     g_config.onvif_discovery_interval = interval;
-    pthread_mutex_unlock(&g_config_mutex);
     
     // Save configuration
     save_config(&g_config, get_loaded_config_path());
@@ -161,9 +192,7 @@ void mg_handle_post_stop_onvif_discovery(struct mg_connection *c, struct mg_http
     }
     
     // Update configuration
-    pthread_mutex_lock(&g_config_mutex);
     g_config.onvif_discovery_enabled = false;
-    pthread_mutex_unlock(&g_config_mutex);
     
     // Save configuration
     save_config(&g_config, get_loaded_config_path());
@@ -294,21 +323,20 @@ void mg_handle_post_discover_onvif_devices(struct mg_connection *c, struct mg_ht
     // Extract parameters
     cJSON *network_json = cJSON_GetObjectItem(root, "network");
     
-    if (!network_json || !cJSON_IsString(network_json)) {
-        cJSON_Delete(root);
-        log_error("Missing or invalid parameters");
-        mg_send_json_error(c, 400, "Missing or invalid parameters");
-        return;
+    // Get network parameter (can be NULL for auto-detection)
+    const char *network = NULL;
+    if (network_json && cJSON_IsString(network_json)) {
+        network = network_json->valuestring;
+        
+        // Check if network is "auto" or empty, which means auto-detect
+        if (strcmp(network, "auto") == 0 || strlen(network) == 0) {
+            network = NULL; // This will trigger auto-detection
+        }
     }
     
-    const char *network = network_json->valuestring;
-    
-    // Validate parameters
-    if (strlen(network) == 0) {
-        cJSON_Delete(root);
-        log_error("Invalid parameters");
-        mg_send_json_error(c, 400, "Invalid parameters");
-        return;
+    // If network is NULL, we'll use auto-detection
+    if (!network) {
+        log_info("Network parameter not provided or set to 'auto', will use auto-detection");
     }
     
     // Discover ONVIF devices
@@ -681,23 +709,4 @@ void mg_handle_post_test_onvif_connection(struct mg_connection *c, struct mg_htt
     free(json_str);
     
     log_info("Successfully handled POST /api/onvif/device/test request");
-}
-
-/**
- * @brief Register all ONVIF API handlers
- */
-void register_onvif_api_handlers(void) {
-    // Register GET handlers
-    mg_register_http_endpoint("GET", "/api/onvif/discovery/status", mg_handle_get_onvif_discovery_status);
-    mg_register_http_endpoint("GET", "/api/onvif/devices", mg_handle_get_discovered_onvif_devices);
-    mg_register_http_endpoint("GET", "/api/onvif/device/profiles", mg_handle_get_onvif_device_profiles);
-    
-    // Register POST handlers
-    mg_register_http_endpoint("POST", "/api/onvif/discovery/start", mg_handle_post_start_onvif_discovery);
-    mg_register_http_endpoint("POST", "/api/onvif/discovery/stop", mg_handle_post_stop_onvif_discovery);
-    mg_register_http_endpoint("POST", "/api/onvif/discovery/discover", mg_handle_post_discover_onvif_devices);
-    mg_register_http_endpoint("POST", "/api/onvif/device/add", mg_handle_post_add_onvif_device_as_stream);
-    mg_register_http_endpoint("POST", "/api/onvif/device/test", mg_handle_post_test_onvif_connection);
-    
-    log_info("Registered ONVIF API handlers");
 }

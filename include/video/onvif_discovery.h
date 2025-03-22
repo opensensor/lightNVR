@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <time.h>
+#include <pthread.h>
 #include "core/config.h"
 
 // ONVIF device information structure
@@ -58,6 +59,20 @@ void shutdown_onvif_discovery(void);
  * @return 0 on success, non-zero on failure
  */
 int start_onvif_discovery(const char *network, int interval);
+
+/**
+ * Get discovery mutex
+ * 
+ * @return Pointer to discovery mutex
+ */
+pthread_mutex_t* get_discovery_mutex(void);
+
+/**
+ * Get current discovery network
+ * 
+ * @return Current discovery network, or NULL if not running
+ */
+const char* get_current_discovery_network(void);
 
 /**
  * Stop ONVIF discovery process
@@ -127,7 +142,7 @@ int add_onvif_device_as_stream(const onvif_device_info_t *device_info,
  * @param max_devices Maximum number of devices to return
  * @return Number of devices found, or -1 on error
  */
-int discover_onvif_devices(const char *network, onvif_device_info_t *devices, 
+int discover_onvif_devices(const char *network, onvif_device_info_t *devices,
                           int max_devices);
 
 /**

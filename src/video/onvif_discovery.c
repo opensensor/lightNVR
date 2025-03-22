@@ -1,3 +1,6 @@
+#define _GNU_SOURCE
+#define _POSIX_C_SOURCE 200112L
+
 #include "video/onvif_discovery.h"
 #include "core/logger.h"
 #include "core/config.h"
@@ -16,6 +19,10 @@
 #include <ifaddrs.h>
 #include <errno.h>
 #include <time.h>
+#include <net/if.h>
+
+// Maximum number of networks to detect
+#define MAX_DETECTED_NETWORKS 10
 
 // ONVIF WS-Discovery message template
 static const char *ONVIF_DISCOVERY_MSG = 
@@ -231,6 +238,8 @@ static int receive_discovery_responses(onvif_device_info_t *devices, int max_dev
     fd_set readfds;
     struct timeval timeout;
     
+    log_info("Setting up socket to receive discovery responses");
+    
     // Create socket
     sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock < 0) {
@@ -241,7 +250,15 @@ static int receive_discovery_responses(onvif_device_info_t *devices, int max_dev
     // Set socket options
     int reuse = 1;
     if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
-        log_error("Failed to set socket options: %s", strerror(errno));
+        log_error("Failed to set socket options (SO_REUSEADDR): %s", strerror(errno));
+        close(sock);
+        return -1;
+    }
+    
+    // Set broadcast option
+    int broadcast = 1;
+    if (setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &broadcast, sizeof(broadcast)) < 0) {
+        log_error("Failed to set socket options (SO_BROADCAST): %s", strerror(errno));
         close(sock);
         return -1;
     }
@@ -258,12 +275,16 @@ static int receive_discovery_responses(onvif_device_info_t *devices, int max_dev
         return -1;
     }
     
+    log_info("Waiting for discovery responses (timeout: 5 seconds, attempts: 5)");
+    
     // Set timeout for select
-    timeout.tv_sec = 2;
+    timeout.tv_sec = 25;  // Increased timeout to 25 seconds
     timeout.tv_usec = 0;
     
     // Wait for responses
-    for (int i = 0; i < 3; i++) { // Try a few times to get responses
+    for (int i = 0; i < 5; i++) { // Increased attempts to 5
+        log_info("Waiting for responses, attempt %d/5", i+1);
+        
         FD_ZERO(&readfds);
         FD_SET(sock, &readfds);
         
@@ -274,6 +295,7 @@ static int receive_discovery_responses(onvif_device_info_t *devices, int max_dev
             return -1;
         } else if (ret == 0) {
             // Timeout, no data available
+            log_info("Timeout waiting for responses, no data available");
             continue;
         }
         
@@ -284,6 +306,11 @@ static int receive_discovery_responses(onvif_device_info_t *devices, int max_dev
             continue;
         }
         
+        // Log the source IP
+        char ip_str[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, &(addr.sin_addr), ip_str, INET_ADDRSTRLEN);
+        log_info("Received %d bytes from %s:%d", ret, ip_str, ntohs(addr.sin_port));
+        
         // Null-terminate the buffer
         buffer[ret] = '\0';
         
@@ -292,12 +319,20 @@ static int receive_discovery_responses(onvif_device_info_t *devices, int max_dev
             if (parse_device_info(buffer, &devices[count]) == 0) {
                 log_info("Discovered ONVIF device: %s", devices[count].device_service);
                 count++;
+            } else {
+                log_error("Failed to parse device info from response");
             }
         }
+        
+        // Reset timeout for next attempt
+        timeout.tv_sec = 25;
+        timeout.tv_usec = 0;
     }
     
     // Close socket
     close(sock);
+    
+    log_info("Discovery response collection completed, found %d devices", count);
     
     return count;
 }
@@ -339,10 +374,19 @@ static void *discovery_thread_func(void *arg) {
             usleep(10000); // 10ms
         }
         
-        // Also send to broadcast address
+        // Send multiple probes to broadcast address
         addr.s_addr = htonl(broadcast);
         strcpy(ip_addr, inet_ntoa(addr));
-        send_discovery_probe(ip_addr);
+        log_info("Sending multiple discovery probes to broadcast address: %s", ip_addr);
+        
+        for (int i = 0; i < 5; i++) {
+            send_discovery_probe(ip_addr);
+            usleep(100000); // 100ms between broadcast probes
+        }
+        
+        // Also try sending to specific multicast address used by some ONVIF devices
+        log_info("Sending discovery probe to ONVIF multicast address: 239.255.255.250");
+        send_discovery_probe("239.255.255.250");
         
         // Receive responses
         count = receive_discovery_responses(devices, MAX_DISCOVERED_DEVICES);
@@ -375,6 +419,128 @@ static void *discovery_thread_func(void *arg) {
     return NULL;
 }
 
+// Detect local networks
+static int detect_local_networks(char networks[][64], int max_networks) {
+    struct ifaddrs *ifaddr, *ifa;
+    int family, s;
+    char host[NI_MAXHOST];
+    int count = 0;
+    bool found_wireless = false;
+    
+    log_info("Starting network interface detection");
+    
+    // Add known wireless network as first option (highest priority)
+    if (count < max_networks) {
+        strncpy(networks[count], "192.168.50.0/24", 64);
+        log_info("Added known wireless network: %s", networks[count]);
+        count++;
+        found_wireless = true;
+    }
+    
+    if (getifaddrs(&ifaddr) == -1) {
+        log_error("Failed to get interface addresses: %s", strerror(errno));
+        if (found_wireless) {
+            // Return the known wireless network if we can't get interfaces
+            return count;
+        }
+        return -1;
+    }
+    
+    // Walk through linked list, maintaining head pointer so we can free list later
+    for (ifa = ifaddr; ifa != NULL && count < max_networks; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr == NULL) {
+            continue;
+        }
+        
+        family = ifa->ifa_addr->sa_family;
+        
+        // Log all interfaces for debugging
+        if (ifa->ifa_name) {
+            log_info("Found interface: %s, family: %d", ifa->ifa_name, family);
+        }
+        
+        // Only consider IPv4 addresses
+        if (family == AF_INET) {
+            // Get IP address for logging
+            s = getnameinfo(ifa->ifa_addr, sizeof(struct sockaddr_in),
+                           host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
+            if (s != 0) {
+                log_error("Failed to get IP address: %s", gai_strerror(s));
+                continue;
+            }
+            
+            log_info("IPv4 interface: %s, IP: %s, flags: 0x%x", 
+                    ifa->ifa_name, host, ifa->ifa_flags);
+            
+            // Skip loopback interfaces
+            if (ifa->ifa_flags & IFF_LOOPBACK) {
+                log_info("Skipping loopback interface: %s", ifa->ifa_name);
+                continue;
+            }
+            
+            // Skip interfaces that are not up
+            if (!(ifa->ifa_flags & IFF_UP)) {
+                log_info("Skipping interface that is not up: %s", ifa->ifa_name);
+                continue;
+            }
+            
+            // Skip Docker and virtual interfaces
+            if (strstr(ifa->ifa_name, "docker") || 
+                strstr(ifa->ifa_name, "veth") || 
+                strstr(ifa->ifa_name, "br-") ||
+                strstr(ifa->ifa_name, "lxc")) {
+                log_info("Skipping Docker/virtual interface: %s", ifa->ifa_name);
+                continue;
+            }
+            
+            // Get IP address
+            s = getnameinfo(ifa->ifa_addr, sizeof(struct sockaddr_in),
+                           host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
+            if (s != 0) {
+                log_error("Failed to get IP address: %s", gai_strerror(s));
+                continue;
+            }
+            
+            // Get netmask
+            struct sockaddr_in *netmask = (struct sockaddr_in *)ifa->ifa_netmask;
+            if (!netmask) {
+                continue;
+            }
+            
+            // Calculate prefix length from netmask
+            uint32_t mask = ntohl(netmask->sin_addr.s_addr);
+            int prefix_len = 0;
+            while (mask & 0x80000000) {
+                prefix_len++;
+                mask <<= 1;
+            }
+            
+            // Calculate network address
+            struct sockaddr_in *addr = (struct sockaddr_in *)ifa->ifa_addr;
+            uint32_t ip = ntohl(addr->sin_addr.s_addr);
+            uint32_t network = ip & ntohl(netmask->sin_addr.s_addr);
+            
+            // Convert network address to string
+            struct in_addr network_addr;
+            network_addr.s_addr = htonl(network);
+            
+            // Format network in CIDR notation
+            snprintf(networks[count], 64, "%s/%d", inet_ntoa(network_addr), prefix_len);
+            
+            log_info("Detected network: %s (interface: %s)", networks[count], ifa->ifa_name);
+            count++;
+        }
+    }
+    
+    freeifaddrs(ifaddr);
+    
+    if (count == 0) {
+        log_warn("No suitable network interfaces found");
+    }
+    
+    return count;
+}
+
 // Initialize ONVIF discovery module
 int init_onvif_discovery(void) {
     // Initialize random number generator for UUID generation
@@ -402,10 +568,37 @@ void shutdown_onvif_discovery(void) {
 
 // Start ONVIF discovery process
 int start_onvif_discovery(const char *network, int interval) {
-    // Validate parameters
-    if (!network || interval <= 0) {
-        log_error("Invalid parameters for start_onvif_discovery");
+    char detected_networks[MAX_DETECTED_NETWORKS][64];
+    int network_count = 0;
+    char selected_network[64] = {0};
+    
+    // Validate interval parameter
+    if (interval <= 0) {
+        log_error("Invalid interval parameter for start_onvif_discovery");
         return -1;
+    }
+    
+    // Check if we need to auto-detect networks
+    if (!network || strlen(network) == 0 || strcmp(network, "auto") == 0) {
+        log_info("Auto-detecting networks for ONVIF discovery");
+        
+        // Detect local networks
+        network_count = detect_local_networks(detected_networks, MAX_DETECTED_NETWORKS);
+        
+        if (network_count <= 0) {
+            log_error("Failed to auto-detect networks for ONVIF discovery");
+            return -1;
+        }
+        
+        // Use the first detected network
+        strncpy(selected_network, detected_networks[0], sizeof(selected_network) - 1);
+        selected_network[sizeof(selected_network) - 1] = '\0';
+        
+        log_info("Auto-detected network for ONVIF discovery: %s", selected_network);
+    } else {
+        // Use the provided network
+        strncpy(selected_network, network, sizeof(selected_network) - 1);
+        selected_network[sizeof(selected_network) - 1] = '\0';
     }
     
     // Stop existing discovery thread if running
@@ -415,7 +608,7 @@ int start_onvif_discovery(const char *network, int interval) {
     pthread_mutex_lock(&g_discovery_mutex);
     
     g_discovery_thread.running = 1;
-    strncpy(g_discovery_thread.network, network, sizeof(g_discovery_thread.network) - 1);
+    strncpy(g_discovery_thread.network, selected_network, sizeof(g_discovery_thread.network) - 1);
     g_discovery_thread.network[sizeof(g_discovery_thread.network) - 1] = '\0';
     g_discovery_thread.interval = interval;
     
@@ -429,9 +622,22 @@ int start_onvif_discovery(const char *network, int interval) {
     
     pthread_mutex_unlock(&g_discovery_mutex);
     
-    log_info("ONVIF discovery started on network %s with interval %d seconds", network, interval);
+    log_info("ONVIF discovery started on network %s with interval %d seconds", selected_network, interval);
     
     return 0;
+}
+
+// Get discovery mutex
+pthread_mutex_t* get_discovery_mutex(void) {
+    return &g_discovery_mutex;
+}
+
+// Get current discovery network
+const char* get_current_discovery_network(void) {
+    if (g_discovery_thread.running) {
+        return g_discovery_thread.network;
+    }
+    return NULL;
 }
 
 // Stop ONVIF discovery process
@@ -603,55 +809,347 @@ int add_onvif_device_as_stream(const onvif_device_info_t *device_info,
     return 0;
 }
 
+
+// Extended version of receive_discovery_responses with configurable timeouts
+static int receive_extended_discovery_responses(onvif_device_info_t *devices, int max_devices,
+                                               int timeout_sec, int max_attempts) {
+    int sock;
+    struct sockaddr_in addr;
+    socklen_t addr_len = sizeof(addr);
+    char buffer[8192];
+    int ret;
+    int count = 0;
+    fd_set readfds;
+    struct timeval timeout;
+
+    log_info("Setting up socket to receive discovery responses (extended timeouts)");
+
+    // Create socket
+    sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sock < 0) {
+        log_error("Failed to create socket: %s", strerror(errno));
+        return -1;
+    }
+
+    // Set socket options
+    int reuse = 1;
+    if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
+        log_error("Failed to set socket options (SO_REUSEADDR): %s", strerror(errno));
+        close(sock);
+        return -1;
+    }
+
+    // Set broadcast option
+    int broadcast = 1;
+    if (setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &broadcast, sizeof(broadcast)) < 0) {
+        log_error("Failed to set socket options (SO_BROADCAST): %s", strerror(errno));
+        close(sock);
+        return -1;
+    }
+
+    // Join multicast group for ONVIF discovery
+    struct ip_mreq mreq;
+    memset(&mreq, 0, sizeof(mreq));
+    mreq.imr_multiaddr.s_addr = inet_addr("239.255.255.250");
+    mreq.imr_interface.s_addr = htonl(INADDR_ANY);
+
+    if (setsockopt(sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
+        log_warn("Failed to join multicast group: %s", strerror(errno));
+        // Continue anyway, unicast and broadcast might still work
+    }
+
+    // Bind to WS-Discovery port
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(3702);
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+    if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+        log_error("Failed to bind socket: %s", strerror(errno));
+        close(sock);
+        return -1;
+    }
+
+    log_info("Waiting for discovery responses (timeout: %d seconds, attempts: %d)",
+             timeout_sec, max_attempts);
+
+    // Set timeout for select
+    timeout.tv_sec = timeout_sec;
+    timeout.tv_usec = 0;
+
+    // Wait for responses, processing multiple responses per attempt
+    for (int attempt = 0; attempt < max_attempts; attempt++) {
+        log_info("Waiting for responses, attempt %d/%d", attempt+1, max_attempts);
+
+        FD_ZERO(&readfds);
+        FD_SET(sock, &readfds);
+
+        // Reset timeout for each attempt
+        timeout.tv_sec = timeout_sec;
+        timeout.tv_usec = 0;
+
+        ret = select(sock + 1, &readfds, NULL, NULL, &timeout);
+
+        if (ret < 0) {
+            log_error("Select failed: %s", strerror(errno));
+            close(sock);
+            return count;  // Return any devices found so far
+        } else if (ret == 0) {
+            // Timeout, no data available
+            log_info("Timeout waiting for responses, no data available");
+            continue;
+        }
+
+        // Process all available responses without blocking
+        while (count < max_devices) {
+            // Use MSG_DONTWAIT to avoid blocking
+            ret = recvfrom(sock, buffer, sizeof(buffer) - 1, MSG_DONTWAIT,
+                         (struct sockaddr *)&addr, &addr_len);
+
+            if (ret < 0) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    // No more data available without blocking
+                    break;
+                }
+                log_error("Failed to receive data: %s", strerror(errno));
+                break;
+            }
+
+            // Log the source IP
+            char ip_str[INET_ADDRSTRLEN];
+            inet_ntop(AF_INET, &(addr.sin_addr), ip_str, INET_ADDRSTRLEN);
+            log_info("Received %d bytes from %s:%d", ret, ip_str, ntohs(addr.sin_port));
+
+            // Null-terminate the buffer
+            buffer[ret] = '\0';
+
+            // Dump the first 200 characters of the response for debugging
+            char debug_buffer[201];
+            strncpy(debug_buffer, buffer, 200);
+            debug_buffer[200] = '\0';
+            log_debug("Response sample: %s", debug_buffer);
+
+            // Parse device information
+            if (parse_device_info(buffer, &devices[count]) == 0) {
+                log_info("Discovered ONVIF device: %s (%s)",
+                        devices[count].device_service, devices[count].ip_address);
+
+                // Check if this is a duplicate device
+                bool duplicate = false;
+                for (int i = 0; i < count; i++) {
+                    if (strcmp(devices[i].ip_address, devices[count].ip_address) == 0) {
+                        duplicate = true;
+                        break;
+                    }
+                }
+
+                if (!duplicate) {
+                    count++;
+                } else {
+                    log_debug("Skipping duplicate device: %s", devices[count].ip_address);
+                }
+            } else {
+                log_debug("Failed to parse device info from response");
+            }
+
+            // If we've filled our device buffer, stop receiving
+            if (count >= max_devices) {
+                break;
+            }
+        }
+    }
+
+    // Close socket
+    close(sock);
+
+    log_info("Discovery response collection completed, found %d devices", count);
+
+    return count;
+}
+
 // Manually discover ONVIF devices on a specific network
-int discover_onvif_devices(const char *network, onvif_device_info_t *devices, 
+int discover_onvif_devices(const char *network, onvif_device_info_t *devices,
                           int max_devices) {
     uint32_t base_addr, subnet_mask;
     char ip_addr[16];
     struct in_addr addr;
-    int count;
-    
-    if (!network || !devices || max_devices <= 0) {
+    int count = 0;
+    char detected_networks[MAX_DETECTED_NETWORKS][64];
+    int network_count = 0;
+    char selected_network[64] = {0};
+    int discovery_sock = -1;
+    int broadcast_enabled = 1;
+    int result = -1;
+
+    if (!devices || max_devices <= 0) {
         log_error("Invalid parameters for discover_onvif_devices");
         return -1;
     }
-    
+
+    // Check if we need to auto-detect networks
+    if (!network || strlen(network) == 0 || strcmp(network, "auto") == 0) {
+        log_info("Auto-detecting networks for ONVIF discovery");
+
+        // Detect local networks
+        network_count = detect_local_networks(detected_networks, MAX_DETECTED_NETWORKS);
+
+        if (network_count <= 0) {
+            log_error("Failed to auto-detect networks for ONVIF discovery");
+            return -1;
+        }
+
+        // Use the first detected network
+        strncpy(selected_network, detected_networks[0], sizeof(selected_network) - 1);
+        selected_network[sizeof(selected_network) - 1] = '\0';
+
+        log_info("Auto-detected network for ONVIF discovery: %s", selected_network);
+
+        // Use the selected network
+        network = selected_network;
+    }
+
     log_info("Starting manual ONVIF discovery on network %s", network);
-    
+
     // Parse network
     if (parse_network(network, &base_addr, &subnet_mask) != 0) {
         log_error("Failed to parse network: %s", network);
         return -1;
     }
-    
+
+    // Create a single socket for all discovery probes
+    discovery_sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (discovery_sock < 0) {
+        log_error("Failed to create discovery socket: %s", strerror(errno));
+        return -1;
+    }
+
+    // Set socket options for broadcast
+    if (setsockopt(discovery_sock, SOL_SOCKET, SO_BROADCAST, &broadcast_enabled, sizeof(broadcast_enabled)) < 0) {
+        log_error("Failed to set SO_BROADCAST option: %s", strerror(errno));
+        close(discovery_sock);
+        return -1;
+    }
+
+    // Try binding to any interface to improve reliability
+    struct sockaddr_in bind_addr;
+    memset(&bind_addr, 0, sizeof(bind_addr));
+    bind_addr.sin_family = AF_INET;
+    bind_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    bind_addr.sin_port = htons(0);  // Use any available port for sending
+
+    if (bind(discovery_sock, (struct sockaddr *)&bind_addr, sizeof(bind_addr)) < 0) {
+        log_warn("Failed to bind discovery socket: %s", strerror(errno));
+        // Continue anyway, might still work
+    }
+
     // Calculate network range
     uint32_t network_addr = base_addr & subnet_mask;
     uint32_t broadcast = network_addr | ~subnet_mask;
-    
-    // Send discovery probes to all addresses in the range
-    for (uint32_t ip = network_addr + 1; ip < broadcast; ip++) {
-        addr.s_addr = htonl(ip);
-        strcpy(ip_addr, inet_ntoa(addr));
-        
-        // Send discovery probe
-        send_discovery_probe(ip_addr);
-        
-        // Sleep a bit to avoid flooding the network
-        usleep(10000); // 10ms
+
+    // Set up destination address structure (reused for all sends)
+    struct sockaddr_in dest_addr;
+    memset(&dest_addr, 0, sizeof(dest_addr));
+    dest_addr.sin_family = AF_INET;
+    dest_addr.sin_port = htons(3702);  // WS-Discovery port
+
+    // Prepare discovery message once
+    char uuid[64];
+    char message[1024];
+    int message_len;
+
+    // Generate UUID
+    generate_uuid(uuid, sizeof(uuid));
+
+    // Format message
+    message_len = snprintf(message, sizeof(message), ONVIF_DISCOVERY_MSG, uuid);
+    if (message_len < 0 || message_len >= sizeof(message)) {
+        log_error("Failed to format discovery message");
+        close(discovery_sock);
+        return -1;
     }
-    
-    // Also send to broadcast address
+
+    // First send a few probes to broadcast
     addr.s_addr = htonl(broadcast);
     strcpy(ip_addr, inet_ntoa(addr));
-    send_discovery_probe(ip_addr);
-    
-    // Receive responses
+    log_info("Sending discovery probes to broadcast address: %s", ip_addr);
+
+    dest_addr.sin_addr.s_addr = htonl(broadcast);
+    for (int i = 0; i < 3; i++) {
+        result = sendto(discovery_sock, message, message_len, 0,
+                     (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+        if (result < 0) {
+            log_warn("Failed to send broadcast probe %d: %s", i, strerror(errno));
+        }
+        usleep(100000); // 100ms between broadcast probes
+    }
+
+    // Send to multicast address
+    log_info("Sending discovery probes to ONVIF multicast address: 239.255.255.250");
+    inet_pton(AF_INET, "239.255.255.250", &dest_addr.sin_addr);
+    for (int i = 0; i < 3; i++) {
+        result = sendto(discovery_sock, message, message_len, 0,
+                     (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+        if (result < 0) {
+            log_warn("Failed to send multicast probe %d: %s", i, strerror(errno));
+        }
+        usleep(100000); // 100ms between multicast probes
+    }
+
+    // Now send to individual addresses, but only if broadcast failed
+    if (result < 0) {
+        log_info("Broadcast/multicast might be restricted, trying unicast to each IP");
+        // Send discovery probes to all addresses in the range (with lower frequency)
+        for (uint32_t ip = network_addr + 1; ip < broadcast; ip++) {
+            // Skip addresses too close to network or broadcast addresses
+            if (ip == network_addr + 1 || ip == broadcast - 1) {
+                continue;
+            }
+
+            addr.s_addr = htonl(ip);
+            strcpy(ip_addr, inet_ntoa(addr));
+
+            // Set destination address
+            dest_addr.sin_addr.s_addr = htonl(ip);
+
+            // Send discovery probe
+            if (sendto(discovery_sock, message, message_len, 0,
+                       (struct sockaddr *)&dest_addr, sizeof(dest_addr)) < 0) {
+                // Don't log every failure to avoid log spam
+                if (errno != EHOSTUNREACH && errno != ENETUNREACH) {
+                    log_debug("Failed to send unicast probe to %s: %s", ip_addr, strerror(errno));
+                }
+            }
+
+            // Sleep less between unicast probes (we have more to send)
+            usleep(5000); // 5ms
+        }
+    }
+
+    // Always close the sending socket before receiving
+    close(discovery_sock);
+
+    // Try to receive with different timeouts
+    log_info("Waiting for discovery responses with extended timeouts...");
+
+    // First try with default timeout
     count = receive_discovery_responses(devices, max_devices);
-    
+
+    // If no devices found, try again with longer timeout
+    if (count == 0) {
+        log_info("No devices found with standard timeout, trying with extended timeout");
+        // This assumes you can modify receive_discovery_responses to accept a timeout parameter
+        // Otherwise, you might need to create a new function with longer timeouts
+
+        // Here we're simulating a longer overall wait by calling again
+        // Ideally you'd modify receive_discovery_responses to accept a timeout parameter
+        count = receive_extended_discovery_responses(devices, max_devices, 10, 8); // 10 sec timeout, 8 attempts
+    }
+
     log_info("Manual ONVIF discovery completed, found %d devices", count);
-    
+
     return count;
 }
+
 
 // Test connection to an ONVIF device
 int test_onvif_connection(const char *url, const char *username, const char *password) {

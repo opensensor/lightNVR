@@ -309,11 +309,163 @@ export function StreamsView() {
     }
   };
   
+  // Handle ONVIF credential input change
+  const handleCredentialChange = (e) => {
+    const { name, value } = e.target;
+    setOnvifCredentials(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+  
+  // Start ONVIF discovery
+  const startOnvifDiscovery = async () => {
+    try {
+      setIsDiscovering(true);
+      setDiscoveredDevices([]);
+      showStatusMessage('Starting ONVIF discovery...');
+      
+      const response = await fetch('/api/onvif/discovery/discover', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to start ONVIF discovery');
+      }
+      
+      const data = await response.json();
+      setDiscoveredDevices(data.devices || []);
+      
+      if (data.devices && data.devices.length > 0) {
+        showStatusMessage(`Discovered ${data.devices.length} ONVIF devices`);
+      } else {
+        showStatusMessage('No ONVIF devices found');
+      }
+    } catch (error) {
+      console.error('Error discovering ONVIF devices:', error);
+      showStatusMessage('Error discovering ONVIF devices: ' + error.message, 3000, 'error');
+    } finally {
+      setIsDiscovering(false);
+    }
+  };
+  
+  // Get ONVIF device profiles
+  const getDeviceProfiles = async (device) => {
+    try {
+      setSelectedDevice(device);
+      setDeviceProfiles([]);
+      showStatusMessage('Getting device profiles...');
+      
+      const response = await fetch(`/api/onvif/device/profiles`, {
+        headers: {
+          'X-Device-URL': device.device_service,
+          'X-Username': onvifCredentials.username,
+          'X-Password': onvifCredentials.password
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to get device profiles');
+      }
+      
+      const data = await response.json();
+      setDeviceProfiles(data.profiles || []);
+      
+      if (data.profiles && data.profiles.length > 0) {
+        showStatusMessage(`Found ${data.profiles.length} profiles`);
+      } else {
+        showStatusMessage('No profiles found');
+      }
+    } catch (error) {
+      console.error('Error getting device profiles:', error);
+      showStatusMessage('Error getting device profiles: ' + error.message, 3000, 'error');
+    }
+  };
+  
+  // Add ONVIF device as stream
+  const addOnvifDeviceAsStream = async (profile) => {
+    try {
+      setSelectedProfile(profile);
+      showStatusMessage('Adding ONVIF device as stream...');
+      
+      // Generate a stream name from device info
+      const streamName = `ONVIF_${selectedDevice.ip_address.replace(/\./g, '_')}_${profile.name.replace(/\s+/g, '_')}`;
+      
+      const response = await fetch('/api/onvif/device/add', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          device_url: selectedDevice.device_service,
+          profile_token: profile.token,
+          stream_name: streamName,
+          username: onvifCredentials.username,
+          password: onvifCredentials.password
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to add ONVIF device as stream');
+      }
+      
+      showStatusMessage('ONVIF device added as stream successfully');
+      setOnvifModalVisible(false);
+      loadStreams();
+    } catch (error) {
+      console.error('Error adding ONVIF device as stream:', error);
+      showStatusMessage('Error adding ONVIF device as stream: ' + error.message, 3000, 'error');
+    }
+  };
+  
+  // Test ONVIF connection
+  const testOnvifConnection = async (device) => {
+    try {
+      showStatusMessage('Testing ONVIF connection...');
+      
+      const response = await fetch('/api/onvif/device/test', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          url: device.device_service,
+          username: onvifCredentials.username,
+          password: onvifCredentials.password
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('ONVIF connection test failed');
+      }
+      
+      showStatusMessage('ONVIF connection successful!');
+      
+      // Get device profiles after successful connection test
+      getDeviceProfiles(device);
+    } catch (error) {
+      console.error('Error testing ONVIF connection:', error);
+      showStatusMessage('Error testing ONVIF connection: ' + error.message, 3000, 'error');
+    }
+  };
+  
   return html`
     <section id="streams-page" class="page">
       <div class="page-header flex justify-between items-center mb-4 p-4 bg-white dark:bg-gray-800 rounded-lg shadow">
         <h2 class="text-xl font-bold">Streams</h2>
-        <div class="controls">
+        <div class="controls flex space-x-2">
+          <button 
+            id="discover-onvif-btn" 
+            class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+            onClick=${() => setOnvifModalVisible(true)}
+          >
+            Discover ONVIF Cameras
+          </button>
           <button 
             id="add-stream-btn" 
             class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
@@ -695,6 +847,146 @@ export function StreamsView() {
                   Cancel
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      `}
+      
+      ${onvifModalVisible && html`
+        <div id="onvif-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 transition-opacity duration-300">
+          <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
+              <h3 class="text-lg font-medium">ONVIF Camera Discovery</h3>
+              <span class="text-2xl cursor-pointer" onClick=${() => setOnvifModalVisible(false)}>×</span>
+            </div>
+            <div class="p-4">
+              <div class="mb-4">
+                <h4 class="text-md font-medium mb-2">Authentication</h4>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div class="form-group">
+                    <label for="onvif-username" class="block text-sm font-medium mb-1">Username</label>
+                    <input 
+                      type="text" 
+                      id="onvif-username" 
+                      name="username"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                      placeholder="admin" 
+                      value=${onvifCredentials.username}
+                      onChange=${handleCredentialChange}
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label for="onvif-password" class="block text-sm font-medium mb-1">Password</label>
+                    <input 
+                      type="password" 
+                      id="onvif-password" 
+                      name="password"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                      placeholder="password" 
+                      value=${onvifCredentials.password}
+                      onChange=${handleCredentialChange}
+                    />
+                  </div>
+                </div>
+              </div>
+              
+              <div class="mb-4 flex justify-between items-center">
+                <h4 class="text-md font-medium">Discovered Devices</h4>
+                <button 
+                  id="discover-btn" 
+                  class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors focus:outline-none"
+                  onClick=${startOnvifDiscovery}
+                  disabled=${isDiscovering}
+                  type="button"
+                >
+                  ${isDiscovering ? 'Discovering...' : 'Start Discovery'}
+                </button>
+              </div>
+              
+              <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                  <thead class="bg-gray-50 dark:bg-gray-700">
+                    <tr>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">IP Address</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Manufacturer</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Model</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody class="bg-white divide-y divide-gray-200 dark:bg-gray-800 dark:divide-gray-700">
+                    ${discoveredDevices.length === 0 ? html`
+                      <tr>
+                        <td colspan="4" class="px-6 py-4 text-center text-gray-500 dark:text-gray-400">
+                          ${isDiscovering ? 'Discovering devices...' : 'No devices discovered yet. Click "Start Discovery" to scan your network.'}
+                        </td>
+                      </tr>
+                    ` : discoveredDevices.map(device => html`
+                      <tr key=${device.ip_address} class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                        <td class="px-6 py-4 whitespace-nowrap">${device.ip_address}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">${device.manufacturer || 'Unknown'}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">${device.model || 'Unknown'}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                          <button 
+                            class="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors focus:outline-none"
+                            onClick=${() => testOnvifConnection(device)}
+                            type="button"
+                          >
+                            Connect
+                          </button>
+                        </td>
+                      </tr>
+                    `)}
+                  </tbody>
+                </table>
+              </div>
+              
+              ${selectedDevice && deviceProfiles.length > 0 && html`
+                <div class="mt-6">
+                  <h4 class="text-md font-medium mb-2">Available Profiles for ${selectedDevice.ip_address}</h4>
+                  <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                      <thead class="bg-gray-50 dark:bg-gray-700">
+                        <tr>
+                          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Name</th>
+                          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Resolution</th>
+                          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Encoding</th>
+                          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">FPS</th>
+                          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody class="bg-white divide-y divide-gray-200 dark:bg-gray-800 dark:divide-gray-700">
+                        ${deviceProfiles.map(profile => html`
+                          <tr key=${profile.token} class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                            <td class="px-6 py-4 whitespace-nowrap">${profile.name}</td>
+                            <td class="px-6 py-4 whitespace-nowrap">${profile.width}x${profile.height}</td>
+                            <td class="px-6 py-4 whitespace-nowrap">${profile.encoding}</td>
+                            <td class="px-6 py-4 whitespace-nowrap">${profile.fps}</td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                              <button 
+                                class="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 transition-colors focus:outline-none"
+                                onClick=${() => addOnvifDeviceAsStream(profile)}
+                                type="button"
+                              >
+                                Add as Stream
+                              </button>
+                            </td>
+                          </tr>
+                        `)}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              `}
+            </div>
+            <div class="flex justify-end p-4 border-t border-gray-200 dark:border-gray-700">
+              <button 
+                id="onvif-close-btn" 
+                class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+                onClick=${() => setOnvifModalVisible(false)}
+                type="button"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>
