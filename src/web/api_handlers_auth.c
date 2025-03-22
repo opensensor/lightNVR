@@ -21,8 +21,8 @@ void mg_handle_auth_logout(struct mg_connection *c, struct mg_http_message *hm) 
     
     // Send a 200 OK response with Set-Cookie header to clear the auth cookie
     // This avoids the browser prompting for basic auth
-    mg_printf(c, "HTTP/1.1 200 OK\r\n"
-              "Content-Type: application/json\r\n"
+    mg_printf(c, "HTTP/1.1 302 Found\r\n"
+              "Location: /login.html\r\n"
               "Set-Cookie: auth=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict\r\n"
               // Add WWW-Authenticate header with an invalid realm to clear browser's auth cache
               "WWW-Authenticate: Basic realm=\"logout\"\r\n"
@@ -30,8 +30,7 @@ void mg_handle_auth_logout(struct mg_connection *c, struct mg_http_message *hm) 
               "Cache-Control: no-cache, no-store, must-revalidate\r\n"
               "Pragma: no-cache\r\n"
               "Expires: 0\r\n"
-              "Content-Length: 29\r\n\r\n"
-              "{\"success\":true,\"logged_out\":true}");
+              "Content-Length: 0\r\n\r\n");
     
     log_info("Successfully handled POST /api/auth/logout request");
 }
@@ -42,116 +41,137 @@ void mg_handle_auth_logout(struct mg_connection *c, struct mg_http_message *hm) 
 void mg_handle_auth_login(struct mg_connection *c, struct mg_http_message *hm) {
     log_info("Handling POST /api/auth/login request");
     
-    // Parse JSON from request body
-    cJSON *login = mg_parse_json_body(hm);
-    if (!login) {
-        log_error("Failed to parse login JSON from request body");
-        mg_send_json_error(c, 400, "Invalid JSON in request body");
-        return;
+    // Always try to extract form data first
+    char username[64] = {0};
+    char password[64] = {0};
+    bool is_form = false;
+    
+    // Log the request body for debugging
+    char body_str[256] = {0};
+    if (hm->body.len < sizeof(body_str) - 1) {
+        memcpy(body_str, hm->body.buf, hm->body.len);
+        body_str[hm->body.len] = '\0';
+        log_info("Login request body: %s", body_str);
     }
     
-    // Extract username and password
-    cJSON *username = cJSON_GetObjectItem(login, "username");
-    cJSON *password = cJSON_GetObjectItem(login, "password");
+    // Try to extract form data
+    int username_len = mg_http_get_var(&hm->body, "username", username, sizeof(username));
+    int password_len = mg_http_get_var(&hm->body, "password", password, sizeof(password));
     
-    if (!username || !cJSON_IsString(username) || !password || !cJSON_IsString(password)) {
-        log_error("Missing or invalid username/password in login request");
-        cJSON_Delete(login);
-        mg_send_json_error(c, 400, "Missing or invalid username/password");
-        return;
+    if (username_len > 0 && password_len > 0) {
+        // Successfully extracted form data
+        is_form = true;
+        log_info("Extracted form data: username=%s", username);
+    } else {
+        // Try to parse as JSON
+        cJSON *login = mg_parse_json_body(hm);
+        if (!login) {
+            // If we can't parse as JSON and didn't get form data, try one more approach
+            // Some browsers might send form data without proper Content-Type
+            if (hm->body.len > 0) {
+                // Try to manually parse the form data
+                char *body_copy = malloc(hm->body.len + 1);
+                if (body_copy) {
+                    memcpy(body_copy, hm->body.buf, hm->body.len);
+                    body_copy[hm->body.len] = '\0';
+                    
+                    // Look for username=value
+                    char *username_start = strstr(body_copy, "username=");
+                    if (username_start) {
+                        username_start += 9; // Skip "username="
+                        char *username_end = strchr(username_start, '&');
+                        if (username_end) {
+                            *username_end = '\0';
+                            strncpy(username, username_start, sizeof(username) - 1);
+                            
+                            // Look for password=value
+                            char *password_start = strstr(username_end + 1, "password=");
+                            if (password_start) {
+                                password_start += 9; // Skip "password="
+                                char *password_end = strchr(password_start, '&');
+                                if (password_end) {
+                                    *password_end = '\0';
+                                }
+                                strncpy(password, password_start, sizeof(password) - 1);
+                                is_form = true;
+                            }
+                        }
+                    }
+                    
+                    free(body_copy);
+                }
+            }
+            
+            if (!is_form) {
+                log_error("Failed to parse login data from request body");
+                mg_send_json_error(c, 400, "Invalid login data");
+                return;
+            }
+        } else {
+            // Extract username and password from JSON
+            cJSON *username_json = cJSON_GetObjectItem(login, "username");
+            cJSON *password_json = cJSON_GetObjectItem(login, "password");
+            
+            if (!username_json || !cJSON_IsString(username_json) || 
+                !password_json || !cJSON_IsString(password_json)) {
+                log_error("Missing or invalid username/password in login request");
+                cJSON_Delete(login);
+                mg_send_json_error(c, 400, "Missing or invalid username/password");
+                return;
+            }
+            
+            strncpy(username, username_json->valuestring, sizeof(username) - 1);
+            strncpy(password, password_json->valuestring, sizeof(password) - 1);
+            
+            // Clean up
+            cJSON_Delete(login);
+        }
     }
     
     // Check credentials
-    if (strcmp(username->valuestring, g_config.web_username) == 0 && 
-        strcmp(password->valuestring, g_config.web_password) == 0) {
+    if (strcmp(username, g_config.web_username) == 0 && 
+        strcmp(password, g_config.web_password) == 0) {
         // Login successful
-        log_info("Login successful for user: %s", username->valuestring);
-        
-        // Create success response
-        cJSON *success = cJSON_CreateObject();
-        if (!success) {
-            log_error("Failed to create success JSON object");
-            cJSON_Delete(login);
-            mg_send_json_error(c, 500, "Failed to create success JSON");
-            return;
-        }
-        
-        cJSON_AddBoolToObject(success, "success", true);
-        cJSON_AddStringToObject(success, "message", "Login successful");
-        
-        // Convert to string
-        char *json_str = cJSON_PrintUnformatted(success);
-        if (!json_str) {
-            log_error("Failed to convert success JSON to string");
-            cJSON_Delete(success);
-            cJSON_Delete(login);
-            mg_send_json_error(c, 500, "Failed to convert success JSON to string");
-            return;
-        }
+        log_info("Login successful for user: %s", username);
         
         // Create Basic Auth header value
-        char auth_header_value[256];
         char auth_credentials[128];
-        snprintf(auth_credentials, sizeof(auth_credentials), "%s:%s", username->valuestring, password->valuestring);
+        snprintf(auth_credentials, sizeof(auth_credentials), "%s:%s", username, password);
         
         // Base64 encode the credentials
         char encoded_auth[256];
         mg_base64_encode((unsigned char *)auth_credentials, strlen(auth_credentials), encoded_auth, sizeof(encoded_auth));
         
-        // Send response with auth header and Set-Cookie header
-        mg_printf(c, "HTTP/1.1 200 OK\r\n");
-        mg_printf(c, "Content-Type: application/json\r\n");
-        mg_printf(c, "Content-Length: %d\r\n", (int)strlen(json_str));
+        // Default redirect to live.html
+        const char *redirect_url = "/live.html";
+        
+        // Send redirect response with auth cookie
+        mg_printf(c, "HTTP/1.1 302 Found\r\n");
+        mg_printf(c, "Location: %s\r\n", redirect_url);
         mg_printf(c, "Authorization: Basic %s\r\n", encoded_auth);
         // Set a cookie with the auth token to help maintain session across pages
-        // Make sure the cookie is not HttpOnly so JavaScript can access it
         mg_printf(c, "Set-Cookie: auth=%s; Path=/; Max-Age=86400; SameSite=Lax\r\n", encoded_auth);
         // Add Cache-Control headers to prevent caching
         mg_printf(c, "Cache-Control: no-cache, no-store, must-revalidate\r\n");
         mg_printf(c, "Pragma: no-cache\r\n");
         mg_printf(c, "Expires: 0\r\n");
+        mg_printf(c, "Content-Length: 0\r\n");
         mg_printf(c, "\r\n");
-        mg_printf(c, "%s", json_str);
-        
-        // Clean up
-        free(json_str);
-        cJSON_Delete(success);
     } else {
         // Login failed
-        log_warn("Login failed for user: %s", username->valuestring);
+        log_warn("Login failed for user: %s", username);
         
-        // Create error response
-        cJSON *error = cJSON_CreateObject();
-        if (!error) {
-            log_error("Failed to create error JSON object");
-            cJSON_Delete(login);
-            mg_send_json_error(c, 500, "Failed to create error JSON");
-            return;
+        if (is_form) {
+            // For form submissions, redirect back to login page with error
+            mg_printf(c, "HTTP/1.1 302 Found\r\n");
+            mg_printf(c, "Location: /login.html?error=1\r\n");
+            mg_printf(c, "Content-Length: 0\r\n");
+            mg_printf(c, "\r\n");
+        } else {
+            // For API requests, return JSON error
+            mg_send_json_error(c, 401, "Invalid username or password");
         }
-        
-        cJSON_AddBoolToObject(error, "success", false);
-        cJSON_AddStringToObject(error, "message", "Invalid username or password");
-        
-        // Convert to string
-        char *json_str = cJSON_PrintUnformatted(error);
-        if (!json_str) {
-            log_error("Failed to convert error JSON to string");
-            cJSON_Delete(error);
-            cJSON_Delete(login);
-            mg_send_json_error(c, 500, "Failed to convert error JSON to string");
-            return;
-        }
-        
-        // Send response
-        mg_send_json_response(c, 401, json_str);
-        
-        // Clean up
-        free(json_str);
-        cJSON_Delete(error);
     }
-    
-    // Clean up
-    cJSON_Delete(login);
     
     log_info("Successfully handled POST /api/auth/login request");
 }

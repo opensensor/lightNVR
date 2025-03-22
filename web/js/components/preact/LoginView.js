@@ -19,7 +19,7 @@ export function LoginView() {
   const [errorMessage, setErrorMessage] = useState('');
   
   // Handle login form submission
-  const handleLogin = async (e) => {
+  const handleLogin = (e) => {
     e.preventDefault();
     
     if (!username || !password) {
@@ -27,47 +27,15 @@ export function LoginView() {
       return;
     }
     
-    try {
-      setIsLoggingIn(true);
-      setErrorMessage('');
-      
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          username,
-          password
-        })
-      });
-      
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.message || 'Invalid username or password');
-      }
-      
-      // Store credentials in localStorage for future requests
-      const auth = btoa(`${username}:${password}`);
-      localStorage.setItem('auth', auth);
-      
-      // Login successful, redirect to home page with cache-busting parameter
-      // This helps ensure the browser makes a fresh request with the new auth headers
-      
-      // Store the redirect time for auth.js to use
-      localStorage.setItem('lastRedirectTime', new Date().getTime());
-      
-      // Add a small delay to ensure the cookie is set before redirecting
-      setTimeout(() => {
-        // Direct navigation works better with authentication
-        window.location.href = '/live.html?t=' + new Date().getTime();
-      }, 500);
-    } catch (error) {
-      console.error('Login error:', error);
-      setErrorMessage(error.message || 'Login failed. Please try again.');
-    } finally {
-      setIsLoggingIn(false);
-    }
+    setIsLoggingIn(true);
+    
+    // Store credentials in localStorage for future requests
+    const auth = btoa(`${username}:${password}`);
+    localStorage.setItem('auth', auth);
+    
+    // Submit the form directly to the server
+    // The form is already set up with method="POST" and action="/api/auth/login"
+    e.target.submit();
   };
   
   return html`
@@ -84,7 +52,7 @@ export function LoginView() {
           </div>
         `}
         
-        <form id="login-form" class="space-y-6" onSubmit=${handleLogin}>
+        <form id="login-form" class="space-y-6" action="/api/auth/login" method="POST" onSubmit=${handleLogin}>
           <div class="form-group">
             <label for="username" class="block text-sm font-medium mb-1">Username</label>
             <input 

@@ -263,13 +263,8 @@ export function LiveView() {
     // Get auth from localStorage
     const auth = localStorage.getItem('auth');
     
-    // Check if we recently redirected from login
-    const lastRedirectTime = localStorage.getItem('lastRedirectTime');
-    const isRecentRedirect = lastRedirectTime && (Date.now() - parseInt(lastRedirectTime) < 5000);
-    
-    if (isRecentRedirect) {
-      console.log(`Recent redirect detected for stream ${stream.name}, ensuring auth headers are set`);
-    }
+    // Ensure auth headers are set for HLS requests
+    console.log(`Initializing video player for stream ${stream.name}`);
     
     // Check if HLS is supported natively
     if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
