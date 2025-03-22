@@ -24,7 +24,7 @@ void mg_handle_get_recordings(struct mg_connection *c, struct mg_http_message *h
     log_info("Handling GET /api/recordings request");
     
     // Parse query parameters
-    char query_string[256] = {0};
+    char query_string[512] = {0};
     if (hm->query.len > 0 && hm->query.len < sizeof(query_string)) {
         memcpy(query_string, mg_str_get_ptr(&hm->query), hm->query.len);
         query_string[hm->query.len] = '\0';
@@ -32,33 +32,49 @@ void mg_handle_get_recordings(struct mg_connection *c, struct mg_http_message *h
     
     // Extract parameters
     char stream_name[MAX_STREAM_NAME] = {0};
-    char date_str[32] = {0};
-    int limit = 100;
-    int offset = 0;
+    char start_time_str[64] = {0};
+    char end_time_str[64] = {0};
+    int page = 1;
+    int limit = 20;
+    char sort_field[32] = "start_time";
+    char sort_order[8] = "desc";
+    int has_detection = 0;
     
     // Parse query string
     char *param = strtok(query_string, "&");
     while (param) {
         if (strncmp(param, "stream=", 7) == 0) {
             strncpy(stream_name, param + 7, sizeof(stream_name) - 1);
-        } else if (strncmp(param, "date=", 5) == 0) {
-            strncpy(date_str, param + 5, sizeof(date_str) - 1);
+        } else if (strncmp(param, "start=", 6) == 0) {
+            strncpy(start_time_str, param + 6, sizeof(start_time_str) - 1);
+        } else if (strncmp(param, "end=", 4) == 0) {
+            strncpy(end_time_str, param + 4, sizeof(end_time_str) - 1);
+        } else if (strncmp(param, "page=", 5) == 0) {
+            page = atoi(param + 5);
         } else if (strncmp(param, "limit=", 6) == 0) {
             limit = atoi(param + 6);
-        } else if (strncmp(param, "offset=", 7) == 0) {
-            offset = atoi(param + 7);
+        } else if (strncmp(param, "sort=", 5) == 0) {
+            strncpy(sort_field, param + 5, sizeof(sort_field) - 1);
+        } else if (strncmp(param, "order=", 6) == 0) {
+            strncpy(sort_order, param + 6, sizeof(sort_order) - 1);
+        } else if (strncmp(param, "detection=", 10) == 0) {
+            has_detection = atoi(param + 10);
         }
         param = strtok(NULL, "&");
     }
     
     // Validate parameters
-    if (limit <= 0) limit = 100;
+    if (page <= 0) page = 1;
+    if (limit <= 0) limit = 20;
     if (limit > 1000) limit = 1000;
-    if (offset < 0) offset = 0;
+    
+    // Calculate offset from page and limit
+    int offset = (page - 1) * limit;
     
     // Get recordings from database
     recording_metadata_t *recordings = NULL;
     int count = 0;
+    int total_count = 0;
     
     // Allocate memory for recordings
     recordings = (recording_metadata_t *)malloc(limit * sizeof(recording_metadata_t));
@@ -68,26 +84,41 @@ void mg_handle_get_recordings(struct mg_connection *c, struct mg_http_message *h
         return;
     }
     
-    // Get recordings based on filters
+    // Parse time strings to time_t
     time_t start_time = 0;
     time_t end_time = 0;
     
-    // If date is provided, convert to time_t
-    if (date_str[0] != '\0') {
+    if (start_time_str[0] != '\0') {
         struct tm tm = {0};
-        if (strptime(date_str, "%Y-%m-%d", &tm) != NULL) {
+        if (strptime(start_time_str, "%Y-%m-%dT%H:%M:%S", &tm) != NULL) {
             start_time = mktime(&tm);
-            tm.tm_hour = 23;
-            tm.tm_min = 59;
-            tm.tm_sec = 59;
+        }
+    }
+    
+    if (end_time_str[0] != '\0') {
+        struct tm tm = {0};
+        if (strptime(end_time_str, "%Y-%m-%dT%H:%M:%S", &tm) != NULL) {
             end_time = mktime(&tm);
         }
     }
     
-    // Get recordings
-    count = get_recording_metadata(start_time, end_time, 
-                                  stream_name[0] != '\0' ? stream_name : NULL, 
-                                  recordings, limit);
+    // Get total count first (for pagination)
+    total_count = get_recording_count(start_time, end_time, 
+                                     stream_name[0] != '\0' ? stream_name : NULL,
+                                     has_detection);
+    
+    if (total_count < 0) {
+        log_error("Failed to get total recording count from database");
+        free(recordings);
+        mg_send_json_error(c, 500, "Failed to get recording count from database");
+        return;
+    }
+    
+    // Get recordings with pagination
+    count = get_recording_metadata_paginated(start_time, end_time, 
+                                           stream_name[0] != '\0' ? stream_name : NULL,
+                                           has_detection, sort_field, sort_order,
+                                           recordings, limit, offset);
     
     if (count < 0) {
         log_error("Failed to get recordings from database");
@@ -128,9 +159,10 @@ void mg_handle_get_recordings(struct mg_connection *c, struct mg_http_message *h
     }
     
     // Add pagination info
-    cJSON_AddNumberToObject(pagination, "page", 1);
-    cJSON_AddNumberToObject(pagination, "pages", 1);
-    cJSON_AddNumberToObject(pagination, "total", count);
+    int total_pages = (total_count + limit - 1) / limit; // Ceiling division
+    cJSON_AddNumberToObject(pagination, "page", page);
+    cJSON_AddNumberToObject(pagination, "pages", total_pages);
+    cJSON_AddNumberToObject(pagination, "total", total_count);
     cJSON_AddNumberToObject(pagination, "limit", limit);
     
     // Add pagination object to response

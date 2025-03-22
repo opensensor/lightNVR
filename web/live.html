@@ -5,469 +5,109 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Live View - LightNVR</title>
     <link rel="stylesheet" href="css/main.css">
+    <link rel="stylesheet" href="css/live.css">
     <link rel="icon" href="img/favicon.ico" type="image/x-icon">
-    <style>
-        /* Modern responsive video grid styles */
-        :root {
-            --grid-gap: 1rem;
-            --card-border-radius: 8px;
-            --card-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            --card-hover-shadow: 0 8px 15px rgba(0, 0, 0, 0.15);
-            --overlay-bg: rgba(0, 0, 0, 0.7);
-            --overlay-hover-bg: rgba(0, 0, 0, 0.85);
-            --primary-color: #1e88e5;
-            --transition-speed: 0.3s;
-        }
-
-        .video-container {
-            display: grid;
-            gap: var(--grid-gap);
-            height: calc(100vh - 200px);
-            min-height: 400px;
-            transition: all var(--transition-speed) ease;
-            width: 100%;
-        }
-        
-        /* Base layout styles with auto-fit for better responsiveness */
-        .video-container.layout-1 {
-            grid-template-columns: 1fr;
-        }
-        
-        .video-container.layout-4 {
-            grid-template-columns: repeat(auto-fit, minmax(min(100%, 450px), 1fr));
-            grid-auto-rows: 1fr;
-        }
-        
-        .video-container.layout-9 {
-            grid-template-columns: repeat(auto-fit, minmax(min(100%, 350px), 1fr));
-            grid-auto-rows: 1fr;
-        }
-        
-        .video-container.layout-16 {
-            grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
-            grid-auto-rows: 1fr;
-        }
-        
-        /* Force specific layouts on larger screens */
-        @media (min-width: 1200px) {
-            .video-container.layout-4 {
-                grid-template-columns: repeat(2, 1fr);
-                grid-template-rows: repeat(2, 1fr);
-            }
-            
-            .video-container.layout-9 {
-                grid-template-columns: repeat(3, 1fr);
-                grid-template-rows: repeat(3, 1fr);
-            }
-            
-            .video-container.layout-16 {
-                grid-template-columns: repeat(4, 1fr);
-                grid-template-rows: repeat(4, 1fr);
-            }
-        }
-        
-        .video-cell {
-            position: relative;
-            background-color: #000;
-            border-radius: var(--card-border-radius);
-            overflow: hidden;
-            box-shadow: var(--card-shadow);
-            transition: all var(--transition-speed) ease;
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .video-cell:hover {
-            box-shadow: var(--card-hover-shadow);
-            transform: translateY(-3px);
-            z-index: 2;
-        }
-        
-        .video-cell video {
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-            background-color: #111;
-        }
-        
-        /* Adjust padding in fullscreen mode for better visibility */
-        .fullscreen-mode .video-cell video {
-            padding: 0;
-        }
-        
-        .video-cell .stream-info {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            padding: 0.75rem;
-            background-color: var(--overlay-bg);
-            color: white;
-            font-size: 0.9rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            opacity: 0;
-            transform: translateY(100%);
-            transition: all var(--transition-speed) ease;
-            backdrop-filter: blur(4px);
-            -webkit-backdrop-filter: blur(4px);
-        }
-        
-        .video-cell:hover .stream-info {
-            opacity: 1;
-            transform: translateY(0);
-        }
-        
-        .video-cell .stream-controls {
-            display: flex;
-            justify-content: center;
-            gap: 1rem;
-            margin-left: auto;
-        }
-        
-        .video-cell .stream-controls button {
-            background-color: rgba(255, 255, 255, 0.15);
-            border: none;
-            color: white;
-            cursor: pointer;
-            padding: 0.5rem 0.75rem;
-            font-size: 0.9rem;
-            border-radius: 4px;
-            transition: background-color 0.2s ease;
-            display: flex;
-            align-items: center;
-            gap: 0.25rem;
-        }
-        
-        .video-cell .stream-controls button:hover {
-            background-color: rgba(255, 255, 255, 0.3);
-        }
-        
-        .placeholder {
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            height: 100%;
-            background-color: #f5f5f5;
-            border-radius: var(--card-border-radius);
-            grid-column: 1 / -1;
-            grid-row: 1 / -1;
-            text-align: center;
-            padding: 2rem;
-            box-shadow: var(--card-shadow);
-        }
-        
-        .placeholder p {
-            margin-bottom: 1.5rem;
-            color: #555;
-            font-size: 1.1rem;
-        }
-        
-        /* Fullscreen mode */
-        .fullscreen-mode {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 1000;
-            background-color: #000;
-            padding: 0;
-        }
-        
-        .fullscreen-mode .video-container {
-            height: 100vh;
-            padding: 0.5rem;
-        }
-        
-        .fullscreen-exit {
-            position: absolute;
-            top: 1rem;
-            right: 1rem;
-            background-color: var(--overlay-bg);
-            color: white;
-            border: none;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            cursor: pointer;
-            z-index: 1001;
-            transition: all 0.2s ease;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-        }
-        
-        .fullscreen-exit:hover {
-            background-color: var(--overlay-hover-bg);
-            transform: scale(1.1);
-        }
-        
-        /* Loading indicator */
-        .loading-indicator {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            color: white;
-        }
-        
-        .loading-spinner {
-            width: 40px;
-            height: 40px;
-            border: 3px solid rgba(255, 255, 255, 0.2);
-            border-radius: 50%;
-            border-top-color: var(--primary-color);
-            animation: spin 1s ease-in-out infinite;
-            margin-bottom: 0.75rem;
-        }
-        
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        
-        /* Error indicator */
-        .error-indicator {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            color: white;
-            text-align: center;
-            padding: 1.5rem;
-            background-color: rgba(0, 0, 0, 0.5);
-            border-radius: 8px;
-            backdrop-filter: blur(4px);
-            -webkit-backdrop-filter: blur(4px);
-        }
-        
-        .error-icon {
-            color: #f44336;
-            font-size: 2rem;
-            margin-bottom: 0.75rem;
-        }
-        
-        /* Responsive adjustments */
-        @media (max-width: 992px) {
-            .video-container {
-                gap: 0.75rem;
-            }
-        }
-        
-        @media (max-width: 768px) {
-            .video-container {
-                height: auto;
-                min-height: auto;
-            }
-            
-            .video-cell {
-                aspect-ratio: 16 / 9;
-                margin-bottom: 0.5rem;
-            }
-            
-            /* Always show controls on touch devices */
-            .video-cell .stream-info,
-            .video-cell .stream-controls {
-                opacity: 1;
-                transform: translateY(0);
-            }
-            
-            .video-cell .stream-info {
-                padding: 0.5rem;
-                font-size: 0.8rem;
-            }
-            
-            .video-cell .stream-controls {
-                padding: 0.5rem;
-            }
-            
-            .video-cell .stream-controls button {
-                padding: 0.35rem 0.5rem;
-                font-size: 0.8rem;
-            }
-        }
-        
-        /* Dark mode support */
-        @media (prefers-color-scheme: dark) {
-            .placeholder {
-                background-color: #222;
-            }
-            
-            .placeholder p {
-                color: #ccc;
-            }
-        }
-    </style>
 </head>
-<body>
-<div class="container">
+<body class="flex flex-col min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+<div class="container mx-auto px-4 flex flex-col min-h-screen">
     <header id="header-container">
         <!-- Header content will be loaded by JavaScript -->
     </header>
 
-    <main id="main-content">
-        <section id="live-page" class="page">
-            <div class="page-header">
-                <h2>Live View</h2>
-                <div class="controls">
-                    <select id="layout-selector">
+    <main id="main-content" class="flex-grow">
+        <section id="live-page" class="page" x-data="liveViewManager">
+            <div class="page-header flex justify-between items-center mb-4 p-4 bg-white dark:bg-gray-800 rounded-lg shadow">
+                <h2 class="text-xl font-bold">Live View</h2>
+                <div class="controls flex items-center space-x-2">
+                    <select id="layout-selector" 
+                            class="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600"
+                            x-model="layout"
+                            @change="updateLayout">
                         <option value="1">Single View</option>
                         <option value="4" selected>2x2 Grid</option>
                         <option value="9">3x3 Grid</option>
                         <option value="16">4x4 Grid</option>
                     </select>
-                    <select id="stream-selector" style="display: none;">
-                        <!-- Will be populated with streams -->
+                    <select id="stream-selector" 
+                            class="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600"
+                            x-show="layout === '1'"
+                            x-model="selectedStream"
+                            @change="updateSelectedStream">
+                        <template x-for="stream in streams" :key="stream.name">
+                            <option :value="stream.name" x-text="stream.name"></option>
+                        </template>
                     </select>
-                    <button id="fullscreen-btn">Fullscreen</button>
+                    <button id="fullscreen-btn" 
+                            class="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+                            @click="toggleFullscreen">
+                        Fullscreen
+                    </button>
                 </div>
             </div>
-            <div class="video-container layout-4" id="video-grid">
-                <div class="placeholder">
-                    <p>No streams configured</p>
-                    <a href="streams.html" class="btn">Configure Streams</a>
+            
+            <div id="video-grid" 
+                 class="video-container"
+                 :class="'layout-' + layout"
+                 x-ref="videoGrid">
+                <div class="placeholder flex flex-col justify-center items-center col-span-full row-span-full bg-white dark:bg-gray-800 rounded-lg shadow-md text-center p-8"
+                     x-show="streams.length === 0">
+                    <p class="mb-6 text-gray-600 dark:text-gray-300 text-lg">No streams configured</p>
+                    <a href="streams.html" class="btn-primary px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">Configure Streams</a>
                 </div>
+                <!-- Video cells will be dynamically added by the updateVideoGrid function -->
             </div>
         </section>
     </main>
 
-    <footer id="footer-container">
+    <footer id="footer-container" class="mt-auto">
         <!-- Footer content will be loaded by JavaScript -->
     </footer>
 </div>
 
-<!-- Snapshot Preview Modal -->
-<div id="snapshot-preview-modal" class="modal">
-    <div class="modal-content snapshot-preview-content">
-        <div class="modal-header snapshot-preview-header">
-            <h3 id="snapshot-preview-title">Snapshot Preview</h3>
-            <span class="close">&times;</span>
+<!-- Status message component -->
+<div id="status-message" 
+     x-data="statusMessage"
+     x-show="visible"
+     x-text="message"
+     class="status-message"
+     :class="{ 'visible': visible }">
+</div>
+
+<!-- Snapshot Preview Modal (Vanilla JS version) -->
+<div id="snapshot-preview-modal" class="modal hidden fixed inset-0 z-50 overflow-auto bg-black bg-opacity-70 backdrop-blur-sm flex items-center justify-center transition-opacity duration-300">
+    <div class="modal-content bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-3xl mx-4 overflow-hidden transform transition-transform duration-300 scale-95 opacity-0">
+        <div class="modal-header flex justify-between items-center p-5 border-b border-gray-200 dark:border-gray-700">
+            <h3 id="snapshot-preview-title" class="text-xl font-semibold text-gray-800 dark:text-gray-100">Snapshot Preview</h3>
+            <span class="close text-2xl font-bold text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 cursor-pointer hover:scale-110 transition-transform">&times;</span>
         </div>
-        <div class="modal-body snapshot-preview-body">
-            <img id="snapshot-preview-image" src="" alt="Snapshot Preview">
+        <div class="modal-body p-6 bg-gray-50 dark:bg-gray-900">
+            <div class="relative rounded-lg overflow-hidden shadow-inner bg-black">
+                <img id="snapshot-preview-image" src="" alt="Snapshot Preview" class="w-full h-auto max-h-[70vh] object-contain mx-auto">
+            </div>
         </div>
-        <div class="modal-footer snapshot-preview-footer">
-            <button id="snapshot-download-btn" class="btn-primary">Download</button>
-            <button id="snapshot-close-btn" class="btn-secondary">Close</button>
+        <div class="modal-footer flex justify-end gap-3 p-5 border-t border-gray-200 dark:border-gray-700">
+            <button id="snapshot-download-btn" class="btn-primary px-5 py-2.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 font-medium">
+                <svg class="w-4 h-4 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                </svg>
+                Download
+            </button>
+            <button id="snapshot-close-btn" class="btn-secondary px-5 py-2.5 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50 font-medium">
+                Close
+            </button>
         </div>
     </div>
 </div>
 
+<script src="js/alpine.cdn.min.js" defer></script>
+<script src="js/tailwind.cdn.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 <script src="js/core.js"></script>
-<script src="js/components/layout.js"></script>
-<script src="js/components/ui.js"></script>
+<script src="js/components/layout.alpine.js"></script>
+<script src="js/components/ui.alpine.js"></script>
 <script src="js/components/streams.js"></script>
 <script src="js/components/video.js"></script>
 <script src="js/pages/pages.js"></script>
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
-        // Load header and footer
-        loadHeader('nav-live');
-        loadFooter();
-        
-        // Set up modals
-        setupModals();
-        setupSnapshotModal();
-        
-        // Initialize the live view
-        setupLiveViewHandlers();
-
-        // Load streams for display
-        loadStreams(true);
-        
-        // Set initial layout
-        updateVideoLayout(document.getElementById('layout-selector').value);
-        
-        // Set up layout selector change event
-        const layoutSelector = document.getElementById('layout-selector');
-        if (layoutSelector) {
-            layoutSelector.addEventListener('change', function() {
-                updateVideoLayout(this.value);
-                
-                // If switching to single view, make sure the stream selector works
-                if (this.value === '1') {
-                    const streamSelector = document.getElementById('stream-selector');
-                    if (streamSelector && streamSelector.value) {
-                        // Trigger the change event on the stream selector
-                        const event = new Event('change');
-                        streamSelector.dispatchEvent(event);
-                    }
-                }
-            });
-        }
-        
-        // Set up fullscreen button click event
-        const fullscreenBtn = document.getElementById('fullscreen-btn');
-        if (fullscreenBtn) {
-            fullscreenBtn.addEventListener('click', toggleFullscreen);
-        }
-        
-        // Set up Escape key to exit fullscreen mode
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') {
-                const livePage = document.getElementById('live-page');
-                if (livePage && livePage.classList.contains('fullscreen-mode')) {
-                    toggleFullscreen();
-                }
-            }
-        });
-        
-        // Add event listener to stop streams when leaving the page
-        window.addEventListener('beforeunload', function() {
-            // Stop all streams when leaving the page
-            stopAllStreams();
-        });
-    });
-    
-    // Toggle fullscreen mode
-    function toggleFullscreen() {
-        const livePage = document.getElementById('live-page');
-        const videoGrid = document.getElementById('video-grid');
-        
-        if (!livePage || !videoGrid) return;
-        
-        if (livePage.classList.contains('fullscreen-mode')) {
-            // Exit fullscreen
-            livePage.classList.remove('fullscreen-mode');
-            document.body.style.overflow = '';
-            
-            // Remove exit button
-            const exitBtn = document.querySelector('.fullscreen-exit');
-            if (exitBtn) {
-                exitBtn.remove();
-            }
-        } else {
-            // Enter fullscreen
-            livePage.classList.add('fullscreen-mode');
-            document.body.style.overflow = 'hidden';
-            
-            // Add exit button
-            const exitBtn = document.createElement('button');
-            exitBtn.className = 'fullscreen-exit';
-            exitBtn.innerHTML = '✕';
-            exitBtn.addEventListener('click', toggleFullscreen);
-            livePage.appendChild(exitBtn);
-        }
-        
-        // Refresh video layout
-        updateVideoLayout(document.getElementById('layout-selector').value);
-    }
-    
-    // Function to set up live view handlers (placeholder for any additional handlers)
-    function setupLiveViewHandlers() {
-        // This function can be expanded later if needed
-        console.log('Setting up live view handlers');
-    }
-</script>
+<script src="js/pages/live.js"></script>
 </body>
 </html>

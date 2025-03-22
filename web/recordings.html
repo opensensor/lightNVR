@@ -4,33 +4,42 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Recordings - LightNVR</title>
-    <link rel="stylesheet" href="css/styles.css">
-    <link rel="stylesheet" href="css/recordings.css">
+    <link rel="stylesheet" href="css/main.css">
     <link rel="icon" href="img/favicon.ico" type="image/x-icon">
 </head>
-<body>
-<div class="container">
+<body class="flex flex-col min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+<div class="container mx-auto px-4 flex flex-col min-h-screen">
     <header id="header-container">
         <!-- Header content will be loaded by JavaScript -->
     </header>
 
-    <main id="main-content">
-        <section id="recordings-page" class="page">
-            <div class="page-header">
-                <h2>Recordings</h2>
-                <button id="toggle-filters-btn" class="btn-icon" title="Toggle Filters">
-                    <span class="icon">☰</span>
+    <main id="main-content" class="flex-grow">
+        <section id="recordings-page" class="page" x-data="recordingsManager">
+            <div class="page-header flex justify-between items-center mb-4 p-4 bg-white dark:bg-gray-800 rounded-lg shadow">
+                <h2 class="text-xl font-bold">Recordings</h2>
+                <button id="toggle-filters-btn" 
+                        class="p-2 rounded-full bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 focus:outline-none"
+                        title="Toggle Filters"
+                        @click="toggleFilters">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                        <path fill-rule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"></path>
+                    </svg>
                 </button>
             </div>
             
-            <div class="recordings-layout">
+            <div class="recordings-layout flex flex-col md:flex-row gap-4">
                 <!-- Sidebar for filters -->
-                <aside id="filters-sidebar" class="filters-sidebar">
-                    <div class="filter-group">
-                        <h3>Date Range</h3>
-                        <div class="filter-option">
-                            <label for="date-range-select">Quick Select:</label>
-                            <select id="date-range-select">
+                <aside id="filters-sidebar" 
+                       class="filters-sidebar w-full md:w-64 bg-white dark:bg-gray-800 rounded-lg shadow p-4 md:sticky md:top-4 md:self-start transition-all duration-300"
+                       :class="{ 'hidden md:block': !filtersVisible }">
+                    <div class="filter-group mb-4">
+                        <h3 class="text-lg font-medium mb-2 pb-1 border-b border-gray-200 dark:border-gray-700">Date Range</h3>
+                        <div class="filter-option mb-2">
+                            <label for="date-range-select" class="block mb-1 text-sm font-medium">Quick Select:</label>
+                            <select id="date-range-select" 
+                                    class="w-full p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                    x-model="filters.dateRange"
+                                    @change="handleDateRangeChange">
                                 <option value="today">Today</option>
                                 <option value="yesterday">Yesterday</option>
                                 <option value="last7days">Last 7 Days</option>
@@ -39,98 +48,181 @@
                             </select>
                         </div>
                         
-                        <div id="custom-date-range" class="filter-option">
-                            <div class="date-time-picker">
-                                <label for="start-date">Start Date:</label>
-                                <input type="date" id="start-date">
-                                <div class="time-picker">
-                                    <label for="start-time">Time:</label>
-                                    <input type="time" id="start-time">
+                        <div id="custom-date-range" 
+                             class="filter-option space-y-3"
+                             x-show="filters.dateRange === 'custom'">
+                            <div class="space-y-1">
+                                <label for="start-date" class="block text-sm font-medium">Start Date:</label>
+                                <input type="date" id="start-date" 
+                                       class="w-full p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                       x-model="filters.startDate">
+                                <div class="mt-1">
+                                    <label for="start-time" class="block text-sm font-medium">Time:</label>
+                                    <input type="time" id="start-time" 
+                                           class="w-full p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                           x-model="filters.startTime">
                                 </div>
                             </div>
                             
-                            <div class="date-time-picker">
-                                <label for="end-date">End Date:</label>
-                                <input type="date" id="end-date">
-                                <div class="time-picker">
-                                    <label for="end-time">Time:</label>
-                                    <input type="time" id="end-time">
+                            <div class="space-y-1">
+                                <label for="end-date" class="block text-sm font-medium">End Date:</label>
+                                <input type="date" id="end-date" 
+                                       class="w-full p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                       x-model="filters.endDate">
+                                <div class="mt-1">
+                                    <label for="end-time" class="block text-sm font-medium">Time:</label>
+                                    <input type="time" id="end-time" 
+                                           class="w-full p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                           x-model="filters.endTime">
                                 </div>
                             </div>
                         </div>
                     </div>
                     
-                    <div class="filter-group">
-                        <h3>Stream</h3>
+                    <div class="filter-group mb-4">
+                        <h3 class="text-lg font-medium mb-2 pb-1 border-b border-gray-200 dark:border-gray-700">Stream</h3>
                         <div class="filter-option">
-                            <select id="stream-filter">
+                            <select id="stream-filter" 
+                                    class="w-full p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                    x-model="filters.streamId">
                                 <option value="all">All Streams</option>
+                                <template x-for="stream in streams" :key="stream.name">
+                                    <option :value="stream.name" x-text="stream.name"></option>
+                                </template>
                             </select>
                         </div>
                     </div>
                     
-                    <div class="filter-group">
-                        <h3>Recording Type</h3>
+                    <div class="filter-group mb-4">
+                        <h3 class="text-lg font-medium mb-2 pb-1 border-b border-gray-200 dark:border-gray-700">Recording Type</h3>
                         <div class="filter-option">
-                            <select id="detection-filter">
+                            <select id="detection-filter" 
+                                    class="w-full p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                    x-model="filters.recordingType">
                                 <option value="all">All Recordings</option>
                                 <option value="detection">Detection Events Only</option>
                             </select>
                         </div>
                     </div>
                     
-                    <div class="filter-group">
-                        <h3>Display Options</h3>
+                    <div class="filter-group mb-4">
+                        <h3 class="text-lg font-medium mb-2 pb-1 border-b border-gray-200 dark:border-gray-700">Display Options</h3>
                         <div class="filter-option">
-                            <label for="page-size">Items per page:</label>
-                            <select id="page-size">
+                            <label for="page-size" class="block mb-1 text-sm font-medium">Items per page:</label>
+                            <select id="page-size" 
+                                    class="w-full p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                    x-model="pagination.pageSize">
                                 <option value="10">10</option>
-                                <option value="20" selected>20</option>
+                                <option value="20">20</option>
                                 <option value="50">50</option>
                                 <option value="100">100</option>
                             </select>
                         </div>
                     </div>
                     
-                    <div class="filter-actions">
-                        <button id="apply-filters-btn" class="btn btn-primary">Apply Filters</button>
-                        <button id="reset-filters-btn" class="btn">Reset</button>
+                    <div class="filter-actions flex space-x-2">
+                        <button id="apply-filters-btn" 
+                                class="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                                @click="applyFilters">
+                            Apply Filters
+                        </button>
+                        <button id="reset-filters-btn" 
+                                class="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                                @click="resetFilters">
+                            Reset
+                        </button>
                     </div>
                 </aside>
                 
                 <!-- Main content area -->
-                <div class="recordings-content">
-                    <div class="active-filters" id="active-filters">
-                        <!-- Active filters will be displayed here -->
+                <div class="recordings-content flex-1">
+                    <div id="active-filters" 
+                         class="active-filters mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg flex flex-wrap gap-2"
+                         x-show="hasActiveFilters">
+                        <template x-for="(filter, index) in activeFiltersDisplay" :key="index">
+                            <div class="filter-tag inline-flex items-center px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-200">
+                                <span x-text="filter.label"></span>
+                                <button class="ml-2 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 focus:outline-none"
+                                        @click="removeFilter(filter.key)">
+                                    ×
+                                </button>
+                            </div>
+                        </template>
                     </div>
                     
-                    <div class="recordings-container">
-                        <table id="recordings-table">
-                            <thead>
-                            <tr>
-                                <th data-sort="stream_name" class="sortable">Stream <span class="sort-icon"></span></th>
-                                <th data-sort="start_time" class="sortable sort-desc">Start Time <span class="sort-icon">▼</span></th>
-                                <th>Duration</th>
-                                <th data-sort="size_bytes" class="sortable">Size <span class="sort-icon"></span></th>
-                                <th>Actions</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            <tr>
-                                <td colspan="5" class="empty-message">No recordings found</td>
-                            </tr>
-                            </tbody>
-                        </table>
-                        <div class="pagination-controls">
-                            <div class="pagination-info">
-                                Showing <span id="pagination-showing">0-0</span> of <span id="pagination-total">0</span> recordings
+                    <div class="recordings-container bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table id="recordings-table" class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                <thead class="bg-gray-50 dark:bg-gray-700">
+                                    <tr>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer"
+                                            @click="sortBy('stream_name')">
+                                            <div class="flex items-center">
+                                                Stream
+                                                <span class="sort-icon ml-1" x-show="sortField === 'stream_name'" x-text="sortDirection === 'asc' ? '▲' : '▼'"></span>
+                                            </div>
+                                        </th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer"
+                                            @click="sortBy('start_time')">
+                                            <div class="flex items-center">
+                                                Start Time
+                                                <span class="sort-icon ml-1" x-show="sortField === 'start_time'" x-text="sortDirection === 'asc' ? '▲' : '▼'"></span>
+                                            </div>
+                                        </th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                            Duration
+                                        </th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer"
+                                            @click="sortBy('size_bytes')">
+                                            <div class="flex items-center">
+                                                Size
+                                                <span class="sort-icon ml-1" x-show="sortField === 'size_bytes'" x-text="sortDirection === 'asc' ? '▲' : '▼'"></span>
+                                            </div>
+                                        </th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                            Actions
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody x-ref="recordingsTableBody" class="bg-white divide-y divide-gray-200 dark:bg-gray-800 dark:divide-gray-700">
+                                    <!-- Table rows will be rendered by JavaScript -->
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="pagination-controls flex flex-col sm:flex-row justify-between items-center p-4 border-t border-gray-200 dark:border-gray-700">
+                            <div class="pagination-info text-sm text-gray-600 dark:text-gray-400 mb-2 sm:mb-0">
+                                Showing <span id="pagination-showing" x-text="`${pagination.startItem}-${pagination.endItem}`">0-0</span> of <span id="pagination-total" x-text="pagination.totalItems">0</span> recordings
                             </div>
-                            <div class="pagination-buttons">
-                                <button id="pagination-first" title="First Page">«</button>
-                                <button id="pagination-prev" title="Previous Page">‹</button>
-                                <span id="pagination-current">Page 1 of 1</span>
-                                <button id="pagination-next" title="Next Page">›</button>
-                                <button id="pagination-last" title="Last Page">»</button>
+                            <div class="pagination-buttons flex items-center space-x-1">
+                                <button id="pagination-first" 
+                                        class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                                        title="First Page"
+                                        @click="goToPage(1)"
+                                        :disabled="pagination.currentPage === 1">
+                                    «
+                                </button>
+                                <button id="pagination-prev" 
+                                        class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                                        title="Previous Page"
+                                        @click="goToPage(pagination.currentPage - 1)"
+                                        :disabled="pagination.currentPage === 1">
+                                    ‹
+                                </button>
+                                <span id="pagination-current" class="px-2 text-sm text-gray-700 dark:text-gray-300" x-text="`Page ${pagination.currentPage} of ${pagination.totalPages}`">Page 1 of 1</span>
+                                <button id="pagination-next" 
+                                        class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                                        title="Next Page"
+                                        @click="goToPage(pagination.currentPage + 1)"
+                                        :disabled="pagination.currentPage === pagination.totalPages">
+                                    ›
+                                </button>
+                                <button id="pagination-last" 
+                                        class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                                        title="Last Page"
+                                        @click="goToPage(pagination.totalPages)"
+                                        :disabled="pagination.currentPage === pagination.totalPages">
+                                    »
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -139,66 +231,659 @@
         </section>
     </main>
 
-    <footer id="footer-container">
+    <footer id="footer-container" class="mt-auto">
         <!-- Footer content will be loaded by JavaScript -->
     </footer>
 </div>
 
+<!-- Status message component -->
+<div id="status-message" 
+     x-data="statusMessage"
+     x-show="visible"
+     x-text="message"
+     class="status-message"
+     :class="{ 'visible': visible }">
+</div>
+
 <!-- Modal for video playback -->
-<div id="video-modal" class="modal">
-    <div class="modal-content video-modal-content">
+<div id="video-modal" 
+     x-data="modal('video-modal')"
+     class="modal"
+     :class="{ 'block': isOpen, 'hidden': !isOpen }">
+    <div class="modal-content max-w-4xl mx-auto">
         <div class="modal-header">
-            <h3 id="video-modal-title">Recording Playback</h3>
-            <span class="close">&times;</span>
+            <h3 id="video-modal-title" class="text-lg font-medium">Recording Playback</h3>
+            <span class="close" @click="close">&times;</span>
         </div>
-        <div class="modal-body video-modal-body">
-            <video id="video-player" controls></video>
+        <div class="modal-body">
+            <div id="video-player" class="w-full aspect-video bg-black rounded overflow-hidden">
+                <video class="w-full h-full" controls></video>
+            </div>
         </div>
         <div class="modal-footer">
-            <button id="video-download-btn" class="btn">Download</button>
-            <button id="video-close-btn" class="btn-secondary">Close</button>
+            <button id="video-download-btn" 
+                    class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+                    @click="$store.videoModal.download()">
+                Download
+            </button>
+            <button id="video-close-btn" 
+                    class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+                    @click="close">
+                Close
+            </button>
         </div>
     </div>
 </div>
 
+<script src="js/alpine.cdn.min.js" defer></script>
+<script src="js/tailwind.cdn.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 <script src="js/core.js"></script>
-<script src="js/components/layout.js"></script>
-<script src="js/components/ui.js"></script>
+<script src="js/components/layout.alpine.js"></script>
+<script src="js/components/ui.alpine.js"></script>
 <script src="js/components/streams.js"></script>
 <script src="js/components/recordings.js"></script>
 <script src="js/components/video.js"></script>
 <script src="js/pages/pages.js"></script>
 <script>
+    document.addEventListener('alpine:init', () => {
+        Alpine.data('recordingsManager', () => ({
+            recordings: [],
+            streams: [],
+            filtersVisible: true,
+            sortField: 'start_time',
+            sortDirection: 'desc',
+            filters: {
+                dateRange: 'last7days',
+                startDate: '',
+                startTime: '00:00',
+                endDate: '',
+                endTime: '23:59',
+                streamId: 'all',
+                recordingType: 'all'
+            },
+            pagination: {
+                currentPage: 1,
+                pageSize: 20,
+                totalItems: 0,
+                totalPages: 1,
+                startItem: 0,
+                endItem: 0
+            },
+            
+            init() {
+                // Set default date range
+                this.setDefaultDateRange();
+                
+                // First load streams to populate the filter dropdown
+                this.loadStreams().then(() => {
+                    // Load filters from URL if present
+                    this.loadFiltersFromUrl();
+                    
+                    // Then load recordings data
+                    this.loadRecordings();
+                });
+                
+                // Handle responsive behavior
+                this.handleResponsiveFilters();
+                window.addEventListener('resize', this.handleResponsiveFilters);
+            },
+            
+            loadFiltersFromUrl() {
+                // Get URL parameters
+                const urlParams = new URLSearchParams(window.location.search);
+                
+                // Date range
+                if (urlParams.has('dateRange')) {
+                    this.filters.dateRange = urlParams.get('dateRange');
+                    
+                    if (this.filters.dateRange === 'custom') {
+                        if (urlParams.has('startDate')) {
+                            this.filters.startDate = urlParams.get('startDate');
+                        }
+                        if (urlParams.has('startTime')) {
+                            this.filters.startTime = urlParams.get('startTime');
+                        }
+                        if (urlParams.has('endDate')) {
+                            this.filters.endDate = urlParams.get('endDate');
+                        }
+                        if (urlParams.has('endTime')) {
+                            this.filters.endTime = urlParams.get('endTime');
+                        }
+                    }
+                }
+                
+                // Stream
+                if (urlParams.has('stream')) {
+                    this.filters.streamId = urlParams.get('stream');
+                }
+                
+                // Recording type
+                if (urlParams.has('detection') && urlParams.get('detection') === '1') {
+                    this.filters.recordingType = 'detection';
+                }
+                
+                // Pagination
+                if (urlParams.has('page')) {
+                    this.pagination.currentPage = parseInt(urlParams.get('page'), 10);
+                }
+                if (urlParams.has('limit')) {
+                    this.pagination.pageSize = parseInt(urlParams.get('limit'), 10);
+                }
+                
+                // Sorting
+                if (urlParams.has('sort')) {
+                    this.sortField = urlParams.get('sort');
+                }
+                if (urlParams.has('order')) {
+                    this.sortDirection = urlParams.get('order');
+                }
+            },
+            
+            updateUrlWithFilters() {
+                // Create URL parameters object
+                const params = new URLSearchParams();
+                
+                // Add date range
+                params.append('dateRange', this.filters.dateRange);
+                if (this.filters.dateRange === 'custom') {
+                    params.append('startDate', this.filters.startDate);
+                    params.append('startTime', this.filters.startTime);
+                    params.append('endDate', this.filters.endDate);
+                    params.append('endTime', this.filters.endTime);
+                }
+                
+                // Add stream filter if not "all"
+                if (this.filters.streamId !== 'all') {
+                    params.append('stream', this.filters.streamId);
+                }
+                
+                // Add recording type if not "all"
+                if (this.filters.recordingType !== 'all') {
+                    params.append('detection', '1');
+                }
+                
+                // Add pagination
+                params.append('page', this.pagination.currentPage);
+                params.append('limit', this.pagination.pageSize);
+                
+                // Add sorting
+                params.append('sort', this.sortField);
+                params.append('order', this.sortDirection);
+                
+                // Update URL without reloading the page
+                const newUrl = `${window.location.pathname}?${params.toString()}`;
+                window.history.pushState({ path: newUrl }, '', newUrl);
+            },
+            
+            handleResponsiveFilters() {
+                // On mobile, hide filters by default
+                if (window.innerWidth < 768) {
+                    this.filtersVisible = false;
+                } else {
+                    this.filtersVisible = true;
+                }
+            },
+            
+            toggleFilters() {
+                this.filtersVisible = !this.filtersVisible;
+            },
+            
+            setDefaultDateRange() {
+                const now = new Date();
+                const sevenDaysAgo = new Date(now);
+                sevenDaysAgo.setDate(now.getDate() - 7);
+                
+                this.filters.endDate = now.toISOString().split('T')[0];
+                this.filters.startDate = sevenDaysAgo.toISOString().split('T')[0];
+            },
+            
+            async loadStreams() {
+                try {
+                    const response = await fetch('/api/streams');
+                    if (!response.ok) {
+                        throw new Error('Failed to load streams');
+                    }
+                    
+                    const data = await response.json();
+                    this.streams = data || [];
+                } catch (error) {
+                    console.error('Error loading streams for filter:', error);
+                    Alpine.store('statusMessage').show('Error loading streams: ' + error.message);
+                }
+            },
+            
+            async loadRecordings() {
+                try {
+                    // Show loading state
+                    this.recordings = [];
+                    
+                    // Build query parameters
+                    const params = new URLSearchParams();
+                    params.append('page', this.pagination.currentPage);
+                    params.append('limit', this.pagination.pageSize);
+                    params.append('sort', this.sortField);
+                    params.append('order', this.sortDirection);
+                    
+                    // Add date range filters
+                    if (this.filters.dateRange === 'custom') {
+                        params.append('start', `${this.filters.startDate}T${this.filters.startTime}:00`);
+                        params.append('end', `${this.filters.endDate}T${this.filters.endTime}:00`);
+                    } else {
+                        // Convert predefined range to actual dates
+                        const { start, end } = this.getDateRangeFromPreset(this.filters.dateRange);
+                        params.append('start', start);
+                        params.append('end', end);
+                    }
+                    
+                    // Add stream filter
+                    if (this.filters.streamId !== 'all') {
+                        params.append('stream', this.filters.streamId);
+                    }
+                    
+                    // Add recording type filter
+                    if (this.filters.recordingType === 'detection') {
+                        params.append('detection', '1');
+                    }
+                    
+                    // Fetch recordings
+                    const response = await fetch(`/api/recordings?${params.toString()}`);
+                    if (!response.ok) {
+                        throw new Error('Failed to load recordings');
+                    }
+                    
+                    const data = await response.json();
+                    console.log('Recordings data received:', data);
+                    
+                    // Store recordings in the component state
+                    this.recordings = data.recordings || [];
+                    console.log('Updated recordings array:', this.recordings);
+                    
+                    // Manually render the table rows
+                    this.renderTableRows();
+                    
+                    // Update pagination directly
+                    if (data.pagination) {
+                        console.log('Pagination data:', data.pagination);
+                        this.pagination.totalItems = data.pagination.total || 0;
+                        this.pagination.totalPages = data.pagination.pages || 1;
+                        this.pagination.currentPage = data.pagination.page || 1;
+                        this.pagination.pageSize = data.pagination.limit || 20;
+                    } else {
+                        console.log('No pagination data in response');
+                        this.pagination.totalItems = data.total || 0;
+                        this.pagination.totalPages = Math.ceil(this.pagination.totalItems / this.pagination.pageSize) || 1;
+                    }
+                    
+                    // Calculate start and end items
+                    this.pagination.startItem = this.recordings.length > 0 ? (this.pagination.currentPage - 1) * this.pagination.pageSize + 1 : 0;
+                    this.pagination.endItem = Math.min(this.pagination.startItem + this.recordings.length - 1, this.pagination.totalItems);
+                    
+                    console.log('Updated pagination:', this.pagination);
+                } catch (error) {
+                    console.error('Error loading recordings:', error);
+                    Alpine.store('statusMessage').show('Error loading recordings: ' + error.message);
+                }
+            },
+            
+            getDateRangeFromPreset(preset) {
+                const now = new Date();
+                const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+                const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+                
+                let start, end;
+                
+                switch (preset) {
+                    case 'today':
+                        start = todayStart.toISOString();
+                        end = today.toISOString();
+                        break;
+                    case 'yesterday':
+                        const yesterday = new Date(todayStart);
+                        yesterday.setDate(yesterday.getDate() - 1);
+                        const yesterdayEnd = new Date(yesterday);
+                        yesterdayEnd.setHours(23, 59, 59);
+                        start = yesterday.toISOString();
+                        end = yesterdayEnd.toISOString();
+                        break;
+                    case 'last7days':
+                        const sevenDaysAgo = new Date(todayStart);
+                        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+                        start = sevenDaysAgo.toISOString();
+                        end = today.toISOString();
+                        break;
+                    case 'last30days':
+                        const thirtyDaysAgo = new Date(todayStart);
+                        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+                        start = thirtyDaysAgo.toISOString();
+                        end = today.toISOString();
+                        break;
+                    default:
+                        // Default to last 7 days
+                        const defaultStart = new Date(todayStart);
+                        defaultStart.setDate(defaultStart.getDate() - 7);
+                        start = defaultStart.toISOString();
+                        end = today.toISOString();
+                }
+                
+                return { start, end };
+            },
+            
+            handleDateRangeChange() {
+                if (this.filters.dateRange === 'custom') {
+                    // If custom is selected, make sure we have default dates
+                    if (!this.filters.startDate || !this.filters.endDate) {
+                        const now = new Date();
+                        this.filters.endDate = now.toISOString().split('T')[0];
+                        
+                        const sevenDaysAgo = new Date(now);
+                        sevenDaysAgo.setDate(now.getDate() - 7);
+                        this.filters.startDate = sevenDaysAgo.toISOString().split('T')[0];
+                    }
+                }
+            },
+            
+            get hasActiveFilters() {
+                return (
+                    this.filters.dateRange !== 'last7days' ||
+                    this.filters.streamId !== 'all' ||
+                    this.filters.recordingType !== 'all'
+                );
+            },
+            
+            get activeFiltersDisplay() {
+                const filters = [];
+                
+                // Date range filter
+                if (this.filters.dateRange !== 'last7days') {
+                    let label = '';
+                    switch (this.filters.dateRange) {
+                        case 'today':
+                            label = 'Today';
+                            break;
+                        case 'yesterday':
+                            label = 'Yesterday';
+                            break;
+                        case 'last30days':
+                            label = 'Last 30 Days';
+                            break;
+                        case 'custom':
+                            label = `${this.filters.startDate} to ${this.filters.endDate}`;
+                            break;
+                    }
+                    filters.push({ key: 'dateRange', label: `Date: ${label}` });
+                }
+                
+                // Stream filter
+                if (this.filters.streamId !== 'all') {
+                    // Since we're using stream name as the value, we can just use it directly
+                    filters.push({ key: 'streamId', label: `Stream: ${this.filters.streamId}` });
+                }
+                
+                // Recording type filter
+                if (this.filters.recordingType !== 'all') {
+                    filters.push({ key: 'recordingType', label: 'Detection Events Only' });
+                }
+                
+                return filters;
+            },
+            
+            applyFilters() {
+                // Reset to first page when applying filters
+                this.pagination.currentPage = 1;
+                this.updateUrlWithFilters();
+                this.loadRecordings();
+            },
+            
+            resetFilters() {
+                this.filters = {
+                    dateRange: 'last7days',
+                    startDate: '',
+                    startTime: '00:00',
+                    endDate: '',
+                    endTime: '23:59',
+                    streamId: 'all',
+                    recordingType: 'all'
+                };
+                
+                this.setDefaultDateRange();
+                this.pagination.currentPage = 1;
+                this.updateUrlWithFilters();
+                this.loadRecordings();
+            },
+            
+            removeFilter(key) {
+                switch (key) {
+                    case 'dateRange':
+                        this.filters.dateRange = 'last7days';
+                        break;
+                    case 'streamId':
+                        this.filters.streamId = 'all';
+                        break;
+                    case 'recordingType':
+                        this.filters.recordingType = 'all';
+                        break;
+                }
+                
+                this.applyFilters();
+            },
+            
+            sortBy(field) {
+                if (this.sortField === field) {
+                    // Toggle direction if already sorting by this field
+                    this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
+                } else {
+                    // Default to descending for start_time, ascending for others
+                    this.sortDirection = field === 'start_time' ? 'desc' : 'asc';
+                    this.sortField = field;
+                }
+                
+                this.updateUrlWithFilters();
+                this.loadRecordings();
+            },
+            
+            goToPage(page) {
+                if (page < 1 || page > this.pagination.totalPages) return;
+                
+                this.pagination.currentPage = page;
+                this.updateUrlWithFilters();
+                this.loadRecordings();
+            },
+            
+            formatDateTime(isoString) {
+                if (!isoString) return '';
+                
+                const date = new Date(isoString);
+                return date.toLocaleString();
+            },
+            
+            formatDuration(seconds) {
+                if (!seconds) return '00:00:00';
+                
+                const hours = Math.floor(seconds / 3600);
+                const minutes = Math.floor((seconds % 3600) / 60);
+                const secs = Math.floor(seconds % 60);
+                
+                return [
+                    hours.toString().padStart(2, '0'),
+                    minutes.toString().padStart(2, '0'),
+                    secs.toString().padStart(2, '0')
+                ].join(':');
+            },
+            
+            formatFileSize(bytes) {
+                if (!bytes) return '0 B';
+                
+                const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+                let i = 0;
+                let size = bytes;
+                
+                while (size >= 1024 && i < units.length - 1) {
+                    size /= 1024;
+                    i++;
+                }
+                
+                return `${size.toFixed(1)} ${units[i]}`;
+            },
+            
+            playRecording(recording) {
+                // Open video modal with recording URL
+                const videoUrl = `/api/recordings/play/${recording.id}`;
+                const title = `${recording.stream} - ${this.formatDateTime(recording.start_time)}`;
+                
+                Alpine.store('videoModal').open(videoUrl, title);
+            },
+            
+            downloadRecording(recording) {
+                // Create download link
+                const downloadUrl = `/api/recordings/download/${recording.id}`;
+                const link = document.createElement('a');
+                link.href = downloadUrl;
+                link.download = `${recording.stream}_${new Date(recording.start_time).toISOString().replace(/[:.]/g, '-')}.mp4`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                Alpine.store('statusMessage').show('Download started');
+            },
+            
+            async deleteRecording(recording) {
+                if (!confirm(`Are you sure you want to delete this recording from ${recording.stream}?`)) {
+                    return;
+                }
+                
+                try {
+                    const response = await fetch(`/api/recordings/delete/${recording.id}`, {
+                        method: 'POST'
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error('Failed to delete recording');
+                    }
+                    
+                    Alpine.store('statusMessage').show('Recording deleted successfully');
+                    this.loadRecordings();
+                } catch (error) {
+                    console.error('Error deleting recording:', error);
+                    Alpine.store('statusMessage').show('Error deleting recording: ' + error.message);
+                }
+            },
+            
+            renderTableRows() {
+                // Get the table body element
+                const tbody = this.$refs.recordingsTableBody;
+                if (!tbody) {
+                    console.error('Table body element not found');
+                    return;
+                }
+                
+                // Clear existing rows
+                tbody.innerHTML = '';
+                
+                // If no recordings, show a message
+                if (this.recordings.length === 0) {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `<td colspan="5" class="px-6 py-4 text-center text-gray-500 dark:text-gray-400">No recordings found</td>`;
+                    tbody.appendChild(tr);
+                    return;
+                }
+                
+                // Create a row for each recording
+                this.recordings.forEach(recording => {
+                    const tr = document.createElement('tr');
+                    tr.className = 'hover:bg-gray-50 dark:hover:bg-gray-700';
+                    
+                    // Format the data
+                    const formattedDateTime = this.formatDateTime(recording.start_time);
+                    const formattedDuration = this.formatDuration(recording.duration);
+                    
+                    // Create the HTML for the row
+                    tr.innerHTML = `
+                        <td class="px-6 py-4 whitespace-nowrap">${recording.stream || ''}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">${formattedDateTime}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">${formattedDuration}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">${recording.size || ''}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="flex space-x-2">
+                                <button class="play-btn p-1 rounded-full text-blue-600 hover:bg-blue-100 dark:text-blue-400 dark:hover:bg-blue-900 focus:outline-none"
+                                        data-id="${recording.id}"
+                                        title="Play">
+                                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"></path>
+                                    </svg>
+                                </button>
+                                <button class="download-btn p-1 rounded-full text-green-600 hover:bg-green-100 dark:text-green-400 dark:hover:bg-green-900 focus:outline-none"
+                                        data-id="${recording.id}"
+                                        title="Download">
+                                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                                        <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+                                    </svg>
+                                </button>
+                                <button class="delete-btn p-1 rounded-full text-red-600 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-900 focus:outline-none"
+                                        data-id="${recording.id}"
+                                        title="Delete">
+                                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                                        <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                        </td>
+                    `;
+                    
+                    // Add the row to the table
+                    tbody.appendChild(tr);
+                });
+                
+                // Add event listeners for the buttons
+                tbody.querySelectorAll('.play-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const recordingId = btn.getAttribute('data-id');
+                        // Convert recordingId to a number for comparison
+                        const numericId = parseInt(recordingId, 10);
+                        const recording = this.recordings.find(r => r.id === numericId);
+                        if (recording) {
+                            this.playRecording(recording);
+                        } else {
+                            console.error('Recording not found for ID:', recordingId);
+                        }
+                    });
+                });
+                
+                tbody.querySelectorAll('.download-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const recordingId = btn.getAttribute('data-id');
+                        // Convert recordingId to a number for comparison
+                        const numericId = parseInt(recordingId, 10);
+                        const recording = this.recordings.find(r => r.id === numericId);
+                        if (recording) {
+                            this.downloadRecording(recording);
+                        } else {
+                            console.error('Recording not found for ID:', recordingId);
+                        }
+                    });
+                });
+                
+                tbody.querySelectorAll('.delete-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const recordingId = btn.getAttribute('data-id');
+                        // Convert recordingId to a number for comparison
+                        const numericId = parseInt(recordingId, 10);
+                        const recording = this.recordings.find(r => r.id === numericId);
+                        if (recording) {
+                            this.deleteRecording(recording);
+                        } else {
+                            console.error('Recording not found for ID:', recordingId);
+                        }
+                    });
+                });
+            }
+        }));
+    });
+
     document.addEventListener('DOMContentLoaded', function() {
         // Load header and footer
         loadHeader('nav-recordings');
         loadFooter();
-        
-        // Initialize the recordings view
-        setupRecordingsHandlers();
-        
-        // First load streams to populate the filter dropdown
-        fetch('/api/streams')
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Failed to load streams');
-                }
-                return response.json();
-            })
-            .then(streams => {
-                // Update stream filter dropdown
-                updateStreamFilter(streams);
-                
-                // Then load recordings data
-                loadRecordings();
-            })
-            .catch(error => {
-                console.error('Error loading streams for filter:', error);
-                // Load recordings anyway even if streams failed to load
-                loadRecordings();
-            });
     });
 </script>
 </body>
-</html>
