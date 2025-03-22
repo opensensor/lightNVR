@@ -112,12 +112,33 @@ function logout() {
     // Clear any cookies
     document.cookie = "auth=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict";
     
-    // Use a simple form to handle logout
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = '/api/auth/logout';
-    document.body.appendChild(form);
-    form.submit();
+    // Create a timeout to handle potential stalls
+    const timeoutId = setTimeout(() => {
+        console.log('Logout request timed out, proceeding anyway');
+        // Even if the request stalls, redirect to login page
+        window.location.href = '/login.html?t=' + new Date().getTime();
+    }, 2000); // 2 second timeout
+    
+    // Use fetch to call the logout API
+    fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        credentials: 'include'
+    })
+    .then(response => {
+        clearTimeout(timeoutId); // Clear the timeout
+        // Redirect to login page regardless of response
+        window.location.href = '/login.html?t=' + new Date().getTime();
+    })
+    .catch(error => {
+        clearTimeout(timeoutId); // Clear the timeout
+        console.error('Logout error:', error);
+        // Still redirect to login page even if there's an error
+        window.location.href = '/login.html?t=' + new Date().getTime();
+    });
 }
 
 // Initialize authentication

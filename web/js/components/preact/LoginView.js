@@ -18,6 +18,14 @@ export function LoginView() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   
+  // Check URL for error parameter
+  useState(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('error')) {
+      setErrorMessage('Invalid username or password');
+    }
+  }, []);
+  
   // Handle login form submission
   const handleLogin = (e) => {
     e.preventDefault();
@@ -33,9 +41,49 @@ export function LoginView() {
     const auth = btoa(`${username}:${password}`);
     localStorage.setItem('auth', auth);
     
-    // Submit the form directly to the server
-    // The form is already set up with method="POST" and action="/api/auth/login"
-    e.target.submit();
+    // Create a timeout to handle potential stalls
+    const timeoutId = setTimeout(() => {
+      console.log('Login request timed out, proceeding anyway');
+      // Even if the request stalls, try to proceed to live.html
+      window.location.href = '/live.html?t=' + new Date().getTime();
+    }, 3000); // 3 second timeout
+    
+    // Make a fetch request to the login API
+    fetch('/api/auth/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Basic ' + auth
+      },
+      body: JSON.stringify({ username, password }),
+      credentials: 'include'
+    })
+    .then(response => {
+      clearTimeout(timeoutId); // Clear the timeout
+      
+      if (response.ok || response.status === 302) {
+        // Successful login - redirect to live page
+        window.location.href = '/live.html?t=' + new Date().getTime();
+      } else {
+        // Failed login
+        setIsLoggingIn(false);
+        setErrorMessage('Invalid username or password');
+        localStorage.removeItem('auth');
+      }
+    })
+    .catch(error => {
+      clearTimeout(timeoutId); // Clear the timeout
+      
+      console.error('Login error:', error);
+      // Even if there's an error, try to proceed if we have credentials
+      if (localStorage.getItem('auth')) {
+        console.log('Login API error, but proceeding with stored credentials');
+        window.location.href = '/live.html?t=' + new Date().getTime();
+      } else {
+        setIsLoggingIn(false);
+        setErrorMessage('Login failed. Please try again.');
+      }
+    });
   };
   
   return html`

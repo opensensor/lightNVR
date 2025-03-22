@@ -6,6 +6,18 @@
     <title>Login - LightNVR</title>
     <link rel="stylesheet" href="css/main.css">
     <link rel="icon" href="img/favicon.ico" type="image/x-icon">
+    <script>
+        // Redirect to live.html if already authenticated
+        document.addEventListener('DOMContentLoaded', function() {
+            const auth = localStorage.getItem('auth');
+            const hasCookie = document.cookie.split(';').some(item => item.trim().startsWith('auth='));
+            
+            if (auth || hasCookie) {
+                // Already authenticated, redirect to live.html
+                window.location.href = '/live.html?t=' + new Date().getTime();
+            }
+        });
+    </script>
 </head>
 <body class="flex flex-col min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
 <div class="container mx-auto px-4 flex flex-col min-h-screen">
@@ -20,5 +32,21 @@
 <!-- Scripts -->
 <script src="js/tailwind.cdn.min.js"></script>
 <script type="module" src="js/preact-app.js"></script>
+<script>
+    // Ensure LoginView is loaded
+    document.addEventListener('DOMContentLoaded', function() {
+        // Check if LoginView was loaded by preact-app.js
+        setTimeout(function() {
+            if (!document.querySelector('#login-page')) {
+                console.log('LoginView not loaded automatically, loading manually');
+                import('./js/components/preact/LoginView.js').then(module => {
+                    module.loadLoginView();
+                }).catch(error => {
+                    console.error('Error loading LoginView:', error);
+                });
+            }
+        }, 500); // Give preact-app.js time to load components
+    });
+</script>
 </body>
 </html>

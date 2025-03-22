@@ -97,16 +97,50 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         // This is an HLS streaming request, serve it directly from the filesystem
         config_t *global_config = get_streaming_config();
         
-    // Check for authentication headers for HLS requests
-    log_info("Processing HLS request: %s", uri);
-    
-    // Log all headers for debugging
-    for (int i = 0; i < MG_MAX_HTTP_HEADERS; i++) {
-        if (hm->headers[i].name.len == 0) break;
-        log_info("HLS request header: %.*s: %.*s", 
-                (int)hm->headers[i].name.len, hm->headers[i].name.buf,
-                (int)hm->headers[i].value.len, hm->headers[i].value.buf);
-    }
+        // Check for authentication headers for HLS requests
+        log_info("Processing HLS request: %s", uri);
+        
+        // Log all headers for debugging
+        for (int i = 0; i < MG_MAX_HTTP_HEADERS; i++) {
+            if (hm->headers[i].name.len == 0) break;
+            log_info("HLS request header: %.*s: %.*s", 
+                    (int)hm->headers[i].name.len, hm->headers[i].name.buf,
+                    (int)hm->headers[i].value.len, hm->headers[i].value.buf);
+        }
+        
+        // Check for auth header or cookie
+        struct mg_str *auth_header = mg_http_get_header(hm, "Authorization");
+        const bool has_auth_header = (auth_header != NULL);
+        
+        // Check for auth cookie
+        struct mg_str *cookie_header = mg_http_get_header(hm, "Cookie");
+        bool has_auth_cookie = false;
+        
+        if (cookie_header != NULL) {
+            // Parse cookie to check for auth
+            char cookie_str[1024] = {0};
+            if (cookie_header->len < sizeof(cookie_str) - 1) {
+                memcpy(cookie_str, cookie_header->buf, cookie_header->len);
+                cookie_str[cookie_header->len] = '\0';
+                
+                // Check if auth cookie exists
+                has_auth_cookie = (strstr(cookie_str, "auth=") != NULL);
+            }
+        }
+        
+        log_info("HLS request auth status: header=%d, cookie=%d", 
+                has_auth_header, has_auth_cookie);
+        
+        // If authentication is enabled and we have neither auth header nor cookie, return 401
+        if (server->config.auth_enabled && !has_auth_header && !has_auth_cookie) {
+            log_info("Authentication required for HLS request but no auth provided");
+            mg_printf(c, "HTTP/1.1 401 Unauthorized\r\n");
+            mg_printf(c, "WWW-Authenticate: Basic realm=\"LightNVR\"\r\n");
+            mg_printf(c, "Content-Type: application/json\r\n");
+            mg_printf(c, "Content-Length: 29\r\n\r\n");
+            mg_printf(c, "{\"error\": \"Unauthorized\"}\n");
+            return;
+        }
     
     // Extract stream name from URI
     // URI format: /hls/{stream_name}/{file}
