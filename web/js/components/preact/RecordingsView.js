@@ -303,24 +303,26 @@ export function RecordingsView() {
       // Store recordings in the component state
       setRecordings(data.recordings || []);
       
-      // Update pagination
+      // Update pagination without changing the current page
       if (data.pagination) {
         setPagination(prev => ({
           ...prev,
           totalItems: data.pagination.total || 0,
           totalPages: data.pagination.pages || 1,
-          currentPage: data.pagination.page || 1,
+          // Keep the current page from state instead of using the one from the response
+          // currentPage: data.pagination.page || 1,
           pageSize: data.pagination.limit || 20,
-          startItem: data.recordings.length > 0 ? (data.pagination.page - 1) * data.pagination.limit + 1 : 0,
-          endItem: Math.min((data.pagination.page - 1) * data.pagination.limit + data.recordings.length, data.pagination.total)
+          startItem: data.recordings.length > 0 ? (pagination.currentPage - 1) * data.pagination.limit + 1 : 0,
+          endItem: Math.min((pagination.currentPage - 1) * data.pagination.limit + data.recordings.length, data.pagination.total)
         }));
       } else {
         setPagination(prev => ({
           ...prev,
           totalItems: data.total || 0,
           totalPages: Math.ceil(data.total / prev.pageSize) || 1,
-          startItem: data.recordings.length > 0 ? (prev.currentPage - 1) * prev.pageSize + 1 : 0,
-          endItem: Math.min((prev.currentPage - 1) * prev.pageSize + data.recordings.length, data.total)
+          // Keep the current page
+          startItem: data.recordings.length > 0 ? (pagination.currentPage - 1) * prev.pageSize + 1 : 0,
+          endItem: Math.min((pagination.currentPage - 1) * prev.pageSize + data.recordings.length, data.total)
         }));
       }
     } catch (error) {
@@ -485,7 +487,10 @@ export function RecordingsView() {
       currentPage: page
     }));
     
-    loadRecordings();
+    // Use setTimeout to ensure the pagination state is updated before loading recordings
+    setTimeout(() => {
+      loadRecordings();
+    }, 0);
   };
   
   // Format date time
@@ -529,13 +534,27 @@ export function RecordingsView() {
   
   // Play recording
   const playRecording = (recording) => {
+    console.log('Play recording clicked:', recording);
+    
+    // Check if recording has an id property
+    if (!recording.id) {
+      console.error('Recording has no id property:', recording);
+      showStatusMessage('Error: Recording has no id property');
+      return;
+    }
+    
     // Build video URL
     const videoUrl = `/api/recordings/play/${recording.id}`;
     const title = `${recording.stream} - ${formatDateTime(recording.start_time)}`;
     const downloadUrl = `/api/recordings/download/${recording.id}`;
     
+    console.log('Video URL:', videoUrl);
+    console.log('Title:', title);
+    console.log('Download URL:', downloadUrl);
+    
     // Show video modal
     showVideoModal(videoUrl, title, downloadUrl);
+    console.log('Video modal should be shown now');
   };
   
   // Download recording
@@ -559,6 +578,12 @@ export function RecordingsView() {
     }
     
     try {
+      // Save current URL parameters before deletion
+      const currentUrlParams = new URLSearchParams(window.location.search);
+      const currentSortField = currentUrlParams.get('sort') || sortField;
+      const currentSortDirection = currentUrlParams.get('order') || sortDirection;
+      const currentPage = parseInt(currentUrlParams.get('page'), 10) || pagination.currentPage;
+      
       const response = await fetch(`/api/recordings/${recording.id}`, {
         method: 'DELETE'
       });
@@ -568,7 +593,100 @@ export function RecordingsView() {
       }
       
       showStatusMessage('Recording deleted successfully');
-      loadRecordings();
+      
+      // Create a function to reload with preserved parameters
+      const reloadWithPreservedParams = async () => {
+        // Set the sort parameters directly
+        const tempSortField = currentSortField;
+        const tempSortDirection = currentSortDirection;
+        
+        // Set state with the saved values
+        setSortField(tempSortField);
+        setSortDirection(tempSortDirection);
+        setPagination(prev => ({
+          ...prev,
+          currentPage: currentPage
+        }));
+        
+        // Wait for state to update
+        setTimeout(() => {
+          // Build query parameters manually
+          const params = new URLSearchParams();
+          params.append('page', currentPage);
+          params.append('limit', pagination.pageSize);
+          params.append('sort', tempSortField);
+          params.append('order', tempSortDirection);
+          
+          // Add date range filters
+          if (filters.dateRange === 'custom') {
+            params.append('start', `${filters.startDate}T${filters.startTime}:00`);
+            params.append('end', `${filters.endDate}T${filters.endTime}:00`);
+          } else {
+            // Convert predefined range to actual dates
+            const { start, end } = getDateRangeFromPreset(filters.dateRange);
+            params.append('start', start);
+            params.append('end', end);
+          }
+          
+          // Add stream filter
+          if (filters.streamId !== 'all') {
+            params.append('stream', filters.streamId);
+          }
+          
+          // Add recording type filter
+          if (filters.recordingType === 'detection') {
+            params.append('detection', '1');
+          }
+          
+          // Update URL with preserved parameters
+          const newUrl = `${window.location.pathname}?${params.toString()}`;
+          window.history.pushState({ path: newUrl }, '', newUrl);
+          
+          // Fetch recordings with preserved parameters
+          fetch(`/api/recordings?${params.toString()}`)
+            .then(response => {
+              if (!response.ok) {
+                throw new Error('Failed to load recordings');
+              }
+              return response.json();
+            })
+            .then(data => {
+              console.log('Recordings data received:', data);
+              
+              // Store recordings in the component state
+              setRecordings(data.recordings || []);
+              
+              // Update pagination without changing the current page
+              if (data.pagination) {
+                setPagination(prev => ({
+                  ...prev,
+                  totalItems: data.pagination.total || 0,
+                  totalPages: data.pagination.pages || 1,
+                  // Keep the current page
+                  pageSize: data.pagination.limit || 20,
+                  startItem: data.recordings.length > 0 ? (currentPage - 1) * data.pagination.limit + 1 : 0,
+                  endItem: Math.min((currentPage - 1) * data.pagination.limit + data.recordings.length, data.pagination.total)
+                }));
+              } else {
+                setPagination(prev => ({
+                  ...prev,
+                  totalItems: data.total || 0,
+                  totalPages: Math.ceil(data.total / prev.pageSize) || 1,
+                  // Keep the current page
+                  startItem: data.recordings.length > 0 ? (currentPage - 1) * prev.pageSize + 1 : 0,
+                  endItem: Math.min((currentPage - 1) * prev.pageSize + data.recordings.length, data.total)
+                }));
+              }
+            })
+            .catch(error => {
+              console.error('Error loading recordings:', error);
+              showStatusMessage('Error loading recordings: ' + error.message);
+            });
+        }, 0);
+      };
+      
+      // Execute the reload function
+      reloadWithPreservedParams();
     } catch (error) {
       console.error('Error deleting recording:', error);
       showStatusMessage('Error deleting recording: ' + error.message);

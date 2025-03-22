@@ -361,21 +361,6 @@ export function StreamsView() {
                         </svg>
                       </button>
                       <button 
-                        class=${`p-1 rounded-full ${stream.enabled ? 'text-red-600 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-900' : 'text-green-600 hover:bg-green-100 dark:text-green-400 dark:hover:bg-green-900'} focus:outline-none`}
-                        onClick=${() => toggleStreamEnabled(stream.name, stream.enabled)}
-                        title=${stream.enabled ? 'Disable' : 'Enable'}
-                      >
-                        ${stream.enabled ? html`
-                          <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                            <path fill-rule="evenodd" d="M13.477 14.89A6 6 0 015.11 6.524l8.367 8.368zm1.414-1.414L6.524 5.11a6 6 0 018.367 8.367zM18 10a8 8 0 11-16 0 8 8 0 0116 0z" clip-rule="evenodd"></path>
-                          </svg>
-                        ` : html`
-                          <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
-                          </svg>
-                        `}
-                      </button>
-                      <button 
                         class="p-1 rounded-full text-red-600 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-900 focus:outline-none"
                         onClick=${() => deleteStream(stream.name)}
                         title="Delete"
@@ -398,7 +383,7 @@ export function StreamsView() {
           <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
             <div class="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
               <h3 class="text-lg font-medium">${isEditing ? 'Edit Stream' : 'Add Stream'}</h3>
-              <span class="text-2xl cursor-pointer" onClick=${closeModal}>&times;</span>
+              <span class="text-2xl cursor-pointer" onClick=${closeModal}>×</span>
             </div>
             <div class="p-4">
               <form id="stream-form" class="space-y-4">
@@ -408,7 +393,7 @@ export function StreamsView() {
                     type="text" 
                     id="stream-name" 
                     name="name"
-                    class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white ${isEditing ? 'bg-gray-100 dark:bg-gray-800' : ''}"
                     value=${currentStream.name}
                     onChange=${handleInputChange}
                     disabled=${isEditing}

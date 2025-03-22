@@ -14,7 +14,7 @@ import { loadStreamsView } from './components/preact/StreamsView.js';
 import { loadSystemView } from './components/preact/SystemView.js';
 import { loadLoginView } from './components/preact/LoginView.js';
 import { loadIndexView } from './components/preact/IndexView.js';
-import { setupModals, addStatusMessageStyles } from './components/preact/UI.js';
+import { setupModals, addStatusMessageStyles, addModalStyles } from './components/preact/UI.js';
 
 // Initialize htm with Preact's h
 export const html = htm.bind(h);
@@ -121,6 +121,7 @@ function initApp() {
   // Setup UI components
   setupModals();
   addStatusMessageStyles();
+  addModalStyles();
 }
 
 // Initialize the app when the DOM is loaded

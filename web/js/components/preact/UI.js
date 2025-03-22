@@ -85,7 +85,14 @@ export function Modal({ id, title, isOpen, onClose, children, footer }) {
     };
   }, [isOpen, onClose]);
   
-  if (!isOpen) return null;
+  console.log('Modal render called with isOpen:', isOpen);
+  
+  if (!isOpen) {
+    console.log('Modal not rendering because isOpen is false');
+    return null;
+  }
+  
+  console.log('Modal rendering with id:', id);
   
   return html`
     <div 
@@ -100,7 +107,7 @@ export function Modal({ id, title, isOpen, onClose, children, footer }) {
             class="close text-2xl font-bold text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 cursor-pointer hover:scale-110 transition-transform"
             onClick=${onClose}
           >
-            &times;
+            ×
           </span>
         </div>
         <div class="modal-body p-6 bg-gray-50 dark:bg-gray-900">
@@ -213,8 +220,10 @@ export function VideoModal() {
   useEffect(() => {
     // Subscribe to store changes
     const unsubscribe = videoModalStore.subscribe(newState => {
+      console.log('VideoModal: videoModalStore updated', newState);
       setState(newState);
       setIsOpen(!!newState.videoUrl);
+      console.log('VideoModal: isOpen set to', !!newState.videoUrl);
     });
     
     // Unsubscribe when component unmounts
@@ -377,49 +386,84 @@ export function showSnapshotPreview(imageUrl, title = 'Snapshot Preview') {
  * Show video modal
  * @param {string} videoUrl - Video URL
  * @param {string} title - Modal title
+ * @param {string} downloadUrl - Download URL (optional)
  */
-export function showVideoModal(videoUrl, title = 'Video Playback') {
-  const downloadUrl = videoUrl.replace('/play/', '/download/');
+export function showVideoModal(videoUrl, title = 'Video Playback', downloadUrl = null) {
+  console.log('showVideoModal called with:', { videoUrl, title, downloadUrl });
+  
+  // If downloadUrl is not provided, generate it from videoUrl
+  const finalDownloadUrl = downloadUrl || videoUrl.replace('/play/', '/download/');
+  
+  console.log('Setting videoModalStore state to:', { videoUrl, title, downloadUrl: finalDownloadUrl });
   
   videoModalStore.setState({
     videoUrl,
     title,
-    downloadUrl
+    downloadUrl: finalDownloadUrl
   });
+  
+  console.log('videoModalStore state after update:', videoModalStore.getState());
 }
 
 /**
  * Setup modals
  */
 export function setupModals() {
+  console.log('setupModals called');
+  
   // Render UI components to the DOM
   import('../../preact.min.js').then(({ render }) => {
+    console.log('preact.min.js imported');
+    
     // Status message
     const statusMessageContainer = document.getElementById('status-message-container');
+    console.log('statusMessageContainer:', statusMessageContainer);
     if (!statusMessageContainer) {
+      console.log('Creating statusMessageContainer');
       const container = document.createElement('div');
       container.id = 'status-message-container';
       document.body.appendChild(container);
       render(html`<${StatusMessage} />`, container);
+      console.log('StatusMessage rendered');
+    } else {
+      console.log('statusMessageContainer already exists');
+      render(html`<${StatusMessage} />`, statusMessageContainer);
+      console.log('StatusMessage rendered to existing container');
     }
     
     // Snapshot preview modal
     const snapshotModalContainer = document.getElementById('snapshot-modal-container');
+    console.log('snapshotModalContainer:', snapshotModalContainer);
     if (!snapshotModalContainer) {
+      console.log('Creating snapshotModalContainer');
       const container = document.createElement('div');
       container.id = 'snapshot-modal-container';
       document.body.appendChild(container);
       render(html`<${SnapshotPreviewModal} />`, container);
+      console.log('SnapshotPreviewModal rendered');
+    } else {
+      console.log('snapshotModalContainer already exists');
+      render(html`<${SnapshotPreviewModal} />`, snapshotModalContainer);
+      console.log('SnapshotPreviewModal rendered to existing container');
     }
     
     // Video modal
     const videoModalContainer = document.getElementById('video-modal-container');
+    console.log('videoModalContainer:', videoModalContainer);
     if (!videoModalContainer) {
+      console.log('Creating videoModalContainer');
       const container = document.createElement('div');
       container.id = 'video-modal-container';
       document.body.appendChild(container);
       render(html`<${VideoModal} />`, container);
+      console.log('VideoModal rendered');
+    } else {
+      console.log('videoModalContainer already exists');
+      render(html`<${VideoModal} />`, videoModalContainer);
+      console.log('VideoModal rendered to existing container');
     }
+  }).catch(error => {
+    console.error('Error importing preact.min.js:', error);
   });
 }
 
@@ -466,6 +510,170 @@ export function addStatusMessageStyles() {
     .status-message.visible {
       opacity: 1;
       transform: translateX(-50%) translateY(0);
+    }
+    
+    /* Modal styles */
+    .modal {
+      display: flex;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.5);
+      z-index: 1000;
+      overflow: auto;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .modal-content {
+      background-color: white;
+      margin: 2rem auto;
+      width: 100%;
+      max-width: 600px;
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+      animation: modalAppear 0.3s;
+    }
+    
+    @keyframes modalAppear {
+      from {
+        opacity: 0;
+        transform: translateY(-50px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1rem;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    
+    .modal-header h3 {
+      margin: 0;
+    }
+    
+    .modal-body {
+      padding: 1rem;
+      max-height: 70vh;
+      overflow-y: auto;
+    }
+    
+    .modal-footer {
+      padding: 1rem;
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.5rem;
+      border-top: 1px solid #e0e0e0;
+    }
+    
+    .close {
+      font-size: 1.5rem;
+      font-weight: bold;
+      cursor: pointer;
+      color: #9e9e9e;
+    }
+    
+    .close:hover {
+      color: #f44336;
+    }
+  `;
+
+  document.head.appendChild(style);
+}
+
+/**
+ * Add modal styles
+ */
+export function addModalStyles() {
+  // Check if styles already exist
+  if (document.getElementById('modal-styles')) {
+    return;
+  }
+
+  // Create style element
+  const style = document.createElement('style');
+  style.id = 'modal-styles';
+
+  style.textContent = `
+    /* Modal styles */
+    .modal {
+      display: flex !important;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.5);
+      z-index: 1000;
+      overflow: auto;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .modal-content {
+      background-color: white;
+      margin: 2rem auto;
+      width: 100%;
+      max-width: 600px;
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+      animation: modalAppear 0.3s;
+    }
+    
+    @keyframes modalAppear {
+      from {
+        opacity: 0;
+        transform: translateY(-50px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1rem;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    
+    .modal-header h3 {
+      margin: 0;
+    }
+    
+    .modal-body {
+      padding: 1rem;
+      max-height: 70vh;
+      overflow-y: auto;
+    }
+    
+    .modal-footer {
+      padding: 1rem;
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.5rem;
+      border-top: 1px solid #e0e0e0;
+    }
+    
+    .close {
+      font-size: 1.5rem;
+      font-weight: bold;
+      cursor: pointer;
+      color: #9e9e9e;
+    }
+    
+    .close:hover {
+      color: #f44336;
     }
   `;
 
