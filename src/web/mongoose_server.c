@@ -84,6 +84,7 @@ static const mg_api_route_t s_api_routes[] = {
     
     // Recordings API
     {"GET", "/api/recordings", mg_handle_get_recordings},
+    {"GET", "/api/recordings/play/#", mg_handle_play_recording},
     {"GET", "/api/recordings/download/#", mg_handle_download_recording},
     {"GET", "/api/recordings/#", mg_handle_get_recording},
     {"DELETE", "/api/recordings/#", mg_handle_delete_recording},
@@ -186,6 +187,7 @@ static void init_route_table(void) {
     add_route("GET", "^/api/recordings/([^/]+)$", mg_handle_get_recording);
     add_route("DELETE", "^/api/recordings/([^/]+)$", mg_handle_delete_recording);
     add_route("GET", "^/api/recordings/download/([^/]+)$", mg_handle_download_recording);
+    add_route("GET", "^/api/recordings/play/([^/]+)$", mg_handle_play_recording);
     
     // Streaming API - HLS
     add_route("GET", "^/api/streaming/([^/]+)/hls/index\\.m3u8$", mg_handle_hls_master_playlist);

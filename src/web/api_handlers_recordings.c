@@ -412,6 +412,85 @@ void mg_handle_delete_recording(struct mg_connection *c, struct mg_http_message 
 }
 
 /**
+ * @brief Direct handler for GET /api/recordings/play/:id
+ */
+void mg_handle_play_recording(struct mg_connection *c, struct mg_http_message *hm) {
+    // Extract recording ID from URL
+    char id_str[32];
+    if (mg_extract_path_param(hm, "/api/recordings/play/", id_str, sizeof(id_str)) != 0) {
+        log_error("Failed to extract recording ID from URL");
+        mg_send_json_error(c, 400, "Invalid request path");
+        return;
+    }
+    
+    // Convert ID to integer
+    uint64_t id = strtoull(id_str, NULL, 10);
+    if (id == 0) {
+        log_error("Invalid recording ID: %s", id_str);
+        mg_send_json_error(c, 400, "Invalid recording ID");
+        return;
+    }
+    
+    log_info("Handling GET /api/recordings/play/%llu request", (unsigned long long)id);
+    
+    // Get recording from database
+    recording_metadata_t recording;
+    if (get_recording_metadata_by_id(id, &recording) != 0) {
+        log_error("Recording not found: %llu", (unsigned long long)id);
+        mg_send_json_error(c, 404, "Recording not found");
+        return;
+    }
+    
+    // Check if file exists
+    struct stat st;
+    if (stat(recording.file_path, &st) != 0) {
+        log_error("Recording file not found: %s", recording.file_path);
+        mg_send_json_error(c, 404, "Recording file not found");
+        return;
+    }
+    
+    // Open file
+    FILE *file = fopen(recording.file_path, "rb");
+    if (!file) {
+        log_error("Failed to open recording file: %s", recording.file_path);
+        mg_send_json_error(c, 500, "Failed to open recording file");
+        return;
+    }
+    
+    // Extract filename from path
+    const char *filename = strrchr(recording.file_path, '/');
+    if (filename) {
+        filename++; // Skip the slash
+    } else {
+        filename = recording.file_path;
+    }
+    
+    // Set headers for streaming playback (not download)
+    char headers[512];
+    snprintf(headers, sizeof(headers),
+             "Content-Type: video/mp4\r\n"
+             "Content-Length: %ld\r\n"
+             "Accept-Ranges: bytes\r\n"
+             "Cache-Control: max-age=3600\r\n",
+             st.st_size);
+    
+    // Send headers
+    mg_printf(c, "HTTP/1.1 200 OK\r\n%s\r\n", headers);
+    
+    // Send file content
+    char buffer[8192];
+    size_t bytes_read;
+    while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0) {
+        mg_send(c, buffer, bytes_read);
+    }
+    
+    // Close file
+    fclose(file);
+    
+    log_info("Successfully handled GET /api/recordings/play/%llu request", (unsigned long long)id);
+}
+
+/**
  * @brief Direct handler for GET /api/recordings/download/:id
  */
 void mg_handle_download_recording(struct mg_connection *c, struct mg_http_message *hm) {

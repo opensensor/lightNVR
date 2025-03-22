@@ -646,24 +646,57 @@ function deleteRecording(recordingId) {
 }
 
 /**
- * Play recording in modal
+ * Play recording in modal - Generic implementation without Alpine.js
  */
 function playRecording(recordingId) {
     // Get the modal elements
     const modal = document.getElementById('video-modal');
     const videoPlayer = document.getElementById('video-player');
     const videoTitle = document.getElementById('video-modal-title');
+    const videoCloseBtn = document.getElementById('video-close-btn');
+    const modalCloseBtn = modal?.querySelector('.close');
     const downloadBtn = document.getElementById('video-download-btn');
     
-    if (!modal || !videoPlayer) {
+    if (!modal || !videoPlayer || !videoTitle) {
         console.error('Video modal elements not found');
         return;
     }
     
-    // Show loading state
+    // Define close modal function
+    function closeModal() {
+        modal.style.display = 'none';
+        
+        // Stop video playback
+        const videoElement = videoPlayer.querySelector('video');
+        if (videoElement) {
+            videoElement.pause();
+            videoElement.src = '';
+        }
+    }
+
+    // Set up close button event handlers
+    if (videoCloseBtn) {
+        videoCloseBtn.onclick = closeModal;
+    }
+    
+    if (modalCloseBtn) {
+        modalCloseBtn.onclick = closeModal;
+    }
+
+    // Close on click outside
+    window.onclick = function(event) {
+        if (event.target === modal) {
+            closeModal();
+        }
+    };
+    
+    // Show loading state and make modal visible
     videoTitle.textContent = 'Loading Recording...';
-    videoPlayer.src = '';
+    modal.classList.remove('hidden');
     modal.style.display = 'block';
+    
+    // Reset video player
+    videoPlayer.innerHTML = '<video class="w-full h-full" controls></video>';
     
     // Fetch recording details
     fetch(`/api/recordings/${recordingId}`)
@@ -677,21 +710,63 @@ function playRecording(recordingId) {
             // Update modal title
             videoTitle.textContent = `${data.stream} - ${data.start_time}`;
             
+            // Get video element
+            const videoElement = videoPlayer.querySelector('video');
+            if (!videoElement) {
+                throw new Error('Video element not found');
+            }
+            
             // Set video source
-            videoPlayer.src = `/api/recordings/download/${recordingId}`;
+            const videoUrl = `/api/recordings/play/${recordingId}`;
+            const downloadUrl = `/api/recordings/download/${recordingId}?download=1`;
+            
+            // Determine if HLS or MP4
+            if (data.path && data.path.endsWith('.m3u8')) {
+                if (Hls && Hls.isSupported()) {
+                    let hls = new Hls();
+                    hls.loadSource(videoUrl);
+                    hls.attachMedia(videoElement);
+                    hls.on(Hls.Events.MANIFEST_PARSED, function () {
+                        videoElement.play();
+                    });
+                } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+                    videoElement.src = videoUrl;
+                    videoElement.play();
+                } else {
+                    console.error('HLS not supported');
+                    videoPlayer.innerHTML = `
+                        <div style="height:70vh;display:flex;flex-direction:column;justify-content:center;align-items:center;background:#000;color:#fff;padding:20px;text-align:center;">
+                            <p style="font-size:18px;margin-bottom:10px;">HLS playback is not supported in this browser.</p>
+                            <a href="${downloadUrl}" class="btn btn-primary" download>Download Video</a>
+                        </div>
+                    `;
+                }
+            } else {
+                // Standard MP4 playback
+                videoElement.src = videoUrl;
+                videoElement.play().catch(e => console.error('Error playing video:', e));
+            }
             
             // Setup download button
             if (downloadBtn) {
-                downloadBtn.onclick = () => downloadRecording(recordingId);
+                downloadBtn.onclick = function(e) {
+                    e.preventDefault();
+                    downloadRecording(recordingId);
+                    return false;
+                };
             }
-            
-            // Play video
-            videoPlayer.load();
-            videoPlayer.play().catch(e => console.error('Error playing video:', e));
         })
         .catch(error => {
             console.error('Error loading recording details:', error);
             videoTitle.textContent = 'Error Loading Recording';
+            videoPlayer.innerHTML = `
+                <div style="height:70vh;display:flex;flex-direction:column;justify-content:center;align-items:center;background:#000;color:#fff;padding:20px;text-align:center;">
+                    <p style="font-size:18px;margin-bottom:10px;">Error: ${error.message}</p>
+                    <p style="margin-bottom:20px;">Cannot load the recording.</p>
+                    <a href="/api/recordings/play/${recordingId}" class="btn btn-primary">Play Video</a>
+                    <a href="/api/recordings/download/${recordingId}?download=1" class="btn btn-primary" download>Download Video</a>
+                </div>
+            `;
         });
 }
 

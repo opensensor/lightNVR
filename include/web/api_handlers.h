@@ -141,6 +141,14 @@ void mg_handle_get_recording(struct mg_connection *c, struct mg_http_message *hm
 void mg_handle_delete_recording(struct mg_connection *c, struct mg_http_message *hm);
 
 /**
+ * @brief Direct handler for GET /api/recordings/play/:id
+ * 
+ * @param c Mongoose connection
+ * @param hm Mongoose HTTP message
+ */
+void mg_handle_play_recording(struct mg_connection *c, struct mg_http_message *hm);
+
+/**
  * @brief Direct handler for GET /api/recordings/download/:id
  * 
  * @param c Mongoose connection
