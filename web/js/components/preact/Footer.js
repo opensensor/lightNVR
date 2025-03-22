@@ -39,7 +39,7 @@ export function Footer() {
   
   return html`
     <footer class="bg-gray-800 text-white py-3 px-4 flex justify-between items-center text-sm mt-4">
-      <div>&copy; ${year} LightNVR</div>
+      <div>© ${year} LightNVR</div>
       <div>Version ${version}</div>
     </footer>
   `;

@@ -47,7 +47,7 @@ function loadFooter() {
             <span id="status-text">System running normally</span>
         </div>
         <div class="copyright">
-            &copy; 2025 LightNVR - <a href="https://github.com/opensensor/lightnvr" target="_blank">GitHub</a>
+            © 2025 LightNVR - <a href="https://github.com/opensensor/lightnvr" target="_blank">GitHub</a>
         </div>
     `;
 }
