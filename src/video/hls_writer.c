@@ -250,6 +250,18 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     // Copy output directory and stream name
     strncpy(writer->output_dir, output_dir, MAX_PATH_LENGTH - 1);
     strncpy(writer->stream_name, stream_name, MAX_STREAM_NAME - 1);
+
+    // CRITICAL FIX: Ensure segment duration is reasonable
+    if (segment_duration < 1) {
+        log_warn("HLS segment duration too low (%d), setting to 2 seconds for stability",
+                segment_duration);
+        segment_duration = 1;  // Minimum 2 seconds for stability
+    } else if (segment_duration > 10) {
+        log_warn("HLS segment duration too high (%d), capping at 10 seconds",
+                segment_duration);
+        segment_duration = 2;  // Maximum 10 seconds
+    }
+
     writer->segment_duration = segment_duration;
     writer->last_cleanup_time = time(NULL);
 
@@ -278,23 +290,23 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
         return NULL;
     }
 
-    // Set HLS options - use more robust settings for better compatibility
+    // Set HLS options - optimized for lower latency while maintaining stability
     AVDictionary *options = NULL;
     char hls_time[16];
-    snprintf(hls_time, sizeof(hls_time), "%d", segment_duration);
+    snprintf(hls_time, sizeof(hls_time), "1");  // 1 second segments for lower latency
 
-    // Basic HLS settings
+    // Enable low latency HLS mode
     av_dict_set(&options, "hls_time", hls_time, 0);
-    av_dict_set(&options, "hls_list_size", "10", 0);
-    av_dict_set(&options, "hls_flags", "delete_segments+program_date_time", 0);
-    
-    // Add additional options for better compatibility
-    av_dict_set(&options, "hls_allow_cache", "1", 0);
+    av_dict_set(&options, "hls_list_size", "3", 0);  // Keep fewer segments to reduce latency
+    av_dict_set(&options, "hls_flags", "delete_segments+program_date_time+independent_segments+discont_start+low_latency", 0);
+    av_dict_set(&options, "hls_segment_type", "fmp4", 0);  // fMP4 segments for low latency
+    av_dict_set(&options, "hls_fmp4_init_filename", "init.mp4", 0);
+
+    // Additional optimizations for lower latency
+    av_dict_set(&options, "hls_init_time", "0", 0);  // Start segments immediately
+    av_dict_set(&options, "hls_allow_cache", "0", 0);  // Disable caching to ensure fresh content
     av_dict_set(&options, "start_number", "0", 0);
-    
-    // Ensure FFmpeg creates a proper manifest
-    av_dict_set(&options, "hls_playlist_type", "event", 0);
-    
+
     // Set segment filename format
     char segment_format[MAX_PATH_LENGTH + 32];
     snprintf(segment_format, sizeof(segment_format), "%s/segment_%%d.ts", output_dir);
@@ -316,7 +328,8 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
 
     av_dict_free(&options);
 
-    log_info("Created HLS writer for stream %s at %s", stream_name, output_dir);
+    log_info("Created HLS writer for stream %s at %s with segment duration %d seconds",
+            stream_name, output_dir, segment_duration);
     return writer;
 }
 
@@ -344,11 +357,8 @@ int hls_writer_initialize(hls_writer_t *writer, const AVStream *input_stream) {
     // Set stream time base
     out_stream->time_base = input_stream->time_base;
 
-    // SIMPLIFIED APPROACH: Let FFmpeg handle manifest file creation
-    // Just use basic options for reliability
-    AVDictionary *options = NULL;
-
     // Write the header
+    AVDictionary *options = NULL;
     ret = avformat_write_header(writer->output_ctx, &options);
     if (ret < 0) {
         char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
@@ -360,15 +370,11 @@ int hls_writer_initialize(hls_writer_t *writer, const AVStream *input_stream) {
 
     av_dict_free(&options);
 
-    // SIMPLIFIED APPROACH: Let FFmpeg handle manifest file creation completely
-    // Remove the fallback mechanism as it might interfere with FFmpeg's own manifest creation
-    log_info("Letting FFmpeg handle manifest file creation for stream %s", writer->stream_name);
-
-    writer->initialized = 1;
+    // Let FFmpeg handle manifest file creation
     log_info("Initialized HLS writer for stream %s", writer->stream_name);
+    writer->initialized = 1;
     return 0;
 }
-
 
 /**
  * Ensure the output directory exists and is writable
@@ -377,22 +383,22 @@ static int ensure_output_directory(const char *dir_path) {
     struct stat st;
     config_t *global_config = get_streaming_config();
     char safe_dir_path[MAX_PATH_LENGTH];
-    
+
     // CRITICAL FIX: Always use the consistent path structure for HLS
     // Extract stream name from the path (last component)
     const char *last_slash = strrchr(dir_path, '/');
     const char *stream_name = last_slash ? last_slash + 1 : dir_path;
-    
+
     // Create a path within our storage directory
-    snprintf(safe_dir_path, sizeof(safe_dir_path), "%s/hls/%s", 
+    snprintf(safe_dir_path, sizeof(safe_dir_path), "%s/hls/%s",
             global_config->storage_path, stream_name);
-    
+
     // Log if we're redirecting from a different path
     if (strcmp(dir_path, safe_dir_path) != 0) {
-        log_warn("Redirecting HLS directory from %s to %s to ensure consistent path structure", 
+        log_warn("Redirecting HLS directory from %s to %s to ensure consistent path structure",
                 dir_path, safe_dir_path);
     }
-    
+
     // Always use the safe path
     dir_path = safe_dir_path;
 
@@ -446,34 +452,32 @@ static int ensure_output_directory(const char *dir_path) {
  * Write packet to HLS stream with per-stream timestamp handling
  */
 int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVStream *input_stream) {
-    // CRITICAL FIX: Add extra validation for all parameters
+    // Validate parameters
     if (!writer) {
         log_error("hls_writer_write_packet: NULL writer");
         return -1;
     }
-    
+
     if (!pkt) {
         log_error("hls_writer_write_packet: NULL packet for stream %s", writer->stream_name);
         return -1;
     }
-    
+
     if (!input_stream) {
         log_error("hls_writer_write_packet: NULL input stream for stream %s", writer->stream_name);
         return -1;
     }
-    
-    // CRITICAL FIX: Check if writer has been closed
+
+    // Check if writer has been closed
     if (!writer->output_ctx) {
         log_warn("hls_writer_write_packet: Writer for stream %s has been closed", writer->stream_name);
         return -1;
     }
 
-    // Ensure output directory exists and is writable
-    // This check is performed periodically to handle cases where the directory
-    // might be deleted or become inaccessible during streaming
+    // Periodically ensure output directory exists (every 10 seconds)
     static time_t last_dir_check = 0;
     time_t now = time(NULL);
-    if (now - last_dir_check >= 10) { // Check every 10 seconds
+    if (now - last_dir_check >= 10) {
         if (ensure_output_directory(writer->output_dir) != 0) {
             log_error("Failed to ensure HLS output directory exists: %s", writer->output_dir);
             return -1;
@@ -489,20 +493,20 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
         }
     }
 
-    // CRITICAL FIX: Check if writer has been closed after initialization
+    // Check if writer has been closed after initialization
     if (!writer->output_ctx) {
         log_warn("hls_writer_write_packet: Writer for stream %s has been closed after initialization", writer->stream_name);
         return -1;
     }
 
-    // Clone the packet as we'll need to modify it
+    // Clone the packet
     AVPacket out_pkt;
     if (av_packet_ref(&out_pkt, pkt) < 0) {
         log_error("Failed to reference packet for stream %s", writer->stream_name);
         return -1;
     }
 
-    // Initialize DTS tracker for this stream if needed
+    // Initialize DTS tracker if needed
     stream_dts_info_t *dts_tracker = &writer->dts_tracker;
     if (!dts_tracker->initialized) {
         dts_tracker->first_dts = pkt->dts != AV_NOPTS_VALUE ? pkt->dts : pkt->pts;
@@ -517,173 +521,101 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
                  dts_tracker->time_base.den);
     }
 
-    // CRITICAL FIX: Ensure timestamps are set to avoid FFmpeg warnings and potential crashes
-    // This is especially important for UDP streams which may have invalid timestamps
+    // Fix invalid timestamps
     if (out_pkt.pts == AV_NOPTS_VALUE || out_pkt.dts == AV_NOPTS_VALUE) {
-        // Log the original values for debugging
-        log_debug("Original timestamps for stream %s: pts=%lld, dts=%lld", 
-                 writer->stream_name, 
-                 (long long)(out_pkt.pts != AV_NOPTS_VALUE ? out_pkt.pts : -1), 
-                 (long long)(out_pkt.dts != AV_NOPTS_VALUE ? out_pkt.dts : -1));
-        
-        // If both timestamps are unset, use the last DTS or a default value
         if (out_pkt.pts == AV_NOPTS_VALUE && out_pkt.dts == AV_NOPTS_VALUE) {
             if (dts_tracker->last_dts != AV_NOPTS_VALUE) {
                 out_pkt.dts = dts_tracker->last_dts + 1;
                 out_pkt.pts = out_pkt.dts;
-                log_debug("Setting both missing timestamps for stream %s: pts=%lld, dts=%lld", 
-                         writer->stream_name, (long long)out_pkt.pts, (long long)out_pkt.dts);
             } else {
-                // Use a default value if we don't have a last DTS
                 out_pkt.dts = 1;
                 out_pkt.pts = 1;
-                log_debug("Setting default timestamps for stream %s: pts=%lld, dts=%lld", 
-                         writer->stream_name, (long long)out_pkt.pts, (long long)out_pkt.dts);
             }
         } else if (out_pkt.pts == AV_NOPTS_VALUE) {
-            // If only PTS is unset, use DTS
             out_pkt.pts = out_pkt.dts;
-            log_debug("Setting missing PTS for stream %s: pts=%lld (from dts)", 
-                     writer->stream_name, (long long)out_pkt.pts);
         } else if (out_pkt.dts == AV_NOPTS_VALUE) {
-            // If only DTS is unset, use PTS
             out_pkt.dts = out_pkt.pts;
-            log_debug("Setting missing DTS for stream %s: dts=%lld (from pts)", 
-                     writer->stream_name, (long long)out_pkt.dts);
         }
     }
-    
-    // Additional safety check: ensure timestamps are positive
+
+    // Ensure timestamps are positive
     if (out_pkt.pts <= 0 || out_pkt.dts <= 0) {
-        log_warn("Non-positive timestamps detected in stream %s: pts=%lld, dts=%lld", 
-                writer->stream_name, (long long)out_pkt.pts, (long long)out_pkt.dts);
-        
-        // Set to safe values
         if (out_pkt.pts <= 0) {
-            if (out_pkt.dts > 0) {
-                out_pkt.pts = out_pkt.dts;
-            } else {
-                out_pkt.pts = 1;
-            }
+            out_pkt.pts = out_pkt.dts > 0 ? out_pkt.dts : 1;
         }
-        
+
         if (out_pkt.dts <= 0) {
-            if (out_pkt.pts > 0) {
-                out_pkt.dts = out_pkt.pts;
-            } else {
-                out_pkt.dts = 1;
-            }
+            out_pkt.dts = out_pkt.pts > 0 ? out_pkt.pts : 1;
         }
-        
-        log_debug("Corrected non-positive timestamps for stream %s: pts=%lld, dts=%lld", 
-                 writer->stream_name, (long long)out_pkt.pts, (long long)out_pkt.dts);
     }
 
-    // Check for timestamp discontinuities before rescaling
+    // Handle timestamp discontinuities
     if (dts_tracker->last_dts != AV_NOPTS_VALUE) {
-        // If DTS goes backwards or jumps significantly, handle it
         if (out_pkt.dts < dts_tracker->last_dts) {
-            log_warn("HLS DTS discontinuity in stream %s: last=%lld, current=%lld, diff=%lld",
-                    writer->stream_name,
-                    (long long)dts_tracker->last_dts,
-                    (long long)out_pkt.dts,
-                    (long long)(out_pkt.dts - dts_tracker->last_dts));
-
-            // Fix the DTS to ensure monotonic increase
+            // Fix backwards DTS
             int64_t fixed_dts = dts_tracker->last_dts + 1;
-
-            // Adjust PTS relative to the fixed DTS if needed
             int64_t pts_dts_diff = out_pkt.pts - out_pkt.dts;
             out_pkt.dts = fixed_dts;
             out_pkt.pts = fixed_dts + pts_dts_diff;
         }
-        // Also check for large forward jumps which could indicate a stream reset
-        else if (out_pkt.dts > dts_tracker->last_dts + 90000) { // More than 1 second jump (assuming 90kHz timebase)
+        // Log large jumps but accept them
+        else if (out_pkt.dts > dts_tracker->last_dts + 90000) {
             log_warn("HLS large DTS jump in stream %s: last=%lld, current=%lld, diff=%lld",
                     writer->stream_name,
                     (long long)dts_tracker->last_dts,
                     (long long)out_pkt.dts,
                     (long long)(out_pkt.dts - dts_tracker->last_dts));
-            
-            // For large forward jumps, we'll accept the new timestamp but log it
-            // This allows the stream to recover from resets without forcing timestamps
         }
     }
 
-    // Update last DTS for next comparison
+    // Update last DTS
     dts_tracker->last_dts = out_pkt.dts;
 
-    // CRITICAL FIX: Check if writer has been closed before rescaling
+    // Validate writer context before rescaling
     if (!writer->output_ctx || !writer->output_ctx->streams || !writer->output_ctx->streams[0]) {
         log_warn("hls_writer_write_packet: Writer context invalid for stream %s", writer->stream_name);
         av_packet_unref(&out_pkt);
         return -1;
     }
 
-    // Adjust timestamps
+    // Rescale timestamps to output timebase
     av_packet_rescale_ts(&out_pkt, input_stream->time_base,
                         writer->output_ctx->streams[0]->time_base);
 
-    // Final sanity check - ensure PTS >= DTS
+    // Ensure PTS >= DTS
     if (out_pkt.pts < out_pkt.dts) {
-        log_debug("Fixing invalid PTS/DTS relationship in stream %s: pts=%lld, dts=%lld",
-                 writer->stream_name, (long long)out_pkt.pts, (long long)out_pkt.dts);
         out_pkt.pts = out_pkt.dts;
     }
-    
-    // Also check for unreasonable PTS/DTS differences
+
+    // Cap unreasonable PTS/DTS differences
     int64_t pts_dts_diff = out_pkt.pts - out_pkt.dts;
-    if (pts_dts_diff > 90000 * 10) { // More than 10 seconds difference (assuming 90kHz timebase)
-        log_warn("Unreasonable PTS/DTS difference in stream %s: pts=%lld, dts=%lld, diff=%lld",
-                writer->stream_name, 
-                (long long)out_pkt.pts, 
-                (long long)out_pkt.dts,
-                (long long)pts_dts_diff);
-        
-        // Cap the difference to something reasonable
+    if (pts_dts_diff > 90000 * 10) {
         out_pkt.pts = out_pkt.dts + 90000 * 5; // 5 seconds max difference
     }
 
-    // CRITICAL FIX: Check if writer has been closed before writing
-    if (!writer->output_ctx) {
-        log_warn("hls_writer_write_packet: Writer for stream %s has been closed before writing", writer->stream_name);
-        av_packet_unref(&out_pkt);
-        return -1;
-    }
-
-    // CRITICAL FIX: Add logging for key frames to help diagnose issues
+    // Log key frames for diagnostics
     bool is_key_frame = (out_pkt.flags & AV_PKT_FLAG_KEY) != 0;
     if (is_key_frame) {
         log_debug("Writing key frame to HLS for stream %s: pts=%lld, dts=%lld, size=%d",
                  writer->stream_name, (long long)out_pkt.pts, (long long)out_pkt.dts, out_pkt.size);
     }
-    
+
     // Write the packet
     int ret = av_interleaved_write_frame(writer->output_ctx, &out_pkt);
     av_packet_unref(&out_pkt);
 
+    // Handle write errors
     if (ret < 0) {
         char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
         av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
         log_error("Error writing HLS packet for stream %s: %s", writer->stream_name, error_buf);
-        
-        // SIMPLIFIED APPROACH: Let FFmpeg handle manifest file errors
-        // Just ensure the directory exists
-        if (ensure_output_directory(writer->output_dir) == 0) {
-            log_info("Ensured HLS output directory exists after error: %s", writer->output_dir);
-        }
 
-        // If we get a "No such file or directory" error, try to recreate the directory
+        // Try to fix directory issues
         if (strstr(error_buf, "No such file or directory") != NULL) {
-            log_warn("Directory issue detected, attempting to recreate: %s", writer->output_dir);
-            if (ensure_output_directory(writer->output_dir) == 0) {
-                // Directory recreated, but we still need to return the error
-                // The next packet write attempt should succeed
-                log_info("Successfully recreated HLS output directory: %s", writer->output_dir);
-            }
+            ensure_output_directory(writer->output_dir);
         } else if (strstr(error_buf, "Invalid argument") != NULL ||
                   strstr(error_buf, "non monotonically increasing dts") != NULL) {
-            // Reset DTS tracker on timestamp errors to recover
+            // Reset DTS tracker on timestamp errors
             log_warn("Resetting DTS tracker for stream %s due to timestamp error", writer->stream_name);
             dts_tracker->initialized = 0;
         }
@@ -691,16 +623,10 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
         return ret;
     }
 
-    // CRITICAL FIX: Check if writer has been closed before cleanup
-    if (!writer->output_ctx) {
-        log_warn("hls_writer_write_packet: Writer for stream %s has been closed before cleanup", writer->stream_name);
-        return 0; // Return success since we already wrote the packet
-    }
-
     // Periodically clean up old segments (every 60 seconds)
     if (now - writer->last_cleanup_time >= 60) {
-        // Keep more segments than in the playlist to ensure smooth playback on low-power devices
-        int max_segments_to_keep = 12; // Increased from 8 to 12 segments (more than hls_list_size of 8)
+        // Keep more segments than in the playlist for smooth playback
+        int max_segments_to_keep = 15; // More than hls_list_size
         cleanup_old_segments(writer->output_dir, max_segments_to_keep);
         writer->last_cleanup_time = now;
     }
@@ -716,28 +642,28 @@ void hls_writer_close(hls_writer_t *writer) {
         log_warn("Attempted to close NULL HLS writer");
         return;
     }
-    
-    // Store stream name for logging after freeing
+
+    // Store stream name for logging
     char stream_name[MAX_STREAM_NAME];
     strncpy(stream_name, writer->stream_name, MAX_STREAM_NAME - 1);
     stream_name[MAX_STREAM_NAME - 1] = '\0';
-    
-    // CRITICAL FIX: Check if the writer has already been closed by checking if output_ctx is NULL
+
+    // Check if already closed
     if (!writer->output_ctx) {
         log_warn("Attempted to close already closed HLS writer for stream %s", stream_name);
         return;
     }
-    
-    // CRITICAL FIX: Use a mutex to prevent concurrent access during closing
+
+    // Use mutex to prevent concurrent access
     static pthread_mutex_t close_mutex = PTHREAD_MUTEX_INITIALIZER;
     pthread_mutex_lock(&close_mutex);
 
-    // Create a local copy of the output context to avoid race conditions
+    // Create a local copy of the output context
     AVFormatContext *local_output_ctx = writer->output_ctx;
-    
-    // Mark the writer as closed immediately to prevent further access
+
+    // Mark as closed immediately
     writer->output_ctx = NULL;
-    
+
     // Write trailer if initialized
     if (writer->initialized && local_output_ctx) {
         log_info("Writing trailer for HLS writer for stream %s", stream_name);
@@ -754,23 +680,18 @@ void hls_writer_close(hls_writer_t *writer) {
         if (local_output_ctx->pb) {
             log_info("Closing AVIO context for HLS writer for stream %s", stream_name);
             avio_close(local_output_ctx->pb);
-            local_output_ctx->pb = NULL; // Prevent double close
+            local_output_ctx->pb = NULL;
         }
         log_info("Freeing format context for HLS writer for stream %s", stream_name);
         avformat_free_context(local_output_ctx);
     }
 
     log_info("Closed HLS writer for stream %s", stream_name);
-
-    // Unlock the mutex before freeing the writer
     pthread_mutex_unlock(&close_mutex);
 
-    // CRITICAL FIX: Use a separate mutex for freeing to prevent race conditions
+    // Use separate mutex for freeing
     static pthread_mutex_t free_mutex = PTHREAD_MUTEX_INITIALIZER;
     pthread_mutex_lock(&free_mutex);
-    
-    // Free writer
     free(writer);
-    
     pthread_mutex_unlock(&free_mutex);
 }

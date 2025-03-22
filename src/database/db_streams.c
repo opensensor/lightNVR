@@ -76,8 +76,8 @@ uint64_t add_stream_config(const stream_config_t *stream) {
             "ALTER TABLE streams ADD COLUMN detection_model TEXT DEFAULT '';",
             "ALTER TABLE streams ADD COLUMN detection_threshold REAL DEFAULT 0.5;",
             "ALTER TABLE streams ADD COLUMN detection_interval INTEGER DEFAULT 10;",
-            "ALTER TABLE streams ADD COLUMN pre_detection_buffer INTEGER DEFAULT 5;",
-            "ALTER TABLE streams ADD COLUMN post_detection_buffer INTEGER DEFAULT 10;"
+            "ALTER TABLE streams ADD COLUMN pre_detection_buffer INTEGER DEFAULT 0;",  // Eliminated pre-buffering to prevent live stream delay
+            "ALTER TABLE streams ADD COLUMN post_detection_buffer INTEGER DEFAULT 3;"   // Reduced from 10 to 3 to decrease latency
         };
         
         for (int i = 0; i < 6; i++) {
@@ -469,8 +469,8 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
         // Set default values for detection settings
         stream->detection_threshold = 0.5f;
         stream->detection_interval = 10;
-        stream->pre_detection_buffer = 5;
-        stream->post_detection_buffer = 10;
+        stream->pre_detection_buffer = 0;  // Eliminated pre-buffering to prevent live stream delay
+        stream->post_detection_buffer = 3;  // Reduced from 10 to 3 to decrease latency
         
         // Parse basic stream settings
         const char *stream_name = (const char *)sqlite3_column_text(stmt, 0);
@@ -639,8 +639,8 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
         // Set default values for detection settings
         streams[count].detection_threshold = 0.5f;
         streams[count].detection_interval = 10;
-        streams[count].pre_detection_buffer = 5;
-        streams[count].post_detection_buffer = 10;
+        streams[count].pre_detection_buffer = 0;  // Eliminated pre-buffering to prevent live stream delay
+        streams[count].post_detection_buffer = 3;  // Reduced from 10 to 3 to decrease latency
         
         // Parse basic stream settings
         const char *name = (const char *)sqlite3_column_text(stmt, 0);

@@ -119,7 +119,11 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
         // UDP-specific options with improved buffering for smoother playback
         // Increased buffer size to 16MB as recommended for UDP jitter handling
         av_dict_set(&input_options, "buffer_size", "16777216", 0); // 16MB buffer
-        
+        // Expanded protocol whitelist to support more UDP variants
+        av_dict_set(&input_options, "protocol_whitelist", "file,udp,rtp,rtsp,tcp,https,tls,http", 0);
+        av_dict_set(&input_options, "buffer_size", "8388608", 0); // 8MB buffer
+        av_dict_set(&input_options, "max_delay", "1000000", 0); // 1000ms max delay
+
         // Allow port reuse
         av_dict_set(&input_options, "reuse", "1", 0);
         
@@ -129,8 +133,8 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
         // Increased max delay for UDP streams
         av_dict_set(&input_options, "max_delay", "2000000", 0); // 2000ms max delay
         
-        // More tolerant timestamp handling for UDP streams
-        av_dict_set(&input_options, "fflags", "genpts+discardcorrupt+nobuffer", 0);
+        // More tolerant timestamp handling for UDP streams with ultra-low latency flags
+        av_dict_set(&input_options, "fflags", "genpts+discardcorrupt+nobuffer+flush_packets", 0);
         
         // Set UDP-specific socket options
         av_dict_set(&input_options, "recv_buffer_size", "16777216", 0); // 16MB socket receive buffer
@@ -178,6 +182,9 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
         av_dict_set(&input_options, "rtsp_transport", "tcp", 0); // Force TCP for RTSP
         av_dict_set(&input_options, "analyzeduration", "2000000", 0); // 2 seconds analyze duration
         av_dict_set(&input_options, "probesize", "1000000", 0); // 1MB probe size
+        av_dict_set(&input_options, "reconnect", "1", 0); // Enable reconnection
+        av_dict_set(&input_options, "reconnect_streamed", "1", 0); // Reconnect if streaming
+        av_dict_set(&input_options, "reconnect_delay_max", "2", 0); // Max 2 seconds between reconnection attempts (reduced from 5s)
     }
     
     // Open input with protocol-specific options

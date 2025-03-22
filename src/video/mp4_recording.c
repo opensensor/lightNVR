@@ -37,6 +37,24 @@ static mp4_writer_t *mp4_writers[MAX_STREAMS] = {0};
 static char mp4_writer_stream_names[MAX_STREAMS][64] = {{0}};
 static pthread_mutex_t mp4_writers_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+// Pre-buffering for MP4 recordings
+#define MAX_PREBUFFER_FRAMES 300  // Maximum number of frames to pre-buffer (about 10 seconds at 30fps)
+typedef struct {
+    AVPacket *packet;
+    AVRational time_base;
+} buffered_packet_t;
+
+typedef struct {
+    buffered_packet_t *frames;
+    int capacity;
+    int count;
+    int head;
+    int tail;
+    pthread_mutex_t mutex;
+} frame_buffer_t;
+
+static frame_buffer_t frame_buffers[MAX_STREAMS] = {0};
+
 // Forward declarations
 static void *mp4_recording_thread(void *arg);
 
@@ -136,7 +154,7 @@ static void *mp4_recording_thread(void *arg) {
     while (ctx->running) {
         // Check if we need to rotate the MP4 file based on segment duration
         time_t current_time = time(NULL);
-        int segment_duration = ctx->config.segment_duration > 0 ? ctx->config.segment_duration : 900; // Default to 15 minutes
+        int segment_duration = ctx->config.segment_duration > 0 ? ctx->config.segment_duration : 30;
         
         // If the MP4 file has been open for longer than the segment duration, rotate it
         if (ctx->mp4_writer && (current_time - ctx->mp4_writer->creation_time) >= segment_duration) {
@@ -531,6 +549,143 @@ int stop_mp4_recording(const char *stream_name) {
 }
 
 /**
+ * Initialize a frame buffer for pre-buffering
+ */
+static int init_frame_buffer(const char *stream_name, int capacity) {
+    // Find empty slot or existing entry for this stream
+    int slot = -1;
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (!frame_buffers[i].frames) {
+            slot = i;
+            break;
+        } else if (frame_buffers[i].frames && strcmp(mp4_writer_stream_names[i], stream_name) == 0) {
+            // Stream already has a buffer, return its index
+            return i;
+        }
+    }
+
+    if (slot == -1) {
+        log_error("No available slots for frame buffer");
+        return -1;
+    }
+
+    // Initialize the buffer
+    frame_buffers[slot].frames = calloc(capacity, sizeof(buffered_packet_t));
+    if (!frame_buffers[slot].frames) {
+        log_error("Failed to allocate memory for frame buffer");
+        return -1;
+    }
+
+    frame_buffers[slot].capacity = capacity;
+    frame_buffers[slot].count = 0;
+    frame_buffers[slot].head = 0;
+    frame_buffers[slot].tail = 0;
+    pthread_mutex_init(&frame_buffers[slot].mutex, NULL);
+
+    log_info("Initialized frame buffer for stream %s with capacity %d", stream_name, capacity);
+    return slot;
+}
+
+/**
+ * Add a packet to the frame buffer
+ */
+static void add_to_frame_buffer(int buffer_idx, const AVPacket *pkt, const AVStream *stream) {
+    if (buffer_idx < 0 || buffer_idx >= MAX_STREAMS || !frame_buffers[buffer_idx].frames) {
+        return;
+    }
+
+    pthread_mutex_lock(&frame_buffers[buffer_idx].mutex);
+
+    // If buffer is full, remove oldest packet
+    if (frame_buffers[buffer_idx].count == frame_buffers[buffer_idx].capacity) {
+        if (frame_buffers[buffer_idx].frames[frame_buffers[buffer_idx].head].packet) {
+            av_packet_free(&frame_buffers[buffer_idx].frames[frame_buffers[buffer_idx].head].packet);
+        }
+        frame_buffers[buffer_idx].head = (frame_buffers[buffer_idx].head + 1) % frame_buffers[buffer_idx].capacity;
+        frame_buffers[buffer_idx].count--;
+    }
+
+    // Add new packet
+    int idx = frame_buffers[buffer_idx].tail;
+    frame_buffers[buffer_idx].frames[idx].packet = av_packet_alloc();
+    if (frame_buffers[buffer_idx].frames[idx].packet) {
+        av_packet_ref(frame_buffers[buffer_idx].frames[idx].packet, pkt);
+        frame_buffers[buffer_idx].frames[idx].time_base = stream->time_base;
+        frame_buffers[buffer_idx].tail = (frame_buffers[buffer_idx].tail + 1) % frame_buffers[buffer_idx].capacity;
+        frame_buffers[buffer_idx].count++;
+    }
+
+    pthread_mutex_unlock(&frame_buffers[buffer_idx].mutex);
+}
+
+/**
+ * Flush the frame buffer to the MP4 writer
+ */
+static void flush_frame_buffer(int buffer_idx, mp4_writer_t *writer) {
+    if (buffer_idx < 0 || buffer_idx >= MAX_STREAMS || !frame_buffers[buffer_idx].frames || !writer) {
+        return;
+    }
+
+    pthread_mutex_lock(&frame_buffers[buffer_idx].mutex);
+
+    log_info("Flushing %d frames from buffer to MP4 writer", frame_buffers[buffer_idx].count);
+
+    // Write all buffered packets to the MP4 writer
+    int count = frame_buffers[buffer_idx].count;
+    int head = frame_buffers[buffer_idx].head;
+
+    for (int i = 0; i < count; i++) {
+        int idx = (head + i) % frame_buffers[buffer_idx].capacity;
+        if (frame_buffers[buffer_idx].frames[idx].packet) {
+            // Create a dummy stream with the correct time_base
+            AVStream dummy_stream;
+            memset(&dummy_stream, 0, sizeof(AVStream));
+            dummy_stream.time_base = frame_buffers[buffer_idx].frames[idx].time_base;
+
+            // Write the packet
+            mp4_writer_write_packet(writer, frame_buffers[buffer_idx].frames[idx].packet, &dummy_stream);
+
+            // Free the packet
+            av_packet_free(&frame_buffers[buffer_idx].frames[idx].packet);
+        }
+    }
+
+    // Reset the buffer
+    frame_buffers[buffer_idx].count = 0;
+    frame_buffers[buffer_idx].head = 0;
+    frame_buffers[buffer_idx].tail = 0;
+
+    pthread_mutex_unlock(&frame_buffers[buffer_idx].mutex);
+}
+
+/**
+ * Free a frame buffer
+ */
+static void free_frame_buffer(int buffer_idx) {
+    if (buffer_idx < 0 || buffer_idx >= MAX_STREAMS || !frame_buffers[buffer_idx].frames) {
+        return;
+    }
+
+    pthread_mutex_lock(&frame_buffers[buffer_idx].mutex);
+
+    // Free all packets
+    for (int i = 0; i < frame_buffers[buffer_idx].capacity; i++) {
+        if (frame_buffers[buffer_idx].frames[i].packet) {
+            av_packet_free(&frame_buffers[buffer_idx].frames[i].packet);
+        }
+    }
+
+    // Free the buffer
+    free(frame_buffers[buffer_idx].frames);
+    frame_buffers[buffer_idx].frames = NULL;
+    frame_buffers[buffer_idx].capacity = 0;
+    frame_buffers[buffer_idx].count = 0;
+
+    pthread_mutex_unlock(&frame_buffers[buffer_idx].mutex);
+    pthread_mutex_destroy(&frame_buffers[buffer_idx].mutex);
+}
+
+/**
  * Register an MP4 writer for a stream
  */
 int register_mp4_writer_for_stream(const char *stream_name, mp4_writer_t *writer) {
@@ -549,6 +704,31 @@ int register_mp4_writer_for_stream(const char *stream_name, mp4_writer_t *writer
             log_info("Replacing existing MP4 writer for stream %s", stream_name);
             mp4_writer_close(mp4_writers[i]);
             mp4_writers[i] = writer;
+            
+            // Get the pre-buffer size from the stream config
+            stream_handle_t stream = get_stream_by_name(stream_name);
+            if (stream) {
+                stream_config_t config;
+                if (get_stream_config(stream, &config) == 0 && config.pre_detection_buffer > 0) {
+                    // Calculate buffer capacity based on pre_detection_buffer and fps
+                    int capacity = config.pre_detection_buffer * config.fps;
+                    if (capacity > 0) {
+                        // Flush any existing buffer to the new writer
+                        int buffer_idx = -1;
+                        for (int j = 0; j < MAX_STREAMS; j++) {
+                            if (frame_buffers[j].frames && strcmp(mp4_writer_stream_names[j], stream_name) == 0) {
+                                buffer_idx = j;
+                                break;
+                            }
+                        }
+                        
+                        if (buffer_idx >= 0) {
+                            flush_frame_buffer(buffer_idx, writer);
+                        }
+                    }
+                }
+            }
+            
             pthread_mutex_unlock(&mp4_writers_mutex);
             return 0;
         }
@@ -563,6 +743,22 @@ int register_mp4_writer_for_stream(const char *stream_name, mp4_writer_t *writer
     mp4_writers[slot] = writer;
     strncpy(mp4_writer_stream_names[slot], stream_name, 63);
     mp4_writer_stream_names[slot][63] = '\0';
+    
+    // Initialize frame buffer for pre-buffering
+    stream_handle_t stream = get_stream_by_name(stream_name);
+    if (stream) {
+        stream_config_t config;
+        if (get_stream_config(stream, &config) == 0 && config.pre_detection_buffer > 0) {
+            // Calculate buffer capacity based on pre_detection_buffer and fps
+            int capacity = config.pre_detection_buffer * config.fps;
+            if (capacity > 0) {
+                capacity = capacity < MAX_PREBUFFER_FRAMES ? capacity : MAX_PREBUFFER_FRAMES;
+                init_frame_buffer(stream_name, capacity);
+                log_info("Initialized pre-buffer for stream %s with capacity %d frames (%d seconds at %d fps)",
+                        stream_name, capacity, config.pre_detection_buffer, config.fps);
+            }
+        }
+    }
     
     log_info("Registered MP4 writer for stream %s in slot %d", stream_name, slot);
 
@@ -591,6 +787,60 @@ mp4_writer_t *get_mp4_writer_for_stream(const char *stream_name) {
 }
 
 /**
+ * Add a packet to the pre-buffer for a stream
+ * This is called from the HLS streaming thread for every packet
+ */
+void add_packet_to_prebuffer(const char *stream_name, const AVPacket *pkt, const AVStream *stream) {
+    if (!stream_name || !pkt || !stream) return;
+
+    // Find the buffer for this stream
+    int buffer_idx = -1;
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (frame_buffers[i].frames && strcmp(mp4_writer_stream_names[i], stream_name) == 0) {
+            buffer_idx = i;
+            break;
+        }
+    }
+
+    if (buffer_idx >= 0) {
+        add_to_frame_buffer(buffer_idx, pkt, stream);
+    }
+}
+
+/**
+ * Flush the pre-buffered frames to the MP4 writer
+ * This is called when a detection event occurs
+ */
+void flush_prebuffer_to_mp4(const char *stream_name) {
+    if (!stream_name) return;
+
+    // Find the buffer for this stream
+    int buffer_idx = -1;
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (frame_buffers[i].frames && strcmp(mp4_writer_stream_names[i], stream_name) == 0) {
+            buffer_idx = i;
+            break;
+        }
+    }
+
+    if (buffer_idx < 0) {
+        log_info("No pre-buffer found for stream %s", stream_name);
+        return;
+    }
+
+    // Get the MP4 writer for this stream
+    mp4_writer_t *writer = get_mp4_writer_for_stream(stream_name);
+    if (!writer) {
+        log_error("No MP4 writer found for stream %s", stream_name);
+        return;
+    }
+
+    // Flush the buffer to the MP4 writer
+    log_info("Flushing pre-buffer to MP4 writer for stream %s", stream_name);
+    flush_frame_buffer(buffer_idx, writer);
+}
+
+/**
  * Unregister an MP4 writer for a stream
  */
 void unregister_mp4_writer_for_stream(const char *stream_name) {
@@ -604,6 +854,15 @@ void unregister_mp4_writer_for_stream(const char *stream_name) {
             // The caller is responsible for closing the writer if needed
             mp4_writers[i] = NULL;
             mp4_writer_stream_names[i][0] = '\0';
+            
+            // Free the frame buffer
+            for (int j = 0; j < MAX_STREAMS; j++) {
+                if (frame_buffers[j].frames && strcmp(mp4_writer_stream_names[j], stream_name) == 0) {
+                    free_frame_buffer(j);
+                    break;
+                }
+            }
+            
             log_info("Unregistered MP4 writer for stream %s", stream_name);
             break;
         }
