@@ -278,6 +278,7 @@ export function SnapshotPreviewModal() {
 export function VideoModal() {
   const [state, setState] = useState(videoModalStore.getState());
   const [isOpen, setIsOpen] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
   const videoRef = useRef(null);
   
   useEffect(() => {
@@ -322,6 +323,9 @@ export function VideoModal() {
       video.play().catch(e => console.error('Error auto-playing video:', e));
     }
     
+    // Set initial playback speed
+    video.playbackRate = playbackSpeed;
+    
     return () => {
       // Cleanup
       if (video.hlsInstance) {
@@ -332,6 +336,13 @@ export function VideoModal() {
       video.src = '';
     };
   }, [isOpen, state.videoUrl]);
+  
+  // Update playback speed when it changes
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.playbackRate = playbackSpeed;
+    }
+  }, [playbackSpeed]);
   
   const handleClose = useCallback(() => {
     setIsOpen(false);
@@ -346,7 +357,15 @@ export function VideoModal() {
       videoRef.current.src = '';
     }
     
+    // Reset playback speed for next video
+    setPlaybackSpeed(1.0);
+    
     videoModalStore.setState({ videoUrl: '', title: '', downloadUrl: '' });
+  }, []);
+  
+  // Handle playback speed change
+  const handleSpeedChange = useCallback((speed) => {
+    setPlaybackSpeed(speed);
   }, []);
   
   const handleDownload = useCallback(() => {
@@ -405,6 +424,22 @@ export function VideoModal() {
           controls
           autoPlay
         ></video>
+        <div class="playback-speed-controls flex justify-center items-center mt-3 p-2 bg-gray-100 dark:bg-gray-800 rounded">
+          <span class="text-sm font-medium mr-2 text-gray-700 dark:text-gray-300">Playback Speed:</span>
+          <div class="flex flex-wrap justify-center gap-1">
+            ${[0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 3.0, 4.0].map(speed => html`
+              <button 
+                key=${speed}
+                onClick=${() => handleSpeedChange(speed)}
+                class=${`px-2 py-1 text-xs rounded ${playbackSpeed === speed 
+                  ? 'bg-blue-600 text-white' 
+                  : 'bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'}`}
+              >
+                ${speed}x
+              </button>
+            `)}
+          </div>
+        </div>
       </div>
     </${Modal}>
   `;

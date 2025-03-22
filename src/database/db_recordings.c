@@ -364,11 +364,11 @@ int get_recording_count(time_t start_time, time_t end_time,
         // Use a JOIN with the detections table to filter recordings with detections
         strcpy(sql, "SELECT COUNT(DISTINCT r.id) FROM recordings r "
                     "INNER JOIN detections d ON r.stream_name = d.stream_name "
-                    "WHERE r.is_complete = 1 "
+                    "WHERE r.is_complete = 1 AND r.end_time IS NOT NULL "
                     "AND d.timestamp BETWEEN r.start_time AND r.end_time");
     } else {
         // Simple query without detection filter
-        strcpy(sql, "SELECT COUNT(*) FROM recordings WHERE is_complete = 1");
+        strcpy(sql, "SELECT COUNT(*) FROM recordings WHERE is_complete = 1 AND end_time IS NOT NULL");
     }
     
     if (start_time > 0) {
