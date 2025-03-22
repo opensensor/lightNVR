@@ -39,11 +39,17 @@ void mg_handle_get_settings(struct mg_connection *c, struct mg_http_message *hm)
     
     cJSON_AddStringToObject(settings, "storage_path", g_config.storage_path);
     cJSON_AddNumberToObject(settings, "max_storage_size", g_config.max_storage_size);
+    cJSON_AddNumberToObject(settings, "retention_days", g_config.retention_days);
+    cJSON_AddBoolToObject(settings, "auto_delete_oldest", g_config.auto_delete_oldest);
     cJSON_AddNumberToObject(settings, "max_streams", g_config.max_streams);
     cJSON_AddStringToObject(settings, "log_file", g_config.log_file);
     cJSON_AddNumberToObject(settings, "log_level", g_config.log_level);
     cJSON_AddStringToObject(settings, "pid_file", g_config.pid_file);
     cJSON_AddStringToObject(settings, "db_path", g_config.db_path);
+    cJSON_AddStringToObject(settings, "models_path", g_config.models_path);
+    cJSON_AddNumberToObject(settings, "buffer_size", g_config.buffer_size);
+    cJSON_AddBoolToObject(settings, "use_swap", g_config.use_swap);
+    cJSON_AddNumberToObject(settings, "swap_size", g_config.swap_size / (1024 * 1024)); // Convert bytes to MB
     
     // Convert to string
     char *json_str = cJSON_PrintUnformatted(settings);
@@ -141,6 +147,31 @@ void mg_handle_post_settings(struct mg_connection *c, struct mg_http_message *hm
         log_info("Updated max_storage_size: %d", g_config.max_storage_size);
     }
     
+    // Retention days
+    cJSON *retention_days = cJSON_GetObjectItem(settings, "retention_days");
+    if (retention_days && cJSON_IsNumber(retention_days)) {
+        g_config.retention_days = retention_days->valueint;
+        settings_changed = true;
+        log_info("Updated retention_days: %d", g_config.retention_days);
+    }
+    
+    // Auto delete oldest
+    cJSON *auto_delete_oldest = cJSON_GetObjectItem(settings, "auto_delete_oldest");
+    if (auto_delete_oldest && cJSON_IsBool(auto_delete_oldest)) {
+        g_config.auto_delete_oldest = cJSON_IsTrue(auto_delete_oldest);
+        settings_changed = true;
+        log_info("Updated auto_delete_oldest: %s", g_config.auto_delete_oldest ? "true" : "false");
+    }
+    
+    // Models path
+    cJSON *models_path = cJSON_GetObjectItem(settings, "models_path");
+    if (models_path && cJSON_IsString(models_path)) {
+        strncpy(g_config.models_path, models_path->valuestring, sizeof(g_config.models_path) - 1);
+        g_config.models_path[sizeof(g_config.models_path) - 1] = '\0';
+        settings_changed = true;
+        log_info("Updated models_path: %s", g_config.models_path);
+    }
+    
     // Max streams
     cJSON *max_streams = cJSON_GetObjectItem(settings, "max_streams");
     if (max_streams && cJSON_IsNumber(max_streams)) {
@@ -167,6 +198,30 @@ void mg_handle_post_settings(struct mg_connection *c, struct mg_http_message *hm
         log_info("Updated log_level: %d", g_config.log_level);
     }
     
+    // Buffer size
+    cJSON *buffer_size = cJSON_GetObjectItem(settings, "buffer_size");
+    if (buffer_size && cJSON_IsNumber(buffer_size)) {
+        g_config.buffer_size = buffer_size->valueint;
+        settings_changed = true;
+        log_info("Updated buffer_size: %d", g_config.buffer_size);
+    }
+    
+    // Use swap
+    cJSON *use_swap = cJSON_GetObjectItem(settings, "use_swap");
+    if (use_swap && cJSON_IsBool(use_swap)) {
+        g_config.use_swap = cJSON_IsTrue(use_swap);
+        settings_changed = true;
+        log_info("Updated use_swap: %s", g_config.use_swap ? "true" : "false");
+    }
+    
+    // Swap size
+    cJSON *swap_size = cJSON_GetObjectItem(settings, "swap_size");
+    if (swap_size && cJSON_IsNumber(swap_size)) {
+        g_config.swap_size = swap_size->valueint * 1024 * 1024; // Convert MB to bytes
+        settings_changed = true;
+        log_info("Updated swap_size: %llu bytes", (unsigned long long)g_config.swap_size);
+    }
+    
     // Save settings if changed
     if (settings_changed) {
         // Get the custom config path if set, otherwise use default paths
@@ -190,6 +245,14 @@ void mg_handle_post_settings(struct mg_connection *c, struct mg_http_message *hm
         }
         
         log_info("Configuration saved successfully to %s", config_path);
+        
+        // Reload the configuration to ensure changes are applied
+        log_info("Reloading configuration after save");
+        if (reload_config(&g_config) != 0) {
+            log_warn("Failed to reload configuration after save, changes may not be applied until restart");
+        } else {
+            log_info("Configuration reloaded successfully");
+        }
     } else {
         log_info("No settings changed");
     }

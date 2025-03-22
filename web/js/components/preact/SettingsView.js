@@ -48,20 +48,30 @@ export function SettingsView() {
       const data = await response.json();
       console.log('Settings loaded:', data);
       
+      // Map backend property names to frontend property names
+      const mappedData = {
+        logLevel: data.log_level?.toString() || '',
+        storagePath: data.storage_path || '',
+        maxStorage: data.max_storage_size?.toString() || '',
+        retention: data.retention_days?.toString() || '',
+        autoDelete: data.auto_delete_oldest || false,
+        webPort: data.web_port?.toString() || '',
+        authEnabled: data.web_auth_enabled || false,
+        username: data.web_username || '',
+        password: data.web_password || '',
+        bufferSize: data.buffer_size?.toString() || '',
+        useSwap: data.use_swap || false,
+        swapSize: data.swap_size?.toString() || '',
+        detectionModelsPath: data.models_path || '',
+        defaultDetectionThreshold: data.default_detection_threshold || 50,
+        defaultPreBuffer: data.pre_detection_buffer?.toString() || '5',
+        defaultPostBuffer: data.post_detection_buffer?.toString() || '10'
+      };
+      
       // Update state with loaded settings
       setSettings(prev => ({
         ...prev,
-        ...data,
-        // Convert numeric values to strings for form inputs
-        logLevel: data.logLevel?.toString() || prev.logLevel,
-        maxStorage: data.maxStorage?.toString() || prev.maxStorage,
-        retention: data.retention?.toString() || prev.retention,
-        webPort: data.webPort?.toString() || prev.webPort,
-        bufferSize: data.bufferSize?.toString() || prev.bufferSize,
-        swapSize: data.swapSize?.toString() || prev.swapSize,
-        defaultDetectionThreshold: data.defaultDetectionThreshold || prev.defaultDetectionThreshold,
-        defaultPreBuffer: data.defaultPreBuffer?.toString() || prev.defaultPreBuffer,
-        defaultPostBuffer: data.defaultPostBuffer?.toString() || prev.defaultPostBuffer
+        ...mappedData
       }));
     } catch (error) {
       console.error('Error loading settings:', error);
@@ -72,23 +82,32 @@ export function SettingsView() {
   // Save settings
   const saveSettings = async () => {
     try {
+      // Map frontend property names to backend property names
+      const mappedSettings = {
+        log_level: parseInt(settings.logLevel, 10),
+        storage_path: settings.storagePath,
+        max_storage_size: parseInt(settings.maxStorage, 10),
+        retention_days: parseInt(settings.retention, 10),
+        auto_delete_oldest: settings.autoDelete,
+        web_port: parseInt(settings.webPort, 10),
+        web_auth_enabled: settings.authEnabled,
+        web_username: settings.username,
+        web_password: settings.password,
+        buffer_size: parseInt(settings.bufferSize, 10),
+        use_swap: settings.useSwap,
+        swap_size: parseInt(settings.swapSize, 10),
+        models_path: settings.detectionModelsPath,
+        default_detection_threshold: settings.defaultDetectionThreshold,
+        pre_detection_buffer: parseInt(settings.defaultPreBuffer, 10),
+        post_detection_buffer: parseInt(settings.defaultPostBuffer, 10)
+      };
+      
       const response = await fetch('/api/settings', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          ...settings,
-          // Convert string values to numbers where needed
-          logLevel: parseInt(settings.logLevel, 10),
-          maxStorage: parseInt(settings.maxStorage, 10),
-          retention: parseInt(settings.retention, 10),
-          webPort: parseInt(settings.webPort, 10),
-          bufferSize: parseInt(settings.bufferSize, 10),
-          swapSize: parseInt(settings.swapSize, 10),
-          defaultPreBuffer: parseInt(settings.defaultPreBuffer, 10),
-          defaultPostBuffer: parseInt(settings.defaultPostBuffer, 10)
-        })
+        body: JSON.stringify(mappedSettings)
       });
       
       if (!response.ok) {
