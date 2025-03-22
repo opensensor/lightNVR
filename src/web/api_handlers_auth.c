@@ -24,6 +24,12 @@ void mg_handle_auth_logout(struct mg_connection *c, struct mg_http_message *hm) 
     mg_printf(c, "HTTP/1.1 200 OK\r\n"
               "Content-Type: application/json\r\n"
               "Set-Cookie: auth=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict\r\n"
+              // Add WWW-Authenticate header with an invalid realm to clear browser's auth cache
+              "WWW-Authenticate: Basic realm=\"logout\"\r\n"
+              // Add Cache-Control headers to prevent caching
+              "Cache-Control: no-cache, no-store, must-revalidate\r\n"
+              "Pragma: no-cache\r\n"
+              "Expires: 0\r\n"
               "Content-Length: 29\r\n\r\n"
               "{\"success\":true,\"logged_out\":true}");
     
@@ -100,6 +106,10 @@ void mg_handle_auth_login(struct mg_connection *c, struct mg_http_message *hm) {
         // Set a cookie with the auth token to help maintain session across pages
         // Make sure the cookie is not HttpOnly so JavaScript can access it
         mg_printf(c, "Set-Cookie: auth=%s; Path=/; Max-Age=86400; SameSite=Lax\r\n", encoded_auth);
+        // Add Cache-Control headers to prevent caching
+        mg_printf(c, "Cache-Control: no-cache, no-store, must-revalidate\r\n");
+        mg_printf(c, "Pragma: no-cache\r\n");
+        mg_printf(c, "Expires: 0\r\n");
         mg_printf(c, "\r\n");
         mg_printf(c, "%s", json_str);
         

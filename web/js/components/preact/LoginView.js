@@ -54,9 +54,12 @@ export function LoginView() {
       // Login successful, redirect to home page with cache-busting parameter
       // This helps ensure the browser makes a fresh request with the new auth headers
       
+      // Store the redirect time for auth.js to use
+      localStorage.setItem('lastRedirectTime', new Date().getTime());
+      
       // Add a small delay to ensure the cookie is set before redirecting
       setTimeout(() => {
-        // Force a reload to ensure the browser sends the cookie
+        // Direct navigation works better with authentication
         window.location.href = '/live.html?t=' + new Date().getTime();
       }, 500);
     } catch (error) {

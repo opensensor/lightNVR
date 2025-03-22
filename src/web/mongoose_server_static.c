@@ -97,14 +97,22 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         // This is an HLS streaming request, serve it directly from the filesystem
         config_t *global_config = get_streaming_config();
         
-        // COMPLETELY BYPASS AUTHENTICATION FOR HLS REQUESTS
-        log_info("COMPLETELY BYPASSING AUTHENTICATION FOR HLS REQUEST: %s", uri);
-        
-        // Extract stream name from URI
-        // URI format: /hls/{stream_name}/{file}
-        char stream_name[MAX_STREAM_NAME];
-        const char *stream_start = uri + 5; // Skip "/hls/"
-        const char *file_part = strchr(stream_start, '/');
+    // Check for authentication headers for HLS requests
+    log_info("Processing HLS request: %s", uri);
+    
+    // Log all headers for debugging
+    for (int i = 0; i < MG_MAX_HTTP_HEADERS; i++) {
+        if (hm->headers[i].name.len == 0) break;
+        log_info("HLS request header: %.*s: %.*s", 
+                (int)hm->headers[i].name.len, hm->headers[i].name.buf,
+                (int)hm->headers[i].value.len, hm->headers[i].value.buf);
+    }
+    
+    // Extract stream name from URI
+    // URI format: /hls/{stream_name}/{file}
+    char stream_name[MAX_STREAM_NAME];
+    const char *stream_start = uri + 5; // Skip "/hls/"
+    const char *file_part = strchr(stream_start, '/');
         
         if (!file_part) {
             mg_http_reply(c, 404, "", "{\"error\": \"Invalid HLS path\"}\n");

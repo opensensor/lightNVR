@@ -57,6 +57,21 @@ function setupAuthInterceptor() {
             options.headers['Authorization'] = 'Basic ' + auth;
         }
         
+        // Check if this is an HLS request and we just redirected from login
+        const lastRedirectTime = localStorage.getItem('lastRedirectTime');
+        const currentTime = new Date().getTime();
+        
+        // If this is an HLS request within 5 seconds of a redirect, ensure auth headers are set
+        if (lastRedirectTime && (currentTime - parseInt(lastRedirectTime) < 5000) && 
+            (url.includes('/hls/') || url.includes('/api/streaming/'))) {
+            console.log('Recent redirect detected, ensuring auth headers for HLS request');
+            options.headers = options.headers || {};
+            if (auth) {
+                options.headers['Authorization'] = 'Basic ' + auth;
+            }
+            options.credentials = 'include';
+        }
+        
         return originalFetch(url, options)
             .then(response => {
                 // If we get a 401, redirect to login page
@@ -99,16 +114,31 @@ function setupAuthInterceptor() {
 function logout() {
     // Clear localStorage
     localStorage.removeItem('auth');
+    localStorage.removeItem('lastRedirectTime');
     
     // Call the logout endpoint to clear browser's basic auth cache
     fetch('/api/auth/logout', {
-        method: 'POST'
+        method: 'POST',
+        credentials: 'include'
     }).then(() => {
-        // Redirect to login page with cache-busting parameter
-        window.location.href = 'login.html?logout=true&t=' + new Date().getTime();
+        // Clear any cookies by setting them to expire in the past
+        document.cookie = "auth=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict";
+        
+        // Use a form submission to navigate to login page without carrying over auth headers
+        const form = document.createElement('form');
+        form.method = 'GET';
+        form.action = 'login.html?logout=true&t=' + new Date().getTime();
+        document.body.appendChild(form);
+        form.submit();
     }).catch(() => {
         // Redirect even if the request fails
-        window.location.href = 'login.html?logout=true&t=' + new Date().getTime();
+        document.cookie = "auth=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict";
+        
+        const form = document.createElement('form');
+        form.method = 'GET';
+        form.action = 'login.html?logout=true&t=' + new Date().getTime();
+        document.body.appendChild(form);
+        form.submit();
     });
 }
 
