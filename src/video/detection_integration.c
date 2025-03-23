@@ -30,6 +30,7 @@
 #include "video/detection_result.h"
 #include "video/motion_detection.h"
 #include "video/motion_detection_wrapper.h"
+#include "video/sod_integration.h"
 #include "utils/memory.h"
 
 // Define model types
@@ -61,45 +62,7 @@ int active_detections = 0;
 // Track which streams are currently being processed for detection
 static char active_detection_streams[MAX_CONCURRENT_DETECTIONS][MAX_STREAM_NAME] = {{0}};
 
-// Function to check if a file exists
-static int file_exists(const char *filename) {
-    FILE *file = fopen(filename, "r");
-    if (file) {
-        fclose(file);
-        return 1;
-    }
-    return 0;
-}
-
-/**
- * Detect model type based on file name
- * 
- * @param model_path Path to the model file
- * @return String describing the model type (MODEL_TYPE_SOD_REALNET, MODEL_TYPE_SOD, etc.)
- */
-const char* detect_model_type(const char *model_path) {
-    if (!model_path) {
-        return "unknown";
-    }
-    
-    // Check for SOD RealNet models
-    if (strstr(model_path, ".realnet.sod") != NULL) {
-        return MODEL_TYPE_SOD_REALNET;
-    }
-    
-    // Check for regular SOD models
-    const char *ext = strrchr(model_path, '.');
-    if (ext && strcasecmp(ext, ".sod") == 0) {
-        return MODEL_TYPE_SOD;
-    }
-    
-    // Check for TFLite models
-    if (ext && strcasecmp(ext, ".tflite") == 0) {
-        return MODEL_TYPE_TFLITE;
-    }
-    
-    return "unknown";
-}
+// Use the file_exists and detect_model_type functions from sod_integration.c
 
 /**
  * Process a decoded frame for detection
@@ -456,10 +419,51 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     if (config.detection_model[0] != '/') {
         // Construct full path using configured models path from INI if it exists
         if (g_config.models_path && strlen(g_config.models_path) > 0) {
-            snprintf(full_model_path, MAX_PATH_LENGTH, "%s/%s", g_config.models_path, config.detection_model);
+            // Calculate available space for model name
+            size_t prefix_len = strlen(g_config.models_path) + 1; // +1 for the '/'
+            size_t model_max_len = MAX_PATH_LENGTH - prefix_len - 1; // -1 for null terminator
+            
+            // Ensure model name isn't too long
+            size_t model_len = strlen(config.detection_model);
+            if (model_len > model_max_len) {
+                log_error("Model name too long: %s (max allowed: %zu chars)", 
+                         config.detection_model, model_max_len);
+                goto cleanup;
+            }
+            
+            // Safe to use snprintf now
+            int ret = snprintf(full_model_path, MAX_PATH_LENGTH, "%s/%s", 
+                              g_config.models_path, config.detection_model);
+            
+            // Check for truncation
+            if (ret < 0 || ret >= MAX_PATH_LENGTH) {
+                log_error("Path truncation occurred when creating model path");
+                goto cleanup;
+            }
         } else {
             // Fall back to default path if INI config doesn't exist
-            snprintf(full_model_path, MAX_PATH_LENGTH, "/etc/lightnvr/models/%s", config.detection_model);
+            // Calculate available space for model name
+            const char *prefix = "/etc/lightnvr/models/";
+            size_t prefix_len = strlen(prefix);
+            size_t model_max_len = MAX_PATH_LENGTH - prefix_len - 1; // -1 for null terminator
+            
+            // Ensure model name isn't too long
+            size_t model_len = strlen(config.detection_model);
+            if (model_len > model_max_len) {
+                log_error("Model name too long: %s (max allowed: %zu chars)", 
+                         config.detection_model, model_max_len);
+                goto cleanup;
+            }
+            
+            // Safe to use snprintf now
+            int ret = snprintf(full_model_path, MAX_PATH_LENGTH, "%s%s", 
+                              prefix, config.detection_model);
+            
+            // Check for truncation
+            if (ret < 0 || ret >= MAX_PATH_LENGTH) {
+                log_error("Path truncation occurred when creating model path");
+                goto cleanup;
+            }
         }
 
         // Validate path exists
@@ -477,9 +481,28 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                 };
 
                 for (int i = 0; i < sizeof(locations)/sizeof(locations[0]); i++) {
-                    snprintf(alt_path, MAX_PATH_LENGTH, "%s%s", 
-                             locations[i],
-                             config.detection_model);
+                    // Calculate available space for model name
+                    size_t prefix_len = strlen(locations[i]);
+                    size_t model_max_len = MAX_PATH_LENGTH - prefix_len - 1; // -1 for null terminator
+                    
+                    // Ensure model name isn't too long
+                    size_t model_len = strlen(config.detection_model);
+                    if (model_len > model_max_len) {
+                        log_error("Model name too long for alternative location: %s (max allowed: %zu chars)", 
+                                 config.detection_model, model_max_len);
+                        continue; // Try next location
+                    }
+                    
+                    // Safe to use snprintf now
+                    int ret = snprintf(alt_path, MAX_PATH_LENGTH, "%s%s", 
+                                      locations[i],
+                                      config.detection_model);
+                    
+                    // Check for truncation
+                    if (ret < 0 || ret >= MAX_PATH_LENGTH) {
+                        log_error("Path truncation occurred when creating alternative model path");
+                        continue; // Try next location
+                    }
                     if (file_exists(alt_path)) {
                         log_info("Found model at alternative location: %s", alt_path);
                         strncpy(full_model_path, alt_path, MAX_PATH_LENGTH - 1);
@@ -697,45 +720,18 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                 
                 // If still not found, load the model
                 if (!model) {
-                    // Load the new model
+                    // Load the new model using the SOD integration module
                     log_info("LOADING DETECTION MODEL: %s with threshold: %.2f", full_model_path, threshold);
                     
-                    // Check if file exists before loading
-                    FILE *model_file = fopen(full_model_path, "r");
-                    if (!model_file) {
-                        log_error("MODEL FILE NOT FOUND: %s", full_model_path);
-                        
-                        // Try alternative locations
-                        const char *locations[] = {
-                            "/var/lib/lightnvr/models/"
-                        };
-                        
-                        bool found = false;
-                        for (int j = 0; j < sizeof(locations)/sizeof(locations[0]); j++) {
-                            char alt_path[MAX_PATH_LENGTH];
-                            snprintf(alt_path, MAX_PATH_LENGTH, "%s%s", 
-                                    locations[j], strrchr(full_model_path, '/') ? 
-                                    strrchr(full_model_path, '/') + 1 : full_model_path);
-                            
-                            FILE *alt_file = fopen(alt_path, "r");
-                            if (alt_file) {
-                                fclose(alt_file);
-                                log_info("MODEL FOUND AT ALTERNATIVE LOCATION: %s", alt_path);
-                                strncpy(full_model_path, alt_path, MAX_PATH_LENGTH - 1);
-                                found = true;
-                                break;
-                            }
-                        }
-                        
-                        if (!found) {
-                            log_error("MODEL NOT FOUND IN ANY LOCATION!");
-                        }
-                    } else {
-                        fclose(model_file);
-                        log_info("MODEL FILE EXISTS: %s", full_model_path);
-                    }
+                    // Use the SOD integration function to load the model
+                    char resolved_path[MAX_PATH_LENGTH];
+                    model = load_sod_model_for_detection(config.detection_model, threshold, 
+                                                       resolved_path, MAX_PATH_LENGTH);
                     
-                    model = load_detection_model(full_model_path, threshold);
+                    if (model) {
+                        // Update the full_model_path with the resolved path
+                        strncpy(full_model_path, resolved_path, MAX_PATH_LENGTH - 1);
+                    }
                     
                     if (model) {
                         // Cache the model locally
