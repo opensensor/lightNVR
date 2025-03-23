@@ -2,6 +2,8 @@
  * Fullscreen functionality for LiveView
  */
 
+import { showStatusMessage } from './UI.js';
+
 /**
  * Exit fullscreen mode
  * @param {Event} e - Optional event object

@@ -3,6 +3,382 @@
  */
 
 /**
+ * Set up modals for the application
+ */
+export function setupModals() {
+  // Create snapshot modal container if it doesn't exist
+  let snapshotModalContainer = document.getElementById('snapshot-modal-container');
+  if (!snapshotModalContainer) {
+    snapshotModalContainer = document.createElement('div');
+    snapshotModalContainer.id = 'snapshot-modal-container';
+    document.body.appendChild(snapshotModalContainer);
+  }
+  
+  // Create snapshot preview modal
+  const snapshotModal = document.createElement('div');
+  snapshotModal.id = 'snapshot-preview-modal';
+  snapshotModal.className = 'fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 hidden';
+  
+  snapshotModal.innerHTML = `
+    <div class="modal-content bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl max-h-[90vh] flex flex-col transform transition-all duration-300 ease-out scale-95 opacity-0" style="width: 90%;">
+      <div class="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
+        <h3 id="snapshot-preview-title" class="text-lg font-semibold text-gray-900 dark:text-white">Snapshot</h3>
+        <button class="close text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">✕</button>
+      </div>
+      <div class="p-4 overflow-auto flex-grow">
+        <img id="snapshot-preview-image" class="max-w-full max-h-[70vh] mx-auto" src="" alt="Snapshot">
+      </div>
+      <div class="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end space-x-2">
+        <button id="snapshot-download-btn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">Download</button>
+        <button id="snapshot-close-btn" class="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600">Close</button>
+      </div>
+    </div>
+  `;
+  
+  snapshotModalContainer.appendChild(snapshotModal);
+  
+  // Create video modal container if it doesn't exist
+  let videoModalContainer = document.getElementById('video-modal-container');
+  if (!videoModalContainer) {
+    videoModalContainer = document.createElement('div');
+    videoModalContainer.id = 'video-modal-container';
+    document.body.appendChild(videoModalContainer);
+  }
+  
+  // Create video preview modal
+  const videoModal = document.createElement('div');
+  videoModal.id = 'video-preview-modal';
+  videoModal.className = 'fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 hidden';
+  
+  videoModal.innerHTML = `
+    <div class="modal-content bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl max-h-[90vh] flex flex-col transform transition-all duration-300 ease-out scale-95 opacity-0" style="width: 90%;">
+      <div class="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
+        <h3 id="video-preview-title" class="text-lg font-semibold text-gray-900 dark:text-white">Video</h3>
+        <button class="close text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">✕</button>
+      </div>
+      <div class="p-4 overflow-auto flex-grow">
+        <video id="video-preview-player" class="max-w-full max-h-[70vh] mx-auto" controls autoplay></video>
+      </div>
+      <div class="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end space-x-2">
+        <a id="video-download-btn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors" href="#" download>Download</a>
+        <button id="video-close-btn" class="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600">Close</button>
+      </div>
+    </div>
+  `;
+  
+  videoModalContainer.appendChild(videoModal);
+  
+  // Set up event listeners for modals
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      // Close any open modals
+      const modals = document.querySelectorAll('.fixed.inset-0.bg-black.bg-opacity-75');
+      modals.forEach(modal => {
+        if (!modal.classList.contains('hidden')) {
+          modal.classList.add('hidden');
+        }
+      });
+    }
+  });
+}
+
+/**
+ * Add status message styles to the document
+ */
+export function addStatusMessageStyles() {
+  // Check if styles already exist
+  if (document.getElementById('status-message-styles')) {
+    return;
+  }
+  
+  // Create style element
+  const style = document.createElement('style');
+  style.id = 'status-message-styles';
+  
+  // Add CSS rules
+  style.textContent = `
+    #status-message-container {
+      position: fixed;
+      bottom: 1rem;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 50;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    
+    .status-message {
+      background-color: #1f2937;
+      color: white;
+      padding: 0.5rem 1rem;
+      border-radius: 0.375rem;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+      margin-bottom: 0.5rem;
+      transition: all 0.3s ease;
+      opacity: 0;
+      transform: translateY(0.5rem);
+    }
+    
+    .status-message.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    
+    .status-message.success {
+      background-color: #10b981;
+    }
+    
+    .status-message.error {
+      background-color: #ef4444;
+    }
+    
+    .status-message.warning {
+      background-color: #f59e0b;
+    }
+  `;
+  
+  // Add to document head
+  document.head.appendChild(style);
+}
+
+/**
+ * Add modal styles to the document
+ */
+export function addModalStyles() {
+  // Check if styles already exist
+  if (document.getElementById('modal-styles')) {
+    return;
+  }
+  
+  // Create style element
+  const style = document.createElement('style');
+  style.id = 'modal-styles';
+  
+  // Add CSS rules
+  style.textContent = `
+    .modal-content {
+      transition: all 0.3s ease-out;
+    }
+    
+    .modal-content.scale-95 {
+      transform: scale(0.95);
+      opacity: 0;
+    }
+    
+    .modal-content.scale-100 {
+      transform: scale(1);
+      opacity: 1;
+    }
+  `;
+  
+  // Add to document head
+  document.head.appendChild(style);
+}
+
+/**
+ * DeleteConfirmationModal class for creating reusable delete confirmation dialogs
+ */
+export class DeleteConfirmationModal {
+  /**
+   * Create a new delete confirmation modal
+   * @param {string} title - Modal title
+   * @param {string} message - Confirmation message
+   * @param {Function} onConfirm - Function to call when delete is confirmed
+   */
+  constructor(title, message, onConfirm) {
+    this.title = title || 'Confirm Delete';
+    this.message = message || 'Are you sure you want to delete this item?';
+    this.onConfirm = onConfirm || (() => {});
+    this.overlay = null;
+  }
+  
+  /**
+   * Show the delete confirmation modal
+   */
+  show() {
+    // Create overlay container
+    this.overlay = document.createElement('div');
+    this.overlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+    
+    // Create modal container
+    const modalContainer = document.createElement('div');
+    modalContainer.className = 'bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md mx-auto';
+    
+    // Create header
+    const header = document.createElement('div');
+    header.className = 'mb-4';
+    
+    const titleElement = document.createElement('h3');
+    titleElement.className = 'text-lg font-semibold text-gray-900 dark:text-white';
+    titleElement.textContent = this.title;
+    
+    header.appendChild(titleElement);
+    
+    // Create message
+    const messageElement = document.createElement('p');
+    messageElement.className = 'text-gray-600 dark:text-gray-300 mb-6';
+    messageElement.textContent = this.message;
+    
+    // Create buttons
+    const buttonsContainer = document.createElement('div');
+    buttonsContainer.className = 'flex justify-end space-x-3';
+    
+    const cancelButton = document.createElement('button');
+    cancelButton.className = 'px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600';
+    cancelButton.textContent = 'Cancel';
+    cancelButton.addEventListener('click', () => this.close());
+    
+    const deleteButton = document.createElement('button');
+    deleteButton.className = 'px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors';
+    deleteButton.textContent = 'Delete';
+    deleteButton.addEventListener('click', () => {
+      this.onConfirm();
+      this.close();
+    });
+    
+    buttonsContainer.appendChild(cancelButton);
+    buttonsContainer.appendChild(deleteButton);
+    
+    // Assemble the modal
+    modalContainer.appendChild(header);
+    modalContainer.appendChild(messageElement);
+    modalContainer.appendChild(buttonsContainer);
+    this.overlay.appendChild(modalContainer);
+    
+    // Add to document
+    document.body.appendChild(this.overlay);
+    
+    // Add event listener to close on escape key
+    document.addEventListener('keydown', this.handleEscape);
+    
+    // Add event listener to close on background click
+    this.overlay.addEventListener('click', this.handleBackgroundClick);
+  }
+  
+  /**
+   * Close the modal
+   */
+  close() {
+    if (this.overlay && document.body.contains(this.overlay)) {
+      document.body.removeChild(this.overlay);
+      document.removeEventListener('keydown', this.handleEscape);
+      this.overlay = null;
+    }
+  }
+  
+  /**
+   * Handle escape key press
+   * @param {KeyboardEvent} e - Keyboard event
+   */
+  handleEscape = (e) => {
+    if (e.key === 'Escape') {
+      this.close();
+    }
+  }
+  
+  /**
+   * Handle background click
+   * @param {MouseEvent} e - Mouse event
+   */
+  handleBackgroundClick = (e) => {
+    if (e.target === this.overlay) {
+      this.close();
+    }
+  }
+}
+
+/**
+ * Show a video modal
+ * @param {string} videoUrl - URL of the video to display
+ * @param {string} title - Title for the video
+ * @param {string} downloadUrl - Optional URL for downloading the video
+ */
+export function showVideoModal(videoUrl, title, downloadUrl) {
+  // Create overlay container
+  const overlay = document.createElement('div');
+  overlay.className = 'fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50';
+  overlay.id = 'video-modal-overlay';
+  
+  // Create modal container
+  const modalContainer = document.createElement('div');
+  modalContainer.className = 'bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl max-h-[90vh] flex flex-col';
+  modalContainer.style.width = '90%';
+  
+  // Create header
+  const header = document.createElement('div');
+  header.className = 'flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700';
+  
+  const titleElement = document.createElement('h3');
+  titleElement.className = 'text-lg font-semibold text-gray-900 dark:text-white';
+  titleElement.textContent = title || 'Video';
+  
+  const closeButton = document.createElement('button');
+  closeButton.className = 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200';
+  closeButton.innerHTML = '✕';
+  closeButton.addEventListener('click', () => {
+    document.body.removeChild(overlay);
+  });
+  
+  header.appendChild(titleElement);
+  header.appendChild(closeButton);
+  
+  // Create video container
+  const videoContainer = document.createElement('div');
+  videoContainer.className = 'p-4 overflow-auto flex-grow';
+  
+  const video = document.createElement('video');
+  video.src = videoUrl;
+  video.className = 'max-w-full max-h-[70vh] mx-auto';
+  video.controls = true;
+  video.autoplay = true;
+  
+  videoContainer.appendChild(video);
+  
+  // Create footer with actions
+  const footer = document.createElement('div');
+  footer.className = 'p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end space-x-2';
+  
+  if (downloadUrl) {
+    const downloadButton = document.createElement('a');
+    downloadButton.className = 'px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors';
+    downloadButton.textContent = 'Download';
+    downloadButton.href = downloadUrl;
+    downloadButton.download = `video-${Date.now()}.mp4`;
+    
+    footer.appendChild(downloadButton);
+  }
+  
+  // Assemble the modal
+  modalContainer.appendChild(header);
+  modalContainer.appendChild(videoContainer);
+  modalContainer.appendChild(footer);
+  overlay.appendChild(modalContainer);
+  
+  // Add to document
+  document.body.appendChild(overlay);
+  
+  // Add event listener to close on escape key
+  const handleEscape = (e) => {
+    if (e.key === 'Escape') {
+      if (document.body.contains(overlay)) {
+        document.body.removeChild(overlay);
+      }
+      document.removeEventListener('keydown', handleEscape);
+    }
+  };
+  
+  document.addEventListener('keydown', handleEscape);
+  
+  // Add event listener to close on background click
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) {
+      document.body.removeChild(overlay);
+    }
+  });
+}
+
+/**
  * Show a status message to the user
  * @param {string} message - Message to display
  * @param {number} duration - Duration in milliseconds (default: 3000)

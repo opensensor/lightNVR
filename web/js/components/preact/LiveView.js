@@ -25,11 +25,8 @@ export function LiveView() {
   const videoPlayers = useRef({});
   const detectionIntervals = useRef({});
   
-  // Load streams on mount
+  // Set up event listeners
   useEffect(() => {
-    // Load streams from API
-    loadStreams(setStreams, setSelectedStream, videoGridRef.current);
-    
     // Set up Escape key to exit fullscreen mode
     const handleEscape = (e) => {
       if (e.key === 'Escape') {
@@ -59,6 +56,14 @@ export function LiveView() {
       stopAllStreams(streams, videoPlayers.current, detectionIntervals.current);
     };
   }, []);
+  
+  // Load streams after the component has rendered and videoGridRef is available
+  useEffect(() => {
+    if (videoGridRef.current) {
+      // Load streams from API
+      loadStreams(setStreams, setSelectedStream, videoGridRef.current);
+    }
+  }, [videoGridRef.current]);
   
   // Update video grid when layout or streams change
   useEffect(() => {

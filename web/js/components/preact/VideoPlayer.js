@@ -68,82 +68,31 @@ export function initializeVideoPlayer(stream, videoPlayers, detectionIntervals) 
   // Check if HLS is supported natively
   if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
     // Native HLS support (Safari)
-    // Use fetch with credentials and auth header to load the HLS stream
-    const headers = {};
-    if (auth) {
-      headers['Authorization'] = 'Basic ' + auth;
-    }
+    console.log(`Using native HLS support for stream ${stream.name}`);
     
-    // Log that we're using native HLS support
-    console.log(`Using native HLS support for stream ${stream.name} on Safari/iOS`);
+    // Set source directly
+    videoElement.src = hlsStreamUrl;
     
-    // For iOS Safari, we need to handle things differently
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-    if (isIOS) {
-      console.log(`iOS device detected, using direct HLS URL for stream ${stream.name}`);
-      
-      // On iOS, we need to set the video source directly and handle auth differently
-      // iOS Safari will automatically handle cookies for HLS requests
-      videoElement.src = hlsStreamUrl;
-      
-      // Add play button overlay for iOS (autoplay restrictions)
+    // Hide loading indicator when metadata is loaded
+    videoElement.addEventListener('loadedmetadata', function() {
+      console.log(`Metadata loaded for stream ${stream.name}`);
+      if (loadingIndicator) {
+        loadingIndicator.style.display = 'none';
+      }
+    });
+    
+    // Handle errors
+    videoElement.addEventListener('error', (e) => {
+      console.error(`Video error for stream ${stream.name}:`, videoElement.error);
+      handleVideoError(stream.name, videoElement.error ? videoElement.error.message : 'Unknown error');
+    });
+    
+    // Try to play automatically
+    videoElement.play().catch(error => {
+      console.warn('Auto-play prevented:', error);
+      // Add play button overlay for user interaction
       addPlayButtonOverlay(videoCell, videoElement);
-      
-      // Hide loading indicator when metadata is loaded
-      videoElement.addEventListener('loadedmetadata', function() {
-        console.log(`Metadata loaded for iOS stream ${stream.name}`);
-        if (loadingIndicator) {
-          loadingIndicator.style.display = 'none';
-        }
-      });
-      
-      // Handle errors
-      videoElement.addEventListener('error', (e) => {
-        console.error(`iOS video error for stream ${stream.name}:`, videoElement.error);
-        handleVideoError(stream.name, videoElement.error ? videoElement.error.message : 'Unknown error');
-      });
-    } else {
-      // For desktop Safari
-      fetch(hlsStreamUrl, {
-        credentials: 'include', // Include cookies in the request
-        headers: headers
-      })
-      .then(response => {
-        if (!response.ok) {
-          throw new Error(`Failed to load HLS stream: ${response.status}`);
-        }
-        
-        // For Safari, we need to create a proxy URL that includes auth
-        // This is because Safari doesn't send auth headers for subsequent segment requests
-        if (auth) {
-          // Create a blob URL with embedded credentials
-          return fetch(response.url, {
-            headers: { 'Authorization': 'Basic ' + auth },
-            credentials: 'include'
-          })
-          .then(r => r.blob())
-          .then(blob => URL.createObjectURL(blob));
-        } else {
-          return response.url; // Get the final URL after any redirects
-        }
-      })
-      .then(finalUrl => {
-        videoElement.src = finalUrl;
-        videoElement.addEventListener('loadedmetadata', function() {
-          if (loadingIndicator) {
-            loadingIndicator.style.display = 'none';
-          }
-        });
-      })
-      .catch(error => {
-        console.error('Error loading HLS stream:', error);
-        handleVideoError(stream.name, error.message);
-      });
-      
-      videoElement.addEventListener('error', () => {
-        handleVideoError(stream.name);
-      });
-    }
+    });
   }
   // Use HLS.js for browsers that don't support HLS natively
   else if (window.Hls && window.Hls.isSupported()) {
@@ -541,10 +490,10 @@ export function handleVideoError(streamName, message) {
         .then(response => response.json())
         .then(streamInfo => {
           // Cleanup existing player if any
-          cleanupVideoPlayer(streamName);
+          cleanupVideoPlayer(streamName, videoPlayers, detectionIntervals);
           
           // Reinitialize
-          initializeVideoPlayer(streamInfo);
+          initializeVideoPlayer(streamInfo, videoPlayers, detectionIntervals);
         })
         .catch(error => {
           console.error('Error fetching stream info:', error);
