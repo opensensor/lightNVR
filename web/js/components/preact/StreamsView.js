@@ -824,7 +824,7 @@ export function StreamsView() {
                       max="100" 
                       step="1" 
                       value=${currentStream.detectionThreshold}
-                      onChange=${handleThresholdChange}
+                      onInput=${handleThresholdChange}
                     />
                     <span id="stream-threshold-value" class="font-medium text-blue-600 dark:text-blue-400 min-w-[3rem] text-center">
                       ${currentStream.detectionThreshold}%
