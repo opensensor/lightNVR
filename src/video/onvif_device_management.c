@@ -1,6 +1,7 @@
 #include "video/onvif_device_management.h"
 #include "video/stream_manager.h"
 #include "core/logger.h"
+#include "database/db_streams.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -122,10 +123,22 @@ int add_onvif_device_as_stream(const onvif_device_info_t *device_info,
     
     config.onvif_discovery_enabled = true;
     
-    // Add stream
+    // First add the stream to the database
+    uint64_t stream_id = add_stream_config(&config);
+    if (stream_id == 0) {
+        log_error("Failed to add ONVIF device stream configuration to database: %s", stream_name);
+        return -1;
+    }
+    
+    log_info("Added ONVIF device stream configuration to database with ID %llu: %s", 
+             (unsigned long long)stream_id, stream_name);
+    
+    // Then add stream to memory
     stream_handle_t handle = add_stream(&config);
     if (!handle) {
-        log_error("Failed to add ONVIF device as stream: %s", stream_name);
+        log_error("Failed to add ONVIF device as stream in memory: %s", stream_name);
+        // Don't delete from database, as it might be a temporary memory issue
+        // The stream will be loaded from the database on next startup
         return -1;
     }
     

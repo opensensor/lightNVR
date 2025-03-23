@@ -236,8 +236,8 @@ int discover_onvif_devices(const char *network, onvif_device_info_t *devices,
         addr.s_addr = htonl(ip);
         strcpy(ip_addr, inet_ntoa(addr));
         
-        // Check if port 3702 (ONVIF) or port 80 (HTTP) is open
-        if (is_port_open(ip_addr, 3702, 100) || is_port_open(ip_addr, 80, 100)) {
+        // Check if port 3702 (ONVIF) or port 80 (HTTP) is open with a shorter timeout
+        if (is_port_open(ip_addr, 3702, 25) || is_port_open(ip_addr, 80, 25)) {
             log_debug("Found potential ONVIF device at %s", ip_addr);
             
             // Add to candidate list
@@ -304,10 +304,10 @@ int discover_onvif_devices(const char *network, onvif_device_info_t *devices,
         log_info("Waiting for discovery responses...");
         count = receive_discovery_responses(devices, max_devices);
         
-        // If no devices found, try with a slightly longer timeout but still keep it under 30 seconds total
+        // If no devices found, try with a slightly shorter timeout to speed up the process
         if (count == 0) {
-            log_info("No devices found with standard timeout, trying with slightly longer timeout");
-            count = receive_extended_discovery_responses(devices, max_devices, 3, 3); // 3 sec timeout, 3 attempts
+            log_info("No devices found with standard timeout, trying with shorter timeout");
+            count = receive_extended_discovery_responses(devices, max_devices, 1, 2); // 1 sec timeout, 2 attempts
         }
     } else {
         // Create a socket for discovery probes
@@ -367,10 +367,10 @@ int discover_onvif_devices(const char *network, onvif_device_info_t *devices,
         log_info("Waiting for discovery responses...");
         count = receive_discovery_responses(devices, max_devices);
         
-        // If no devices found, try with a slightly longer timeout but still keep it under 30 seconds total
+        // If no devices found, try with a slightly shorter timeout to speed up the process
         if (count == 0) {
-            log_info("No devices found with standard timeout, trying with slightly longer timeout");
-            count = receive_extended_discovery_responses(devices, max_devices, 3, 3); // 3 sec timeout, 3 attempts
+            log_info("No devices found with standard timeout, trying with shorter timeout");
+            count = receive_extended_discovery_responses(devices, max_devices, 1, 2); // 1 sec timeout, 2 attempts
         }
     }
 

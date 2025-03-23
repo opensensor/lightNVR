@@ -250,15 +250,15 @@ int receive_discovery_responses(onvif_device_info_t *devices, int max_devices) {
         return -1;
     }
     
-    log_info("Waiting for discovery responses (timeout: 2 seconds, attempts: 5)");
+    log_info("Waiting for discovery responses (timeout: 1 second, attempts: 2)");
     
     // Set timeout for select
-    timeout.tv_sec = 2;
+    timeout.tv_sec = 1;
     timeout.tv_usec = 0;
     
     // Wait for responses
-    for (int i = 0; i < 5; i++) {
-        log_info("Waiting for responses, attempt %d/5", i+1);
+    for (int i = 0; i < 2; i++) {
+        log_info("Waiting for responses, attempt %d/2", i+1);
         
         FD_ZERO(&readfds);
         FD_SET(sock, &readfds);
@@ -272,8 +272,9 @@ int receive_discovery_responses(onvif_device_info_t *devices, int max_devices) {
             // Timeout, no data available
             log_info("Timeout waiting for responses, no data available");
             
-            // On every third attempt, try sending a new probe to the broadcast address
-            if (i % 3 == 2) {
+            // On every attempt, try sending a new probe to the broadcast address
+            // This helps speed up discovery
+            {
                 log_info("Sending additional discovery probe to broadcast address");
                 struct sockaddr_in broadcast_addr;
                 memset(&broadcast_addr, 0, sizeof(broadcast_addr));
@@ -356,7 +357,7 @@ int receive_discovery_responses(onvif_device_info_t *devices, int max_devices) {
         }
         
         // Reset timeout for next attempt
-        timeout.tv_sec = 2;
+        timeout.tv_sec = 1;
         timeout.tv_usec = 0;
     }
     

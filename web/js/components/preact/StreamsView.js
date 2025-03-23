@@ -354,11 +354,15 @@ export function StreamsView() {
     }
   };
   
+  // State for profile loading
+  const [isLoadingProfiles, setIsLoadingProfiles] = useState(false);
+
   // Get ONVIF device profiles
   const getDeviceProfiles = async (device) => {
     try {
       setSelectedDevice(device);
       setDeviceProfiles([]);
+      setIsLoadingProfiles(true);
       showStatusMessage('Getting device profiles...');
       
       const response = await fetch(`/api/onvif/device/profiles`, {
@@ -384,17 +388,40 @@ export function StreamsView() {
     } catch (error) {
       console.error('Error getting device profiles:', error);
       showStatusMessage('Error getting device profiles: ' + error.message, 3000, 'error');
+    } finally {
+      setIsLoadingProfiles(false);
     }
   };
   
+  // State for custom stream name
+  const [customStreamName, setCustomStreamName] = useState('');
+  const [showCustomNameInput, setShowCustomNameInput] = useState(false);
+
   // Add ONVIF device as stream
   const addOnvifDeviceAsStream = async (profile) => {
     try {
       setSelectedProfile(profile);
-      showStatusMessage('Adding ONVIF device as stream...');
       
-      // Generate a stream name from device info
-      const streamName = `ONVIF_${selectedDevice.ip_address.replace(/\./g, '_')}_${profile.name.replace(/\s+/g, '_')}`;
+      // Generate a default stream name from device info
+      const defaultStreamName = `ONVIF_${selectedDevice.ip_address.replace(/\./g, '_')}_${profile.name.replace(/\s+/g, '_')}`;
+      
+      // Show custom name input dialog
+      setCustomStreamName(defaultStreamName);
+      setShowCustomNameInput(true);
+    } catch (error) {
+      console.error('Error preparing to add ONVIF device:', error);
+      showStatusMessage('Error preparing to add ONVIF device: ' + error.message, 3000, 'error');
+    }
+  };
+  
+  // State for adding stream
+  const [isAddingStream, setIsAddingStream] = useState(false);
+
+  // Submit ONVIF device with custom name
+  const submitOnvifDevice = async () => {
+    try {
+      setIsAddingStream(true);
+      showStatusMessage('Adding ONVIF device as stream...');
       
       const response = await fetch('/api/onvif/device/add', {
         method: 'POST',
@@ -403,8 +430,8 @@ export function StreamsView() {
         },
         body: JSON.stringify({
           device_url: selectedDevice.device_service,
-          profile_token: profile.token,
-          stream_name: streamName,
+          profile_token: selectedProfile.token,
+          stream_name: customStreamName,
           username: onvifCredentials.username,
           password: onvifCredentials.password
         })
@@ -416,10 +443,13 @@ export function StreamsView() {
       
       showStatusMessage('ONVIF device added as stream successfully');
       setOnvifModalVisible(false);
+      setShowCustomNameInput(false);
       loadStreams();
     } catch (error) {
       console.error('Error adding ONVIF device as stream:', error);
       showStatusMessage('Error adding ONVIF device as stream: ' + error.message, 3000, 'error');
+    } finally {
+      setIsAddingStream(false);
     }
   };
   
@@ -899,7 +929,16 @@ export function StreamsView() {
                   disabled=${isDiscovering}
                   type="button"
                 >
-                  ${isDiscovering ? 'Discovering...' : 'Start Discovery'}
+                  ${isDiscovering ? html`
+                    <span class="flex items-center">
+                      Discovering
+                      <span class="ml-1 flex space-x-1">
+                        <span class="animate-pulse delay-0 h-1.5 w-1.5 bg-white rounded-full"></span>
+                        <span class="animate-pulse delay-150 h-1.5 w-1.5 bg-white rounded-full"></span>
+                        <span class="animate-pulse delay-300 h-1.5 w-1.5 bg-white rounded-full"></span>
+                      </span>
+                    </span>
+                  ` : 'Start Discovery'}
                 </button>
               </div>
               
@@ -917,7 +956,16 @@ export function StreamsView() {
                     ${discoveredDevices.length === 0 ? html`
                       <tr>
                         <td colspan="4" class="px-6 py-4 text-center text-gray-500 dark:text-gray-400">
-                          ${isDiscovering ? 'Discovering devices...' : 'No devices discovered yet. Click "Start Discovery" to scan your network.'}
+                          ${isDiscovering ? html`
+                            <div class="flex items-center justify-center">
+                              <span>Discovering devices</span>
+                              <span class="ml-1 flex space-x-1">
+                                <span class="animate-pulse delay-0 h-1.5 w-1.5 bg-gray-500 dark:bg-gray-400 rounded-full"></span>
+                                <span class="animate-pulse delay-150 h-1.5 w-1.5 bg-gray-500 dark:bg-gray-400 rounded-full"></span>
+                                <span class="animate-pulse delay-300 h-1.5 w-1.5 bg-gray-500 dark:bg-gray-400 rounded-full"></span>
+                              </span>
+                            </div>
+                          ` : 'No devices discovered yet. Click "Start Discovery" to scan your network.'}
                         </td>
                       </tr>
                     ` : discoveredDevices.map(device => html`
@@ -929,9 +977,19 @@ export function StreamsView() {
                           <button 
                             class="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors focus:outline-none"
                             onClick=${() => testOnvifConnection(device)}
+                            disabled=${isLoadingProfiles && selectedDevice && selectedDevice.ip_address === device.ip_address}
                             type="button"
                           >
-                            Connect
+                            ${isLoadingProfiles && selectedDevice && selectedDevice.ip_address === device.ip_address ? html`
+                              <span class="flex items-center">
+                                Loading
+                                <span class="ml-1 flex space-x-1">
+                                  <span class="animate-pulse delay-0 h-1.5 w-1.5 bg-white rounded-full"></span>
+                                  <span class="animate-pulse delay-150 h-1.5 w-1.5 bg-white rounded-full"></span>
+                                  <span class="animate-pulse delay-300 h-1.5 w-1.5 bg-white rounded-full"></span>
+                                </span>
+                              </span>
+                            ` : 'Connect'}
                           </button>
                         </td>
                       </tr>
@@ -986,6 +1044,58 @@ export function StreamsView() {
                 type="button"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      `}
+      
+      ${showCustomNameInput && html`
+        <div id="custom-name-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 transition-opacity duration-300">
+          <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full">
+            <div class="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
+              <h3 class="text-lg font-medium">Stream Name</h3>
+              <span class="text-2xl cursor-pointer" onClick=${() => setShowCustomNameInput(false)}>×</span>
+            </div>
+            <div class="p-4">
+              <div class="mb-4">
+                <label for="custom-stream-name" class="block text-sm font-medium mb-1">Enter a name for this stream:</label>
+                <input 
+                  type="text" 
+                  id="custom-stream-name" 
+                  class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                  value=${customStreamName}
+                  onChange=${(e) => setCustomStreamName(e.target.value)}
+                />
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  This name will be used to identify the stream in the system.
+                </p>
+              </div>
+            </div>
+            <div class="flex justify-end p-4 border-t border-gray-200 dark:border-gray-700 space-x-2">
+              <button 
+                class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+                onClick=${() => setShowCustomNameInput(false)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button 
+                class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+                onClick=${submitOnvifDevice}
+                type="button"
+                disabled=${!customStreamName.trim() || isAddingStream}
+              >
+                ${isAddingStream ? html`
+                  <span class="flex items-center">
+                    Adding
+                    <span class="ml-1 flex space-x-1">
+                      <span class="animate-pulse delay-0 h-1.5 w-1.5 bg-white rounded-full"></span>
+                      <span class="animate-pulse delay-150 h-1.5 w-1.5 bg-white rounded-full"></span>
+                      <span class="animate-pulse delay-300 h-1.5 w-1.5 bg-white rounded-full"></span>
+                    </span>
+                  </span>
+                ` : 'Add Stream'}
               </button>
             </div>
           </div>
