@@ -351,47 +351,41 @@ export function LiveView() {
       // Get auth from localStorage
       const auth = localStorage.getItem('auth');
       
-    // Check if we're on a mobile device
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    
-    // Log mobile detection
-    console.log(`Mobile device detected: ${isMobile}`);
-    
-    // Configure HLS.js with authentication headers and mobile-optimized settings
-    const hls = new window.Hls({
-      // More aggressive settings for mobile devices to prevent memory issues
-      maxBufferLength: isMobile ? 10 : 30,
-      maxMaxBufferLength: isMobile ? 20 : 60,
-      // Optimize for mobile networks with potentially unstable connections
-      liveSyncDurationCount: isMobile ? 1 : 4,
-      liveMaxLatencyDurationCount: isMobile ? 3 : 10,
-      liveDurationInfinity: false,
-      // Enable low latency mode for mobile
-      lowLatencyMode: isMobile,
-      // Enable worker for better performance but disable on older mobile devices
-      enableWorker: isMobile ? (navigator.hardwareConcurrency > 2) : true,
-      // Increase timeouts for mobile networks
-      fragLoadingTimeOut: isMobile ? 60000 : 30000,
-      manifestLoadingTimeOut: isMobile ? 30000 : 20000,
-      levelLoadingTimeOut: isMobile ? 30000 : 20000,
-      // Reduce back buffer length for mobile to save memory
-      backBufferLength: isMobile ? 10 : 60,
-      // Start with lowest quality on mobile to ensure faster startup
-      startLevel: isMobile ? 0 : -1,
-      // Optimize ABR for mobile
-      abrEwmaDefaultEstimate: isMobile ? 100000 : 500000,
-      abrBandWidthFactor: isMobile ? 0.4 : 0.7,
-      abrBandWidthUpFactor: isMobile ? 0.2 : 0.5,
-      // Add custom headers to all HLS requests
-      xhrSetup: function(xhr, url) {
-        // Add Authorization header if we have auth in localStorage
-        if (auth) {
-          xhr.setRequestHeader('Authorization', 'Basic ' + auth);
+      // Configure HLS.js with universal settings that work well on all devices
+      const hls = new window.Hls({
+        // Balanced buffer settings
+        maxBufferLength: 20,
+        maxMaxBufferLength: 30,
+        // Balanced sync settings
+        liveSyncDurationCount: 3,
+        liveMaxLatencyDurationCount: 6,
+        liveDurationInfinity: false,
+        // Disable low latency mode as it can cause issues on some devices
+        lowLatencyMode: false,
+        // Enable worker for better performance
+        enableWorker: true,
+        // Reasonable timeouts that work across networks
+        fragLoadingTimeOut: 30000,
+        manifestLoadingTimeOut: 30000,
+        levelLoadingTimeOut: 30000,
+        // Moderate back buffer length
+        backBufferLength: 30,
+        // Use automatic level selection
+        startLevel: -1,
+        // Balanced ABR settings
+        abrEwmaDefaultEstimate: 500000,
+        abrBandWidthFactor: 0.7,
+        abrBandWidthUpFactor: 0.5,
+        // Add custom headers to all HLS requests
+        xhrSetup: function(xhr, url) {
+          // Add Authorization header if we have auth in localStorage
+          if (auth) {
+            xhr.setRequestHeader('Authorization', 'Basic ' + auth);
+          }
+          // Always include credentials (cookies)
+          xhr.withCredentials = true;
         }
-        // Always include credentials (cookies)
-        xhr.withCredentials = true;
-      }
-    });
+      });
       
       hls.loadSource(hlsStreamUrl);
       hls.attachMedia(videoElement);
@@ -401,17 +395,13 @@ export function LiveView() {
           loadingIndicator.style.display = 'none';
         }
         
-        // On mobile, always show play button first to avoid autoplay restrictions
-        if (isMobile) {
-          console.log('Mobile device detected, showing play button instead of autoplay');
+        // Try to play automatically on all devices
+        // If autoplay is prevented, the error handler will show the play button
+        videoElement.play().catch(error => {
+          console.warn('Auto-play prevented:', error);
+          // Add play button overlay for user interaction
           addPlayButtonOverlay(videoCell, videoElement);
-        } else {
-          videoElement.play().catch(error => {
-            console.warn('Auto-play prevented:', error);
-            // Add play button overlay for user interaction
-            addPlayButtonOverlay(videoCell, videoElement);
-          });
-        }
+        });
       });
       
       hls.on(window.Hls.Events.ERROR, (event, data) => {
@@ -454,137 +444,122 @@ export function LiveView() {
                 });
             }, 2000);
           } else {
-            // For mobile devices, implement a more aggressive retry strategy
-            if (isMobile) {
-              console.log(`Mobile device detected, implementing aggressive retry for stream ${stream.name}`);
-              
-              // Show loading indicator with retry message
-              if (loadingIndicator) {
-                loadingIndicator.style.display = 'flex';
-                const messageSpan = loadingIndicator.querySelector('span');
-                if (messageSpan) {
-                  messageSpan.textContent = 'Reconnecting to stream...';
-                }
+            // Use a standard retry strategy for all devices
+            console.log(`Implementing standard retry for stream ${stream.name}`);
+            
+            // Show loading indicator with retry message
+            if (loadingIndicator) {
+              loadingIndicator.style.display = 'flex';
+              const messageSpan = loadingIndicator.querySelector('span');
+              if (messageSpan) {
+                messageSpan.textContent = 'Reconnecting to stream...';
               }
-              
-              // Try to recover with a new HLS instance after a delay
-              setTimeout(() => {
-                try {
-                  // Create a new timestamp to avoid caching issues
-                  const newTimestamp = Date.now();
-                  const newUrl = `/hls/${encodeURIComponent(stream.name)}/index.m3u8?_t=${newTimestamp}`;
-                  
-                  // Create a new HLS instance with more aggressive settings for mobile
-                  const newHls = new window.Hls({
-                    maxBufferLength: 5, // Even more reduced for mobile recovery
-                    maxMaxBufferLength: 10,
-                    liveSyncDurationCount: 1,
-                    liveMaxLatencyDurationCount: 2,
-                    lowLatencyMode: true,
-                    enableWorker: navigator.hardwareConcurrency > 2, // Only enable on more powerful devices
-                    fragLoadingTimeOut: 60000,
-                    manifestLoadingTimeOut: 30000,
-                    levelLoadingTimeOut: 30000,
-                    backBufferLength: 5, // Minimal back buffer for recovery
-                    startLevel: 0, // Start with lowest quality
-                    abrEwmaDefaultEstimate: 50000, // Very conservative bandwidth estimate
-                    // Disable ABR during recovery to ensure stable playback
-                    abrBandWidthFactor: 0.3,
-                    abrBandWidthUpFactor: 0.1,
-                    // More frequent level switching for mobile
-                    abrMaxWithRealBitrate: true,
-                    xhrSetup: function(xhr, url) {
-                      if (auth) {
-                        xhr.setRequestHeader('Authorization', 'Basic ' + auth);
-                      }
-                      xhr.withCredentials = true;
+            }
+            
+            // Try to recover with a new HLS instance after a delay
+            setTimeout(() => {
+              try {
+                // Create a new timestamp to avoid caching issues
+                const newTimestamp = Date.now();
+                const newUrl = `/hls/${encodeURIComponent(stream.name)}/index.m3u8?_t=${newTimestamp}`;
+                
+                // Create a new HLS instance with standard settings
+                const newHls = new window.Hls({
+                  maxBufferLength: 20,
+                  maxMaxBufferLength: 30,
+                  liveSyncDurationCount: 3,
+                  liveMaxLatencyDurationCount: 6,
+                  lowLatencyMode: false,
+                  enableWorker: true,
+                  fragLoadingTimeOut: 30000,
+                  manifestLoadingTimeOut: 30000,
+                  levelLoadingTimeOut: 30000,
+                  backBufferLength: 30,
+                  startLevel: -1,
+                  abrEwmaDefaultEstimate: 500000,
+                  abrBandWidthFactor: 0.7,
+                  abrBandWidthUpFactor: 0.5,
+                  xhrSetup: function(xhr, url) {
+                    if (auth) {
+                      xhr.setRequestHeader('Authorization', 'Basic ' + auth);
                     }
-                  });
-                  
-                  // Load the new source
-                  newHls.loadSource(newUrl);
-                  newHls.attachMedia(videoElement);
-                  
-                  // Store the new HLS instance
-                  if (videoCell) {
-                    if (videoCell.hlsPlayer) {
-                      videoCell.hlsPlayer.destroy();
-                    }
-                    videoCell.hlsPlayer = newHls;
+                    xhr.withCredentials = true;
+                  }
+                });
+                
+                // Load the new source
+                newHls.loadSource(newUrl);
+                newHls.attachMedia(videoElement);
+                
+                // Store the new HLS instance
+                if (videoCell) {
+                  if (videoCell.hlsPlayer) {
+                    videoCell.hlsPlayer.destroy();
+                  }
+                  videoCell.hlsPlayer = newHls;
+                }
+                
+                // Store in ref for cleanup
+                videoPlayers.current[stream.name] = { 
+                  hls: newHls, 
+                  refreshTimer: videoPlayers.current[stream.name] ? videoPlayers.current[stream.name].refreshTimer : null 
+                };
+                
+                // Hide loading indicator when media is attached
+                newHls.on(window.Hls.Events.MEDIA_ATTACHED, () => {
+                  console.log(`New HLS instance attached for stream ${stream.name}`);
+                  if (loadingIndicator) {
+                    loadingIndicator.style.display = 'none';
                   }
                   
-                  // Store in ref for cleanup
-                  videoPlayers.current[stream.name] = { 
-                    hls: newHls, 
-                    refreshTimer: videoPlayers.current[stream.name]?.refreshTimer 
-                  };
-                  
-                  // Hide loading indicator when media is attached
-                  newHls.on(window.Hls.Events.MEDIA_ATTACHED, () => {
-                    console.log(`New HLS instance attached for stream ${stream.name}`);
-                    if (loadingIndicator) {
-                      loadingIndicator.style.display = 'none';
-                    }
-                    
-                    // On mobile, always show play button to avoid autoplay issues
-                    if (isMobile) {
-                      addPlayButtonOverlay(videoCell, videoElement);
-                    }
-                  });
-                  
-                  // Handle errors in the new instance
-                  newHls.on(window.Hls.Events.ERROR, (event, newData) => {
-                    if (newData.fatal) {
-                      console.error('Fatal error in recovery HLS instance:', newData);
-                      newHls.destroy();
-                      handleVideoError(stream.name, 'Failed to reconnect after multiple attempts');
-                    }
-                  });
-                } catch (error) {
-                  console.error('Error during HLS recovery:', error);
-                  handleVideoError(stream.name, 'Failed to reconnect: ' + error.message);
-                }
-              }, 3000);
-            } else {
-              // Regular error handling for non-mobile devices
-              handleVideoError(stream.name);
-            }
+                  // Show play button for all devices to ensure consistent behavior
+                  addPlayButtonOverlay(videoCell, videoElement);
+                });
+                
+                // Handle errors in the new instance
+                newHls.on(window.Hls.Events.ERROR, (event, newData) => {
+                  if (newData.fatal) {
+                    console.error('Fatal error in recovery HLS instance:', newData);
+                    newHls.destroy();
+                    handleVideoError(stream.name, 'Failed to reconnect after multiple attempts');
+                  }
+                });
+              } catch (error) {
+                console.error('Error during HLS recovery:', error);
+                handleVideoError(stream.name, 'Failed to reconnect: ' + error.message);
+              }
+            }, 3000);
           }
         } else if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
           // For non-fatal network errors, try to recover
           console.warn('Network error, attempting to recover:', data);
           
-          // For mobile devices, implement a more aggressive recovery
-          if (isMobile) {
-            console.log('Mobile device detected with network error, attempting recovery');
-            
-            // Try to recover by seeking slightly
-            if (videoElement.currentTime > 0) {
-              try {
-                // Seek to live edge
-                hls.recoverMediaError();
-                videoElement.currentTime = videoElement.duration - 1;
-              } catch (e) {
-                console.error('Error during recovery seek:', e);
-              }
+          // Try to recover by seeking slightly
+          if (videoElement.currentTime > 0) {
+            try {
+              // Seek to live edge
+              hls.recoverMediaError();
+              videoElement.currentTime = videoElement.duration - 1;
+            } catch (e) {
+              console.error('Error during recovery seek:', e);
             }
+          }
+          
+          // For fragment load errors, try to switch to a lower quality
+          if (data.details === window.Hls.ErrorDetails.FRAG_LOAD_ERROR ||
+              data.details === window.Hls.ErrorDetails.FRAG_LOAD_TIMEOUT) {
             
-            // For fragment load errors, try to switch to a lower quality
-            if (data.details === window.Hls.ErrorDetails.FRAG_LOAD_ERROR ||
-                data.details === window.Hls.ErrorDetails.FRAG_LOAD_TIMEOUT) {
+            try {
+              // Get current level
+              const currentLevel = hls.currentLevel;
               
-              try {
-                // Get current level
-                const currentLevel = hls.currentLevel;
-                
-                // If not already at lowest level, switch to a lower one
-                if (currentLevel > 0) {
-                  console.log(`Switching from level ${currentLevel} to level 0 due to fragment error`);
-                  hls.currentLevel = 0;
-                }
-              } catch (e) {
-                console.error('Error during level switching:', e);
+              // If not already at lowest level, switch to a lower one
+              if (currentLevel > 0) {
+                console.log(`Switching from level ${currentLevel} to level 0 due to fragment error`);
+                hls.currentLevel = 0;
               }
+            } catch (e) {
+              console.error('Error during level switching:', e);
             }
           }
         } else if (data.type === window.Hls.ErrorTypes.MEDIA_ERROR) {
@@ -598,24 +573,19 @@ export function LiveView() {
         }
       });
       
-      // Set up refresh interval based on device type
-      const refreshInterval = isMobile ? 20000 : 60000; // 20 seconds for mobile, 60 for desktop
+      // Set up a universal refresh interval
+      const refreshInterval = 30000; // 30 seconds for all devices
       const refreshTimer = setInterval(() => {
         if (videoCell && videoCell.hlsPlayer) {
           console.log(`Refreshing HLS stream for ${stream.name}`);
           const newTimestamp = Date.now();
           const newUrl = `/hls/${encodeURIComponent(stream.name)}/index.m3u8?_t=${newTimestamp}`;
           
-          // For mobile, check if the player is in a good state before refreshing
-          if (isMobile) {
-            // Only refresh if not currently recovering from an error
-            if (!videoCell.hlsPlayer.autoLevelCapping) {
-              videoCell.hlsPlayer.loadSource(newUrl);
-            } else {
-              console.log(`Skipping refresh for ${stream.name} as it appears to be in recovery mode`);
-            }
-          } else {
+          // Check if the player is in a good state before refreshing
+          if (!videoCell.hlsPlayer.autoLevelCapping) {
             videoCell.hlsPlayer.loadSource(newUrl);
+          } else {
+            console.log(`Skipping refresh for ${stream.name} as it appears to be in recovery mode`);
           }
         } else {
           // Clear interval if video cell or player no longer exists
