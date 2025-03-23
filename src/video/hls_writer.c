@@ -295,16 +295,17 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     char hls_time[16];
     snprintf(hls_time, sizeof(hls_time), "1");  // 1 second segments for lower latency
 
-    // Enable low latency HLS mode
+    // Enable HLS mode optimized for mobile compatibility
     av_dict_set(&options, "hls_time", hls_time, 0);
-    av_dict_set(&options, "hls_list_size", "3", 0);  // Keep fewer segments to reduce latency
-    av_dict_set(&options, "hls_flags", "delete_segments+program_date_time+independent_segments+discont_start+low_latency", 0);
-    av_dict_set(&options, "hls_segment_type", "fmp4", 0);  // fMP4 segments for low latency
-    av_dict_set(&options, "hls_fmp4_init_filename", "init.mp4", 0);
+    av_dict_set(&options, "hls_list_size", "5", 0);  // Keep more segments for better compatibility
+    av_dict_set(&options, "hls_flags", "delete_segments+program_date_time+independent_segments+discont_start", 0);
+    // Use standard TS segments for better mobile compatibility
+    // av_dict_set(&options, "hls_segment_type", "fmp4", 0);  // Disabled for mobile compatibility
+    // av_dict_set(&options, "hls_fmp4_init_filename", "init.mp4", 0);
 
-    // Additional optimizations for lower latency
+    // Additional optimizations for better mobile compatibility
     av_dict_set(&options, "hls_init_time", "0", 0);  // Start segments immediately
-    av_dict_set(&options, "hls_allow_cache", "0", 0);  // Disable caching to ensure fresh content
+    av_dict_set(&options, "hls_allow_cache", "1", 0);  // Enable caching for better mobile playback
     av_dict_set(&options, "start_number", "0", 0);
 
     // Set segment filename format

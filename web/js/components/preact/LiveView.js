@@ -266,87 +266,132 @@ export function LiveView() {
     // Ensure auth headers are set for HLS requests
     console.log(`Initializing video player for stream ${stream.name}`);
     
-    // Check if HLS is supported natively
-    if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
-      // Native HLS support (Safari)
-      // Use fetch with credentials and auth header to load the HLS stream
-      const headers = {};
-      if (auth) {
-        headers['Authorization'] = 'Basic ' + auth;
-      }
-      
-      fetch(hlsStreamUrl, {
-        credentials: 'include', // Include cookies in the request
-        headers: headers
-      })
-      .then(response => {
-        if (!response.ok) {
-          throw new Error(`Failed to load HLS stream: ${response.status}`);
+      // Check if HLS is supported natively
+      if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+        // Native HLS support (Safari)
+        // Use fetch with credentials and auth header to load the HLS stream
+        const headers = {};
+        if (auth) {
+          headers['Authorization'] = 'Basic ' + auth;
         }
         
-        // For Safari, we need to create a proxy URL that includes auth
-        // This is because Safari doesn't send auth headers for subsequent segment requests
-        if (auth) {
-          // Create a blob URL with embedded credentials
-          return fetch(response.url, {
-            headers: { 'Authorization': 'Basic ' + auth },
-            credentials: 'include'
-          })
-          .then(r => r.blob())
-          .then(blob => URL.createObjectURL(blob));
+        // Log that we're using native HLS support
+        console.log(`Using native HLS support for stream ${stream.name} on Safari/iOS`);
+        
+        // For iOS Safari, we need to handle things differently
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        if (isIOS) {
+          console.log(`iOS device detected, using direct HLS URL for stream ${stream.name}`);
+          
+          // On iOS, we need to set the video source directly and handle auth differently
+          // iOS Safari will automatically handle cookies for HLS requests
+          videoElement.src = hlsStreamUrl;
+          
+          // Add play button overlay for iOS (autoplay restrictions)
+          addPlayButtonOverlay(videoCell, videoElement);
+          
+          // Hide loading indicator when metadata is loaded
+          videoElement.addEventListener('loadedmetadata', function() {
+            console.log(`Metadata loaded for iOS stream ${stream.name}`);
+            if (loadingIndicator) {
+              loadingIndicator.style.display = 'none';
+            }
+          });
+          
+          // Handle errors
+          videoElement.addEventListener('error', (e) => {
+            console.error(`iOS video error for stream ${stream.name}:`, videoElement.error);
+            handleVideoError(stream.name, videoElement.error ? videoElement.error.message : 'Unknown error');
+          });
         } else {
-          return response.url; // Get the final URL after any redirects
+          // For desktop Safari
+          fetch(hlsStreamUrl, {
+            credentials: 'include', // Include cookies in the request
+            headers: headers
+          })
+          .then(response => {
+            if (!response.ok) {
+              throw new Error(`Failed to load HLS stream: ${response.status}`);
+            }
+            
+            // For Safari, we need to create a proxy URL that includes auth
+            // This is because Safari doesn't send auth headers for subsequent segment requests
+            if (auth) {
+              // Create a blob URL with embedded credentials
+              return fetch(response.url, {
+                headers: { 'Authorization': 'Basic ' + auth },
+                credentials: 'include'
+              })
+              .then(r => r.blob())
+              .then(blob => URL.createObjectURL(blob));
+            } else {
+              return response.url; // Get the final URL after any redirects
+            }
+          })
+          .then(finalUrl => {
+            videoElement.src = finalUrl;
+            videoElement.addEventListener('loadedmetadata', function() {
+              if (loadingIndicator) {
+                loadingIndicator.style.display = 'none';
+              }
+            });
+          })
+          .catch(error => {
+            console.error('Error loading HLS stream:', error);
+            handleVideoError(stream.name, error.message);
+          });
+          
+          videoElement.addEventListener('error', () => {
+            handleVideoError(stream.name);
+          });
         }
-      })
-      .then(finalUrl => {
-        videoElement.src = finalUrl;
-        videoElement.addEventListener('loadedmetadata', function() {
-          if (loadingIndicator) {
-            loadingIndicator.style.display = 'none';
-          }
-        });
-      })
-      .catch(error => {
-        console.error('Error loading HLS stream:', error);
-        handleVideoError(stream.name, error.message);
-      });
-      
-      videoElement.addEventListener('error', () => {
-        handleVideoError(stream.name);
-      });
-    }
+      }
     // Use HLS.js for browsers that don't support HLS natively
     else if (window.Hls && window.Hls.isSupported()) {
       // Get auth from localStorage
       const auth = localStorage.getItem('auth');
       
-      // Configure HLS.js with authentication headers
-      const hls = new window.Hls({
-        maxBufferLength: 30,
-        maxMaxBufferLength: 60,
-        liveSyncDurationCount: 4,
-        liveMaxLatencyDurationCount: 10,
-        liveDurationInfinity: false,
-        lowLatencyMode: false,
-        enableWorker: true,
-        fragLoadingTimeOut: 30000,
-        manifestLoadingTimeOut: 20000,
-        levelLoadingTimeOut: 20000,
-        backBufferLength: 60,
-        startLevel: -1,
-        abrEwmaDefaultEstimate: 500000,
-        abrBandWidthFactor: 0.7,
-        abrBandWidthUpFactor: 0.5,
-        // Add custom headers to all HLS requests
-        xhrSetup: function(xhr, url) {
-          // Add Authorization header if we have auth in localStorage
-          if (auth) {
-            xhr.setRequestHeader('Authorization', 'Basic ' + auth);
-          }
-          // Always include credentials (cookies)
-          xhr.withCredentials = true;
+    // Check if we're on a mobile device
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    
+    // Log mobile detection
+    console.log(`Mobile device detected: ${isMobile}`);
+    
+    // Configure HLS.js with authentication headers and mobile-optimized settings
+    const hls = new window.Hls({
+      // More aggressive settings for mobile devices to prevent memory issues
+      maxBufferLength: isMobile ? 10 : 30,
+      maxMaxBufferLength: isMobile ? 20 : 60,
+      // Optimize for mobile networks with potentially unstable connections
+      liveSyncDurationCount: isMobile ? 1 : 4,
+      liveMaxLatencyDurationCount: isMobile ? 3 : 10,
+      liveDurationInfinity: false,
+      // Enable low latency mode for mobile
+      lowLatencyMode: isMobile,
+      // Enable worker for better performance but disable on older mobile devices
+      enableWorker: isMobile ? (navigator.hardwareConcurrency > 2) : true,
+      // Increase timeouts for mobile networks
+      fragLoadingTimeOut: isMobile ? 60000 : 30000,
+      manifestLoadingTimeOut: isMobile ? 30000 : 20000,
+      levelLoadingTimeOut: isMobile ? 30000 : 20000,
+      // Reduce back buffer length for mobile to save memory
+      backBufferLength: isMobile ? 10 : 60,
+      // Start with lowest quality on mobile to ensure faster startup
+      startLevel: isMobile ? 0 : -1,
+      // Optimize ABR for mobile
+      abrEwmaDefaultEstimate: isMobile ? 100000 : 500000,
+      abrBandWidthFactor: isMobile ? 0.4 : 0.7,
+      abrBandWidthUpFactor: isMobile ? 0.2 : 0.5,
+      // Add custom headers to all HLS requests
+      xhrSetup: function(xhr, url) {
+        // Add Authorization header if we have auth in localStorage
+        if (auth) {
+          xhr.setRequestHeader('Authorization', 'Basic ' + auth);
         }
-      });
+        // Always include credentials (cookies)
+        xhr.withCredentials = true;
+      }
+    });
       
       hls.loadSource(hlsStreamUrl);
       hls.attachMedia(videoElement);
@@ -355,16 +400,26 @@ export function LiveView() {
         if (loadingIndicator) {
           loadingIndicator.style.display = 'none';
         }
-        videoElement.play().catch(error => {
-          console.warn('Auto-play prevented:', error);
-          // Add play button overlay for user interaction
+        
+        // On mobile, always show play button first to avoid autoplay restrictions
+        if (isMobile) {
+          console.log('Mobile device detected, showing play button instead of autoplay');
           addPlayButtonOverlay(videoCell, videoElement);
-        });
+        } else {
+          videoElement.play().catch(error => {
+            console.warn('Auto-play prevented:', error);
+            // Add play button overlay for user interaction
+            addPlayButtonOverlay(videoCell, videoElement);
+          });
+        }
       });
       
       hls.on(window.Hls.Events.ERROR, (event, data) => {
+        console.warn('HLS error:', data);
+        
+        // Handle fatal errors
         if (data.fatal) {
-          console.error('HLS error:', data);
+          console.error('Fatal HLS error:', data);
           hls.destroy();
           
           // Check if the stream was recently enabled
@@ -399,20 +454,169 @@ export function LiveView() {
                 });
             }, 2000);
           } else {
-            // Regular error handling for non-startup errors
-            handleVideoError(stream.name);
+            // For mobile devices, implement a more aggressive retry strategy
+            if (isMobile) {
+              console.log(`Mobile device detected, implementing aggressive retry for stream ${stream.name}`);
+              
+              // Show loading indicator with retry message
+              if (loadingIndicator) {
+                loadingIndicator.style.display = 'flex';
+                const messageSpan = loadingIndicator.querySelector('span');
+                if (messageSpan) {
+                  messageSpan.textContent = 'Reconnecting to stream...';
+                }
+              }
+              
+              // Try to recover with a new HLS instance after a delay
+              setTimeout(() => {
+                try {
+                  // Create a new timestamp to avoid caching issues
+                  const newTimestamp = Date.now();
+                  const newUrl = `/hls/${encodeURIComponent(stream.name)}/index.m3u8?_t=${newTimestamp}`;
+                  
+                  // Create a new HLS instance with more aggressive settings for mobile
+                  const newHls = new window.Hls({
+                    maxBufferLength: 5, // Even more reduced for mobile recovery
+                    maxMaxBufferLength: 10,
+                    liveSyncDurationCount: 1,
+                    liveMaxLatencyDurationCount: 2,
+                    lowLatencyMode: true,
+                    enableWorker: navigator.hardwareConcurrency > 2, // Only enable on more powerful devices
+                    fragLoadingTimeOut: 60000,
+                    manifestLoadingTimeOut: 30000,
+                    levelLoadingTimeOut: 30000,
+                    backBufferLength: 5, // Minimal back buffer for recovery
+                    startLevel: 0, // Start with lowest quality
+                    abrEwmaDefaultEstimate: 50000, // Very conservative bandwidth estimate
+                    // Disable ABR during recovery to ensure stable playback
+                    abrBandWidthFactor: 0.3,
+                    abrBandWidthUpFactor: 0.1,
+                    // More frequent level switching for mobile
+                    abrMaxWithRealBitrate: true,
+                    xhrSetup: function(xhr, url) {
+                      if (auth) {
+                        xhr.setRequestHeader('Authorization', 'Basic ' + auth);
+                      }
+                      xhr.withCredentials = true;
+                    }
+                  });
+                  
+                  // Load the new source
+                  newHls.loadSource(newUrl);
+                  newHls.attachMedia(videoElement);
+                  
+                  // Store the new HLS instance
+                  if (videoCell) {
+                    if (videoCell.hlsPlayer) {
+                      videoCell.hlsPlayer.destroy();
+                    }
+                    videoCell.hlsPlayer = newHls;
+                  }
+                  
+                  // Store in ref for cleanup
+                  videoPlayers.current[stream.name] = { 
+                    hls: newHls, 
+                    refreshTimer: videoPlayers.current[stream.name]?.refreshTimer 
+                  };
+                  
+                  // Hide loading indicator when media is attached
+                  newHls.on(window.Hls.Events.MEDIA_ATTACHED, () => {
+                    console.log(`New HLS instance attached for stream ${stream.name}`);
+                    if (loadingIndicator) {
+                      loadingIndicator.style.display = 'none';
+                    }
+                    
+                    // On mobile, always show play button to avoid autoplay issues
+                    if (isMobile) {
+                      addPlayButtonOverlay(videoCell, videoElement);
+                    }
+                  });
+                  
+                  // Handle errors in the new instance
+                  newHls.on(window.Hls.Events.ERROR, (event, newData) => {
+                    if (newData.fatal) {
+                      console.error('Fatal error in recovery HLS instance:', newData);
+                      newHls.destroy();
+                      handleVideoError(stream.name, 'Failed to reconnect after multiple attempts');
+                    }
+                  });
+                } catch (error) {
+                  console.error('Error during HLS recovery:', error);
+                  handleVideoError(stream.name, 'Failed to reconnect: ' + error.message);
+                }
+              }, 3000);
+            } else {
+              // Regular error handling for non-mobile devices
+              handleVideoError(stream.name);
+            }
+          }
+        } else if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
+          // For non-fatal network errors, try to recover
+          console.warn('Network error, attempting to recover:', data);
+          
+          // For mobile devices, implement a more aggressive recovery
+          if (isMobile) {
+            console.log('Mobile device detected with network error, attempting recovery');
+            
+            // Try to recover by seeking slightly
+            if (videoElement.currentTime > 0) {
+              try {
+                // Seek to live edge
+                hls.recoverMediaError();
+                videoElement.currentTime = videoElement.duration - 1;
+              } catch (e) {
+                console.error('Error during recovery seek:', e);
+              }
+            }
+            
+            // For fragment load errors, try to switch to a lower quality
+            if (data.details === window.Hls.ErrorDetails.FRAG_LOAD_ERROR ||
+                data.details === window.Hls.ErrorDetails.FRAG_LOAD_TIMEOUT) {
+              
+              try {
+                // Get current level
+                const currentLevel = hls.currentLevel;
+                
+                // If not already at lowest level, switch to a lower one
+                if (currentLevel > 0) {
+                  console.log(`Switching from level ${currentLevel} to level 0 due to fragment error`);
+                  hls.currentLevel = 0;
+                }
+              } catch (e) {
+                console.error('Error during level switching:', e);
+              }
+            }
+          }
+        } else if (data.type === window.Hls.ErrorTypes.MEDIA_ERROR) {
+          // For media errors, try to recover
+          console.warn('Media error, attempting to recover:', data);
+          try {
+            hls.recoverMediaError();
+          } catch (e) {
+            console.error('Error during media error recovery:', e);
           }
         }
       });
       
-      // Set up less frequent refresh to reduce load on low-power devices
-      const refreshInterval = 60000; // 60 seconds
+      // Set up refresh interval based on device type
+      const refreshInterval = isMobile ? 20000 : 60000; // 20 seconds for mobile, 60 for desktop
       const refreshTimer = setInterval(() => {
         if (videoCell && videoCell.hlsPlayer) {
           console.log(`Refreshing HLS stream for ${stream.name}`);
           const newTimestamp = Date.now();
           const newUrl = `/hls/${encodeURIComponent(stream.name)}/index.m3u8?_t=${newTimestamp}`;
-          videoCell.hlsPlayer.loadSource(newUrl);
+          
+          // For mobile, check if the player is in a good state before refreshing
+          if (isMobile) {
+            // Only refresh if not currently recovering from an error
+            if (!videoCell.hlsPlayer.autoLevelCapping) {
+              videoCell.hlsPlayer.loadSource(newUrl);
+            } else {
+              console.log(`Skipping refresh for ${stream.name} as it appears to be in recovery mode`);
+            }
+          } else {
+            videoCell.hlsPlayer.loadSource(newUrl);
+          }
         } else {
           // Clear interval if video cell or player no longer exists
           clearInterval(refreshTimer);
@@ -434,6 +638,11 @@ export function LiveView() {
   
   // Add play button overlay
   function addPlayButtonOverlay(videoCell, videoElement) {
+    // Check if play overlay already exists
+    if (videoCell.querySelector('.play-overlay')) {
+      return;
+    }
+    
     const playOverlay = document.createElement('div');
     playOverlay.className = 'play-overlay';
     
@@ -445,18 +654,68 @@ export function LiveView() {
       </svg>
     `;
     
+    // Add tap/click message for mobile
+    if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+      const tapMessage = document.createElement('div');
+      tapMessage.className = 'tap-message';
+      tapMessage.textContent = 'Tap to play';
+      tapMessage.style.color = 'white';
+      tapMessage.style.marginTop = '10px';
+      tapMessage.style.fontSize = '14px';
+      playButton.appendChild(tapMessage);
+    }
+    
     playOverlay.appendChild(playButton);
     videoCell.appendChild(playOverlay);
     
-    playOverlay.addEventListener('click', function() {
+    // Use both click and touchend events for better mobile response
+    const playHandler = function() {
+      // Disable the overlay immediately to prevent multiple taps
+      playOverlay.style.pointerEvents = 'none';
+      
+      // Show loading indicator
+      const loadingIndicator = videoCell.querySelector('.loading-indicator');
+      if (loadingIndicator) {
+        loadingIndicator.style.display = 'flex';
+      }
+      
+      // Add a visual feedback that the tap was registered
+      playButton.style.transform = 'scale(0.9)';
+      
       videoElement.play()
         .then(() => {
           playOverlay.remove();
+          if (loadingIndicator) {
+            loadingIndicator.style.display = 'none';
+          }
         })
         .catch(error => {
           console.error('Play failed:', error);
-          showStatusMessage('Auto-play blocked by browser. Please adjust your browser settings.');
+          
+          // Re-enable the overlay if play fails
+          playOverlay.style.pointerEvents = 'auto';
+          playButton.style.transform = '';
+          
+          if (loadingIndicator) {
+            loadingIndicator.style.display = 'none';
+          }
+          
+          // Show error message
+          showStatusMessage('Auto-play blocked by browser. Please try again or check your browser settings.');
+          
+          // On iOS, we need to mute the video to allow playback without user gesture
+          if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+            videoElement.muted = true;
+            showStatusMessage('Video muted to allow playback on iOS. Tap again to play.');
+          }
         });
+    };
+    
+    // Add both event listeners for better mobile compatibility
+    playOverlay.addEventListener('click', playHandler);
+    playOverlay.addEventListener('touchend', function(e) {
+      e.preventDefault(); // Prevent default touch behavior
+      playHandler();
     });
   };
   

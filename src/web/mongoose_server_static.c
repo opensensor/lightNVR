@@ -49,11 +49,29 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
     
     // Special case: handle root path "/" directly
     if (strcmp(uri, "/") == 0) {
-        log_info("Handling root path '/', redirecting to /live.html");
-        mg_printf(c, "HTTP/1.1 302 Found\r\n");
-        mg_printf(c, "Location: /live.html\r\n");
-        mg_printf(c, "Content-Length: 0\r\n");
-        mg_printf(c, "\r\n");
+        log_info("Handling root path '/', serving live.html directly");
+        
+        // Construct the path to live.html
+        char live_path[MAX_PATH_LENGTH * 2];
+        snprintf(live_path, sizeof(live_path), "%s/live.html", server->config.web_root);
+        
+        // Check if live.html exists
+        struct stat st;
+        if (stat(live_path, &st) == 0 && S_ISREG(st.st_mode)) {
+            // Serve live.html directly
+            struct mg_http_serve_opts opts = {
+                .root_dir = server->config.web_root,
+                .mime_types = "html=text/html"
+            };
+            mg_http_serve_file(c, hm, live_path, &opts);
+        } else {
+            // If live.html doesn't exist, try the redirect approach
+            log_info("live.html not found, falling back to redirect");
+            mg_printf(c, "HTTP/1.1 302 Found\r\n");
+            mg_printf(c, "Location: /live.html\r\n");
+            mg_printf(c, "Content-Length: 0\r\n");
+            mg_printf(c, "\r\n");
+        }
         return;
     }
     
@@ -184,12 +202,27 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
             
             // Serve the file with appropriate headers
             // Use a more efficient approach for HLS files to reduce overhead
+            // Determine content type based on file extension
+            const char *content_type_header = "Content-Type: application/octet-stream\r\n";
+            if (strstr(file_name, ".m3u8")) {
+                content_type_header = "Content-Type: application/vnd.apple.mpegurl\r\n";
+            } else if (strstr(file_name, ".ts")) {
+                content_type_header = "Content-Type: video/mp2t\r\n";
+            }
+            
+            // Use more mobile-friendly cache headers
+            char headers[512];
+            snprintf(headers, sizeof(headers),
+                "%s"
+                "Cache-Control: max-age=1\r\n"  // Allow short caching for better mobile performance
+                "Access-Control-Allow-Origin: *\r\n"
+                "Access-Control-Allow-Methods: GET, OPTIONS\r\n"
+                "Access-Control-Allow-Headers: Origin, Content-Type, Accept, Authorization\r\n",
+                content_type_header);
+            
             mg_http_serve_file(c, hm, hls_file_path, &(struct mg_http_serve_opts){
                 .mime_types = "",
-                .extra_headers = "Cache-Control: no-cache, no-store, must-revalidate\r\n"
-                                "Pragma: no-cache\r\n"
-                                "Expires: 0\r\n"
-                                "Access-Control-Allow-Origin: *\r\n"
+                .extra_headers = headers
             });
             return;
         } else {

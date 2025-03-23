@@ -408,10 +408,11 @@ void handle_hls_manifest(const http_request_t *request, http_response_t *respons
     strncpy(response->content_type, "application/vnd.apple.mpegurl", sizeof(response->content_type) - 1);
     response->content_type[sizeof(response->content_type) - 1] = '\0';
     
-    // Add strict cache control headers to prevent caching of HLS manifests
-    set_response_header(response, "Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
-    set_response_header(response, "Pragma", "no-cache");
-    set_response_header(response, "Expires", "0");
+    // Add mobile-friendly cache control headers for HLS manifests
+    set_response_header(response, "Cache-Control", "max-age=1");
+    set_response_header(response, "Access-Control-Allow-Origin", "*");
+    set_response_header(response, "Access-Control-Allow-Methods", "GET, OPTIONS");
+    set_response_header(response, "Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization");
     
     // Add timestamp header to help client identify the freshness of the manifest
     char timestamp_str[32];
@@ -544,10 +545,11 @@ void handle_hls_segment(const http_request_t *request, http_response_t *response
     strncpy(response->content_type, "video/mp2t", sizeof(response->content_type) - 1);
     response->content_type[sizeof(response->content_type) - 1] = '\0';
     
-    // Add strict cache control headers to prevent caching of HLS segments
-    set_response_header(response, "Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
-    set_response_header(response, "Pragma", "no-cache");
-    set_response_header(response, "Expires", "0");
+    // Add mobile-friendly cache control headers for HLS segments
+    set_response_header(response, "Cache-Control", "max-age=60"); // Allow caching segments for better mobile playback
+    set_response_header(response, "Access-Control-Allow-Origin", "*");
+    set_response_header(response, "Access-Control-Allow-Methods", "GET, OPTIONS");
+    set_response_header(response, "Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization");
     
     // Add timestamp header to help client identify the freshness of the segment
     char timestamp_str[32];

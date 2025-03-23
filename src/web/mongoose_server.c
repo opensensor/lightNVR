@@ -12,6 +12,7 @@
 #include "core/logger.h"
 #include "utils/memory.h"
 #include "web/connection_pool.h"
+#include "web/api_thread_pool.h"
 
 // Include Mongoose
 #include "mongoose.h"
@@ -351,6 +352,13 @@ http_server_handle_t http_server_init(const http_server_config_t *config) {
     // Initialize route table
     init_route_table();
     
+    // Initialize API thread pool
+    if (!api_thread_pool_init(3, 10)) {
+        log_warn("Failed to initialize API thread pool, will be initialized on demand");
+    } else {
+        log_info("API thread pool initialized");
+    }
+    
     return mongoose_server_init(config);
 }
 
@@ -533,6 +541,10 @@ void http_server_destroy(http_server_handle_t server) {
         connection_pool_shutdown(server->conn_pool);
         // Note: connection_pool_shutdown also frees the memory
     }
+    
+    // Shutdown API thread pool
+    log_info("Shutting down API thread pool");
+    api_thread_pool_shutdown();
 
     // Destroy global mutex
     pthread_mutex_destroy(&server->mutex);

@@ -259,6 +259,53 @@
         padding: 0.35rem 0.5rem;
         font-size: 0.8rem;
     }
+    
+    /* Larger play button for mobile */
+    .play-button {
+        width: 5rem;
+        height: 5rem;
+    }
+    
+    /* Larger touch targets for mobile */
+    .video-cell .stream-controls button {
+        min-height: 44px; /* Apple's recommended minimum touch target size */
+        min-width: 44px;
+    }
+    
+    /* Improve loading indicator visibility on mobile */
+    .loading-indicator {
+        background-color: rgba(0, 0, 0, 0.5);
+        padding: 1rem;
+        border-radius: 8px;
+    }
+    
+    /* Improve error indicator visibility on mobile */
+    .error-indicator {
+        width: 80%;
+        max-width: 300px;
+    }
+    
+    /* Ensure retry button is large enough for touch */
+    .retry-button {
+        min-height: 44px;
+        min-width: 100px;
+        font-size: 1rem;
+    }
+}
+
+/* iOS specific adjustments */
+@supports (-webkit-touch-callout: none) {
+    /* iOS-specific styles */
+    .video-cell video {
+        /* Fix for iOS video playback issues */
+        position: relative;
+        z-index: 1;
+    }
+    
+    /* Ensure controls are more visible on iOS */
+    .video-cell .stream-info {
+        background-color: rgba(0, 0, 0, 0.8);
+    }
 }
 
 /* Status message styles */
@@ -301,15 +348,18 @@
     inset: 0;
     background-color: rgba(0, 0, 0, 0.6);
     backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px); /* For Safari */
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     transition: all 0.2s ease;
     z-index: 15;
+    touch-action: manipulation; /* Optimize for touch */
 }
 
-.play-overlay:hover {
+.play-overlay:hover, .play-overlay:active {
     background-color: rgba(0, 0, 0, 0.5);
 }
 
@@ -319,11 +369,20 @@
     background-color: rgba(255, 255, 255, 0.2);
     border-radius: 50%;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     transition: transform 0.2s ease;
 }
 
-.play-overlay:hover .play-button {
+.play-overlay:hover .play-button, .play-overlay:active .play-button {
     transform: scale(1.1);
+}
+
+/* Tap message for mobile */
+.tap-message {
+    margin-top: 10px;
+    color: white;
+    font-size: 14px;
+    text-align: center;
 }
