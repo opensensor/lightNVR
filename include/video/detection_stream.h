@@ -37,6 +37,14 @@ int stop_detection_stream_reader(const char *stream_name);
 int is_detection_stream_reader_running(const char *stream_name);
 
 /**
+ * Get the detection interval for a stream
+ * 
+ * @param stream_name The name of the stream
+ * @return The detection interval in seconds, or 15 (default) if not found
+ */
+int get_detection_interval(const char *stream_name);
+
+/**
  * Print status of all detection stream readers
  * This is useful for debugging detection issues
  */

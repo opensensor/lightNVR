@@ -54,8 +54,9 @@ typedef struct {
 
 static buffer_pool_item_t buffer_pool[MAX_BUFFER_POOL_SIZE] = {0};
 static pthread_mutex_t buffer_pool_mutex = PTHREAD_MUTEX_INITIALIZER;
-static int active_detections = 0;
-static pthread_mutex_t active_detections_mutex = PTHREAD_MUTEX_INITIALIZER;
+// Make these variables accessible from other files
+pthread_mutex_t active_detections_mutex = PTHREAD_MUTEX_INITIALIZER;
+int active_detections = 0;
 
 // Track which streams are currently being processed for detection
 static char active_detection_streams[MAX_CONCURRENT_DETECTIONS][MAX_STREAM_NAME] = {{0}};

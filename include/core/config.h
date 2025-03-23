@@ -94,6 +94,7 @@ typedef struct {
     bool use_swap;
     char swap_file[MAX_PATH_LENGTH];
     uint64_t swap_size; // in bytes
+    bool memory_constrained; // Flag for memory-constrained devices
     
     // Hardware acceleration
     bool hw_accel_enabled;

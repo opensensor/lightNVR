@@ -28,6 +28,7 @@
 #include "video/detection_recording.h"
 #include "video/detection.h"
 #include "video/detection_integration.h"
+#include "video/detection_thread_pool.h"
 #include "video/stream_packet_processor.h"
 #include "video/timestamp_manager.h"
 #include "video/onvif_discovery.h"
@@ -462,6 +463,13 @@ int main(int argc, char *argv[]) {
         log_info("Detection system initialized successfully");
     }
     
+    // Initialize detection thread pool
+    if (init_detection_thread_pool() != 0) {
+        log_error("Failed to initialize detection thread pool");
+    } else {
+        log_info("Detection thread pool initialized successfully");
+    }
+    
     // Initialize detection recording system
     init_detection_recording_system();
     
@@ -738,6 +746,10 @@ cleanup:
         // Shutdown detection resources
         log_info("Cleaning up detection resources...");
         cleanup_detection_resources();
+        
+        // Shutdown detection thread pool
+        log_info("Shutting down detection thread pool...");
+        shutdown_detection_thread_pool();
         
         // Shutdown ONVIF discovery
         log_info("Shutting down ONVIF discovery module...");

@@ -26,6 +26,8 @@
 #include "video/stream_reader.h"
 #include "video/detection_stream.h"
 #include "video/detection_integration.h"
+#include "video/detection_thread_pool.h"
+#include <sys/sysinfo.h>
 #include "video/stream_packet_processor.h"
 #include "video/thread_utils.h"
 #include "video/timestamp_manager.h"
@@ -291,8 +293,38 @@ void *hls_stream_thread(void *arg) {
             }
 
             // Process packet for detection only on key frames to reduce CPU load
-            if (is_key_frame && process_packet_for_detection) {
-                process_packet_for_detection(stream_name, pkt, input_ctx->streams[video_stream_idx]->codecpar);
+            // Use the thread pool for non-blocking detection
+            if (is_key_frame && is_detection_stream_reader_running(stream_name)) {
+                // Check if we're on a memory-constrained device
+                extern config_t g_config;
+                bool is_memory_constrained = g_config.memory_constrained || (sysconf(_SC_PHYS_PAGES) * sysconf(_SC_PAGE_SIZE) < 1024*1024*1024); // Less than 1GB RAM
+                
+                // Get current time to check detection interval
+                static time_t last_detection_time = 0;
+                time_t current_time = time(NULL);
+                int detection_interval = get_detection_interval(stream_name);
+                
+                // Only run detection if enough time has passed since the last detection
+                if (last_detection_time == 0 || (current_time - last_detection_time) >= detection_interval) {
+                    // Submit the detection task to the thread pool
+                    if (is_memory_constrained) {
+                        // On memory-constrained devices, only submit if the thread pool is not busy
+                        if (!is_detection_thread_pool_busy()) {
+                            log_info("Submitting detection task for stream %s to thread pool", stream_name);
+                            if (submit_detection_task(stream_name, pkt, input_ctx->streams[video_stream_idx]->codecpar) == 0) {
+                                last_detection_time = current_time;
+                            }
+                        } else {
+                            log_debug("Skipping detection on memory-constrained device - thread pool busy");
+                        }
+                    } else {
+                        // On regular devices, always submit the task
+                        log_info("Submitting detection task for stream %s to thread pool", stream_name);
+                        if (submit_detection_task(stream_name, pkt, input_ctx->streams[video_stream_idx]->codecpar) == 0) {
+                            last_detection_time = current_time;
+                        }
+                    }
+                }
             }
         }
 

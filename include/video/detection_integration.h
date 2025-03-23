@@ -3,6 +3,15 @@
 
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
+#include <pthread.h>
+#include <stdbool.h>
+
+// Maximum number of concurrent detections
+#define MAX_CONCURRENT_DETECTIONS 3
+
+// Expose detection state variables for memory-constrained optimization
+extern pthread_mutex_t active_detections_mutex;
+extern int active_detections;
 
 /**
  * Process a decoded frame for detection
