@@ -2,6 +2,7 @@
 #include "video/stream_manager.h"
 #include "core/logger.h"
 #include "database/db_streams.h"
+#include "video/stream_protocol.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,6 +11,7 @@
 #include <ezxml.h>
 #include <openssl/sha.h>
 #include <openssl/evp.h>
+#include <libavformat/avformat.h>
 
 // Structure to store memory for CURL responses
 typedef struct {
@@ -477,14 +479,18 @@ int get_onvif_stream_url(const char *device_url, const char *username,
             // Reconstruct URI with authentication
             char auth_uri[512];
             if (port[0] != '\0') {
-                snprintf(auth_uri, sizeof(auth_uri), "%s://%s:%s@%s:%s%s", 
-                         scheme, username, password, host, port, path);
+                // For onvif_simple_server compatibility, try different auth format
+                // Some ONVIF servers expect credentials in URL, others in RTSP protocol
+                snprintf(auth_uri, sizeof(auth_uri), "%s://%s:%s%s", 
+                         scheme, host, port, path);
+                
+                log_info("Constructed URI without embedded auth: %s", auth_uri);
             } else {
-                snprintf(auth_uri, sizeof(auth_uri), "%s://%s:%s@%s%s", 
-                         scheme, username, password, host, path);
+                snprintf(auth_uri, sizeof(auth_uri), "%s://%s%s", 
+                         scheme, host, path);
+                
+                log_info("Constructed URI without embedded auth: %s", auth_uri);
             }
-            
-            log_info("Constructed authenticated URI: %s", auth_uri);
             
             strncpy(stream_url, auth_uri, url_size - 1);
             stream_url[url_size - 1] = '\0';
@@ -610,5 +616,25 @@ int test_onvif_connection(const char *url, const char *username, const char *pas
     }
     
     log_info("Successfully connected to ONVIF device: %s", url);
+    
+    // Now test the stream connection
+    if (count > 0 && strlen(profiles[0].stream_uri) > 0) {
+        log_info("Testing stream connection for profile: %s, URI: %s", 
+                profiles[0].token, profiles[0].stream_uri);
+        
+        // Try to open the stream
+        AVFormatContext *input_ctx = NULL;
+        int ret = open_input_stream(&input_ctx, profiles[0].stream_uri, STREAM_PROTOCOL_TCP);
+        
+        if (ret < 0) {
+            log_error("Failed to connect to stream: %s", profiles[0].stream_uri);
+            return -1;
+        }
+        
+        // Close the stream
+        avformat_close_input(&input_ctx);
+        log_info("Successfully connected to stream: %s", profiles[0].stream_uri);
+    }
+    
     return 0;
 }

@@ -185,6 +185,31 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
         
         // ONVIF streams may need more time to start
         av_dict_set(&input_options, "rw_timeout", "15000000", 0); // 15 second read/write timeout
+        
+        // For onvif_simple_server compatibility
+        // Extract username and password from URL if present
+        const char *auth_start = strstr(url, "://");
+        if (auth_start && strchr(auth_start + 3, '@')) {
+            // URL contains authentication, extract it for RTSP auth
+            char username[64] = {0};
+            char password[64] = {0};
+            
+            // Parse username and password from URL
+            if (sscanf(auth_start + 3, "%63[^:]:%63[^@]@", username, password) == 2) {
+                log_info("Extracted credentials from URL for RTSP authentication");
+                
+                // Set RTSP authentication options
+                av_dict_set(&input_options, "rtsp_transport", "tcp", 0);
+                av_dict_set(&input_options, "rtsp_flags", "prefer_tcp", 0);
+                av_dict_set(&input_options, "rtsp_user", username, 0);
+                av_dict_set(&input_options, "rtsp_pass", password, 0);
+            }
+        } else {
+            // No authentication in URL, set default RTSP options for onvif_simple_server
+            log_info("No credentials in URL, using default RTSP options for onvif_simple_server");
+            av_dict_set(&input_options, "rtsp_transport", "tcp", 0);
+            av_dict_set(&input_options, "rtsp_flags", "prefer_tcp", 0);
+        }
     }
     
     // Open input with protocol-specific options
