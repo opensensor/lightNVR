@@ -553,23 +553,66 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
             time_t last_used;
         } model_cache[MAX_STREAMS] = {{{0}}};
         
+        // Global model cache to share across all streams
+        static struct {
+            char path[MAX_PATH_LENGTH];
+            detection_model_t model;
+            time_t last_used;
+            bool is_large_model;
+        } global_model_cache[MAX_STREAMS] = {{{0}}};
+        static pthread_mutex_t global_model_cache_mutex = PTHREAD_MUTEX_INITIALIZER;
+        
         // Find model in cache or load it
         detection_model_t model = NULL;
         int cache_idx = -1;
         
-        // Look for model in cache
+        // Lock the global model cache
+        pthread_mutex_lock(&global_model_cache_mutex);
+        
+        // Look for model in global cache first
         for (int i = 0; i < MAX_STREAMS; i++) {
-            if (model_cache[i].path[0] != '\0' && 
-                strcmp(model_cache[i].path, full_model_path) == 0) {
-                model = model_cache[i].model;
+            if (global_model_cache[i].path[0] != '\0' && 
+                strcmp(global_model_cache[i].path, full_model_path) == 0) {
+                model = global_model_cache[i].model;
                 cache_idx = i;
-                model_cache[i].last_used = time(NULL);
-                log_info("Using cached detection model for %s", full_model_path);
+                global_model_cache[i].last_used = time(NULL);
+                log_info("Using globally cached detection model for %s", full_model_path);
+                pthread_mutex_unlock(&global_model_cache_mutex);
                 break;
             }
         }
+        pthread_mutex_unlock(&global_model_cache_mutex);
         
-        // If not found in cache, load it
+        // If not found in global cache, check local cache
+        if (!model) {
+            // Look for model in local cache
+            for (int i = 0; i < MAX_STREAMS; i++) {
+                if (model_cache[i].path[0] != '\0' && 
+                    strcmp(model_cache[i].path, full_model_path) == 0) {
+                    model = model_cache[i].model;
+                    cache_idx = i;
+                    model_cache[i].last_used = time(NULL);
+                    log_info("Using locally cached detection model for %s", full_model_path);
+                    
+                    // Also add to global cache for other streams to use
+                    pthread_mutex_lock(&global_model_cache_mutex);
+                    for (int j = 0; j < MAX_STREAMS; j++) {
+                        if (global_model_cache[j].path[0] == '\0') {
+                            strncpy(global_model_cache[j].path, full_model_path, MAX_PATH_LENGTH - 1);
+                            global_model_cache[j].model = model;
+                            global_model_cache[j].last_used = time(NULL);
+                            log_info("Added model to global cache: %s", full_model_path);
+                            pthread_mutex_unlock(&global_model_cache_mutex);
+                            break;
+                        }
+                    }
+                    pthread_mutex_unlock(&global_model_cache_mutex);
+                    break;
+                }
+            }
+        }
+        
+        // If not found in any cache, load it
         if (!model) {
             // Find an empty slot or the oldest used model
             time_t oldest_time = time(NULL);
@@ -591,58 +634,113 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                 if (model_cache[oldest_idx].path[0] != '\0') {
                     log_info("Unloading cached model %s to make room for %s", 
                             model_cache[oldest_idx].path, full_model_path);
-                    unload_detection_model(model_cache[oldest_idx].model);
+                    
+                    // Check if this model is in the global cache before unloading
+                    bool in_global_cache = false;
+                    pthread_mutex_lock(&global_model_cache_mutex);
+                    for (int i = 0; i < MAX_STREAMS; i++) {
+                        if (global_model_cache[i].path[0] != '\0' && 
+                            strcmp(global_model_cache[i].path, model_cache[oldest_idx].path) == 0) {
+                            in_global_cache = true;
+                            break;
+                        }
+                    }
+                    pthread_mutex_unlock(&global_model_cache_mutex);
+                    
+                    // Only unload if not in global cache
+                    if (!in_global_cache) {
+                        unload_detection_model(model_cache[oldest_idx].model);
+                    } else {
+                        log_info("Model %s is in global cache, not unloading", model_cache[oldest_idx].path);
+                    }
+                    
                     model_cache[oldest_idx].path[0] = '\0';
                     model_cache[oldest_idx].model = NULL;
                 }
                 
-                // Load the new model
-                log_info("LOADING DETECTION MODEL: %s with threshold: %.2f", full_model_path, threshold);
+                // Check if model is already loaded in global cache
+                pthread_mutex_lock(&global_model_cache_mutex);
+                for (int i = 0; i < MAX_STREAMS; i++) {
+                    if (global_model_cache[i].path[0] != '\0' && 
+                        strcmp(global_model_cache[i].path, full_model_path) == 0) {
+                        model = global_model_cache[i].model;
+                        global_model_cache[i].last_used = time(NULL);
+                        log_info("Found model in global cache after slot search: %s", full_model_path);
+                        pthread_mutex_unlock(&global_model_cache_mutex);
+                        
+                        // Cache locally
+                        strncpy(model_cache[oldest_idx].path, full_model_path, MAX_PATH_LENGTH - 1);
+                        model_cache[oldest_idx].model = model;
+                        model_cache[oldest_idx].last_used = time(NULL);
+                        cache_idx = oldest_idx;
+                        break;
+                    }
+                }
+                pthread_mutex_unlock(&global_model_cache_mutex);
                 
-                // Check if file exists before loading
-                FILE *model_file = fopen(full_model_path, "r");
-                if (!model_file) {
-                    log_error("MODEL FILE NOT FOUND: %s", full_model_path);
+                // If still not found, load the model
+                if (!model) {
+                    // Load the new model
+                    log_info("LOADING DETECTION MODEL: %s with threshold: %.2f", full_model_path, threshold);
                     
-                    // Try alternative locations
+                    // Check if file exists before loading
+                    FILE *model_file = fopen(full_model_path, "r");
+                    if (!model_file) {
+                        log_error("MODEL FILE NOT FOUND: %s", full_model_path);
+                        
+                        // Try alternative locations
                         const char *locations[] = {
                             "/var/lib/lightnvr/models/"
                         };
-                    
-                    bool found = false;
-                    for (int j = 0; j < sizeof(locations)/sizeof(locations[0]); j++) {
-                        char alt_path[MAX_PATH_LENGTH];
-                        snprintf(alt_path, MAX_PATH_LENGTH, "%s%s", 
-                                locations[j], strrchr(full_model_path, '/') ? 
-                                strrchr(full_model_path, '/') + 1 : full_model_path);
                         
-                        FILE *alt_file = fopen(alt_path, "r");
-                        if (alt_file) {
-                            fclose(alt_file);
-                            log_info("MODEL FOUND AT ALTERNATIVE LOCATION: %s", alt_path);
-                            strncpy(full_model_path, alt_path, MAX_PATH_LENGTH - 1);
-                            found = true;
-                            break;
+                        bool found = false;
+                        for (int j = 0; j < sizeof(locations)/sizeof(locations[0]); j++) {
+                            char alt_path[MAX_PATH_LENGTH];
+                            snprintf(alt_path, MAX_PATH_LENGTH, "%s%s", 
+                                    locations[j], strrchr(full_model_path, '/') ? 
+                                    strrchr(full_model_path, '/') + 1 : full_model_path);
+                            
+                            FILE *alt_file = fopen(alt_path, "r");
+                            if (alt_file) {
+                                fclose(alt_file);
+                                log_info("MODEL FOUND AT ALTERNATIVE LOCATION: %s", alt_path);
+                                strncpy(full_model_path, alt_path, MAX_PATH_LENGTH - 1);
+                                found = true;
+                                break;
+                            }
                         }
+                        
+                        if (!found) {
+                            log_error("MODEL NOT FOUND IN ANY LOCATION!");
+                        }
+                    } else {
+                        fclose(model_file);
+                        log_info("MODEL FILE EXISTS: %s", full_model_path);
                     }
                     
-                    if (!found) {
-                        log_error("MODEL NOT FOUND IN ANY LOCATION!");
+                    model = load_detection_model(full_model_path, threshold);
+                    
+                    if (model) {
+                        // Cache the model locally
+                        strncpy(model_cache[oldest_idx].path, full_model_path, MAX_PATH_LENGTH - 1);
+                        model_cache[oldest_idx].model = model;
+                        model_cache[oldest_idx].last_used = time(NULL);
+                        cache_idx = oldest_idx;
+                        log_info("Cached detection model for %s in local slot %d", full_model_path, oldest_idx);
+                        
+                        // Also add to global cache
+                        pthread_mutex_lock(&global_model_cache_mutex);
+                        for (int i = 0; i < MAX_STREAMS; i++) {
+                            if (global_model_cache[i].path[0] == '\0') {
+                                strncpy(global_model_cache[i].path, full_model_path, MAX_PATH_LENGTH - 1);
+                                global_model_cache[i].model = model;
+                                global_model_cache[i].last_used = time(NULL);
+                                log_info("Added model to global cache: %s", full_model_path);
+                                break;
+                            }
+                        }
+                        pthread_mutex_unlock(&global_model_cache_mutex);
                     }
-                } else {
-                    fclose(model_file);
-                    log_info("MODEL FILE EXISTS: %s", full_model_path);
-                }
-                
-                model = load_detection_model(full_model_path, threshold);
-                
-                if (model) {
-                    // Cache the model
-                    strncpy(model_cache[oldest_idx].path, full_model_path, MAX_PATH_LENGTH - 1);
-                    model_cache[oldest_idx].model = model;
-                    model_cache[oldest_idx].last_used = time(NULL);
-                    cache_idx = oldest_idx;
-                    log_info("Cached detection model for %s in slot %d", full_model_path, oldest_idx);
                 }
             }
         }

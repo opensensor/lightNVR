@@ -469,6 +469,15 @@ static detection_model_t load_tflite_model(const char *model_path, float thresho
 static int large_models_loaded = 0;
 static pthread_mutex_t large_models_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+// Global model cache to share across all detection functions
+static struct {
+    char path[MAX_PATH_LENGTH];
+    detection_model_t model;
+    time_t last_used;
+    bool is_large_model;
+} global_model_cache[MAX_STREAMS] = {{{0}}};
+static pthread_mutex_t global_model_cache_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 /**
  * Load a detection model
  */
@@ -478,7 +487,21 @@ detection_model_t load_detection_model(const char *model_path, float threshold) 
         return NULL;
     }
 
-    // Check if file exists and get its size
+    // First check if the model is already loaded in the global cache
+    pthread_mutex_lock(&global_model_cache_mutex);
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (global_model_cache[i].path[0] != '\0' && 
+            strcmp(global_model_cache[i].path, model_path) == 0) {
+            detection_model_t cached_model = global_model_cache[i].model;
+            global_model_cache[i].last_used = time(NULL);
+            log_info("Using globally cached model: %s", model_path);
+            pthread_mutex_unlock(&global_model_cache_mutex);
+            return cached_model;
+        }
+    }
+    pthread_mutex_unlock(&global_model_cache_mutex);
+
+    // If not in cache, check if file exists and get its size
     struct stat st;
     if (stat(model_path, &st) != 0) {
         log_error("MODEL FILE NOT FOUND IN DETECTION.C: %s", model_path);
@@ -530,6 +553,44 @@ detection_model_t load_detection_model(const char *model_path, float threshold) 
         pthread_mutex_unlock(&large_models_mutex);
     }
     
+    // If loading succeeded, add to global cache
+    if (model) {
+        pthread_mutex_lock(&global_model_cache_mutex);
+        // Find an empty slot or the oldest used model in the cache
+        int oldest_idx = -1;
+        time_t oldest_time = time(NULL);
+        
+        for (int i = 0; i < MAX_STREAMS; i++) {
+            if (global_model_cache[i].path[0] == '\0') {
+                oldest_idx = i;
+                break;
+            } else if (global_model_cache[i].last_used < oldest_time) {
+                oldest_time = global_model_cache[i].last_used;
+                oldest_idx = i;
+            }
+        }
+        
+        // If we found a slot, add the model to the cache
+        if (oldest_idx >= 0) {
+            // If slot was used and it was a large model, decrement the counter
+            if (global_model_cache[oldest_idx].path[0] != '\0' && 
+                global_model_cache[oldest_idx].is_large_model) {
+                pthread_mutex_lock(&large_models_mutex);
+                if (large_models_loaded > 0) {
+                    large_models_loaded--;
+                }
+                pthread_mutex_unlock(&large_models_mutex);
+            }
+            
+            strncpy(global_model_cache[oldest_idx].path, model_path, MAX_PATH_LENGTH - 1);
+            global_model_cache[oldest_idx].model = model;
+            global_model_cache[oldest_idx].last_used = time(NULL);
+            global_model_cache[oldest_idx].is_large_model = is_large_model;
+            log_info("Added model to global cache: %s", model_path);
+        }
+        pthread_mutex_unlock(&global_model_cache_mutex);
+    }
+    
     return model;
 }
 
@@ -543,16 +604,31 @@ void unload_detection_model(detection_model_t model) {
 
     model_t *m = (model_t *)model;
     
-    // Get the model path to check if it's a large model
+    // Check if this model is in the global cache
+    bool in_global_cache = false;
     char model_path[MAX_PATH_LENGTH] = {0};
     bool is_large_model = false;
     
-    // For SOD models, we can get the path from the model structure
-    if (strcmp(m->type, MODEL_TYPE_SOD) == 0) {
-        // We don't have direct access to the path in the model structure
-        // But we can check if it's a large model based on memory usage
-        // This is an approximation
-        is_large_model = true;  // Assume it's large for safety
+    pthread_mutex_lock(&global_model_cache_mutex);
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (global_model_cache[i].model == model) {
+            in_global_cache = true;
+            strncpy(model_path, global_model_cache[i].path, MAX_PATH_LENGTH - 1);
+            is_large_model = global_model_cache[i].is_large_model;
+            
+            // Remove from global cache
+            global_model_cache[i].path[0] = '\0';
+            global_model_cache[i].model = NULL;
+            global_model_cache[i].is_large_model = false;
+            log_info("Removed model from global cache: %s", model_path);
+            break;
+        }
+    }
+    pthread_mutex_unlock(&global_model_cache_mutex);
+    
+    // If not found in global cache, assume it's a large model for safety
+    if (!in_global_cache) {
+        is_large_model = true;
     }
 
     if (strcmp(m->type, MODEL_TYPE_SOD) == 0) {
