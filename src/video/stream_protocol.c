@@ -210,6 +210,20 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
             av_dict_set(&input_options, "rtsp_transport", "tcp", 0);
             av_dict_set(&input_options, "rtsp_flags", "prefer_tcp", 0);
         }
+        
+        // Try multiple authentication methods for onvif_simple_server
+        // Some ONVIF implementations require specific auth methods
+        log_info("Setting multiple auth options for ONVIF compatibility");
+        av_dict_set(&input_options, "rtsp_transport", "tcp", 0);
+        
+        // Disable authentication requirement - some servers don't need it
+        av_dict_set(&input_options, "rtsp_flags", "prefer_tcp+no_auth", 0);
+        
+        // Increase timeout for RTSP connections
+        av_dict_set(&input_options, "stimeout", "15000000", 0); // 15 seconds
+        
+        // Add detailed logging for RTSP
+        av_dict_set(&input_options, "loglevel", "debug", 0);
     }
     
     // Open input with protocol-specific options

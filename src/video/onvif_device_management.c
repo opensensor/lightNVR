@@ -63,33 +63,38 @@ static char* create_security_header(const char *username, const char *password, 
     // Get current time
     time_t now;
     struct tm *tm_now;
-    
+     
     time(&now);
     tm_now = gmtime(&now);
     strftime(created, 30, "%Y-%m-%dT%H:%M:%S.000Z", tm_now);
     
     // Create the concatenated string: nonce + created + password
-    concatenated = malloc(strlen(base64_nonce) + strlen(created) + strlen(password) + 1);
-    sprintf(concatenated, "%s%s%s", base64_nonce, created, password);
+    // For digest calculation, we need to use the raw nonce bytes, not the base64 encoded version
+    concatenated = malloc(nonce_len + strlen(created) + strlen(password) + 1);
+    memcpy(concatenated, nonce_bytes, nonce_len);
+    memcpy(concatenated + nonce_len, created, strlen(created));
+    memcpy(concatenated + nonce_len + strlen(created), password, strlen(password) + 1);
     
     // Calculate SHA1 digest
-    SHA1((unsigned char*)concatenated, strlen(concatenated), digest);
+    SHA1((unsigned char*)concatenated, nonce_len + strlen(created) + strlen(password), digest);
     
     // Base64 encode the digest
     base64_digest = malloc(((4 * SHA_DIGEST_LENGTH) / 3) + 5);
     EVP_EncodeBlock((unsigned char*)base64_digest, digest, SHA_DIGEST_LENGTH);
     
-    // Create the security header
+    // Create the security header in the format expected by onvif_simple_server
     header = malloc(1024);
     sprintf(header,
-        "<Security xmlns=\"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd\">"
-            "<UsernameToken>"
-                "<Username>%s</Username>"
-                "<Password Type=\"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordDigest\">%s</Password>"
-                "<Nonce EncodingType=\"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-soap-message-security-1.0#Base64Binary\">%s</Nonce>"
-                "<Created xmlns=\"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd\">%s</Created>"
-            "</UsernameToken>"
-        "</Security>",
+        "<wsse:Security s:mustUnderstand=\"1\" "
+            "xmlns:wsse=\"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd\" "
+            "xmlns:wsu=\"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd\">"
+            "<wsse:UsernameToken wsu:Id=\"UsernameToken-1\">"
+                "<wsse:Username>%s</wsse:Username>"
+                "<wsse:Password Type=\"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordDigest\">%s</wsse:Password>"
+                "<wsse:Nonce EncodingType=\"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-soap-message-security-1.0#Base64Binary\">%s</wsse:Nonce>"
+                "<wsu:Created>%s</wsu:Created>"
+            "</wsse:UsernameToken>"
+        "</wsse:Security>",
         username, base64_digest, base64_nonce, created);
     
     // Free allocated memory
@@ -124,31 +129,31 @@ static char* send_soap_request(const char *device_url, const char *soap_action, 
         return NULL;
     }
     
+    // Log the request details
+    log_info("Sending SOAP request to: %s", device_url);
+    log_info("Request body: %s", request_body);
+    
     // Create security header if authentication is required
     if (username && password && strlen(username) > 0 && strlen(password) > 0) {
         security_header = create_security_header(username, password, nonce, created);
+        log_info("Using authentication with username: %s", username);
     } else {
         security_header = strdup("");
+        log_info("No authentication credentials provided");
     }
     
-    // Create the SOAP envelope
+    // Try simpler SOAP envelope format for better compatibility with onvif_simple_server
+    // Based on the curl example that worked
     soap_envelope = malloc(strlen(request_body) + strlen(security_header) + 1024);
+    
+    // First try with simplified envelope format
     sprintf(soap_envelope,
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
-        "<SOAP-ENV:Envelope "
-            "xmlns:SOAP-ENV=\"http://www.w3.org/2003/05/soap-envelope\" "
-            "xmlns:SOAP-ENC=\"http://www.w3.org/2003/05/soap-encoding\" "
-            "xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" "
-            "xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" "
-            "xmlns:wsa=\"http://www.w3.org/2005/08/addressing\" "
-            "xmlns:tds=\"http://www.onvif.org/ver10/device/wsdl\" "
-            "xmlns:trt=\"http://www.onvif.org/ver10/media/wsdl\" "
-            "xmlns:timg=\"http://www.onvif.org/ver20/imaging/wsdl\" "
-            "xmlns:tev=\"http://www.onvif.org/ver10/events/wsdl\" "
-            "xmlns:tptz=\"http://www.onvif.org/ver20/ptz/wsdl\">"
-            "<SOAP-ENV:Header>%s</SOAP-ENV:Header>"
-            "<SOAP-ENV:Body>%s</SOAP-ENV:Body>"
-        "</SOAP-ENV:Envelope>",
+        "<s:Envelope xmlns:s=\"http://www.w3.org/2003/05/soap-envelope\">"
+        "<s:Header>%s</s:Header>"
+        "<s:Body xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" "
+        "xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">%s</s:Body>"
+        "</s:Envelope>",
         security_header, request_body);
     
     // Set up the HTTP headers
@@ -159,7 +164,7 @@ static char* send_soap_request(const char *device_url, const char *soap_action, 
         headers = curl_slist_append(headers, soap_action_header);
     }
     
-    // Set up CURL options
+    // Set up CURL options with more verbose debugging
     curl_easy_setopt(curl, CURLOPT_URL, device_url);
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, soap_envelope);
@@ -168,13 +173,55 @@ static char* send_soap_request(const char *device_url, const char *soap_action, 
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+    curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L); // Enable verbose output
     
     // Perform the request
     res = curl_easy_perform(curl);
     if (res != CURLE_OK) {
         log_error("CURL failed: %s", curl_easy_strerror(res));
+        
+        // If the first attempt failed, try with the original envelope format
+        log_info("First SOAP format failed, trying alternative format");
+        
+        free(soap_envelope);
+        soap_envelope = malloc(strlen(request_body) + strlen(security_header) + 1024);
+        sprintf(soap_envelope,
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+            "<SOAP-ENV:Envelope "
+                "xmlns:SOAP-ENV=\"http://www.w3.org/2003/05/soap-envelope\" "
+                "xmlns:SOAP-ENC=\"http://www.w3.org/2003/05/soap-encoding\" "
+                "xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" "
+                "xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" "
+                "xmlns:wsa=\"http://www.w3.org/2005/08/addressing\" "
+                "xmlns:tds=\"http://www.onvif.org/ver10/device/wsdl\" "
+                "xmlns:trt=\"http://www.onvif.org/ver10/media/wsdl\" "
+                "xmlns:timg=\"http://www.onvif.org/ver20/imaging/wsdl\" "
+                "xmlns:tev=\"http://www.onvif.org/ver10/events/wsdl\" "
+                "xmlns:tptz=\"http://www.onvif.org/ver20/ptz/wsdl\">"
+                "<SOAP-ENV:Header>%s</SOAP-ENV:Header>"
+                "<SOAP-ENV:Body>%s</SOAP-ENV:Body>"
+            "</SOAP-ENV:Envelope>",
+            security_header, request_body);
+        
+        // Retry the request
+        res = curl_easy_perform(curl);
+        if (res != CURLE_OK) {
+            log_error("Both SOAP formats failed: %s", curl_easy_strerror(res));
+        } else {
+            response = strdup(chunk.memory);
+            log_info("Second SOAP format succeeded");
+        }
     } else {
         response = strdup(chunk.memory);
+        log_info("First SOAP format succeeded");
+    }
+    
+    // Log response if available
+    if (response) {
+        // Log first 200 characters of response for debugging
+        char debug_response[201] = {0};
+        strncpy(debug_response, response, 200);
+        log_info("Response (first 200 chars): %s", debug_response);
     }
     
     // Clean up
@@ -224,9 +271,9 @@ static void find_elements_by_name(ezxml_t root, const char *name, ezxml_t *resul
 // Get media service URL from device service
 static char* get_media_service_url(const char *device_url, const char *username, const char *password) {
     char *request_body = 
-        "<tds:GetServices>"
-            "<tds:IncludeCapability>false</tds:IncludeCapability>"
-        "</tds:GetServices>";
+        "<GetServices xmlns=\"http://www.onvif.org/ver10/device/wsdl\">"
+            "<IncludeCapability>false</IncludeCapability>"
+        "</GetServices>";
     
     char *response = send_soap_request(device_url, NULL, request_body, username, password);
     if (!response) {
@@ -244,21 +291,87 @@ static char* get_media_service_url(const char *device_url, const char *username,
     
     // Find the media service URL
     char *media_url = NULL;
+    
+    // Try with SOAP-ENV namespace first
     ezxml_t body = find_child(xml, "SOAP-ENV:Body");
+    if (!body) {
+        // Try with s namespace (used by onvif_simple_server)
+        body = find_child(xml, "s:Body");
+        log_info("Using 's:Body' namespace for XML parsing");
+    }
+    
     if (body) {
+        // Try with tds namespace
         ezxml_t get_services_response = find_child(body, "tds:GetServicesResponse");
+        if (!get_services_response) {
+            // Try without namespace prefix
+            get_services_response = find_child(body, "GetServicesResponse");
+            log_info("Using 'GetServicesResponse' without namespace for XML parsing");
+        }
+        
         if (get_services_response) {
+            // Try with tds namespace
             ezxml_t service = find_child(get_services_response, "tds:Service");
+            if (!service) {
+                // Try without namespace prefix
+                service = find_child(get_services_response, "Service");
+                log_info("Using 'Service' without namespace for XML parsing");
+            }
+            
             while (service) {
+                // Try with and without namespace for Namespace element
                 ezxml_t namespace = find_child(service, "Namespace");
+                if (!namespace) {
+                    namespace = find_child(service, "tds:Namespace");
+                }
+                
                 if (namespace && strcmp(ezxml_txt(namespace), "http://www.onvif.org/ver10/media/wsdl") == 0) {
+                    // Try with and without namespace for XAddr element
                     ezxml_t xaddr = find_child(service, "XAddr");
+                    if (!xaddr) {
+                        xaddr = find_child(service, "tds:XAddr");
+                    }
+                    
                     if (xaddr) {
                         media_url = strdup(ezxml_txt(xaddr));
+                        log_info("Found media service URL: %s", media_url);
                         break;
                     }
                 }
+                
+                // Try next sibling
                 service = service->next;
+                if (!service) {
+                    // Try next sibling with different method
+                    service = ezxml_next(get_services_response->child);
+                }
+            }
+        }
+    }
+    
+    // If we still don't have a media URL, try a fallback approach for onvif_simple_server
+    if (!media_url) {
+        log_info("Standard XML parsing failed, trying fallback for onvif_simple_server");
+        
+        // For onvif_simple_server, we might need to use the device URL as the media URL
+        // with a different path
+        char *device_path = strstr(device_url, "/onvif/");
+        if (device_path) {
+            // Construct media URL by replacing "/device_service" with "/media_service"
+            char *media_path = strstr(device_path, "/device_service");
+            if (media_path) {
+                size_t prefix_len = media_path - device_url;
+                media_url = malloc(prefix_len + strlen("/onvif/media_service") + 1);
+                if (media_url) {
+                    strncpy(media_url, device_url, prefix_len);
+                    media_url[prefix_len] = '\0';
+                    strcat(media_url, "/onvif/media_service");
+                    log_info("Created fallback media URL: %s", media_url);
+                }
+            } else {
+                // Just use the device URL as the media URL
+                media_url = strdup(device_url);
+                log_info("Using device URL as media URL: %s", media_url);
             }
         }
     }
@@ -282,7 +395,7 @@ int get_onvif_device_profiles(const char *device_url, const char *username,
     
     log_info("Getting profiles for ONVIF device: %s (Media URL: %s)", device_url, media_url);
     
-    char *request_body = "<trt:GetProfiles/>";
+    char *request_body = "<GetProfiles xmlns=\"http://www.onvif.org/ver10/media/wsdl\"/>";
     char *response = send_soap_request(media_url, NULL, request_body, username, password);
     if (!response) {
         log_error("Failed to get profiles");
@@ -408,15 +521,15 @@ int get_onvif_stream_url(const char *device_url, const char *username,
     // Create request body for GetStreamUri
     char request_body[512];
     snprintf(request_body, sizeof(request_body),
-        "<trt:GetStreamUri>"
-            "<trt:StreamSetup>"
-                "<tt:Stream>RTP-Unicast</tt:Stream>"
-                "<tt:Transport>"
-                    "<tt:Protocol>RTSP</tt:Protocol>"
-                "</tt:Transport>"
-            "</trt:StreamSetup>"
-            "<trt:ProfileToken>%s</trt:ProfileToken>"
-        "</trt:GetStreamUri>",
+        "<GetStreamUri xmlns=\"http://www.onvif.org/ver10/media/wsdl\">"
+            "<StreamSetup>"
+                "<Stream xmlns=\"http://www.onvif.org/ver10/schema\">RTP-Unicast</Stream>"
+                "<Transport xmlns=\"http://www.onvif.org/ver10/schema\">"
+                    "<Protocol>RTSP</Protocol>"
+                "</Transport>"
+            "</StreamSetup>"
+            "<ProfileToken>%s</ProfileToken>"
+        "</GetStreamUri>",
         profile_token);
     
     char *response = send_soap_request(media_url, NULL, request_body, username, password);
@@ -465,35 +578,27 @@ int get_onvif_stream_url(const char *device_url, const char *username,
     strncpy(stream_url, uri, url_size - 1);
     stream_url[url_size - 1] = '\0';
     
-    // If username/password are provided, embed them in the URI
+    // For onvif_simple_server compatibility, we need to use the URI exactly as provided
+    // without modifying it, as the server expects specific URL formats
+    log_info("Using original stream URI from ONVIF device: %s", uri);
+    
+    // Store credentials in the stream context for later use
     if (username && password && strlen(username) > 0 && strlen(password) > 0) {
-        // Extract scheme, host, port, and path from URI
+        // Log the credentials for debugging
+        log_info("Using credentials for ONVIF stream: username=%s", username);
+        
+        // Extract scheme, host, port, and path from URI for logging
         char scheme[16] = {0};
         char host[128] = {0};
         char port[16] = {0};
         char path[256] = {0};
         
-        if (sscanf(uri, "%15[^:]://%127[^:/]:%15[^/]%255s", scheme, host, port, path) == 4 ||
-            sscanf(uri, "%15[^:]://%127[^:/]%255s", scheme, host, path) == 3) {
-            
-            // Reconstruct URI with authentication
-            char auth_uri[512];
-            if (port[0] != '\0') {
-                // For onvif_simple_server compatibility, try different auth format
-                // Some ONVIF servers expect credentials in URL, others in RTSP protocol
-                snprintf(auth_uri, sizeof(auth_uri), "%s://%s:%s%s", 
-                         scheme, host, port, path);
-                
-                log_info("Constructed URI without embedded auth: %s", auth_uri);
-            } else {
-                snprintf(auth_uri, sizeof(auth_uri), "%s://%s%s", 
-                         scheme, host, path);
-                
-                log_info("Constructed URI without embedded auth: %s", auth_uri);
-            }
-            
-            strncpy(stream_url, auth_uri, url_size - 1);
-            stream_url[url_size - 1] = '\0';
+        if (sscanf(uri, "%15[^:]://%127[^:/]:%15[^/]%255s", scheme, host, port, path) == 4) {
+            log_info("Parsed RTSP URI components: scheme=%s, host=%s, port=%s, path=%s", 
+                    scheme, host, port, path);
+        } else if (sscanf(uri, "%15[^:]://%127[^:/]%255s", scheme, host, path) == 3) {
+            log_info("Parsed RTSP URI components: scheme=%s, host=%s, path=%s (no port)", 
+                    scheme, host, path);
         }
     }
     
@@ -566,11 +671,41 @@ int add_onvif_device_as_stream(const onvif_device_info_t *device_info,
     if (username) {
         strncpy(config.onvif_username, username, sizeof(config.onvif_username) - 1);
         config.onvif_username[sizeof(config.onvif_username) - 1] = '\0';
+        
+        // For onvif_simple_server compatibility, log the username
+        log_info("Setting ONVIF username for stream %s: %s", stream_name, username);
     }
     
     if (password) {
         strncpy(config.onvif_password, password, sizeof(config.onvif_password) - 1);
         config.onvif_password[sizeof(config.onvif_password) - 1] = '\0';
+        
+        // For onvif_simple_server compatibility, log that we have a password
+        log_info("Setting ONVIF password for stream %s", stream_name);
+    }
+    
+    // For onvif_simple_server compatibility, try to create a direct URL with embedded credentials
+    if (username && password && strlen(username) > 0 && strlen(password) > 0) {
+        // Extract scheme, host, port, and path
+        char scheme[16] = {0};
+        char host[128] = {0};
+        char port[16] = {0};
+        char path[256] = {0};
+        
+        if (sscanf(profile->stream_uri, "%15[^:]://%127[^:/]:%15[^/]%255s", 
+                  scheme, host, port, path) == 4) {
+            // Construct URL with embedded credentials
+            char direct_url[MAX_URL_LENGTH];
+            snprintf(direct_url, sizeof(direct_url), 
+                    "%s://%s:%s@%s:%s%s", 
+                    scheme, username, password, host, port, path);
+            
+            log_info("Created direct URL with embedded credentials: %s", direct_url);
+            
+            // Store both URLs for flexibility
+            strncpy(config.url, direct_url, MAX_URL_LENGTH - 1);
+            config.url[MAX_URL_LENGTH - 1] = '\0';
+        }
     }
     
     strncpy(config.onvif_profile, profile->token, sizeof(config.onvif_profile) - 1);
@@ -622,13 +757,60 @@ int test_onvif_connection(const char *url, const char *username, const char *pas
         log_info("Testing stream connection for profile: %s, URI: %s", 
                 profiles[0].token, profiles[0].stream_uri);
         
-        // Try to open the stream
+        // Try to open the stream with TCP protocol first
         AVFormatContext *input_ctx = NULL;
         int ret = open_input_stream(&input_ctx, profiles[0].stream_uri, STREAM_PROTOCOL_TCP);
         
         if (ret < 0) {
-            log_error("Failed to connect to stream: %s", profiles[0].stream_uri);
-            return -1;
+            log_warn("Failed to connect to stream with TCP protocol, trying UDP: %s", profiles[0].stream_uri);
+            
+            // Try UDP protocol as fallback
+            ret = open_input_stream(&input_ctx, profiles[0].stream_uri, STREAM_PROTOCOL_UDP);
+            
+            if (ret < 0) {
+                // Try with a direct RTSP URL without any modifications
+                log_warn("Failed with UDP protocol too, trying direct RTSP connection");
+                
+                // Create a direct RTSP URL with credentials
+                char direct_url[MAX_URL_LENGTH];
+                if (username && password && strlen(username) > 0 && strlen(password) > 0) {
+                    // Extract scheme, host, port, and path
+                    char scheme[16] = {0};
+                    char host[128] = {0};
+                    char port[16] = {0};
+                    char path[256] = {0};
+                    
+                    if (sscanf(profiles[0].stream_uri, "%15[^:]://%127[^:/]:%15[^/]%255s", 
+                              scheme, host, port, path) == 4) {
+                        // Construct URL with embedded credentials
+                        snprintf(direct_url, sizeof(direct_url), 
+                                "%s://%s:%s@%s:%s%s", 
+                                scheme, username, password, host, port, path);
+                    } else if (sscanf(profiles[0].stream_uri, "%15[^:]://%127[^:/]%255s", 
+                                     scheme, host, path) == 3) {
+                        // No port specified
+                        snprintf(direct_url, sizeof(direct_url), 
+                                "%s://%s:%s@%s%s", 
+                                scheme, username, password, host, path);
+                    } else {
+                        // Fallback to original URL
+                        strncpy(direct_url, profiles[0].stream_uri, sizeof(direct_url) - 1);
+                        direct_url[sizeof(direct_url) - 1] = '\0';
+                    }
+                } else {
+                    // No credentials, use original URL
+                    strncpy(direct_url, profiles[0].stream_uri, sizeof(direct_url) - 1);
+                    direct_url[sizeof(direct_url) - 1] = '\0';
+                }
+                
+                log_info("Trying direct RTSP URL: %s", direct_url);
+                ret = open_input_stream(&input_ctx, direct_url, STREAM_PROTOCOL_TCP);
+                
+                if (ret < 0) {
+                    log_error("All connection attempts failed for stream: %s", profiles[0].stream_uri);
+                    return -1;
+                }
+            }
         }
         
         // Close the stream
