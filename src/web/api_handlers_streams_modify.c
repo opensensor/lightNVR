@@ -19,6 +19,7 @@
 #include "database/database_manager.h"
 #include "video/hls/hls_directory.h"
 #include "video/hls/hls_api.h"
+#include "video/onvif_device_management.h"
 
 /**
  * @brief Direct handler for POST /api/streams
@@ -152,6 +153,46 @@ void mg_handle_post_stream(struct mg_connection *c, struct mg_http_message *hm) 
         config.protocol = (stream_protocol_t)protocol->valueint;
     }
     
+    // Check if isOnvif flag is set in the request
+    cJSON *is_onvif = cJSON_GetObjectItem(stream_json, "isOnvif");
+    if (is_onvif && cJSON_IsBool(is_onvif)) {
+        config.is_onvif = cJSON_IsTrue(is_onvif);
+    } else {
+        // Fall back to URL-based detection if not explicitly set
+        config.is_onvif = (strstr(config.url, "onvif") != NULL);
+    }
+    
+    log_info("ONVIF flag for stream %s: %s", config.name, config.is_onvif ? "true" : "false");
+    
+    // If ONVIF flag is set, test the connection
+    bool onvif_test_success = true;
+    bool onvif_test_performed = false;
+    if (config.is_onvif) {
+        onvif_test_performed = true;
+        log_info("Testing ONVIF capabilities for stream %s", config.name);
+        
+        // Extract username and password if provided
+        cJSON *onvif_username = cJSON_GetObjectItem(stream_json, "onvif_username");
+        cJSON *onvif_password = cJSON_GetObjectItem(stream_json, "onvif_password");
+        
+        if (onvif_username && cJSON_IsString(onvif_username)) {
+            strncpy(config.onvif_username, onvif_username->valuestring, sizeof(config.onvif_username) - 1);
+            config.onvif_username[sizeof(config.onvif_username) - 1] = '\0';
+        }
+        
+        if (onvif_password && cJSON_IsString(onvif_password)) {
+            strncpy(config.onvif_password, onvif_password->valuestring, sizeof(config.onvif_password) - 1);
+            config.onvif_password[sizeof(config.onvif_password) - 1] = '\0';
+        }
+        
+        // Test ONVIF connection
+        int result = test_onvif_connection(config.url, 
+                                          config.onvif_username[0] ? config.onvif_username : NULL, 
+                                          config.onvif_password[0] ? config.onvif_password : NULL);
+        
+        onvif_test_success = (result == 0);
+    }
+    
     // Clean up JSON
     cJSON_Delete(stream_json);
     
@@ -198,6 +239,17 @@ void mg_handle_post_stream(struct mg_connection *c, struct mg_http_message *hm) 
     }
     
     cJSON_AddBoolToObject(success, "success", true);
+    
+    // Add ONVIF detection result if applicable
+    if (config.is_onvif) {
+        if (onvif_test_success) {
+            cJSON_AddStringToObject(success, "onvif_status", "success");
+            cJSON_AddStringToObject(success, "onvif_message", "ONVIF capabilities detected successfully");
+        } else {
+            cJSON_AddStringToObject(success, "onvif_status", "error");
+            cJSON_AddStringToObject(success, "onvif_message", "Failed to detect ONVIF capabilities");
+        }
+    }
     
     // Convert to string
     char *json_str = cJSON_PrintUnformatted(success);
@@ -384,6 +436,55 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
         }
     }
     
+    // Update is_onvif flag based on request or URL
+    bool original_is_onvif = config.is_onvif;
+    
+    // Check if isOnvif flag is set in the request
+    cJSON *is_onvif = cJSON_GetObjectItem(stream_json, "isOnvif");
+    if (is_onvif && cJSON_IsBool(is_onvif)) {
+        config.is_onvif = cJSON_IsTrue(is_onvif);
+    } else {
+        // Fall back to URL-based detection if not explicitly set
+        config.is_onvif = (strstr(config.url, "onvif") != NULL);
+    }
+    
+    if (original_is_onvif != config.is_onvif) {
+        log_info("ONVIF flag changed from %s to %s", 
+                original_is_onvif ? "true" : "false", 
+                config.is_onvif ? "true" : "false");
+        config_changed = true;
+    }
+    
+    // If ONVIF flag is set or changed, test the connection
+    bool onvif_test_success = true;
+    bool onvif_test_performed = false;
+    
+    if (config.is_onvif && (original_is_onvif != config.is_onvif || strcmp(original_url, config.url) != 0)) {
+        log_info("Testing ONVIF capabilities for stream %s", config.name);
+        onvif_test_performed = true;
+        
+        // Extract username and password if provided
+        cJSON *onvif_username = cJSON_GetObjectItem(stream_json, "onvif_username");
+        cJSON *onvif_password = cJSON_GetObjectItem(stream_json, "onvif_password");
+        
+        if (onvif_username && cJSON_IsString(onvif_username)) {
+            strncpy(config.onvif_username, onvif_username->valuestring, sizeof(config.onvif_username) - 1);
+            config.onvif_username[sizeof(config.onvif_username) - 1] = '\0';
+        }
+        
+        if (onvif_password && cJSON_IsString(onvif_password)) {
+            strncpy(config.onvif_password, onvif_password->valuestring, sizeof(config.onvif_password) - 1);
+            config.onvif_password[sizeof(config.onvif_password) - 1] = '\0';
+        }
+        
+        // Test ONVIF connection
+        int result = test_onvif_connection(config.url, 
+                                          config.onvif_username[0] ? config.onvif_username : NULL, 
+                                          config.onvif_password[0] ? config.onvif_password : NULL);
+        
+        onvif_test_success = (result == 0);
+    }
+    
     // Clean up JSON
     cJSON_Delete(stream_json);
     
@@ -523,6 +624,17 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
     }
     
     cJSON_AddBoolToObject(success, "success", true);
+    
+    // Add ONVIF detection result if applicable
+    if (onvif_test_performed) {
+        if (onvif_test_success) {
+            cJSON_AddStringToObject(success, "onvif_status", "success");
+            cJSON_AddStringToObject(success, "onvif_message", "ONVIF capabilities detected successfully");
+        } else {
+            cJSON_AddStringToObject(success, "onvif_status", "error");
+            cJSON_AddStringToObject(success, "onvif_message", "Failed to detect ONVIF capabilities");
+        }
+    }
     
     // Convert to string
     char *json_str = cJSON_PrintUnformatted(success);

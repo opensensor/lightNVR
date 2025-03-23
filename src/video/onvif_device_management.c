@@ -104,8 +104,16 @@ int add_onvif_device_as_stream(const onvif_device_info_t *device_info,
     strncpy(config.detection_model, "motion", sizeof(config.detection_model) - 1);
     config.detection_model[sizeof(config.detection_model) - 1] = '\0';
     
-    // Set protocol to ONVIF
-    config.protocol = STREAM_PROTOCOL_ONVIF;
+    // Set protocol to TCP or UDP based on URL (most ONVIF cameras use TCP/RTSP)
+    config.protocol = STREAM_PROTOCOL_TCP;
+    
+    // If URL contains "udp", set protocol to UDP
+    if (strstr(profile->stream_uri, "udp") != NULL) {
+        config.protocol = STREAM_PROTOCOL_UDP;
+    }
+    
+    // Set ONVIF flag
+    config.is_onvif = true;
     
     // Set ONVIF-specific fields
     if (username) {
@@ -149,11 +157,17 @@ int add_onvif_device_as_stream(const onvif_device_info_t *device_info,
 
 // Test connection to an ONVIF device
 int test_onvif_connection(const char *url, const char *username, const char *password) {
-    // This is a placeholder implementation. In a real implementation, you would
-    // use ONVIF SOAP calls to test the connection.
-    
+    // Attempt to get device profiles as a way to test the connection
     log_info("Testing connection to ONVIF device: %s", url);
     
-    // For now, just return success
+    onvif_profile_t profiles[1];
+    int count = get_onvif_device_profiles(url, username, password, profiles, 1);
+    
+    if (count <= 0) {
+        log_error("Failed to connect to ONVIF device: %s", url);
+        return -1;
+    }
+    
+    log_info("Successfully connected to ONVIF device: %s", url);
     return 0;
 }

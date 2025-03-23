@@ -76,6 +76,7 @@ void mg_handle_get_streams(struct mg_connection *c, struct mg_http_message *hm) 
         cJSON_AddNumberToObject(stream_obj, "pre_detection_buffer", db_streams[i].pre_detection_buffer);
         cJSON_AddNumberToObject(stream_obj, "post_detection_buffer", db_streams[i].post_detection_buffer);
         cJSON_AddNumberToObject(stream_obj, "protocol", (int)db_streams[i].protocol);
+        cJSON_AddBoolToObject(stream_obj, "isOnvif", db_streams[i].is_onvif);
         
         // Get stream status
         stream_handle_t stream = get_stream_by_name(db_streams[i].name);
@@ -195,6 +196,7 @@ void mg_handle_get_stream(struct mg_connection *c, struct mg_http_message *hm) {
     cJSON_AddNumberToObject(stream_obj, "pre_detection_buffer", config.pre_detection_buffer);
     cJSON_AddNumberToObject(stream_obj, "post_detection_buffer", config.post_detection_buffer);
     cJSON_AddNumberToObject(stream_obj, "protocol", (int)config.protocol);
+    cJSON_AddBoolToObject(stream_obj, "isOnvif", config.is_onvif);
     
     // Get stream status
     stream_status_t stream_status = get_stream_status(stream);

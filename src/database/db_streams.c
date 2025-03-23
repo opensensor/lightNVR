@@ -53,6 +53,7 @@ uint64_t add_stream_config(const stream_config_t *stream) {
     
     bool has_detection_columns = false;
     bool has_protocol_column = false;
+    bool has_onvif_column = false;
     while (sqlite3_step(check_stmt) == SQLITE_ROW) {
         const char *column_name = (const char *)sqlite3_column_text(check_stmt, 1);
         if (column_name && strcmp(column_name, "detection_based_recording") == 0) {
@@ -62,6 +63,10 @@ uint64_t add_stream_config(const stream_config_t *stream) {
         if (column_name && strcmp(column_name, "protocol") == 0) {
             has_protocol_column = true;
             log_info("protocol column exists in streams table");
+        }
+        if (column_name && strcmp(column_name, "is_onvif") == 0) {
+            has_onvif_column = true;
+            log_info("is_onvif column exists in streams table");
         }
     }
     
@@ -105,11 +110,25 @@ uint64_t add_stream_config(const stream_config_t *stream) {
         }
     }
     
-    // Now insert the stream with all fields including detection settings and protocol
+    // If is_onvif column doesn't exist, add it
+    if (!has_onvif_column) {
+        log_info("Adding is_onvif column to streams table");
+        
+        const char *alter_table_sql = "ALTER TABLE streams ADD COLUMN is_onvif INTEGER DEFAULT 0;";
+        char *err_msg = NULL;
+        rc = sqlite3_exec(db, alter_table_sql, NULL, NULL, &err_msg);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to alter table: %s", err_msg);
+            sqlite3_free(err_msg);
+            // Continue anyway, the column might already exist
+        }
+    }
+    
+    // Now insert the stream with all fields including detection settings, protocol, and is_onvif
     const char *sql = "INSERT INTO streams (name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
                       "detection_based_recording, detection_model, detection_threshold, detection_interval, "
-                      "pre_detection_buffer, post_detection_buffer, protocol) "
-                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+                      "pre_detection_buffer, post_detection_buffer, protocol, is_onvif) "
+                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
     
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -141,6 +160,9 @@ uint64_t add_stream_config(const stream_config_t *stream) {
     
     // Bind protocol parameter
     sqlite3_bind_int(stmt, 18, (int)stream->protocol);
+    
+    // Bind is_onvif parameter
+    sqlite3_bind_int(stmt, 19, stream->is_onvif ? 1 : 0);
     
     // Execute statement
     rc = sqlite3_step(stmt);
@@ -253,13 +275,41 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
         }
     }
     
-    // Now update the stream with all fields including detection settings and protocol
+    // Check if is_onvif column exists
+    bool has_onvif_column = false;
+    rc = sqlite3_prepare_v2(db, check_column_sql, -1, &check_stmt, NULL);
+    if (rc == SQLITE_OK) {
+        while (sqlite3_step(check_stmt) == SQLITE_ROW) {
+            const char *column_name = (const char *)sqlite3_column_text(check_stmt, 1);
+            if (column_name && strcmp(column_name, "is_onvif") == 0) {
+                has_onvif_column = true;
+                break;
+            }
+        }
+        sqlite3_finalize(check_stmt);
+    }
+    
+    // If is_onvif column doesn't exist, add it
+    if (!has_onvif_column) {
+        log_info("Adding is_onvif column to streams table");
+        
+        const char *alter_table_sql = "ALTER TABLE streams ADD COLUMN is_onvif INTEGER DEFAULT 0;";
+        char *err_msg = NULL;
+        rc = sqlite3_exec(db, alter_table_sql, NULL, NULL, &err_msg);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to alter table: %s", err_msg);
+            sqlite3_free(err_msg);
+            // Continue anyway, the column might already exist
+        }
+    }
+    
+    // Now update the stream with all fields including detection settings, protocol, and is_onvif
     const char *sql = "UPDATE streams SET "
                       "name = ?, url = ?, enabled = ?, streaming_enabled = ?, width = ?, height = ?, "
                       "fps = ?, codec = ?, priority = ?, record = ?, segment_duration = ?, "
                       "detection_based_recording = ?, detection_model = ?, detection_threshold = ?, "
                       "detection_interval = ?, pre_detection_buffer = ?, post_detection_buffer = ?, "
-                      "protocol = ? "
+                      "protocol = ?, is_onvif = ? "
                       "WHERE name = ?;";
     
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -293,8 +343,11 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
     // Bind protocol parameter
     sqlite3_bind_int(stmt, 18, (int)stream->protocol);
     
+    // Bind is_onvif parameter
+    sqlite3_bind_int(stmt, 19, stream->is_onvif ? 1 : 0);
+    
     // Bind the WHERE clause parameter
-    sqlite3_bind_text(stmt, 19, name, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 20, name, -1, SQLITE_STATIC);
     
     // Execute statement
     rc = sqlite3_step(stmt);
@@ -434,9 +487,28 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
         sqlite3_finalize(check_stmt);
     }
     
-    // Prepare SQL based on whether detection columns and protocol column exist
+    // Check if is_onvif column exists
+    bool has_onvif_column = false;
+    rc = sqlite3_prepare_v2(db, check_column_sql, -1, &check_stmt, NULL);
+    if (rc == SQLITE_OK) {
+        while (sqlite3_step(check_stmt) == SQLITE_ROW) {
+            const char *column_name = (const char *)sqlite3_column_text(check_stmt, 1);
+            if (column_name && strcmp(column_name, "is_onvif") == 0) {
+                has_onvif_column = true;
+                break;
+            }
+        }
+        sqlite3_finalize(check_stmt);
+    }
+    
+    // Prepare SQL based on whether detection columns, protocol column, and is_onvif column exist
     const char *sql;
-    if (has_detection_columns && has_protocol_column) {
+    if (has_detection_columns && has_protocol_column && has_onvif_column) {
+        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
+              "detection_based_recording, detection_model, detection_threshold, detection_interval, "
+              "pre_detection_buffer, post_detection_buffer, protocol, is_onvif "
+              "FROM streams WHERE name = ?;";
+    } else if (has_detection_columns && has_protocol_column) {
         sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
               "detection_based_recording, detection_model, detection_threshold, detection_interval, "
               "pre_detection_buffer, post_detection_buffer, protocol "
@@ -533,6 +605,13 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
                     stream->protocol = (stream_protocol_t)sqlite3_column_int(stmt, 17);
                 }
             }
+            
+            // Parse is_onvif if it exists (column 18)
+            if (has_onvif_column && sqlite3_column_count(stmt) > 18) {
+                if (sqlite3_column_type(stmt, 18) != SQLITE_NULL) {
+                    stream->is_onvif = sqlite3_column_int(stmt, 18) != 0;
+                }
+            }
         }
         
         result = 0; // Success
@@ -607,9 +686,28 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
         sqlite3_finalize(check_stmt);
     }
     
-    // Prepare SQL based on whether detection columns and protocol column exist
+    // Check if is_onvif column exists
+    bool has_onvif_column = false;
+    rc = sqlite3_prepare_v2(db, check_column_sql, -1, &check_stmt, NULL);
+    if (rc == SQLITE_OK) {
+        while (sqlite3_step(check_stmt) == SQLITE_ROW) {
+            const char *column_name = (const char *)sqlite3_column_text(check_stmt, 1);
+            if (column_name && strcmp(column_name, "is_onvif") == 0) {
+                has_onvif_column = true;
+                break;
+            }
+        }
+        sqlite3_finalize(check_stmt);
+    }
+    
+    // Prepare SQL based on whether detection columns, protocol column, and is_onvif column exist
     const char *sql;
-    if (has_detection_columns && has_protocol_column) {
+    if (has_detection_columns && has_protocol_column && has_onvif_column) {
+        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
+              "detection_based_recording, detection_model, detection_threshold, detection_interval, "
+              "pre_detection_buffer, post_detection_buffer, protocol, is_onvif "
+              "FROM streams ORDER BY name;";
+    } else if (has_detection_columns && has_protocol_column) {
         sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
               "detection_based_recording, detection_model, detection_threshold, detection_interval, "
               "pre_detection_buffer, post_detection_buffer, protocol "
@@ -701,6 +799,13 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
             if (has_protocol_column && sqlite3_column_count(stmt) > 17) {
                 if (sqlite3_column_type(stmt, 17) != SQLITE_NULL) {
                     streams[count].protocol = (stream_protocol_t)sqlite3_column_int(stmt, 17);
+                }
+            }
+            
+            // Parse is_onvif if it exists (column 18)
+            if (has_onvif_column && sqlite3_column_count(stmt) > 18) {
+                if (sqlite3_column_type(stmt, 18) != SQLITE_NULL) {
+                    streams[count].is_onvif = sqlite3_column_int(stmt, 18) != 0;
                 }
             }
         }

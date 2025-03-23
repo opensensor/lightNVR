@@ -10,6 +10,9 @@
 // Check if a URL is a multicast address
 bool is_multicast_url(const char *url);
 
+// Check if a URL is an ONVIF stream
+bool is_onvif_stream(const char *url);
+
 // Open input stream with appropriate options based on protocol
 int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol);
 

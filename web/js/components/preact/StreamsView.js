@@ -614,8 +614,8 @@ export function StreamsView() {
                     checked=${currentStream.enabled}
                     onChange=${handleInputChange}
                   />
-                  <label for="stream-enabled" class="ml-2 block text-sm">Enabled</label>
-                  <span class="ml-2 text-xs text-gray-500 dark:text-gray-400">Enable/disable stream processing</span>
+                  <label for="stream-enabled" class="ml-2 block text-sm">Stream Active</label>
+                  <span class="ml-2 text-xs text-gray-500 dark:text-gray-400">Enable/disable all stream processing</span>
                 </div>
                 <div class="form-group flex items-center">
                   <input 
@@ -626,8 +626,20 @@ export function StreamsView() {
                     checked=${currentStream.streamingEnabled}
                     onChange=${handleInputChange}
                   />
-                  <label for="stream-streaming-enabled" class="ml-2 block text-sm">Streaming Enabled</label>
-                  <span class="ml-2 text-xs text-gray-500 dark:text-gray-400">Enable/disable live streaming</span>
+                  <label for="stream-streaming-enabled" class="ml-2 block text-sm">Live View Enabled</label>
+                  <span class="ml-2 text-xs text-gray-500 dark:text-gray-400">Enable/disable live viewing in browser</span>
+                </div>
+                <div class="form-group flex items-center">
+                  <input 
+                    type="checkbox" 
+                    id="stream-is-onvif" 
+                    name="isOnvif"
+                    class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    checked=${currentStream.isOnvif}
+                    onChange=${handleInputChange}
+                  />
+                  <label for="stream-is-onvif" class="ml-2 block text-sm">ONVIF Camera</label>
+                  <span class="ml-2 text-xs text-gray-500 dark:text-gray-400">Mark this stream as an ONVIF camera for special handling</span>
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div class="form-group">
@@ -695,9 +707,8 @@ export function StreamsView() {
                     >
                       <option value="0">TCP</option>
                       <option value="1">UDP</option>
-                      <option value="2">ONVIF</option>
                     </select>
-                    <span class="text-xs text-gray-500 dark:text-gray-400">Connection protocol</span>
+                    <span class="text-xs text-gray-500 dark:text-gray-400">Connection protocol (ONVIF cameras use either TCP or UDP)</span>
                   </div>
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">

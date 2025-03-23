@@ -344,7 +344,21 @@ static void *stream_reader_thread(void *arg) {
                 static int reconnect_attempts = 0;
                 int backoff_time_ms;
                 
-                if (ctx->config.protocol == STREAM_PROTOCOL_UDP) {
+                // Check if this is an ONVIF stream
+                bool is_onvif = strstr(ctx->config.url, "onvif") != NULL;
+                
+                if (is_onvif) {
+                    // For ONVIF streams, use the TCP reconnection strategy
+                    backoff_time_ms = 250 * (1 << (reconnect_attempts > 5 ? 5 : reconnect_attempts));
+                    
+                    // Cap the backoff time at 4 seconds
+                    if (backoff_time_ms > 4000) {
+                        backoff_time_ms = 4000;
+                    }
+                    
+                    log_info("ONVIF reconnection attempt %d for %s, waiting %d ms", 
+                            reconnect_attempts, ctx->config.name, backoff_time_ms);
+                } else if (ctx->config.protocol == STREAM_PROTOCOL_UDP) {
                     // For UDP streams, use a gentler fixed delay strategy
                     // UDP streams often have transient issues that resolve quickly
                     backoff_time_ms = 500; // Fixed 500ms delay for UDP

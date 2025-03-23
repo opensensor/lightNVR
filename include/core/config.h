@@ -16,8 +16,7 @@
 // Stream protocol enum
 typedef enum {
     STREAM_PROTOCOL_TCP = 0,
-    STREAM_PROTOCOL_UDP = 1,
-    STREAM_PROTOCOL_ONVIF = 2
+    STREAM_PROTOCOL_UDP = 1
 } stream_protocol_t;
 
 // Stream configuration structure
@@ -46,6 +45,7 @@ typedef struct {
     char onvif_password[64];
     char onvif_profile[64];
     bool onvif_discovery_enabled; // Whether this camera should be included in discovery
+    bool is_onvif; // Whether this stream is an ONVIF camera
 } stream_config_t;
 
 // Main configuration structure
