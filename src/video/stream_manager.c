@@ -960,3 +960,58 @@ int set_stream_streaming_enabled(stream_handle_t handle, bool enabled) {
     log_info("Set streaming enabled for stream '%s' to %s", stream_name, enabled ? "enabled" : "disabled");
     return 0;
 }
+
+/**
+ * Set ONVIF flag for a stream
+ */
+int set_stream_onvif_flag(stream_handle_t handle, bool is_onvif) {
+    if (!handle || !initialized) {
+        return -1;
+    }
+    
+    stream_t *s = (stream_t *)handle;
+    
+    // Get stream name for logging
+    char stream_name[MAX_STREAM_NAME];
+    pthread_mutex_lock(&s->mutex);
+    strncpy(stream_name, s->config.name, MAX_STREAM_NAME - 1);
+    stream_name[MAX_STREAM_NAME - 1] = '\0';
+    pthread_mutex_unlock(&s->mutex);
+    
+    log_info("Setting ONVIF flag for stream '%s' to %s", stream_name, is_onvif ? "true" : "false");
+    
+    pthread_mutex_lock(&s->mutex);
+    
+    // Check if the flag is already set to the desired value
+    if (s->config.is_onvif == is_onvif) {
+        pthread_mutex_unlock(&s->mutex);
+        log_info("ONVIF flag for stream '%s' is already set to %s", 
+                stream_name, is_onvif ? "true" : "false");
+        return 0;
+    }
+    
+    // Update the flag
+    s->config.is_onvif = is_onvif;
+    
+    // Get a copy of the config for database update
+    stream_config_t config_copy;
+    memcpy(&config_copy, &s->config, sizeof(stream_config_t));
+    
+    pthread_mutex_unlock(&s->mutex);
+    
+    // Update the database directly
+    if (update_stream_config(config_copy.name, &config_copy) != 0) {
+        log_error("Failed to update stream configuration in database for stream %s", config_copy.name);
+        return -1;
+    }
+    
+    // Also update the stream state manager if it exists
+    stream_state_manager_t *state = get_stream_state_by_name(config_copy.name);
+    if (state) {
+        update_stream_state_config(state, &config_copy);
+        log_info("Updated stream state configuration for stream %s", config_copy.name);
+    }
+    
+    log_info("Set ONVIF flag for stream '%s' to %s", stream_name, is_onvif ? "true" : "false");
+    return 0;
+}

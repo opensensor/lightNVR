@@ -120,23 +120,25 @@ export function StreamsView() {
         throw new Error('Failed to load stream details');
       }
       
-      const stream = await response.json();
-      setCurrentStream({
-        ...stream,
-        // Convert numeric values to strings for form inputs
-        width: stream.width || 1280,
-        height: stream.height || 720,
-        fps: stream.fps || 15,
-        protocol: stream.protocol?.toString() || '0',
-        priority: stream.priority?.toString() || '5',
-        segment: stream.segment || 30,
-        detectionThreshold: stream.detection_threshold || 50,
-        detectionInterval: stream.detection_interval || 10,
-        preBuffer: stream.pre_buffer || 10,
-        postBuffer: stream.post_buffer || 30,
-        // Map API fields to form fields
-        detectionEnabled: stream.detection_based_recording || false,
-        detectionModel: stream.detection_model || ''
+    const stream = await response.json();
+    setCurrentStream({
+      ...stream,
+      // Convert numeric values to strings for form inputs
+      width: stream.width || 1280,
+      height: stream.height || 720,
+      fps: stream.fps || 15,
+      protocol: stream.protocol?.toString() || '0',
+      priority: stream.priority?.toString() || '5',
+      segment: stream.segment || 30,
+      detectionThreshold: stream.detection_threshold || 50,
+      detectionInterval: stream.detection_interval || 10,
+      preBuffer: stream.pre_buffer || 10,
+      postBuffer: stream.post_buffer || 30,
+      // Map API fields to form fields
+      streamingEnabled: stream.streaming_enabled !== undefined ? stream.streaming_enabled : true,
+      isOnvif: stream.is_onvif !== undefined ? stream.is_onvif : false,
+      detectionEnabled: stream.detection_based_recording || false,
+      detectionModel: stream.detection_model || ''
       });
       setIsEditing(true);
       setModalVisible(true);
@@ -184,6 +186,8 @@ export function StreamsView() {
         priority: parseInt(currentStream.priority, 10),
         segment: parseInt(currentStream.segment, 10),
         // Map form fields to API fields
+        streaming_enabled: currentStream.streamingEnabled,
+        is_onvif: currentStream.isOnvif,
         detection_based_recording: currentStream.detectionEnabled,
         detection_model: currentStream.detectionModel,
         detection_threshold: currentStream.detectionThreshold,
@@ -209,6 +213,9 @@ export function StreamsView() {
       if (!response.ok) {
         throw new Error(`Failed to ${isEditing ? 'update' : 'add'} stream`);
       }
+      
+      // The streaming flag is already handled by the main update endpoint
+      // The ONVIF flag is now properly handled by the backend
       
       showStatusMessage(`Stream ${isEditing ? 'updated' : 'added'} successfully`);
       closeModal();

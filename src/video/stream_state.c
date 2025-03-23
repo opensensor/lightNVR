@@ -239,6 +239,15 @@ int update_stream_state_config(stream_state_manager_t *state, const stream_confi
     bool streaming_changing = (state->config.streaming_enabled != config->streaming_enabled);
     bool recording_changing = (state->config.record != config->record);
     bool detection_changing = (state->config.detection_based_recording != config->detection_based_recording);
+    bool onvif_changing = (state->config.is_onvif != config->is_onvif);
+    
+    // Log ONVIF flag change
+    if (onvif_changing) {
+        log_info("ONVIF flag changed for stream '%s': %s -> %s", 
+                state->name, 
+                state->config.is_onvif ? "true" : "false",
+                config->is_onvif ? "true" : "false");
+    }
     
     // Save old state for comparison
     stream_state_t old_state = state->state;
@@ -277,7 +286,7 @@ int update_stream_state_config(stream_state_manager_t *state, const stream_confi
     
     // If stream is active and protocol or features changed, restart it
     if (old_state == STREAM_STATE_ACTIVE && 
-        (protocol_changing || streaming_changing || recording_changing || detection_changing)) {
+        (protocol_changing || streaming_changing || recording_changing || detection_changing || onvif_changing)) {
         log_info("Restarting stream '%s' due to configuration changes", state->name);
         
         // Stop and restart the stream

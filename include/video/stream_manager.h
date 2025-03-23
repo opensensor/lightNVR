@@ -194,6 +194,15 @@ int set_stream_last_detection_time(stream_handle_t handle, time_t time);
 int set_stream_streaming_enabled(stream_handle_t handle, bool enabled);
 
 /**
+ * Set ONVIF flag for a stream
+ * 
+ * @param handle Stream handle
+ * @param is_onvif True if the stream is an ONVIF camera, false otherwise
+ * @return 0 on success, non-zero on failure
+ */
+int set_stream_onvif_flag(stream_handle_t handle, bool is_onvif);
+
+/**
  * Get a snapshot from the stream
  * 
  * @param handle Stream handle
