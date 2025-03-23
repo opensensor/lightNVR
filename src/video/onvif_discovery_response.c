@@ -290,33 +290,47 @@ int receive_discovery_responses(onvif_device_info_t *devices, int max_devices) {
     int bind_attempts = 0;
     int max_bind_attempts = 5;
     int bind_result = -1;
+    int original_port = ntohs(addr.sin_port); // Save original port
+    
+    // Add a longer delay before first binding attempt to allow TIME_WAIT sockets to clear
+    log_info("Waiting 2 seconds before binding to allow TIME_WAIT sockets to clear");
+    sleep(2);
     
     while (bind_attempts < max_bind_attempts) {
         bind_result = bind(sock, (struct sockaddr *)&addr, sizeof(addr));
         if (bind_result == 0) {
             // Binding successful
+            log_info("Successfully bound to port %d", ntohs(addr.sin_port));
             break;
         }
         
+        log_warn("Failed to bind to port %d: %s (attempt %d/%d)", 
+                ntohs(addr.sin_port), strerror(errno), bind_attempts + 1, max_bind_attempts);
+        
         if (errno != EADDRINUSE) {
-            // If error is not "Address in use", don't retry
-            log_error("Failed to bind socket: %s", strerror(errno));
-            close(sock);
-            return -1;
+            // If error is not "Address in use", try a different port
+            log_warn("Trying a different port...");
+            addr.sin_port = htons(original_port + bind_attempts + 1);
+        } else {
+            // If "Address in use", wait a bit and retry
+            log_warn("Address in use, waiting 1 second before retry");
+            sleep(1);
+            
+            // After a couple of attempts, try a different port
+            if (bind_attempts >= 2) {
+                addr.sin_port = htons(original_port + 10000 + bind_attempts);
+                log_warn("Trying alternative port %d", ntohs(addr.sin_port));
+            }
         }
         
-        // If "Address in use", wait a bit and retry
-        log_warn("Address in use, waiting 1 second before retry (attempt %d/%d)", 
-                bind_attempts + 1, max_bind_attempts);
-        sleep(1);
         bind_attempts++;
     }
     
     if (bind_result < 0) {
-        log_error("Failed to bind socket after %d attempts: %s", 
-                 max_bind_attempts, strerror(errno));
-        close(sock);
-        return -1;
+        log_warn("Failed to bind socket after %d attempts: %s", 
+                max_bind_attempts, strerror(errno));
+        log_warn("Continuing with discovery process, but may not receive responses");
+        // Continue anyway, we can still send probes to the broadcast address
     }
     
     // Add a small delay after binding to ensure the socket is fully ready
@@ -529,33 +543,47 @@ int receive_extended_discovery_responses(onvif_device_info_t *devices, int max_d
     int bind_attempts = 0;
     int max_bind_attempts = 5;
     int bind_result = -1;
+    int original_port = ntohs(addr.sin_port); // Save original port
+    
+    // Add a longer delay before first binding attempt to allow TIME_WAIT sockets to clear
+    log_info("Waiting 2 seconds before binding to allow TIME_WAIT sockets to clear");
+    sleep(2);
     
     while (bind_attempts < max_bind_attempts) {
         bind_result = bind(sock, (struct sockaddr *)&addr, sizeof(addr));
         if (bind_result == 0) {
             // Binding successful
+            log_info("Successfully bound to port %d", ntohs(addr.sin_port));
             break;
         }
         
+        log_warn("Failed to bind to port %d: %s (attempt %d/%d)", 
+                ntohs(addr.sin_port), strerror(errno), bind_attempts + 1, max_bind_attempts);
+        
         if (errno != EADDRINUSE) {
-            // If error is not "Address in use", don't retry
-            log_error("Failed to bind socket: %s", strerror(errno));
-            close(sock);
-            return -1;
+            // If error is not "Address in use", try a different port
+            log_warn("Trying a different port...");
+            addr.sin_port = htons(original_port + bind_attempts + 1);
+        } else {
+            // If "Address in use", wait a bit and retry
+            log_warn("Address in use, waiting 1 second before retry");
+            sleep(1);
+            
+            // After a couple of attempts, try a different port
+            if (bind_attempts >= 2) {
+                addr.sin_port = htons(original_port + 10000 + bind_attempts);
+                log_warn("Trying alternative port %d", ntohs(addr.sin_port));
+            }
         }
         
-        // If "Address in use", wait a bit and retry
-        log_warn("Address in use, waiting 1 second before retry (attempt %d/%d)", 
-                bind_attempts + 1, max_bind_attempts);
-        sleep(1);
         bind_attempts++;
     }
     
     if (bind_result < 0) {
-        log_error("Failed to bind socket after %d attempts: %s", 
-                 max_bind_attempts, strerror(errno));
-        close(sock);
-        return -1;
+        log_warn("Failed to bind socket after %d attempts: %s", 
+                max_bind_attempts, strerror(errno));
+        log_warn("Continuing with discovery process, but may not receive responses");
+        // Continue anyway, we can still send probes to the broadcast address
     }
     
     // Add a small delay after binding to ensure the socket is fully ready

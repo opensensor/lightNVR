@@ -396,7 +396,8 @@ int discover_onvif_devices(const char *network, onvif_device_info_t *devices,
 
     log_info("ONVIF discovery completed, found %d devices", count);
 
-    return count;
+    // Return 0 instead of -1 when no devices are found
+    return count < 0 ? 0 : count;
 }
 
 // Forward declaration of the callback function
