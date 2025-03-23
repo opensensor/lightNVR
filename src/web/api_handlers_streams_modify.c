@@ -489,6 +489,11 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
                                           config.onvif_password[0] ? config.onvif_password : NULL);
         
         onvif_test_success = (result == 0);
+        // If ONVIF test fails, don't save as ONVIF
+        if (!onvif_test_success) {
+            log_warn("ONVIF test failed for stream %s, disabling ONVIF flag", config.name);
+            config.is_onvif = false;
+        }
     }
     
     // Clean up JSON
