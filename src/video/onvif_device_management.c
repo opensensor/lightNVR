@@ -608,10 +608,20 @@ int get_onvif_stream_url(const char *device_url, const char *username,
             log_info("Parsed RTSP URI components: scheme=%s, host=%s, path=%s (no port)", 
                     scheme, host, path);
             
-            // Construct URL with embedded credentials (no port)
-            snprintf(auth_url, sizeof(auth_url), 
-                    "%s://%s:%s@%s%s", 
-                    scheme, username, password, host, path);
+            // For RTSP, add the default port 554 if not specified
+            if (strcmp(scheme, "rtsp") == 0) {
+                log_info("Adding default RTSP port 554");
+                
+                // Construct URL with embedded credentials and default RTSP port
+                snprintf(auth_url, sizeof(auth_url), 
+                        "%s://%s:%s@%s:554%s", 
+                        scheme, username, password, host, path);
+            } else {
+                // Construct URL with embedded credentials (no port)
+                snprintf(auth_url, sizeof(auth_url), 
+                        "%s://%s:%s@%s%s", 
+                        scheme, username, password, host, path);
+            }
             
             // Update the stream URL with embedded credentials
             strncpy(stream_url, auth_url, url_size - 1);
@@ -792,9 +802,16 @@ int test_onvif_connection(const char *url, const char *username, const char *pas
                     } else if (sscanf(profiles[0].stream_uri, "%15[^:]://%127[^:/]%255s", 
                                      scheme, host, path) == 3) {
                         // No port specified
-                        snprintf(direct_url, sizeof(direct_url), 
-                                "%s://%s:%s@%s%s", 
-                                scheme, username, password, host, path);
+                        if (strcmp(scheme, "rtsp") == 0) {
+                            // Add default RTSP port 554
+                            snprintf(direct_url, sizeof(direct_url), 
+                                    "%s://%s:%s@%s:554%s", 
+                                    scheme, username, password, host, path);
+                        } else {
+                            snprintf(direct_url, sizeof(direct_url), 
+                                    "%s://%s:%s@%s%s", 
+                                    scheme, username, password, host, path);
+                        }
                     } else {
                         // Fallback to original URL
                         strncpy(direct_url, profiles[0].stream_uri, sizeof(direct_url) - 1);
