@@ -5,6 +5,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <sys/select.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -12,6 +13,42 @@
 #include <ctype.h>
 #include <time.h>
 #include <stdbool.h>
+#include <netinet/ip.h> /* For struct ip_mreq */
+
+// Helper function to extract content between XML tags
+static char* extract_xml_content(const char *xml, const char *tag_start, const char *tag_end, char *buffer, size_t buffer_size) {
+    const char *start = strstr(xml, tag_start);
+    if (!start) {
+        return NULL;
+    }
+    
+    start += strlen(tag_start);
+    const char *end = strstr(start, tag_end);
+    if (!end) {
+        return NULL;
+    }
+    
+    size_t len = end - start;
+    if (len >= buffer_size) {
+        len = buffer_size - 1;
+    }
+    
+    strncpy(buffer, start, len);
+    buffer[len] = '\0';
+    
+    // Trim leading/trailing whitespace
+    char *trim_start = buffer;
+    char *trim_end = buffer + len - 1;
+    
+    while (*trim_start && isspace(*trim_start)) trim_start++;
+    while (trim_end > trim_start && isspace(*trim_end)) *trim_end-- = '\0';
+    
+    if (trim_start != buffer) {
+        memmove(buffer, trim_start, strlen(trim_start) + 1);
+    }
+    
+    return buffer;
+}
 
 // Parse ONVIF device information from discovery response
 int parse_device_info(const char *response, onvif_device_info_t *device_info) {
@@ -21,69 +58,71 @@ int parse_device_info(const char *response, onvif_device_info_t *device_info) {
     // Initialize device info
     memset(device_info, 0, sizeof(onvif_device_info_t));
     
-    // Log the first 200 characters of the response for debugging
-    char debug_buffer[201];
-    strncpy(debug_buffer, response, 200);
-    debug_buffer[200] = '\0';
-    log_debug("Parsing response: %s...", debug_buffer);
+    // Log the first 500 characters of the response for debugging
+    char debug_buffer[501];
+    strncpy(debug_buffer, response, 500);
+    debug_buffer[500] = '\0';
+    log_info("Parsing response: %s...", debug_buffer);
     
-    // Check if this is a valid ONVIF response
-    if (!strstr(response, "NetworkVideoTransmitter") && 
-        !strstr(response, "Device") && 
-        !strstr(response, "ONVIF")) {
-        log_debug("Not an ONVIF response (missing required keywords)");
+    // Check if this is a valid ONVIF response and not a probe message
+    if (strstr(response, "Probe") && !strstr(response, "ProbeMatch")) {
+        log_info("Ignoring probe message (not a device response)");
         return -1;
     }
     
-    // Extract XAddrs (device service URLs)
-    const char *xaddr_start = strstr(response, "<d:XAddrs>");
-    const char *xaddr_end = NULL;
-    
-    // Try alternative tag formats if the first one fails
-    if (!xaddr_start) {
-        xaddr_start = strstr(response, "<XAddrs>");
-        if (xaddr_start) {
-            xaddr_start += 8; // Skip "<XAddrs>"
-            xaddr_end = strstr(xaddr_start, "</XAddrs>");
-        }
-    } else {
-        xaddr_start += 10; // Skip "<d:XAddrs>"
-        xaddr_end = strstr(xaddr_start, "</d:XAddrs>");
+    if (!strstr(response, "NetworkVideoTransmitter") && 
+        !strstr(response, "Device") && 
+        !strstr(response, "ONVIF")) {
+        log_info("Not an ONVIF response (missing required keywords)");
+        return -1;
     }
     
-    // If we still don't have XAddrs, try one more format
-    if (!xaddr_start) {
-        xaddr_start = strstr(response, ":XAddrs>");
-        if (xaddr_start) {
-            xaddr_start = strchr(xaddr_start, '>') + 1;
-            xaddr_end = strstr(xaddr_start, "</");
+    // Try to extract XAddrs using different tag formats
+    char xaddrs[MAX_URL_LENGTH] = {0};
+    
+    // Try with d:XAddrs format
+    if (!extract_xml_content(response, "<d:XAddrs>", "</d:XAddrs>", xaddrs, sizeof(xaddrs))) {
+        // Try with XAddrs format
+        if (!extract_xml_content(response, "<XAddrs>", "</XAddrs>", xaddrs, sizeof(xaddrs))) {
+            // Try with any namespace prefix
+            const char *xaddr_tag = strstr(response, "XAddrs>");
+            if (xaddr_tag) {
+                const char *start = strchr(xaddr_tag, '>');
+                if (start) {
+                    start++; // Skip '>'
+                    const char *end = strstr(start, "</");
+                    if (end) {
+                        size_t len = end - start;
+                        if (len < sizeof(xaddrs)) {
+                            strncpy(xaddrs, start, len);
+                            xaddrs[len] = '\0';
+                            
+                            // Trim whitespace
+                            char *trim_start = xaddrs;
+                            char *trim_end = xaddrs + len - 1;
+                            
+                            while (*trim_start && isspace(*trim_start)) trim_start++;
+                            while (trim_end > trim_start && isspace(*trim_end)) *trim_end-- = '\0';
+                            
+                            if (trim_start != xaddrs) {
+                                memmove(xaddrs, trim_start, strlen(trim_start) + 1);
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
     
-    if (!xaddr_start || !xaddr_end) {
+    if (strlen(xaddrs) == 0) {
         log_debug("Failed to find XAddrs in response");
         return -1;
     }
     
-    // Extract and trim the XAddrs value
-    size_t len = xaddr_end - xaddr_start;
-    if (len >= MAX_URL_LENGTH) {
-        len = MAX_URL_LENGTH - 1;
-    }
-    
-    char xaddrs[MAX_URL_LENGTH];
-    strncpy(xaddrs, xaddr_start, len);
-    xaddrs[len] = '\0';
-    
-    // Trim leading/trailing whitespace
-    char *start = xaddrs;
-    char *end = xaddrs + len - 1;
-    
-    while (*start && isspace(*start)) start++;
-    while (end > start && isspace(*end)) *end-- = '\0';
+    log_debug("Found XAddrs: %s", xaddrs);
     
     // Split multiple URLs if present (some devices return multiple space-separated URLs)
-    char *url = strtok(start, " \t\n\r");
+    char *url = strtok(xaddrs, " \t\n\r");
     if (url) {
         strncpy(device_info->device_service, url, MAX_URL_LENGTH - 1);
         device_info->device_service[MAX_URL_LENGTH - 1] = '\0';
@@ -108,7 +147,7 @@ int parse_device_info(const char *response, onvif_device_info_t *device_info) {
         }
         
         if (ip_end) {
-            len = ip_end - ip_start;
+            size_t len = ip_end - ip_start;
             if (len >= sizeof(device_info->ip_address)) {
                 len = sizeof(device_info->ip_address) - 1;
             }
@@ -120,33 +159,19 @@ int parse_device_info(const char *response, onvif_device_info_t *device_info) {
     }
     
     // Try to extract device type/model information
-    const char *types_start = strstr(response, "<d:Types>");
-    const char *types_end = NULL;
+    char types[128] = {0};
     
-    if (!types_start) {
-        types_start = strstr(response, "<Types>");
-        if (types_start) {
-            types_start += 7; // Skip "<Types>"
-            types_end = strstr(types_start, "</Types>");
-        }
-    } else {
-        types_start += 9; // Skip "<d:Types>"
-        types_end = strstr(types_start, "</d:Types>");
+    // Try with d:Types format
+    if (!extract_xml_content(response, "<d:Types>", "</d:Types>", types, sizeof(types))) {
+        // Try with Types format
+        extract_xml_content(response, "<Types>", "</Types>", types, sizeof(types));
     }
     
-    if (types_start && types_end) {
-        len = types_end - types_start;
-        if (len > 0 && len < 64) {
-            char types[64];
-            strncpy(types, types_start, len);
-            types[len] = '\0';
-            
-            // Extract model information if available
-            const char *model_start = strstr(types, "NetworkVideoTransmitter");
-            if (model_start) {
-                strncpy(device_info->model, "NetworkVideoTransmitter", sizeof(device_info->model) - 1);
-                device_info->model[sizeof(device_info->model) - 1] = '\0';
-            }
+    if (strlen(types) > 0) {
+        // Extract model information if available
+        if (strstr(types, "NetworkVideoTransmitter")) {
+            strncpy(device_info->model, "NetworkVideoTransmitter", sizeof(device_info->model) - 1);
+            device_info->model[sizeof(device_info->model) - 1] = '\0';
         }
     }
     
@@ -167,7 +192,7 @@ int receive_discovery_responses(onvif_device_info_t *devices, int max_devices) {
     int sock;
     struct sockaddr_in addr;
     socklen_t addr_len = sizeof(addr);
-    char buffer[16384]; // Larger buffer for responses
+    char buffer[32768]; // Increased buffer size for larger responses
     int ret;
     int count = 0;
     fd_set readfds;
@@ -199,7 +224,7 @@ int receive_discovery_responses(onvif_device_info_t *devices, int max_devices) {
     }
     
     // Increase socket buffer size
-    int rcvbuf = 1024 * 1024; // 1MB buffer
+    int rcvbuf = 2 * 1024 * 1024; // 2MB buffer (increased)
     if (setsockopt(sock, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf)) < 0) {
         log_warn("Failed to increase receive buffer size: %s", strerror(errno));
         // Continue anyway
@@ -250,15 +275,15 @@ int receive_discovery_responses(onvif_device_info_t *devices, int max_devices) {
         return -1;
     }
     
-    log_info("Waiting for discovery responses (timeout: 1 second, attempts: 2)");
+    log_info("Waiting for discovery responses (timeout: 5 seconds, attempts: 3)");
     
-    // Set timeout for select
-    timeout.tv_sec = 1;
+    // Set timeout for select - increased timeout
+    timeout.tv_sec = 5;
     timeout.tv_usec = 0;
     
-    // Wait for responses
-    for (int i = 0; i < 2; i++) {
-        log_info("Waiting for responses, attempt %d/2", i+1);
+    // Wait for responses - increased number of attempts
+    for (int i = 0; i < 3; i++) {
+        log_info("Waiting for responses, attempt %d/3", i+1);
         
         FD_ZERO(&readfds);
         FD_SET(sock, &readfds);
@@ -285,11 +310,18 @@ int receive_discovery_responses(onvif_device_info_t *devices, int max_devices) {
                 char uuid[64];
                 char message[1024];
                 extern const char *ONVIF_DISCOVERY_MSG;
+                extern const char *ONVIF_DISCOVERY_MSG_ALT;
                 extern void generate_uuid(char *uuid, size_t size);
                 
+                // Send both standard and alternative message formats
                 generate_uuid(uuid, sizeof(uuid));
                 int message_len = snprintf(message, sizeof(message), ONVIF_DISCOVERY_MSG, uuid);
+                sendto(sock, message, message_len, 0, (struct sockaddr *)&broadcast_addr, sizeof(broadcast_addr));
                 
+                usleep(50000); // 50ms delay between messages
+                
+                generate_uuid(uuid, sizeof(uuid));
+                message_len = snprintf(message, sizeof(message), ONVIF_DISCOVERY_MSG_ALT, uuid);
                 sendto(sock, message, message_len, 0, (struct sockaddr *)&broadcast_addr, sizeof(broadcast_addr));
             }
             
@@ -319,11 +351,11 @@ int receive_discovery_responses(onvif_device_info_t *devices, int max_devices) {
             // Null-terminate the buffer
             buffer[ret] = '\0';
             
-            // Dump the first 200 characters of the response for debugging
-            char debug_buffer[201];
-            strncpy(debug_buffer, buffer, 200);
-            debug_buffer[200] = '\0';
-            log_debug("Response sample: %s", debug_buffer);
+            // Dump the first 500 characters of response for debugging
+            char debug_buffer[501];
+            strncpy(debug_buffer, buffer, 500);
+            debug_buffer[500] = '\0';
+            log_info("Response (first 500 chars): %s", debug_buffer);
             
             // Parse device information
             if (count < max_devices) {
@@ -357,7 +389,7 @@ int receive_discovery_responses(onvif_device_info_t *devices, int max_devices) {
         }
         
         // Reset timeout for next attempt
-        timeout.tv_sec = 1;
+        timeout.tv_sec = 2;
         timeout.tv_usec = 0;
     }
     
@@ -485,11 +517,8 @@ int receive_extended_discovery_responses(onvif_device_info_t *devices, int max_d
             // Null-terminate the buffer
             buffer[ret] = '\0';
 
-            // Dump the first 200 characters of the response for debugging
-            char debug_buffer[201];
-            strncpy(debug_buffer, buffer, 200);
-            debug_buffer[200] = '\0';
-            log_debug("Response sample: %s", debug_buffer);
+            // Dump the full response for debugging
+            log_info("Full response: %s", buffer);
 
             // Parse device information
             if (parse_device_info(buffer, &devices[count]) == 0) {
