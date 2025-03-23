@@ -901,36 +901,6 @@ export function StreamsView() {
               <span class="text-2xl cursor-pointer" onClick=${() => setOnvifModalVisible(false)}>×</span>
             </div>
             <div class="p-4">
-              <div class="mb-4">
-                <h4 class="text-md font-medium mb-2">Authentication</h4>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div class="form-group">
-                    <label for="onvif-username" class="block text-sm font-medium mb-1">Username</label>
-                    <input 
-                      type="text" 
-                      id="onvif-username" 
-                      name="username"
-                      class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                      placeholder="admin" 
-                      value=${onvifCredentials.username}
-                      onChange=${handleCredentialChange}
-                    />
-                  </div>
-                  <div class="form-group">
-                    <label for="onvif-password" class="block text-sm font-medium mb-1">Password</label>
-                    <input 
-                      type="password" 
-                      id="onvif-password" 
-                      name="password"
-                      class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                      placeholder="password" 
-                      value=${onvifCredentials.password}
-                      onChange=${handleCredentialChange}
-                    />
-                  </div>
-                </div>
-              </div>
-              
               <div class="mb-4 flex justify-between items-center">
                 <h4 class="text-md font-medium">Discovered Devices</h4>
                 <button 
@@ -1007,6 +977,39 @@ export function StreamsView() {
                     `)}
                   </tbody>
                 </table>
+              </div>
+              
+              <div class="mt-6 mb-4">
+                <h4 class="text-md font-medium mb-2">Authentication</h4>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                  Enter credentials to connect to the selected ONVIF device. Credentials are not needed for discovery, only for connecting to devices.
+                </p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div class="form-group">
+                    <label for="onvif-username" class="block text-sm font-medium mb-1">Username</label>
+                    <input 
+                      type="text" 
+                      id="onvif-username" 
+                      name="username"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                      placeholder="admin" 
+                      value=${onvifCredentials.username}
+                      onChange=${handleCredentialChange}
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label for="onvif-password" class="block text-sm font-medium mb-1">Password</label>
+                    <input 
+                      type="password" 
+                      id="onvif-password" 
+                      name="password"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                      placeholder="password" 
+                      value=${onvifCredentials.password}
+                      onChange=${handleCredentialChange}
+                    />
+                  </div>
+                </div>
               </div>
               
               ${selectedDevice && deviceProfiles.length > 0 && html`

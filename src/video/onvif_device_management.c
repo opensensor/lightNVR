@@ -707,29 +707,9 @@ int add_onvif_device_as_stream(const onvif_device_info_t *device_info,
         log_info("Setting ONVIF password for stream %s", stream_name);
     }
     
-    // For onvif_simple_server compatibility, try to create a direct URL with embedded credentials
-    if (username && password && strlen(username) > 0 && strlen(password) > 0) {
-        // Extract scheme, host, port, and path
-        char scheme[16] = {0};
-        char host[128] = {0};
-        char port[16] = {0};
-        char path[256] = {0};
-        
-        if (sscanf(profile->stream_uri, "%15[^:]://%127[^:/]:%15[^/]%255s", 
-                  scheme, host, port, path) == 4) {
-            // Construct URL with embedded credentials
-            char direct_url[MAX_URL_LENGTH];
-            snprintf(direct_url, sizeof(direct_url), 
-                    "%s://%s:%s@%s:%s%s", 
-                    scheme, username, password, host, port, path);
-            
-            log_info("Created direct URL with embedded credentials: %s", direct_url);
-            
-            // Store both URLs for flexibility
-            strncpy(config.url, direct_url, MAX_URL_LENGTH - 1);
-            config.url[MAX_URL_LENGTH - 1] = '\0';
-        }
-    }
+    // Credentials are already embedded in the stream URI by get_onvif_stream_url
+    // No need to modify the URL here, just log it
+    log_info("Using stream URI with embedded credentials: %s", config.url);
     
     strncpy(config.onvif_profile, profile->token, sizeof(config.onvif_profile) - 1);
     config.onvif_profile[sizeof(config.onvif_profile) - 1] = '\0';
