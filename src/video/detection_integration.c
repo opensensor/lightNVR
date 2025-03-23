@@ -162,18 +162,34 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
         return -1;
     }
 
-    // Increment frame counter for this stream
+    // Get current time
+    time_t current_time = time(NULL);
+    
+    // Check if we have a last detection time for this stream
+    static time_t last_detection_times[MAX_STREAMS] = {0};
+    
+    // Check if enough time has passed since the last detection
+    if (last_detection_times[stream_idx] > 0) {
+        time_t time_since_last = current_time - last_detection_times[stream_idx];
+        
+        // If we haven't waited long enough since the last detection, skip this frame
+        if (time_since_last < detection_interval) {
+            log_debug("Skipping detection for stream %s - only %ld seconds since last detection (interval: %d)",
+                     stream_name, time_since_last, detection_interval);
+            return 0; // Skip this frame
+        }
+    }
+    
+    // We're going to process this frame, update the last detection time
+    last_detection_times[stream_idx] = current_time;
+    
+    // Increment frame counter for this stream (keep for debugging)
     frame_counters[stream_idx]++;
     int frame_counter = frame_counters[stream_idx];
 
     // Reset counter if it gets too large to prevent overflow
     if (frame_counter > 1000000) {
         frame_counters[stream_idx] = 0;
-    }
-
-    // Skip frames based on detection interval
-    if (frame_counter % detection_interval != 0) {
-        return 0; // Skip this frame
     }
 
     log_info("Processing decoded frame %d for stream %s (interval: %d)", frame_counter, stream_name, detection_interval);
