@@ -30,6 +30,7 @@
 #include "video/detection_result.h"
 #include "video/motion_detection.h"
 #include "video/motion_detection_wrapper.h"
+#include "utils/memory.h"
 
 // Define model types
 #define MODEL_TYPE_SOD "sod"
@@ -38,6 +39,26 @@
 
 // Debug flag to enable/disable frame saving
 static int save_frames_for_debug = 1;  // Set to 1 to enable frame saving
+
+// Memory pool for packed buffers to avoid frequent allocations
+#define MAX_BUFFER_POOL_SIZE 8  // Maximum number of buffers in the pool (increased from 4)
+#define MAX_CONCURRENT_DETECTIONS 3  // Maximum number of concurrent detections (increased from 3)
+#define BUFFER_ALLOCATION_RETRIES 3  // Number of retries for buffer allocation
+
+typedef struct {
+    uint8_t *buffer;
+    size_t size;
+    bool in_use;
+    time_t last_used;  // Track when the buffer was last used
+} buffer_pool_item_t;
+
+static buffer_pool_item_t buffer_pool[MAX_BUFFER_POOL_SIZE] = {0};
+static pthread_mutex_t buffer_pool_mutex = PTHREAD_MUTEX_INITIALIZER;
+static int active_detections = 0;
+static pthread_mutex_t active_detections_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// Track which streams are currently being processed for detection
+static char active_detection_streams[MAX_CONCURRENT_DETECTIONS][MAX_STREAM_NAME] = {{0}};
 
 // Function to check if a file exists
 static int file_exists(const char *filename) {
@@ -235,8 +256,123 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     log_info("Converted frame to %s format for stream %s",
              (channels == 1) ? "grayscale" : "RGB", stream_name);
 
-    // Create a packed buffer without stride padding
-    packed_buffer = (uint8_t *)malloc(frame->width * frame->height * channels);
+    // Check if this stream is already being processed
+    pthread_mutex_lock(&active_detections_mutex);
+    bool stream_already_active = false;
+    
+    for (int i = 0; i < MAX_CONCURRENT_DETECTIONS; i++) {
+        if (strcmp(active_detection_streams[i], stream_name) == 0) {
+            stream_already_active = true;
+            break;
+        }
+    }
+    
+    // If this stream is already being processed, we can continue
+    // Otherwise, check if we have room for another stream
+    if (!stream_already_active) {
+        // If we're at the limit, log a warning but still try to process
+        // This allows all streams to get a chance at detection
+        if (active_detections >= MAX_CONCURRENT_DETECTIONS) {
+            log_warn("High detection load: %d concurrent detections (limit: %d), stream %s may experience delays", 
+                    active_detections, MAX_CONCURRENT_DETECTIONS, stream_name);
+        }
+    }
+    pthread_mutex_unlock(&active_detections_mutex);
+
+    // Get a buffer from the pool or allocate a new one
+    size_t required_size = frame->width * frame->height * channels;
+    packed_buffer = NULL;
+    
+    // Try multiple times to get a buffer (with retries)
+    for (int retry = 0; retry < BUFFER_ALLOCATION_RETRIES && !packed_buffer; retry++) {
+        pthread_mutex_lock(&buffer_pool_mutex);
+        
+        // First try to find an existing buffer in the pool
+        for (int i = 0; i < MAX_BUFFER_POOL_SIZE; i++) {
+            if (!buffer_pool[i].in_use && buffer_pool[i].buffer && buffer_pool[i].size >= required_size) {
+                buffer_pool[i].in_use = true;
+                buffer_pool[i].last_used = time(NULL);
+                packed_buffer = buffer_pool[i].buffer;
+                log_info("Reusing buffer from pool (index %d, size %zu, retry %d)", 
+                        i, buffer_pool[i].size, retry);
+                pthread_mutex_unlock(&buffer_pool_mutex);
+                break;
+            }
+        }
+        
+        // If no suitable buffer found, try to allocate a new one
+        if (!packed_buffer) {
+            // Find an empty slot in the pool
+            int empty_slot = -1;
+            for (int i = 0; i < MAX_BUFFER_POOL_SIZE; i++) {
+                if (!buffer_pool[i].buffer) {
+                    empty_slot = i;
+                    break;
+                }
+            }
+            
+            // If no empty slot, try to find the oldest unused buffer
+            if (empty_slot == -1) {
+                time_t oldest_time = time(NULL);
+                for (int i = 0; i < MAX_BUFFER_POOL_SIZE; i++) {
+                    if (!buffer_pool[i].in_use && buffer_pool[i].last_used < oldest_time) {
+                        oldest_time = buffer_pool[i].last_used;
+                        empty_slot = i;
+                    }
+                }
+            }
+            
+            // If still no slot, we can't allocate a new buffer
+            if (empty_slot == -1) {
+                log_error("No available slots in buffer pool (retry %d)", retry);
+                pthread_mutex_unlock(&buffer_pool_mutex);
+                
+                // If this is the last retry, give up
+                if (retry == BUFFER_ALLOCATION_RETRIES - 1) {
+                    goto cleanup;
+                }
+                
+                // Wait a bit before retrying
+                usleep(100000); // 100ms
+                continue;
+            }
+            
+            // If there's an existing buffer but it's too small, free it
+            if (buffer_pool[empty_slot].buffer && buffer_pool[empty_slot].size < required_size) {
+                free(buffer_pool[empty_slot].buffer);
+                buffer_pool[empty_slot].buffer = NULL;
+            }
+            
+            // Allocate a new buffer if needed
+            if (!buffer_pool[empty_slot].buffer) {
+                buffer_pool[empty_slot].buffer = (uint8_t *)safe_malloc(required_size);
+                if (!buffer_pool[empty_slot].buffer) {
+                    log_error("Failed to allocate packed buffer for frame (size: %zu, retry %d)", 
+                             required_size, retry);
+                    pthread_mutex_unlock(&buffer_pool_mutex);
+                    
+                    // If this is the last retry, give up
+                    if (retry == BUFFER_ALLOCATION_RETRIES - 1) {
+                        goto cleanup;
+                    }
+                    
+                    // Wait a bit before retrying
+                    usleep(100000); // 100ms
+                    continue;
+                }
+                
+                buffer_pool[empty_slot].size = required_size;
+            }
+            
+            buffer_pool[empty_slot].in_use = true;
+            buffer_pool[empty_slot].last_used = time(NULL);
+            packed_buffer = buffer_pool[empty_slot].buffer;
+            log_info("Allocated buffer for pool (index %d, size %zu, retry %d)", 
+                    empty_slot, required_size, retry);
+            pthread_mutex_unlock(&buffer_pool_mutex);
+        }
+    }
+    
     if (!packed_buffer) {
         log_error("Failed to allocate packed buffer for frame");
         goto cleanup;
@@ -248,6 +384,32 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                converted_frame->data[0] + y * converted_frame->linesize[0],
                frame->width * channels);
     }
+    
+    // Increment active detections counter and track this stream
+    pthread_mutex_lock(&active_detections_mutex);
+    
+    // Add this stream to the active list if it's not already there
+    if (!stream_already_active) {
+        bool added = false;
+        for (int i = 0; i < MAX_CONCURRENT_DETECTIONS; i++) {
+            if (active_detection_streams[i][0] == '\0') {
+                strncpy(active_detection_streams[i], stream_name, MAX_STREAM_NAME - 1);
+                active_detection_streams[i][MAX_STREAM_NAME - 1] = '\0';
+                added = true;
+                break;
+            }
+        }
+        
+        // If we couldn't add it to the list (list is full), still process it
+        // but don't track it (it will be treated as a one-off detection)
+        if (!added) {
+            log_warn("Detection tracking list full, processing stream %s as one-off detection", stream_name);
+        }
+    }
+    
+    active_detections++;
+    log_info("Active detections: %d/%d for stream %s", active_detections, MAX_CONCURRENT_DETECTIONS, stream_name);
+    pthread_mutex_unlock(&active_detections_mutex);
 
     // Log some debug info about the packed buffer
     log_info("Packed buffer first 12 bytes: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
@@ -522,7 +684,34 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
 cleanup:
     // Cleanup - ensure all resources are properly freed
     if (packed_buffer) {
-        free(packed_buffer);
+    // Return the buffer to the pool
+    pthread_mutex_lock(&buffer_pool_mutex);
+    for (int i = 0; i < MAX_BUFFER_POOL_SIZE; i++) {
+        if (buffer_pool[i].buffer == packed_buffer) {
+            buffer_pool[i].in_use = false;
+            buffer_pool[i].last_used = time(NULL);
+            log_info("Returned buffer to pool (index %d)", i);
+            break;
+        }
+    }
+    pthread_mutex_unlock(&buffer_pool_mutex);
+    
+    // Decrement active detections counter and remove this stream from the active list
+    pthread_mutex_lock(&active_detections_mutex);
+    if (active_detections > 0) {
+        active_detections--;
+    }
+    
+    // Remove this stream from the active list
+    for (int i = 0; i < MAX_CONCURRENT_DETECTIONS; i++) {
+        if (strcmp(active_detection_streams[i], stream_name) == 0) {
+            active_detection_streams[i][0] = '\0';
+            break;
+        }
+    }
+    
+    log_info("Active detections: %d/%d after completing %s", active_detections, MAX_CONCURRENT_DETECTIONS, stream_name);
+    pthread_mutex_unlock(&active_detections_mutex);
     }
     
     if (buffer) {
@@ -539,4 +728,25 @@ cleanup:
 
     log_info("Finished processing frame %d for detection", frame_counter);
     return (detect_ret == 0) ? 0 : -1;
+}
+
+/**
+ * Cleanup detection resources when shutting down
+ * This should be called when the application is exiting
+ */
+void cleanup_detection_resources(void) {
+    pthread_mutex_lock(&buffer_pool_mutex);
+    
+    // Free all buffers in the pool
+    for (int i = 0; i < MAX_BUFFER_POOL_SIZE; i++) {
+        if (buffer_pool[i].buffer) {
+            free(buffer_pool[i].buffer);
+            buffer_pool[i].buffer = NULL;
+            buffer_pool[i].size = 0;
+            buffer_pool[i].in_use = false;
+        }
+    }
+    
+    pthread_mutex_unlock(&buffer_pool_mutex);
+    log_info("Cleaned up detection resources");
 }

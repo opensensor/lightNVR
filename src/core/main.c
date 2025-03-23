@@ -27,6 +27,7 @@
 #include "video/detection_stream.h"
 #include "video/detection_recording.h"
 #include "video/detection.h"
+#include "video/detection_integration.h"
 #include "video/stream_packet_processor.h"
 #include "video/timestamp_manager.h"
 #include "video/onvif_discovery.h"
@@ -733,6 +734,10 @@ cleanup:
         // Clean up FFmpeg resources
         log_info("Cleaning up transcoding backend...");
         cleanup_transcoding_backend();
+        
+        // Shutdown detection resources
+        log_info("Cleaning up detection resources...");
+        cleanup_detection_resources();
         
         // Shutdown ONVIF discovery
         log_info("Shutting down ONVIF discovery module...");

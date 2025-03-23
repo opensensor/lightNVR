@@ -15,4 +15,10 @@
  */
 int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame, int detection_interval);
 
+/**
+ * Cleanup detection resources when shutting down
+ * This should be called when the application is exiting
+ */
+void cleanup_detection_resources(void);
+
 #endif /* DETECTION_INTEGRATION_H */

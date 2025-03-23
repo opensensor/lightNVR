@@ -11,6 +11,7 @@
 #include "video/sod_realnet.h"
 #include "video/motion_detection.h"
 #include "core/logger.h"
+#include "core/config.h"  // For MAX_PATH_LENGTH
 
 // Include SOD header if SOD is enabled at compile time
 #ifdef SOD_ENABLED
@@ -291,35 +292,33 @@ static detection_model_t load_sod_model(const char *model_path, float threshold)
 
     // Check if this is a face detection model based on filename or path
     const char *arch = "default";
-    if (strstr(model_path, "face") != NULL ||
-        strstr(model_path, "Face") != NULL ||
-        strstr(model_path, "FACE") != NULL) {
-        arch = ":face";
-        log_info("Using :face architecture for CNN model: %s", model_path);
-    }
-    // Check if this is a VOC detection model based on filename or path
-    else if (strstr(model_path, "voc") != NULL ||
-             strstr(model_path, "VOC") != NULL ||
-             strstr(model_path, "Voc") != NULL) {
-        arch = ":voc";
-        log_info("Using :voc architecture for CNN model: %s", model_path);
-    }
-
-    // If the model file has the same name as the one in the spec, force appropriate architecture
+    
+    // Extract the filename from the path
     const char *filename = strrchr(model_path, '/');
     if (filename) {
         filename++; // Skip the '/'
     } else {
         filename = model_path; // No '/' in the path
     }
-
-    if (strcmp(filename, "face_cnn.sod") == 0) {
+    
+    // First check for exact filename matches
+    if (strcmp(filename, "face_cnn.sod") == 0 || 
+        strcmp(filename, "face.sod") == 0 ||
+        strcmp(filename, "face_detection.sod") == 0) {
         arch = ":face";
-        log_info("Detected face_cnn.sod, forcing :face architecture");
+        log_info("Detected face model by exact filename match, using :face architecture: %s", filename);
     }
-    else if (strcmp(filename, "tiny20.sod") == 0) {
+    else if (strcmp(filename, "tiny20.sod") == 0 ||
+             strcmp(filename, "voc.sod") == 0 ||
+             strcmp(filename, "voc_detection.sod") == 0) {
         arch = ":voc";
-        log_info("Detected tiny20.sod, forcing :voc architecture");
+        log_info("Detected VOC model by exact filename match, using :voc architecture: %s", filename);
+    }
+    else {
+        // If we couldn't determine the architecture, default to face for .sod files
+        // This is a fallback to ensure face detection works even if the filename doesn't contain "face"
+        log_info("Could not determine model architecture from name, defaulting to :face for: %s", model_path);
+        arch = ":face";
     }
 
     #ifdef SOD_ENABLED
@@ -462,6 +461,14 @@ static detection_model_t load_tflite_model(const char *model_path, float thresho
     return model;
 }
 
+// Define maximum model size for embedded devices (in MB)
+#define MAX_MODEL_SIZE_MB 50
+#define MAX_LARGE_MODELS 1  // Maximum number of large models to load simultaneously
+
+// Track large models that are currently loaded
+static int large_models_loaded = 0;
+static pthread_mutex_t large_models_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 /**
  * Load a detection model
  */
@@ -471,20 +478,32 @@ detection_model_t load_detection_model(const char *model_path, float threshold) 
         return NULL;
     }
 
-    // Check if file exists
-    FILE *model_file = fopen(model_path, "r");
-    if (!model_file) {
+    // Check if file exists and get its size
+    struct stat st;
+    if (stat(model_path, &st) != 0) {
         log_error("MODEL FILE NOT FOUND IN DETECTION.C: %s", model_path);
         return NULL;
-    } else {
-        fclose(model_file);
-        log_info("MODEL FILE EXISTS IN DETECTION.C: %s", model_path);
+    }
+    
+    log_info("MODEL FILE EXISTS IN DETECTION.C: %s", model_path);
+    log_info("MODEL FILE SIZE: %ld bytes", (long)st.st_size);
+    
+    // Check if this is a large model
+    double model_size_mb = (double)st.st_size / (1024 * 1024);
+    bool is_large_model = model_size_mb > MAX_MODEL_SIZE_MB;
+    
+    if (is_large_model) {
+        log_warn("Large model detected: %.1f MB (limit: %d MB)", model_size_mb, MAX_MODEL_SIZE_MB);
         
-        // Get file size
-        struct stat st;
-        if (stat(model_path, &st) == 0) {
-            log_info("MODEL FILE SIZE: %ld bytes", (long)st.st_size);
+        // Check if we can load another large model
+        pthread_mutex_lock(&large_models_mutex);
+        if (large_models_loaded >= MAX_LARGE_MODELS) {
+            log_error("Cannot load another large model, already at limit (%d)", MAX_LARGE_MODELS);
+            pthread_mutex_unlock(&large_models_mutex);
+            return NULL;
         }
+        large_models_loaded++;
+        pthread_mutex_unlock(&large_models_mutex);
     }
 
     // Get model type
@@ -492,16 +511,26 @@ detection_model_t load_detection_model(const char *model_path, float threshold) 
     log_info("MODEL TYPE: %s", model_type);
 
     // Load appropriate model type
+    detection_model_t model = NULL;
+    
     if (strcmp(model_type, MODEL_TYPE_SOD_REALNET) == 0) {
-        return load_sod_realnet_model_internal(model_path, threshold);
+        model = load_sod_realnet_model_internal(model_path, threshold);
     } else if (strcmp(model_type, MODEL_TYPE_SOD) == 0) {
-        return load_sod_model(model_path, threshold);
+        model = load_sod_model(model_path, threshold);
     } else if (strcmp(model_type, MODEL_TYPE_TFLITE) == 0) {
-        return load_tflite_model(model_path, threshold);
+        model = load_tflite_model(model_path, threshold);
     } else {
         log_error("Unsupported model type: %s", model_type);
-        return NULL;
     }
+    
+    // If loading failed and this was a large model, decrement the counter
+    if (!model && is_large_model) {
+        pthread_mutex_lock(&large_models_mutex);
+        large_models_loaded--;
+        pthread_mutex_unlock(&large_models_mutex);
+    }
+    
+    return model;
 }
 
 /**
@@ -513,6 +542,18 @@ void unload_detection_model(detection_model_t model) {
     }
 
     model_t *m = (model_t *)model;
+    
+    // Get the model path to check if it's a large model
+    char model_path[MAX_PATH_LENGTH] = {0};
+    bool is_large_model = false;
+    
+    // For SOD models, we can get the path from the model structure
+    if (strcmp(m->type, MODEL_TYPE_SOD) == 0) {
+        // We don't have direct access to the path in the model structure
+        // But we can check if it's a large model based on memory usage
+        // This is an approximation
+        is_large_model = true;  // Assume it's large for safety
+    }
 
     if (strcmp(m->type, MODEL_TYPE_SOD) == 0) {
         // Unload SOD model
@@ -530,6 +571,16 @@ void unload_detection_model(detection_model_t model) {
         // Unload TFLite model
         m->tflite.free_model(m->tflite.model);
         dlclose(m->tflite.handle);
+    }
+
+    // If this was a large model, decrement the counter
+    if (is_large_model) {
+        pthread_mutex_lock(&large_models_mutex);
+        if (large_models_loaded > 0) {
+            large_models_loaded--;
+            log_info("Unloaded large model, %d large models still loaded", large_models_loaded);
+        }
+        pthread_mutex_unlock(&large_models_mutex);
     }
 
     free(m);
