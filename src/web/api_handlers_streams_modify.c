@@ -455,11 +455,11 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
         config_changed = true;
     }
     
-    // If ONVIF flag is set or changed, test the connection
+    // If ONVIF flag is set, test the connection
     bool onvif_test_success = true;
     bool onvif_test_performed = false;
     
-    if (config.is_onvif && (original_is_onvif != config.is_onvif || strcmp(original_url, config.url) != 0)) {
+    if (config.is_onvif) {
         log_info("Testing ONVIF capabilities for stream %s", config.name);
         onvif_test_performed = true;
         
