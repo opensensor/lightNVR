@@ -9,6 +9,18 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Option to enable/disable SOD
 option(ENABLE_SOD "Enable SOD library for object detection" ON)
 
+# SSL/TLS options
+option(ENABLE_SSL "Enable SSL/TLS support" OFF)
+option(USE_MBEDTLS "Use mbedTLS instead of OpenSSL (if SSL is enabled)" OFF)
+option(USE_WOLFSSL "Use WolfSSL instead of OpenSSL (if SSL is enabled)" OFF)
+
+# Define TLS constants (from mongoose.h)
+set(MG_TLS_NONE 0)
+set(MG_TLS_MBED 1)
+set(MG_TLS_OPENSSL 2)
+set(MG_TLS_BUILTIN 3)
+set(MG_TLS_WOLFSSL 5)
+
 # Compiler flags for optimization and memory usage
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O2 -ffunction-sections -fdata-sections -Wl,--gc-sections -pthread")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -ffunction-sections -fdata-sections -Wl,--gc-sections -pthread")
@@ -31,7 +43,41 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(FFMPEG REQUIRED libavcodec libavformat libavutil libswscale)
 pkg_check_modules(SQLITE REQUIRED sqlite3)
 pkg_check_modules(CURL REQUIRED libcurl)
-pkg_check_modules(OPENSSL REQUIRED openssl)
+
+# SSL/TLS configuration for Mongoose
+if(ENABLE_SSL)
+    if(USE_MBEDTLS)
+        add_definitions(-DMG_TLS=${MG_TLS_MBED})
+        pkg_check_modules(MBEDTLS REQUIRED mbedtls mbedcrypto mbedx509)
+        set(SSL_INCLUDE_DIRS ${MBEDTLS_INCLUDE_DIRS})
+        set(SSL_LIBRARIES ${MBEDTLS_LIBRARIES})
+        message(STATUS "Using mbedTLS for SSL/TLS support")
+    elseif(USE_WOLFSSL)
+        add_definitions(-DMG_TLS=${MG_TLS_WOLFSSL})
+        pkg_check_modules(WOLFSSL REQUIRED wolfssl)
+        set(SSL_INCLUDE_DIRS ${WOLFSSL_INCLUDE_DIRS})
+        set(SSL_LIBRARIES ${WOLFSSL_LIBRARIES})
+        message(STATUS "Using WolfSSL for SSL/TLS support")
+    else()
+        add_definitions(-DMG_TLS=${MG_TLS_OPENSSL})
+        pkg_check_modules(OPENSSL REQUIRED openssl)
+        set(SSL_INCLUDE_DIRS ${OPENSSL_INCLUDE_DIRS})
+        set(SSL_LIBRARIES ${OPENSSL_LIBRARIES})
+        message(STATUS "Using OpenSSL for SSL/TLS support")
+    endif()
+else()
+    add_definitions(-DMG_TLS=${MG_TLS_NONE})
+    message(STATUS "SSL/TLS support is disabled for Mongoose")
+    # Define empty variables for SSL
+    set(SSL_INCLUDE_DIRS "")
+    set(SSL_LIBRARIES "")
+endif()
+
+# ONVIF requires mbedTLS for SHA1 and Base64 functions
+pkg_check_modules(MBEDTLS REQUIRED mbedtls mbedcrypto mbedx509)
+list(APPEND SSL_INCLUDE_DIRS ${MBEDTLS_INCLUDE_DIRS})
+list(APPEND SSL_LIBRARIES ${MBEDTLS_LIBRARIES})
+message(STATUS "ONVIF support enabled, linking with mbedTLS for SHA1 and Base64 functions")
 
 # Set up ezxml library
 set(EZXML_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/ezxml")
@@ -109,7 +155,7 @@ set(LIGHTNVR_INCLUDE_DIRS
         ${FFMPEG_INCLUDE_DIRS}
         ${SQLITE_INCLUDE_DIRS}
         ${CURL_INCLUDE_DIRS}
-        ${OPENSSL_INCLUDE_DIRS}
+        ${SSL_INCLUDE_DIRS}
         ${EZXML_INCLUDE_DIR}
         ${INIH_INCLUDE_DIR}
 )
@@ -174,7 +220,7 @@ target_link_libraries(lightnvr
         ${FFMPEG_LIBRARIES}
         ${SQLITE_LIBRARIES}
         ${CURL_LIBRARIES}
-        ${OPENSSL_LIBRARIES}
+        ${SSL_LIBRARIES}
         pthread
         dl
         m

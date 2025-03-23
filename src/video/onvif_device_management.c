@@ -9,8 +9,8 @@
 #include <time.h>
 #include <curl/curl.h>
 #include <ezxml.h>
-#include <openssl/sha.h>
-#include <openssl/evp.h>
+#include <mbedtls/sha1.h>
+#include <mbedtls/base64.h>
 #include <libavformat/avformat.h>
 
 // Structure to store memory for CURL responses
@@ -41,11 +41,12 @@ static size_t write_callback(void *contents, size_t size, size_t nmemb, void *us
 // Create WS-Security header with digest authentication
 static char* create_security_header(const char *username, const char *password, char *nonce, char *created) {
     char *header = NULL;
-    unsigned char digest[SHA_DIGEST_LENGTH];
+    unsigned char digest[20]; // SHA1 digest length is 20 bytes
     char *concatenated = NULL;
     char *base64_nonce = NULL;
     char *base64_digest = NULL;
     int nonce_len = 16;
+    size_t base64_len;
     
     // Generate random nonce
     unsigned char nonce_bytes[nonce_len];
@@ -55,7 +56,8 @@ static char* create_security_header(const char *username, const char *password, 
     
     // Base64 encode the nonce
     base64_nonce = malloc(((4 * nonce_len) / 3) + 5); // +5 for padding and null terminator
-    EVP_EncodeBlock((unsigned char*)base64_nonce, nonce_bytes, nonce_len);
+    mbedtls_base64_encode((unsigned char*)base64_nonce, ((4 * nonce_len) / 3) + 5, &base64_len, nonce_bytes, nonce_len);
+    base64_nonce[base64_len] = '\0'; // Ensure null termination
     
     // Copy nonce to output parameter
     strcpy(nonce, base64_nonce);
@@ -76,11 +78,12 @@ static char* create_security_header(const char *username, const char *password, 
     memcpy(concatenated + nonce_len + strlen(created), password, strlen(password) + 1);
     
     // Calculate SHA1 digest
-    SHA1((unsigned char*)concatenated, nonce_len + strlen(created) + strlen(password), digest);
+    mbedtls_sha1((unsigned char*)concatenated, nonce_len + strlen(created) + strlen(password), digest);
     
     // Base64 encode the digest
-    base64_digest = malloc(((4 * SHA_DIGEST_LENGTH) / 3) + 5);
-    EVP_EncodeBlock((unsigned char*)base64_digest, digest, SHA_DIGEST_LENGTH);
+    base64_digest = malloc(((4 * 20) / 3) + 5); // 20 is SHA1 digest length
+    mbedtls_base64_encode((unsigned char*)base64_digest, ((4 * 20) / 3) + 5, &base64_len, digest, 20);
+    base64_digest[base64_len] = '\0'; // Ensure null termination
     
     // Create the security header in the format expected by onvif_simple_server
     header = malloc(1024);
