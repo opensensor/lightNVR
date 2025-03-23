@@ -1,6 +1,7 @@
 #include "video/onvif_discovery_messages.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 
 // ONVIF WS-Discovery message templates
 // Standard ONVIF WS-Discovery message
@@ -62,10 +63,30 @@ const char *ONVIF_DISCOVERY_MSG_WITH_SCOPE =
 
 // Generate a random UUID for WS-Discovery message ID
 void generate_uuid(char *uuid, size_t size) {
-    snprintf(uuid, size, "%x%x-%x-%x-%x-%x%x%x",
-             rand() & 0xffff, rand() & 0xffff,
-             rand() & 0xffff,
-             ((rand() & 0x0fff) | 0x4000),
-             ((rand() & 0x3fff) | 0x8000),
-             rand() & 0xffff, rand() & 0xffff, rand() & 0xffff);
+    // Use a more deterministic approach for UUID generation
+    // This ensures consistent UUIDs across different crypto libraries
+    
+    // Get current time for some randomness
+    time_t now = time(NULL);
+    unsigned int seed = (unsigned int)now;
+    
+    // Use a local random state to avoid affecting the global rand() state
+    unsigned int r1 = seed ^ 0x12345678;
+    unsigned int r2 = (seed >> 8) ^ 0x87654321;
+    unsigned int r3 = (seed >> 16) ^ 0xabcdef01;
+    unsigned int r4 = (seed >> 24) ^ 0x10fedcba;
+    
+    // Generate UUID components
+    unsigned int p1 = (r1 * 1103515245 + 12345) & 0xffff;
+    unsigned int p2 = (r2 * 1103515245 + 12345) & 0xffff;
+    unsigned int p3 = (r3 * 1103515245 + 12345) & 0xffff;
+    unsigned int p4 = (r4 * 1103515245 + 12345) & 0xffff;
+    
+    // Format according to UUID v4 format (random)
+    snprintf(uuid, size, "%04x%04x-%04x-%04x-%04x-%04x%04x%04x",
+             p1, p2,
+             p3,
+             ((p4 & 0x0fff) | 0x4000), // Version 4
+             ((r1 & 0x3fff) | 0x8000), // Variant 1
+             r2 & 0xffff, r3 & 0xffff, r4 & 0xffff);
 }
