@@ -667,23 +667,33 @@ int add_onvif_device_as_stream(const onvif_device_info_t *device_info,
     config.url[MAX_URL_LENGTH - 1] = '\0';
     
     // Set stream parameters
-    config.enabled = true;
+    config.enabled = true;  // Enable the stream by default
     config.width = profile->width;
     config.height = profile->height;
     config.fps = profile->fps;
-    strncpy(config.codec, profile->encoding, sizeof(config.codec) - 1);
+    
+    // Set codec - convert ONVIF encoding format to our format
+    if (strcasecmp(profile->encoding, "H264") == 0) {
+        strncpy(config.codec, "h264", sizeof(config.codec) - 1);
+    } else if (strcasecmp(profile->encoding, "H265") == 0) {
+        strncpy(config.codec, "h265", sizeof(config.codec) - 1);
+    } else {
+        // Default to h264 if unknown
+        strncpy(config.codec, "h264", sizeof(config.codec) - 1);
+        log_warn("Unknown encoding format '%s', defaulting to h264", profile->encoding);
+    }
     config.codec[sizeof(config.codec) - 1] = '\0';
     
     // Set default values
     config.priority = 5;
-    config.record = false;
+    config.record = true;  // Enable recording by default
     config.segment_duration = 60;
     config.detection_based_recording = true;  // Enable detection-based recording by default
     config.detection_interval = 10;
     config.detection_threshold = 0.5;
     config.pre_detection_buffer = 5;
     config.post_detection_buffer = 10;
-    config.streaming_enabled = true;
+    config.streaming_enabled = true;  // Enable live streaming by default
     
     // Set default detection model to "motion" which doesn't require a separate model file
     strncpy(config.detection_model, "motion", sizeof(config.detection_model) - 1);

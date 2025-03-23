@@ -322,7 +322,8 @@ export function StreamsView() {
   const startOnvifDiscovery = async () => {
     try {
       setIsDiscovering(true);
-      setDiscoveredDevices([]);
+      // Don't clear discovered devices immediately to prevent UI flicker
+      // and to preserve any credentials entered
       showStatusMessage('Starting ONVIF discovery...');
       
       const response = await fetch('/api/onvif/discovery/discover', {
@@ -339,6 +340,7 @@ export function StreamsView() {
       }
       
       const data = await response.json();
+      // Update discovered devices without clearing credentials
       setDiscoveredDevices(data.devices || []);
       
       if (data.devices && data.devices.length > 0) {
@@ -456,6 +458,12 @@ export function StreamsView() {
   // Test ONVIF connection
   const testOnvifConnection = async (device) => {
     try {
+      // Save current credentials to preserve them
+      const currentCredentials = {
+        username: onvifCredentials.username,
+        password: onvifCredentials.password
+      };
+      
       showStatusMessage('Testing ONVIF connection...');
       
       const response = await fetch('/api/onvif/device/test', {
@@ -465,8 +473,8 @@ export function StreamsView() {
         },
         body: JSON.stringify({
           url: device.device_service,
-          username: onvifCredentials.username,
-          password: onvifCredentials.password
+          username: currentCredentials.username,
+          password: currentCredentials.password
         })
       });
       
@@ -477,6 +485,7 @@ export function StreamsView() {
       showStatusMessage('ONVIF connection successful!');
       
       // Get device profiles after successful connection test
+      // Pass the saved credentials to ensure they're not lost
       getDeviceProfiles(device);
     } catch (error) {
       console.error('Error testing ONVIF connection:', error);
