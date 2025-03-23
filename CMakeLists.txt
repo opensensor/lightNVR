@@ -30,6 +30,12 @@ set(LIGHTNVR_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(FFMPEG REQUIRED libavcodec libavformat libavutil libswscale)
 pkg_check_modules(SQLITE REQUIRED sqlite3)
+pkg_check_modules(CURL REQUIRED libcurl)
+pkg_check_modules(OPENSSL REQUIRED openssl)
+
+# Set up ezxml library
+set(EZXML_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/ezxml")
+set(EZXML_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/external/ezxml/ezxml.c")
 
 # Mongoose is required for web server implementation
 add_definitions(-DUSE_MONGOOSE)
@@ -102,6 +108,9 @@ set(LIGHTNVR_INCLUDE_DIRS
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${FFMPEG_INCLUDE_DIRS}
         ${SQLITE_INCLUDE_DIRS}
+        ${CURL_INCLUDE_DIRS}
+        ${OPENSSL_INCLUDE_DIRS}
+        ${EZXML_INCLUDE_DIR}
         ${INIH_INCLUDE_DIR}
 )
 
@@ -149,6 +158,9 @@ set(SOURCES
 # Add Mongoose source (required component)
 list(APPEND SOURCES ${MONGOOSE_SOURCES})
 
+# Add ezxml source
+list(APPEND SOURCES ${EZXML_SOURCES})
+
 # Add cJSON source if using bundled version
 if(CJSON_BUNDLED)
     list(APPEND SOURCES ${CJSON_SOURCES})
@@ -161,6 +173,8 @@ add_executable(lightnvr ${SOURCES})
 target_link_libraries(lightnvr
         ${FFMPEG_LIBRARIES}
         ${SQLITE_LIBRARIES}
+        ${CURL_LIBRARIES}
+        ${OPENSSL_LIBRARIES}
         pthread
         dl
         m

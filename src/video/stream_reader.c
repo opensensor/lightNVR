@@ -348,12 +348,19 @@ static void *stream_reader_thread(void *arg) {
                 bool is_onvif = strstr(ctx->config.url, "onvif") != NULL;
                 
                 if (is_onvif) {
-                    // For ONVIF streams, use the TCP reconnection strategy
-                    backoff_time_ms = 250 * (1 << (reconnect_attempts > 5 ? 5 : reconnect_attempts));
-                    
-                    // Cap the backoff time at 4 seconds
-                    if (backoff_time_ms > 4000) {
-                        backoff_time_ms = 4000;
+                    // For ONVIF streams, use a more aggressive reconnection strategy
+                    // with shorter initial delays but longer maximum delays
+                    if (reconnect_attempts < 3) {
+                        // Start with shorter delays for quick recovery
+                        backoff_time_ms = 200 * (reconnect_attempts + 1);
+                    } else {
+                        // Then use exponential backoff with a higher cap
+                        backoff_time_ms = 500 * (1 << ((reconnect_attempts - 3) > 4 ? 4 : (reconnect_attempts - 3)));
+                        
+                        // Cap the backoff time at 6 seconds
+                        if (backoff_time_ms > 6000) {
+                            backoff_time_ms = 6000;
+                        }
                     }
                     
                     log_info("ONVIF reconnection attempt %d for %s, waiting %d ms", 

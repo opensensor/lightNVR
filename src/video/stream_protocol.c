@@ -233,7 +233,12 @@ bool is_onvif_stream(const char *url) {
     }
     
     // Check if URL contains "onvif" substring
-    return (strstr(url, "onvif") != NULL);
+    if (strstr(url, "onvif") != NULL) {
+        log_info("Detected ONVIF stream URL: %s", url);
+        return true;
+    }
+    
+    return false;
 }
 
 /**

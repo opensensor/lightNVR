@@ -6,54 +6,495 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <curl/curl.h>
+#include <ezxml.h>
+#include <openssl/sha.h>
+#include <openssl/evp.h>
+
+// Structure to store memory for CURL responses
+typedef struct {
+    char *memory;
+    size_t size;
+} MemoryStruct;
+
+// Callback function for CURL to write received data
+static size_t write_callback(void *contents, size_t size, size_t nmemb, void *userp) {
+    size_t realsize = size * nmemb;
+    MemoryStruct *mem = (MemoryStruct *)userp;
+
+    char *ptr = realloc(mem->memory, mem->size + realsize + 1);
+    if (ptr == NULL) {
+        log_error("Not enough memory (realloc returned NULL)");
+        return 0;
+    }
+
+    mem->memory = ptr;
+    memcpy(&(mem->memory[mem->size]), contents, realsize);
+    mem->size += realsize;
+    mem->memory[mem->size] = 0;
+
+    return realsize;
+}
+
+// Create WS-Security header with digest authentication
+static char* create_security_header(const char *username, const char *password, char *nonce, char *created) {
+    char *header = NULL;
+    unsigned char digest[SHA_DIGEST_LENGTH];
+    char *concatenated = NULL;
+    char *base64_nonce = NULL;
+    char *base64_digest = NULL;
+    int nonce_len = 16;
+    
+    // Generate random nonce
+    unsigned char nonce_bytes[nonce_len];
+    for (int i = 0; i < nonce_len; i++) {
+        nonce_bytes[i] = rand() % 256;
+    }
+    
+    // Base64 encode the nonce
+    base64_nonce = malloc(((4 * nonce_len) / 3) + 5); // +5 for padding and null terminator
+    EVP_EncodeBlock((unsigned char*)base64_nonce, nonce_bytes, nonce_len);
+    
+    // Copy nonce to output parameter
+    strcpy(nonce, base64_nonce);
+    
+    // Get current time
+    time_t now;
+    struct tm *tm_now;
+    
+    time(&now);
+    tm_now = gmtime(&now);
+    strftime(created, 30, "%Y-%m-%dT%H:%M:%S.000Z", tm_now);
+    
+    // Create the concatenated string: nonce + created + password
+    concatenated = malloc(strlen(base64_nonce) + strlen(created) + strlen(password) + 1);
+    sprintf(concatenated, "%s%s%s", base64_nonce, created, password);
+    
+    // Calculate SHA1 digest
+    SHA1((unsigned char*)concatenated, strlen(concatenated), digest);
+    
+    // Base64 encode the digest
+    base64_digest = malloc(((4 * SHA_DIGEST_LENGTH) / 3) + 5);
+    EVP_EncodeBlock((unsigned char*)base64_digest, digest, SHA_DIGEST_LENGTH);
+    
+    // Create the security header
+    header = malloc(1024);
+    sprintf(header,
+        "<Security xmlns=\"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd\">"
+            "<UsernameToken>"
+                "<Username>%s</Username>"
+                "<Password Type=\"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordDigest\">%s</Password>"
+                "<Nonce EncodingType=\"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-soap-message-security-1.0#Base64Binary\">%s</Nonce>"
+                "<Created xmlns=\"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd\">%s</Created>"
+            "</UsernameToken>"
+        "</Security>",
+        username, base64_digest, base64_nonce, created);
+    
+    // Free allocated memory
+    free(concatenated);
+    free(base64_nonce);
+    free(base64_digest);
+    
+    return header;
+}
+
+// Send a SOAP request to the ONVIF device
+static char* send_soap_request(const char *device_url, const char *soap_action, const char *request_body,
+                              const char *username, const char *password) {
+    CURL *curl;
+    CURLcode res;
+    MemoryStruct chunk;
+    struct curl_slist *headers = NULL;
+    char *soap_envelope = NULL;
+    char *response = NULL;
+    char nonce[64] = {0};
+    char created[64] = {0};
+    char *security_header = NULL;
+    
+    // Initialize memory chunk
+    chunk.memory = malloc(1);
+    chunk.size = 0;
+    
+    curl = curl_easy_init();
+    if (!curl) {
+        log_error("Failed to initialize CURL");
+        free(chunk.memory);
+        return NULL;
+    }
+    
+    // Create security header if authentication is required
+    if (username && password && strlen(username) > 0 && strlen(password) > 0) {
+        security_header = create_security_header(username, password, nonce, created);
+    } else {
+        security_header = strdup("");
+    }
+    
+    // Create the SOAP envelope
+    soap_envelope = malloc(strlen(request_body) + strlen(security_header) + 1024);
+    sprintf(soap_envelope,
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+        "<SOAP-ENV:Envelope "
+            "xmlns:SOAP-ENV=\"http://www.w3.org/2003/05/soap-envelope\" "
+            "xmlns:SOAP-ENC=\"http://www.w3.org/2003/05/soap-encoding\" "
+            "xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" "
+            "xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" "
+            "xmlns:wsa=\"http://www.w3.org/2005/08/addressing\" "
+            "xmlns:tds=\"http://www.onvif.org/ver10/device/wsdl\" "
+            "xmlns:trt=\"http://www.onvif.org/ver10/media/wsdl\" "
+            "xmlns:timg=\"http://www.onvif.org/ver20/imaging/wsdl\" "
+            "xmlns:tev=\"http://www.onvif.org/ver10/events/wsdl\" "
+            "xmlns:tptz=\"http://www.onvif.org/ver20/ptz/wsdl\">"
+            "<SOAP-ENV:Header>%s</SOAP-ENV:Header>"
+            "<SOAP-ENV:Body>%s</SOAP-ENV:Body>"
+        "</SOAP-ENV:Envelope>",
+        security_header, request_body);
+    
+    // Set up the HTTP headers
+    headers = curl_slist_append(headers, "Content-Type: application/soap+xml; charset=utf-8");
+    if (soap_action) {
+        char soap_action_header[256];
+        sprintf(soap_action_header, "SOAPAction: %s", soap_action);
+        headers = curl_slist_append(headers, soap_action_header);
+    }
+    
+    // Set up CURL options
+    curl_easy_setopt(curl, CURLOPT_URL, device_url);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, soap_envelope);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+    
+    // Perform the request
+    res = curl_easy_perform(curl);
+    if (res != CURLE_OK) {
+        log_error("CURL failed: %s", curl_easy_strerror(res));
+    } else {
+        response = strdup(chunk.memory);
+    }
+    
+    // Clean up
+    curl_easy_cleanup(curl);
+    curl_slist_free_all(headers);
+    free(soap_envelope);
+    free(security_header);
+    free(chunk.memory);
+    
+    return response;
+}
+
+// Find a child element by name
+static ezxml_t find_child(ezxml_t parent, const char *name) {
+    if (!parent) return NULL;
+    return ezxml_child(parent, name);
+}
+
+// Find a child element by name with namespace prefix
+static ezxml_t find_child_with_ns(ezxml_t parent, const char *ns, const char *name) {
+    if (!parent) return NULL;
+    
+    char full_name[256];
+    snprintf(full_name, sizeof(full_name), "%s:%s", ns, name);
+    
+    return ezxml_child(parent, full_name);
+}
+
+// Find all elements with a specific name
+static void find_elements_by_name(ezxml_t root, const char *name, ezxml_t *results, int *count, int max_count) {
+    if (!root || !name || !results || !count || max_count <= 0) return;
+    
+    // Check if the current element matches
+    if (strcmp(root->name, name) == 0) {
+        if (*count < max_count) {
+            results[*count] = root;
+            (*count)++;
+        }
+    }
+    
+    // Check children
+    for (ezxml_t child = root->child; child; child = child->sibling) {
+        find_elements_by_name(child, name, results, count, max_count);
+    }
+}
+
+// Get media service URL from device service
+static char* get_media_service_url(const char *device_url, const char *username, const char *password) {
+    char *request_body = 
+        "<tds:GetServices>"
+            "<tds:IncludeCapability>false</tds:IncludeCapability>"
+        "</tds:GetServices>";
+    
+    char *response = send_soap_request(device_url, NULL, request_body, username, password);
+    if (!response) {
+        log_error("Failed to get services");
+        return NULL;
+    }
+    
+    // Parse the XML response
+    ezxml_t xml = ezxml_parse_str(response, strlen(response));
+    if (!xml) {
+        log_error("Failed to parse XML response");
+        free(response);
+        return NULL;
+    }
+    
+    // Find the media service URL
+    char *media_url = NULL;
+    ezxml_t body = find_child(xml, "SOAP-ENV:Body");
+    if (body) {
+        ezxml_t get_services_response = find_child(body, "tds:GetServicesResponse");
+        if (get_services_response) {
+            ezxml_t service = find_child(get_services_response, "tds:Service");
+            while (service) {
+                ezxml_t namespace = find_child(service, "Namespace");
+                if (namespace && strcmp(ezxml_txt(namespace), "http://www.onvif.org/ver10/media/wsdl") == 0) {
+                    ezxml_t xaddr = find_child(service, "XAddr");
+                    if (xaddr) {
+                        media_url = strdup(ezxml_txt(xaddr));
+                        break;
+                    }
+                }
+                service = service->next;
+            }
+        }
+    }
+    
+    // Clean up
+    ezxml_free(xml);
+    free(response);
+    
+    return media_url;
+}
 
 // Get ONVIF device profiles
 int get_onvif_device_profiles(const char *device_url, const char *username, 
                              const char *password, onvif_profile_t *profiles, 
                              int max_profiles) {
-    // This is a placeholder implementation. In a real implementation, you would
-    // use ONVIF SOAP calls to get the device profiles.
-    
-    log_info("Getting profiles for ONVIF device: %s", device_url);
-    
-    // For now, just return a dummy profile
-    if (max_profiles > 0) {
-        strncpy(profiles[0].token, "Profile_1", sizeof(profiles[0].token) - 1);
-        profiles[0].token[sizeof(profiles[0].token) - 1] = '\0';
-        
-        strncpy(profiles[0].name, "Main Stream", sizeof(profiles[0].name) - 1);
-        profiles[0].name[sizeof(profiles[0].name) - 1] = '\0';
-        
-        snprintf(profiles[0].stream_uri, sizeof(profiles[0].stream_uri),
-                 "rtsp://%s:554/onvif/profile1/media.smp", 
-                 strstr(device_url, "://") ? strstr(device_url, "://") + 3 : device_url);
-        
-        profiles[0].width = 1920;
-        profiles[0].height = 1080;
-        strncpy(profiles[0].encoding, "H264", sizeof(profiles[0].encoding) - 1);
-        profiles[0].encoding[sizeof(profiles[0].encoding) - 1] = '\0';
-        profiles[0].fps = 30;
-        profiles[0].bitrate = 4000;
-        
-        return 1;
+    char *media_url = get_media_service_url(device_url, username, password);
+    if (!media_url) {
+        log_error("Couldn't get media service URL");
+        return 0;
     }
     
-    return 0;
+    log_info("Getting profiles for ONVIF device: %s (Media URL: %s)", device_url, media_url);
+    
+    char *request_body = "<trt:GetProfiles/>";
+    char *response = send_soap_request(media_url, NULL, request_body, username, password);
+    if (!response) {
+        log_error("Failed to get profiles");
+        free(media_url);
+        return 0;
+    }
+    
+    // Parse the XML response
+    ezxml_t xml = ezxml_parse_str(response, strlen(response));
+    if (!xml) {
+        log_error("Failed to parse XML response");
+        free(response);
+        free(media_url);
+        return 0;
+    }
+    
+    // Find all profiles
+    ezxml_t profile_elements[max_profiles];
+    int profile_count = 0;
+    
+    ezxml_t body = find_child(xml, "SOAP-ENV:Body");
+    if (body) {
+        ezxml_t get_profiles_response = find_child(body, "trt:GetProfilesResponse");
+        if (get_profiles_response) {
+            ezxml_t profile = find_child(get_profiles_response, "trt:Profiles");
+            while (profile && profile_count < max_profiles) {
+                profile_elements[profile_count++] = profile;
+                profile = profile->next;
+            }
+        }
+    }
+    
+    if (profile_count == 0) {
+        log_error("No profiles found");
+        ezxml_free(xml);
+        free(response);
+        free(media_url);
+        return 0;
+    }
+    
+    log_info("Found %d profiles, returning up to %d", profile_count, max_profiles);
+    
+    int count = (profile_count < max_profiles) ? profile_count : max_profiles;
+    
+    for (int i = 0; i < count; i++) {
+        ezxml_t profile = profile_elements[i];
+        
+        // Get profile token
+        const char *token = ezxml_attr(profile, "token");
+        if (token) {
+            strncpy(profiles[i].token, token, sizeof(profiles[i].token) - 1);
+            profiles[i].token[sizeof(profiles[i].token) - 1] = '\0';
+        }
+        
+        // Get profile name
+        ezxml_t name = find_child(profile, "tt:Name");
+        if (name) {
+            strncpy(profiles[i].name, ezxml_txt(name), sizeof(profiles[i].name) - 1);
+            profiles[i].name[sizeof(profiles[i].name) - 1] = '\0';
+        }
+        
+        // Get video encoder configuration
+        ezxml_t video_encoder = find_child(profile, "tt:VideoEncoderConfiguration");
+        if (video_encoder) {
+            ezxml_t encoding = find_child(video_encoder, "tt:Encoding");
+            if (encoding) {
+                strncpy(profiles[i].encoding, ezxml_txt(encoding), sizeof(profiles[i].encoding) - 1);
+                profiles[i].encoding[sizeof(profiles[i].encoding) - 1] = '\0';
+            }
+            
+            ezxml_t resolution = find_child(video_encoder, "tt:Resolution");
+            if (resolution) {
+                ezxml_t width = find_child(resolution, "tt:Width");
+                if (width) {
+                    profiles[i].width = atoi(ezxml_txt(width));
+                }
+                
+                ezxml_t height = find_child(resolution, "tt:Height");
+                if (height) {
+                    profiles[i].height = atoi(ezxml_txt(height));
+                }
+            }
+            
+            ezxml_t rate_control = find_child(video_encoder, "tt:RateControl");
+            if (rate_control) {
+                ezxml_t fps = find_child(rate_control, "tt:FrameRateLimit");
+                if (fps) {
+                    profiles[i].fps = atoi(ezxml_txt(fps));
+                }
+                
+                ezxml_t bitrate = find_child(rate_control, "tt:BitrateLimit");
+                if (bitrate) {
+                    profiles[i].bitrate = atoi(ezxml_txt(bitrate));
+                }
+            }
+        }
+        
+        // Get the stream URI for this profile
+        get_onvif_stream_url(device_url, username, password, profiles[i].token, 
+                            profiles[i].stream_uri, sizeof(profiles[i].stream_uri));
+    }
+    
+    // Clean up
+    ezxml_free(xml);
+    free(response);
+    free(media_url);
+    
+    return count;
 }
 
 // Get ONVIF stream URL for a specific profile
 int get_onvif_stream_url(const char *device_url, const char *username, 
                         const char *password, const char *profile_token, 
                         char *stream_url, size_t url_size) {
-    // This is a placeholder implementation. In a real implementation, you would
-    // use ONVIF SOAP calls to get the stream URL.
+    char *media_url = get_media_service_url(device_url, username, password);
+    if (!media_url) {
+        log_error("Couldn't get media service URL");
+        return -1;
+    }
     
     log_info("Getting stream URL for ONVIF device: %s, profile: %s", device_url, profile_token);
     
-    // For now, just return a dummy URL
-    snprintf(stream_url, url_size, "rtsp://%s:554/onvif/%s/media.smp", 
-             strstr(device_url, "://") ? strstr(device_url, "://") + 3 : device_url,
-             profile_token);
+    // Create request body for GetStreamUri
+    char request_body[512];
+    snprintf(request_body, sizeof(request_body),
+        "<trt:GetStreamUri>"
+            "<trt:StreamSetup>"
+                "<tt:Stream>RTP-Unicast</tt:Stream>"
+                "<tt:Transport>"
+                    "<tt:Protocol>RTSP</tt:Protocol>"
+                "</tt:Transport>"
+            "</trt:StreamSetup>"
+            "<trt:ProfileToken>%s</trt:ProfileToken>"
+        "</trt:GetStreamUri>",
+        profile_token);
+    
+    char *response = send_soap_request(media_url, NULL, request_body, username, password);
+    if (!response) {
+        log_error("Failed to get stream URI");
+        free(media_url);
+        return -1;
+    }
+    
+    // Parse the XML response
+    ezxml_t xml = ezxml_parse_str(response, strlen(response));
+    if (!xml) {
+        log_error("Failed to parse XML response");
+        free(response);
+        free(media_url);
+        return -1;
+    }
+    
+    // Extract the URI
+    const char *uri = NULL;
+    ezxml_t body = find_child(xml, "SOAP-ENV:Body");
+    if (body) {
+        ezxml_t get_stream_uri_response = find_child(body, "trt:GetStreamUriResponse");
+        if (get_stream_uri_response) {
+            ezxml_t media_uri = find_child(get_stream_uri_response, "trt:MediaUri");
+            if (media_uri) {
+                ezxml_t uri_element = find_child(media_uri, "tt:Uri");
+                if (uri_element) {
+                    uri = ezxml_txt(uri_element);
+                }
+            }
+        }
+    }
+    
+    if (!uri) {
+        log_error("Stream URI not found in response");
+        ezxml_free(xml);
+        free(response);
+        free(media_url);
+        return -1;
+    }
+    
+    log_info("Got stream URI: %s", uri);
+    
+    // Copy the URI to the output parameter
+    strncpy(stream_url, uri, url_size - 1);
+    stream_url[url_size - 1] = '\0';
+    
+    // If username/password are provided, embed them in the URI
+    if (username && password && strlen(username) > 0 && strlen(password) > 0) {
+        // Extract scheme, host, port, and path from URI
+        char scheme[16] = {0};
+        char host[128] = {0};
+        char port[16] = {0};
+        char path[256] = {0};
+        
+        if (sscanf(uri, "%15[^:]://%127[^:/]:%15[^/]%255s", scheme, host, port, path) == 4 ||
+            sscanf(uri, "%15[^:]://%127[^:/]%255s", scheme, host, path) == 3) {
+            
+            // Reconstruct URI with authentication
+            char auth_uri[512];
+            if (port[0] != '\0') {
+                snprintf(auth_uri, sizeof(auth_uri), "%s://%s:%s@%s:%s%s", 
+                         scheme, username, password, host, port, path);
+            } else {
+                snprintf(auth_uri, sizeof(auth_uri), "%s://%s:%s@%s%s", 
+                         scheme, username, password, host, path);
+            }
+            
+            log_info("Constructed authenticated URI: %s", auth_uri);
+            
+            strncpy(stream_url, auth_uri, url_size - 1);
+            stream_url[url_size - 1] = '\0';
+        }
+    }
+    
+    // Clean up
+    ezxml_free(xml);
+    free(response);
+    free(media_url);
     
     return 0;
 }
