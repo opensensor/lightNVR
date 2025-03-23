@@ -352,12 +352,9 @@ http_server_handle_t http_server_init(const http_server_config_t *config) {
     // Initialize route table
     init_route_table();
     
-    // Initialize API thread pool
-    if (!api_thread_pool_init(3, 10)) {
-        log_warn("Failed to initialize API thread pool, will be initialized on demand");
-    } else {
-        log_info("API thread pool initialized");
-    }
+    // We no longer initialize the API thread pool here
+    // It will be initialized on demand when needed
+    log_info("API thread pool will be initialized on demand");
     
     return mongoose_server_init(config);
 }

@@ -213,16 +213,13 @@ void mg_handle_get_discovered_onvif_devices(struct mg_connection *c, struct mg_h
 void mg_handle_post_discover_onvif_devices(struct mg_connection *c, struct mg_http_message *hm) {
     log_info("Handling POST /api/onvif/discovery/discover request");
     
-    // Check if API thread pool is initialized
-    thread_pool_t *pool = api_thread_pool_get();
+    // Acquire the API thread pool on demand
+    // This will initialize the pool if it doesn't exist and increment the reference count
+    thread_pool_t *pool = api_thread_pool_acquire(2, 10);
     if (!pool) {
-        // Initialize API thread pool with 3 threads and a queue size of 10
-        if (!api_thread_pool_init(3, 10)) {
-            log_error("Failed to initialize API thread pool");
-            mg_send_json_error(c, 500, "Failed to initialize API thread pool");
-            return;
-        }
-        pool = api_thread_pool_get();
+        log_error("Failed to acquire API thread pool");
+        mg_send_json_error(c, 500, "Failed to acquire API thread pool");
+        return;
     }
     
     // Parse JSON request

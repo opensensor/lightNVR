@@ -16,7 +16,24 @@
 bool api_thread_pool_init(int num_threads, int queue_size);
 
 /**
+ * @brief Acquire the API thread pool
+ * This increments the reference count and initializes the pool if needed
+ * 
+ * @param num_threads Number of worker threads (used only if pool needs to be initialized)
+ * @param queue_size Size of the task queue (used only if pool needs to be initialized)
+ * @return thread_pool_t* Pointer to the thread pool or NULL on error
+ */
+thread_pool_t *api_thread_pool_acquire(int num_threads, int queue_size);
+
+/**
+ * @brief Release the API thread pool
+ * This decrements the reference count and shuts down the pool if no longer needed
+ */
+void api_thread_pool_release(void);
+
+/**
  * @brief Shutdown the API thread pool
+ * This forces shutdown regardless of reference count
  */
 void api_thread_pool_shutdown(void);
 

@@ -10,6 +10,12 @@
 // Global API thread pool
 static thread_pool_t *g_api_thread_pool = NULL;
 
+// Reference count for the thread pool
+static int g_api_thread_pool_ref_count = 0;
+
+// Mutex to protect the reference count
+static pthread_mutex_t g_api_thread_pool_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 /**
  * @brief Initialize the API thread pool
  * 
@@ -18,31 +24,111 @@ static thread_pool_t *g_api_thread_pool = NULL;
  * @return true if successful, false otherwise
  */
 bool api_thread_pool_init(int num_threads, int queue_size) {
+    pthread_mutex_lock(&g_api_thread_pool_mutex);
+    
     if (g_api_thread_pool != NULL) {
         log_warn("API thread pool already initialized");
+        pthread_mutex_unlock(&g_api_thread_pool_mutex);
         return true;
     }
     
     g_api_thread_pool = thread_pool_init(num_threads, queue_size);
     if (g_api_thread_pool == NULL) {
         log_error("Failed to initialize API thread pool");
+        pthread_mutex_unlock(&g_api_thread_pool_mutex);
         return false;
     }
     
+    // Reset reference count
+    g_api_thread_pool_ref_count = 0;
+    
     log_info("API thread pool initialized with %d threads and queue size %d", 
              num_threads, queue_size);
+    
+    pthread_mutex_unlock(&g_api_thread_pool_mutex);
     return true;
 }
 
 /**
- * @brief Shutdown the API thread pool
+ * @brief Acquire the API thread pool
+ * This increments the reference count and initializes the pool if needed
+ * 
+ * @param num_threads Number of worker threads (used only if pool needs to be initialized)
+ * @param queue_size Size of the task queue (used only if pool needs to be initialized)
+ * @return thread_pool_t* Pointer to the thread pool or NULL on error
  */
-void api_thread_pool_shutdown(void) {
-    if (g_api_thread_pool != NULL) {
+thread_pool_t *api_thread_pool_acquire(int num_threads, int queue_size) {
+    pthread_mutex_lock(&g_api_thread_pool_mutex);
+    
+    // Initialize the thread pool if it doesn't exist
+    if (g_api_thread_pool == NULL) {
+        log_info("Initializing API thread pool on demand");
+        g_api_thread_pool = thread_pool_init(num_threads, queue_size);
+        if (g_api_thread_pool == NULL) {
+            log_error("Failed to initialize API thread pool on demand");
+            pthread_mutex_unlock(&g_api_thread_pool_mutex);
+            return NULL;
+        }
+        log_info("API thread pool initialized with %d threads and queue size %d", 
+                 num_threads, queue_size);
+    }
+    
+    // Increment reference count
+    g_api_thread_pool_ref_count++;
+    log_debug("API thread pool acquired, reference count: %d", g_api_thread_pool_ref_count);
+    
+    thread_pool_t *pool = g_api_thread_pool;
+    pthread_mutex_unlock(&g_api_thread_pool_mutex);
+    
+    return pool;
+}
+
+/**
+ * @brief Release the API thread pool
+ * This decrements the reference count and shuts down the pool if no longer needed
+ */
+void api_thread_pool_release(void) {
+    pthread_mutex_lock(&g_api_thread_pool_mutex);
+    
+    if (g_api_thread_pool == NULL) {
+        log_warn("Attempting to release non-existent API thread pool");
+        pthread_mutex_unlock(&g_api_thread_pool_mutex);
+        return;
+    }
+    
+    // Decrement reference count
+    if (g_api_thread_pool_ref_count > 0) {
+        g_api_thread_pool_ref_count--;
+    }
+    
+    log_debug("API thread pool released, reference count: %d", g_api_thread_pool_ref_count);
+    
+    // Shutdown the thread pool if no longer needed
+    if (g_api_thread_pool_ref_count == 0) {
+        log_info("Shutting down API thread pool as it's no longer needed");
         thread_pool_shutdown(g_api_thread_pool);
         g_api_thread_pool = NULL;
-        log_info("API thread pool shutdown");
     }
+    
+    pthread_mutex_unlock(&g_api_thread_pool_mutex);
+}
+
+/**
+ * @brief Shutdown the API thread pool
+ * This forces shutdown regardless of reference count
+ */
+void api_thread_pool_shutdown(void) {
+    pthread_mutex_lock(&g_api_thread_pool_mutex);
+    
+    if (g_api_thread_pool != NULL) {
+        log_info("Forcing shutdown of API thread pool, reference count was: %d", 
+                 g_api_thread_pool_ref_count);
+        thread_pool_shutdown(g_api_thread_pool);
+        g_api_thread_pool = NULL;
+        g_api_thread_pool_ref_count = 0;
+    }
+    
+    pthread_mutex_unlock(&g_api_thread_pool_mutex);
 }
 
 /**
@@ -134,6 +220,10 @@ void onvif_discovery_task_function(void *arg) {
         onvif_discovery_task_free(task);
         return;
     }
+    
+    // Release the thread pool when this task is done
+    // This ensures the thread pool is properly cleaned up when no longer needed
+    bool release_needed = true;
     
     // Parse JSON request if available
     const char *network = task->network;
@@ -242,6 +332,11 @@ void onvif_discovery_task_function(void *arg) {
     // Clean up
     free(json_str);
     onvif_discovery_task_free(task);
+    
+    // Release the thread pool if needed
+    if (release_needed) {
+        api_thread_pool_release();
+    }
     
     log_info("Successfully handled POST /api/onvif/discovery/discover request");
 }
