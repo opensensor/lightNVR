@@ -13,7 +13,7 @@
 #include <ctype.h>
 #include <time.h>
 #include <stdbool.h>
-#include <netinet/ip.h> /* For struct ip_mreq */
+#include <netinet/ip.h>
 
 // Helper function to extract content between XML tags
 static char* extract_xml_content(const char *xml, const char *tag_start, const char *tag_end, char *buffer, size_t buffer_size) {
@@ -192,9 +192,17 @@ int receive_discovery_responses(onvif_device_info_t *devices, int max_devices) {
     int sock;
     struct sockaddr_in addr;
     socklen_t addr_len = sizeof(addr);
-    char buffer[32768]; // Increased buffer size for larger responses
+    char *buffer = NULL;
+    int buffer_size = 8192; // Buffer size for responses
     int ret;
     int count = 0;
+    
+    // Allocate buffer dynamically to avoid stack overflow on embedded devices
+    buffer = (char *)malloc(buffer_size);
+    if (!buffer) {
+        log_error("Failed to allocate memory for receive buffer");
+        return -1;
+    }
     fd_set readfds;
     struct timeval timeout;
     
@@ -231,8 +239,8 @@ int receive_discovery_responses(onvif_device_info_t *devices, int max_devices) {
         return -1;
     }
     
-    // Increase socket buffer size
-    int rcvbuf = 2 * 1024 * 1024; // 2MB buffer (increased)
+    // Increase socket buffer size (reduced for embedded devices)
+    int rcvbuf = 256 * 1024; // 256KB buffer
     if (setsockopt(sock, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf)) < 0) {
         log_warn("Failed to increase receive buffer size: %s", strerror(errno));
         // Continue anyway
@@ -247,7 +255,8 @@ int receive_discovery_responses(onvif_device_info_t *devices, int max_devices) {
     
     // Join multicast group for ONVIF discovery
     // Use a char buffer to avoid struct ip_mreq issues
-    char mreq_buf[8];
+    // This is a workaround for systems where ip_mreq might not be properly defined
+    char mreq_buf[8]; // Size of two struct in_addr
     struct in_addr *imr_multiaddr = (struct in_addr *)mreq_buf;
     struct in_addr *imr_interface = (struct in_addr *)(mreq_buf + sizeof(struct in_addr));
     
@@ -369,7 +378,7 @@ int receive_discovery_responses(onvif_device_info_t *devices, int max_devices) {
         // Process all available responses without blocking
         while (1) {
             // Receive data with MSG_DONTWAIT to avoid blocking
-            ret = recvfrom(sock, buffer, sizeof(buffer) - 1, MSG_DONTWAIT, 
+            ret = recvfrom(sock, buffer, buffer_size - 1, MSG_DONTWAIT, 
                          (struct sockaddr *)&addr, &addr_len);
             
             if (ret < 0) {
@@ -434,6 +443,9 @@ int receive_discovery_responses(onvif_device_info_t *devices, int max_devices) {
     // Close socket
     close(sock);
     
+    // Free dynamically allocated buffer
+    free(buffer);
+    
     log_info("Discovery response collection completed, found %d devices", count);
     
     return count;
@@ -445,9 +457,17 @@ int receive_extended_discovery_responses(onvif_device_info_t *devices, int max_d
     int sock;
     struct sockaddr_in addr;
     socklen_t addr_len = sizeof(addr);
-    char buffer[8192];
+    char *buffer = NULL;
+    int buffer_size = 8192; // Buffer size for responses
     int ret;
     int count = 0;
+    
+    // Allocate buffer dynamically to avoid stack overflow on embedded devices
+    buffer = (char *)malloc(buffer_size);
+    if (!buffer) {
+        log_error("Failed to allocate memory for receive buffer");
+        return -1;
+    }
     fd_set readfds;
     struct timeval timeout;
 
@@ -486,7 +506,8 @@ int receive_extended_discovery_responses(onvif_device_info_t *devices, int max_d
 
     // Join multicast group for ONVIF discovery
     // Use a char buffer to avoid struct ip_mreq issues
-    char mreq_buf[8];
+    // This is a workaround for systems where ip_mreq might not be properly defined
+    char mreq_buf[8]; // Size of two struct in_addr
     struct in_addr *imr_multiaddr = (struct in_addr *)mreq_buf;
     struct in_addr *imr_interface = (struct in_addr *)(mreq_buf + sizeof(struct in_addr));
     
@@ -573,7 +594,7 @@ int receive_extended_discovery_responses(onvif_device_info_t *devices, int max_d
         // Process all available responses without blocking
         while (count < max_devices) {
             // Use MSG_DONTWAIT to avoid blocking
-            ret = recvfrom(sock, buffer, sizeof(buffer) - 1, MSG_DONTWAIT,
+            ret = recvfrom(sock, buffer, buffer_size - 1, MSG_DONTWAIT,
                          (struct sockaddr *)&addr, &addr_len);
 
             if (ret < 0) {
@@ -628,8 +649,11 @@ int receive_extended_discovery_responses(onvif_device_info_t *devices, int max_d
 
     // Close socket
     close(sock);
-
+    
+    // Free dynamically allocated buffer
+    free(buffer);
+    
     log_info("Discovery response collection completed, found %d devices", count);
-
+    
     return count;
 }
