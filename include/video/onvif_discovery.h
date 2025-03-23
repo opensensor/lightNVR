@@ -155,4 +155,17 @@ int discover_onvif_devices(const char *network, onvif_device_info_t *devices,
  */
 int test_onvif_connection(const char *url, const char *username, const char *password);
 
+/**
+ * Try direct HTTP probing for ONVIF devices
+ * This is used as a fallback when WS-Discovery fails
+ * 
+ * @param candidate_ips Array of IP addresses to probe
+ * @param candidate_count Number of IP addresses in the array
+ * @param devices Array to fill with device information
+ * @param max_devices Maximum number of devices to return
+ * @return Number of devices found
+ */
+int try_direct_http_discovery(char candidate_ips[][16], int candidate_count, 
+                             onvif_device_info_t *devices, int max_devices);
+
 #endif /* ONVIF_DISCOVERY_H */

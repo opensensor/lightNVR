@@ -23,6 +23,7 @@
 #include <time.h>
 #include <stdbool.h>
 #include <fcntl.h>
+#include <curl/curl.h>
 
 // Maximum number of networks to detect
 #define MAX_DETECTED_NETWORKS 10
@@ -387,7 +388,132 @@ int discover_onvif_devices(const char *network, onvif_device_info_t *devices,
     
     pthread_mutex_unlock(&g_discovery_mutex);
 
+    // If we didn't find any devices with WS-Discovery, try direct HTTP probing
+    if (count == 0 && candidate_count > 0) {
+        log_info("No devices found with WS-Discovery, trying direct HTTP probing");
+        count = try_direct_http_discovery(candidate_ips, candidate_count, devices, max_devices);
+    }
+
     log_info("ONVIF discovery completed, found %d devices", count);
 
     return count;
+}
+
+// Forward declaration of the callback function
+static size_t onvif_curl_write_callback(void *contents, size_t size, size_t nmemb, void *userp);
+
+// Try direct HTTP probing for ONVIF devices
+int try_direct_http_discovery(char candidate_ips[][16], int candidate_count, 
+                             onvif_device_info_t *devices, int max_devices) {
+    int count = 0;
+    CURL *curl;
+    CURLcode res;
+    
+    // Initialize CURL
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+    curl = curl_easy_init();
+    if (!curl) {
+        log_error("Failed to initialize CURL for direct HTTP discovery");
+        return 0;
+    }
+    
+    // SOAP request for GetSystemDateAndTime (simple request that doesn't require authentication)
+    const char *soap_request = 
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+        "<s:Envelope xmlns:s=\"http://www.w3.org/2003/05/soap-envelope\">"
+        "  <s:Body xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">"
+        "    <GetSystemDateAndTime xmlns=\"http://www.onvif.org/ver10/device/wsdl\"/>"
+        "  </s:Body>"
+        "</s:Envelope>";
+    
+    // Common ONVIF device service paths to try
+    const char *onvif_paths[] = {
+        "/onvif/device_service",
+        "/onvif/services",
+        "/onvif/service",
+        "/onvif/devices",
+        "/onvif/device",
+        "/device_service",
+        "/services",
+        "/service",
+        NULL
+    };
+    
+    // Set up CURL options
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 2L);  // Short timeout
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 1L);
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+    curl_easy_setopt(curl, CURLOPT_POST, 1L);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, soap_request);
+    curl_easy_setopt(curl, CURLOPT_NOBODY, 0L);
+    
+    // Set HTTP headers
+    struct curl_slist *headers = NULL;
+    headers = curl_slist_append(headers, "Content-Type: application/soap+xml; charset=utf-8");
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    
+    // Disable verbose output and don't write response to stdout
+    curl_easy_setopt(curl, CURLOPT_VERBOSE, 0L);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, onvif_curl_write_callback);
+    
+    log_info("Starting direct HTTP probing for %d candidate IPs", candidate_count);
+    
+    // Try each candidate IP
+    for (int i = 0; i < candidate_count && count < max_devices; i++) {
+        const char *ip = candidate_ips[i];
+        log_info("Probing IP %s for ONVIF services", ip);
+        
+        // Try each ONVIF path
+        for (int j = 0; onvif_paths[j] != NULL && count < max_devices; j++) {
+            char url[128];
+            snprintf(url, sizeof(url), "http://%s%s", ip, onvif_paths[j]);
+            
+            log_debug("Trying URL: %s", url);
+            curl_easy_setopt(curl, CURLOPT_URL, url);
+            
+            // Perform the request
+            res = curl_easy_perform(curl);
+            
+            // Check if successful
+            if (res == CURLE_OK) {
+                long http_code = 0;
+                curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+                
+                if (http_code >= 200 && http_code < 300) {
+                    log_info("Found ONVIF device at %s", url);
+                    
+                    // Initialize device info
+                    memset(&devices[count], 0, sizeof(onvif_device_info_t));
+                    
+                    // Set device info
+                    strncpy(devices[count].ip_address, ip, sizeof(devices[count].ip_address) - 1);
+                    strncpy(devices[count].device_service, url, sizeof(devices[count].device_service) - 1);
+                    strncpy(devices[count].endpoint, url, sizeof(devices[count].endpoint) - 1);
+                    strncpy(devices[count].model, "Unknown (HTTP discovery)", sizeof(devices[count].model) - 1);
+                    
+                    // Set discovery time and online status
+                    devices[count].discovery_time = time(NULL);
+                    devices[count].online = true;
+                    
+                    count++;
+                    break;  // Found a working path for this IP, move to next IP
+                }
+            }
+        }
+    }
+    
+    // Clean up
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+    curl_global_cleanup();
+    
+    log_info("Direct HTTP probing completed, found %d devices", count);
+    
+    return count;
+}
+
+// Callback function for CURL to discard response data
+static size_t onvif_curl_write_callback(void *contents, size_t size, size_t nmemb, void *userp) {
+    // Just discard the data, we only care if the request succeeds
+    return size * nmemb;
 }

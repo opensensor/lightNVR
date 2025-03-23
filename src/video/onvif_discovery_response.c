@@ -207,13 +207,21 @@ int receive_discovery_responses(onvif_device_info_t *devices, int max_devices) {
         return -1;
     }
     
-    // Set socket options
+    // Set socket options for address reuse
     int reuse = 1;
     if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
         log_error("Failed to set socket options (SO_REUSEADDR): %s", strerror(errno));
         close(sock);
         return -1;
     }
+    
+    // Set SO_REUSEPORT if available (not available on all systems)
+    #ifdef SO_REUSEPORT
+    if (setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse)) < 0) {
+        log_warn("Failed to set SO_REUSEPORT option: %s", strerror(errno));
+        // Continue anyway, SO_REUSEADDR might be enough
+    }
+    #endif
     
     // Set broadcast option
     int broadcast = 1;
@@ -269,21 +277,51 @@ int receive_discovery_responses(onvif_device_info_t *devices, int max_devices) {
     addr.sin_port = htons(3702);
     addr.sin_addr.s_addr = htonl(INADDR_ANY);
     
-    if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        log_error("Failed to bind socket: %s", strerror(errno));
+    // Try binding with a few retries if it fails with "Address in use"
+    int bind_attempts = 0;
+    int max_bind_attempts = 5;
+    int bind_result = -1;
+    
+    while (bind_attempts < max_bind_attempts) {
+        bind_result = bind(sock, (struct sockaddr *)&addr, sizeof(addr));
+        if (bind_result == 0) {
+            // Binding successful
+            break;
+        }
+        
+        if (errno != EADDRINUSE) {
+            // If error is not "Address in use", don't retry
+            log_error("Failed to bind socket: %s", strerror(errno));
+            close(sock);
+            return -1;
+        }
+        
+        // If "Address in use", wait a bit and retry
+        log_warn("Address in use, waiting 1 second before retry (attempt %d/%d)", 
+                bind_attempts + 1, max_bind_attempts);
+        sleep(1);
+        bind_attempts++;
+    }
+    
+    if (bind_result < 0) {
+        log_error("Failed to bind socket after %d attempts: %s", 
+                 max_bind_attempts, strerror(errno));
         close(sock);
         return -1;
     }
     
-    log_info("Waiting for discovery responses (timeout: 5 seconds, attempts: 3)");
+    // Add a small delay after binding to ensure the socket is fully ready
+    usleep(100000); // 100ms
     
-    // Set timeout for select - increased timeout
-    timeout.tv_sec = 5;
+    log_info("Waiting for discovery responses (timeout: 10 seconds, attempts: 5)");
+    
+    // Set timeout for select - significantly increased timeout
+    timeout.tv_sec = 10;
     timeout.tv_usec = 0;
     
     // Wait for responses - increased number of attempts
-    for (int i = 0; i < 3; i++) {
-        log_info("Waiting for responses, attempt %d/3", i+1);
+    for (int i = 0; i < 5; i++) {
+        log_info("Waiting for responses, attempt %d/5", i+1);
         
         FD_ZERO(&readfds);
         FD_SET(sock, &readfds);
@@ -422,13 +460,21 @@ int receive_extended_discovery_responses(onvif_device_info_t *devices, int max_d
         return -1;
     }
 
-    // Set socket options
+    // Set socket options for address reuse
     int reuse = 1;
     if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
         log_error("Failed to set socket options (SO_REUSEADDR): %s", strerror(errno));
         close(sock);
         return -1;
     }
+    
+    // Set SO_REUSEPORT if available (not available on all systems)
+    #ifdef SO_REUSEPORT
+    if (setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse)) < 0) {
+        log_warn("Failed to set SO_REUSEPORT option: %s", strerror(errno));
+        // Continue anyway, SO_REUSEADDR might be enough
+    }
+    #endif
 
     // Set broadcast option
     int broadcast = 1;
@@ -458,11 +504,41 @@ int receive_extended_discovery_responses(onvif_device_info_t *devices, int max_d
     addr.sin_port = htons(3702);
     addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
-    if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        log_error("Failed to bind socket: %s", strerror(errno));
+    // Try binding with a few retries if it fails with "Address in use"
+    int bind_attempts = 0;
+    int max_bind_attempts = 5;
+    int bind_result = -1;
+    
+    while (bind_attempts < max_bind_attempts) {
+        bind_result = bind(sock, (struct sockaddr *)&addr, sizeof(addr));
+        if (bind_result == 0) {
+            // Binding successful
+            break;
+        }
+        
+        if (errno != EADDRINUSE) {
+            // If error is not "Address in use", don't retry
+            log_error("Failed to bind socket: %s", strerror(errno));
+            close(sock);
+            return -1;
+        }
+        
+        // If "Address in use", wait a bit and retry
+        log_warn("Address in use, waiting 1 second before retry (attempt %d/%d)", 
+                bind_attempts + 1, max_bind_attempts);
+        sleep(1);
+        bind_attempts++;
+    }
+    
+    if (bind_result < 0) {
+        log_error("Failed to bind socket after %d attempts: %s", 
+                 max_bind_attempts, strerror(errno));
         close(sock);
         return -1;
     }
+    
+    // Add a small delay after binding to ensure the socket is fully ready
+    usleep(100000); // 100ms
 
     log_info("Waiting for discovery responses (timeout: %d seconds, attempts: %d)",
              timeout_sec, max_attempts);
