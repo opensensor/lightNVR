@@ -578,28 +578,51 @@ int get_onvif_stream_url(const char *device_url, const char *username,
     strncpy(stream_url, uri, url_size - 1);
     stream_url[url_size - 1] = '\0';
     
-    // For onvif_simple_server compatibility, we need to use the URI exactly as provided
-    // without modifying it, as the server expects specific URL formats
-    log_info("Using original stream URI from ONVIF device: %s", uri);
-    
-    // Store credentials in the stream context for later use
+    // For onvif_simple_server compatibility, we need to embed credentials in the URL
     if (username && password && strlen(username) > 0 && strlen(password) > 0) {
         // Log the credentials for debugging
-        log_info("Using credentials for ONVIF stream: username=%s", username);
+        log_info("Embedding credentials in stream URL for username: %s", username);
         
-        // Extract scheme, host, port, and path from URI for logging
+        // Extract scheme, host, port, and path from URI
         char scheme[16] = {0};
         char host[128] = {0};
         char port[16] = {0};
         char path[256] = {0};
+        char auth_url[MAX_URL_LENGTH] = {0};
         
         if (sscanf(uri, "%15[^:]://%127[^:/]:%15[^/]%255s", scheme, host, port, path) == 4) {
             log_info("Parsed RTSP URI components: scheme=%s, host=%s, port=%s, path=%s", 
                     scheme, host, port, path);
+            
+            // Construct URL with embedded credentials
+            snprintf(auth_url, sizeof(auth_url), 
+                    "%s://%s:%s@%s:%s%s", 
+                    scheme, username, password, host, port, path);
+            
+            // Update the stream URL with embedded credentials
+            strncpy(stream_url, auth_url, url_size - 1);
+            stream_url[url_size - 1] = '\0';
+            
+            log_info("Created URL with embedded credentials: %s", auth_url);
         } else if (sscanf(uri, "%15[^:]://%127[^:/]%255s", scheme, host, path) == 3) {
             log_info("Parsed RTSP URI components: scheme=%s, host=%s, path=%s (no port)", 
                     scheme, host, path);
+            
+            // Construct URL with embedded credentials (no port)
+            snprintf(auth_url, sizeof(auth_url), 
+                    "%s://%s:%s@%s%s", 
+                    scheme, username, password, host, path);
+            
+            // Update the stream URL with embedded credentials
+            strncpy(stream_url, auth_url, url_size - 1);
+            stream_url[url_size - 1] = '\0';
+            
+            log_info("Created URL with embedded credentials: %s", auth_url);
+        } else {
+            log_warn("Could not parse URI components, using original URI: %s", uri);
         }
+    } else {
+        log_info("No credentials provided, using original stream URI: %s", uri);
     }
     
     // Clean up
