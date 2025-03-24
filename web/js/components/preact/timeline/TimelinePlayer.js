@@ -26,6 +26,9 @@ export function TimelinePlayer() {
   const playbackIntervalRef = useRef(null);
   const lastTimeUpdateRef = useRef(null);
   const hlsPlayerRef = useRef(null);
+  const stallTimerRef = useRef(null);
+  const maxStallTimeRef = useRef(3000); // Maximum time to wait for stalled video (3 seconds)
+  const forceAdvanceTimerRef = useRef(null);
 
   // Subscribe to timeline state changes
   useEffect(() => {
@@ -114,6 +117,17 @@ export function TimelinePlayer() {
     if (!video) return;
     
     console.log('Setting up video event listeners');
+    
+    // Clear any existing timers
+    if (stallTimerRef.current) {
+      clearTimeout(stallTimerRef.current);
+      stallTimerRef.current = null;
+    }
+    
+    if (forceAdvanceTimerRef.current) {
+      clearTimeout(forceAdvanceTimerRef.current);
+      forceAdvanceTimerRef.current = null;
+    }
     
     const handleTimeUpdate = () => {
       // Check if we have a valid segment index and segments array
@@ -254,12 +268,62 @@ export function TimelinePlayer() {
     video.addEventListener('ended', handleEnded);
     video.addEventListener('error', handleError);
     
-    // Add additional event listeners for debugging
-    video.addEventListener('play', () => console.log('Video play event'));
-    video.addEventListener('pause', () => console.log('Video pause event'));
+    // Add additional event listeners for debugging and stall detection
+    video.addEventListener('play', () => {
+      console.log('Video play event');
+      // Set up a force advance timer when playback starts
+      // This ensures we move to the next segment if nothing else works
+      if (forceAdvanceTimerRef.current) {
+        clearTimeout(forceAdvanceTimerRef.current);
+      }
+      
+      if (currentSegmentIndex < segments.length - 1) {
+        const segment = segments[currentSegmentIndex];
+        if (segment) {
+          const segmentDuration = segment.end_timestamp - segment.start_timestamp;
+          // Set timer for slightly longer than segment duration
+          const timeoutDuration = (segmentDuration * 1000) + 5000; // segment duration + 5 seconds
+          console.log(`Setting force advance timer for ${timeoutDuration}ms`);
+          
+          forceAdvanceTimerRef.current = setTimeout(() => {
+            console.log(`Force advance timer triggered after ${timeoutDuration}ms`);
+            if (currentSegmentIndex < segments.length - 1) {
+              console.log(`Forcing advance to next segment ${currentSegmentIndex + 1}`);
+              timelineState.setState({ 
+                currentSegmentIndex: currentSegmentIndex + 1,
+                currentTime: segments[currentSegmentIndex + 1].start_timestamp,
+                isPlaying: true
+              });
+            }
+          }, timeoutDuration);
+        }
+      }
+    });
+    
+    video.addEventListener('pause', () => {
+      console.log('Video pause event');
+      // Clear force advance timer when paused
+      if (forceAdvanceTimerRef.current) {
+        clearTimeout(forceAdvanceTimerRef.current);
+        forceAdvanceTimerRef.current = null;
+      }
+    });
+    
     video.addEventListener('seeking', () => console.log('Video seeking event'));
     video.addEventListener('seeked', () => console.log('Video seeked event'));
     video.addEventListener('loadedmetadata', () => console.log('Video loadedmetadata event, duration:', video.duration));
+    
+    // Add stalled event listener
+    video.addEventListener('stalled', () => {
+      console.log('Video stalled event');
+      handleStalledVideo();
+    });
+    
+    // Add waiting event listener
+    video.addEventListener('waiting', () => {
+      console.log('Video waiting event');
+      handleStalledVideo();
+    });
     
     // Start playback tracking
     startPlaybackTracking();
@@ -271,22 +335,85 @@ export function TimelinePlayer() {
       video.removeEventListener('error', handleError);
       
       // Remove additional event listeners
-      video.removeEventListener('play', () => console.log('Video play event'));
-      video.removeEventListener('pause', () => console.log('Video pause event'));
-      video.removeEventListener('seeking', () => console.log('Video seeking event'));
-      video.removeEventListener('seeked', () => console.log('Video seeked event'));
-      video.removeEventListener('loadedmetadata', () => console.log('Video loadedmetadata event'));
+      video.removeEventListener('play', () => {});
+      video.removeEventListener('pause', () => {});
+      video.removeEventListener('seeking', () => {});
+      video.removeEventListener('seeked', () => {});
+      video.removeEventListener('loadedmetadata', () => {});
+      video.removeEventListener('stalled', () => {});
+      video.removeEventListener('waiting', () => {});
       
-      // Clear tracking interval
+      // Clear tracking interval and timers
       if (playbackIntervalRef.current) {
         clearInterval(playbackIntervalRef.current);
+      }
+      
+      if (stallTimerRef.current) {
+        clearTimeout(stallTimerRef.current);
+      }
+      
+      if (forceAdvanceTimerRef.current) {
+        clearTimeout(forceAdvanceTimerRef.current);
       }
     };
   }, [videoRef.current, currentSegmentIndex, segments]);
 
+  // Handle stalled video
+  const handleStalledVideo = () => {
+    // If we already have a stall timer running, don't start another one
+    if (stallTimerRef.current) {
+      return;
+    }
+    
+    console.log(`Starting stall timer for ${maxStallTimeRef.current}ms`);
+    
+    // Set a timer to check if the video is still stalled after maxStallTime
+    stallTimerRef.current = setTimeout(() => {
+      console.log('Stall timer triggered');
+      
+      const video = videoRef.current;
+      if (!video || video.paused || video.ended || video.seeking) {
+        // Video is not playing or is intentionally paused/seeking, so don't advance
+        console.log('Video is paused, ended, or seeking - not advancing');
+        stallTimerRef.current = null;
+        return;
+      }
+      
+      // Check if we're still stalled
+      if (currentSegmentIndex < segments.length - 1) {
+        console.log(`Advancing to next segment ${currentSegmentIndex + 1} due to stall timer`);
+        
+        // Update state to next segment
+        timelineState.setState({ 
+          currentSegmentIndex: currentSegmentIndex + 1,
+          currentTime: segments[currentSegmentIndex + 1].start_timestamp,
+          isPlaying: true
+        });
+      } else {
+        // No more segments, pause playback
+        console.log('No more segments, pausing playback due to stall');
+        pausePlayback();
+      }
+      
+      stallTimerRef.current = null;
+    }, maxStallTimeRef.current);
+  };
+
   // Play video directly without updating state (to avoid infinite recursion)
   const playVideoDirectly = (index, seekTime = 0) => {
     console.log(`playVideoDirectly(${index}, ${seekTime})`);
+    
+    // Clear any existing stall timer
+    if (stallTimerRef.current) {
+      clearTimeout(stallTimerRef.current);
+      stallTimerRef.current = null;
+    }
+    
+    // Clear any existing force advance timer
+    if (forceAdvanceTimerRef.current) {
+      clearTimeout(forceAdvanceTimerRef.current);
+      forceAdvanceTimerRef.current = null;
+    }
     
     // Check if segments array is valid and not empty
     if (!segments || segments.length === 0) {
@@ -405,6 +532,53 @@ export function TimelinePlayer() {
           pausePlayback();
         }
       };
+      
+      // Add a timeout to detect if video fails to load but doesn't trigger error
+      const loadTimeout = setTimeout(() => {
+        if (video.readyState === 0) { // HAVE_NOTHING - no data available
+          console.error('Video failed to load within timeout period');
+          showStatusMessage('Video failed to load, skipping to next segment', 'warning');
+          
+          // Try to skip to the next segment
+          if (currentSegmentIndex < segments.length - 1) {
+            console.log(`Skipping to next segment ${currentSegmentIndex + 1} due to load timeout`);
+            
+            // Update state to next segment
+            timelineState.setState({ 
+              currentSegmentIndex: currentSegmentIndex + 1,
+              currentTime: segments[currentSegmentIndex + 1].start_timestamp,
+              isPlaying: true
+            });
+          } else {
+            // No more segments, pause playback
+            pausePlayback();
+          }
+        }
+      }, 10000); // 10 second timeout
+      
+      // Clear the timeout when metadata is loaded
+      video.onloadedmetadata = () => {
+        clearTimeout(loadTimeout);
+        console.log('Video metadata loaded for playVideoDirectly');
+        video.currentTime = seekTime;
+        
+        // Set playback speed and verify it was set correctly
+        const oldRate = video.playbackRate;
+        video.playbackRate = playbackSpeed;
+        console.log(`Setting playback rate from ${oldRate}x to ${playbackSpeed}x, actual rate: ${video.playbackRate}x`);
+        
+        // Force the playback rate again after a short delay
+        setTimeout(() => {
+          video.playbackRate = playbackSpeed;
+          console.log(`Re-setting playback rate to ${playbackSpeed}x, actual rate: ${video.playbackRate}x`);
+        }, 100);
+        
+        // Play the video
+        video.play().catch(error => {
+          console.error('Error playing video:', error);
+          showStatusMessage('Error playing video: ' + error.message, 'error');
+        });
+      };
     } catch (error) {
       console.error('Exception while setting up video:', error);
       showStatusMessage('Error setting up video: ' + error.message, 'error');
@@ -465,6 +639,10 @@ export function TimelinePlayer() {
       if (!isPlaying || !videoRef.current) {
         return;
       }
+      // Check if we're playing and have a valid video element
+      if (!isPlaying || !videoRef.current) {
+        return;
+      }
       
       // Check if we have a valid segment index and segments array
       if (currentSegmentIndex < 0 || !segments || segments.length === 0 || currentSegmentIndex >= segments.length) {
@@ -496,7 +674,8 @@ export function TimelinePlayer() {
       if (!lastTimeUpdateRef.current) {
         lastTimeUpdateRef.current = {
           time: Date.now(),
-          position: video.currentTime
+          position: video.currentTime,
+          checkCount: 0
         };
       } else {
         const now = Date.now();
@@ -511,23 +690,29 @@ export function TimelinePlayer() {
         if (positionDiff > 0.01) {
           lastTimeUpdateRef.current = {
             time: now,
-            position: video.currentTime
+            position: video.currentTime,
+            checkCount: 0
           };
         } 
-        // If the video has stalled for more than 300ms and we're not paused or seeking
+        // If the video has stalled for more than 200ms and we're not paused or seeking
         // and either:
-        // 1. We're near the end (within 2 seconds) OR
-        // 2. We've been playing for at least 2 seconds and there's been no progress for 1 second
+        // 1. We're near the end (within 3 seconds) OR
+        // 2. We've been playing for at least 1 second and there's been no progress for 500ms OR
+        // 3. We've checked 5 times and still no progress
         // Then advance to the next segment
         else if (video.currentTime > 0 && !video.paused && !video.seeking && 
-                 ((remainingTime < 2 && timeDiff > 300) || 
-                  (video.currentTime > 2 && timeDiff > 1000))) {
+                 ((remainingTime < 3 && timeDiff > 200) || 
+                  (video.currentTime > 1 && timeDiff > 500) ||
+                  (lastTimeUpdateRef.current.checkCount >= 5))) {
           
-          console.log(`Video stalled ${remainingTime < 2 ? 'near end of' : 'during'} segment ${currentSegmentIndex}, currentTime: ${video.currentTime.toFixed(2)}s, duration: ${segmentDuration}s, remaining: ${remainingTime.toFixed(2)}s, stalled for: ${timeDiff}ms`);
+          console.log(`Video stalled ${remainingTime < 3 ? 'near end of' : 'during'} segment ${currentSegmentIndex}, currentTime: ${video.currentTime.toFixed(2)}s, duration: ${segmentDuration}s, remaining: ${remainingTime.toFixed(2)}s, stalled for: ${timeDiff}ms, checks: ${lastTimeUpdateRef.current.checkCount}`);
         
+          // Reset check count to avoid multiple triggers
+          lastTimeUpdateRef.current.checkCount = 0;
+          
           // Check if there's a next segment
           if (currentSegmentIndex < segments.length - 1) {
-            console.log(`Auto-playing next segment ${currentSegmentIndex + 1} from tracking (stalled near end)`);
+            console.log(`Auto-playing next segment ${currentSegmentIndex + 1} from tracking (stalled)`);
             
             // Get the next segment
             const nextSegment = segments[currentSegmentIndex + 1];
@@ -545,7 +730,7 @@ export function TimelinePlayer() {
             
             try {
               // Force load and play the next segment's video
-              console.log('Loading next segment video from tracking (stalled near end):', nextSegment);
+              console.log('Loading next segment video from tracking (stalled):', nextSegment);
               
               // Pause the current video first
               video.pause();
@@ -606,6 +791,14 @@ export function TimelinePlayer() {
               console.error('Exception while setting up next video:', error);
               showStatusMessage('Error setting up next video: ' + error.message, 'error');
             }
+          }
+        } else {
+          // Increment check count if position hasn't changed
+          lastTimeUpdateRef.current.checkCount++;
+          
+          // Log every 10 checks if we're still stalled
+          if (lastTimeUpdateRef.current.checkCount % 10 === 0) {
+            console.log(`Video position unchanged for ${lastTimeUpdateRef.current.checkCount} checks, timeDiff: ${timeDiff}ms, position: ${video.currentTime.toFixed(2)}`);
           }
         }
       }
