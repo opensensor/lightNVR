@@ -820,10 +820,86 @@ void mg_handle_delete_recording(struct mg_connection *c, struct mg_http_message 
     log_info("Successfully deleted recording: %llu", (unsigned long long)id);
 }
 
+// Structure to hold recording playback state
+typedef struct {
+    FILE *file;                  // File handle
+    char file_path[MAX_PATH_LENGTH]; // File path
+    size_t file_size;            // Total file size
+    size_t bytes_sent;           // Bytes sent so far
+    uint64_t recording_id;       // Recording ID
+    time_t last_activity;        // Last activity timestamp
+} recording_playback_state_t;
+
+// Maximum number of concurrent playback sessions
+#define MAX_CONCURRENT_PLAYBACKS 32
+
+// Array of active playback sessions
+static recording_playback_state_t playback_sessions[MAX_CONCURRENT_PLAYBACKS];
+
+// Mutex to protect access to playback sessions
+static pthread_mutex_t playback_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// Initialize playback sessions
+static void init_playback_sessions(void) {
+    static bool initialized = false;
+    
+    if (!initialized) {
+        pthread_mutex_lock(&playback_mutex);
+        
+        if (!initialized) {
+            memset(playback_sessions, 0, sizeof(playback_sessions));
+            initialized = true;
+            log_info("Initialized recording playback session manager");
+        }
+        
+        pthread_mutex_unlock(&playback_mutex);
+    }
+}
+
+// Find a free playback session slot
+static int find_free_playback_slot(void) {
+    for (int i = 0; i < MAX_CONCURRENT_PLAYBACKS; i++) {
+        if (playback_sessions[i].file == NULL) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+// Clean up inactive playback sessions (called periodically)
+static void cleanup_inactive_playback_sessions(void) {
+    time_t now = time(NULL);
+    
+    pthread_mutex_lock(&playback_mutex);
+    
+    for (int i = 0; i < MAX_CONCURRENT_PLAYBACKS; i++) {
+        if (playback_sessions[i].file != NULL) {
+            // If no activity for 30 seconds, close the session
+            if (difftime(now, playback_sessions[i].last_activity) > 30) {
+                log_info("Closing inactive playback session for recording %llu", 
+                        (unsigned long long)playback_sessions[i].recording_id);
+                
+                fclose(playback_sessions[i].file);
+                playback_sessions[i].file = NULL;
+                playback_sessions[i].recording_id = 0;
+                playback_sessions[i].bytes_sent = 0;
+            }
+        }
+    }
+    
+    pthread_mutex_unlock(&playback_mutex);
+}
+
 /**
  * @brief Direct handler for GET /api/recordings/play/:id
  */
 void mg_handle_play_recording(struct mg_connection *c, struct mg_http_message *hm) {
+    // Initialize playback sessions if not already done
+    init_playback_sessions();
+    
+    // Clean up inactive sessions
+    cleanup_inactive_playback_sessions();
+    
     // Extract recording ID from URL
     char id_str[32];
     if (mg_extract_path_param(hm, "/api/recordings/play/", id_str, sizeof(id_str)) != 0) {
@@ -842,6 +918,28 @@ void mg_handle_play_recording(struct mg_connection *c, struct mg_http_message *h
     
     log_info("Handling GET /api/recordings/play/%llu request", (unsigned long long)id);
     
+    // Check for Range header (for seeking)
+    struct mg_str *range_header = mg_http_get_header(hm, "Range");
+    bool is_range_request = (range_header != NULL && range_header->len > 0);
+    size_t range_start = 0;
+    size_t range_end = 0;
+    
+    if (is_range_request) {
+        // Parse Range header (e.g., "bytes=0-1023")
+        char range_str[64] = {0};
+        size_t range_len = range_header->len < sizeof(range_str) - 1 ? range_header->len : sizeof(range_str) - 1;
+        memcpy(range_str, range_header->buf, range_len);
+        range_str[range_len] = '\0';
+        
+        log_info("Range request: %s", range_str);
+        
+        // Parse range values
+        if (sscanf(range_str, "bytes=%zu-%zu", &range_start, &range_end) < 1) {
+            log_error("Invalid Range header format: %s", range_str);
+            is_range_request = false;
+        }
+    }
+    
     // Get recording from database
     recording_metadata_t recording;
     if (get_recording_metadata_by_id(id, &recording) != 0) {
@@ -858,43 +956,153 @@ void mg_handle_play_recording(struct mg_connection *c, struct mg_http_message *h
         return;
     }
     
+    // Allocate a playback session
+    int slot = -1;
+    FILE *file = NULL;
+    
+    pthread_mutex_lock(&playback_mutex);
+    
+    // Find a free slot
+    slot = find_free_playback_slot();
+    if (slot < 0) {
+        // No free slots, try to clean up inactive sessions
+        cleanup_inactive_playback_sessions();
+        
+        // Try again
+        slot = find_free_playback_slot();
+        if (slot < 0) {
+            pthread_mutex_unlock(&playback_mutex);
+            log_error("No free playback slots available");
+            mg_send_json_error(c, 503, "Server busy, too many concurrent playback sessions");
+            return;
+        }
+    }
+    
     // Open file
-    FILE *file = fopen(recording.file_path, "rb");
+    file = fopen(recording.file_path, "rb");
     if (!file) {
+        pthread_mutex_unlock(&playback_mutex);
         log_error("Failed to open recording file: %s", recording.file_path);
         mg_send_json_error(c, 500, "Failed to open recording file");
         return;
     }
     
-    // Extract filename from path
-    const char *filename = strrchr(recording.file_path, '/');
-    if (filename) {
-        filename++; // Skip the slash
+    // Initialize playback session
+    playback_sessions[slot].file = file;
+    strncpy(playback_sessions[slot].file_path, recording.file_path, sizeof(playback_sessions[slot].file_path) - 1);
+    playback_sessions[slot].file_size = st.st_size;
+    playback_sessions[slot].bytes_sent = 0;
+    playback_sessions[slot].recording_id = id;
+    playback_sessions[slot].last_activity = time(NULL);
+    
+    pthread_mutex_unlock(&playback_mutex);
+    
+    // Handle range request if present
+    if (is_range_request) {
+        // Adjust range_end if not specified or beyond file size
+        if (range_end == 0 || range_end >= st.st_size) {
+            range_end = st.st_size - 1;
+        }
+        
+        // Validate range
+        if (range_start > range_end || range_start >= st.st_size) {
+            log_error("Invalid range: %zu-%zu for file size %zu", range_start, range_end, (size_t)st.st_size);
+            mg_send_json_error(c, 416, "Range Not Satisfiable");
+            
+            // Clean up
+            pthread_mutex_lock(&playback_mutex);
+            fclose(playback_sessions[slot].file);
+            playback_sessions[slot].file = NULL;
+            pthread_mutex_unlock(&playback_mutex);
+            
+            return;
+        }
+        
+        // Seek to range start
+        if (fseek(file, range_start, SEEK_SET) != 0) {
+            log_error("Failed to seek to position %zu in file", range_start);
+            mg_send_json_error(c, 500, "Failed to seek in file");
+            
+            // Clean up
+            pthread_mutex_lock(&playback_mutex);
+            fclose(playback_sessions[slot].file);
+            playback_sessions[slot].file = NULL;
+            pthread_mutex_unlock(&playback_mutex);
+            
+            return;
+        }
+        
+        // Calculate content length for range
+        size_t content_length = range_end - range_start + 1;
+        
+        // Send 206 Partial Content response
+        mg_printf(c, "HTTP/1.1 206 Partial Content\r\n");
+        mg_printf(c, "Content-Type: video/mp4\r\n");
+        mg_printf(c, "Content-Length: %zu\r\n", content_length);
+        mg_printf(c, "Content-Range: bytes %zu-%zu/%zu\r\n", range_start, range_end, (size_t)st.st_size);
+        mg_printf(c, "Accept-Ranges: bytes\r\n");
+        mg_printf(c, "Cache-Control: max-age=3600\r\n");
+        mg_printf(c, "\r\n");
+        
+        // Update bytes sent
+        pthread_mutex_lock(&playback_mutex);
+        playback_sessions[slot].bytes_sent = range_start;
+        pthread_mutex_unlock(&playback_mutex);
+        
+        // Send range of file
+        char buffer[8192];
+        size_t bytes_to_send = content_length;
+        size_t bytes_read;
+        
+        while (bytes_to_send > 0 && 
+               (bytes_read = fread(buffer, 1, bytes_to_send > sizeof(buffer) ? sizeof(buffer) : bytes_to_send, file)) > 0) {
+            mg_send(c, buffer, bytes_read);
+            bytes_to_send -= bytes_read;
+            
+            // Update bytes sent and last activity
+            pthread_mutex_lock(&playback_mutex);
+            playback_sessions[slot].bytes_sent += bytes_read;
+            playback_sessions[slot].last_activity = time(NULL);
+            pthread_mutex_unlock(&playback_mutex);
+        }
     } else {
-        filename = recording.file_path;
+        // Regular request (not range)
+        // Extract filename from path
+        const char *filename = strrchr(recording.file_path, '/');
+        if (filename) {
+            filename++; // Skip the slash
+        } else {
+            filename = recording.file_path;
+        }
+        
+        // Set headers for streaming playback (not download)
+        mg_printf(c, "HTTP/1.1 200 OK\r\n");
+        mg_printf(c, "Content-Type: video/mp4\r\n");
+        mg_printf(c, "Content-Length: %ld\r\n", st.st_size);
+        mg_printf(c, "Accept-Ranges: bytes\r\n");
+        mg_printf(c, "Cache-Control: max-age=3600\r\n");
+        mg_printf(c, "\r\n");
+        
+        // Send file content in chunks
+        char buffer[8192];
+        size_t bytes_read;
+        
+        while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0) {
+            mg_send(c, buffer, bytes_read);
+            
+            // Update bytes sent and last activity
+            pthread_mutex_lock(&playback_mutex);
+            playback_sessions[slot].bytes_sent += bytes_read;
+            playback_sessions[slot].last_activity = time(NULL);
+            pthread_mutex_unlock(&playback_mutex);
+        }
     }
     
-    // Set headers for streaming playback (not download)
-    char headers[512];
-    snprintf(headers, sizeof(headers),
-             "Content-Type: video/mp4\r\n"
-             "Content-Length: %ld\r\n"
-             "Accept-Ranges: bytes\r\n"
-             "Cache-Control: max-age=3600\r\n",
-             st.st_size);
-    
-    // Send headers
-    mg_printf(c, "HTTP/1.1 200 OK\r\n%s\r\n", headers);
-    
-    // Send file content
-    char buffer[8192];
-    size_t bytes_read;
-    while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0) {
-        mg_send(c, buffer, bytes_read);
-    }
-    
-    // Close file
-    fclose(file);
+    // Clean up - close file and free slot
+    pthread_mutex_lock(&playback_mutex);
+    fclose(playback_sessions[slot].file);
+    playback_sessions[slot].file = NULL;
+    pthread_mutex_unlock(&playback_mutex);
     
     log_info("Successfully handled GET /api/recordings/play/%llu request", (unsigned long long)id);
 }
