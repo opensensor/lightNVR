@@ -8,7 +8,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     git cmake build-essential pkg-config \
     libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
-    libcurl4 libmbedtls-dev \
+    libcurl4-openssl-dev libmbedtls-dev \
     sqlite3 libsqlite3-dev systemctl && \
     rm -rf /var/lib/apt/lists/*
 
