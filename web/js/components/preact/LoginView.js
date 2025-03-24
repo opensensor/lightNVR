@@ -4,7 +4,7 @@
  */
 
 import { h } from '../../preact.min.js';
-import { html } from '../../preact-app.js';
+import { html } from '../../html-helper.js';
 import { useState } from '../../preact.hooks.module.js';
 import { showStatusMessage } from './UI.js';
 

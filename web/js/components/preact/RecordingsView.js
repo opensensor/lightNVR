@@ -4,7 +4,7 @@
  */
 
 import { h } from '../../preact.min.js';
-import { html } from '../../preact-app.js';
+import { html } from '../../html-helper.js';
 import { useState, useEffect, useRef, useCallback } from '../../preact.hooks.module.js';
 import { showStatusMessage, showVideoModal, DeleteConfirmationModal } from './UI.js';
 

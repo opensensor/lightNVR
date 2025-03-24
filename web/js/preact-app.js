@@ -4,7 +4,7 @@
  */
 
 import { h, render } from './preact.min.js';
-import htm from './htm.module.js';
+import { html } from './html-helper.js';
 import { loadHeader } from './components/preact/Header.js';
 import { loadFooter } from './components/preact/Footer.js';
 import { loadLiveView } from './components/preact/LiveView.js';
@@ -16,9 +16,6 @@ import { loadLoginView } from './components/preact/LoginView.js';
 import { loadIndexView } from './components/preact/IndexView.js';
 import { setupModals, addStatusMessageStyles, addModalStyles } from './components/preact/UI.js';
 import './components/auth.js';  // Import authentication module
-
-// Initialize htm with Preact's h
-export const html = htm.bind(h);
 
 /**
  * Simple store implementation for state management
@@ -130,4 +127,4 @@ function initApp() {
 document.addEventListener('DOMContentLoaded', initApp);
 
 // Export for use in other modules
-export { h, render };
+export { h, render, html };

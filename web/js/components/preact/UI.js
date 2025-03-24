@@ -177,115 +177,77 @@ export function addModalStyles() {
 }
 
 /**
- * DeleteConfirmationModal class for creating reusable delete confirmation dialogs
+ * DeleteConfirmationModal component for Preact
+ * This is the declarative version for use with Preact JSX
+ * @param {Object} props - Component props
+ * @param {boolean} props.isOpen - Whether the modal is open
+ * @param {Function} props.onClose - Function to call when the modal is closed
+ * @param {Function} props.onConfirm - Function to call when delete is confirmed
+ * @param {string} props.mode - Delete mode ('selected' or 'all')
+ * @param {number} props.count - Number of items selected (for 'selected' mode)
+ * @returns {JSX.Element} DeleteConfirmationModal component
  */
-export class DeleteConfirmationModal {
-  /**
-   * Create a new delete confirmation modal
-   * @param {string} title - Modal title
-   * @param {string} message - Confirmation message
-   * @param {Function} onConfirm - Function to call when delete is confirmed
-   */
-  constructor(title, message, onConfirm) {
-    this.title = title || 'Confirm Delete';
-    this.message = message || 'Are you sure you want to delete this item?';
-    this.onConfirm = onConfirm || (() => {});
-    this.overlay = null;
+export function DeleteConfirmationModal(props) {
+  const { isOpen, onClose, onConfirm, mode, count } = props;
+  
+  if (!isOpen) return null;
+  
+  // Determine title and message based on mode
+  let title = 'Confirm Delete';
+  let message = 'Are you sure you want to delete this item?';
+  
+  if (mode === 'selected') {
+    title = 'Delete Selected Recordings';
+    message = `Are you sure you want to delete ${count} selected recording${count !== 1 ? 's' : ''}?`;
+  } else if (mode === 'all') {
+    title = 'Delete All Filtered Recordings';
+    message = 'Are you sure you want to delete all recordings matching the current filters? This action cannot be undone.';
   }
   
-  /**
-   * Show the delete confirmation modal
-   */
-  show() {
-    // Create overlay container
-    this.overlay = document.createElement('div');
-    this.overlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
-    
-    // Create modal container
-    const modalContainer = document.createElement('div');
-    modalContainer.className = 'bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md mx-auto';
-    
-    // Create header
-    const header = document.createElement('div');
-    header.className = 'mb-4';
-    
-    const titleElement = document.createElement('h3');
-    titleElement.className = 'text-lg font-semibold text-gray-900 dark:text-white';
-    titleElement.textContent = this.title;
-    
-    header.appendChild(titleElement);
-    
-    // Create message
-    const messageElement = document.createElement('p');
-    messageElement.className = 'text-gray-600 dark:text-gray-300 mb-6';
-    messageElement.textContent = this.message;
-    
-    // Create buttons
-    const buttonsContainer = document.createElement('div');
-    buttonsContainer.className = 'flex justify-end space-x-3';
-    
-    const cancelButton = document.createElement('button');
-    cancelButton.className = 'px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600';
-    cancelButton.textContent = 'Cancel';
-    cancelButton.addEventListener('click', () => this.close());
-    
-    const deleteButton = document.createElement('button');
-    deleteButton.className = 'px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors';
-    deleteButton.textContent = 'Delete';
-    deleteButton.addEventListener('click', () => {
-      this.onConfirm();
-      this.close();
-    });
-    
-    buttonsContainer.appendChild(cancelButton);
-    buttonsContainer.appendChild(deleteButton);
-    
-    // Assemble the modal
-    modalContainer.appendChild(header);
-    modalContainer.appendChild(messageElement);
-    modalContainer.appendChild(buttonsContainer);
-    this.overlay.appendChild(modalContainer);
-    
-    // Add to document
-    document.body.appendChild(this.overlay);
-    
-    // Add event listener to close on escape key
-    document.addEventListener('keydown', this.handleEscape);
-    
-    // Add event listener to close on background click
-    this.overlay.addEventListener('click', this.handleBackgroundClick);
-  }
-  
-  /**
-   * Close the modal
-   */
-  close() {
-    if (this.overlay && document.body.contains(this.overlay)) {
-      document.body.removeChild(this.overlay);
-      document.removeEventListener('keydown', this.handleEscape);
-      this.overlay = null;
-    }
-  }
-  
-  /**
-   * Handle escape key press
-   * @param {KeyboardEvent} e - Keyboard event
-   */
-  handleEscape = (e) => {
+  // Handle escape key
+  const handleKeyDown = (e) => {
     if (e.key === 'Escape') {
-      this.close();
+      onClose();
     }
-  }
+  };
   
-  /**
-   * Handle background click
-   * @param {MouseEvent} e - Mouse event
-   */
-  handleBackgroundClick = (e) => {
-    if (e.target === this.overlay) {
-      this.close();
+  // Handle background click
+  const handleBackgroundClick = (e) => {
+    if (e.target === e.currentTarget) {
+      onClose();
     }
-  }
+  };
+  
+  return html`
+    <div 
+      class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+      onClick=${handleBackgroundClick}
+      onKeyDown=${handleKeyDown}
+    >
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md mx-auto">
+        <div class="mb-4">
+          <h3 class="text-lg font-semibold text-gray-900 dark:text-white">${title}</h3>
+        </div>
+        
+        <p class="text-gray-600 dark:text-gray-300 mb-6">${message}</p>
+        
+        <div class="flex justify-end space-x-3">
+          <button 
+            class="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+            onClick=${onClose}
+          >
+            Cancel
+          </button>
+          <button 
+            class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+            onClick=${onConfirm}
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 /**
