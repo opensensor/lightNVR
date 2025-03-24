@@ -8,7 +8,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     git cmake build-essential pkg-config \
     libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
-    libcurl4-openssl-dev \
+    libcurl4 libmbedtls-dev \
     sqlite3 libsqlite3-dev systemctl && \
     rm -rf /var/lib/apt/lists/*
 
@@ -28,7 +28,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Install only necessary runtime dependencies
 RUN apt-get update && apt-get install -y \
     libavcodec59 libavformat59 libavutil57 libswscale6 \
-    libcurl4 \
+    libcurl4 libmbedtls14 \
     sqlite3 && \
     rm -rf /var/lib/apt/lists/*
 
