@@ -143,19 +143,25 @@ export function RecordingsView() {
       // Show loading state
       setRecordings([]);
       
+      // Create a pagination object with the specified page
+      const paginationWithPage = {
+        ...pagination,
+        currentPage: page
+      };
+      
       // Update URL with filters if requested
       if (updateUrl) {
-        urlUtils.updateUrlWithFilters(filters, pagination, sortField, sortDirection);
+        urlUtils.updateUrlWithFilters(filters, paginationWithPage, sortField, sortDirection);
       }
       
       // Load recordings from API
-      const data = await recordingsAPI.loadRecordings(filters, pagination, sortField, sortDirection);
+      const data = await recordingsAPI.loadRecordings(filters, paginationWithPage, sortField, sortDirection);
       
       // Store recordings in the component state
       setRecordings(data.recordings || []);
       
       // Update pagination
-      updatePaginationFromResponse(data);
+      updatePaginationFromResponse(data, page);
     } catch (error) {
       console.error('Error loading recordings:', error);
       showStatusMessage('Error loading recordings: ' + error.message);
@@ -163,23 +169,73 @@ export function RecordingsView() {
   };
   
   // Update pagination from API response
-  const updatePaginationFromResponse = (data) => {
+  const updatePaginationFromResponse = (data, currentPage) => {
+    // Use the provided page parameter instead of the state
+    currentPage = currentPage || pagination.currentPage;
+    
     if (data.pagination) {
+      const pageSize = data.pagination.limit || 20;
+      const totalItems = data.pagination.total || 0;
+      const totalPages = data.pagination.pages || 1;
+      
+      // Calculate start and end items based on current page
+      let startItem = 0;
+      let endItem = 0;
+      
+      if (data.recordings.length > 0) {
+        startItem = (currentPage - 1) * pageSize + 1;
+        endItem = Math.min(startItem + data.recordings.length - 1, totalItems);
+      }
+      
+      console.log('Pagination update:', {
+        currentPage,
+        pageSize,
+        totalItems,
+        totalPages,
+        startItem,
+        endItem,
+        recordingsLength: data.recordings.length
+      });
+      
       setPagination(prev => ({
         ...prev,
-        totalItems: data.pagination.total || 0,
-        totalPages: data.pagination.pages || 1,
-        pageSize: data.pagination.limit || 20,
-        startItem: data.recordings.length > 0 ? (pagination.currentPage - 1) * data.pagination.limit + 1 : 0,
-        endItem: Math.min((pagination.currentPage - 1) * data.pagination.limit + data.recordings.length, data.pagination.total)
+        totalItems,
+        totalPages,
+        pageSize,
+        startItem,
+        endItem
       }));
     } else {
+      // Fallback if pagination object is not provided
+      const pageSize = pagination.pageSize;
+      const totalItems = data.total || 0;
+      const totalPages = Math.ceil(totalItems / pageSize) || 1;
+      
+      // Calculate start and end items based on current page
+      let startItem = 0;
+      let endItem = 0;
+      
+      if (data.recordings.length > 0) {
+        startItem = (currentPage - 1) * pageSize + 1;
+        endItem = Math.min(startItem + data.recordings.length - 1, totalItems);
+      }
+      
+      console.log('Pagination update (fallback):', {
+        currentPage,
+        pageSize,
+        totalItems,
+        totalPages,
+        startItem,
+        endItem,
+        recordingsLength: data.recordings.length
+      });
+      
       setPagination(prev => ({
         ...prev,
-        totalItems: data.total || 0,
-        totalPages: Math.ceil(data.total / prev.pageSize) || 1,
-        startItem: data.recordings.length > 0 ? (pagination.currentPage - 1) * prev.pageSize + 1 : 0,
-        endItem: Math.min((pagination.currentPage - 1) * prev.pageSize + data.recordings.length, data.total)
+        totalItems,
+        totalPages,
+        startItem,
+        endItem
       }));
     }
   };
@@ -229,8 +285,8 @@ export function RecordingsView() {
   
   // Reset filters
   const resetFilters = () => {
-    // Reset filter state
-    setFilters({
+    // Create default filters
+    const defaultFilters = {
       dateRange: 'last7days',
       startDate: '',
       startTime: '00:00',
@@ -238,9 +294,24 @@ export function RecordingsView() {
       endTime: '23:59',
       streamId: 'all',
       recordingType: 'all'
-    });
+    };
     
-    setDefaultDateRange();
+    // Get default date range
+    const now = new Date();
+    const sevenDaysAgo = new Date(now);
+    sevenDaysAgo.setDate(now.getDate() - 7);
+    
+    defaultFilters.endDate = now.toISOString().split('T')[0];
+    defaultFilters.startDate = sevenDaysAgo.toISOString().split('T')[0];
+    
+    // Reset filter state
+    setFilters(defaultFilters);
+    
+    // Create default pagination
+    const defaultPagination = {
+      ...pagination,
+      currentPage: 1
+    };
     
     // Reset pagination to first page
     setPagination(prev => ({
@@ -253,7 +324,19 @@ export function RecordingsView() {
     window.history.pushState({ path: baseUrl }, '', baseUrl);
     
     // Load recordings with default settings
-    loadRecordings(1, false);
+    // Use a direct API call to avoid state update delays
+    recordingsAPI.loadRecordings(defaultFilters, defaultPagination, 'start_time', 'desc')
+      .then(data => {
+        // Store recordings in the component state
+        setRecordings(data.recordings || []);
+        
+        // Update pagination
+        updatePaginationFromResponse(data, 1);
+      })
+      .catch(error => {
+        console.error('Error loading recordings:', error);
+        showStatusMessage('Error loading recordings: ' + error.message);
+      });
   };
   
   // Remove filter
@@ -300,24 +383,24 @@ export function RecordingsView() {
   const goToPage = (page) => {
     if (page < 1 || page > pagination.totalPages) return;
     
+    // Set the current page in pagination state
     setPagination(prev => ({
       ...prev,
       currentPage: page
     }));
     
-    // Create URL parameters object with current filters
-    const params = new URLSearchParams(window.location.search);
+    // Create a new pagination object with the updated page
+    const updatedPagination = {
+      ...pagination,
+      currentPage: page
+    };
     
-    // Update only the page parameter
-    params.set('page', page.toString());
-    
-    // Update URL without reloading the page
-    const newUrl = `${window.location.pathname}?${params.toString()}`;
-    window.history.pushState({ path: newUrl }, '', newUrl);
+    // Update URL with all filters and the new page
+    urlUtils.updateUrlWithFilters(filters, updatedPagination, sortField, sortDirection);
     
     // Use setTimeout to ensure the pagination state is updated before loading recordings
     setTimeout(() => {
-      loadRecordings();
+      loadRecordings(page, false); // Don't update URL again in loadRecordings
     }, 0);
   };
   
@@ -405,6 +488,8 @@ export function RecordingsView() {
     // Set the sort parameters directly
     setSortField(sortField);
     setSortDirection(sortDirection);
+    
+    // Update pagination with the preserved page
     setPagination(prev => ({
       ...prev,
       currentPage: page
@@ -412,27 +497,17 @@ export function RecordingsView() {
     
     // Wait for state to update
     setTimeout(() => {
-      // Build query parameters
-      const params = new URLSearchParams(window.location.search);
+      // Create a new pagination object with the updated page
+      const updatedPagination = {
+        ...pagination,
+        currentPage: page
+      };
       
-      // Update pagination, sort, and order parameters
-      params.set('page', page.toString());
-      params.set('limit', pagination.pageSize.toString());
-      params.set('sort', sortField);
-      params.set('order', sortDirection);
+      // Update URL with all filters and the preserved parameters
+      urlUtils.updateUrlWithFilters(filters, updatedPagination, sortField, sortDirection);
       
-      // Update URL with preserved parameters
-      const newUrl = `${window.location.pathname}?${params.toString()}`;
-      window.history.pushState({ path: newUrl }, '', newUrl);
-      
-      // Fetch recordings with preserved parameters
-      fetch(`/api/recordings?${params.toString()}`)
-        .then(response => {
-          if (!response.ok) {
-            throw new Error('Failed to load recordings');
-          }
-          return response.json();
-        })
+      // Load recordings from API
+      recordingsAPI.loadRecordings(filters, updatedPagination, sortField, sortDirection)
         .then(data => {
           console.log('Recordings data received:', data);
           
@@ -440,7 +515,7 @@ export function RecordingsView() {
           setRecordings(data.recordings || []);
           
           // Update pagination without changing the current page
-          updatePaginationFromResponse(data);
+          updatePaginationFromResponse(data, page);
         })
         .catch(error => {
           console.error('Error loading recordings:', error);

@@ -115,6 +115,9 @@ export const recordingsAPI = {
         params.append('detection', '1');
       }
       
+      // Log the API request
+      console.log('API Request:', `/api/recordings?${params.toString()}`);
+      
       // Fetch recordings
       const response = await fetch(`/api/recordings?${params.toString()}`);
       if (!response.ok) {
