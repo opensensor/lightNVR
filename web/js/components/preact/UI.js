@@ -221,8 +221,8 @@ export function DeleteConfirmationModal(props) {
   return html`
     <div 
       class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-      onClick=${handleBackgroundClick}
-      onKeyDown=${handleKeyDown}
+      onClick={handleBackgroundClick}
+      onKeyDown={handleKeyDown}
     >
       <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md mx-auto">
         <div class="mb-4">
@@ -234,13 +234,13 @@ export function DeleteConfirmationModal(props) {
         <div class="flex justify-end space-x-3">
           <button 
             class="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
-            onClick=${onClose}
+            onClick={onClose}
           >
             Cancel
           </button>
           <button 
             class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
-            onClick=${onConfirm}
+            onClick={onConfirm}
           >
             Delete
           </button>
