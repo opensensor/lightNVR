@@ -5,20 +5,20 @@ FROM debian:bookworm-slim AS builder
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install build dependencies
-# Install dependencies including required build tools
 RUN apt-get update && apt-get install -y \
     git cmake build-essential pkg-config \
     libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
     libcurl4-openssl-dev sqlite3 libsqlite3-dev && \
     rm -rf /var/lib/apt/lists/*
-# Build MbedTLS from source
+
+# Build MbedTLS from source with tests disabled
 WORKDIR /opt
 RUN git clone --branch v3.4.0 --depth 1 https://github.com/Mbed-TLS/mbedtls.git && \
     cd mbedtls && mkdir build && cd build && \
-    cmake -DCMAKE_INSTALL_PREFIX=/usr/local .. && \
+    cmake -DCMAKE_INSTALL_PREFIX=/usr/local -DENABLE_TESTING=OFF -DENABLE_PROGRAMS=OFF .. && \
     make -j$(nproc) && make install && \
+    ldconfig && \
     cd /opt && rm -rf mbedtls
-
 
 # Copy current directory contents into container
 WORKDIR /opt
@@ -36,9 +36,14 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Install only necessary runtime dependencies
 RUN apt-get update && apt-get install -y \
     libavcodec59 libavformat59 libavutil57 libswscale6 \
-    libcurl4 libmbedtls14 \
-    sqlite3 && \
+    libcurl4 sqlite3 && \
     rm -rf /var/lib/apt/lists/*
+
+# Copy MbedTLS libraries from builder
+COPY --from=builder /usr/local/lib/libmbed*.so* /usr/local/lib/
+
+# Update library cache
+RUN ldconfig
 
 # Copy compiled binary and config files from builder stage
 COPY --from=builder /bin/lightnvr /bin/lightnvr

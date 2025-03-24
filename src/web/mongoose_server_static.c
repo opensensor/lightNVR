@@ -48,33 +48,13 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         return;
     }
     
-    // Special case: handle root path "/" directly
+    // Special case: handle root path "/" directly by serving live.html
     if (strcmp(uri, "/") == 0) {
-        log_info("Handling root path '/', serving live.html directly");
+        log_info("Handling root path '/', serving live.html directly as a static file");
         
-        // Construct the path to live.html
-        char live_path[MAX_PATH_LENGTH * 2];
-        snprintf(live_path, sizeof(live_path), "%s/live.html", server->config.web_root);
-        
-        // Check if live.html exists
-        struct stat st;
-        if (stat(live_path, &st) == 0 && S_ISREG(st.st_mode)) {
-            // Serve live.html directly
-            struct mg_http_serve_opts opts = {
-                .root_dir = server->config.web_root,
-                .mime_types = "html=text/html"
-            };
-            mg_http_serve_file(c, hm, live_path, &opts);
-        } else {
-            // If live.html doesn't exist, try the redirect approach
-            log_info("live.html not found, falling back to redirect");
-            mg_printf(c, "HTTP/1.1 302 Found\r\n");
-            mg_printf(c, "Location: /live.html\r\n");
-            mg_printf(c, "Content-Length: 0\r\n");
-            mg_printf(c, "Connection: close\r\n"); // CRITICAL FIX: Add Connection: close header
-            mg_printf(c, "\r\n");
-        }
-        return;
+        // Simply change the URI to live.html and continue processing
+        strncpy(uri, "/live.html", sizeof(uri) - 1);
+        uri[sizeof(uri) - 1] = '\0';
     }
     
     // Check if this is a static asset that should bypass authentication
