@@ -62,6 +62,25 @@ export function TimelinePlayer() {
         } else {
           console.warn(`Segment at index ${state.currentSegmentIndex} is undefined`);
         }
+      } else if (state.isPlaying !== prevIsPlaying && state.isPlaying && 
+                state.currentSegmentIndex >= 0 && 
+                state.timelineSegments && 
+                state.timelineSegments.length > 0 &&
+                state.currentSegmentIndex < state.timelineSegments.length) {
+        // Handle case where play state changed but segment index didn't
+        // This ensures clicking on the same segment again will play it
+        console.log(`Play state changed to playing, ensuring video playback`);
+        
+        const segment = state.timelineSegments[state.currentSegmentIndex];
+        if (segment) {
+          const startTime = state.currentTime !== null && 
+                            state.currentTime >= segment.start_timestamp
+            ? state.currentTime - segment.start_timestamp
+            : 0;
+            
+          // Direct call to play video without updating state again
+          playVideoDirectly(state.currentSegmentIndex, startTime);
+        }
       }
       
       // Update playback speed if it changed
@@ -495,13 +514,16 @@ export function TimelinePlayer() {
             position: video.currentTime
           };
         } 
-        // If we're near the end (within 1 second) and the video has stalled for more than 500ms
-        // and we're not paused or seeking, advance to the next segment
+        // If the video has stalled for more than 300ms and we're not paused or seeking
+        // and either:
+        // 1. We're near the end (within 2 seconds) OR
+        // 2. We've been playing for at least 2 seconds and there's been no progress for 1 second
+        // Then advance to the next segment
         else if (video.currentTime > 0 && !video.paused && !video.seeking && 
-                 remainingTime < 1 && remainingTime > 0 && 
-                 timeDiff > 500) {
+                 ((remainingTime < 2 && timeDiff > 300) || 
+                  (video.currentTime > 2 && timeDiff > 1000))) {
           
-          console.log(`Video stalled near end of segment ${currentSegmentIndex}, currentTime: ${video.currentTime.toFixed(2)}s, duration: ${segmentDuration}s, remaining: ${remainingTime.toFixed(2)}s, stalled for: ${timeDiff}ms`);
+          console.log(`Video stalled ${remainingTime < 2 ? 'near end of' : 'during'} segment ${currentSegmentIndex}, currentTime: ${video.currentTime.toFixed(2)}s, duration: ${segmentDuration}s, remaining: ${remainingTime.toFixed(2)}s, stalled for: ${timeDiff}ms`);
         
           // Check if there's a next segment
           if (currentSegmentIndex < segments.length - 1) {
