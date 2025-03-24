@@ -663,18 +663,10 @@ if (ev == MG_EV_ACCEPT) {
     server->active_connections++;
     pthread_mutex_unlock(&server->mutex);
     
-    // Add the connection to the connection pool for parallel processing
-    if (server->conn_pool) {
-        if (!connection_pool_add_connection(server->conn_pool, c, server)) {
-            log_error("Failed to add connection to pool");
-            // Continue anyway, the main event loop will handle it
-        } else {
-            log_debug("Connection added to pool for parallel processing");
-            // Return early as the worker thread will handle this connection
-            return;
-        }
-    }
-    // If adding to pool failed or no pool, the main event loop will handle events
+    // CRITICAL FIX: Do not add connections to the pool here
+    // Let the main event loop handle all events for all connections
+    // This ensures proper event handling and prevents connections from being orphaned
+    
 } else if (ev == MG_EV_HTTP_MSG) {
         // HTTP request received
         struct mg_http_message *hm = (struct mg_http_message *)ev_data;
@@ -848,13 +840,22 @@ static void *mongoose_server_event_loop(void *arg) {
     // Run event loop until server is stopped
     int poll_count = 0;
     while (server->running) {
-        // Poll for events with a shorter timeout to be more responsive
-        mg_mgr_poll(server->mgr, 100);
+        // CRITICAL FIX: Poll for events with a shorter timeout to be more responsive
+        // Reduced from 100ms to 10ms for better responsiveness
+        mg_mgr_poll(server->mgr, 10);
+        
         poll_count++;
         
-        // Log every 100 polls (approximately every 10 seconds)
-        if (poll_count % 100 == 0) {
-            log_debug("Mongoose event loop poll count: %d", poll_count);
+        // Log every 1000 polls (approximately every 10 seconds with 10ms timeout)
+        if (poll_count % 1000 == 0) {
+            // Count active connections for debugging
+            int active_count = 0;
+            for (struct mg_connection *c = server->mgr->conns; c != NULL; c = c->next) {
+                active_count++;
+            }
+            
+            log_debug("Mongoose event loop poll count: %d, active connections: %d", 
+                     poll_count, active_count);
         }
     }
     

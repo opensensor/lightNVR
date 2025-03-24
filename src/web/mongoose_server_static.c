@@ -34,16 +34,17 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         // Get Authorization header if present
         struct mg_str *auth_header = mg_http_get_header(hm, "Authorization");
         
-        mg_printf(c, "HTTP/1.1 302 Found\r\n");
-        mg_printf(c, "Location: /live.html\r\n");
-        
-        // If there's an Authorization header, include it in the redirect
-        if (auth_header != NULL) {
-            mg_printf(c, "Authorization: %.*s\r\n", (int) auth_header->len, auth_header->buf);
-        }
-        
-        mg_printf(c, "Content-Length: 0\r\n");
-        mg_printf(c, "\r\n");
+            mg_printf(c, "HTTP/1.1 302 Found\r\n");
+            mg_printf(c, "Location: /live.html\r\n");
+            
+            // If there's an Authorization header, include it in the redirect
+            if (auth_header != NULL) {
+                mg_printf(c, "Authorization: %.*s\r\n", (int) auth_header->len, auth_header->buf);
+            }
+            
+            mg_printf(c, "Content-Length: 0\r\n");
+            mg_printf(c, "Connection: close\r\n"); // CRITICAL FIX: Add Connection: close header
+            mg_printf(c, "\r\n");
         return;
     }
     
@@ -70,6 +71,7 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
             mg_printf(c, "HTTP/1.1 302 Found\r\n");
             mg_printf(c, "Location: /live.html\r\n");
             mg_printf(c, "Content-Length: 0\r\n");
+            mg_printf(c, "Connection: close\r\n"); // CRITICAL FIX: Add Connection: close header
             mg_printf(c, "\r\n");
         }
         return;
@@ -258,11 +260,12 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
                 char redirect_path[MAX_PATH_LENGTH * 2];
                 snprintf(redirect_path, sizeof(redirect_path), "%s/", uri);
                 
-                // Use a complete HTTP response with fixed headers to avoid any string formatting issues
-                mg_printf(c, "HTTP/1.1 301 Moved Permanently\r\n");
-                mg_printf(c, "Location: %s\r\n", redirect_path);
-                mg_printf(c, "Content-Length: 0\r\n");
-                mg_printf(c, "\r\n");
+            // Use a complete HTTP response with fixed headers to avoid any string formatting issues
+            mg_printf(c, "HTTP/1.1 301 Moved Permanently\r\n");
+            mg_printf(c, "Location: %s\r\n", redirect_path);
+            mg_printf(c, "Content-Length: 0\r\n");
+            mg_printf(c, "Connection: close\r\n"); // CRITICAL FIX: Add Connection: close header to ensure the connection is closed
+            mg_printf(c, "\r\n");
                 return;
             } else {
                 // Try to serve live.html as the index
