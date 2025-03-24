@@ -1041,6 +1041,9 @@ void mg_handle_play_recording(struct mg_connection *c, struct mg_http_message *h
         mg_printf(c, "Content-Length: %zu\r\n", content_length);
         mg_printf(c, "Content-Range: bytes %zu-%zu/%zu\r\n", range_start, range_end, (size_t)st.st_size);
         mg_printf(c, "Accept-Ranges: bytes\r\n");
+        mg_printf(c, "Access-Control-Allow-Origin: *\r\n");
+        mg_printf(c, "Access-Control-Allow-Methods: GET, OPTIONS\r\n");
+        mg_printf(c, "Access-Control-Allow-Headers: Range, Origin, Content-Type, Accept\r\n");
         mg_printf(c, "Cache-Control: max-age=3600\r\n");
         mg_printf(c, "\r\n");
         
@@ -1080,6 +1083,9 @@ void mg_handle_play_recording(struct mg_connection *c, struct mg_http_message *h
         mg_printf(c, "Content-Type: video/mp4\r\n");
         mg_printf(c, "Content-Length: %ld\r\n", st.st_size);
         mg_printf(c, "Accept-Ranges: bytes\r\n");
+        mg_printf(c, "Access-Control-Allow-Origin: *\r\n");
+        mg_printf(c, "Access-Control-Allow-Methods: GET, OPTIONS\r\n");
+        mg_printf(c, "Access-Control-Allow-Headers: Range, Origin, Content-Type, Accept\r\n");
         mg_printf(c, "Cache-Control: max-age=3600\r\n");
         mg_printf(c, "\r\n");
         

@@ -400,7 +400,18 @@ int create_timeline_manifest(const timeline_segment_t *segments, int segment_cou
     fprintf(manifest, "#EXT-X-VERSION:3\n");
     fprintf(manifest, "#EXT-X-MEDIA-SEQUENCE:0\n");
     fprintf(manifest, "#EXT-X-ALLOW-CACHE:YES\n");
-    fprintf(manifest, "#EXT-X-TARGETDURATION:30\n");
+    
+    // Find the maximum segment duration for EXT-X-TARGETDURATION
+    double max_duration = 0;
+    for (int i = 0; i < segment_count; i++) {
+        double duration = difftime(segments[i].end_time, segments[i].start_time);
+        if (duration > max_duration) {
+            max_duration = duration;
+        }
+    }
+    // Round up to the nearest integer and add a small buffer
+    int target_duration = (int)max_duration + 1;
+    fprintf(manifest, "#EXT-X-TARGETDURATION:%d\n", target_duration);
     
     // Find the segment that contains the start time
     int start_segment_index = -1;
@@ -431,8 +442,20 @@ int create_timeline_manifest(const timeline_segment_t *segments, int segment_cou
         // Calculate duration
         double duration = difftime(segments[i].end_time, segments[i].start_time);
         
-        // Write segment info
-        fprintf(manifest, "#EXTINF:%.3f,\n", duration);
+        // Check if the file exists
+        struct stat file_st;
+        if (stat(segments[i].file_path, &file_st) != 0) {
+            log_warn("Recording file not found: %s, skipping in manifest", segments[i].file_path);
+            continue;
+        }
+        
+        // Write segment info with more precise duration
+        fprintf(manifest, "#EXTINF:%.6f,\n", duration);
+        
+        // Add additional HLS tags to help with MP4 playback
+        fprintf(manifest, "#EXT-X-BYTERANGE:%lld@0\n", (long long)file_st.st_size);
+        
+        // Use the direct file path for the recording
         fprintf(manifest, "/api/recordings/play/%llu\n", (unsigned long long)segments[i].id);
     }
     

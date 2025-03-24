@@ -75,7 +75,7 @@ function loadStreams() {
             return response.json();
         })
         .then(data => {
-            streams = data.streams || [];
+            streams = data || [];
             populateStreamSelector(streams);
         })
         .catch(error => {
@@ -98,12 +98,11 @@ function populateStreamSelector(streams) {
     
     // Add streams to selector
     streams.forEach(stream => {
-        if (stream.enabled) {
-            const option = document.createElement('option');
-            option.value = stream.name;
-            option.textContent = stream.name;
-            selector.appendChild(option);
-        }
+        // Add all streams, not just enabled ones
+        const option = document.createElement('option');
+        option.value = stream.name;
+        option.textContent = stream.name;
+        selector.appendChild(option);
     });
     
     // Enable selector
@@ -558,18 +557,80 @@ function initVideoPlayer() {
     
     // Initialize HLS.js if supported
     if (Hls.isSupported()) {
+        // Configure HLS.js with optimized settings for MP4 playback
         hlsPlayer = new Hls({
             enableWorker: true,
             lowLatencyMode: false,
-            backBufferLength: 90
+            backBufferLength: 90,
+            maxBufferLength: 30,
+            maxMaxBufferLength: 600,
+            maxBufferSize: 60 * 1000 * 1000, // 60MB
+            maxBufferHole: 0.5,
+            highBufferWatchdogPeriod: 2,
+            nudgeOffset: 0.2,
+            nudgeMaxRetry: 5,
+            maxFragLookUpTolerance: 0.25,
+            liveSyncDurationCount: 3,
+            liveMaxLatencyDurationCount: 10,
+            enableCEA708Captions: false,
+            stretchShortVideoTrack: false,
+            maxAudioFramesDrift: 1,
+            forceKeyFrameOnDiscontinuity: true,
+            abrEwmaFastLive: 3.0,
+            abrEwmaSlowLive: 9.0,
+            abrEwmaFastVoD: 3.0,
+            abrEwmaSlowVoD: 9.0,
+            abrEwmaDefaultEstimate: 500000,
+            abrBandWidthFactor: 0.95,
+            abrBandWidthUpFactor: 0.7,
+            fragLoadingTimeOut: 20000,
+            fragLoadingMaxRetry: 6,
+            fragLoadingRetryDelay: 1000,
+            fragLoadingMaxRetryTimeout: 64000,
+            startFragPrefetch: false,
+            testBandwidth: true
         });
+        
         hlsPlayer.attachMedia(videoPlayer);
         
+        // Add detailed error handling
         hlsPlayer.on(Hls.Events.ERROR, function(event, data) {
+            console.warn('HLS error:', data);
+            
             if (data.fatal) {
                 console.error('Fatal HLS error:', data);
                 showStatusMessage('Video playback error: ' + data.details, 'error');
+                
+                switch(data.type) {
+                    case Hls.ErrorTypes.NETWORK_ERROR:
+                        // Try to recover network error
+                        console.log('Attempting to recover from network error...');
+                        hlsPlayer.startLoad();
+                        break;
+                    case Hls.ErrorTypes.MEDIA_ERROR:
+                        // Try to recover media error
+                        console.log('Attempting to recover from media error...');
+                        hlsPlayer.recoverMediaError();
+                        break;
+                    default:
+                        // Cannot recover
+                        console.error('Cannot recover from error:', data.type);
+                        break;
+                }
             }
+        });
+        
+        // Add more event listeners for debugging
+        hlsPlayer.on(Hls.Events.MANIFEST_PARSED, function() {
+            console.log('HLS manifest parsed successfully');
+        });
+        
+        hlsPlayer.on(Hls.Events.LEVEL_LOADED, function() {
+            console.log('HLS level loaded');
+        });
+        
+        hlsPlayer.on(Hls.Events.FRAG_LOADED, function() {
+            console.log('HLS fragment loaded');
         });
     } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
         // For browsers with native HLS support (Safari)
@@ -592,6 +653,19 @@ function initVideoPlayer() {
             // End of all segments
             pausePlayback();
         }
+    });
+    
+    // Add more video event listeners for debugging
+    videoPlayer.addEventListener('canplay', function() {
+        console.log('Video can play');
+    });
+    
+    videoPlayer.addEventListener('waiting', function() {
+        console.log('Video waiting for data');
+    });
+    
+    videoPlayer.addEventListener('playing', function() {
+        console.log('Video playing');
     });
 }
 
