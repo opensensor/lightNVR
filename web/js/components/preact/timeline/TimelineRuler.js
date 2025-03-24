@@ -23,20 +23,79 @@ export function TimelineRuler() {
     const unsubscribe = timelineState.subscribe(state => {
       // Calculate time range based on zoom level
       const hoursPerView = 24 / state.zoomLevel;
-      const newStartHour = Math.max(0, Math.min(24 - hoursPerView, state.timelineStartHour));
-      const newEndHour = Math.min(24, newStartHour + hoursPerView);
       
-      setStartHour(newStartHour);
-      setEndHour(newEndHour);
-      setZoomLevel(state.zoomLevel);
-      
-      // Update global state with calculated values
-      if (newStartHour !== state.timelineStartHour || newEndHour !== state.timelineEndHour) {
-        timelineState.setState({
-          timelineStartHour: newStartHour,
-          timelineEndHour: newEndHour
+      // If we're showing only segments with recordings, adjust the view
+      if (state.showOnlySegments && state.timelineSegments && state.timelineSegments.length > 0) {
+        // Find the earliest and latest segments
+        let earliestHour = 24;
+        let latestHour = 0;
+        
+        state.timelineSegments.forEach(segment => {
+          const startTime = new Date(segment.start_timestamp * 1000);
+          const endTime = new Date(segment.end_timestamp * 1000);
+          
+          const startHour = startTime.getHours() + (startTime.getMinutes() / 60) + (startTime.getSeconds() / 3600);
+          const endHour = endTime.getHours() + (endTime.getMinutes() / 60) + (endTime.getSeconds() / 3600);
+          
+          earliestHour = Math.min(earliestHour, startHour);
+          latestHour = Math.max(latestHour, endHour);
         });
+        
+        // Add some padding
+        earliestHour = Math.max(0, earliestHour - 0.5);
+        latestHour = Math.min(24, latestHour + 0.5);
+        
+        // Ensure we show at least 1 hour
+        if (latestHour - earliestHour < 1) {
+          const midpoint = (earliestHour + latestHour) / 2;
+          earliestHour = Math.max(0, midpoint - 0.5);
+          latestHour = Math.min(24, midpoint + 0.5);
+        }
+        
+        setStartHour(earliestHour);
+        setEndHour(latestHour);
+        
+        // Update global state
+        timelineState.setState({
+          timelineStartHour: earliestHour,
+          timelineEndHour: latestHour
+        });
+      } else {
+        // If we have a current time, center the view around it
+        let newStartHour = state.timelineStartHour;
+        let newEndHour = state.timelineEndHour;
+        
+        if (state.currentTime !== null) {
+          const currentDate = new Date(state.currentTime * 1000);
+          const currentHour = currentDate.getHours() + (currentDate.getMinutes() / 60) + (currentDate.getSeconds() / 3600);
+          
+          // Center the view around the current time
+          newStartHour = Math.max(0, Math.min(24 - hoursPerView, currentHour - (hoursPerView / 2)));
+          newEndHour = Math.min(24, newStartHour + hoursPerView);
+          
+          // Adjust start hour if end hour is at the limit
+          if (newEndHour === 24) {
+            newStartHour = Math.max(0, 24 - hoursPerView);
+          }
+        } else {
+          // No current time, just adjust the view based on zoom level
+          newStartHour = Math.max(0, Math.min(24 - hoursPerView, state.timelineStartHour));
+          newEndHour = Math.min(24, newStartHour + hoursPerView);
+        }
+        
+        setStartHour(newStartHour);
+        setEndHour(newEndHour);
+        
+        // Update global state with calculated values
+        if (newStartHour !== state.timelineStartHour || newEndHour !== state.timelineEndHour) {
+          timelineState.setState({
+            timelineStartHour: newStartHour,
+            timelineEndHour: newEndHour
+          });
+        }
       }
+      
+      setZoomLevel(state.zoomLevel);
     });
     
     return () => unsubscribe();

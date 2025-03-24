@@ -231,11 +231,14 @@ export function TimelineSegments() {
       const startTimeStr = startTime.toLocaleTimeString();
       const endTimeStr = endTime.toLocaleTimeString();
       
+      // Calculate height based on duration (longer segments are taller)
+      const heightPercent = Math.min(100, Math.max(60, (duration / 60) * 5)); // 5% height per minute, min 60%, max 100%
+      
       visibleSegments.push(html`
         <div 
           key="segment-${index}"
-          class="timeline-segment absolute h-5 rounded-sm cursor-pointer transition-all duration-200 ${segment.has_detection ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-500 hover:bg-blue-600'} ${index === currentSegmentIndex ? 'border-2 border-yellow-400' : ''}"
-          style="left: ${startPercent}%; width: ${widthPercent}%; top: 50%; transform: translateY(-50%);"
+          class="timeline-segment absolute rounded-sm cursor-pointer transition-all duration-200 ${segment.has_detection ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-500 hover:bg-blue-600'} ${index === currentSegmentIndex ? 'border-2 border-yellow-400' : ''}"
+          style="left: ${startPercent}%; width: ${widthPercent}%; height: ${heightPercent}%; top: 50%; transform: translateY(-50%);"
           title="${startTimeStr} - ${endTimeStr} (${durationStr})"
           onClick=${() => playSegment(index)}
         ></div>

@@ -27,6 +27,7 @@ const timelineState = {
   timelineEndHour: 24,
   currentTime: null,
   playbackSpeed: 1.0,
+  showOnlySegments: false, // Whether to show only segments with recordings
   listeners: new Set(),
 
   // Update state and notify listeners
@@ -255,15 +256,30 @@ export function TimelinePage() {
         </div>
       </div>
       
+      <!-- Current time display -->
+      <div class="flex justify-between items-center mb-4">
+        <div id="time-display" class="timeline-time-display bg-gray-200 dark:bg-gray-700 px-4 py-2 rounded font-mono text-lg">00:00:00</div>
+      </div>
+      
       <!-- Video player -->
       <${TimelinePlayer} />
       
       <!-- Playback controls -->
       <${TimelineControls} />
       
-      <!-- Current time display -->
-      <div class="flex justify-between items-center mb-4">
-        <div id="time-display" class="timeline-time-display bg-gray-200 dark:bg-gray-700 px-4 py-2 rounded font-mono text-lg">00:00:00</div>
+      <!-- Timeline view options -->
+      <div class="flex justify-end mb-2">
+        <button 
+          class="px-3 py-1 text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded flex items-center gap-1"
+          onClick=${() => timelineState.setState({ showOnlySegments: !timelineState.showOnlySegments })}
+          title="Toggle between showing the full day or focusing on segments with recordings"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+          </svg>
+          ${timelineState.showOnlySegments ? 'Show Full Day' : 'Focus on Recordings'}
+        </button>
       </div>
       
       <!-- Timeline -->

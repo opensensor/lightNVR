@@ -51,14 +51,15 @@ export function TimelineControls() {
   // Resume playback
   const resumePlayback = () => {
     // If no segments, show message and return
-    if (timelineState.timelineSegments.length === 0) {
+    if (!timelineState.timelineSegments || timelineState.timelineSegments.length === 0) {
       showStatusMessage('No recordings to play', 'warning');
       return;
     }
     
     // If there's a video player and current segment index is valid, play it
     const videoPlayer = document.querySelector('#video-player video');
-    if (videoPlayer && timelineState.currentSegmentIndex >= 0) {
+    if (videoPlayer && timelineState.currentSegmentIndex >= 0 && 
+        timelineState.currentSegmentIndex < timelineState.timelineSegments.length) {
       console.log('Playing video from TimelineControls', videoPlayer);
       videoPlayer.play().catch(error => {
         console.error('Error playing video:', error);
@@ -109,33 +110,45 @@ export function TimelineControls() {
       <div class="flex items-center gap-2">
         <button 
           id="play-button" 
-          class="w-10 h-10 rounded-full bg-blue-500 hover:bg-blue-600 text-white flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+          class="w-12 h-12 rounded-full bg-green-600 hover:bg-green-700 text-white flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors shadow-md"
           onClick=${togglePlayback}
           title=${isPlaying ? 'Pause' : 'Play'}
         >
-          <span class="icon text-lg">${isPlaying ? '⏸️' : '▶️'}</span>
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            ${isPlaying 
+              ? html`<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m-9-6h18" />`
+              : html`<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />`
+            }
+          </svg>
         </button>
       </div>
       
-      <div class="timeline-zoom-controls flex items-center gap-2">
-        <button 
-          id="zoom-out-button" 
-          class="w-8 h-8 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
-          onClick=${zoomOut}
-          title="Zoom Out"
-          disabled=${zoomLevel <= 1}
-        >
-          <span class="icon">➖</span>
-        </button>
-        <button 
-          id="zoom-in-button" 
-          class="w-8 h-8 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
-          onClick=${zoomIn}
-          title="Zoom In"
-          disabled=${zoomLevel >= 8}
-        >
-          <span class="icon">➕</span>
-        </button>
+      <div class="timeline-zoom-controls flex flex-col items-end">
+        <div class="text-sm text-gray-600 dark:text-gray-300 mb-1">Timeline Zoom</div>
+        <div class="flex items-center gap-2">
+          <button 
+            id="zoom-out-button" 
+            class="w-8 h-8 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+            onClick=${zoomOut}
+            title="Zoom Out (Show more time)"
+            disabled=${zoomLevel <= 1}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </button>
+          <button 
+            id="zoom-in-button" 
+            class="w-8 h-8 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+            onClick=${zoomIn}
+            title="Zoom In (Show less time)"
+            disabled=${zoomLevel >= 8}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
   `;
