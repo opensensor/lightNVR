@@ -12,9 +12,13 @@ RUN apt-get update && apt-get install -y \
     rm -rf /var/lib/apt/lists/*
 
 # Build MbedTLS from source with tests disabled
+# and build shared libraries instead of static
 WORKDIR /opt
 RUN git clone --branch v3.4.0 --depth 1 https://github.com/Mbed-TLS/mbedtls.git && \
-    cd mbedtls && mkdir build && cd build && \
+    cd mbedtls && \
+    # Enable shared library building
+    sed -i 's/option(USE_SHARED_MBEDTLS_LIBRARY "Build shared libraries." OFF)/option(USE_SHARED_MBEDTLS_LIBRARY "Build shared libraries." ON)/g' CMakeLists.txt && \
+    mkdir build && cd build && \
     cmake -DCMAKE_INSTALL_PREFIX=/usr/local -DENABLE_TESTING=OFF -DENABLE_PROGRAMS=OFF .. && \
     make -j$(nproc) && make install && \
     ldconfig
@@ -29,6 +33,7 @@ includedir=\${prefix}/include\n\
 Name: mbedtls\n\
 Description: MbedTLS Library\n\
 Version: 3.4.0\n\
+Requires.private: mbedx509\n\
 Libs: -L\${libdir} -lmbedtls\n\
 Cflags: -I\${includedir}" > /usr/local/lib/pkgconfig/mbedtls.pc && \
     echo "prefix=/usr/local\n\
@@ -49,6 +54,7 @@ includedir=\${prefix}/include\n\
 Name: mbedx509\n\
 Description: MbedTLS X509 Library\n\
 Version: 3.4.0\n\
+Requires.private: mbedcrypto\n\
 Libs: -L\${libdir} -lmbedx509\n\
 Cflags: -I\${includedir}" > /usr/local/lib/pkgconfig/mbedx509.pc
 
@@ -65,11 +71,18 @@ RUN mkdir -p /opt/external && \
 WORKDIR /opt
 COPY . .
 
-# Prepare and build the application
+# Prepare build environment
+# Make a small modification to CMakeLists.txt to ensure proper linking with mbedcrypto
+RUN if grep -q "mbedtls mbedx509" CMakeLists.txt; then \
+        sed -i 's/mbedtls mbedx509/mbedtls mbedx509 mbedcrypto/g' CMakeLists.txt; \
+    fi
+
+# Build the application
 RUN mkdir -p /etc/lightnvr /var/lib/lightnvr /var/log/lightnvr /var/run/lightnvr /var/lib/lightnvr/recordings && \
     chmod -R 777 /var/lib/lightnvr /var/log/lightnvr /var/run/lightnvr && \
-    find /opt/external -type f -name "*.c" && \
-    PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH ./scripts/build.sh --release --with-sod && \
+    PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH \
+    LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH \
+    ./scripts/build.sh --release --with-sod && \
     ./scripts/install.sh --prefix=/
 
 # Stage 2: Minimal runtime image
