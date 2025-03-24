@@ -184,6 +184,14 @@ export function TimelinePage() {
           isPlaying: false
         });
         
+        // Preload the first segment's video
+        const videoPlayer = document.querySelector('#video-player video');
+        if (videoPlayer) {
+          console.log('Preloading first segment video:', timelineSegments[0]);
+          videoPlayer.src = `/api/recordings/play/${timelineSegments[0].id}`;
+          videoPlayer.load(); // Just load but don't play yet
+        }
+        
         // Show success message
         showStatusMessage(`Loaded ${timelineSegments.length} recording segments`, 'success');
       })

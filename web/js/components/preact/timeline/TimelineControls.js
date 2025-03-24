@@ -58,15 +58,10 @@ export function TimelineControls() {
     
     // If there's a video player and current segment index is valid, play it
     const videoPlayer = document.querySelector('#video-player video');
-    if (videoPlayer && timelineState.currentSegmentIndex >= 0 && 
-        timelineState.currentSegmentIndex < timelineState.timelineSegments.length) {
-      console.log('Playing video from TimelineControls', videoPlayer);
-      videoPlayer.play().catch(error => {
-        console.error('Error playing video:', error);
-        showStatusMessage('Error playing video: ' + error.message, 'error');
-      });
-      timelineState.setState({ isPlaying: true });
-    } else if (timelineState.timelineSegments.length > 0) {
+    
+    // Check if we need to load a segment first
+    if (timelineState.currentSegmentIndex < 0 || 
+        timelineState.currentSegmentIndex >= timelineState.timelineSegments.length) {
       console.log('Starting first segment from TimelineControls');
       // Start playing the first segment
       timelineState.setState({ 
@@ -74,6 +69,25 @@ export function TimelineControls() {
         currentTime: timelineState.timelineSegments[0].start_timestamp,
         isPlaying: true
       });
+      
+      // Force load the first segment's video
+      const segment = timelineState.timelineSegments[0];
+      if (videoPlayer) {
+        console.log('Loading first segment video:', segment);
+        videoPlayer.src = `/api/recordings/play/${segment.id}`;
+        videoPlayer.currentTime = 0;
+        videoPlayer.play().catch(error => {
+          console.error('Error playing video:', error);
+          showStatusMessage('Error playing video: ' + error.message, 'error');
+        });
+      }
+    } else if (videoPlayer) {
+      console.log('Playing video from TimelineControls', videoPlayer);
+      videoPlayer.play().catch(error => {
+        console.error('Error playing video:', error);
+        showStatusMessage('Error playing video: ' + error.message, 'error');
+      });
+      timelineState.setState({ isPlaying: true });
     }
   };
 
