@@ -164,35 +164,47 @@ export function RecordingsView() {
   
   // Update URL with filters
   const updateUrlWithFilters = () => {
-    // Create URL parameters object
-    const params = new URLSearchParams();
+    // Create URL parameters object based on current URL to preserve any existing parameters
+    const params = new URLSearchParams(window.location.search);
     
-    // Add date range
-    params.append('dateRange', filters.dateRange);
+    // Update or add date range parameters
+    params.set('dateRange', filters.dateRange);
+    
+    // Handle custom date range
     if (filters.dateRange === 'custom') {
-      params.append('startDate', filters.startDate);
-      params.append('startTime', filters.startTime);
-      params.append('endDate', filters.endDate);
-      params.append('endTime', filters.endTime);
+      params.set('startDate', filters.startDate);
+      params.set('startTime', filters.startTime);
+      params.set('endDate', filters.endDate);
+      params.set('endTime', filters.endTime);
+    } else {
+      // Remove custom date parameters if not using custom date range
+      params.delete('startDate');
+      params.delete('startTime');
+      params.delete('endDate');
+      params.delete('endTime');
     }
     
-    // Add stream filter if not "all"
+    // Update stream filter
     if (filters.streamId !== 'all') {
-      params.append('stream', filters.streamId);
+      params.set('stream', filters.streamId);
+    } else {
+      params.delete('stream');
     }
     
-    // Add recording type if not "all"
-    if (filters.recordingType !== 'all') {
-      params.append('detection', '1');
+    // Update recording type filter
+    if (filters.recordingType === 'detection') {
+      params.set('detection', '1');
+    } else {
+      params.delete('detection');
     }
     
-    // Add pagination
-    params.append('page', pagination.currentPage);
-    params.append('limit', pagination.pageSize);
+    // Update pagination
+    params.set('page', pagination.currentPage.toString());
+    params.set('limit', pagination.pageSize.toString());
     
-    // Add sorting
-    params.append('sort', sortField);
-    params.append('order', sortDirection);
+    // Update sorting
+    params.set('sort', sortField);
+    params.set('order', sortDirection);
     
     // Update URL without reloading the page
     const newUrl = `${window.location.pathname}?${params.toString()}`;
@@ -491,6 +503,16 @@ export function RecordingsView() {
       currentPage: page
     }));
     
+    // Create URL parameters object with current filters
+    const params = new URLSearchParams(window.location.search);
+    
+    // Update only the page parameter
+    params.set('page', page.toString());
+    
+    // Update URL without reloading the page
+    const newUrl = `${window.location.pathname}?${params.toString()}`;
+    window.history.pushState({ path: newUrl }, '', newUrl);
+    
     // Use setTimeout to ensure the pagination state is updated before loading recordings
     setTimeout(() => {
       loadRecordings();
@@ -691,33 +713,14 @@ export function RecordingsView() {
         
         // Wait for state to update
         setTimeout(() => {
-          // Build query parameters manually
-          const params = new URLSearchParams();
-          params.append('page', currentPage);
-          params.append('limit', pagination.pageSize);
-          params.append('sort', tempSortField);
-          params.append('order', tempSortDirection);
+          // Build query parameters using the same approach as updateUrlWithFilters
+          const params = new URLSearchParams(window.location.search);
           
-          // Add date range filters
-          if (filters.dateRange === 'custom') {
-            params.append('start', `${filters.startDate}T${filters.startTime}:00`);
-            params.append('end', `${filters.endDate}T${filters.endTime}:00`);
-          } else {
-            // Convert predefined range to actual dates
-            const { start, end } = getDateRangeFromPreset(filters.dateRange);
-            params.append('start', start);
-            params.append('end', end);
-          }
-          
-          // Add stream filter
-          if (filters.streamId !== 'all') {
-            params.append('stream', filters.streamId);
-          }
-          
-          // Add recording type filter
-          if (filters.recordingType === 'detection') {
-            params.append('detection', '1');
-          }
+          // Update pagination, sort, and order parameters
+          params.set('page', currentPage.toString());
+          params.set('limit', pagination.pageSize.toString());
+          params.set('sort', tempSortField);
+          params.set('order', tempSortDirection);
           
           // Update URL with preserved parameters
           const newUrl = `${window.location.pathname}?${params.toString()}`;
@@ -881,33 +884,14 @@ export function RecordingsView() {
         
         // Wait for state to update
         setTimeout(() => {
-          // Build query parameters manually
-          const params = new URLSearchParams();
-          params.append('page', currentPage);
-          params.append('limit', pagination.pageSize);
-          params.append('sort', tempSortField);
-          params.append('order', tempSortDirection);
+          // Build query parameters using the same approach as updateUrlWithFilters
+          const params = new URLSearchParams(window.location.search);
           
-          // Add date range filters
-          if (filters.dateRange === 'custom') {
-            params.append('start', `${filters.startDate}T${filters.startTime}:00`);
-            params.append('end', `${filters.endDate}T${filters.endTime}:00`);
-          } else {
-            // Convert predefined range to actual dates
-            const { start, end } = getDateRangeFromPreset(filters.dateRange);
-            params.append('start', start);
-            params.append('end', end);
-          }
-          
-          // Add stream filter
-          if (filters.streamId !== 'all') {
-            params.append('stream', filters.streamId);
-          }
-          
-          // Add recording type filter
-          if (filters.recordingType === 'detection') {
-            params.append('detection', '1');
-          }
+          // Update pagination, sort, and order parameters
+          params.set('page', currentPage.toString());
+          params.set('limit', pagination.pageSize.toString());
+          params.set('sort', tempSortField);
+          params.set('order', tempSortDirection);
           
           // Update URL with preserved parameters
           const newUrl = `${window.location.pathname}?${params.toString()}`;
