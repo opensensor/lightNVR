@@ -56,7 +56,7 @@ Cflags: -I\${includedir}" > /usr/local/lib/pkgconfig/mbedx509.pc
 RUN mkdir -p /opt/external && \
     # ezxml
     cd /opt/external && \
-    git clone https://github.com/lumberjaph/ezxml.git && \
+    git clone https://github.com/lxfontes/ezxml.git && \
     # inih
     cd /opt/external && \
     git clone https://github.com/benhoyt/inih.git
@@ -68,6 +68,7 @@ COPY . .
 # Prepare and build the application
 RUN mkdir -p /etc/lightnvr /var/lib/lightnvr /var/log/lightnvr /var/run/lightnvr /var/lib/lightnvr/recordings && \
     chmod -R 777 /var/lib/lightnvr /var/log/lightnvr /var/run/lightnvr && \
+    find /opt/external -type f -name "*.c" && \
     PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH ./scripts/build.sh --release --with-sod && \
     ./scripts/install.sh --prefix=/
 

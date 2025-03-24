@@ -7,6 +7,135 @@
  */
 export const urlUtils = {
   /**
+   * Get filters from URL
+   * @returns {Object|null} Filters object or null if no filters in URL
+   */
+  getFiltersFromUrl: () => {
+    // Get URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    
+    // Check if we have any filter parameters
+    if (!urlParams.has('dateRange') && !urlParams.has('page') && !urlParams.has('sort')) {
+      return null;
+    }
+    
+    // Create result object
+    const result = {
+      filters: {
+        dateRange: 'last7days',
+        startDate: '',
+        startTime: '00:00',
+        endDate: '',
+        endTime: '23:59',
+        streamId: 'all',
+        recordingType: 'all'
+      },
+      page: 1,
+      limit: 20,
+      sort: 'start_time',
+      order: 'desc'
+    };
+    
+    // Date range
+    if (urlParams.has('dateRange')) {
+      result.filters.dateRange = urlParams.get('dateRange');
+      
+      if (result.filters.dateRange === 'custom') {
+        if (urlParams.has('startDate')) {
+          result.filters.startDate = urlParams.get('startDate');
+        }
+        if (urlParams.has('startTime')) {
+          result.filters.startTime = urlParams.get('startTime');
+        }
+        if (urlParams.has('endDate')) {
+          result.filters.endDate = urlParams.get('endDate');
+        }
+        if (urlParams.has('endTime')) {
+          result.filters.endTime = urlParams.get('endTime');
+        }
+      }
+    }
+    
+    // Stream
+    if (urlParams.has('stream')) {
+      result.filters.streamId = urlParams.get('stream');
+    }
+    
+    // Recording type
+    if (urlParams.has('detection') && urlParams.get('detection') === '1') {
+      result.filters.recordingType = 'detection';
+    }
+    
+    // Pagination
+    if (urlParams.has('page')) {
+      result.page = parseInt(urlParams.get('page'), 10);
+    }
+    if (urlParams.has('limit')) {
+      result.limit = parseInt(urlParams.get('limit'), 10);
+    }
+    
+    // Sorting
+    if (urlParams.has('sort')) {
+      result.sort = urlParams.get('sort');
+    }
+    if (urlParams.has('order')) {
+      result.order = urlParams.get('order');
+    }
+    
+    return result;
+  },
+  
+  /**
+   * Get active filters display
+   * @param {Object} filters Current filters
+   * @returns {Array} Array of active filter objects with key and label
+   */
+  getActiveFiltersDisplay: (filters) => {
+    const activeFilters = [];
+    
+    // Check if we have any active filters
+    const hasFilters = (
+      filters.dateRange !== 'last7days' ||
+      filters.streamId !== 'all' ||
+      filters.recordingType !== 'all'
+    );
+    
+    if (hasFilters) {
+      // Date range filter
+      if (filters.dateRange !== 'last7days') {
+        let label = '';
+        switch (filters.dateRange) {
+          case 'today':
+            label = 'Today';
+            break;
+          case 'yesterday':
+            label = 'Yesterday';
+            break;
+          case 'last30days':
+            label = 'Last 30 Days';
+            break;
+          case 'custom':
+            label = `${filters.startDate} to ${filters.endDate}`;
+            break;
+        }
+        activeFilters.push({ key: 'dateRange', label: `Date: ${label}` });
+      }
+      
+      // Stream filter
+      if (filters.streamId !== 'all') {
+        activeFilters.push({ key: 'streamId', label: `Stream: ${filters.streamId}` });
+      }
+      
+      // Recording type filter
+      if (filters.recordingType !== 'all') {
+        activeFilters.push({ key: 'recordingType', label: 'Detection Events Only' });
+      }
+    }
+    
+    return activeFilters;
+  },
+  
+  /**
    * Load filters from URL
    * @param {Object} filters Current filters
    * @param {Object} pagination Current pagination

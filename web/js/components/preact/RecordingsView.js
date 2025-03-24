@@ -5,7 +5,7 @@
 
 import { h } from '../../preact.min.js';
 import { html } from '../../html-helper.js';
-import { useState, useEffect, useRef, useCallback } from '../../preact.hooks.module.js';
+import { useState, useEffect, useRef } from '../../preact.hooks.module.js';
 import { showStatusMessage, showVideoModal, DeleteConfirmationModal } from './UI.js';
 
 // Import components
@@ -99,13 +99,8 @@ export function RecordingsView() {
   // Load streams from API
   const loadStreams = async () => {
     try {
-      const response = await fetch('/api/streams');
-      if (!response.ok) {
-        throw new Error('Failed to load streams');
-      }
-      
-      const data = await response.json();
-      setStreams(data || []);
+      const data = await recordingsAPI.loadStreams();
+      setStreams(data);
     } catch (error) {
       console.error('Error loading streams for filter:', error);
       showStatusMessage('Error loading streams: ' + error.message);
@@ -114,112 +109,17 @@ export function RecordingsView() {
   
   // Load filters from URL
   const loadFiltersFromUrl = () => {
-    // Get URL parameters
-    const urlParams = new URLSearchParams(window.location.search);
-    
-    // Date range
-    if (urlParams.has('dateRange')) {
-      const newFilters = { ...filters };
-      newFilters.dateRange = urlParams.get('dateRange');
-      
-      if (newFilters.dateRange === 'custom') {
-        if (urlParams.has('startDate')) {
-          newFilters.startDate = urlParams.get('startDate');
-        }
-        if (urlParams.has('startTime')) {
-          newFilters.startTime = urlParams.get('startTime');
-        }
-        if (urlParams.has('endDate')) {
-          newFilters.endDate = urlParams.get('endDate');
-        }
-        if (urlParams.has('endTime')) {
-          newFilters.endTime = urlParams.get('endTime');
-        }
-      }
-      
-      // Stream
-      if (urlParams.has('stream')) {
-        newFilters.streamId = urlParams.get('stream');
-      }
-      
-      // Recording type
-      if (urlParams.has('detection') && urlParams.get('detection') === '1') {
-        newFilters.recordingType = 'detection';
-      }
-      
-      setFilters(newFilters);
-    }
-    
-    // Pagination
-    if (urlParams.has('page')) {
+    const urlFilters = urlUtils.getFiltersFromUrl();
+    if (urlFilters) {
+      setFilters(urlFilters.filters);
       setPagination(prev => ({
         ...prev,
-        currentPage: parseInt(urlParams.get('page'), 10)
+        currentPage: urlFilters.page || 1,
+        pageSize: urlFilters.limit || 20
       }));
+      setSortField(urlFilters.sort || 'start_time');
+      setSortDirection(urlFilters.order || 'desc');
     }
-    if (urlParams.has('limit')) {
-      setPagination(prev => ({
-        ...prev,
-        pageSize: parseInt(urlParams.get('limit'), 10)
-      }));
-    }
-    
-    // Sorting
-    if (urlParams.has('sort')) {
-      setSortField(urlParams.get('sort'));
-    }
-    if (urlParams.has('order')) {
-      setSortDirection(urlParams.get('order'));
-    }
-  };
-  
-  // Update URL with filters
-  const updateUrlWithFilters = () => {
-    // Create URL parameters object based on current URL to preserve any existing parameters
-    const params = new URLSearchParams(window.location.search);
-    
-    // Update or add date range parameters
-    params.set('dateRange', filters.dateRange);
-    
-    // Handle custom date range
-    if (filters.dateRange === 'custom') {
-      params.set('startDate', filters.startDate);
-      params.set('startTime', filters.startTime);
-      params.set('endDate', filters.endDate);
-      params.set('endTime', filters.endTime);
-    } else {
-      // Remove custom date parameters if not using custom date range
-      params.delete('startDate');
-      params.delete('startTime');
-      params.delete('endDate');
-      params.delete('endTime');
-    }
-    
-    // Update stream filter
-    if (filters.streamId !== 'all') {
-      params.set('stream', filters.streamId);
-    } else {
-      params.delete('stream');
-    }
-    
-    // Update recording type filter
-    if (filters.recordingType === 'detection') {
-      params.set('detection', '1');
-    } else {
-      params.delete('detection');
-    }
-    
-    // Update pagination
-    params.set('page', pagination.currentPage.toString());
-    params.set('limit', pagination.pageSize.toString());
-    
-    // Update sorting
-    params.set('sort', sortField);
-    params.set('order', sortDirection);
-    
-    // Update URL without reloading the page
-    const newUrl = `${window.location.pathname}?${params.toString()}`;
-    window.history.pushState({ path: newUrl }, '', newUrl);
   };
   
   // Handle responsive filters
@@ -237,126 +137,50 @@ export function RecordingsView() {
     setFiltersVisible(!filtersVisible);
   };
   
-  // Get date range from preset
-  const getDateRangeFromPreset = (preset) => {
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
-    
-    let start, end;
-    
-    switch (preset) {
-      case 'today':
-        start = todayStart.toISOString();
-        end = today.toISOString();
-        break;
-      case 'yesterday':
-        const yesterday = new Date(todayStart);
-        yesterday.setDate(yesterday.getDate() - 1);
-        const yesterdayEnd = new Date(yesterday);
-        yesterdayEnd.setHours(23, 59, 59);
-        start = yesterday.toISOString();
-        end = yesterdayEnd.toISOString();
-        break;
-      case 'last7days':
-        const sevenDaysAgo = new Date(todayStart);
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        start = sevenDaysAgo.toISOString();
-        end = today.toISOString();
-        break;
-      case 'last30days':
-        const thirtyDaysAgo = new Date(todayStart);
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-        start = thirtyDaysAgo.toISOString();
-        end = today.toISOString();
-        break;
-      default:
-        // Default to last 7 days
-        const defaultStart = new Date(todayStart);
-        defaultStart.setDate(defaultStart.getDate() - 7);
-        start = defaultStart.toISOString();
-        end = today.toISOString();
-    }
-    
-    return { start, end };
-  };
-  
   // Load recordings
   const loadRecordings = async (page = pagination.currentPage, updateUrl = true) => {
     try {
       // Show loading state
       setRecordings([]);
       
-      // Build query parameters
-      const params = new URLSearchParams();
-      params.append('page', pagination.currentPage);
-      params.append('limit', pagination.pageSize);
-      params.append('sort', sortField);
-      params.append('order', sortDirection);
-      
-      // Add date range filters
-      if (filters.dateRange === 'custom') {
-        params.append('start', `${filters.startDate}T${filters.startTime}:00`);
-        params.append('end', `${filters.endDate}T${filters.endTime}:00`);
-      } else {
-        // Convert predefined range to actual dates
-        const { start, end } = getDateRangeFromPreset(filters.dateRange);
-        params.append('start', start);
-        params.append('end', end);
-      }
-      
-      // Add stream filter
-      if (filters.streamId !== 'all') {
-        params.append('stream', filters.streamId);
-      }
-      
-      // Add recording type filter
-      if (filters.recordingType === 'detection') {
-        params.append('detection', '1');
-      }
-      
       // Update URL with filters if requested
       if (updateUrl) {
-        updateUrlWithFilters();
+        urlUtils.updateUrlWithFilters(filters, pagination, sortField, sortDirection);
       }
       
-      // Fetch recordings
-      const response = await fetch(`/api/recordings?${params.toString()}`);
-      if (!response.ok) {
-        throw new Error('Failed to load recordings');
-      }
-      
-      const data = await response.json();
-      console.log('Recordings data received:', data);
+      // Load recordings from API
+      const data = await recordingsAPI.loadRecordings(filters, pagination, sortField, sortDirection);
       
       // Store recordings in the component state
       setRecordings(data.recordings || []);
       
-      // Update pagination without changing the current page
-      if (data.pagination) {
-        setPagination(prev => ({
-          ...prev,
-          totalItems: data.pagination.total || 0,
-          totalPages: data.pagination.pages || 1,
-          // Keep the current page from state instead of using the one from the response
-          // currentPage: data.pagination.page || 1,
-          pageSize: data.pagination.limit || 20,
-          startItem: data.recordings.length > 0 ? (pagination.currentPage - 1) * data.pagination.limit + 1 : 0,
-          endItem: Math.min((pagination.currentPage - 1) * data.pagination.limit + data.recordings.length, data.pagination.total)
-        }));
-      } else {
-        setPagination(prev => ({
-          ...prev,
-          totalItems: data.total || 0,
-          totalPages: Math.ceil(data.total / prev.pageSize) || 1,
-          // Keep the current page
-          startItem: data.recordings.length > 0 ? (pagination.currentPage - 1) * prev.pageSize + 1 : 0,
-          endItem: Math.min((pagination.currentPage - 1) * prev.pageSize + data.recordings.length, data.total)
-        }));
-      }
+      // Update pagination
+      updatePaginationFromResponse(data);
     } catch (error) {
       console.error('Error loading recordings:', error);
       showStatusMessage('Error loading recordings: ' + error.message);
+    }
+  };
+  
+  // Update pagination from API response
+  const updatePaginationFromResponse = (data) => {
+    if (data.pagination) {
+      setPagination(prev => ({
+        ...prev,
+        totalItems: data.pagination.total || 0,
+        totalPages: data.pagination.pages || 1,
+        pageSize: data.pagination.limit || 20,
+        startItem: data.recordings.length > 0 ? (pagination.currentPage - 1) * data.pagination.limit + 1 : 0,
+        endItem: Math.min((pagination.currentPage - 1) * data.pagination.limit + data.recordings.length, data.pagination.total)
+      }));
+    } else {
+      setPagination(prev => ({
+        ...prev,
+        totalItems: data.total || 0,
+        totalPages: Math.ceil(data.total / prev.pageSize) || 1,
+        startItem: data.recordings.length > 0 ? (pagination.currentPage - 1) * prev.pageSize + 1 : 0,
+        endItem: Math.min((pagination.currentPage - 1) * prev.pageSize + data.recordings.length, data.total)
+      }));
     }
   };
   
@@ -387,51 +211,9 @@ export function RecordingsView() {
   
   // Update active filters
   const updateActiveFilters = () => {
-    const hasFilters = (
-      filters.dateRange !== 'last7days' ||
-      filters.streamId !== 'all' ||
-      filters.recordingType !== 'all'
-    );
-    
-    setHasActiveFilters(hasFilters);
-    
-    if (hasFilters) {
-      const activeFilters = [];
-      
-      // Date range filter
-      if (filters.dateRange !== 'last7days') {
-        let label = '';
-        switch (filters.dateRange) {
-          case 'today':
-            label = 'Today';
-            break;
-          case 'yesterday':
-            label = 'Yesterday';
-            break;
-          case 'last30days':
-            label = 'Last 30 Days';
-            break;
-          case 'custom':
-            label = `${filters.startDate} to ${filters.endDate}`;
-            break;
-        }
-        activeFilters.push({ key: 'dateRange', label: `Date: ${label}` });
-      }
-      
-      // Stream filter
-      if (filters.streamId !== 'all') {
-        activeFilters.push({ key: 'streamId', label: `Stream: ${filters.streamId}` });
-      }
-      
-      // Recording type filter
-      if (filters.recordingType !== 'all') {
-        activeFilters.push({ key: 'recordingType', label: 'Detection Events Only' });
-      }
-      
-      setActiveFiltersDisplay(activeFilters);
-    } else {
-      setActiveFiltersDisplay([]);
-    }
+    const activeFilters = urlUtils.getActiveFiltersDisplay(filters);
+    setHasActiveFilters(activeFilters.length > 0);
+    setActiveFiltersDisplay(activeFilters);
   };
   
   // Apply filters
@@ -539,84 +321,6 @@ export function RecordingsView() {
     }, 0);
   };
   
-  // Format date time
-  const formatDateTime = (isoString) => {
-    if (!isoString) return '';
-    
-    const date = new Date(isoString);
-    return date.toLocaleString();
-  };
-  
-  // Format duration
-  const formatDuration = (seconds) => {
-    if (!seconds) return '00:00:00';
-    
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = Math.floor(seconds % 60);
-    
-    return [
-      hours.toString().padStart(2, '0'),
-      minutes.toString().padStart(2, '0'),
-      secs.toString().padStart(2, '0')
-    ].join(':');
-  };
-  
-  // Format file size
-  const formatFileSize = (bytes) => {
-    if (!bytes) return '0 B';
-    
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    let i = 0;
-    let size = bytes;
-    
-    while (size >= 1024 && i < units.length - 1) {
-      size /= 1024;
-      i++;
-    }
-    
-    return `${size.toFixed(1)} ${units[i]}`;
-  };
-  
-  // Play recording
-  const playRecording = (recording) => {
-    console.log('Play recording clicked:', recording);
-    
-    // Check if recording has an id property
-    if (!recording.id) {
-      console.error('Recording has no id property:', recording);
-      showStatusMessage('Error: Recording has no id property');
-      return;
-    }
-    
-    // Build video URL
-    const videoUrl = `/api/recordings/play/${recording.id}`;
-    const title = `${recording.stream} - ${formatDateTime(recording.start_time)}`;
-    const downloadUrl = `/api/recordings/download/${recording.id}`;
-    
-    console.log('Video URL:', videoUrl);
-    console.log('Title:', title);
-    console.log('Download URL:', downloadUrl);
-    
-    // Show video modal
-    showVideoModal(videoUrl, title, downloadUrl);
-    console.log('Video modal should be shown now');
-  };
-  
-  // Download recording
-  const downloadRecording = (recording) => {
-    // Create download link
-    const downloadUrl = `/api/recordings/download/${recording.id}`;
-    const link = document.createElement('a');
-    link.href = downloadUrl;
-    link.download = `${recording.stream}_${new Date(recording.start_time).toISOString().replace(/[:.]/g, '-')}.mp4`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    showStatusMessage('Download started');
-  };
-  
   // Toggle selection of a recording
   const toggleRecordingSelection = (recordingId) => {
     setSelectedRecordings(prev => ({
@@ -658,214 +362,91 @@ export function RecordingsView() {
   };
 
   // Handle delete confirmation
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     closeDeleteModal();
+    
+    // Save current URL parameters before deletion
+    const currentUrlParams = new URLSearchParams(window.location.search);
+    const currentSortField = currentUrlParams.get('sort') || sortField;
+    const currentSortDirection = currentUrlParams.get('order') || sortDirection;
+    const currentPage = parseInt(currentUrlParams.get('page'), 10) || pagination.currentPage;
+    
     if (deleteMode === 'selected') {
-      deleteSelectedRecordings();
+      // Use the recordingsAPI to delete selected recordings
+      const result = await recordingsAPI.deleteSelectedRecordings(selectedRecordings);
+      
+      // Reset selection
+      setSelectedRecordings({});
+      setSelectAll(false);
+      
+      // Only reload if some recordings were deleted successfully
+      if (result.succeeded > 0) {
+        // Reload recordings with preserved parameters
+        reloadRecordingsWithPreservedParams(currentSortField, currentSortDirection, currentPage);
+      }
     } else {
-      deleteAllFilteredRecordings();
-    }
-  };
-
-  // Delete selected recordings
-  const deleteSelectedRecordings = async () => {
-    
-    const selectedIds = Object.entries(selectedRecordings)
-      .filter(([_, isSelected]) => isSelected)
-      .map(([id, _]) => parseInt(id, 10));
-    
-    if (selectedIds.length === 0) {
-      showStatusMessage('No recordings selected');
-      return;
-    }
-    
-    try {
-      // Save current URL parameters before deletion
-      const currentUrlParams = new URLSearchParams(window.location.search);
-      const currentSortField = currentUrlParams.get('sort') || sortField;
-      const currentSortDirection = currentUrlParams.get('order') || sortDirection;
-      const currentPage = parseInt(currentUrlParams.get('page'), 10) || pagination.currentPage;
-      
-      // Use the batch delete endpoint
-      const response = await fetch('/api/recordings/batch-delete', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          ids: selectedIds
-        })
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to delete recordings');
-      }
-      
-      const result = await response.json();
-      const successCount = result.succeeded;
-      const errorCount = result.failed;
-      
-      // Show status message
-      if (successCount > 0 && errorCount === 0) {
-        showStatusMessage(`Successfully deleted ${successCount} recording${successCount !== 1 ? 's' : ''}`);
-      } else if (successCount > 0 && errorCount > 0) {
-        showStatusMessage(`Deleted ${successCount} recording${successCount !== 1 ? 's' : ''}, but failed to delete ${errorCount}`);
-      } else {
-        showStatusMessage(`Failed to delete ${errorCount} recording${errorCount !== 1 ? 's' : ''}`);
-      }
+      // Use the recordingsAPI to delete all filtered recordings
+      const result = await recordingsAPI.deleteAllFilteredRecordings(filters);
       
       // Reset selection
       setSelectedRecordings({});
       setSelectAll(false);
       
-      // Reload recordings with preserved parameters
-      const reloadWithPreservedParams = async () => {
-        // Set the sort parameters directly
-        const tempSortField = currentSortField;
-        const tempSortDirection = currentSortDirection;
-        
-        // Set state with the saved values
-        setSortField(tempSortField);
-        setSortDirection(tempSortDirection);
-        setPagination(prev => ({
-          ...prev,
-          currentPage: currentPage
-        }));
-        
-        // Wait for state to update
-        setTimeout(() => {
-          // Build query parameters using the same approach as updateUrlWithFilters
-          const params = new URLSearchParams(window.location.search);
-          
-          // Update pagination, sort, and order parameters
-          params.set('page', currentPage.toString());
-          params.set('limit', pagination.pageSize.toString());
-          params.set('sort', tempSortField);
-          params.set('order', tempSortDirection);
-          
-          // Update URL with preserved parameters
-          const newUrl = `${window.location.pathname}?${params.toString()}`;
-          window.history.pushState({ path: newUrl }, '', newUrl);
-          
-          // Fetch recordings with preserved parameters
-          fetch(`/api/recordings?${params.toString()}`)
-            .then(response => {
-              if (!response.ok) {
-                throw new Error('Failed to load recordings');
-              }
-              return response.json();
-            })
-            .then(data => {
-              console.log('Recordings data received:', data);
-              
-              // Store recordings in the component state
-              setRecordings(data.recordings || []);
-              
-              // Update pagination without changing the current page
-              if (data.pagination) {
-                setPagination(prev => ({
-                  ...prev,
-                  totalItems: data.pagination.total || 0,
-                  totalPages: data.pagination.pages || 1,
-                  // Keep the current page
-                  pageSize: data.pagination.limit || 20,
-                  startItem: data.recordings.length > 0 ? (currentPage - 1) * data.pagination.limit + 1 : 0,
-                  endItem: Math.min((currentPage - 1) * data.pagination.limit + data.recordings.length, data.pagination.total)
-                }));
-              } else {
-                setPagination(prev => ({
-                  ...prev,
-                  totalItems: data.total || 0,
-                  totalPages: Math.ceil(data.total / prev.pageSize) || 1,
-                  // Keep the current page
-                  startItem: data.recordings.length > 0 ? (currentPage - 1) * prev.pageSize + 1 : 0,
-                  endItem: Math.min((currentPage - 1) * prev.pageSize + data.recordings.length, data.total)
-                }));
-              }
-            })
-            .catch(error => {
-              console.error('Error loading recordings:', error);
-              showStatusMessage('Error loading recordings: ' + error.message);
-            });
-        }, 0);
-      };
-      
-      // Execute the reload function
-      reloadWithPreservedParams();
-    } catch (error) {
-      console.error('Error in batch delete operation:', error);
-      showStatusMessage('Error in batch delete operation: ' + error.message);
+      // Only reload if some recordings were deleted successfully
+      if (result.succeeded > 0) {
+        // Reload recordings
+        loadRecordings();
+      }
     }
   };
-
-  // Delete all recordings matching current filter
-  const deleteAllFilteredRecordings = async () => {
+  
+  // Helper function to reload recordings with preserved parameters
+  const reloadRecordingsWithPreservedParams = (sortField, sortDirection, page) => {
+    // Set the sort parameters directly
+    setSortField(sortField);
+    setSortDirection(sortDirection);
+    setPagination(prev => ({
+      ...prev,
+      currentPage: page
+    }));
     
-    try {
-      // Create filter object
-      const filter = {};
+    // Wait for state to update
+    setTimeout(() => {
+      // Build query parameters
+      const params = new URLSearchParams(window.location.search);
       
-      // Add date range filters
-      if (filters.dateRange === 'custom') {
-        filter.start = `${filters.startDate}T${filters.startTime}:00`;
-        filter.end = `${filters.endDate}T${filters.endTime}:00`;
-      } else {
-        // Convert predefined range to actual dates
-        const { start, end } = getDateRangeFromPreset(filters.dateRange);
-        filter.start = start;
-        filter.end = end;
-      }
+      // Update pagination, sort, and order parameters
+      params.set('page', page.toString());
+      params.set('limit', pagination.pageSize.toString());
+      params.set('sort', sortField);
+      params.set('order', sortDirection);
       
-      // Add stream filter
-      if (filters.streamId !== 'all') {
-        filter.stream_name = filters.streamId; // Changed from 'stream' to 'stream_name' to match API expectations
-      }
+      // Update URL with preserved parameters
+      const newUrl = `${window.location.pathname}?${params.toString()}`;
+      window.history.pushState({ path: newUrl }, '', newUrl);
       
-      // Add recording type filter
-      if (filters.recordingType === 'detection') {
-        filter.detection = 1;
-      }
-      
-      console.log('Deleting with filter:', filter);
-      
-      // Use the batch delete endpoint with filter
-      const deleteResponse = await fetch('/api/recordings/batch-delete', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          filter: filter
+      // Fetch recordings with preserved parameters
+      fetch(`/api/recordings?${params.toString()}`)
+        .then(response => {
+          if (!response.ok) {
+            throw new Error('Failed to load recordings');
+          }
+          return response.json();
         })
-      });
-      
-      if (!deleteResponse.ok) {
-        throw new Error('Failed to delete recordings');
-      }
-      
-      const result = await deleteResponse.json();
-      const successCount = result.succeeded;
-      const errorCount = result.failed;
-      
-      // Show status message
-      if (successCount > 0 && errorCount === 0) {
-        showStatusMessage(`Successfully deleted ${successCount} recording${successCount !== 1 ? 's' : ''}`);
-      } else if (successCount > 0 && errorCount > 0) {
-        showStatusMessage(`Deleted ${successCount} recording${successCount !== 1 ? 's' : ''}, but failed to delete ${errorCount}`);
-      } else {
-        showStatusMessage(`Failed to delete ${errorCount} recording${errorCount !== 1 ? 's' : ''}`);
-      }
-      
-      // Reset selection
-      setSelectedRecordings({});
-      setSelectAll(false);
-      
-      // Reload recordings
-      loadRecordings();
-    } catch (error) {
-      console.error('Error in delete all operation:', error);
-      showStatusMessage('Error in delete all operation: ' + error.message);
-    }
+        .then(data => {
+          console.log('Recordings data received:', data);
+          
+          // Store recordings in the component state
+          setRecordings(data.recordings || []);
+          
+          // Update pagination without changing the current page
+          updatePaginationFromResponse(data);
+        })
+        .catch(error => {
+          console.error('Error loading recordings:', error);
+          showStatusMessage('Error loading recordings: ' + error.message);
+        });
+    }, 0);
   };
 
   // Delete a single recording
@@ -874,101 +455,29 @@ export function RecordingsView() {
       return;
     }
     
-    try {
-      // Save current URL parameters before deletion
-      const currentUrlParams = new URLSearchParams(window.location.search);
-      const currentSortField = currentUrlParams.get('sort') || sortField;
-      const currentSortDirection = currentUrlParams.get('order') || sortDirection;
-      const currentPage = parseInt(currentUrlParams.get('page'), 10) || pagination.currentPage;
-      
-      const response = await fetch(`/api/recordings/${recording.id}`, {
-        method: 'DELETE'
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to delete recording');
-      }
-      
-      showStatusMessage('Recording deleted successfully');
-      
-      // Create a function to reload with preserved parameters
-      const reloadWithPreservedParams = async () => {
-        // Set the sort parameters directly
-        const tempSortField = currentSortField;
-        const tempSortDirection = currentSortDirection;
-        
-        // Set state with the saved values
-        setSortField(tempSortField);
-        setSortDirection(tempSortDirection);
-        setPagination(prev => ({
-          ...prev,
-          currentPage: currentPage
-        }));
-        
-        // Wait for state to update
-        setTimeout(() => {
-          // Build query parameters using the same approach as updateUrlWithFilters
-          const params = new URLSearchParams(window.location.search);
-          
-          // Update pagination, sort, and order parameters
-          params.set('page', currentPage.toString());
-          params.set('limit', pagination.pageSize.toString());
-          params.set('sort', tempSortField);
-          params.set('order', tempSortDirection);
-          
-          // Update URL with preserved parameters
-          const newUrl = `${window.location.pathname}?${params.toString()}`;
-          window.history.pushState({ path: newUrl }, '', newUrl);
-          
-          // Fetch recordings with preserved parameters
-          fetch(`/api/recordings?${params.toString()}`)
-            .then(response => {
-              if (!response.ok) {
-                throw new Error('Failed to load recordings');
-              }
-              return response.json();
-            })
-            .then(data => {
-              console.log('Recordings data received:', data);
-              
-              // Store recordings in the component state
-              setRecordings(data.recordings || []);
-              
-              // Update pagination without changing the current page
-              if (data.pagination) {
-                setPagination(prev => ({
-                  ...prev,
-                  totalItems: data.pagination.total || 0,
-                  totalPages: data.pagination.pages || 1,
-                  // Keep the current page
-                  pageSize: data.pagination.limit || 20,
-                  startItem: data.recordings.length > 0 ? (currentPage - 1) * data.pagination.limit + 1 : 0,
-                  endItem: Math.min((currentPage - 1) * data.pagination.limit + data.recordings.length, data.pagination.total)
-                }));
-              } else {
-                setPagination(prev => ({
-                  ...prev,
-                  totalItems: data.total || 0,
-                  totalPages: Math.ceil(data.total / prev.pageSize) || 1,
-                  // Keep the current page
-                  startItem: data.recordings.length > 0 ? (currentPage - 1) * prev.pageSize + 1 : 0,
-                  endItem: Math.min((currentPage - 1) * prev.pageSize + data.recordings.length, data.total)
-                }));
-              }
-            })
-            .catch(error => {
-              console.error('Error loading recordings:', error);
-              showStatusMessage('Error loading recordings: ' + error.message);
-            });
-        }, 0);
-      };
-      
-      // Execute the reload function
-      reloadWithPreservedParams();
-    } catch (error) {
-      console.error('Error deleting recording:', error);
-      showStatusMessage('Error deleting recording: ' + error.message);
+    // Save current URL parameters before deletion
+    const currentUrlParams = new URLSearchParams(window.location.search);
+    const currentSortField = currentUrlParams.get('sort') || sortField;
+    const currentSortDirection = currentUrlParams.get('order') || sortDirection;
+    const currentPage = parseInt(currentUrlParams.get('page'), 10) || pagination.currentPage;
+    
+    // Delete the recording
+    const success = await recordingsAPI.deleteRecording(recording);
+    
+    if (success) {
+      // Reload recordings with preserved parameters
+      reloadRecordingsWithPreservedParams(currentSortField, currentSortDirection, currentPage);
     }
+  };
+  
+  // Play recording
+  const playRecording = (recording) => {
+    recordingsAPI.playRecording(recording, showVideoModal);
+  };
+  
+  // Download recording
+  const downloadRecording = (recording) => {
+    recordingsAPI.downloadRecording(recording);
   };
   
   return html`
