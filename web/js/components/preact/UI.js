@@ -300,6 +300,69 @@ export function showVideoModal(videoUrl, title, downloadUrl) {
   
   videoContainer.appendChild(video);
   
+  // Create speed controls container with Tailwind classes
+  const speedControlsContainer = document.createElement('div');
+  speedControlsContainer.id = 'recordings-speed-controls';
+  speedControlsContainer.className = 'mt-6 mb-8 p-4 border-2 border-green-500 rounded-lg bg-white dark:bg-gray-800 shadow-md mx-4';
+  // Add inline styles to ensure visibility
+  speedControlsContainer.style.width = 'calc(100% - 2rem)';
+  speedControlsContainer.style.display = 'block';
+  speedControlsContainer.style.position = 'relative';
+  speedControlsContainer.style.zIndex = '100';
+  
+  // Create heading
+  const heading = document.createElement('h3');
+  heading.className = 'text-lg font-bold text-center mb-4 text-gray-800 dark:text-white';
+  heading.textContent = 'PLAYBACK SPEED CONTROLS';
+  speedControlsContainer.appendChild(heading);
+  
+  // Create speed buttons container
+  const speedButtonsContainer = document.createElement('div');
+  speedButtonsContainer.className = 'flex flex-wrap justify-center gap-2';
+  
+  // Create speed buttons
+  const speeds = [0.25, 0.5, 1.0, 1.5, 2.0, 4.0];
+  speeds.forEach(speed => {
+    const button = document.createElement('button');
+    button.textContent = speed === 1.0 ? '1× (Normal)' : `${speed}×`;
+    button.className = speed === 1.0 
+      ? 'speed-btn px-4 py-2 rounded-full bg-green-500 text-white font-bold transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50'
+      : 'speed-btn px-4 py-2 rounded-full bg-gray-200 hover:bg-gray-300 font-bold transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50';
+    button.setAttribute('data-speed', speed);
+    
+    // Add click event
+    button.addEventListener('click', () => {
+      // Set playback speed
+      video.playbackRate = speed;
+      
+      // Update button styles
+      speedButtonsContainer.querySelectorAll('.speed-btn').forEach(btn => {
+        if (btn.getAttribute('data-speed') === speed.toString()) {
+          btn.classList.remove('bg-gray-200', 'hover:bg-gray-300');
+          btn.classList.add('bg-green-500', 'text-white');
+        } else {
+          btn.classList.remove('bg-green-500', 'text-white');
+          btn.classList.add('bg-gray-200', 'hover:bg-gray-300');
+        }
+      });
+      
+      // Update current speed indicator
+      currentSpeedIndicator.textContent = `Current Speed: ${speed}× ${speed === 1.0 ? '(Normal)' : ''}`;
+    });
+    
+    speedButtonsContainer.appendChild(button);
+  });
+  
+  // Add buttons container to speed controls
+  speedControlsContainer.appendChild(speedButtonsContainer);
+  
+  // Add current speed indicator
+  const currentSpeedIndicator = document.createElement('div');
+  currentSpeedIndicator.id = 'current-speed-indicator';
+  currentSpeedIndicator.className = 'mt-4 text-center font-bold text-green-600 dark:text-green-400';
+  currentSpeedIndicator.textContent = 'Current Speed: 1× (Normal)';
+  speedControlsContainer.appendChild(currentSpeedIndicator);
+  
   // Create footer with actions
   const footer = document.createElement('div');
   footer.className = 'p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end space-x-2';
@@ -317,6 +380,7 @@ export function showVideoModal(videoUrl, title, downloadUrl) {
   // Assemble the modal
   modalContainer.appendChild(header);
   modalContainer.appendChild(videoContainer);
+  modalContainer.appendChild(speedControlsContainer); // Add speed controls
   modalContainer.appendChild(footer);
   overlay.appendChild(modalContainer);
   

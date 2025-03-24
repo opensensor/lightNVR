@@ -18,6 +18,7 @@ let timelineEndHour = 24;
 let currentTime = null;
 let timelineCursor = null;
 let playbackInterval = null;
+let speedControlsInitialized = false;
 
 /**
  * Initialize the timeline page
@@ -169,6 +170,100 @@ function loadTimelineData() {
 }
 
 /**
+ * Set playback speed
+ * @param {number} speed - Playback speed (0.25, 0.5, 1.0, 1.5, 2.0, 4.0)
+ */
+function setPlaybackSpeed(speed) {
+    if (!videoPlayer) return;
+    
+    // Set playback speed
+    videoPlayer.playbackRate = speed;
+    
+    // Update current speed indicator
+    const currentSpeedIndicator = document.getElementById('current-speed-indicator');
+    if (currentSpeedIndicator) {
+        currentSpeedIndicator.textContent = `Current Speed: ${speed}× ${speed === 1.0 ? '(Normal)' : ''}`;
+    }
+    
+    // Update button styles
+    document.querySelectorAll('.speed-btn').forEach(btn => {
+        // Remove active class from all buttons
+        btn.classList.remove('bg-green-500', 'text-white');
+        btn.classList.add('bg-gray-200', 'hover:bg-gray-300');
+        
+        // Add active class to the selected button
+        if (parseFloat(btn.getAttribute('data-speed')) === speed) {
+            btn.classList.remove('bg-gray-200', 'hover:bg-gray-300');
+            btn.classList.add('bg-green-500', 'text-white');
+        }
+    });
+    
+    console.log(`Playback speed set to ${speed}x`);
+    showStatusMessage(`Playback speed: ${speed}x`, 'info');
+}
+
+/**
+ * Initialize or update speed controls
+ */
+function initSpeedControls() {
+    // Check if speed controls already exist
+    if (document.getElementById('timeline-speed-controls')) {
+        return; // Speed controls already initialized
+    }
+    
+    // Create speed controls container
+    const speedControlsContainer = document.createElement('div');
+    speedControlsContainer.id = 'timeline-speed-controls';
+    speedControlsContainer.className = 'mt-6 mb-8 p-4 border-2 border-green-500 rounded-lg bg-white dark:bg-gray-800 shadow-md';
+    
+    // Create heading
+    const heading = document.createElement('h3');
+    heading.className = 'text-lg font-bold text-center mb-4 text-gray-800 dark:text-white';
+    heading.textContent = 'PLAYBACK SPEED CONTROLS';
+    speedControlsContainer.appendChild(heading);
+    
+    // Create speed buttons container
+    const speedButtonsContainer = document.createElement('div');
+    speedButtonsContainer.className = 'flex flex-wrap justify-center gap-2';
+    
+    // Create speed buttons
+    const speeds = [0.25, 0.5, 1.0, 1.5, 2.0, 4.0];
+    speeds.forEach(speed => {
+        const button = document.createElement('button');
+        button.textContent = speed === 1.0 ? '1× (Normal)' : `${speed}×`;
+        button.className = speed === 1.0 
+            ? 'speed-btn px-4 py-2 rounded-full bg-green-500 text-white font-bold transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50'
+            : 'speed-btn px-4 py-2 rounded-full bg-gray-200 hover:bg-gray-300 font-bold transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50';
+        button.setAttribute('data-speed', speed);
+        
+        // Add click event
+        button.addEventListener('click', () => {
+            setPlaybackSpeed(speed);
+        });
+        
+        speedButtonsContainer.appendChild(button);
+    });
+    
+    // Add buttons container to speed controls
+    speedControlsContainer.appendChild(speedButtonsContainer);
+    
+    // Add current speed indicator
+    const currentSpeedIndicator = document.createElement('div');
+    currentSpeedIndicator.id = 'current-speed-indicator';
+    currentSpeedIndicator.className = 'mt-4 text-center font-bold text-green-600 dark:text-green-400';
+    currentSpeedIndicator.textContent = 'Current Speed: 1× (Normal)';
+    speedControlsContainer.appendChild(currentSpeedIndicator);
+    
+    // Add speed controls to the page
+    const playerContainer = document.getElementById('video-player');
+    if (playerContainer) {
+        // Insert after the player container
+        playerContainer.parentNode.insertBefore(speedControlsContainer, playerContainer.nextSibling);
+        speedControlsInitialized = true;
+    }
+}
+
+/**
  * Render timeline with segments
  */
 function renderTimeline() {
@@ -229,7 +324,39 @@ function renderTimeline() {
         }
     }
     
-    // Add segments
+    // Create a map to track hours with recordings
+    const hourMap = new Map();
+    
+    // First pass: collect all segments by hour
+    timelineSegments.forEach((segment, index) => {
+        // Convert timestamps to Date objects
+        const startTime = new Date(segment.start_timestamp * 1000);
+        const endTime = new Date(segment.end_timestamp * 1000);
+        
+        // Calculate position and width
+        const startHour = startTime.getHours() + (startTime.getMinutes() / 60) + (startTime.getSeconds() / 3600);
+        const endHour = endTime.getHours() + (endTime.getMinutes() / 60) + (endTime.getSeconds() / 3600);
+        
+        // Skip segments outside the visible range
+        if (endHour < timelineStartHour || startHour > timelineEndHour) {
+            return;
+        }
+        
+        // Mark each hour that this segment spans
+        const startFloorHour = Math.floor(startHour);
+        const endCeilHour = Math.min(Math.ceil(endHour), 24);
+        
+        for (let h = startFloorHour; h < endCeilHour; h++) {
+            if (h >= timelineStartHour && h <= timelineEndHour) {
+                if (!hourMap.has(h)) {
+                    hourMap.set(h, []);
+                }
+                hourMap.get(h).push(index);
+            }
+        }
+    });
+    
+    // Second pass: add visible segments
     timelineSegments.forEach((segment, index) => {
         // Convert timestamps to Date objects
         const startTime = new Date(segment.start_timestamp * 1000);
@@ -260,6 +387,7 @@ function renderTimeline() {
         }
         segmentElement.style.left = `${startPercent}%`;
         segmentElement.style.width = `${widthPercent}%`;
+        segmentElement.style.zIndex = '10'; // Ensure segments are above the background
         segmentElement.title = `${segment.start_time} - ${segment.end_time} (${segment.duration}s)`;
         segmentElement.dataset.index = index;
         
@@ -271,8 +399,126 @@ function renderTimeline() {
         segmentsContainer.appendChild(segmentElement);
     });
     
+    // Third pass: fill in gaps with clickable areas that find the nearest segment
+    for (let hour = Math.floor(timelineStartHour); hour < Math.ceil(timelineEndHour); hour++) {
+        if (!hourMap.has(hour)) {
+            // No segments in this hour, find nearest segment
+            let nearestSegmentIndex = -1;
+            let minDistance = Infinity;
+            
+            for (let i = 0; i < timelineSegments.length; i++) {
+                const segment = timelineSegments[i];
+                const segmentMidpoint = (segment.start_timestamp + segment.end_timestamp) / 2;
+                const hourMidpoint = new Date(selectedDate);
+                hourMidpoint.setHours(hour, 30, 0, 0);
+                const hourTimestamp = hourMidpoint.getTime() / 1000;
+                
+                const distance = Math.abs(segmentMidpoint - hourTimestamp);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    nearestSegmentIndex = i;
+                }
+            }
+            
+            if (nearestSegmentIndex >= 0) {
+                // Create a clickable area for this hour
+                const position = ((hour - timelineStartHour) / (timelineEndHour - timelineStartHour)) * 100;
+                const width = 100 / (timelineEndHour - timelineStartHour);
+                
+                const clickableArea = document.createElement('div');
+                clickableArea.className = 'timeline-clickable-area';
+                clickableArea.style.position = 'absolute';
+                clickableArea.style.left = `${position}%`;
+                clickableArea.style.width = `${width}%`;
+                clickableArea.style.height = '100%';
+                clickableArea.style.zIndex = '5'; // Below segments but above background
+                clickableArea.dataset.hour = hour;
+                
+                // Add click event to play nearest segment
+                clickableArea.addEventListener('click', (e) => {
+                    // Only handle if not clicking on a segment
+                    if (!e.target.classList.contains('timeline-segment')) {
+                        const hourDate = new Date(selectedDate);
+                        hourDate.setHours(hour, 30, 0, 0); // Middle of the hour
+                        const timestamp = hourDate.getTime() / 1000;
+                        handleTimelineClick(e);
+                    }
+                });
+                
+                segmentsContainer.appendChild(clickableArea);
+            }
+        }
+    }
+    
     // Add click event to timeline container for seeking
     container.addEventListener('click', handleTimelineClick);
+    
+    // Add drag functionality for the timeline cursor
+    container.addEventListener('mousedown', startDrag);
+    document.addEventListener('mouseup', stopDrag);
+    
+    // Make the timeline draggable
+    let isDragging = false;
+    let lastX = 0;
+    
+    function startDrag(e) {
+        isDragging = true;
+        lastX = e.clientX;
+        document.addEventListener('mousemove', drag);
+    }
+    
+    function drag(e) {
+        if (!isDragging) return;
+        
+        // Calculate time based on cursor position
+        const container = document.getElementById('timeline-container');
+        const rect = container.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const containerWidth = rect.width;
+        
+        // Calculate time based on click position
+        const clickPercent = clickX / containerWidth;
+        const clickHour = timelineStartHour + (clickPercent * (timelineEndHour - timelineStartHour));
+        
+        // Find the segment that contains this time
+        const clickDate = new Date(selectedDate);
+        clickDate.setHours(Math.floor(clickHour));
+        clickDate.setMinutes(Math.floor((clickHour % 1) * 60));
+        clickDate.setSeconds(Math.floor(((clickHour % 1) * 60) % 1 * 60));
+        
+        const clickTimestamp = clickDate.getTime() / 1000;
+        
+        // Update cursor position
+        currentTime = clickTimestamp;
+        updateCursorPosition();
+        updateTimeDisplay();
+        
+        // If video is playing, seek to the new position
+        if (isPlaying && currentSegmentIndex >= 0) {
+            const segment = timelineSegments[currentSegmentIndex];
+            if (clickTimestamp >= segment.start_timestamp && clickTimestamp <= segment.end_timestamp) {
+                // Within current segment, just seek
+                const seekTime = clickTimestamp - segment.start_timestamp;
+                videoPlayer.currentTime = seekTime;
+            } else {
+                // Find and play the appropriate segment
+                for (let i = 0; i < timelineSegments.length; i++) {
+                    const segment = timelineSegments[i];
+                    if (clickTimestamp >= segment.start_timestamp && clickTimestamp <= segment.end_timestamp) {
+                        playSegment(i, clickTimestamp);
+                        break;
+                    }
+                }
+            }
+        }
+        
+        lastX = e.clientX;
+    }
+    
+    function stopDrag() {
+        isDragging = false;
+        document.removeEventListener('mousemove', drag);
+    }
 }
 
 /**
@@ -367,6 +613,12 @@ function playSegment(index, startTime = null) {
     // Update cursor position
     updateCursorPosition();
     
+    // Initialize video player if not already done
+    initVideoPlayer();
+    
+    // Initialize speed controls if not already done
+    initSpeedControls();
+    
     // Use direct MP4 playback instead of HLS
     const recordingUrl = `/api/recordings/play/${segment.id}`;
     
@@ -424,9 +676,6 @@ function startPlaybackTracking() {
         
         // Update cursor position
         updateCursorPosition();
-        
-        // Log current playback position for debugging
-        console.log(`Playback position: ${videoPlayer.currentTime.toFixed(2)}s / ${segment.duration}s`);
         
         // Check if we've reached the end of the segment
         if (videoPlayer.currentTime >= segment.duration) {
@@ -550,12 +799,17 @@ function resumePlayback() {
  */
 function updatePlayButton() {
     const playButton = document.getElementById('play-button');
+    if (!playButton) return;
+    
     const icon = playButton.querySelector('.icon');
+    if (!icon) return;
     
     if (isPlaying) {
         icon.textContent = '⏸️';
+        playButton.title = 'Pause';
     } else {
         icon.textContent = '▶️';
+        playButton.title = 'Play';
     }
 }
 
@@ -564,113 +818,28 @@ function updatePlayButton() {
  */
 function initVideoPlayer() {
     const playerContainer = document.getElementById('video-player');
+    if (!playerContainer) return;
+    
+    // Clear any existing content
+    playerContainer.innerHTML = '';
+    
+    // Create video container with Tailwind classes
+    const videoContainer = document.createElement('div');
+    videoContainer.className = 'relative w-full bg-black rounded-lg overflow-hidden shadow-lg';
     
     // Create video element
     videoPlayer = document.createElement('video');
-    videoPlayer.controls = true; // Enable native controls for better user experience
+    videoPlayer.className = 'w-full h-auto';
+    videoPlayer.controls = true; // Enable native controls
     videoPlayer.autoplay = false;
     videoPlayer.muted = false;
     videoPlayer.playsInline = true;
-    videoPlayer.style.width = '100%';
-    videoPlayer.style.height = 'auto';
     
-    // Add to container
-    playerContainer.appendChild(videoPlayer);
+    // Add video to container
+    videoContainer.appendChild(videoPlayer);
     
-    // Create custom controls container
-    const controlsContainer = document.createElement('div');
-    controlsContainer.className = 'video-controls';
-    controlsContainer.style.width = '100%';
-    controlsContainer.style.padding = '10px 0';
-    controlsContainer.style.display = 'flex';
-    controlsContainer.style.alignItems = 'center';
-    controlsContainer.style.justifyContent = 'center';
-    
-    // Create progress bar
-    const progressBar = document.createElement('input');
-    progressBar.type = 'range';
-    progressBar.min = 0;
-    progressBar.max = 100;
-    progressBar.value = 0;
-    progressBar.style.width = '80%';
-    progressBar.style.margin = '0 10px';
-    
-    // Add progress bar to controls
-    controlsContainer.appendChild(progressBar);
-    
-    // Add controls to container
-    playerContainer.appendChild(controlsContainer);
-    
-    // Initialize HLS.js if supported
-    if (Hls.isSupported()) {
-        // Configure HLS.js with optimized settings for MP4 playback
-        hlsPlayer = new Hls({
-            enableWorker: true,
-            lowLatencyMode: false,
-            backBufferLength: 90,
-            maxBufferLength: 30,
-            maxMaxBufferLength: 600,
-            maxBufferSize: 60 * 1000 * 1000, // 60MB
-            maxBufferHole: 0.5,
-            highBufferWatchdogPeriod: 2,
-            nudgeOffset: 0.2,
-            nudgeMaxRetry: 5,
-            maxFragLookUpTolerance: 0.25,
-            liveSyncDurationCount: 3,
-            liveMaxLatencyDurationCount: 10,
-            enableCEA708Captions: false,
-            stretchShortVideoTrack: false,
-            maxAudioFramesDrift: 1,
-            forceKeyFrameOnDiscontinuity: true,
-            abrEwmaFastLive: 3.0,
-            abrEwmaSlowLive: 9.0,
-            abrEwmaFastVoD: 3.0,
-            abrEwmaSlowVoD: 9.0,
-            abrEwmaDefaultEstimate: 500000,
-            abrBandWidthFactor: 0.95,
-            abrBandWidthUpFactor: 0.7,
-            fragLoadingTimeOut: 20000,
-            fragLoadingMaxRetry: 6,
-            fragLoadingRetryDelay: 1000,
-            fragLoadingMaxRetryTimeout: 64000,
-            startFragPrefetch: false,
-            testBandwidth: true
-        });
-        
-        hlsPlayer.attachMedia(videoPlayer);
-        
-        // Add detailed error handling
-        hlsPlayer.on(Hls.Events.ERROR, function(event, data) {
-            console.warn('HLS error:', data);
-            
-            if (data.fatal) {
-                console.error('Fatal HLS error:', data);
-                showStatusMessage('Video playback error: ' + data.details, 'error');
-                
-                switch(data.type) {
-                    case Hls.ErrorTypes.NETWORK_ERROR:
-                        // Try to recover network error
-                        console.log('Attempting to recover from network error...');
-                        hlsPlayer.startLoad();
-                        break;
-                    case Hls.ErrorTypes.MEDIA_ERROR:
-                        // Try to recover media error
-                        console.log('Attempting to recover from media error...');
-                        hlsPlayer.recoverMediaError();
-                        break;
-                    default:
-                        // Cannot recover
-                        console.error('Cannot recover from error:', data.type);
-                        break;
-                }
-            }
-        });
-    } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
-        // For browsers with native HLS support (Safari)
-        console.log('Using native HLS support');
-    } else {
-        showStatusMessage('HLS playback is not supported in this browser', 'error');
-    }
+    // Add container to player
+    playerContainer.appendChild(videoContainer);
     
     // Add event listeners
     videoPlayer.addEventListener('error', function(e) {
@@ -689,56 +858,8 @@ function initVideoPlayer() {
         }
     });
     
-    // Add more video event listeners for debugging
-    videoPlayer.addEventListener('canplay', function() {
-        console.log('Video can play');
-        
-        // Update segment duration if needed
-        if (currentSegmentIndex >= 0 && videoPlayer.duration) {
-            const segment = timelineSegments[currentSegmentIndex];
-            if (segment && segment.duration === 0) {
-                console.log(`Updating segment duration from 0 to ${videoPlayer.duration}`);
-                segment.duration = videoPlayer.duration;
-            }
-        }
-    });
-    
-    videoPlayer.addEventListener('loadedmetadata', function() {
-        console.log('Video metadata loaded, duration:', videoPlayer.duration);
-        
-        // Update segment duration if needed
-        if (currentSegmentIndex >= 0 && videoPlayer.duration) {
-            const segment = timelineSegments[currentSegmentIndex];
-            if (segment) {
-                console.log(`Setting segment duration to ${videoPlayer.duration}`);
-                segment.duration = videoPlayer.duration;
-            }
-        }
-    });
-    
-    videoPlayer.addEventListener('waiting', function() {
-        console.log('Video waiting for data');
-    });
-    
-    videoPlayer.addEventListener('playing', function() {
-        console.log('Video playing, duration:', videoPlayer.duration);
-    });
-    
-    // Update progress bar during playback
-    videoPlayer.addEventListener('timeupdate', function() {
-        if (currentSegmentIndex >= 0 && videoPlayer.duration) {
-            const percent = (videoPlayer.currentTime / videoPlayer.duration) * 100;
-            progressBar.value = percent;
-        }
-    });
-    
-    // Allow seeking with progress bar
-    progressBar.addEventListener('input', function() {
-        if (videoPlayer.duration) {
-            const seekTime = (progressBar.value / 100) * videoPlayer.duration;
-            videoPlayer.currentTime = seekTime;
-        }
-    });
+    // Initialize speed controls
+    initSpeedControls();
 }
 
 /**
@@ -799,25 +920,26 @@ function clearTimeline() {
  */
 function showStatusMessage(message, type = 'info') {
     const container = document.getElementById('status-message-container');
+    if (!container) return;
     
-    // Create message element
+    // Create message element with Tailwind classes
     const messageElement = document.createElement('div');
-    messageElement.className = 'status-message';
+    messageElement.className = 'status-message rounded-lg px-4 py-3 shadow-md transition-all duration-300 opacity-0 transform translate-y-2';
     messageElement.textContent = message;
     
-    // Add type-specific class
+    // Add type-specific classes
     switch (type) {
         case 'success':
-            messageElement.style.backgroundColor = 'rgba(16, 185, 129, 0.9)'; // Green
+            messageElement.classList.add('bg-green-500', 'text-white');
             break;
         case 'warning':
-            messageElement.style.backgroundColor = 'rgba(245, 158, 11, 0.9)'; // Yellow
+            messageElement.classList.add('bg-yellow-500', 'text-white');
             break;
         case 'error':
-            messageElement.style.backgroundColor = 'rgba(239, 68, 68, 0.9)'; // Red
+            messageElement.classList.add('bg-red-500', 'text-white');
             break;
         default:
-            messageElement.style.backgroundColor = 'rgba(59, 130, 246, 0.9)'; // Blue
+            messageElement.classList.add('bg-blue-500', 'text-white');
     }
     
     // Add to container
@@ -825,14 +947,17 @@ function showStatusMessage(message, type = 'info') {
     
     // Animate in
     setTimeout(() => {
-        messageElement.classList.add('show');
+        messageElement.classList.remove('opacity-0', 'translate-y-2');
+        messageElement.classList.add('opacity-100', 'translate-y-0');
     }, 10);
     
     // Remove after delay
     setTimeout(() => {
-        messageElement.classList.remove('show');
+        messageElement.classList.add('opacity-0', 'translate-y-2');
         setTimeout(() => {
-            container.removeChild(messageElement);
+            if (container.contains(messageElement)) {
+                container.removeChild(messageElement);
+            }
         }, 300);
     }, 3000);
 }
