@@ -176,11 +176,11 @@ export function TimelinePage() {
           hasData: true
         }));
         
-        // Update global state
+        // Update global state with the first segment selected
         timelineState.setState({
           timelineSegments,
-          currentSegmentIndex: -1,
-          currentTime: null,
+          currentSegmentIndex: 0,
+          currentTime: timelineSegments[0].start_timestamp,
           isPlaying: false
         });
         
@@ -256,9 +256,23 @@ export function TimelinePage() {
         </div>
       </div>
       
-      <!-- Current time display -->
-      <div class="flex justify-between items-center mb-4">
-        <div id="time-display" class="timeline-time-display bg-gray-200 dark:bg-gray-700 px-4 py-2 rounded font-mono text-lg">00:00:00</div>
+      <!-- Current time display and controls in a single row -->
+      <div class="flex justify-between items-center mb-2">
+        <div id="time-display" class="timeline-time-display bg-gray-200 dark:bg-gray-700 px-3 py-1 rounded font-mono text-base">00:00:00</div>
+        
+        <div class="flex items-center gap-2">
+          <button 
+            class="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded flex items-center gap-1"
+            onClick=${() => timelineState.setState({ showOnlySegments: !timelineState.showOnlySegments })}
+            title="Toggle between showing the full day or focusing on segments with recordings"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+            ${timelineState.showOnlySegments ? 'Show Full Day' : 'Focus on Recordings'}
+          </button>
+        </div>
       </div>
       
       <!-- Video player -->
@@ -266,21 +280,6 @@ export function TimelinePage() {
       
       <!-- Playback controls -->
       <${TimelineControls} />
-      
-      <!-- Timeline view options -->
-      <div class="flex justify-end mb-2">
-        <button 
-          class="px-3 py-1 text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded flex items-center gap-1"
-          onClick=${() => timelineState.setState({ showOnlySegments: !timelineState.showOnlySegments })}
-          title="Toggle between showing the full day or focusing on segments with recordings"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-          </svg>
-          ${timelineState.showOnlySegments ? 'Show Full Day' : 'Focus on Recordings'}
-        </button>
-      </div>
       
       <!-- Timeline -->
       <div 

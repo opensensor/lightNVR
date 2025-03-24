@@ -41,17 +41,26 @@ export function TimelinePlayer() {
       
       // If current segment index changed, play that segment
       // But only if it's a real change, not just a state update
-      if (state.currentSegmentIndex !== prevSegmentIndex && state.currentSegmentIndex >= 0) {
+      if (state.currentSegmentIndex !== prevSegmentIndex && 
+          state.currentSegmentIndex >= 0 && 
+          state.timelineSegments && 
+          state.timelineSegments.length > 0 &&
+          state.currentSegmentIndex < state.timelineSegments.length) {
+        
         console.log(`Segment index changed from ${prevSegmentIndex} to ${state.currentSegmentIndex}`);
         
-        const startTime = state.currentTime !== null && 
-                          state.timelineSegments[state.currentSegmentIndex] &&
-                          state.currentTime >= state.timelineSegments[state.currentSegmentIndex].start_timestamp
-          ? state.currentTime - state.timelineSegments[state.currentSegmentIndex].start_timestamp
-          : 0;
-          
-        // Direct call to play video without updating state again
-        playVideoDirectly(state.currentSegmentIndex, startTime);
+        const segment = state.timelineSegments[state.currentSegmentIndex];
+        if (segment) {
+          const startTime = state.currentTime !== null && 
+                            state.currentTime >= segment.start_timestamp
+            ? state.currentTime - segment.start_timestamp
+            : 0;
+            
+          // Direct call to play video without updating state again
+          playVideoDirectly(state.currentSegmentIndex, startTime);
+        } else {
+          console.warn(`Segment at index ${state.currentSegmentIndex} is undefined`);
+        }
       }
       
       // Update playback speed if it changed
@@ -81,9 +90,16 @@ export function TimelinePlayer() {
     if (!video) return;
     
     const handleTimeUpdate = () => {
-      if (currentSegmentIndex < 0 || !segments[currentSegmentIndex]) return;
+      // Check if we have a valid segment index and segments array
+      if (currentSegmentIndex < 0 || !segments || segments.length === 0 || currentSegmentIndex >= segments.length) {
+        return;
+      }
       
       const segment = segments[currentSegmentIndex];
+      if (!segment) {
+        console.error('Invalid segment at index', currentSegmentIndex);
+        return;
+      }
       
       // Calculate current timestamp based on video currentTime
       const currentTime = segment.start_timestamp + video.currentTime;
@@ -94,6 +110,13 @@ export function TimelinePlayer() {
     
     const handleEnded = () => {
       console.log('Video ended event triggered');
+      
+      // Check if we have a valid segment index and segments array
+      if (currentSegmentIndex < 0 || !segments || segments.length === 0) {
+        pausePlayback();
+        return;
+      }
+      
       // Try to play the next segment
       if (currentSegmentIndex < segments.length - 1) {
         playSegment(currentSegmentIndex + 1);
@@ -133,12 +156,23 @@ export function TimelinePlayer() {
   const playVideoDirectly = (index, seekTime = 0) => {
     console.log(`playVideoDirectly(${index}, ${seekTime})`);
     
+    // Check if segments array is valid and not empty
+    if (!segments || segments.length === 0) {
+      console.warn('No segments available');
+      return;
+    }
+    
     if (index < 0 || index >= segments.length) {
       console.warn(`Invalid segment index: ${index}, segments length: ${segments.length}`);
       return;
     }
     
     const segment = segments[index];
+    if (!segment) {
+      console.warn(`Segment at index ${index} is undefined`);
+      return;
+    }
+    
     console.log('Playing segment directly:', segment);
     
     // Get video element
@@ -203,12 +237,23 @@ export function TimelinePlayer() {
   const playSegment = (index, seekTime = 0) => {
     console.log(`TimelinePlayer.playSegment(${index}, ${seekTime})`);
     
+    // Check if segments array is valid and not empty
+    if (!segments || segments.length === 0) {
+      console.warn('No segments available');
+      return;
+    }
+    
     if (index < 0 || index >= segments.length) {
       console.warn(`Invalid segment index: ${index}, segments length: ${segments.length}`);
       return;
     }
     
     const segment = segments[index];
+    if (!segment) {
+      console.warn(`Segment at index ${index} is undefined`);
+      return;
+    }
+    
     console.log('Playing segment:', segment);
     
     // Update state
@@ -238,7 +283,13 @@ export function TimelinePlayer() {
     
     // Update more frequently (every 100ms) for smoother cursor movement
     playbackIntervalRef.current = setInterval(() => {
-      if (!isPlaying || currentSegmentIndex < 0 || !videoRef.current) {
+      // Check if we're playing and have a valid video element
+      if (!isPlaying || !videoRef.current) {
+        return;
+      }
+      
+      // Check if we have a valid segment index and segments array
+      if (currentSegmentIndex < 0 || !segments || segments.length === 0 || currentSegmentIndex >= segments.length) {
         return;
       }
       
@@ -269,8 +320,8 @@ export function TimelinePlayer() {
   };
 
   return html`
-    <div class="timeline-player-container mb-4" id="video-player">
-      <div class="relative w-full bg-black rounded-lg overflow-hidden shadow-lg" style="aspect-ratio: 16/9;">
+    <div class="timeline-player-container mb-2" id="video-player">
+      <div class="relative w-full bg-black rounded-lg overflow-hidden shadow-md" style="aspect-ratio: 16/9;">
         <video 
           ref=${videoRef}
           class="w-full h-full"
@@ -280,8 +331,9 @@ export function TimelinePlayer() {
           playsInline
         ></video>
       </div>
-      
-      <${SpeedControls} />
     </div>
+    
+    <!-- Playback speed controls -->
+    <${SpeedControls} />
   `;
 }

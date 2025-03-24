@@ -48,27 +48,29 @@ export function SpeedControls() {
   };
 
   return html`
-    <div class="mt-6 mb-8 p-4 border-2 border-green-500 rounded-lg bg-white dark:bg-gray-800 shadow-md">
-      <h3 class="text-lg font-bold text-center mb-4 text-gray-800 dark:text-white">PLAYBACK SPEED CONTROLS</h3>
-      
-      <div class="flex flex-wrap justify-center gap-2">
-        ${speeds.map(speed => html`
-          <button 
-            key=${`speed-${speed}`}
-            class=${`speed-btn px-4 py-2 rounded-full ${speed === currentSpeed 
-              ? 'bg-green-500 text-white' 
-              : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'} 
-              font-bold transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50`}
-            data-speed=${speed}
-            onClick=${() => setPlaybackSpeed(speed)}
-          >
-            ${speed === 1.0 ? '1× (Normal)' : `${speed}×`}
-          </button>
-        `)}
-      </div>
-      
-      <div class="mt-4 text-center font-bold text-green-600 dark:text-green-400">
-        Current Speed: ${currentSpeed}× ${currentSpeed === 1.0 ? '(Normal)' : ''}
+    <div class="mt-2 mb-4 p-2 border border-green-500 rounded-lg bg-white dark:bg-gray-800 shadow-sm">
+      <div class="flex flex-col items-center">
+        <div class="text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">Playback Speed</div>
+        
+        <div class="flex flex-wrap justify-center gap-1">
+          ${speeds.map(speed => html`
+            <button 
+              key=${`speed-${speed}`}
+              class=${`speed-btn px-2 py-1 text-sm rounded-full ${speed === currentSpeed 
+                ? 'bg-green-500 text-white' 
+                : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'} 
+                font-medium transition-all focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-opacity-50`}
+              data-speed=${speed}
+              onClick=${() => setPlaybackSpeed(speed)}
+            >
+              ${speed === 1.0 ? '1× (Normal)' : `${speed}×`}
+            </button>
+          `)}
+        </div>
+        
+        <div class="mt-1 text-xs font-medium text-green-600 dark:text-green-400">
+          Current: ${currentSpeed}× ${currentSpeed === 1.0 ? '(Normal)' : ''}
+        </div>
       </div>
     </div>
   `;
