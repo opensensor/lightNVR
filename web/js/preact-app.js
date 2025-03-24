@@ -14,6 +14,7 @@ import { loadStreamsView } from './components/preact/StreamsView.js';
 import { loadSystemView } from './components/preact/SystemView.js';
 import { loadLoginView } from './components/preact/LoginView.js';
 import { loadIndexView } from './components/preact/IndexView.js';
+import { loadTimelineView } from './components/preact/timeline/TimelineView.js';
 import { setupModals, addStatusMessageStyles, addModalStyles } from './components/preact/UI.js';
 import './components/auth.js';  // Import authentication module
 
@@ -109,9 +110,7 @@ function initApp() {
   } else if (currentPage === 'recordings.html') {
     loadRecordingsView();
   } else if (currentPage === 'timeline.html') {
-    // For timeline.html, we use the vanilla JS implementation
-    // The initialization is handled by the script in timeline.html
-    // Just load the header and footer
+    loadTimelineView();
   } else if (currentPage === 'settings.html') {
     loadSettingsView();
   } else if (currentPage === 'streams.html') {
