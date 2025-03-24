@@ -24,6 +24,7 @@ export function TimelinePlayer() {
   // Refs
   const videoRef = useRef(null);
   const playbackIntervalRef = useRef(null);
+  const lastTimeUpdateRef = useRef(null);
   const hlsPlayerRef = useRef(null);
 
   // Subscribe to timeline state changes
@@ -65,7 +66,11 @@ export function TimelinePlayer() {
       
       // Update playback speed if it changed
       if (state.playbackSpeed !== playbackSpeed && videoRef.current) {
+        console.log(`Updating playback speed from ${playbackSpeed} to ${state.playbackSpeed}`);
         videoRef.current.playbackRate = state.playbackSpeed;
+        
+        // Also update the local state
+        setPlaybackSpeed(state.playbackSpeed);
       }
     });
     
@@ -82,7 +87,7 @@ export function TimelinePlayer() {
         hlsPlayerRef.current.destroy();
       }
     };
-  }, [currentSegmentIndex, playbackSpeed]);
+  }, []);
 
   // Set up video event listeners
   useEffect(() => {
@@ -110,54 +115,77 @@ export function TimelinePlayer() {
       timelineState.setState({ currentTime });
       
       // Debug log for video progress
-      if (Math.floor(video.currentTime) % 5 === 0) { // Log every 5 seconds
+      if (Math.floor(video.currentTime) % 5 === 0 && video.currentTime > 0) { // Log every 5 seconds
         console.log(`Video progress: ${video.currentTime.toFixed(2)}s / ${video.duration.toFixed(2)}s`);
       }
     };
     
     const handleEnded = () => {
-      console.log('Video ended event triggered');
+      console.log('Video ended event listener triggered');
+      console.log('Current segment index:', currentSegmentIndex);
+      console.log('Total segments:', segments.length);
       
       // Check if we have a valid segment index and segments array
       if (currentSegmentIndex < 0 || !segments || segments.length === 0) {
+        console.log('No valid segments, pausing playback');
         pausePlayback();
         return;
       }
       
       // Try to play the next segment
       if (currentSegmentIndex < segments.length - 1) {
-        console.log(`Auto-playing next segment ${currentSegmentIndex + 1} from ended event`);
+        const nextIndex = currentSegmentIndex + 1;
+        console.log(`Auto-playing next segment ${nextIndex} from ended event listener`);
         
         // Get the next segment
-        const nextSegment = segments[currentSegmentIndex + 1];
+        const nextSegment = segments[nextIndex];
         if (!nextSegment) {
-          console.warn(`Next segment at index ${currentSegmentIndex + 1} is undefined`);
+          console.warn(`Next segment at index ${nextIndex} is undefined`);
           pausePlayback();
           return;
         }
         
-        // Update state
+        console.log('Next segment:', nextSegment);
+        
+        // Update state - IMPORTANT: This must happen before loading the video
+        // to ensure the state is updated before any callbacks are triggered
         timelineState.setState({ 
-          currentSegmentIndex: currentSegmentIndex + 1,
+          currentSegmentIndex: nextIndex,
           currentTime: nextSegment.start_timestamp,
           isPlaying: true
         });
         
         try {
           // Force load and play the next segment's video
-          console.log('Loading next segment video from ended event:', nextSegment);
+          console.log('Loading next segment video from ended event listener:', nextSegment);
           
           // Pause the current video first
           video.pause();
           
-          // Set the new source
-          video.src = `/api/recordings/play/${nextSegment.id}`;
+          // Clear any existing source and events
+          video.removeAttribute('src');
+          video.load();
+          
+          // Set the new source with a unique timestamp to prevent caching
+          const recordingUrl = `/api/recordings/play/${nextSegment.id}?t=${Date.now()}`;
+          console.log('Setting video source to:', recordingUrl);
+          video.src = recordingUrl;
           
           // Wait for metadata to load before setting currentTime and playbackRate
           video.onloadedmetadata = () => {
-            console.log('Video metadata loaded for next segment from ended event');
+            console.log('Video metadata loaded for next segment from ended event listener');
             video.currentTime = 0;
+            
+            // Set playback speed and verify it was set correctly
+            const oldRate = video.playbackRate;
             video.playbackRate = playbackSpeed;
+            console.log(`Setting playback rate from ${oldRate}x to ${playbackSpeed}x, actual rate: ${video.playbackRate}x`);
+            
+            // Force the playback rate again after a short delay
+            setTimeout(() => {
+              video.playbackRate = playbackSpeed;
+              console.log(`Re-setting playback rate to ${playbackSpeed}x, actual rate: ${video.playbackRate}x`);
+            }, 100);
             
             // Play the video
             video.play().catch(error => {
@@ -169,7 +197,22 @@ export function TimelinePlayer() {
           // Add error handler for loading
           video.onerror = (e) => {
             console.error('Error loading next video:', e);
-            showStatusMessage('Error loading next video', 'error');
+            showStatusMessage('Error loading next video, skipping to next segment', 'warning');
+            
+            // Try to skip to the next segment if this one fails
+            if (currentSegmentIndex < segments.length - 1) {
+              console.log(`Skipping to next segment ${currentSegmentIndex + 1} due to error`);
+              
+              // Update state to next segment
+              timelineState.setState({ 
+                currentSegmentIndex: currentSegmentIndex + 1,
+                currentTime: segments[currentSegmentIndex + 1].start_timestamp,
+                isPlaying: true
+              });
+            } else {
+              // No more segments, pause playback
+              pausePlayback();
+            }
           };
         } catch (error) {
           console.error('Exception while setting up next video:', error);
@@ -286,12 +329,16 @@ export function TimelinePlayer() {
     }
     
     try {
-      // Use direct MP4 playback
-      const recordingUrl = `/api/recordings/play/${segment.id}`;
+      // Use direct MP4 playback with a timestamp to prevent caching
+      const recordingUrl = `/api/recordings/play/${segment.id}?t=${Date.now()}`;
       console.log('Setting video source to:', recordingUrl);
       
       // Pause the current video first
       video.pause();
+      
+      // Clear any existing source and events
+      video.removeAttribute('src');
+      video.load();
       
       // Set the new source
       video.src = recordingUrl;
@@ -300,7 +347,17 @@ export function TimelinePlayer() {
       video.onloadedmetadata = () => {
         console.log('Video metadata loaded for playVideoDirectly');
         video.currentTime = seekTime;
+        
+        // Set playback speed and verify it was set correctly
+        const oldRate = video.playbackRate;
         video.playbackRate = playbackSpeed;
+        console.log(`Setting playback rate from ${oldRate}x to ${playbackSpeed}x, actual rate: ${video.playbackRate}x`);
+        
+        // Force the playback rate again after a short delay
+        setTimeout(() => {
+          video.playbackRate = playbackSpeed;
+          console.log(`Re-setting playback rate to ${playbackSpeed}x, actual rate: ${video.playbackRate}x`);
+        }, 100);
         
         // Play the video
         video.play().catch(error => {
@@ -312,7 +369,22 @@ export function TimelinePlayer() {
       // Add error handler for loading
       video.onerror = (e) => {
         console.error('Error loading video:', e);
-        showStatusMessage('Error loading video', 'error');
+        showStatusMessage('Error loading video, skipping to next segment', 'warning');
+        
+        // Try to skip to the next segment if this one fails
+        if (currentSegmentIndex < segments.length - 1) {
+          console.log(`Skipping to next segment ${currentSegmentIndex + 1} due to error`);
+          
+          // Update state to next segment
+          timelineState.setState({ 
+            currentSegmentIndex: currentSegmentIndex + 1,
+            currentTime: segments[currentSegmentIndex + 1].start_timestamp,
+            isPlaying: true
+          });
+        } else {
+          // No more segments, pause playback
+          pausePlayback();
+        }
       };
     } catch (error) {
       console.error('Exception while setting up video:', error);
@@ -394,65 +466,118 @@ export function TimelinePlayer() {
       // Update timeline state
       timelineState.setState({ currentTime });
       
-      // Check if we're near the end of the segment (within 1 second or 10% of duration, whichever is larger)
-      // This is a backup for the 'ended' event which might not always fire
-      const segmentDuration = segment.end_timestamp - segment.start_timestamp;
-      const thresholdTime = Math.max(1, segmentDuration * 0.1); // At least 1 second or 10% of duration
-      const remainingTime = segmentDuration - video.currentTime;
+      // Debug log for video progress
+      if (Math.floor(video.currentTime) % 5 === 0 && video.currentTime > 0) { // Log every 5 seconds
+        const segmentDuration = segment.end_timestamp - segment.start_timestamp;
+        console.log(`Video progress: ${video.currentTime.toFixed(2)}s / ${segmentDuration.toFixed(2)}s, playback rate: ${video.playbackRate}x`);
+      }
       
-      // Only check if we're actually playing (not paused or seeking)
-      if (video.currentTime > 0 && !video.paused && !video.seeking && remainingTime < thresholdTime && remainingTime > 0) {
-        console.log(`Near end of segment ${currentSegmentIndex}, currentTime: ${video.currentTime.toFixed(2)}, duration: ${segmentDuration}, remaining: ${remainingTime.toFixed(2)}`);
+      // Track if the video has stalled near the end
+      // Store the current time and position in a ref to detect if playback has stalled
+      if (!lastTimeUpdateRef.current) {
+        lastTimeUpdateRef.current = {
+          time: Date.now(),
+          position: video.currentTime
+        };
+      } else {
+        const now = Date.now();
+        const timeDiff = now - lastTimeUpdateRef.current.time;
+        const positionDiff = Math.abs(video.currentTime - lastTimeUpdateRef.current.position);
         
-        // Check if there's a next segment
-        if (currentSegmentIndex < segments.length - 1) {
-          console.log(`Auto-playing next segment ${currentSegmentIndex + 1} from tracking`);
+        // Calculate segment duration and remaining time
+        const segmentDuration = segment.end_timestamp - segment.start_timestamp;
+        const remainingTime = (segmentDuration - video.currentTime) / video.playbackRate;
+        
+        // Update the last time update if the position has changed
+        if (positionDiff > 0.01) {
+          lastTimeUpdateRef.current = {
+            time: now,
+            position: video.currentTime
+          };
+        } 
+        // If we're near the end (within 1 second) and the video has stalled for more than 500ms
+        // and we're not paused or seeking, advance to the next segment
+        else if (video.currentTime > 0 && !video.paused && !video.seeking && 
+                 remainingTime < 1 && remainingTime > 0 && 
+                 timeDiff > 500) {
           
-          // Get the next segment
-          const nextSegment = segments[currentSegmentIndex + 1];
-          if (!nextSegment) {
-            console.warn(`Next segment at index ${currentSegmentIndex + 1} is undefined`);
-            return;
-          }
-          
-          // Update state
-          timelineState.setState({ 
-            currentSegmentIndex: currentSegmentIndex + 1,
-            currentTime: nextSegment.start_timestamp,
-            isPlaying: true
-          });
-          
-          try {
-            // Force load and play the next segment's video
-            console.log('Loading next segment video from tracking:', nextSegment);
+          console.log(`Video stalled near end of segment ${currentSegmentIndex}, currentTime: ${video.currentTime.toFixed(2)}s, duration: ${segmentDuration}s, remaining: ${remainingTime.toFixed(2)}s, stalled for: ${timeDiff}ms`);
+        
+          // Check if there's a next segment
+          if (currentSegmentIndex < segments.length - 1) {
+            console.log(`Auto-playing next segment ${currentSegmentIndex + 1} from tracking (stalled near end)`);
             
-            // Pause the current video first
-            video.pause();
+            // Get the next segment
+            const nextSegment = segments[currentSegmentIndex + 1];
+            if (!nextSegment) {
+              console.warn(`Next segment at index ${currentSegmentIndex + 1} is undefined`);
+              return;
+            }
             
-            // Set the new source
-            video.src = `/api/recordings/play/${nextSegment.id}`;
+            // Update state
+            timelineState.setState({ 
+              currentSegmentIndex: currentSegmentIndex + 1,
+              currentTime: nextSegment.start_timestamp,
+              isPlaying: true
+            });
             
-            // Wait for metadata to load before setting currentTime and playbackRate
-            video.onloadedmetadata = () => {
-              console.log('Video metadata loaded for next segment');
-              video.currentTime = 0;
-              video.playbackRate = playbackSpeed;
+            try {
+              // Force load and play the next segment's video
+              console.log('Loading next segment video from tracking (stalled near end):', nextSegment);
               
-              // Play the video
-              video.play().catch(error => {
-                console.error('Error playing next video:', error);
-                showStatusMessage('Error playing next video: ' + error.message, 'error');
-              });
-            };
-            
-            // Add error handler for loading
-            video.onerror = (e) => {
-              console.error('Error loading next video:', e);
-              showStatusMessage('Error loading next video', 'error');
-            };
-          } catch (error) {
-            console.error('Exception while setting up next video:', error);
-            showStatusMessage('Error setting up next video: ' + error.message, 'error');
+              // Pause the current video first
+              video.pause();
+              
+              // Set the new source
+              video.src = `/api/recordings/play/${nextSegment.id}`;
+              
+              // Wait for metadata to load before setting currentTime and playbackRate
+              video.onloadedmetadata = () => {
+                console.log('Video metadata loaded for next segment');
+                video.currentTime = 0;
+                
+                // Set playback speed and verify it was set correctly
+                const oldRate = video.playbackRate;
+                video.playbackRate = playbackSpeed;
+                console.log(`Setting playback rate from ${oldRate}x to ${playbackSpeed}x, actual rate: ${video.playbackRate}x`);
+                
+                // Force the playback rate again after a short delay
+                setTimeout(() => {
+                  video.playbackRate = playbackSpeed;
+                  console.log(`Re-setting playback rate to ${playbackSpeed}x, actual rate: ${video.playbackRate}x`);
+                }, 100);
+                
+                // Play the video
+                video.play().catch(error => {
+                  console.error('Error playing next video:', error);
+                  showStatusMessage('Error playing next video: ' + error.message, 'error');
+                });
+              };
+              
+              // Add error handler for loading
+              video.onerror = (e) => {
+                console.error('Error loading next video:', e);
+                showStatusMessage('Error loading next video, skipping to next segment', 'warning');
+                
+                // Try to skip to the next segment if this one fails
+                if (currentSegmentIndex < segments.length - 1) {
+                  console.log(`Skipping to next segment ${currentSegmentIndex + 1} due to error`);
+                  
+                  // Update state to next segment
+                  timelineState.setState({ 
+                    currentSegmentIndex: currentSegmentIndex + 1,
+                    currentTime: segments[currentSegmentIndex + 1].start_timestamp,
+                    isPlaying: true
+                  });
+                } else {
+                  // No more segments, pause playback
+                  pausePlayback();
+                }
+              };
+            } catch (error) {
+              console.error('Exception while setting up next video:', error);
+              showStatusMessage('Error setting up next video: ' + error.message, 'error');
+            }
           }
         }
       }
@@ -462,28 +587,35 @@ export function TimelinePlayer() {
   // Define the onEnded handler directly
   const onEnded = () => {
     console.log('Video onended attribute triggered');
+    console.log('Current segment index:', currentSegmentIndex);
+    console.log('Total segments:', segments.length);
     
     // Check if we have a valid segment index and segments array
     if (currentSegmentIndex < 0 || !segments || segments.length === 0) {
+      console.log('No valid segments, pausing playback');
       pausePlayback();
       return;
     }
     
     // Try to play the next segment
     if (currentSegmentIndex < segments.length - 1) {
-      console.log(`Auto-playing next segment ${currentSegmentIndex + 1} from onended attribute`);
+      const nextIndex = currentSegmentIndex + 1;
+      console.log(`Auto-playing next segment ${nextIndex} from onended attribute`);
       
       // Get the next segment
-      const nextSegment = segments[currentSegmentIndex + 1];
+      const nextSegment = segments[nextIndex];
       if (!nextSegment) {
-        console.warn(`Next segment at index ${currentSegmentIndex + 1} is undefined`);
+        console.warn(`Next segment at index ${nextIndex} is undefined`);
         pausePlayback();
         return;
       }
       
-      // Update state
+      console.log('Next segment:', nextSegment);
+      
+      // Update state - IMPORTANT: This must happen before loading the video
+      // to ensure the state is updated before any callbacks are triggered
       timelineState.setState({ 
-        currentSegmentIndex: currentSegmentIndex + 1,
+        currentSegmentIndex: nextIndex,
         currentTime: nextSegment.start_timestamp,
         isPlaying: true
       });
@@ -498,14 +630,30 @@ export function TimelinePlayer() {
           // Pause the current video first
           video.pause();
           
-          // Set the new source
-          video.src = `/api/recordings/play/${nextSegment.id}`;
+          // Clear any existing source and events
+          video.removeAttribute('src');
+          video.load();
+          
+          // Set the new source with a unique timestamp to prevent caching
+          const recordingUrl = `/api/recordings/play/${nextSegment.id}?t=${Date.now()}`;
+          console.log('Setting video source to:', recordingUrl);
+          video.src = recordingUrl;
           
           // Wait for metadata to load before setting currentTime and playbackRate
           video.onloadedmetadata = () => {
             console.log('Video metadata loaded for next segment from onended attribute');
             video.currentTime = 0;
+            
+            // Set playback speed and verify it was set correctly
+            const oldRate = video.playbackRate;
             video.playbackRate = playbackSpeed;
+            console.log(`Setting playback rate from ${oldRate}x to ${playbackSpeed}x, actual rate: ${video.playbackRate}x`);
+            
+            // Force the playback rate again after a short delay
+            setTimeout(() => {
+              video.playbackRate = playbackSpeed;
+              console.log(`Re-setting playback rate to ${playbackSpeed}x, actual rate: ${video.playbackRate}x`);
+            }, 100);
             
             // Play the video
             video.play().catch(error => {
@@ -517,7 +665,22 @@ export function TimelinePlayer() {
           // Add error handler for loading
           video.onerror = (e) => {
             console.error('Error loading next video:', e);
-            showStatusMessage('Error loading next video', 'error');
+            showStatusMessage('Error loading next video, skipping to next segment', 'warning');
+            
+            // Try to skip to the next segment if this one fails
+            if (currentSegmentIndex < segments.length - 1) {
+              console.log(`Skipping to next segment ${currentSegmentIndex + 1} due to error`);
+              
+              // Update state to next segment
+              timelineState.setState({ 
+                currentSegmentIndex: currentSegmentIndex + 1,
+                currentTime: segments[currentSegmentIndex + 1].start_timestamp,
+                isPlaying: true
+              });
+            } else {
+              // No more segments, pause playback
+              pausePlayback();
+            }
           };
         } catch (error) {
           console.error('Exception while setting up next video:', error);

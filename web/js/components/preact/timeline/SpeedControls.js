@@ -34,8 +34,20 @@ export function SpeedControls() {
     // Update video playback rate
     const videoPlayer = document.querySelector('#video-player video');
     if (videoPlayer) {
+      // Store the current playback rate for debugging
+      const oldRate = videoPlayer.playbackRate;
+      
+      // Set the new playback rate
       videoPlayer.playbackRate = speed;
-      console.log(`Setting video playback rate to ${speed}x`, videoPlayer);
+      
+      console.log(`Setting video playback rate from ${oldRate}x to ${speed}x`, videoPlayer);
+      console.log(`Actual playback rate after setting: ${videoPlayer.playbackRate}x`);
+      
+      // Force the playback rate again after a short delay
+      setTimeout(() => {
+        videoPlayer.playbackRate = speed;
+        console.log(`Re-setting playback rate to ${speed}x, actual rate: ${videoPlayer.playbackRate}x`);
+      }, 100);
     } else {
       console.warn('Video player element not found');
     }
