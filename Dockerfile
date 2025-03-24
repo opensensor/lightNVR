@@ -17,15 +17,48 @@ RUN git clone --branch v3.4.0 --depth 1 https://github.com/Mbed-TLS/mbedtls.git 
     cd mbedtls && mkdir build && cd build && \
     cmake -DCMAKE_INSTALL_PREFIX=/usr/local -DENABLE_TESTING=OFF -DENABLE_PROGRAMS=OFF .. && \
     make -j$(nproc) && make install && \
-    ldconfig && \
-    cd /opt && rm -rf mbedtls
+    ldconfig
+
+# Create pkg-config files for MbedTLS libraries
+RUN mkdir -p /usr/local/lib/pkgconfig && \
+    echo "prefix=/usr/local\n\
+exec_prefix=\${prefix}\n\
+libdir=\${exec_prefix}/lib\n\
+includedir=\${prefix}/include\n\
+\n\
+Name: mbedtls\n\
+Description: MbedTLS Library\n\
+Version: 3.4.0\n\
+Libs: -L\${libdir} -lmbedtls\n\
+Cflags: -I\${includedir}" > /usr/local/lib/pkgconfig/mbedtls.pc && \
+    echo "prefix=/usr/local\n\
+exec_prefix=\${prefix}\n\
+libdir=\${exec_prefix}/lib\n\
+includedir=\${prefix}/include\n\
+\n\
+Name: mbedcrypto\n\
+Description: MbedTLS Crypto Library\n\
+Version: 3.4.0\n\
+Libs: -L\${libdir} -lmbedcrypto\n\
+Cflags: -I\${includedir}" > /usr/local/lib/pkgconfig/mbedcrypto.pc && \
+    echo "prefix=/usr/local\n\
+exec_prefix=\${prefix}\n\
+libdir=\${exec_prefix}/lib\n\
+includedir=\${prefix}/include\n\
+\n\
+Name: mbedx509\n\
+Description: MbedTLS X509 Library\n\
+Version: 3.4.0\n\
+Libs: -L\${libdir} -lmbedx509\n\
+Cflags: -I\${includedir}" > /usr/local/lib/pkgconfig/mbedx509.pc && \
+    rm -rf /opt/mbedtls
 
 # Copy current directory contents into container
 WORKDIR /opt
 COPY . .
 
 # Build the application
-RUN ./scripts/build.sh --release --with-sod && \
+RUN PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH ./scripts/build.sh --release --with-sod && \
     ./scripts/install.sh --prefix=/
 
 # Stage 2: Minimal runtime image
@@ -38,6 +71,9 @@ RUN apt-get update && apt-get install -y \
     libavcodec59 libavformat59 libavutil57 libswscale6 \
     libcurl4 sqlite3 && \
     rm -rf /var/lib/apt/lists/*
+
+# Create necessary directories in runtime
+RUN mkdir -p /etc/lightnvr /var/lib/lightnvr /var/log/lightnvr /var/run/lightnvr /var/lib/lightnvr/recordings
 
 # Copy MbedTLS libraries from builder
 COPY --from=builder /usr/local/lib/libmbed*.so* /usr/local/lib/
