@@ -17,6 +17,7 @@
 #include <stdbool.h>
 
 #include "database/db_core.h"
+#include "database/db_schema.h"
 #include "core/logger.h"
 
 // Database handle
@@ -272,39 +273,24 @@ int init_database(const char *db_path) {
         return -1;
     }
     
-    // Check if streaming_enabled column exists in streams table
-    log_info("Checking if streaming_enabled column exists in streams table");
-    sqlite3_stmt *check_stmt;
-    bool has_streaming_enabled = false;
+    // Initialize schema management system
+    log_info("Initializing schema management system");
+    rc = init_schema_management();
+    if (rc != 0) {
+        log_error("Failed to initialize schema management system");
+        sqlite3_close(db);
+        db = NULL;
+        return -1;
+    }
     
-    rc = sqlite3_prepare_v2(db, "PRAGMA table_info(streams);", -1, &check_stmt, NULL);
-    if (rc != SQLITE_OK) {
-        log_error("Failed to prepare statement to check streams table columns: %s", sqlite3_errmsg(db));
-    } else {
-        while (sqlite3_step(check_stmt) == SQLITE_ROW) {
-            const char *column_name = (const char *)sqlite3_column_text(check_stmt, 1);
-            if (column_name && strcmp(column_name, "streaming_enabled") == 0) {
-                has_streaming_enabled = true;
-                log_info("streaming_enabled column exists in streams table");
-                break;
-            }
-        }
-        sqlite3_finalize(check_stmt);
-        
-        // Add streaming_enabled column if it doesn't exist
-        if (!has_streaming_enabled) {
-            log_info("Adding streaming_enabled column to streams table");
-            const char *alter_table_sql = "ALTER TABLE streams ADD COLUMN streaming_enabled INTEGER DEFAULT 1;";
-            
-            rc = sqlite3_exec(db, alter_table_sql, NULL, NULL, &err_msg);
-            if (rc != SQLITE_OK) {
-                log_error("Failed to add streaming_enabled column: %s", err_msg);
-                sqlite3_free(err_msg);
-                // Continue anyway, as this is not a critical error
-            } else {
-                log_info("Successfully added streaming_enabled column to streams table");
-            }
-        }
+    // Run schema migrations
+    log_info("Running schema migrations");
+    rc = run_schema_migrations();
+    if (rc != 0) {
+        log_error("Failed to run schema migrations");
+        sqlite3_close(db);
+        db = NULL;
+        return -1;
     }
     
     log_info("Database initialized successfully");

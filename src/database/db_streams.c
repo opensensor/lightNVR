@@ -11,6 +11,7 @@
 
 #include "database/db_streams.h"
 #include "database/db_core.h"
+#include "database/db_schema.h"
 #include "core/logger.h"
 #include "core/config.h"
 
@@ -40,89 +41,8 @@ uint64_t add_stream_config(const stream_config_t *stream) {
     
     pthread_mutex_lock(db_mutex);
     
-    // First, check if we need to alter the table to add detection columns and protocol column
-    const char *check_column_sql = "PRAGMA table_info(streams);";
-    sqlite3_stmt *check_stmt;
-    
-    rc = sqlite3_prepare_v2(db, check_column_sql, -1, &check_stmt, NULL);
-    if (rc != SQLITE_OK) {
-        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
-        pthread_mutex_unlock(db_mutex);
-        return 0;
-    }
-    
-    bool has_detection_columns = false;
-    bool has_protocol_column = false;
-    bool has_onvif_column = false;
-    while (sqlite3_step(check_stmt) == SQLITE_ROW) {
-        const char *column_name = (const char *)sqlite3_column_text(check_stmt, 1);
-        if (column_name && strcmp(column_name, "detection_based_recording") == 0) {
-            has_detection_columns = true;
-            log_info("detection_based_recording column exists in streams table");
-        }
-        if (column_name && strcmp(column_name, "protocol") == 0) {
-            has_protocol_column = true;
-            log_info("protocol column exists in streams table");
-        }
-        if (column_name && strcmp(column_name, "is_onvif") == 0) {
-            has_onvif_column = true;
-            log_info("is_onvif column exists in streams table");
-        }
-    }
-    
-    sqlite3_finalize(check_stmt);
-    
-    // If detection columns don't exist, add them
-    if (!has_detection_columns) {
-        log_info("Adding detection columns to streams table");
-        
-        const char *alter_table_sql[] = {
-            "ALTER TABLE streams ADD COLUMN detection_based_recording INTEGER DEFAULT 0;",
-            "ALTER TABLE streams ADD COLUMN detection_model TEXT DEFAULT '';",
-            "ALTER TABLE streams ADD COLUMN detection_threshold REAL DEFAULT 0.5;",
-            "ALTER TABLE streams ADD COLUMN detection_interval INTEGER DEFAULT 10;",
-            "ALTER TABLE streams ADD COLUMN pre_detection_buffer INTEGER DEFAULT 0;",  // Eliminated pre-buffering to prevent live stream delay
-            "ALTER TABLE streams ADD COLUMN post_detection_buffer INTEGER DEFAULT 3;"   // Reduced from 10 to 3 to decrease latency
-        };
-        
-        for (int i = 0; i < 6; i++) {
-            char *err_msg = NULL;
-            rc = sqlite3_exec(db, alter_table_sql[i], NULL, NULL, &err_msg);
-            if (rc != SQLITE_OK) {
-                log_error("Failed to alter table: %s", err_msg);
-                sqlite3_free(err_msg);
-                // Continue anyway, the column might already exist
-            }
-        }
-    }
-    
-    // If protocol column doesn't exist, add it
-    if (!has_protocol_column) {
-        log_info("Adding protocol column to streams table");
-        
-        const char *alter_table_sql = "ALTER TABLE streams ADD COLUMN protocol INTEGER DEFAULT 0;";
-        char *err_msg = NULL;
-        rc = sqlite3_exec(db, alter_table_sql, NULL, NULL, &err_msg);
-        if (rc != SQLITE_OK) {
-            log_error("Failed to alter table: %s", err_msg);
-            sqlite3_free(err_msg);
-            // Continue anyway, the column might already exist
-        }
-    }
-    
-    // If is_onvif column doesn't exist, add it
-    if (!has_onvif_column) {
-        log_info("Adding is_onvif column to streams table");
-        
-        const char *alter_table_sql = "ALTER TABLE streams ADD COLUMN is_onvif INTEGER DEFAULT 0;";
-        char *err_msg = NULL;
-        rc = sqlite3_exec(db, alter_table_sql, NULL, NULL, &err_msg);
-        if (rc != SQLITE_OK) {
-            log_error("Failed to alter table: %s", err_msg);
-            sqlite3_free(err_msg);
-            // Continue anyway, the column might already exist
-        }
-    }
+    // Schema migrations should have already been run during database initialization
+    // No need to check for columns here anymore
     
     // Now insert the stream with all fields including detection settings, protocol, and is_onvif
     const char *sql = "INSERT INTO streams (name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
@@ -212,96 +132,8 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
     
     pthread_mutex_lock(db_mutex);
     
-    // First, check if we need to alter the table to add detection columns and protocol column
-    const char *check_column_sql = "PRAGMA table_info(streams);";
-    sqlite3_stmt *check_stmt;
-    
-    rc = sqlite3_prepare_v2(db, check_column_sql, -1, &check_stmt, NULL);
-    if (rc != SQLITE_OK) {
-        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
-        pthread_mutex_unlock(db_mutex);
-        return -1;
-    }
-    
-    bool has_detection_columns = false;
-    bool has_protocol_column = false;
-    while (sqlite3_step(check_stmt) == SQLITE_ROW) {
-        const char *column_name = (const char *)sqlite3_column_text(check_stmt, 1);
-        if (column_name && strcmp(column_name, "detection_based_recording") == 0) {
-            has_detection_columns = true;
-        }
-        if (column_name && strcmp(column_name, "protocol") == 0) {
-            has_protocol_column = true;
-        }
-    }
-    
-    sqlite3_finalize(check_stmt);
-    
-    // If detection columns don't exist, add them
-    if (!has_detection_columns) {
-        log_info("Adding detection columns to streams table");
-        
-        const char *alter_table_sql[] = {
-            "ALTER TABLE streams ADD COLUMN detection_based_recording INTEGER DEFAULT 0;",
-            "ALTER TABLE streams ADD COLUMN detection_model TEXT DEFAULT '';",
-            "ALTER TABLE streams ADD COLUMN detection_threshold REAL DEFAULT 0.5;",
-            "ALTER TABLE streams ADD COLUMN detection_interval INTEGER DEFAULT 10;",
-            "ALTER TABLE streams ADD COLUMN pre_detection_buffer INTEGER DEFAULT 5;",
-            "ALTER TABLE streams ADD COLUMN post_detection_buffer INTEGER DEFAULT 10;"
-        };
-        
-        for (int i = 0; i < 6; i++) {
-            char *err_msg = NULL;
-            rc = sqlite3_exec(db, alter_table_sql[i], NULL, NULL, &err_msg);
-            if (rc != SQLITE_OK) {
-                log_error("Failed to alter table: %s", err_msg);
-                sqlite3_free(err_msg);
-                // Continue anyway, the column might already exist
-            }
-        }
-    }
-    
-    // If protocol column doesn't exist, add it
-    if (!has_protocol_column) {
-        log_info("Adding protocol column to streams table");
-        
-        const char *alter_table_sql = "ALTER TABLE streams ADD COLUMN protocol INTEGER DEFAULT 0;";
-        char *err_msg = NULL;
-        rc = sqlite3_exec(db, alter_table_sql, NULL, NULL, &err_msg);
-        if (rc != SQLITE_OK) {
-            log_error("Failed to alter table: %s", err_msg);
-            sqlite3_free(err_msg);
-            // Continue anyway, the column might already exist
-        }
-    }
-    
-    // Check if is_onvif column exists
-    bool has_onvif_column = false;
-    rc = sqlite3_prepare_v2(db, check_column_sql, -1, &check_stmt, NULL);
-    if (rc == SQLITE_OK) {
-        while (sqlite3_step(check_stmt) == SQLITE_ROW) {
-            const char *column_name = (const char *)sqlite3_column_text(check_stmt, 1);
-            if (column_name && strcmp(column_name, "is_onvif") == 0) {
-                has_onvif_column = true;
-                break;
-            }
-        }
-        sqlite3_finalize(check_stmt);
-    }
-    
-    // If is_onvif column doesn't exist, add it
-    if (!has_onvif_column) {
-        log_info("Adding is_onvif column to streams table");
-        
-        const char *alter_table_sql = "ALTER TABLE streams ADD COLUMN is_onvif INTEGER DEFAULT 0;";
-        char *err_msg = NULL;
-        rc = sqlite3_exec(db, alter_table_sql, NULL, NULL, &err_msg);
-        if (rc != SQLITE_OK) {
-            log_error("Failed to alter table: %s", err_msg);
-            sqlite3_free(err_msg);
-            // Continue anyway, the column might already exist
-        }
-    }
+    // Schema migrations should have already been run during database initialization
+    // No need to check for columns here anymore
     
     // Now update the stream with all fields including detection settings, protocol, and is_onvif
     const char *sql = "UPDATE streams SET "
@@ -451,55 +283,10 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
     
     pthread_mutex_lock(db_mutex);
     
-    // First, check if detection columns exist
-    const char *check_column_sql = "PRAGMA table_info(streams);";
-    sqlite3_stmt *check_stmt;
-    
-    rc = sqlite3_prepare_v2(db, check_column_sql, -1, &check_stmt, NULL);
-    if (rc != SQLITE_OK) {
-        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
-        pthread_mutex_unlock(db_mutex);
-        return -1;
-    }
-    
-    bool has_detection_columns = false;
-    while (sqlite3_step(check_stmt) == SQLITE_ROW) {
-        const char *column_name = (const char *)sqlite3_column_text(check_stmt, 1);
-        if (column_name && strcmp(column_name, "detection_based_recording") == 0) {
-            has_detection_columns = true;
-            break;
-        }
-    }
-    
-    sqlite3_finalize(check_stmt);
-    
-    // First, check if protocol column exists
-    bool has_protocol_column = false;
-    rc = sqlite3_prepare_v2(db, check_column_sql, -1, &check_stmt, NULL);
-    if (rc == SQLITE_OK) {
-        while (sqlite3_step(check_stmt) == SQLITE_ROW) {
-            const char *column_name = (const char *)sqlite3_column_text(check_stmt, 1);
-            if (column_name && strcmp(column_name, "protocol") == 0) {
-                has_protocol_column = true;
-                break;
-            }
-        }
-        sqlite3_finalize(check_stmt);
-    }
-    
-    // Check if is_onvif column exists
-    bool has_onvif_column = false;
-    rc = sqlite3_prepare_v2(db, check_column_sql, -1, &check_stmt, NULL);
-    if (rc == SQLITE_OK) {
-        while (sqlite3_step(check_stmt) == SQLITE_ROW) {
-            const char *column_name = (const char *)sqlite3_column_text(check_stmt, 1);
-            if (column_name && strcmp(column_name, "is_onvif") == 0) {
-                has_onvif_column = true;
-                break;
-            }
-        }
-        sqlite3_finalize(check_stmt);
-    }
+    // Use our schema management functions to check for columns
+    bool has_detection_columns = column_exists("streams", "detection_based_recording");
+    bool has_protocol_column = column_exists("streams", "protocol");
+    bool has_onvif_column = column_exists("streams", "is_onvif");
     
     // Prepare SQL based on whether detection columns, protocol column, and is_onvif column exist
     const char *sql;
@@ -650,55 +437,10 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
     
     pthread_mutex_lock(db_mutex);
     
-    // First, check if detection columns exist
-    const char *check_column_sql = "PRAGMA table_info(streams);";
-    sqlite3_stmt *check_stmt;
-    
-    rc = sqlite3_prepare_v2(db, check_column_sql, -1, &check_stmt, NULL);
-    if (rc != SQLITE_OK) {
-        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
-        pthread_mutex_unlock(db_mutex);
-        return -1;
-    }
-    
-    bool has_detection_columns = false;
-    while (sqlite3_step(check_stmt) == SQLITE_ROW) {
-        const char *column_name = (const char *)sqlite3_column_text(check_stmt, 1);
-        if (column_name && strcmp(column_name, "detection_based_recording") == 0) {
-            has_detection_columns = true;
-            break;
-        }
-    }
-    
-    sqlite3_finalize(check_stmt);
-    
-    // Check if protocol column exists
-    bool has_protocol_column = false;
-    rc = sqlite3_prepare_v2(db, check_column_sql, -1, &check_stmt, NULL);
-    if (rc == SQLITE_OK) {
-        while (sqlite3_step(check_stmt) == SQLITE_ROW) {
-            const char *column_name = (const char *)sqlite3_column_text(check_stmt, 1);
-            if (column_name && strcmp(column_name, "protocol") == 0) {
-                has_protocol_column = true;
-                break;
-            }
-        }
-        sqlite3_finalize(check_stmt);
-    }
-    
-    // Check if is_onvif column exists
-    bool has_onvif_column = false;
-    rc = sqlite3_prepare_v2(db, check_column_sql, -1, &check_stmt, NULL);
-    if (rc == SQLITE_OK) {
-        while (sqlite3_step(check_stmt) == SQLITE_ROW) {
-            const char *column_name = (const char *)sqlite3_column_text(check_stmt, 1);
-            if (column_name && strcmp(column_name, "is_onvif") == 0) {
-                has_onvif_column = true;
-                break;
-            }
-        }
-        sqlite3_finalize(check_stmt);
-    }
+    // Use our schema management functions to check for columns
+    bool has_detection_columns = column_exists("streams", "detection_based_recording");
+    bool has_protocol_column = column_exists("streams", "protocol");
+    bool has_onvif_column = column_exists("streams", "is_onvif");
     
     // Prepare SQL based on whether detection columns, protocol column, and is_onvif column exist
     const char *sql;

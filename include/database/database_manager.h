@@ -7,6 +7,7 @@
 #include "database/db_recordings.h"
 #include "database/db_detections.h"
 #include "database/db_streams.h"
+#include "database/db_schema.h"
 
 // This header now just includes all the database module headers
 // All database functionality is now split into logical modules
