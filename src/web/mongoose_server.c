@@ -400,8 +400,8 @@ http_server_handle_t mongoose_server_init(const http_server_config_t *config) {
     }
     
     // Initialize connection pool for connection handling
-    // Use a reasonable number of threads (e.g., number of CPU cores)
-    int num_threads = 3; // Can be adjusted based on system capabilities
+    // Use a higher number of threads to handle multiple concurrent requests
+    int num_threads = 8; // Increased from 3 to handle more concurrent requests
     
     server->conn_pool = connection_pool_init(num_threads);
     if (!server->conn_pool) {
@@ -649,18 +649,28 @@ int http_server_get_stats(http_server_handle_t server, int *active_connections,
 static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_data) {
     http_server_t *server = (http_server_t *)c->fn_data;
 
-    if (ev == MG_EV_ACCEPT) {
-        // New connection accepted
-        log_debug("New connection accepted");
-        
-        // Update statistics
-        pthread_mutex_lock(&server->mutex);
-        server->active_connections++;
-        pthread_mutex_unlock(&server->mutex);
-        
-    // We don't need to add the connection to a pool
-    // The main event loop will handle all events
-    } else if (ev == MG_EV_HTTP_MSG) {
+if (ev == MG_EV_ACCEPT) {
+    // New connection accepted
+    log_debug("New connection accepted");
+    
+    // Update statistics
+    pthread_mutex_lock(&server->mutex);
+    server->active_connections++;
+    pthread_mutex_unlock(&server->mutex);
+    
+    // Add the connection to the connection pool for parallel processing
+    if (server->conn_pool) {
+        if (!connection_pool_add_connection(server->conn_pool, c, server)) {
+            log_error("Failed to add connection to pool");
+            // Continue anyway, the main event loop will handle it
+        } else {
+            log_debug("Connection added to pool for parallel processing");
+            // Return early as the worker thread will handle this connection
+            return;
+        }
+    }
+    // If adding to pool failed or no pool, the main event loop will handle events
+} else if (ev == MG_EV_HTTP_MSG) {
         // HTTP request received
         struct mg_http_message *hm = (struct mg_http_message *)ev_data;
 
