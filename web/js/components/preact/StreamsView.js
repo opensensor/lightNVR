@@ -132,8 +132,8 @@ export function StreamsView() {
       segment: stream.segment || 30,
       detectionThreshold: stream.detection_threshold || 50,
       detectionInterval: stream.detection_interval || 10,
-      preBuffer: stream.pre_buffer || 10,
-      postBuffer: stream.post_buffer || 30,
+      preBuffer: stream.pre_detection_buffer || 10,
+      postBuffer: stream.post_detection_buffer || 30,
       // Map API fields to form fields
       streamingEnabled: stream.streaming_enabled !== undefined ? stream.streaming_enabled : true,
       isOnvif: stream.is_onvif !== undefined ? stream.is_onvif : false,
@@ -192,8 +192,8 @@ export function StreamsView() {
         detection_model: currentStream.detectionModel,
         detection_threshold: currentStream.detectionThreshold,
         detection_interval: parseInt(currentStream.detectionInterval, 10),
-        pre_buffer: parseInt(currentStream.preBuffer, 10),
-        post_buffer: parseInt(currentStream.postBuffer, 10)
+        pre_detection_buffer: parseInt(currentStream.preBuffer, 10),
+        post_detection_buffer: parseInt(currentStream.postBuffer, 10)
       };
       
       const url = isEditing 
