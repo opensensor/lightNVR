@@ -79,6 +79,7 @@ typedef struct {
     bool web_auth_enabled;
     char web_username[32];
     char web_password[32]; // Stored as hash in actual implementation
+    int connection_pool_threads;     // Number of threads in the connection pool
     
     // ONVIF settings
     bool onvif_discovery_enabled;    // Whether ONVIF discovery is enabled

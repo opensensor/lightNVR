@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "core/logger.h"
 #include "video/hls_streaming.h"
@@ -34,32 +35,32 @@ void init_hls_streaming_backend(void) {
  */
 void cleanup_hls_streaming_backend(void) {
     log_info("Cleaning up HLS streaming backend...");
+    
+    // Create a local copy of all stream names that need to be stopped
+    char stream_names[MAX_STREAMS][MAX_STREAM_NAME];
+    int stream_count = 0;
+    
     pthread_mutex_lock(&hls_contexts_mutex);
-
-    // Stop all running streams
+    
+    // Collect all stream names first
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (streaming_contexts[i]) {
-            log_info("Stopping HLS stream in slot %d: %s", i,
-                    streaming_contexts[i]->config.name);
-
-            // Copy the stream name for later use
-            char stream_name[MAX_STREAM_NAME];
-            strncpy(stream_name, streaming_contexts[i]->config.name,
-                    MAX_STREAM_NAME - 1);
-            stream_name[MAX_STREAM_NAME - 1] = '\0';
-            
-            // Unlock before stopping the stream to prevent deadlocks
-            pthread_mutex_unlock(&hls_contexts_mutex);
-            
-            // Stop the stream
-            stop_hls_stream(stream_name);
-            
-            // Re-lock for the next iteration
-            pthread_mutex_lock(&hls_contexts_mutex);
+            strncpy(stream_names[stream_count], streaming_contexts[i]->config.name, MAX_STREAM_NAME - 1);
+            stream_names[stream_count][MAX_STREAM_NAME - 1] = '\0';
+            stream_count++;
         }
     }
-
+    
     pthread_mutex_unlock(&hls_contexts_mutex);
+    
+    // Now stop each stream one by one
+    for (int i = 0; i < stream_count; i++) {
+        log_info("Stopping HLS stream: %s", stream_names[i]);
+        stop_hls_stream(stream_names[i]);
+        
+        // Add a small delay between stopping streams to avoid resource contention
+        usleep(100000); // 100ms
+    }
     
     // Clean up the HLS contexts
     cleanup_hls_contexts();

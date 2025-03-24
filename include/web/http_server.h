@@ -40,6 +40,7 @@ typedef struct {
     int connection_timeout;         // Connection timeout in seconds
     bool daemon_mode;               // Daemon mode
     char pid_file[256];             // PID file path
+    int connection_pool_threads;    // Number of threads in the connection pool
 } http_server_config_t;
 
 /**

@@ -9,6 +9,18 @@
 #include <errno.h>
 #include <time.h>
 #include <stdbool.h>
+#include <sys/time.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <pthread.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <time.h>
+#include <stdbool.h>
 
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
@@ -208,6 +220,17 @@ void *hls_stream_thread(void *arg) {
             }
         }
 
+        // Check if we should exit before potentially blocking on av_read_frame
+        if (!ctx->running) {
+            log_info("HLS streaming thread for %s detected shutdown before read", stream_name);
+            break;
+        }
+        
+        // Periodically check if we should exit
+        // This is a safer approach than using AVFMT_FLAG_NONBLOCK which can cause issues
+        struct timespec ts = {0, 10000000}; // 10ms
+        nanosleep(&ts, NULL);
+        
         ret = av_read_frame(input_ctx, pkt);
 
         if (ret < 0) {
@@ -340,10 +363,12 @@ void *hls_stream_thread(void *arg) {
         avformat_close_input(&input_ctx);
     }
 
-    // When done, close writer
-    if (ctx->hls_writer) {
-        hls_writer_close(ctx->hls_writer);
-        ctx->hls_writer = NULL;
+    // When done, close writer - use a local copy to avoid double free
+    hls_writer_t *writer_to_close = ctx->hls_writer;
+    ctx->hls_writer = NULL;  // Clear the pointer first to prevent double close
+    
+    if (writer_to_close) {
+        hls_writer_close(writer_to_close);
     }
 
     log_info("HLS streaming thread for stream %s exited", stream_name);

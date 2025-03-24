@@ -583,7 +583,8 @@ int main(int argc, char *argv[]) {
         .ssl_enabled = false,
         .max_connections = 100,
         .connection_timeout = 30,
-        .daemon_mode = daemon_mode
+        .daemon_mode = daemon_mode,
+        .connection_pool_threads = config.connection_pool_threads  // Use the value from the configuration
     };
     
     // Set CORS allowed origins, methods, and headers

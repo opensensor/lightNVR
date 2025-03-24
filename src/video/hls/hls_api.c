@@ -275,11 +275,14 @@ int stop_hls_stream(const char *stream_name) {
     // Unlock before joining thread to prevent deadlocks
     pthread_mutex_unlock(&hls_contexts_mutex);
 
-    // Join thread with timeout
-    int join_result = pthread_join_with_timeout(thread_to_join, NULL, 5);
+    // Join thread with a longer timeout (10 seconds instead of 5)
+    int join_result = pthread_join_with_timeout(thread_to_join, NULL, 10);
     if (join_result != 0) {
         log_error("Failed to join thread for stream %s (error: %d), will continue cleanup",
                  stream_name, join_result);
+        
+        // Even if we couldn't join the thread, we need to clean up resources
+        // The thread will eventually exit when it checks ctx->running
     } else {
         log_info("Successfully joined thread for stream %s", stream_name);
     }
@@ -289,18 +292,20 @@ int stop_hls_stream(const char *stream_name) {
 
     // Verify context is still valid
     if (index >= 0 && index < MAX_STREAMS && streaming_contexts[index] == ctx) {
-        // Cleanup resources
-        if (ctx->hls_writer) {
-            log_info("Closing HLS writer for stream %s", stream_name);
-            hls_writer_close(ctx->hls_writer);
-            ctx->hls_writer = NULL;
-        }
+        // Cleanup resources - make a local copy of the writer pointer
+        hls_writer_t *writer_to_close = ctx->hls_writer;
+        ctx->hls_writer = NULL;  // Clear the pointer first to prevent double close
         
-        // No need to stop stream reader since we're using a single thread approach
-
-        // Free context and clear slot
-        free(ctx);
+        // Free context and clear slot before closing the writer
+        // This ensures no other thread can access the context while we're closing the writer
         streaming_contexts[index] = NULL;
+        free(ctx);
+        
+        // Now close the writer after the context has been freed
+        if (writer_to_close) {
+            log_info("Closing HLS writer for stream %s", stream_name);
+            hls_writer_close(writer_to_close);
+        }
 
         log_info("Successfully cleaned up resources for stream %s", stream_name);
     } else {

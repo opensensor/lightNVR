@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <stdbool.h>
+#include <time.h>
+#include <unistd.h>
 
 /**
  * @brief Initialize a connection pool
@@ -145,9 +147,20 @@ void connection_pool_shutdown(connection_pool_t *pool) {
         return;
     }
     
-    // Set shutdown flag
+    // Set shutdown flag and mark all connections as closing
     pthread_mutex_lock(&pool->mutex);
     pool->shutdown = true;
+    
+    // Mark all connections in the queue as closing
+    conn_node_t *current = pool->conn_queue;
+    while (current != NULL) {
+        if (current->connection) {
+            current->connection->is_closing = 1;
+        }
+        current = current->next;
+    }
+    
+    // Signal all threads to wake up and check the shutdown flag
     pthread_cond_broadcast(&pool->cond);
     pthread_mutex_unlock(&pool->mutex);
     
@@ -170,23 +183,31 @@ void connection_pool_destroy(connection_pool_t *pool) {
         return;
     }
     
+    log_debug("Destroying connection pool");
+    
     // Free resources
     if (pool->threads) {
         free(pool->threads);
+        pool->threads = NULL;
     }
     
     // Free connection queue
     conn_node_t *current = pool->conn_queue;
     while (current != NULL) {
         conn_node_t *next = current->next;
+        // Don't free the connection or server, they're managed elsewhere
+        current->connection = NULL;
+        current->server = NULL;
         free(current);
         current = next;
     }
+    pool->conn_queue = NULL;
     
     pthread_mutex_destroy(&pool->mutex);
     pthread_cond_destroy(&pool->cond);
     
     free(pool);
+    log_debug("Connection pool destroyed");
 }
 
 /**
@@ -202,14 +223,22 @@ void *connection_worker_thread(void *arg) {
         // Wait for connection
         pthread_mutex_lock(&pool->mutex);
         
+        // Check if pool is shutting down immediately
+        if (pool->shutdown) {
+            pthread_mutex_unlock(&pool->mutex);
+            log_debug("Worker thread exiting due to shutdown");
+            pthread_exit(NULL);
+        }
+        
         // Wait until a connection is available or shutdown
         while (pool->conn_queue == NULL && !pool->shutdown) {
             pthread_cond_wait(&pool->cond, &pool->mutex);
         }
         
-        // Check if pool is shutting down
-        if (pool->shutdown && pool->conn_queue == NULL) {
+        // Check again if pool is shutting down after waiting
+        if (pool->shutdown) {
             pthread_mutex_unlock(&pool->mutex);
+            log_debug("Worker thread exiting after wait due to shutdown");
             pthread_exit(NULL);
         }
         
@@ -232,17 +261,29 @@ void *connection_worker_thread(void *arg) {
             // Free the node (but not the connection)
             free(node);
             
-            // Handle the connection events in this thread
+            // Mark this connection as being handled by a worker thread
+            c->is_resp = 1;
+            
             // The connection will remain associated with this thread until closed
+            // We don't need to do anything here, as the main event loop will handle all events
+            // and call the event handler for this connection
+            
+            // Wait for the connection to be closed, but also check the shutdown flag
             while (c->is_closing == 0) {
-                // Process any pending events for this connection
-                // This is where we would handle HTTP requests, etc.
-                // For now, we'll just sleep a bit to avoid busy-waiting
-                usleep(10000); // 10ms
+                // Check if the pool is shutting down
+                pthread_mutex_lock(&pool->mutex);
+                bool shutdown = pool->shutdown;
+                pthread_mutex_unlock(&pool->mutex);
                 
-                // Instead of polling individual connections, we'll just sleep
-                // The main event loop will handle all events
-                usleep(10000); // 10ms
+                if (shutdown) {
+                    // Mark the connection as closing and break the loop
+                    c->is_closing = 1;
+                    break;
+                }
+                
+                // Don't poll the connection directly, just sleep
+                // The main event loop will handle events for this connection
+                usleep(1000); // 1ms
             }
             
             log_debug("Connection closed by worker thread");

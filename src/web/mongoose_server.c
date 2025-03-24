@@ -400,8 +400,8 @@ http_server_handle_t mongoose_server_init(const http_server_config_t *config) {
     }
     
     // Initialize connection pool for connection handling
-    // Use a higher number of threads to handle multiple concurrent requests
-    int num_threads = 8; // Increased from 3 to handle more concurrent requests
+    // Use the number of threads specified in the configuration, or a default value
+    int num_threads = config->connection_pool_threads > 0 ? config->connection_pool_threads : 3;
     
     server->conn_pool = connection_pool_init(num_threads);
     if (!server->conn_pool) {
@@ -511,7 +511,8 @@ void http_server_stop(http_server_handle_t server) {
     }
 
     // Give connections time to close gracefully
-    sleep(1);
+    // Use a longer timeout to ensure all connections are closed
+    sleep(2);
 
     // Free Mongoose event manager
     mg_mgr_free(server->mgr);
@@ -536,6 +537,7 @@ void http_server_destroy(http_server_handle_t server) {
     if (server->conn_pool) {
         log_info("Shutting down connection pool");
         connection_pool_shutdown(server->conn_pool);
+        server->conn_pool = NULL;  // Avoid double-free
         // Note: connection_pool_shutdown also frees the memory
     }
     
@@ -549,15 +551,18 @@ void http_server_destroy(http_server_handle_t server) {
     // Free resources
     if (server->mgr) {
         free(server->mgr);
+        server->mgr = NULL;  // Avoid double-free
     }
 
     if (server->handlers) {
         free(server->handlers);
+        server->handlers = NULL;  // Avoid double-free
     }
 
     // Free route table
     free_route_table();
 
+    // Finally free the server structure
     free(server);
     log_info("HTTP server destroyed");
 }
@@ -843,12 +848,12 @@ static void *mongoose_server_event_loop(void *arg) {
     // Run event loop until server is stopped
     int poll_count = 0;
     while (server->running) {
-        // Poll for events with a 1000ms timeout
-        mg_mgr_poll(server->mgr, 1000);
+        // Poll for events with a shorter timeout to be more responsive
+        mg_mgr_poll(server->mgr, 100);
         poll_count++;
         
-        // Log every 10 polls
-        if (poll_count % 10 == 0) {
+        // Log every 100 polls (approximately every 10 seconds)
+        if (poll_count % 100 == 0) {
             log_debug("Mongoose event loop poll count: %d", poll_count);
         }
     }

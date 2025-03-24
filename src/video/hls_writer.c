@@ -649,15 +649,16 @@ void hls_writer_close(hls_writer_t *writer) {
     strncpy(stream_name, writer->stream_name, MAX_STREAM_NAME - 1);
     stream_name[MAX_STREAM_NAME - 1] = '\0';
 
-    // Check if already closed
-    if (!writer->output_ctx) {
-        log_warn("Attempted to close already closed HLS writer for stream %s", stream_name);
-        return;
-    }
-
     // Use mutex to prevent concurrent access
     static pthread_mutex_t close_mutex = PTHREAD_MUTEX_INITIALIZER;
     pthread_mutex_lock(&close_mutex);
+
+    // Check if already closed - AFTER acquiring the mutex to prevent race conditions
+    if (!writer->output_ctx) {
+        log_warn("Attempted to close already closed HLS writer for stream %s", stream_name);
+        pthread_mutex_unlock(&close_mutex);
+        return;
+    }
 
     // Create a local copy of the output context
     AVFormatContext *local_output_ctx = writer->output_ctx;
