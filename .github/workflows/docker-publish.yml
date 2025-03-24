@@ -85,15 +85,8 @@ jobs:
           labels: ${{ needs.setup.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          outputs: type=docker,dest=/tmp/${{ steps.platform-name.outputs.short_name }}-image.tar
 
-      - name: Upload image artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: ${{ steps.platform-name.outputs.short_name }}-image
-          path: /tmp/${{ steps.platform-name.outputs.short_name }}-image.tar
-          retention-days: 1
-
+  # Final job to create and push the multi-platform manifest
   create-manifest:
     needs: [setup, build]
     runs-on: ubuntu-latest
@@ -115,51 +108,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Generate short names for platforms
-      - name: Generate platform short names
-        id: platform-names
-        run: |
-          platforms='${{ needs.setup.outputs.platforms }}'
-          short_names=()
-          for platform in $(echo $platforms | jq -r '.[]'); do
-            short_name=$(echo $platform | sed -e 's/linux\///' -e 's/\//-/')
-            short_names+=("$short_name")
-          done
-          echo "short_names=${short_names[@]}" >> $GITHUB_OUTPUT
-
-      # Download platform artifacts and load images
-      - name: Download and load platform images
-        run: |
-          platforms='${{ needs.setup.outputs.platforms }}'
-          for platform in $(echo $platforms | jq -r '.[]'); do
-            short_name=$(echo $platform | sed -e 's/linux\///' -e 's/\//-/')
-            echo "Downloading $short_name image"
-            mkdir -p /tmp/$short_name
-            curl -sSL -o /tmp/$short_name-image.tar $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts/$short_name-image
-            echo "Loading $short_name image"
-            docker load --input /tmp/$short_name-image.tar
-          done
-
       # Create and push manifest
       - name: Create and push multi-platform manifest
         run: |
           IMAGE_NAME="${{ env.REGISTRY }}/${{ needs.setup.outputs.lowercase_image_name }}"
           TAG="${{ github.ref_name || 'latest' }}"
           
-          # Push individual images if not already pushed
+          # Setup manifest commands
           platforms='${{ needs.setup.outputs.platforms }}'
-          manifest_args=()
+          manifest_args=""
           
           for platform in $(echo $platforms | jq -r '.[]'); do
             short_name=$(echo $platform | sed -e 's/linux\///' -e 's/\//-/')
             platform_tag="${IMAGE_NAME}-${short_name}:${TAG}"
-            docker push "${platform_tag}"
-            manifest_args+=("${platform_tag}")
+            manifest_args="${manifest_args} ${platform_tag}"
           done
           
           # Create and push the manifest
-          docker manifest create "${IMAGE_NAME}:${TAG}" "${manifest_args[@]}"
-          docker manifest create "${IMAGE_NAME}:latest" "${manifest_args[@]}"
+          docker manifest create "${IMAGE_NAME}:${TAG}" ${manifest_args}
+          docker manifest create "${IMAGE_NAME}:latest" ${manifest_args}
           
           docker manifest push "${IMAGE_NAME}:${TAG}"
           docker manifest push "${IMAGE_NAME}:latest"
