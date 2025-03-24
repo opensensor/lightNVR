@@ -5,12 +5,20 @@ FROM debian:bookworm-slim AS builder
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install build dependencies
+# Install dependencies including required build tools
 RUN apt-get update && apt-get install -y \
     git cmake build-essential pkg-config \
     libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
-    libcurl4-openssl-dev libmbedtls-dev \
-    sqlite3 libsqlite3-dev && \
+    libcurl4-openssl-dev sqlite3 libsqlite3-dev && \
     rm -rf /var/lib/apt/lists/*
+# Build MbedTLS from source
+WORKDIR /opt
+RUN git clone --branch v3.4.0 --depth 1 https://github.com/Mbed-TLS/mbedtls.git && \
+    cd mbedtls && mkdir build && cd build && \
+    cmake -DCMAKE_INSTALL_PREFIX=/usr/local .. && \
+    make -j$(nproc) && make install && \
+    cd /opt && rm -rf mbedtls
+
 
 # Copy current directory contents into container
 WORKDIR /opt
