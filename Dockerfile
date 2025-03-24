@@ -4,25 +4,13 @@ FROM debian:bookworm-slim AS builder
 # Set non-interactive mode
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install build dependencies including ALL mbedtls-related packages
+# Install build dependencies
 RUN apt-get update && apt-get install -y \
     git cmake build-essential pkg-config \
     libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
     libcurl4-openssl-dev sqlite3 libsqlite3-dev \
-    libmbedtls-dev libmbedcrypto3 libmbedtls14 libmbedx509-1 && \
+    libmbedtls-dev && \
     rm -rf /var/lib/apt/lists/*
-
-# Create pkg-config files manually if they don't exist
-RUN mkdir -p /usr/lib/pkgconfig && \
-    if [ ! -f /usr/lib/pkgconfig/mbedtls.pc ]; then \
-        echo "prefix=/usr\nexec_prefix=\${prefix}\nlibdir=\${exec_prefix}/lib\nincludedir=\${prefix}/include\n\nName: mbedtls\nDescription: MbedTLS Library\nVersion: 2.28.0\nLibs: -L\${libdir} -lmbedtls\nCflags: -I\${includedir}" > /usr/lib/pkgconfig/mbedtls.pc; \
-    fi && \
-    if [ ! -f /usr/lib/pkgconfig/mbedcrypto.pc ]; then \
-        echo "prefix=/usr\nexec_prefix=\${prefix}\nlibdir=\${exec_prefix}/lib\nincludedir=\${prefix}/include\n\nName: mbedcrypto\nDescription: MbedTLS Crypto Library\nVersion: 2.28.0\nLibs: -L\${libdir} -lmbedcrypto\nCflags: -I\${includedir}" > /usr/lib/pkgconfig/mbedcrypto.pc; \
-    fi && \
-    if [ ! -f /usr/lib/pkgconfig/mbedx509.pc ]; then \
-        echo "prefix=/usr\nexec_prefix=\${prefix}\nlibdir=\${exec_prefix}/lib\nincludedir=\${prefix}/include\n\nName: mbedx509\nDescription: MbedTLS X509 Library\nVersion: 2.28.0\nLibs: -L\${libdir} -lmbedx509\nCflags: -I\${includedir}" > /usr/lib/pkgconfig/mbedx509.pc; \
-    fi
 
 # Fetch external dependencies
 RUN mkdir -p /opt/external && \
@@ -37,14 +25,24 @@ RUN mkdir -p /opt/external && \
 WORKDIR /opt
 COPY . .
 
-# Check if mbedtls libraries and pkg-config files exist
-RUN ls -la /usr/lib/x86_64-linux-gnu/libmbed* || true && \
-    find /usr -name "*.pc" | grep mbed || true && \
-    pkg-config --list-all | grep mbed || true
+# Create pkg-config files for MbedTLS
+RUN mkdir -p /usr/lib/pkgconfig && \
+    echo "prefix=/usr\nexec_prefix=\${prefix}\nlibdir=\${exec_prefix}/lib/x86_64-linux-gnu\nincludedir=\${prefix}/include\n\nName: mbedtls\nDescription: MbedTLS Library\nVersion: 2.28.0\nLibs: -L\${libdir} -lmbedtls\nCflags: -I\${includedir}" > /usr/lib/pkgconfig/mbedtls.pc && \
+    echo "prefix=/usr\nexec_prefix=\${prefix}\nlibdir=\${exec_prefix}/lib/x86_64-linux-gnu\nincludedir=\${prefix}/include\n\nName: mbedcrypto\nDescription: MbedTLS Crypto Library\nVersion: 2.28.0\nLibs: -L\${libdir} -lmbedcrypto\nCflags: -I\${includedir}" > /usr/lib/pkgconfig/mbedcrypto.pc && \
+    echo "prefix=/usr\nexec_prefix=\${prefix}\nlibdir=\${exec_prefix}/lib/x86_64-linux-gnu\nincludedir=\${prefix}/include\n\nName: mbedx509\nDescription: MbedTLS X509 Library\nVersion: 2.28.0\nLibs: -L\${libdir} -lmbedx509\nCflags: -I\${includedir}" > /usr/lib/pkgconfig/mbedx509.pc && \
+    chmod 644 /usr/lib/pkgconfig/mbedtls.pc /usr/lib/pkgconfig/mbedcrypto.pc /usr/lib/pkgconfig/mbedx509.pc
 
-# Build the application
+# Make a slight modification to the install script to skip systemd
+RUN if grep -q "systemctl" scripts/install.sh; then \
+        sed -i 's/systemctl/#systemctl/g' scripts/install.sh; \
+    fi
+
+# Clean any existing build files and build the application
 RUN mkdir -p /etc/lightnvr /var/lib/lightnvr /var/log/lightnvr /var/run/lightnvr /var/lib/lightnvr/recordings && \
     chmod -R 777 /var/lib/lightnvr /var/log/lightnvr /var/run/lightnvr && \
+    # Clean any existing build files
+    rm -rf build/ && \
+    # Build the application
     PKG_CONFIG_PATH=/usr/lib/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:$PKG_CONFIG_PATH \
     ./scripts/build.sh --release --with-sod && \
     ./scripts/install.sh --prefix=/
@@ -57,7 +55,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Install only necessary runtime dependencies
 RUN apt-get update && apt-get install -y \
     libavcodec59 libavformat59 libavutil57 libswscale6 \
-    libcurl4 libmbedtls14 libmbedcrypto3 libmbedx509-1 sqlite3 && \
+    libcurl4 libmbedtls14 sqlite3 && \
     rm -rf /var/lib/apt/lists/*
 
 # Create necessary directories in runtime
