@@ -367,39 +367,32 @@ function playSegment(index, startTime = null) {
     // Update cursor position
     updateCursorPosition();
     
-    // Create manifest URL with start time
-    const startDate = new Date(segment.start_timestamp * 1000);
-    const manifestUrl = `/api/timeline/manifest?stream=${encodeURIComponent(selectedStream)}&start=${encodeURIComponent(startDate.toISOString())}`;
+    // Use direct MP4 playback instead of HLS
+    const recordingUrl = `/api/recordings/play/${segment.id}`;
     
-    // Load and play the video
+    // Clean up any existing HLS player
     if (hlsPlayer) {
-        hlsPlayer.loadSource(manifestUrl);
-        hlsPlayer.on(Hls.Events.MANIFEST_PARSED, function() {
-            videoPlayer.currentTime = seekTime;
-            videoPlayer.play().catch(error => {
-                console.error('Error playing video:', error);
-                showStatusMessage('Error playing video: ' + error.message, 'error');
-            });
-            isPlaying = true;
-            updatePlayButton();
-            
-            // Start playback tracking
-            startPlaybackTracking();
-        });
-    } else {
-        // Fallback for browsers with native HLS support
-        videoPlayer.src = manifestUrl;
-        videoPlayer.currentTime = seekTime;
-        videoPlayer.play().catch(error => {
-            console.error('Error playing video:', error);
-            showStatusMessage('Error playing video: ' + error.message, 'error');
-        });
-        isPlaying = true;
-        updatePlayButton();
-        
-        // Start playback tracking
-        startPlaybackTracking();
+        hlsPlayer.destroy();
+        hlsPlayer = null;
     }
+    
+    // Set the video source directly to the MP4 file
+    videoPlayer.src = recordingUrl;
+    videoPlayer.currentTime = seekTime;
+    
+    // Play the video
+    videoPlayer.play().catch(error => {
+        console.error('Error playing video:', error);
+        showStatusMessage('Error playing video: ' + error.message, 'error');
+    });
+    
+    isPlaying = true;
+    updatePlayButton();
+    
+    // Start playback tracking
+    startPlaybackTracking();
+    
+    console.log(`Playing segment ${index} (ID: ${segment.id}) from ${seekTime}s`);
 }
 
 /**
@@ -411,13 +404,17 @@ function startPlaybackTracking() {
         clearInterval(playbackInterval);
     }
     
-    // Update every 500ms
+    // Update more frequently (every 100ms) for smoother cursor movement
     playbackInterval = setInterval(() => {
-        if (!isPlaying || currentSegmentIndex < 0) {
+        if (!isPlaying || currentSegmentIndex < 0 || !videoPlayer) {
             return;
         }
         
         const segment = timelineSegments[currentSegmentIndex];
+        if (!segment) {
+            console.error('Invalid segment at index', currentSegmentIndex);
+            return;
+        }
         
         // Calculate current timestamp based on video currentTime
         currentTime = segment.start_timestamp + videoPlayer.currentTime;
@@ -428,8 +425,12 @@ function startPlaybackTracking() {
         // Update cursor position
         updateCursorPosition();
         
+        // Log current playback position for debugging
+        console.log(`Playback position: ${videoPlayer.currentTime.toFixed(2)}s / ${segment.duration}s`);
+        
         // Check if we've reached the end of the segment
         if (videoPlayer.currentTime >= segment.duration) {
+            console.log('End of segment reached, trying to play next segment');
             // Try to play the next segment
             if (currentSegmentIndex < timelineSegments.length - 1) {
                 playSegment(currentSegmentIndex + 1);
@@ -438,7 +439,26 @@ function startPlaybackTracking() {
                 pausePlayback();
             }
         }
-    }, 500);
+    }, 100);
+    
+    // Add timeupdate event listener for more accurate tracking
+    videoPlayer.addEventListener('timeupdate', function() {
+        if (currentSegmentIndex < 0 || !videoPlayer) {
+            return;
+        }
+        
+        const segment = timelineSegments[currentSegmentIndex];
+        if (!segment) return;
+        
+        // Calculate current timestamp based on video currentTime
+        currentTime = segment.start_timestamp + videoPlayer.currentTime;
+        
+        // Update time display
+        updateTimeDisplay();
+        
+        // Update cursor position
+        updateCursorPosition();
+    });
 }
 
 /**
@@ -547,13 +567,39 @@ function initVideoPlayer() {
     
     // Create video element
     videoPlayer = document.createElement('video');
-    videoPlayer.controls = false;
+    videoPlayer.controls = true; // Enable native controls for better user experience
     videoPlayer.autoplay = false;
     videoPlayer.muted = false;
     videoPlayer.playsInline = true;
+    videoPlayer.style.width = '100%';
+    videoPlayer.style.height = 'auto';
     
     // Add to container
     playerContainer.appendChild(videoPlayer);
+    
+    // Create custom controls container
+    const controlsContainer = document.createElement('div');
+    controlsContainer.className = 'video-controls';
+    controlsContainer.style.width = '100%';
+    controlsContainer.style.padding = '10px 0';
+    controlsContainer.style.display = 'flex';
+    controlsContainer.style.alignItems = 'center';
+    controlsContainer.style.justifyContent = 'center';
+    
+    // Create progress bar
+    const progressBar = document.createElement('input');
+    progressBar.type = 'range';
+    progressBar.min = 0;
+    progressBar.max = 100;
+    progressBar.value = 0;
+    progressBar.style.width = '80%';
+    progressBar.style.margin = '0 10px';
+    
+    // Add progress bar to controls
+    controlsContainer.appendChild(progressBar);
+    
+    // Add controls to container
+    playerContainer.appendChild(controlsContainer);
     
     // Initialize HLS.js if supported
     if (Hls.isSupported()) {
@@ -619,19 +665,6 @@ function initVideoPlayer() {
                 }
             }
         });
-        
-        // Add more event listeners for debugging
-        hlsPlayer.on(Hls.Events.MANIFEST_PARSED, function() {
-            console.log('HLS manifest parsed successfully');
-        });
-        
-        hlsPlayer.on(Hls.Events.LEVEL_LOADED, function() {
-            console.log('HLS level loaded');
-        });
-        
-        hlsPlayer.on(Hls.Events.FRAG_LOADED, function() {
-            console.log('HLS fragment loaded');
-        });
     } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
         // For browsers with native HLS support (Safari)
         console.log('Using native HLS support');
@@ -646,6 +679,7 @@ function initVideoPlayer() {
     });
     
     videoPlayer.addEventListener('ended', function() {
+        console.log('Video ended event triggered');
         // Try to play the next segment
         if (currentSegmentIndex < timelineSegments.length - 1) {
             playSegment(currentSegmentIndex + 1);
@@ -658,6 +692,28 @@ function initVideoPlayer() {
     // Add more video event listeners for debugging
     videoPlayer.addEventListener('canplay', function() {
         console.log('Video can play');
+        
+        // Update segment duration if needed
+        if (currentSegmentIndex >= 0 && videoPlayer.duration) {
+            const segment = timelineSegments[currentSegmentIndex];
+            if (segment && segment.duration === 0) {
+                console.log(`Updating segment duration from 0 to ${videoPlayer.duration}`);
+                segment.duration = videoPlayer.duration;
+            }
+        }
+    });
+    
+    videoPlayer.addEventListener('loadedmetadata', function() {
+        console.log('Video metadata loaded, duration:', videoPlayer.duration);
+        
+        // Update segment duration if needed
+        if (currentSegmentIndex >= 0 && videoPlayer.duration) {
+            const segment = timelineSegments[currentSegmentIndex];
+            if (segment) {
+                console.log(`Setting segment duration to ${videoPlayer.duration}`);
+                segment.duration = videoPlayer.duration;
+            }
+        }
     });
     
     videoPlayer.addEventListener('waiting', function() {
@@ -665,7 +721,23 @@ function initVideoPlayer() {
     });
     
     videoPlayer.addEventListener('playing', function() {
-        console.log('Video playing');
+        console.log('Video playing, duration:', videoPlayer.duration);
+    });
+    
+    // Update progress bar during playback
+    videoPlayer.addEventListener('timeupdate', function() {
+        if (currentSegmentIndex >= 0 && videoPlayer.duration) {
+            const percent = (videoPlayer.currentTime / videoPlayer.duration) * 100;
+            progressBar.value = percent;
+        }
+    });
+    
+    // Allow seeking with progress bar
+    progressBar.addEventListener('input', function() {
+        if (videoPlayer.duration) {
+            const seekTime = (progressBar.value / 100) * videoPlayer.duration;
+            videoPlayer.currentTime = seekTime;
+        }
     });
 }
 

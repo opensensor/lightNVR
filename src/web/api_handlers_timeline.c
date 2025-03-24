@@ -437,27 +437,11 @@ int create_timeline_manifest(const timeline_segment_t *segments, int segment_cou
         start_segment_index = 0;
     }
     
-    // Write segments to manifest
-    for (int i = start_segment_index; i < segment_count; i++) {
-        // Calculate duration
-        double duration = difftime(segments[i].end_time, segments[i].start_time);
-        
-        // Check if the file exists
-        struct stat file_st;
-        if (stat(segments[i].file_path, &file_st) != 0) {
-            log_warn("Recording file not found: %s, skipping in manifest", segments[i].file_path);
-            continue;
-        }
-        
-        // Write segment info with more precise duration
-        fprintf(manifest, "#EXTINF:%.6f,\n", duration);
-        
-        // Add additional HLS tags to help with MP4 playback
-        fprintf(manifest, "#EXT-X-BYTERANGE:%lld@0\n", (long long)file_st.st_size);
-        
-        // Use the direct file path for the recording
-        fprintf(manifest, "/api/recordings/play/%llu\n", (unsigned long long)segments[i].id);
-    }
+    // Create a single segment for the entire timeline
+    // This simplifies playback and avoids issues with segment transitions
+    fprintf(manifest, "#EXTINF:%.6f,\n", max_duration);
+    fprintf(manifest, "/api/timeline/play?stream=%s&start=%ld\n", 
+            segments[0].stream_name, (long)start_time);
     
     // Write manifest end
     fprintf(manifest, "#EXT-X-ENDLIST\n");
@@ -666,13 +650,138 @@ void mg_handle_timeline_manifest(struct mg_connection *c, struct mg_http_message
 void mg_handle_timeline_playback(struct mg_connection *c, struct mg_http_message *hm) {
     log_info("Handling GET /api/timeline/play request");
     
-    // This endpoint redirects to the manifest endpoint
-    // It's a convenience endpoint for the frontend
+    // Parse query parameters
+    char query_string[512] = {0};
+    if (hm->query.len > 0 && hm->query.len < sizeof(query_string)) {
+        memcpy(query_string, mg_str_get_ptr(&hm->query), hm->query.len);
+        query_string[hm->query.len] = '\0';
+        log_info("Query string: %s", query_string);
+    }
+    
+    // Extract parameters
+    char stream_name[MAX_STREAM_NAME] = {0};
+    char start_time_str[64] = {0};
+    
+    // Parse query string
+    char *param = strtok(query_string, "&");
+    while (param) {
+        if (strncmp(param, "stream=", 7) == 0) {
+            strncpy(stream_name, param + 7, sizeof(stream_name) - 1);
+        } else if (strncmp(param, "start=", 6) == 0) {
+            strncpy(start_time_str, param + 6, sizeof(start_time_str) - 1);
+        }
+        param = strtok(NULL, "&");
+    }
+    
+    // Check required parameters
+    if (stream_name[0] == '\0') {
+        log_error("Missing required parameter: stream");
+        mg_send_json_error(c, 400, "Missing required parameter: stream");
+        return;
+    }
+    
+    // Parse start time
+    time_t start_time = 0;
+    if (start_time_str[0] != '\0') {
+        // Try parsing as a timestamp first
+        char *endptr;
+        start_time = strtol(start_time_str, &endptr, 10);
+        
+        // If not a valid number, try parsing as a date string
+        if (*endptr != '\0') {
+            // URL-decode the time string (replace %3A with :)
+            char decoded_start_time[64] = {0};
+            strncpy(decoded_start_time, start_time_str, sizeof(decoded_start_time) - 1);
+            
+            // Replace %3A with :
+            char *pos = decoded_start_time;
+            while ((pos = strstr(pos, "%3A")) != NULL) {
+                *pos = ':';
+                memmove(pos + 1, pos + 3, strlen(pos + 3) + 1);
+            }
+            
+            log_info("Parsing start time string (decoded): %s", decoded_start_time);
+            
+            struct tm tm = {0};
+            // Try different time formats
+            if (strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%S", &tm) != NULL ||
+                strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%S.000Z", &tm) != NULL ||
+                strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%S.000", &tm) != NULL ||
+                strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%SZ", &tm) != NULL) {
+                
+                // Set tm_isdst to -1 to let mktime determine if DST is in effect
+                tm.tm_isdst = -1;
+                start_time = mktime(&tm);
+                log_info("Parsed start time: %ld", (long)start_time);
+            } else {
+                log_error("Failed to parse start time string: %s", decoded_start_time);
+                mg_send_json_error(c, 400, "Invalid start time format");
+                return;
+            }
+        }
+    } else {
+        // Default to 24 hours ago
+        start_time = time(NULL) - (24 * 60 * 60);
+    }
+    
+    // Get timeline segments
+    timeline_segment_t *segments = (timeline_segment_t *)malloc(MAX_TIMELINE_SEGMENTS * sizeof(timeline_segment_t));
+    if (!segments) {
+        log_error("Failed to allocate memory for timeline segments");
+        mg_send_json_error(c, 500, "Failed to allocate memory for timeline segments");
+        return;
+    }
+    
+    // Get segments for the next 24 hours from start time
+    time_t end_time = start_time + (24 * 60 * 60);
+    int count = get_timeline_segments(stream_name, start_time, end_time, segments, MAX_TIMELINE_SEGMENTS);
+    
+    if (count <= 0) {
+        log_error("No timeline segments found for stream %s", stream_name);
+        free(segments);
+        mg_send_json_error(c, 404, "No recordings found for the specified time range");
+        return;
+    }
+    
+    // Find the segment that contains the start time
+    int start_segment_index = -1;
+    for (int i = 0; i < count; i++) {
+        if (start_time >= segments[i].start_time && start_time <= segments[i].end_time) {
+            start_segment_index = i;
+            break;
+        }
+    }
+    
+    // If no segment contains the start time, use the first segment after the start time
+    if (start_segment_index == -1) {
+        for (int i = 0; i < count; i++) {
+            if (start_time < segments[i].start_time) {
+                start_segment_index = i;
+                break;
+            }
+        }
+    }
+    
+    // If still no segment found, use the first segment
+    if (start_segment_index == -1 && count > 0) {
+        start_segment_index = 0;
+    }
+    
+    // Get the recording ID for the segment
+    uint64_t recording_id = segments[start_segment_index].id;
+    
+    // Free segments
+    free(segments);
+    
+    // Redirect to the recording playback endpoint
+    char redirect_url[256];
+    snprintf(redirect_url, sizeof(redirect_url), "/api/recordings/play/%llu", (unsigned long long)recording_id);
+    
+    log_info("Redirecting to recording playback: %s", redirect_url);
     
     // Send redirect response
     mg_printf(c, "HTTP/1.1 302 Found\r\n");
-    mg_printf(c, "Location: /api/timeline/manifest%.*s\r\n", (int)hm->query.len, mg_str_get_ptr(&hm->query));
+    mg_printf(c, "Location: %s\r\n", redirect_url);
+    mg_printf(c, "Content-Length: 0\r\n");
     mg_printf(c, "\r\n");
-    
-    log_info("Redirected to /api/timeline/manifest");
 }

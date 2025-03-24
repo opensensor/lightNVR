@@ -116,17 +116,17 @@ jobs:
           
           # Setup manifest commands
           platforms='${{ needs.setup.outputs.platforms }}'
-          manifest_args=""
+          manifest_create_args=""
           
           for platform in $(echo $platforms | jq -r '.[]'); do
             short_name=$(echo $platform | sed -e 's/linux\///' -e 's/\//-/')
             platform_tag="${IMAGE_NAME}-${short_name}:${TAG}"
-            manifest_args="${manifest_args} ${platform_tag}"
+            manifest_create_args="${manifest_create_args} --amend ${platform_tag}"
           done
           
           # Create and push the manifest
-          docker manifest create "${IMAGE_NAME}:${TAG}" ${manifest_args}
-          docker manifest create "${IMAGE_NAME}:latest" ${manifest_args}
+          docker manifest create "${IMAGE_NAME}:${TAG}" ${manifest_create_args}
+          docker manifest create "${IMAGE_NAME}:latest" ${manifest_create_args}
           
           docker manifest push "${IMAGE_NAME}:${TAG}"
           docker manifest push "${IMAGE_NAME}:latest"
