@@ -271,7 +271,7 @@ export function RecordingsView() {
   };
   
   // Load recordings
-  const loadRecordings = async () => {
+  const loadRecordings = async (page = pagination.currentPage, updateUrl = true) => {
     try {
       // Show loading state
       setRecordings([]);
@@ -304,8 +304,10 @@ export function RecordingsView() {
         params.append('detection', '1');
       }
       
-      // Update URL with filters
-      updateUrlWithFilters();
+      // Update URL with filters if requested
+      if (updateUrl) {
+        updateUrlWithFilters();
+      }
       
       // Fetch recordings
       const response = await fetch(`/api/recordings?${params.toString()}`);
@@ -434,6 +436,7 @@ export function RecordingsView() {
   
   // Reset filters
   const resetFilters = () => {
+    // Reset filter state
     setFilters({
       dateRange: 'last7days',
       startDate: '',
@@ -446,12 +449,18 @@ export function RecordingsView() {
     
     setDefaultDateRange();
     
+    // Reset pagination to first page
     setPagination(prev => ({
       ...prev,
       currentPage: 1
     }));
     
-    loadRecordings();
+    // Clear all URL parameters by replacing the current URL with the base URL
+    const baseUrl = window.location.pathname;
+    window.history.pushState({ path: baseUrl }, '', baseUrl);
+    
+    // Load recordings with default settings
+    loadRecordings(1, false);
   };
   
   // Remove filter
