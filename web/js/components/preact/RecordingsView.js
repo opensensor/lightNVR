@@ -558,7 +558,13 @@ export function RecordingsView() {
   return html`
     <section id="recordings-page" class="page">
       <div class="page-header flex justify-between items-center mb-4 p-4 bg-white dark:bg-gray-800 rounded-lg shadow">
-        <h2 class="text-xl font-bold">Recordings</h2>
+        <div class="flex items-center">
+          <h2 class="text-xl font-bold">Recordings</h2>
+          <div class="ml-4 flex">
+            <a href="recordings.html" class="px-3 py-1 bg-blue-500 text-white rounded-l-md">Table View</a>
+            <a href="timeline.html" class="px-3 py-1 bg-gray-300 text-gray-700 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-400 dark:hover:bg-gray-600 rounded-r-md">Timeline View</a>
+          </div>
+        </div>
         <button id="toggle-filters-btn" 
                 class="p-2 rounded-full bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 focus:outline-none"
                 title="Toggle Filters"

@@ -85,6 +85,9 @@ function initApp() {
     case 'recordings.html':
       activeNav = 'nav-recordings';
       break;
+    case 'timeline.html':
+      activeNav = 'nav-timeline';
+      break;
     case 'streams.html':
       activeNav = 'nav-streams';
       break;
@@ -105,6 +108,10 @@ function initApp() {
     loadLiveView();
   } else if (currentPage === 'recordings.html') {
     loadRecordingsView();
+  } else if (currentPage === 'timeline.html') {
+    // For timeline.html, we use the vanilla JS implementation
+    // The initialization is handled by the script in timeline.html
+    // Just load the header and footer
   } else if (currentPage === 'settings.html') {
     loadSettingsView();
   } else if (currentPage === 'streams.html') {

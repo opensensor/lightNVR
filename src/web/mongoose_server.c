@@ -19,6 +19,12 @@
 #include "web/mongoose_adapter.h"
 #include "web/api_handlers.h"
 #include "web/api_handlers_onvif.h"
+#include "web/api_handlers_timeline.h"
+
+// Forward declarations for timeline API handlers
+void mg_handle_get_timeline_segments(struct mg_connection *c, struct mg_http_message *hm);
+void mg_handle_timeline_manifest(struct mg_connection *c, struct mg_http_message *hm);
+void mg_handle_timeline_playback(struct mg_connection *c, struct mg_http_message *hm);
 
 // Default initial handler capacity
 #define INITIAL_HANDLER_CAPACITY 32
@@ -121,6 +127,11 @@ static const mg_api_route_t s_api_routes[] = {
     {"POST", "/api/onvif/discovery/discover", mg_handle_post_discover_onvif_devices},
     {"POST", "/api/onvif/device/add", mg_handle_post_add_onvif_device_as_stream},
     {"POST", "/api/onvif/device/test", mg_handle_post_test_onvif_connection},
+    
+    // Timeline API
+    {"GET", "/api/timeline/segments", mg_handle_get_timeline_segments},
+    {"GET", "/api/timeline/manifest", mg_handle_timeline_manifest},
+    {"GET", "/api/timeline/play", mg_handle_timeline_playback},
     
     // End of table marker
     {NULL, NULL, NULL}
@@ -239,6 +250,11 @@ static void init_route_table(void) {
     add_route("POST", "^/api/onvif/discovery/discover$", mg_handle_post_discover_onvif_devices);
     add_route("POST", "^/api/onvif/device/add$", mg_handle_post_add_onvif_device_as_stream);
     add_route("POST", "^/api/onvif/device/test$", mg_handle_post_test_onvif_connection);
+    
+    // Timeline API
+    add_route("GET", "^/api/timeline/segments$", mg_handle_get_timeline_segments);
+    add_route("GET", "^/api/timeline/manifest$", mg_handle_timeline_manifest);
+    add_route("GET", "^/api/timeline/play$", mg_handle_timeline_playback);
     
     log_info("Route table initialized with %d routes", s_route_count);
 }

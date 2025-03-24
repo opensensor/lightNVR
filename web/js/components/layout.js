@@ -19,6 +19,7 @@ function loadHeader(activePageId) {
             <ul>
                 <li><a href="live.html" id="nav-live" ${activePageId === 'nav-live' ? 'class="active"' : ''}>Live View</a></li>
                 <li><a href="recordings.html" id="nav-recordings" ${activePageId === 'nav-recordings' ? 'class="active"' : ''}>Recordings</a></li>
+                <li><a href="timeline.html" id="nav-timeline" ${activePageId === 'nav-timeline' ? 'class="active"' : ''}>Timeline</a></li>
                 <li><a href="streams.html" id="nav-streams" ${activePageId === 'nav-streams' ? 'class="active"' : ''}>Streams</a></li>
                 <li><a href="settings.html" id="nav-settings" ${activePageId === 'nav-settings' ? 'class="active"' : ''}>Settings</a></li>
                 <li><a href="system.html" id="nav-system" ${activePageId === 'nav-system' ? 'class="active"' : ''}>System</a></li>

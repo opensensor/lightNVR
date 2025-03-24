@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Timeline Playback - LightNVR</title>
+    <link rel="stylesheet" href="css/main.css">
+    <link rel="stylesheet" href="css/timeline.css">
+    <link rel="icon" href="img/favicon.ico" type="image/x-icon">
+</head>
+<body class="flex flex-col min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+<div class="container mx-auto px-4 flex flex-col min-h-screen">
+    <header id="header-container">
+        <!-- Header content will be loaded by JavaScript -->
+    </header>
+
+    <main id="main-content" class="flex-grow">
+        <div class="timeline-page page">
+            <div class="flex items-center mb-4">
+                <h1 class="text-2xl font-bold">Timeline Playback</h1>
+                <div class="ml-4 flex">
+                    <a href="recordings.html" class="px-3 py-1 bg-gray-300 text-gray-700 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-400 dark:hover:bg-gray-600 rounded-l-md">Table View</a>
+                    <a href="timeline.html" class="px-3 py-1 bg-blue-500 text-white rounded-r-md">Timeline View</a>
+                </div>
+            </div>
+            
+            <!-- Stream selector and date picker -->
+            <div class="flex flex-wrap gap-4 mb-6">
+                <div class="stream-selector flex-grow">
+                    <label for="stream-selector" class="block mb-2">Stream</label>
+                    <select id="stream-selector" class="w-full p-2 border rounded">
+                        <option value="" disabled selected>Select a stream</option>
+                    </select>
+                </div>
+                
+                <div class="date-selector flex-grow">
+                    <label for="timeline-date" class="block mb-2">Date</label>
+                    <input type="date" id="timeline-date" class="w-full p-2 border rounded">
+                </div>
+                
+                <div class="flex items-end">
+                    <button id="apply-button" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded">
+                        Apply
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Video player -->
+            <div id="video-player" class="timeline-player-container mb-4"></div>
+            
+            <!-- Playback controls -->
+            <div class="timeline-controls mb-4">
+                <button id="play-button" class="timeline-control-btn play-pause">
+                    <span class="icon">▶️</span>
+                </button>
+            </div>
+            
+            <!-- Current time display -->
+            <div class="flex justify-between items-center mb-4">
+                <div id="time-display" class="timeline-time-display">00:00:00</div>
+                
+                <div class="timeline-zoom-controls">
+                    <button id="zoom-out-button" class="timeline-zoom-btn" title="Zoom Out">
+                        <span class="icon">➖</span>
+                    </button>
+                    <button id="zoom-in-button" class="timeline-zoom-btn" title="Zoom In">
+                        <span class="icon">➕</span>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Timeline -->
+            <div id="timeline-container" class="timeline-container"></div>
+            
+            <!-- Instructions -->
+            <div class="mt-6 p-4 bg-gray-200 dark:bg-gray-800 rounded">
+                <h3 class="text-lg font-semibold mb-2">How to use the timeline:</h3>
+                <ul class="list-disc pl-5">
+                    <li>Select a stream and date, then click "Apply" to load recordings</li>
+                    <li>Click on the timeline to seek to a specific time</li>
+                    <li>Click on a segment (blue bar) to play that recording</li>
+                    <li>Use the play/pause button to control playback</li>
+                    <li>Use the zoom buttons to adjust the timeline scale</li>
+                </ul>
+            </div>
+        </div>
+    </main>
+
+    <footer id="footer-container" class="mt-auto">
+        <!-- Footer content will be loaded by JavaScript -->
+    </footer>
+</div>
+
+<!-- UI components will be rendered here -->
+<div id="status-message-container"></div>
+<div id="snapshot-modal-container"></div>
+<div id="video-modal-container"></div>
+<div id="delete-modal-container"></div>
+
+<!-- Scripts -->
+<script src="js/tailwind.cdn.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<script type="module" src="js/preact-app.js"></script>
+<script src="js/components/timeline.js"></script>
+<script>
+    // Initialize the timeline page when the DOM is loaded
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize timeline (the header and footer will be loaded by preact-app.js)
+        initTimelinePage();
+    });
+</script>
+</body>
+</html>
