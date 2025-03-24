@@ -528,8 +528,14 @@ export function TimelinePlayer() {
               // Pause the current video first
               video.pause();
               
-              // Set the new source
-              video.src = `/api/recordings/play/${nextSegment.id}`;
+              // Clear any existing source and events
+              video.removeAttribute('src');
+              video.load();
+              
+              // Set the new source with a unique timestamp to prevent caching
+              const recordingUrl = `/api/recordings/play/${nextSegment.id}?t=${Date.now()}`;
+              console.log('Setting video source to:', recordingUrl);
+              video.src = recordingUrl;
               
               // Wait for metadata to load before setting currentTime and playbackRate
               video.onloadedmetadata = () => {
