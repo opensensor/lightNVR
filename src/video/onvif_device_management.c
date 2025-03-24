@@ -8,7 +8,7 @@
 #include <string.h>
 #include <time.h>
 #include <curl/curl.h>
-#include <ezxml.h>
+#include "ezxml.h"
 #include <mbedtls/sha1.h>
 #include <mbedtls/base64.h>
 #include <libavformat/avformat.h>

@@ -956,6 +956,35 @@ void mg_handle_play_recording(struct mg_connection *c, struct mg_http_message *h
         return;
     }
     
+    // For large files, use direct file serving instead of buffering the entire file
+    if (st.st_size > 10 * 1024 * 1024) { // 10MB threshold
+        log_info("Using direct file serving for large file: %s (%ld bytes)", recording.file_path, st.st_size);
+        
+        // Set headers for streaming playback
+        mg_printf(c, "HTTP/1.1 200 OK\r\n");
+        mg_printf(c, "Content-Type: video/mp4\r\n");
+        mg_printf(c, "Content-Length: %ld\r\n", st.st_size);
+        mg_printf(c, "Accept-Ranges: bytes\r\n");
+        mg_printf(c, "Access-Control-Allow-Origin: *\r\n");
+        mg_printf(c, "Access-Control-Allow-Methods: GET, OPTIONS\r\n");
+        mg_printf(c, "Access-Control-Allow-Headers: Range, Origin, Content-Type, Accept\r\n");
+        mg_printf(c, "Cache-Control: max-age=3600\r\n");
+        mg_printf(c, "Connection: close\r\n"); // Important for large files
+        mg_printf(c, "\r\n");
+        
+        // Use mg_http_serve_file for efficient file serving
+        struct mg_http_serve_opts opts = {
+            .mime_types = "mp4=video/mp4",
+            .extra_headers = "Accept-Ranges: bytes\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, OPTIONS\r\nAccess-Control-Allow-Headers: Range, Origin, Content-Type, Accept\r\n"
+        };
+        
+        mg_http_serve_file(c, hm, recording.file_path, &opts);
+        
+        log_info("Successfully served file directly: %s", recording.file_path);
+        return;
+    }
+    
+    // For smaller files, continue with the buffered approach
     // Allocate a playback session
     int slot = -1;
     FILE *file = NULL;
@@ -1045,6 +1074,7 @@ void mg_handle_play_recording(struct mg_connection *c, struct mg_http_message *h
         mg_printf(c, "Access-Control-Allow-Methods: GET, OPTIONS\r\n");
         mg_printf(c, "Access-Control-Allow-Headers: Range, Origin, Content-Type, Accept\r\n");
         mg_printf(c, "Cache-Control: max-age=3600\r\n");
+        mg_printf(c, "Connection: close\r\n"); // Important for large files
         mg_printf(c, "\r\n");
         
         // Update bytes sent
@@ -1053,7 +1083,7 @@ void mg_handle_play_recording(struct mg_connection *c, struct mg_http_message *h
         pthread_mutex_unlock(&playback_mutex);
         
         // Send range of file
-        char buffer[8192];
+        char buffer[16384]; // Larger buffer for better performance
         size_t bytes_to_send = content_length;
         size_t bytes_read;
         
@@ -1087,10 +1117,11 @@ void mg_handle_play_recording(struct mg_connection *c, struct mg_http_message *h
         mg_printf(c, "Access-Control-Allow-Methods: GET, OPTIONS\r\n");
         mg_printf(c, "Access-Control-Allow-Headers: Range, Origin, Content-Type, Accept\r\n");
         mg_printf(c, "Cache-Control: max-age=3600\r\n");
+        mg_printf(c, "Connection: close\r\n"); // Important for large files
         mg_printf(c, "\r\n");
         
         // Send file content in chunks
-        char buffer[8192];
+        char buffer[16384]; // Larger buffer for better performance
         size_t bytes_read;
         
         while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0) {

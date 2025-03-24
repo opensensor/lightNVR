@@ -79,10 +79,6 @@ list(APPEND SSL_INCLUDE_DIRS ${MBEDTLS_INCLUDE_DIRS})
 list(APPEND SSL_LIBRARIES ${MBEDTLS_LIBRARIES})
 message(STATUS "ONVIF support enabled, linking with mbedTLS for SHA1 and Base64 functions")
 
-# Set up ezxml library
-set(EZXML_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/ezxml")
-set(EZXML_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/external/ezxml/ezxml.c")
-
 # Mongoose is required for web server implementation
 add_definitions(-DUSE_MONGOOSE)
 
