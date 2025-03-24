@@ -626,6 +626,7 @@ export function RecordingsView() {
         newSelectedRecordings[recording.id] = true;
       });
     }
+    // Always update selectedRecordings, even when deselecting all
     setSelectedRecordings(newSelectedRecordings);
   };
 
@@ -806,13 +807,15 @@ export function RecordingsView() {
       
       // Add stream filter
       if (filters.streamId !== 'all') {
-        filter.stream = filters.streamId;
+        filter.stream_name = filters.streamId; // Changed from 'stream' to 'stream_name' to match API expectations
       }
       
       // Add recording type filter
       if (filters.recordingType === 'detection') {
         filter.detection = 1;
       }
+      
+      console.log('Deleting with filter:', filter);
       
       // Use the batch delete endpoint with filter
       const deleteResponse = await fetch('/api/recordings/batch-delete', {

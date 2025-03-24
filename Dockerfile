@@ -50,15 +50,25 @@ Name: mbedx509\n\
 Description: MbedTLS X509 Library\n\
 Version: 3.4.0\n\
 Libs: -L\${libdir} -lmbedx509\n\
-Cflags: -I\${includedir}" > /usr/local/lib/pkgconfig/mbedx509.pc && \
-    rm -rf /opt/mbedtls
+Cflags: -I\${includedir}" > /usr/local/lib/pkgconfig/mbedx509.pc
+
+# Fetch external dependencies
+RUN mkdir -p /opt/external && \
+    # ezxml
+    cd /opt/external && \
+    git clone https://github.com/lumberjaph/ezxml.git && \
+    # inih
+    cd /opt/external && \
+    git clone https://github.com/benhoyt/inih.git
 
 # Copy current directory contents into container
 WORKDIR /opt
 COPY . .
 
-# Build the application
-RUN PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH ./scripts/build.sh --release --with-sod && \
+# Prepare and build the application
+RUN mkdir -p /etc/lightnvr /var/lib/lightnvr /var/log/lightnvr /var/run/lightnvr /var/lib/lightnvr/recordings && \
+    chmod -R 777 /var/lib/lightnvr /var/log/lightnvr /var/run/lightnvr && \
+    PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH ./scripts/build.sh --release --with-sod && \
     ./scripts/install.sh --prefix=/
 
 # Stage 2: Minimal runtime image
@@ -73,7 +83,8 @@ RUN apt-get update && apt-get install -y \
     rm -rf /var/lib/apt/lists/*
 
 # Create necessary directories in runtime
-RUN mkdir -p /etc/lightnvr /var/lib/lightnvr /var/log/lightnvr /var/run/lightnvr /var/lib/lightnvr/recordings
+RUN mkdir -p /etc/lightnvr /var/lib/lightnvr /var/log/lightnvr /var/run/lightnvr /var/lib/lightnvr/recordings && \
+    chmod -R 777 /var/lib/lightnvr /var/log/lightnvr /var/run/lightnvr
 
 # Copy MbedTLS libraries from builder
 COPY --from=builder /usr/local/lib/libmbed*.so* /usr/local/lib/
