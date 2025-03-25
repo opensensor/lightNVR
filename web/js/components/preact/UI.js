@@ -556,22 +556,10 @@ export function showSnapshotPreview(imageData, streamName) {
           try {
             console.log('Image loaded for optimization, original dimensions:', img.width, 'x', img.height);
             
-            // Calculate new dimensions (max 1280px width/height while maintaining aspect ratio)
-            let newWidth = img.width;
-            let newHeight = img.height;
-            const maxDimension = 1280;
-            
-            if (newWidth > maxDimension || newHeight > maxDimension) {
-              if (newWidth > newHeight) {
-                newHeight = Math.round(newHeight * (maxDimension / newWidth));
-                newWidth = maxDimension;
-              } else {
-                newWidth = Math.round(newWidth * (maxDimension / newHeight));
-                newHeight = maxDimension;
-              }
-            }
-            
-            console.log('Resizing to:', newWidth, 'x', newHeight);
+            // Use original dimensions as requested by the user
+            const newWidth = img.width;
+            const newHeight = img.height;
+            console.log('Using original image dimensions for maximum quality:', newWidth, 'x', newHeight);
             
             // Set canvas dimensions to the new size
             canvas.width = newWidth;
@@ -583,8 +571,8 @@ export function showSnapshotPreview(imageData, streamName) {
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.drawImage(img, 0, 0, newWidth, newHeight);
             
-            // Convert to JPEG with lower quality to reduce size
-            const optimizedJpegData = canvas.toDataURL('image/jpeg', 0.8);
+            // Convert to JPEG with maximum quality for best image quality
+            const optimizedJpegData = canvas.toDataURL('image/jpeg', 1.0);
             console.log('Optimized JPEG data URL length:', optimizedJpegData.length);
             
             // Create a download link with the optimized image
