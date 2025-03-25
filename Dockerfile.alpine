@@ -21,18 +21,6 @@ RUN mkdir -p /opt/external && \
 WORKDIR /opt
 COPY . .
 
-# # Create pkg-config files for MbedTLS
-# RUN mkdir -p /usr/lib/pkgconfig && \
-#     echo "prefix=/usr\nexec_prefix=\${prefix}\nlibdir=\${exec_prefix}/lib/x86_64-linux-gnu\nincludedir=\${prefix}/include\n\nName: mbedtls\nDescription: MbedTLS Library\nVersion: 2.28.0\nLibs: -L\${libdir} -lmbedtls\nCflags: -I\${includedir}" > /usr/lib/pkgconfig/mbedtls.pc && \
-#     echo "prefix=/usr\nexec_prefix=\${prefix}\nlibdir=\${exec_prefix}/lib/x86_64-linux-gnu\nincludedir=\${prefix}/include\n\nName: mbedcrypto\nDescription: MbedTLS Crypto Library\nVersion: 2.28.0\nLibs: -L\${libdir} -lmbedcrypto\nCflags: -I\${includedir}" > /usr/lib/pkgconfig/mbedcrypto.pc && \
-#     echo "prefix=/usr\nexec_prefix=\${prefix}\nlibdir=\${exec_prefix}/lib/x86_64-linux-gnu\nincludedir=\${prefix}/include\n\nName: mbedx509\nDescription: MbedTLS X509 Library\nVersion: 2.28.0\nLibs: -L\${libdir} -lmbedx509\nCflags: -I\${includedir}" > /usr/lib/pkgconfig/mbedx509.pc && \
-#     chmod 644 /usr/lib/pkgconfig/mbedtls.pc /usr/lib/pkgconfig/mbedcrypto.pc /usr/lib/pkgconfig/mbedx509.pc
-
-# Make a slight modification to the install script to skip systemd
-RUN if grep -q "systemctl" scripts/install.sh; then \
-        sed -i 's/systemctl/#systemctl/g' scripts/install.sh; \
-    fi
-
 # Clean any existing build files and build the application
 RUN mkdir -p /etc/lightnvr /var/lib/lightnvr /var/log/lightnvr /var/run/lightnvr /var/lib/lightnvr/recordings && \
     chmod -R 777 /var/lib/lightnvr /var/log/lightnvr /var/run/lightnvr && \
