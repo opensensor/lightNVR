@@ -248,6 +248,44 @@ The Ingenic A1 SoC has only 256MB of RAM, requiring specific optimizations:
 5. **Swap Support**: Optional swap file for additional virtual memory
 6. **Priority System**: Ensures critical streams get resources when memory is constrained
 
+## Shutdown Coordination System
+
+LightNVR implements a robust shutdown coordination system to ensure clean and orderly shutdown of all components:
+
+![LightNVR Shutdown Coordination](images/arch-shutdown.svg)
+
+The shutdown coordination system follows a priority-based approach to ensure components shut down in the correct dependency order:
+
+1. **Detection Threads** (highest priority - 100): Shut down first since they depend on both MP4 writers and HLS streaming
+2. **MP4 Writers** (medium priority - 80): Shut down second since they depend on HLS streaming
+3. **HLS Streaming Threads** (lowest priority - 60): Shut down last as they are the foundation
+
+### Key Components
+
+1. **Shutdown Coordinator** (`include/core/shutdown_coordinator.h` and `src/core/shutdown_coordinator.c`)
+   - Centralized management of component registration and shutdown sequence
+   - Atomic operations for thread safety with minimal mutex usage
+   - Component state tracking during shutdown
+   - Priority-based shutdown sequencing
+   - Timeout mechanism to prevent hanging
+
+2. **Component Integration**
+   - Components register with the coordinator during initialization
+   - Components check for shutdown signals in their main loops
+   - Components update their state when exiting
+   - Coordinator tracks component states during shutdown
+
+### Shutdown Sequence
+
+1. Main process initiates shutdown (via signal handler or user request)
+2. Coordinator sets shutdown flag and notifies components in priority order
+3. Components check shutdown flag in their main loops and begin cleanup
+4. Components release shared resources and update their state
+5. Coordinator waits for all components to stop (with timeout)
+6. Main process performs final cleanup when all components are stopped
+
+This system prevents race conditions, deadlocks, and memory corruption during shutdown by ensuring components are stopped in the correct order and resources are properly released.
+
 ## Error Handling and Recovery
 
 LightNVR is designed to be robust and self-healing:
