@@ -248,6 +248,8 @@ static int log_level_meets_minimum(const char *log_level, const char *min_level)
  * @return int 1 if logs were sent, 0 otherwise
  */
 static int send_filtered_logs_to_client(const char *client_id, const char *min_level) {
+    log_info("send_filtered_logs_to_client called for client %s with level %s", client_id, min_level);
+    
     char **logs = NULL;
     int count = 0;
     
@@ -255,6 +257,13 @@ static int send_filtered_logs_to_client(const char *client_id, const char *min_l
     
     if (logs == NULL || count == 0) {
         return 0;
+    }
+    
+    // Limit the number of logs to process at once to prevent memory issues on A1 platform
+    const int max_logs = 50;
+    if (count > max_logs) {
+        log_info("Limiting logs from %d to %d to prevent memory issues", count, max_logs);
+        count = max_logs;
     }
     
     // Create JSON array of logs
@@ -421,6 +430,8 @@ static int send_filtered_logs_to_client(const char *client_id, const char *min_l
  * @return int Number of clients the message was sent to
  */
 int websocket_broadcast_system_logs(void) {
+    log_info("websocket_broadcast_system_logs called");
+    
     char **logs = NULL;
     int count = 0;
     
@@ -428,6 +439,13 @@ int websocket_broadcast_system_logs(void) {
     
     if (logs == NULL || count == 0) {
         return 0;
+    }
+    
+    // Limit the number of logs to process at once to prevent memory issues on A1 platform
+    const int max_logs = 50;
+    if (count > max_logs) {
+        log_info("Limiting logs from %d to %d to prevent memory issues", count, max_logs);
+        count = max_logs;
     }
     
     // First, parse all logs to extract log levels
@@ -563,6 +581,8 @@ int websocket_broadcast_system_logs(void) {
     // Get all clients subscribed to system/logs
     char **client_ids = NULL;
     int client_count = websocket_manager_get_subscribed_clients("system/logs", &client_ids);
+    
+    log_info("Found %d clients subscribed to system/logs", client_count);
     
     // For each client, create a filtered message based on their log level preference
     for (int client_idx = 0; client_idx < client_count; client_idx++) {
