@@ -6,6 +6,7 @@
 import { h } from '../../preact.min.js';
 import { html } from '../../html-helper.js';
 import { useState, useEffect, useRef } from '../../preact.hooks.module.js';
+import { LoadingIndicator } from './LoadingIndicator.js';
 
 // Import modular components
 import { loadStreams, updateVideoGrid } from './StreamGrid.js';
@@ -21,6 +22,7 @@ export function LiveView() {
   const [layout, setLayout] = useState('4');
   const [selectedStream, setSelectedStream] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const videoGridRef = useRef(null);
   const videoPlayers = useRef({});
   const detectionIntervals = useRef({});
@@ -60,8 +62,19 @@ export function LiveView() {
   // Load streams after the component has rendered and videoGridRef is available
   useEffect(() => {
     if (videoGridRef.current) {
+      // Set loading state
+      setIsLoading(true);
+      
       // Load streams from API
-      loadStreams(setStreams, setSelectedStream, videoGridRef.current);
+      loadStreams(setStreams, setSelectedStream, videoGridRef.current)
+        .then(() => {
+          // Hide loading indicator when done
+          setIsLoading(false);
+        })
+        .catch(() => {
+          // Hide loading indicator on error too
+          setIsLoading(false);
+        });
     }
   }, [videoGridRef.current]);
   
@@ -123,12 +136,16 @@ export function LiveView() {
         class=${`video-container layout-${layout}`}
         ref=${videoGridRef}
       >
-        ${streams.length === 0 && html`
+        ${isLoading ? html`
+          <div class="flex justify-center items-center col-span-full row-span-full h-64 w-full">
+            <${LoadingIndicator} message="Loading streams..." size="lg" />
+          </div>
+        ` : streams.length === 0 ? html`
           <div class="placeholder flex flex-col justify-center items-center col-span-full row-span-full bg-white dark:bg-gray-800 rounded-lg shadow-md text-center p-8">
             <p class="mb-6 text-gray-600 dark:text-gray-300 text-lg">No streams configured</p>
             <a href="streams.html" class="btn-primary px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">Configure Streams</a>
           </div>
-        `}
+        ` : null}
         <!-- Video cells will be dynamically added by the updateVideoGrid function -->
       </div>
     </section>
