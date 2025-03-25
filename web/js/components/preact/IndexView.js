@@ -91,7 +91,7 @@ export function IndexView() {
   
   // Navigate to stream page
   const goToStream = (streamName) => {
-    window.location.href = `/live.html?stream=${encodeURIComponent(streamName)}`;
+    window.location.href = `/index.html?stream=${encodeURIComponent(streamName)}`;
   };
   
   return html`

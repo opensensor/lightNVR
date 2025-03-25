@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="css/main.css">
     <link rel="icon" href="img/favicon.ico" type="image/x-icon">
     <script>
-        // Redirect to live.html if already authenticated
+        // Redirect to index.html if already authenticated
         document.addEventListener('DOMContentLoaded', function() {
             // Check if we're being redirected due to auth requirements
             const urlParams = new URLSearchParams(window.location.search);
@@ -27,8 +27,8 @@
             const hasCookie = document.cookie.split(';').some(item => item.trim().startsWith('auth='));
             
             if (auth || hasCookie) {
-                // Already authenticated, redirect to live.html
-                window.location.href = '/live.html?t=' + new Date().getTime();
+                // Already authenticated, redirect to index.html
+                window.location.href = '/index.html?t=' + new Date().getTime();
             }
         });
     </script>

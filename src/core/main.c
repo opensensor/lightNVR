@@ -25,7 +25,6 @@
 #include "video/mp4_recording.h"
 #include "video/stream_transcoding.h"
 #include "video/detection_stream.h"
-#include "video/detection_recording.h"
 #include "video/detection.h"
 #include "video/detection_integration.h"
 #include "video/detection_thread_pool.h"

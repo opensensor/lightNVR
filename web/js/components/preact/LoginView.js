@@ -46,8 +46,8 @@ export function LoginView() {
     // Create a timeout to handle potential stalls
     const timeoutId = setTimeout(() => {
       console.log('Login request timed out, proceeding anyway');
-      // Even if the request stalls, try to proceed to live.html
-      window.location.href = '/live.html?t=' + new Date().getTime();
+      // Even if the request stalls, try to proceed to index.html
+      window.location.href = '/index.html?t=' + new Date().getTime();
     }, 3000); // 3 second timeout
     
     // Make a fetch request to the login API
@@ -65,7 +65,7 @@ export function LoginView() {
       
       if (response.ok || response.status === 302) {
         // Successful login - redirect to live page
-        window.location.href = '/live.html?t=' + new Date().getTime();
+        window.location.href = '/index.html?t=' + new Date().getTime();
       } else {
         // Failed login
         setIsLoggingIn(false);
@@ -80,7 +80,7 @@ export function LoginView() {
       // Even if there's an error, try to proceed if we have credentials
       if (localStorage.getItem('auth')) {
         console.log('Login API error, but proceeding with stored credentials');
-        window.location.href = '/live.html?t=' + new Date().getTime();
+        window.location.href = '/index.html?t=' + new Date().getTime();
       } else {
         setIsLoggingIn(false);
         setErrorMessage('Login failed. Please try again.');

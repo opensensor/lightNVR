@@ -183,7 +183,7 @@ function initApp() {
   let activeNav = '';
   
   switch (currentPage) {
-    case 'live.html':
+    case 'index.html':
       activeNav = 'nav-live';
       break;
     case 'recordings.html':
@@ -208,7 +208,7 @@ function initApp() {
   loadFooter();
   
   // Load page-specific content
-  if (currentPage === 'live.html') {
+  if (currentPage === 'index.html') {
     loadLiveView();
   } else if (currentPage === 'recordings.html') {
     loadRecordingsView();
@@ -222,7 +222,7 @@ function initApp() {
     loadSystemView();
   } else if (currentPage === 'login.html') {
     loadLoginView();
-  } else if (currentPage === '' || currentPage === 'live.html') {
+  } else if (currentPage === '' || currentPage === 'index.html') {
     loadLiveView();
   }
   

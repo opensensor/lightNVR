@@ -29,13 +29,13 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
     // Special case: handle "/%s" path which is causing redirection issues
     // This is likely coming from a client-side formatting issue
     if (strcmp(uri, "/%s") == 0) {
-        log_info("Detected problematic '/%%s' path, redirecting to /live.html");
+        log_info("Detected problematic '/%%s' path, redirecting to /index.html");
         
         // Get Authorization header if present
         struct mg_str *auth_header = mg_http_get_header(hm, "Authorization");
         
             mg_printf(c, "HTTP/1.1 302 Found\r\n");
-            mg_printf(c, "Location: /live.html\r\n");
+            mg_printf(c, "Location: /index.html\r\n");
             
             // If there's an Authorization header, include it in the redirect
             if (auth_header != NULL) {
@@ -48,12 +48,12 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         return;
     }
     
-    // Special case: handle root path "/" directly by serving live.html
+    // Special case: handle root path "/" directly by serving index.html
     if (strcmp(uri, "/") == 0) {
-        log_info("Handling root path '/', serving live.html directly as a static file");
+        log_info("Handling root path '/', serving index.html directly as a static file");
         
-        // Simply change the URI to live.html and continue processing
-        strncpy(uri, "/live.html", sizeof(uri) - 1);
+        // Simply change the URI to index.html and continue processing
+        strncpy(uri, "/index.html", sizeof(uri) - 1);
         uri[sizeof(uri) - 1] = '\0';
     }
     
@@ -223,10 +223,10 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
     char file_path[MAX_PATH_LENGTH * 2];
     snprintf(file_path, sizeof(file_path), "%s%s", server->config.web_root, uri);
 
-    // If path ends with '/', append 'live.html' (which serves as our index)
+    // If path ends with '/', append 'index.html' (which serves as our index)
     size_t path_len = strlen(file_path);
     if (path_len > 0 && file_path[path_len - 1] == '/') {
-        strncat(file_path, "live.html", sizeof(file_path) - path_len - 1);
+        strncat(file_path, "index.html", sizeof(file_path) - path_len - 1);
     }
 
     // Check if file exists
@@ -248,8 +248,8 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
             mg_printf(c, "\r\n");
                 return;
             } else {
-                // Try to serve live.html as the index
-                strncat(file_path, "live.html", sizeof(file_path) - strlen(file_path) - 1);
+                // Try to serve index.html as the index
+                strncat(file_path, "index.html", sizeof(file_path) - strlen(file_path) - 1);
                 if (stat(file_path, &st) != 0 || !S_ISREG(st.st_mode)) {
                     mg_http_reply(c, 403, "", "403 Forbidden\n");
                     return;
@@ -372,14 +372,14 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
             }
         }
 
-        // For SPA routes, directly serve live.html without redirection
+        // For SPA routes, directly serve index.html without redirection
         char index_path[MAX_PATH_LENGTH * 2];
-        snprintf(index_path, sizeof(index_path), "%s/live.html", server->config.web_root);
+        snprintf(index_path, sizeof(index_path), "%s/index.html", server->config.web_root);
         
         // Log the path we're trying to serve
         log_info("Serving SPA route %s with index file: %s", uri, index_path);
 
-        // Check if live.html exists
+        // Check if index.html exists
         if (stat(index_path, &st) == 0 && S_ISREG(st.st_mode)) {
             // Use Mongoose's built-in file serving capabilities
             // This is more stable and handles all the HTTP headers properly

@@ -68,7 +68,7 @@ export function Header({ activeNav = '' }) {
         <ul class="flex list-none m-0 p-0">
           <li class="mx-1">
             <a 
-              href="live.html?t=${new Date().getTime()}" 
+              href="index.html?t=${new Date().getTime()}" 
               id="nav-live" 
               class=${`text-white no-underline px-3 py-2 rounded transition-colors ${activeNav === 'nav-live' ? 'bg-blue-600' : 'hover:bg-blue-700'}`}
             >

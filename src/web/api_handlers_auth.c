@@ -192,8 +192,8 @@ void mg_handle_auth_login(struct mg_connection *c, struct mg_http_message *hm) {
         char encoded_auth[256];
         mg_base64_encode((unsigned char *)auth_credentials, strlen(auth_credentials), encoded_auth, sizeof(encoded_auth));
         
-        // Default redirect to live.html
-        const char *redirect_url = "/live.html";
+        // Default redirect to index.html
+        const char *redirect_url = "/index.html";
         
         // Check if this is a form submission or an API request
         struct mg_str *content_type = mg_http_get_header(hm, "Content-Type");
