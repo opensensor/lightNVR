@@ -13,6 +13,8 @@
 #include "utils/memory.h"
 #include "web/connection_pool.h"
 #include "web/api_thread_pool.h"
+#include "web/websocket_manager.h"
+#include "web/mongoose_server_websocket.h"
 
 // Include Mongoose
 #include "mongoose.h"
@@ -20,6 +22,7 @@
 #include "web/api_handlers.h"
 #include "web/api_handlers_onvif.h"
 #include "web/api_handlers_timeline.h"
+#include "web/api_handlers_recordings.h"
 
 // Forward declarations for timeline API handlers
 void mg_handle_get_timeline_segments(struct mg_connection *c, struct mg_http_message *hm);
@@ -44,7 +47,6 @@ static int s_route_capacity = 0;
 
 // Forward declarations
 static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_data);
-static void handle_http_request(struct mg_connection *c, struct mg_http_message *hm, http_server_t *server);
 static void *mongoose_server_event_loop(void *arg);
 static void init_route_table(void);
 static void free_route_table(void);
@@ -57,6 +59,11 @@ static int match_route(const char *method, const char *uri, struct mg_http_messa
 #include "web/mongoose_server_auth.h"
 #include "web/mongoose_server_static.h"
 #include "web/http_router.h"
+
+// Forward declarations for WebSocket handlers
+void mg_handle_websocket_upgrade(struct mg_connection *c, struct mg_http_message *hm);
+void mg_handle_batch_delete_recordings_ws(struct mg_connection *c, struct mg_http_message *hm);
+void websocket_register_handlers(void);
 
 // API handler function type
 typedef void (*mg_api_handler_t)(struct mg_connection *c, struct mg_http_message *hm);
@@ -101,9 +108,13 @@ static const mg_api_route_t s_api_routes[] = {
     {"GET", "/api/recordings", mg_handle_get_recordings},
     {"GET", "/api/recordings/play/#", mg_handle_play_recording},
     {"GET", "/api/recordings/download/#", mg_handle_download_recording},
+    {"GET", "/api/recordings/files/check", mg_handle_check_recording_file},
+    {"DELETE", "/api/recordings/files", mg_handle_delete_recording_file},
     {"GET", "/api/recordings/#", mg_handle_get_recording},
     {"DELETE", "/api/recordings/#", mg_handle_delete_recording},
     {"POST", "/api/recordings/batch-delete", mg_handle_batch_delete_recordings},
+    {"POST", "/api/recordings/batch-delete-ws", mg_handle_batch_delete_recordings_ws},
+    {"GET", "/api/ws", mg_handle_websocket_upgrade},
     
     // Streaming API - HLS
     {"GET", "/api/streaming/#/hls/index.m3u8", mg_handle_hls_master_playlist},
@@ -227,6 +238,8 @@ static void init_route_table(void) {
     add_route("POST", "^/api/recordings/batch-delete$", mg_handle_batch_delete_recordings);
     add_route("GET", "^/api/recordings/download/([^/]+)$", mg_handle_download_recording);
     add_route("GET", "^/api/recordings/play/([^/]+)$", mg_handle_play_recording);
+    add_route("GET", "^/api/recordings/files/check$", mg_handle_check_recording_file);
+    add_route("DELETE", "^/api/recordings/files$", mg_handle_delete_recording_file);
     
     // Streaming API - HLS
     add_route("GET", "^/api/streaming/([^/]+)/hls/index\\.m3u8$", mg_handle_hls_master_playlist);
@@ -368,11 +381,43 @@ http_server_handle_t http_server_init(const http_server_config_t *config) {
     // Initialize route table
     init_route_table();
     
+    // Initialize WebSocket manager
+    log_info("Initializing WebSocket manager");
+    if (websocket_manager_init() != 0) {
+        log_error("Failed to initialize WebSocket manager");
+        return NULL;
+    }
+    
+    // Register WebSocket handlers
+    log_info("Registering WebSocket handlers");
+    websocket_register_handlers();
+    
     // We no longer initialize the API thread pool here
     // It will be initialized on demand when needed
     log_info("API thread pool will be initialized on demand");
     
-    return mongoose_server_init(config);
+    http_server_handle_t server = mongoose_server_init(config);
+    if (!server) {
+        log_error("Failed to initialize Mongoose server");
+        return NULL;
+    }
+    
+    // Verify WebSocket manager is initialized
+    if (!websocket_manager_is_initialized()) {
+        log_error("WebSocket manager not initialized after server initialization");
+        // Try to initialize it again
+        if (websocket_manager_init() != 0) {
+            log_error("Failed to initialize WebSocket manager on second attempt");
+        } else {
+            log_info("WebSocket manager initialized on second attempt");
+            // Register WebSocket handlers again
+            websocket_register_handlers();
+        }
+    } else {
+        log_info("WebSocket manager is properly initialized");
+    }
+    
+    return server;
 }
 
 /**
@@ -549,6 +594,14 @@ void http_server_destroy(http_server_handle_t server) {
         http_server_stop(server);
     }
 
+    // Shutdown WebSocket manager first to close all WebSocket connections
+    log_info("Shutting down WebSocket manager");
+    websocket_manager_shutdown();
+    
+    // Shutdown API thread pool
+    log_info("Shutting down API thread pool");
+    api_thread_pool_shutdown();
+    
     // Shutdown connection pool if initialized
     if (server->conn_pool) {
         log_info("Shutting down connection pool");
@@ -556,10 +609,6 @@ void http_server_destroy(http_server_handle_t server) {
         server->conn_pool = NULL;  // Avoid double-free
         // Note: connection_pool_shutdown also frees the memory
     }
-    
-    // Shutdown API thread pool
-    log_info("Shutting down API thread pool");
-    api_thread_pool_shutdown();
 
     // Destroy global mutex
     pthread_mutex_destroy(&server->mutex);
@@ -577,7 +626,7 @@ void http_server_destroy(http_server_handle_t server) {
 
     // Free route table
     free_route_table();
-
+    
     // Finally free the server structure
     free(server);
     log_info("HTTP server destroyed");
@@ -670,20 +719,62 @@ int http_server_get_stats(http_server_handle_t server, int *active_connections,
 static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_data) {
     http_server_t *server = (http_server_t *)c->fn_data;
 
-if (ev == MG_EV_ACCEPT) {
-    // New connection accepted
-    log_debug("New connection accepted");
+    if (ev == MG_EV_ACCEPT) {
+        // New connection accepted
+        log_debug("New connection accepted");
+        
+        // Update statistics
+        pthread_mutex_lock(&server->mutex);
+        server->active_connections++;
+        pthread_mutex_unlock(&server->mutex);
+        
+        // CRITICAL FIX: Do not add connections to the pool here
+        // Let the main event loop handle all events for all connections
+        // This ensures proper event handling and prevents connections from being orphaned
+        
+} else if (ev == MG_EV_WS_OPEN) {
+    // WebSocket connection opened
+    log_info("WebSocket connection opened");
     
-    // Update statistics
-    pthread_mutex_lock(&server->mutex);
-    server->active_connections++;
-    pthread_mutex_unlock(&server->mutex);
+    // Check if WebSocket manager is initialized
+    if (!websocket_manager_is_initialized()) {
+        log_error("WebSocket manager not initialized during WS_OPEN event");
+        // Try to initialize it
+        if (websocket_manager_init() != 0) {
+            log_error("Failed to initialize WebSocket manager");
+            return;
+        }
+        log_info("WebSocket manager initialized on demand during WS_OPEN event");
+        
+        // Register WebSocket handlers
+        websocket_register_handlers();
+    }
     
-    // CRITICAL FIX: Do not add connections to the pool here
-    // Let the main event loop handle all events for all connections
-    // This ensures proper event handling and prevents connections from being orphaned
+    // Handle WebSocket connection open
+    websocket_manager_handle_open(c);
     
-} else if (ev == MG_EV_HTTP_MSG) {
+} else if (ev == MG_EV_WS_MSG) {
+    // WebSocket message received
+    struct mg_ws_message *wm = (struct mg_ws_message *)ev_data;
+    
+    // Check if WebSocket manager is initialized
+    if (!websocket_manager_is_initialized()) {
+        log_error("WebSocket manager not initialized during WS_MSG event");
+        // Try to initialize it
+        if (websocket_manager_init() != 0) {
+            log_error("Failed to initialize WebSocket manager");
+            return;
+        }
+        log_info("WebSocket manager initialized on demand during WS_MSG event");
+        
+        // Register WebSocket handlers
+        websocket_register_handlers();
+    }
+    
+    // Handle WebSocket message
+    websocket_manager_handle_message(c, wm->data.buf, wm->data.len);
+        
+    } else if (ev == MG_EV_HTTP_MSG) {
         // HTTP request received
         struct mg_http_message *hm = (struct mg_http_message *)ev_data;
 
@@ -877,104 +968,4 @@ static void *mongoose_server_event_loop(void *arg) {
     
     log_info("Mongoose event loop stopped");
     return NULL;
-}
-
-/**
- * @brief Handle HTTP request
- */
-static void handle_http_request(struct mg_connection *c, struct mg_http_message *hm, http_server_t *server) {
-    // Extract URI
-    char uri[MAX_PATH_LENGTH];
-    size_t uri_len = hm->uri.len < sizeof(uri) - 1 ? hm->uri.len : sizeof(uri) - 1;
-    memcpy(uri, hm->uri.buf, uri_len);
-    uri[uri_len] = '\0';
-
-    // Split URI into path and query string
-    char path[MAX_PATH_LENGTH];
-    strncpy(path, uri, sizeof(path) - 1);
-    path[sizeof(path) - 1] = '\0';
-
-    char *query = strchr(path, '?');
-    if (query) {
-        *query = '\0';
-    }
-
-    // Check authentication if enabled
-    if (server->config.auth_enabled && mongoose_server_basic_auth_check(hm, server) != 0) {
-        // Authentication failed
-        mg_http_reply(c, 401, "WWW-Authenticate: Basic realm=\"LightNVR\"\r\n", 
-                     "{\"error\": \"Unauthorized\"}\n");
-        return;
-    }
-
-    // Handle CORS preflight request
-    if (server->config.cors_enabled && mg_match(hm->method, mg_str("OPTIONS"), NULL)) {
-        mongoose_server_handle_cors_preflight(c, hm, server);
-        return;
-    }
-
-    // Find handler for request
-    bool handler_found = false;
-    for (int i = 0; i < server->handler_count; i++) {
-        if (mongoose_server_path_matches(server->handlers[i].path, path)) {
-            // Check method
-            if (server->handlers[i].method[0] == '\0' ||
-                (mg_match(hm->method, mg_str("GET"), NULL) && strcmp(server->handlers[i].method, "GET") == 0) ||
-                (mg_match(hm->method, mg_str("POST"), NULL) && strcmp(server->handlers[i].method, "POST") == 0) ||
-                (mg_match(hm->method, mg_str("PUT"), NULL) && strcmp(server->handlers[i].method, "PUT") == 0) ||
-                (mg_match(hm->method, mg_str("DELETE"), NULL) && strcmp(server->handlers[i].method, "DELETE") == 0)) {
-                
-                // Found matching handler
-                handler_found = true;
-
-                // Convert Mongoose request to HTTP request
-                http_request_t request;
-                if (mongoose_server_mg_to_request(c, hm, &request) != 0) {
-                    mg_http_reply(c, 400, "", "{\"error\": \"Bad Request\"}\n");
-                    return;
-                }
-
-                // Prepare response
-                http_response_t response;
-                memset(&response, 0, sizeof(response));
-
-                // Call handler
-                server->handlers[i].handler(&request, &response);
-
-                // Add CORS headers if enabled
-                if (server->config.cors_enabled) {
-                    mongoose_server_add_cors_headers(c, server);
-                }
-
-                // Send response
-                mongoose_server_send_response(c, &response);
-
-                // Update statistics
-                pthread_mutex_lock(&server->mutex);
-                server->bytes_sent += response.body_length;
-                pthread_mutex_unlock(&server->mutex);
-
-                // Free request and response resources
-                if (request.body) {
-                    free(request.body);
-                }
-                if (request.headers) {
-                    free(request.headers);
-                }
-                if (response.body) {
-                    free(response.body);
-                }
-                if (response.headers) {
-                    free(response.headers);
-                }
-
-                return;
-            }
-        }
-    }
-
-    // If no handler found, serve static file
-    if (!handler_found) {
-        mongoose_server_handle_static_file(c, hm, server);
-    }
 }

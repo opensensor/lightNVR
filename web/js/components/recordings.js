@@ -917,11 +917,65 @@ function updateStreamFilter(streams) {
 }
 
 /**
+ * Add batch delete button to recordings table
+ */
+function addBatchDeleteButton() {
+    // Find the table header
+    const tableHeader = document.querySelector('.recordings-table-header');
+    if (!tableHeader) return;
+    
+    // Check if button already exists
+    if (document.getElementById('batch-delete-btn')) return;
+    
+    // Create batch delete button
+    const batchDeleteBtn = document.createElement('button');
+    batchDeleteBtn.id = 'batch-delete-btn';
+    batchDeleteBtn.className = 'btn btn-danger ml-2';
+    batchDeleteBtn.innerHTML = '<span class="icon">×</span> Delete All';
+    batchDeleteBtn.title = 'Delete all recordings matching current filter';
+    
+    // Add click event
+    batchDeleteBtn.addEventListener('click', () => {
+        // Get current filter parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const filter = {};
+        
+        // Add date range parameters
+        if (urlParams.has('start')) {
+            filter.start = urlParams.get('start');
+        }
+        
+        if (urlParams.has('end')) {
+            filter.end = urlParams.get('end');
+        }
+        
+        // Add stream filter
+        if (urlParams.has('stream')) {
+            filter.stream = urlParams.get('stream');
+        }
+        
+        // Add detection filter
+        if (urlParams.has('detection')) {
+            filter.detection = urlParams.get('detection');
+        }
+        
+        // Call batch delete function
+        batchDeleteRecordingsByFilter(filter);
+    });
+    
+    // Add button to table header
+    tableHeader.appendChild(batchDeleteBtn);
+}
+
+/**
  * Setup event handlers for recordings page
  */
 function setupRecordingsHandlers() {
     // Initialize from URL parameters
     initializeFromUrl();
+    
+    // Add batch delete button
+    addBatchDeleteButton();
     
     // Setup date range select
     const dateRangeSelect = document.getElementById('date-range-select');

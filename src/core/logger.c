@@ -11,6 +11,7 @@
 #include <libgen.h>
 
 #include "core/logger.h"
+#include "web/logger_websocket.h"
 
 // Logger state
 static struct {
@@ -34,6 +35,9 @@ static const char *log_level_strings[] = {
     "DEBUG"
 };
 
+// Forward declaration for broadcast_logs_to_websocket
+extern void broadcast_logs_to_websocket(void);
+
 // Initialize the logging system
 int init_logger(void) {
     // Initialize mutex
@@ -46,6 +50,9 @@ int init_logger(void) {
     if (logger.log_file == NULL && logger.log_filename[0] == '\0') {
         logger.log_file = stderr;
     }
+    
+    // Initialize logger WebSocket integration
+    init_logger_websocket();
     
     return 0;
 }
@@ -61,6 +68,9 @@ void shutdown_logger(void) {
     
     pthread_mutex_unlock(&logger.mutex);
     pthread_mutex_destroy(&logger.mutex);
+    
+    // Shutdown logger WebSocket integration
+    shutdown_logger_websocket();
 }
 
 // Set the log level
@@ -174,6 +184,9 @@ void set_console_logging(int enable) {
     pthread_mutex_lock(&logger.mutex);
     logger.console_logging = enable; // Kept for backward compatibility
     pthread_mutex_unlock(&logger.mutex);
+    
+    // Broadcast logs to WebSocket clients
+    broadcast_logs_to_websocket();
 }
 
 // Log a message at ERROR level
@@ -252,6 +265,9 @@ void log_message_v(log_level_t level, const char *format, va_list args) {
     fflush(console);
     
     pthread_mutex_unlock(&logger.mutex);
+    
+    // Broadcast logs to WebSocket clients
+    broadcast_logs_to_websocket();
 }
 
 // Get the string representation of a log level

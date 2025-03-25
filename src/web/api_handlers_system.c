@@ -20,6 +20,7 @@
 
 #include "web/api_handlers.h"
 #include "web/mongoose_adapter.h"
+#include "web/api_handlers_system_ws.h"
 #include "core/logger.h"
 #include "core/config.h"
 #include "core/version.h"
@@ -535,14 +536,19 @@ void mg_handle_get_system_info(struct mg_connection *c, struct mg_http_message *
 }
 
 /**
- * @brief Direct handler for GET /api/system/logs
+ * @brief Get system logs
+ * 
+ * @param logs Pointer to array of log strings (will be allocated)
+ * @param count Pointer to store number of logs
  */
-void mg_handle_get_system_logs(struct mg_connection *c, struct mg_http_message *hm) {
-    log_info("Handling GET /api/system/logs request");
+void get_system_logs(char ***logs, int *count) {
+    // Initialize output parameters
+    *logs = NULL;
+    *count = 0;
     
     // Check if log file is set
     if (g_config.log_file[0] == '\0') {
-        mg_send_json_error(c, 404, "Log file not configured");
+        log_error("Log file not configured");
         return;
     }
     
@@ -550,7 +556,6 @@ void mg_handle_get_system_logs(struct mg_connection *c, struct mg_http_message *
     FILE *log_file = fopen(g_config.log_file, "r");
     if (!log_file) {
         log_error("Failed to open log file: %s", g_config.log_file);
-        mg_send_json_error(c, 500, "Failed to open log file");
         return;
     }
     
@@ -573,7 +578,6 @@ void mg_handle_get_system_logs(struct mg_connection *c, struct mg_http_message *
     if (!buffer) {
         log_error("Failed to allocate memory for log file");
         fclose(log_file);
-        mg_send_json_error(c, 500, "Failed to allocate memory for log file");
         return;
     }
     
@@ -585,132 +589,110 @@ void mg_handle_get_system_logs(struct mg_connection *c, struct mg_http_message *
     // Close file
     fclose(log_file);
     
+    // Count number of lines
+    int line_count = 0;
+    for (size_t i = 0; i < bytes_read; i++) {
+        if (buffer[i] == '\n') {
+            line_count++;
+        }
+    }
+    
+    // Add one more for the last line if it doesn't end with a newline
+    if (bytes_read > 0 && buffer[bytes_read - 1] != '\n') {
+        line_count++;
+    }
+    
+    // Allocate array of log strings
+    char **log_lines = malloc(line_count * sizeof(char *));
+    if (!log_lines) {
+        log_error("Failed to allocate memory for log lines");
+        free(buffer);
+        return;
+    }
+    
+    // Split buffer into lines
+    char *saveptr;
+    char *line = strtok_r(buffer, "\n", &saveptr);
+    int log_index = 0;
+    
+    while (line != NULL && log_index < line_count) {
+        // Allocate memory for the log line
+        log_lines[log_index] = strdup(line);
+        if (!log_lines[log_index]) {
+            log_error("Failed to allocate memory for log line");
+            
+            // Free previously allocated lines
+            for (int i = 0; i < log_index; i++) {
+                free(log_lines[i]);
+            }
+            free(log_lines);
+            free(buffer);
+            return;
+        }
+        
+        log_index++;
+        line = strtok_r(NULL, "\n", &saveptr);
+    }
+    
+    // Set output parameters
+    *logs = log_lines;
+    *count = log_index;
+    
+    // Free buffer
+    free(buffer);
+}
+
+/**
+ * @brief Direct handler for GET /api/system/logs
+ */
+void mg_handle_get_system_logs(struct mg_connection *c, struct mg_http_message *hm) {
+    log_info("Handling GET /api/system/logs request");
+    
+    // Get system logs
+    char **logs = NULL;
+    int count = 0;
+    
+    get_system_logs(&logs, &count);
+    
+    if (!logs) {
+        mg_send_json_error(c, 500, "Failed to get system logs");
+        return;
+    }
+    
     // Create JSON object
     cJSON *logs_obj = cJSON_CreateObject();
     if (!logs_obj) {
         log_error("Failed to create logs JSON object");
-        free(buffer);
+        
+        // Free logs
+        for (int i = 0; i < count; i++) {
+            free(logs[i]);
+        }
+        free(logs);
+        
         mg_send_json_error(c, 500, "Failed to create logs JSON");
         return;
     }
     
-    // Split log content into lines
+    // Create logs array
     cJSON *logs_array = cJSON_CreateArray();
     if (!logs_array) {
         log_error("Failed to create logs array");
-        free(buffer);
+        
+        // Free logs
+        for (int i = 0; i < count; i++) {
+            free(logs[i]);
+        }
+        free(logs);
+        
         cJSON_Delete(logs_obj);
         mg_send_json_error(c, 500, "Failed to create logs array");
         return;
     }
     
-    // Parse query parameters for log level and count
-    char level[16] = "info"; // Default level
-    int count = 100; // Default count
-    
-    // Extract level parameter
-    char level_buf[16] = {0};
-    if (mg_http_get_var(&hm->query, "level", level_buf, sizeof(level_buf)) > 0) {
-        strncpy(level, level_buf, sizeof(level) - 1);
-        level[sizeof(level) - 1] = '\0';
-    }
-    
-    // Extract count parameter
-    char count_buf[16] = {0};
-    if (mg_http_get_var(&hm->query, "count", count_buf, sizeof(count_buf)) > 0) {
-        int parsed_count = atoi(count_buf);
-        if (parsed_count > 0) {
-            count = parsed_count;
-        }
-    }
-    
-    // Split buffer into lines and parse into structured log objects
-    char *saveptr;
-    char *line = strtok_r(buffer, "\n", &saveptr);
-    int log_count = 0;
-    
-    while (line != NULL && log_count < count) {
-        // Parse log line (format: [TIMESTAMP] [LEVEL] MESSAGE)
-        char timestamp[32] = "";
-        char log_level[16] = "";
-        char *message = NULL;
-        
-        // Try to extract timestamp and level
-        if (line[0] == '[') {
-            char *timestamp_end = strchr(line + 1, ']');
-            if (timestamp_end) {
-                size_t timestamp_len = timestamp_end - (line + 1);
-                if (timestamp_len < sizeof(timestamp)) {
-                    memcpy(timestamp, line + 1, timestamp_len);
-                    timestamp[timestamp_len] = '\0';
-                    
-                    // Look for level
-                    char *level_start = strchr(timestamp_end + 1, '[');
-                    if (level_start) {
-                        char *level_end = strchr(level_start + 1, ']');
-                        if (level_end) {
-                            size_t level_len = level_end - (level_start + 1);
-                            if (level_len < sizeof(log_level)) {
-                                memcpy(log_level, level_start + 1, level_len);
-                                log_level[level_len] = '\0';
-                                
-                                // Convert to lowercase for comparison
-                                for (int i = 0; log_level[i]; i++) {
-                                    log_level[i] = tolower(log_level[i]);
-                                }
-                                
-                                // Message starts after level
-                                message = level_end + 1;
-                                while (*message == ' ') message++; // Skip leading spaces
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        
-        // If parsing failed, use defaults
-        if (!message) {
-            message = line;
-            strcpy(log_level, "info");
-        }
-        
-        // Filter by log level if needed
-        bool include_log = true;
-        if (strcmp(level, "error") == 0) {
-            include_log = (strcmp(log_level, "error") == 0);
-        } else if (strcmp(level, "warning") == 0) {
-            include_log = (strcmp(log_level, "error") == 0 || 
-                          strcmp(log_level, "warning") == 0 ||
-                          strcmp(log_level, "warn") == 0);
-        } else if (strcmp(level, "info") == 0) {
-            include_log = (strcmp(log_level, "error") == 0 || 
-                          strcmp(log_level, "warning") == 0 || 
-                          strcmp(log_level, "warn") == 0 || 
-                          strcmp(log_level, "info") == 0);
-        }
-        
-        if (include_log) {
-            // Create log entry object
-            cJSON *log_entry = cJSON_CreateObject();
-            if (log_entry) {
-                cJSON_AddStringToObject(log_entry, "timestamp", timestamp[0] ? timestamp : "Unknown");
-                
-                // Normalize log level
-                if (strcmp(log_level, "warn") == 0) {
-                    cJSON_AddStringToObject(log_entry, "level", "warning");
-                } else {
-                    cJSON_AddStringToObject(log_entry, "level", log_level);
-                }
-                
-                cJSON_AddStringToObject(log_entry, "message", message);
-                
-                cJSON_AddItemToArray(logs_array, log_entry);
-                log_count++;
-            }
-        }
-        
-        line = strtok_r(NULL, "\n", &saveptr);
+    // Add logs to array
+    for (int i = 0; i < count; i++) {
+        cJSON_AddItemToArray(logs_array, cJSON_CreateString(logs[i]));
     }
     
     // Add logs array to response
@@ -718,14 +700,15 @@ void mg_handle_get_system_logs(struct mg_connection *c, struct mg_http_message *
     
     // Add metadata
     cJSON_AddStringToObject(logs_obj, "file", g_config.log_file);
-    cJSON_AddNumberToObject(logs_obj, "size", file_size);
-    cJSON_AddNumberToObject(logs_obj, "offset", offset);
     
     // Convert to string
     char *json_str = cJSON_PrintUnformatted(logs_obj);
     
     // Clean up
-    free(buffer);
+    for (int i = 0; i < count; i++) {
+        free(logs[i]);
+    }
+    free(logs);
     cJSON_Delete(logs_obj);
     
     if (!json_str) {

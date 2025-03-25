@@ -26,12 +26,23 @@ export function TimelineSegments() {
 
   // Subscribe to timeline state changes
   useEffect(() => {
+    console.log('TimelineSegments: Setting up subscription to timelineState');
+    
     const unsubscribe = timelineState.subscribe(state => {
+      console.log('TimelineSegments: Received state update:', state);
+      console.log('TimelineSegments: Segments in update:', state.timelineSegments);
+      
       setSegments(state.timelineSegments || []);
       setStartHour(state.timelineStartHour);
       setEndHour(state.timelineEndHour);
       setCurrentSegmentIndex(state.currentSegmentIndex);
+      
+      console.log('TimelineSegments: Local state updated with segments:', state.timelineSegments?.length || 0);
     });
+    
+    // Log initial state
+    console.log('TimelineSegments: Initial timelineState:', timelineState);
+    console.log('TimelineSegments: Initial segments:', timelineState.timelineSegments);
     
     return () => unsubscribe();
   }, []);
@@ -166,23 +177,45 @@ export function TimelineSegments() {
 
   // Render segments
   const renderSegments = () => {
-    if (!segments || segments.length === 0) return null;
+    console.log('TimelineSegments.renderSegments() called');
+    console.log('Segments:', segments);
+    console.log('Start hour:', startHour);
+    console.log('End hour:', endHour);
+    
+    if (!segments || segments.length === 0) {
+      console.log('No segments to render');
+      return null;
+    }
     
     const visibleSegments = [];
     const hourMap = new Map();
     
     // First pass: collect all segments by hour
     segments.forEach((segment, index) => {
+      console.log(`Processing segment ${index}:`, segment);
+      
       // Convert timestamps to Date objects
       const startTime = new Date(segment.start_timestamp * 1000);
       const endTime = new Date(segment.end_timestamp * 1000);
+      
+      console.log(`Segment ${index} times:`, {
+        startTime: startTime.toLocaleTimeString(),
+        endTime: endTime.toLocaleTimeString()
+      });
       
       // Calculate position and width
       const startHourFloat = startTime.getHours() + (startTime.getMinutes() / 60) + (startTime.getSeconds() / 3600);
       const endHourFloat = endTime.getHours() + (endTime.getMinutes() / 60) + (endTime.getSeconds() / 3600);
       
+      console.log(`Segment ${index} hour range:`, {
+        startHourFloat,
+        endHourFloat,
+        visibleRange: `${startHour} - ${endHour}`
+      });
+      
       // Skip segments outside the visible range
       if (endHourFloat < startHour || startHourFloat > endHour) {
+        console.log(`Segment ${index} is outside visible range, skipping`);
         return;
       }
       
@@ -190,15 +223,23 @@ export function TimelineSegments() {
       const startFloorHour = Math.floor(startHourFloat);
       const endCeilHour = Math.min(Math.ceil(endHourFloat), 24);
       
+      console.log(`Segment ${index} spans hours:`, {
+        startFloorHour,
+        endCeilHour
+      });
+      
       for (let h = startFloorHour; h < endCeilHour; h++) {
         if (h >= startHour && h <= endHour) {
           if (!hourMap.has(h)) {
             hourMap.set(h, []);
           }
           hourMap.get(h).push(index);
+          console.log(`Added segment ${index} to hour ${h}`);
         }
       }
     });
+    
+    console.log('Hour map after first pass:', Object.fromEntries([...hourMap.entries()]));
     
     // Second pass: add visible segments
     segments.forEach((segment, index) => {

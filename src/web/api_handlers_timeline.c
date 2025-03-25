@@ -25,36 +25,6 @@ void mg_handle_get_timeline_segments(struct mg_connection *c, struct mg_http_mes
 void mg_handle_timeline_manifest(struct mg_connection *c, struct mg_http_message *hm);
 void mg_handle_timeline_playback(struct mg_connection *c, struct mg_http_message *hm);
 
-// Implementation of the API handlers defined in the header
-void handle_get_timeline_segments(const http_request_t *request, http_response_t *response) {
-    // This is a wrapper function that would convert the request/response to Mongoose format
-    // In a real implementation, this would call the Mongoose handler after conversion
-    // For now, we'll just return a simple response
-    response->status_code = 200;
-    strcpy(response->content_type, "application/json");
-    response->body = strdup("{\"message\": \"Timeline segments API not implemented in HTTP handler format\"}");
-    response->body_length = strlen(response->body);
-}
-
-void handle_timeline_manifest(const http_request_t *request, http_response_t *response) {
-    // This is a wrapper function that would convert the request/response to Mongoose format
-    // In a real implementation, this would call the Mongoose handler after conversion
-    // For now, we'll just return a simple response
-    response->status_code = 200;
-    strcpy(response->content_type, "application/json");
-    response->body = strdup("{\"message\": \"Timeline manifest API not implemented in HTTP handler format\"}");
-    response->body_length = strlen(response->body);
-}
-
-void handle_timeline_playback(const http_request_t *request, http_response_t *response) {
-    // This is a wrapper function that would convert the request/response to Mongoose format
-    // In a real implementation, this would call the Mongoose handler after conversion
-    // For now, we'll just return a simple response
-    response->status_code = 200;
-    strcpy(response->content_type, "application/json");
-    response->body = strdup("{\"message\": \"Timeline playback API not implemented in HTTP handler format\"}");
-    response->body_length = strlen(response->body);
-}
 
 // Maximum number of segments to return in a single request
 #define MAX_TIMELINE_SEGMENTS 1000
@@ -598,44 +568,15 @@ void mg_handle_timeline_manifest(struct mg_connection *c, struct mg_http_message
     // Free segments
     free(segments);
     
-    // Open manifest file
-    FILE *manifest_file = fopen(manifest_path, "r");
-    if (!manifest_file) {
-        log_error("Failed to open manifest file: %s", manifest_path);
-        mg_send_json_error(c, 500, "Failed to open manifest file");
-        return;
-    }
+    // Use Mongoose's built-in file serving capabilities
+    // This is more stable and handles all the HTTP headers properly
+    struct mg_http_serve_opts opts = {
+        .mime_types = "m3u8=application/vnd.apple.mpegurl",
+        .extra_headers = "Cache-Control: no-cache\r\n"
+    };
     
-    // Get file size
-    fseek(manifest_file, 0, SEEK_END);
-    long file_size = ftell(manifest_file);
-    fseek(manifest_file, 0, SEEK_SET);
-    
-    // Read file content
-    char *manifest_content = (char *)malloc(file_size + 1);
-    if (!manifest_content) {
-        log_error("Failed to allocate memory for manifest content");
-        fclose(manifest_file);
-        mg_send_json_error(c, 500, "Failed to allocate memory for manifest content");
-        return;
-    }
-    
-    size_t bytes_read = fread(manifest_content, 1, file_size, manifest_file);
-    manifest_content[bytes_read] = '\0';
-    
-    // Close file
-    fclose(manifest_file);
-    
-    // Send response
-    mg_printf(c, "HTTP/1.1 200 OK\r\n");
-    mg_printf(c, "Content-Type: application/vnd.apple.mpegurl\r\n");
-    mg_printf(c, "Content-Length: %ld\r\n", bytes_read);
-    mg_printf(c, "Cache-Control: no-cache\r\n");
-    mg_printf(c, "\r\n");
-    mg_send(c, manifest_content, bytes_read);
-    
-    // Clean up
-    free(manifest_content);
+    log_info("Serving manifest file using mg_http_serve_file: %s", manifest_path);
+    mg_http_serve_file(c, hm, manifest_path, &opts);
     
     // Schedule manifest file for deletion after a while
     // In a real implementation, you might want to keep it around for a bit

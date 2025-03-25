@@ -381,45 +381,19 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
 
         // Check if live.html exists
         if (stat(index_path, &st) == 0 && S_ISREG(st.st_mode)) {
-            // Serve live.html as the index
+            // Use Mongoose's built-in file serving capabilities
+            // This is more stable and handles all the HTTP headers properly
             struct mg_http_serve_opts opts = {
                 .root_dir = server->config.web_root,
-                .mime_types = "html=text/html"
+                .mime_types = "html=text/html,htm=text/html,css=text/css,js=application/javascript,"
+                             "json=application/json,jpg=image/jpeg,jpeg=image/jpeg,png=image/png,"
+                             "gif=image/gif,svg=image/svg+xml,ico=image/x-icon,mp4=video/mp4,"
+                             "webm=video/webm,ogg=video/ogg,mp3=audio/mpeg,wav=audio/wav,"
+                             "txt=text/plain,xml=application/xml,pdf=application/pdf"
             };
             
-            // Use direct file serving instead of mg_http_serve_file
-            // to avoid any potential redirection issues
-            FILE *fp = fopen(index_path, "rb");
-            if (fp != NULL) {
-                // Get file size
-                fseek(fp, 0, SEEK_END);
-                long size = ftell(fp);
-                fseek(fp, 0, SEEK_SET);
-                
-                // Read file content
-                char *content = malloc(size);
-                if (content) {
-                    size_t bytes_read = fread(content, 1, size, fp);
-                    if (bytes_read == size) {
-                        // Send HTTP response with file content
-                        mg_printf(c, "HTTP/1.1 200 OK\r\n");
-                        mg_printf(c, "Content-Type: text/html\r\n");
-                        mg_printf(c, "Content-Length: %ld\r\n", size);
-                        mg_printf(c, "\r\n");
-                        mg_send(c, content, size);
-                    } else {
-                        // Error reading file
-                        log_error("Error reading file: %s (read %zu of %ld bytes)", index_path, bytes_read, size);
-                        mg_http_reply(c, 500, "", "Internal Server Error - File read error\n");
-                    }
-                    free(content);
-                } else {
-                    mg_http_reply(c, 500, "", "Internal Server Error\n");
-                }
-                fclose(fp);
-            } else {
-                mg_http_reply(c, 500, "", "Internal Server Error\n");
-            }
+            log_info("Serving SPA index file using mg_http_serve_file: %s", index_path);
+            mg_http_serve_file(c, hm, index_path, &opts);
             return;
         } else {
             log_error("SPA index file not found: %s", index_path);

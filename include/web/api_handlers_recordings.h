@@ -3,8 +3,8 @@
 
 #include <sys/types.h>  /* for off_t */
 #include <time.h>       /* for time_t */
-#include "web/web_server.h"
 #include "database/database_manager.h"  /* for recording_metadata_t */
+#include "mongoose.h"  /* for mongoose-specific handlers */
 
 /**
  * Get the total count of recordings matching given filters
@@ -41,50 +41,26 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
                                    recording_metadata_t *metadata, 
                                    int limit, int offset);
 
-/**
- * Handle GET request for recordings
- */
-void handle_get_recordings(const http_request_t *request, http_response_t *response);
-
-/**
- * Handle GET request for a specific recording
- */
-void handle_get_recording(const http_request_t *request, http_response_t *response);
-
-/**
- * Handle DELETE request to remove a recording
- */
-void handle_delete_recording(const http_request_t *request, http_response_t *response);
-
-/**
- * Handle POST request to batch delete recordings
- */
-void handle_batch_delete_recordings(const http_request_t *request, http_response_t *response);
-
-/**
- * Handle GET request to download a recording
- */
-void handle_download_recording(const http_request_t *request, http_response_t *response);
 
 /**
  * Serve an MP4 file with proper headers for download
  */
-void serve_mp4_file(http_response_t *response, const char *file_path, const char *filename);
+void serve_mp4_file(struct mg_connection *c, const char *file_path, const char *filename);
 
 /**
  * Serve a file for download with proper headers to force browser download
  */
-void serve_file_for_download(http_response_t *response, const char *file_path, const char *filename, off_t file_size);
+void serve_file_for_download(struct mg_connection *c, const char *file_path, const char *filename, off_t file_size);
 
 /**
  * Serve the direct file download
  */
-void serve_direct_download(http_response_t *response, uint64_t id, recording_metadata_t *metadata);
+void serve_direct_download(struct mg_connection *c, uint64_t id, recording_metadata_t *metadata);
 
 /**
  * Serve a file for download with proper headers
  */
-void serve_download_file(http_response_t *response, const char *file_path, const char *content_type,
+void serve_download_file(struct mg_connection *c, const char *file_path, const char *content_type,
                        const char *stream_name, time_t timestamp);
 
 /**
@@ -96,5 +72,47 @@ void schedule_file_deletion(const char *file_path);
  * Callback to remove temporary files after they've been sent
  */
 void remove_temp_file_callback(void *data);
+
+/* Mongoose-specific handlers */
+
+/**
+ * Handle GET request for recordings list
+ */
+void mg_handle_get_recordings(struct mg_connection *c, struct mg_http_message *hm);
+
+/**
+ * Handle GET request for a specific recording
+ */
+void mg_handle_get_recording(struct mg_connection *c, struct mg_http_message *hm);
+
+/**
+ * Handle DELETE request to remove a recording
+ */
+void mg_handle_delete_recording(struct mg_connection *c, struct mg_http_message *hm);
+
+/**
+ * Handle POST request to batch delete recordings
+ */
+void mg_handle_batch_delete_recordings(struct mg_connection *c, struct mg_http_message *hm);
+
+/**
+ * Handle GET request to play a recording
+ */
+void mg_handle_play_recording(struct mg_connection *c, struct mg_http_message *hm);
+
+/**
+ * Handle GET request to download a recording
+ */
+void mg_handle_download_recording(struct mg_connection *c, struct mg_http_message *hm);
+
+/**
+ * Handle GET request to check if a recording file exists
+ */
+void mg_handle_check_recording_file(struct mg_connection *c, struct mg_http_message *hm);
+
+/**
+ * Handle DELETE request to delete a recording file
+ */
+void mg_handle_delete_recording_file(struct mg_connection *c, struct mg_http_message *hm);
 
 #endif /* API_HANDLERS_RECORDINGS_H */

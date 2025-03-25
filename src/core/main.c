@@ -35,13 +35,10 @@
 
 // External function declarations
 void init_recordings_system(void);
-void register_detection_api_handlers(void);
 #include "database/database_manager.h"
-#include "web/web_server.h"
 #include "web/http_server.h"
 #include "web/mongoose_server.h"
 #include "web/api_handlers.h"
-#include "video/streams.h"
 #include "mongoose.h"
 
 // Include necessary headers for signal handling

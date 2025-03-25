@@ -18,6 +18,80 @@ import { loadTimelineView } from './components/preact/timeline/TimelineView.js';
 import { setupModals, addStatusMessageStyles, addModalStyles } from './components/preact/UI.js';
 import './components/auth.js';  // Import authentication module
 
+// Initialize WebSocket client at the parent level
+// This ensures a single WebSocket connection is shared across all components
+if (typeof WebSocketClient !== 'undefined') {
+  // Create a global WebSocket client instance
+  window.wsClient = new WebSocketClient();
+  console.log('WebSocket client initialized at application level');
+  
+  // Add additional event listeners for debugging
+  if (window.wsClient) {
+    // Log initial connection state
+    console.log('Initial WebSocket connection state:', {
+      connected: window.wsClient.isConnected(),
+      clientId: window.wsClient.getClientId()
+    });
+    
+    // Add socket event listeners when socket is created
+    const originalConnect = window.wsClient.connect;
+    window.wsClient.connect = function() {
+      const result = originalConnect.apply(this, arguments);
+      
+      // Add event listeners to the new socket
+      if (this.socket) {
+        const originalOnOpen = this.socket.onopen;
+        this.socket.onopen = (event) => {
+          console.log('WebSocket connection opened at application level');
+          if (originalOnOpen) originalOnOpen.call(this, event);
+        };
+        
+        const originalOnError = this.socket.onerror;
+        this.socket.onerror = (error) => {
+          console.error('WebSocket error at application level:', error);
+          if (originalOnError) originalOnError.call(this, error);
+        };
+        
+        const originalOnClose = this.socket.onclose;
+        this.socket.onclose = (event) => {
+          console.log(`WebSocket connection closed at application level: ${event.code} ${event.reason}`);
+          if (originalOnClose) originalOnClose.call(this, event);
+        };
+        
+        const originalOnMessage = this.socket.onmessage;
+        this.socket.onmessage = (event) => {
+          // Only log non-welcome messages at application level to reduce noise
+          if (!event.data.includes('"type":"welcome"')) {
+            console.log('WebSocket message received at application level');
+          }
+          if (originalOnMessage) originalOnMessage.call(this, event);
+        };
+      }
+      
+      return result;
+    };
+    
+    // Override handleMessage to log when client ID is set
+    const originalHandleMessage = window.wsClient.handleMessage;
+    window.wsClient.handleMessage = function(data) {
+      const clientIdBefore = this.clientId;
+      originalHandleMessage.call(this, data);
+      const clientIdAfter = this.clientId;
+      
+      // Log when client ID changes
+      if (clientIdBefore !== clientIdAfter && clientIdAfter) {
+        console.log(`WebSocket client ID changed at application level: ${clientIdAfter}`);
+      }
+    };
+  }
+  
+  // Initialize batch delete client if needed
+  if (typeof BatchDeleteRecordingsClient !== 'undefined') {
+    window.batchDeleteClient = new BatchDeleteRecordingsClient(window.wsClient);
+    console.log('Batch delete client initialized');
+  }
+}
+
 /**
  * Simple store implementation for state management
  * @param {Object} initialState - Initial state
@@ -68,6 +142,35 @@ export const videoModalStore = createStore({
   title: '',
   downloadUrl: ''
 });
+
+// Create a store for WebSocket state
+export const websocketStore = createStore({
+  client: window.wsClient || null,
+  connected: window.wsClient ? window.wsClient.isConnected() : false,
+  clientId: window.wsClient ? window.wsClient.getClientId() : null
+});
+
+// Update websocket store when connection status changes
+if (window.wsClient) {
+  // Set up a periodic check for WebSocket status
+  setInterval(() => {
+    if (window.wsClient) {
+      const connected = window.wsClient.isConnected();
+      const clientId = window.wsClient.getClientId();
+      
+      websocketStore.setState({
+        connected,
+        clientId
+      });
+      
+      // If not connected and not already reconnecting, try to reconnect
+      if (!connected && !window.wsClient.connecting && window.wsClient.reconnectAttempts < window.wsClient.maxReconnectAttempts) {
+        console.log('WebSocket not connected, attempting to reconnect from application level');
+        window.wsClient.connect();
+      }
+    }
+  }, 5000); // Check every 5 seconds
+}
 
 /**
  * Initialize the application

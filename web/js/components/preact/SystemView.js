@@ -9,6 +9,50 @@ import { useState, useEffect } from '../../preact.hooks.module.js';
 import { showStatusMessage } from './UI.js';
 
 /**
+ * Helper function to check if a log level meets the minimum required level
+ * This is a JavaScript implementation of the same logic used in the backend
+ * 
+ * @param {string} logLevel The log level to check
+ * @param {string} minLevel The minimum required level
+ * @returns {boolean} True if the log level meets the minimum, false otherwise
+ */
+function log_level_meets_minimum(logLevel, minLevel) {
+  // Convert log levels to numeric values for comparison
+  let levelValue = 2; // Default to INFO (2)
+  let minValue = 2;   // Default to INFO (2)
+  
+  // Map log level strings to numeric values
+  // ERROR = 0, WARNING = 1, INFO = 2, DEBUG = 3
+  const logLevelLower = String(logLevel || '').toLowerCase();
+  const minLevelLower = String(minLevel || '').toLowerCase();
+  
+  if (logLevelLower === 'error') {
+    levelValue = 0;
+  } else if (logLevelLower === 'warning' || logLevelLower === 'warn') {
+    levelValue = 1;
+  } else if (logLevelLower === 'info') {
+    levelValue = 2;
+  } else if (logLevelLower === 'debug') {
+    levelValue = 3;
+  }
+  
+  if (minLevelLower === 'error') {
+    minValue = 0;
+  } else if (minLevelLower === 'warning' || minLevelLower === 'warn') {
+    minValue = 1;
+  } else if (minLevelLower === 'info') {
+    minValue = 2;
+  } else if (minLevelLower === 'debug') {
+    minValue = 3;
+  }
+  
+  // Return true if the log level is less than or equal to the minimum level
+  // Lower values are higher priority (ERROR = 0 is highest priority)
+  // We want to include all levels with higher or equal priority to the minimum
+  return levelValue <= minValue;
+}
+
+/**
  * SystemView component
  * @returns {JSX.Element} SystemView component
  */
@@ -67,13 +111,171 @@ export function SystemView() {
     // Set up interval to refresh system info
     const interval = setInterval(loadSystemInfo, 10000);
     
-    // Clean up interval on unmount
-    return () => clearInterval(interval);
+    // Initialize WebSocket for system logs if available
+    if (window.wsClient && typeof window.wsClient.subscribe === 'function') {
+      console.log('Subscribing to system/logs via WebSocket');
+      
+      // Subscribe to system logs topic with the current log level
+      window.wsClient.subscribe('system/logs', { level: logLevel });
+      
+      // Register handler for system logs updates
+      const handleLogsUpdate = (payload) => {
+        console.log('Received system logs update via WebSocket:', payload);
+        
+        if (payload && payload.logs && Array.isArray(payload.logs)) {
+          // Clean and normalize logs
+          const cleanedLogs = payload.logs.map(log => {
+            // Simply use the component attributes directly
+            const normalizedLog = {
+              timestamp: log.timestamp || 'Unknown',
+              level: log.level || 'info',
+              message: log.message || ''
+            };
+            
+            // Convert level to lowercase for consistency
+            if (normalizedLog.level) {
+              normalizedLog.level = normalizedLog.level.toLowerCase();
+            }
+            
+            // Normalize 'warn' to 'warning'
+            if (normalizedLog.level === 'warn') {
+              normalizedLog.level = 'warning';
+            }
+            
+            return normalizedLog;
+          });
+          
+          // Filter logs based on the selected log level
+          const filteredLogs = cleanedLogs.filter(log => {
+            // Check if the individual log's level meets the minimum selected level
+            return log_level_meets_minimum(log.level, logLevel);
+          });
+          
+          if (filteredLogs.length > 0) {
+            console.log(`Adding ${filteredLogs.length} logs that meet the minimum level ${logLevel}`);
+            setLogs(prevLogs => {
+              // Create a map of existing logs to avoid duplicates
+              const existingLogs = new Map();
+              prevLogs.forEach(log => {
+                // Create a unique key for each log based on timestamp and message
+                const key = `${log.timestamp}:${log.message}`;
+                existingLogs.set(key, true);
+              });
+              
+              // Filter out logs that already exist
+              const newLogs = filteredLogs.filter(log => {
+                const key = `${log.timestamp}:${log.message}`;
+                return !existingLogs.has(key);
+              });
+              
+              // Return the combined logs
+              return [...prevLogs, ...newLogs];
+            });
+          } else {
+            console.log(`No logs meet the minimum level ${logLevel}`);
+          }
+        }
+      };
+      
+      window.wsClient.on('update', 'system/logs', handleLogsUpdate);
+    } else {
+      console.log('WebSocket client not available for system logs, using HTTP fallback');
+    }
+    
+    // Clean up interval and WebSocket subscription on unmount
+    return () => {
+      clearInterval(interval);
+      
+      // Unsubscribe from system logs topic if WebSocket is available
+      if (window.wsClient && typeof window.wsClient.unsubscribe === 'function') {
+        console.log('Unsubscribing from system/logs via WebSocket');
+        window.wsClient.unsubscribe('system/logs');
+        window.wsClient.off('update', 'system/logs');
+      }
+    };
   }, []);
   
   // Load logs when log level or count changes
   useEffect(() => {
     loadLogs();
+    
+    // Filter existing logs based on the new log level
+    setLogs(prevLogs => {
+      return prevLogs.filter(log => log_level_meets_minimum(log.level, logLevel));
+    });
+    
+    // Update WebSocket subscription with new log level if available
+    if (window.wsClient && typeof window.wsClient.subscribe === 'function') {
+      // Unsubscribe first to avoid duplicate subscriptions
+      window.wsClient.unsubscribe('system/logs');
+      window.wsClient.off('update', 'system/logs');
+      
+      // Subscribe with the new log level
+      window.wsClient.subscribe('system/logs', { level: logLevel });
+      
+      // Register handler for system logs updates with the new log level
+      const handleLogsUpdate = (payload) => {
+        console.log('Received system logs update via WebSocket:', payload);
+        
+        if (payload && payload.logs && Array.isArray(payload.logs)) {
+          // Clean and normalize logs
+          const cleanedLogs = payload.logs.map(log => {
+            // Simply use the component attributes directly
+            const normalizedLog = {
+              timestamp: log.timestamp || 'Unknown',
+              level: log.level || 'info',
+              message: log.message || ''
+            };
+            
+            // Convert level to lowercase for consistency
+            if (normalizedLog.level) {
+              normalizedLog.level = normalizedLog.level.toLowerCase();
+            }
+            
+            // Normalize 'warn' to 'warning'
+            if (normalizedLog.level === 'warn') {
+              normalizedLog.level = 'warning';
+            }
+            
+            return normalizedLog;
+          });
+          
+          // Filter logs based on the selected log level
+          const filteredLogs = cleanedLogs.filter(log => {
+            // Check if the individual log's level meets the minimum selected level
+            return log_level_meets_minimum(log.level, logLevel);
+          });
+          
+          if (filteredLogs.length > 0) {
+            console.log(`Adding ${filteredLogs.length} logs that meet the minimum level ${logLevel}`);
+            setLogs(prevLogs => {
+              // Create a map of existing logs to avoid duplicates
+              const existingLogs = new Map();
+              prevLogs.forEach(log => {
+                // Create a unique key for each log based on timestamp and message
+                const key = `${log.timestamp}:${log.message}`;
+                existingLogs.set(key, true);
+              });
+              
+              // Filter out logs that already exist
+              const newLogs = filteredLogs.filter(log => {
+                const key = `${log.timestamp}:${log.message}`;
+                return !existingLogs.has(key);
+              });
+              
+              // Return the combined logs
+              return [...prevLogs, ...newLogs];
+            });
+          } else {
+            console.log(`No logs meet the minimum level ${logLevel}`);
+          }
+        }
+      };
+      
+      window.wsClient.on('update', 'system/logs', handleLogsUpdate);
+      
+      console.log(`Updated WebSocket subscription with log level: ${logLevel}`);
+    }
   }, [logLevel, logCount]);
   
   // Load system info from API
@@ -101,7 +303,48 @@ export function SystemView() {
       }
       
       const data = await response.json();
-      setLogs(data.logs || []);
+      
+      // Check if we have logs
+      if (data.logs && Array.isArray(data.logs)) {
+        // Check if logs are already structured objects or raw strings
+        if (data.logs.length > 0 && typeof data.logs[0] === 'object' && data.logs[0].level) {
+          // Logs are already structured objects, use them directly
+          setLogs(data.logs);
+        } else {
+          // Logs are raw strings, parse them into structured objects
+          const parsedLogs = data.logs.map(logLine => {
+            // Parse log line (format: [TIMESTAMP] [LEVEL] MESSAGE)
+            let timestamp = 'Unknown';
+            let level = 'info';
+            let message = logLine;
+            
+            // Try to extract timestamp and level using regex
+            const logRegex = /\[(.*?)\]\s*\[(.*?)\]\s*(.*)/;
+            const match = logLine.match(logRegex);
+            
+            if (match && match.length >= 4) {
+              timestamp = match[1];
+              level = match[2].toLowerCase();
+              message = match[3];
+              
+              // Normalize log level
+              if (level === 'warn') {
+                level = 'warning';
+              }
+            }
+            
+            return {
+              timestamp,
+              level,
+              message
+            };
+          });
+          
+          setLogs(parsedLogs);
+        }
+      } else {
+        setLogs([]);
+      }
     } catch (error) {
       console.error('Error loading logs:', error);
       showStatusMessage('Error loading logs: ' + error.message);
@@ -221,17 +464,27 @@ export function SystemView() {
   
   // Format log level
   const formatLogLevel = (level) => {
-    switch (level) {
-      case 'error':
-        return html`<span class="px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">ERROR</span>`;
-      case 'warning':
-        return html`<span class="px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">WARN</span>`;
-      case 'info':
-        return html`<span class="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">INFO</span>`;
-      case 'debug':
-        return html`<span class="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">DEBUG</span>`;
-      default:
-        return html`<span class="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">${level.toUpperCase()}</span>`;
+    // Handle null or undefined level
+    if (level === null || level === undefined) {
+      return html`<span class="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">UNKNOWN</span>`;
+    }
+    
+    // Convert to lowercase string for case-insensitive comparison
+    const levelLower = String(level).toLowerCase().trim();
+    
+    // Match against known log levels
+    if (levelLower === 'error' || levelLower === 'err') {
+      return html`<span class="px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">ERROR</span>`;
+    } else if (levelLower === 'warning' || levelLower === 'warn') {
+      return html`<span class="px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">WARN</span>`;
+    } else if (levelLower === 'info') {
+      return html`<span class="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">INFO</span>`;
+    } else if (levelLower === 'debug' || levelLower === 'dbg') {
+      return html`<span class="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">DEBUG</span>`;
+    } else {
+      // For any other value, display it as is (uppercase)
+      const levelText = String(level).toUpperCase();
+      return html`<span class="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">${levelText}</span>`;
     }
   };
   

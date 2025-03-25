@@ -20,10 +20,20 @@ export function TimelineControls() {
 
   // Subscribe to timeline state changes
   useEffect(() => {
+    console.log('TimelineControls: Setting up subscription to timelineState');
+    
     const unsubscribe = timelineState.subscribe(state => {
+      console.log('TimelineControls: Received state update:', state);
+      console.log('TimelineControls: Is playing:', state.isPlaying);
+      console.log('TimelineControls: Zoom level:', state.zoomLevel);
+      console.log('TimelineControls: Segments count:', state.timelineSegments?.length || 0);
+      
       setIsPlaying(state.isPlaying);
       setZoomLevel(state.zoomLevel);
     });
+    
+    // Log initial state
+    console.log('TimelineControls: Initial timelineState:', timelineState);
     
     return () => unsubscribe();
   }, []);

@@ -163,8 +163,7 @@ int mongoose_server_basic_auth_check(struct mg_http_message *hm, http_server_t *
  * @brief Add CORS headers to response
  */
 void mongoose_server_add_cors_headers(struct mg_connection *c, http_server_t *server) {
-    // Note: The mutex is already locked in the calling function (process_request_task or handle_http_request)
-    
+
     if (!server->config.cors_enabled) {
         return;
     }

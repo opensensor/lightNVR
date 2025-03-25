@@ -22,9 +22,17 @@ export function SpeedControls() {
 
   // Subscribe to timeline state changes
   useEffect(() => {
+    console.log('SpeedControls: Setting up subscription to timelineState');
+    
     const unsubscribe = timelineState.subscribe(state => {
+      console.log('SpeedControls: Received state update:', state);
+      console.log('SpeedControls: Playback speed:', state.playbackSpeed);
+      
       setCurrentSpeed(state.playbackSpeed);
     });
+    
+    // Log initial state
+    console.log('SpeedControls: Initial timelineState:', timelineState);
     
     return () => unsubscribe();
   }, []);

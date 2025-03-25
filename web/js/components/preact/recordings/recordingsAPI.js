@@ -1,4 +1,4 @@
-/**
+  /**
  * API functions for RecordingsView
  */
 
@@ -175,6 +175,45 @@ export const recordingsAPI = {
     }
     
     try {
+      // Check if WebSocket client is available
+      if (window.wsClient && window.wsClient.isConnected()) {
+        console.log('Using WebSocket for batch delete operation');
+        
+        // Initialize batch delete client if needed
+        if (!window.batchDeleteClient) {
+          if (typeof BatchDeleteRecordingsClient !== 'undefined') {
+            window.batchDeleteClient = new BatchDeleteRecordingsClient(window.wsClient);
+          } else {
+            console.warn('BatchDeleteRecordingsClient not available, falling back to HTTP');
+            return recordingsAPI.deleteSelectedRecordingsHttp(selectedIds);
+          }
+        }
+        
+        // Show batch delete modal
+        if (typeof showBatchDeleteModal === 'function') {
+          showBatchDeleteModal();
+        }
+        
+        // Use WebSocket for batch delete
+        return await window.batchDeleteClient.deleteWithProgress({ ids: selectedIds });
+      } else {
+        console.log('WebSocket not connected, using HTTP for batch delete');
+        return recordingsAPI.deleteSelectedRecordingsHttp(selectedIds);
+      }
+    } catch (error) {
+      console.error('Error in batch delete operation:', error);
+      showStatusMessage('Error in batch delete operation: ' + error.message);
+      return { succeeded: 0, failed: 0 };
+    }
+  },
+  
+  /**
+   * Delete selected recordings using HTTP (fallback)
+   * @param {Array<number>} selectedIds Array of recording IDs
+   * @returns {Promise<Object>} Result with success and error counts
+   */
+  deleteSelectedRecordingsHttp: async (selectedIds) => {
+    try {
       // Use the batch delete endpoint
       const response = await fetch('/api/recordings/batch-delete', {
         method: 'POST',
@@ -205,7 +244,7 @@ export const recordingsAPI = {
       
       return result;
     } catch (error) {
-      console.error('Error in batch delete operation:', error);
+      console.error('Error in HTTP batch delete operation:', error);
       showStatusMessage('Error in batch delete operation: ' + error.message);
       return { succeeded: 0, failed: 0 };
     }
@@ -244,6 +283,164 @@ export const recordingsAPI = {
       
       console.log('Deleting with filter:', filter);
       
+      // Show batch delete modal with indeterminate progress initially
+      if (typeof showBatchDeleteModal === 'function') {
+        showBatchDeleteModal();
+        
+        // Update the progress UI with an indeterminate state
+        if (typeof window.updateBatchDeleteProgress === 'function') {
+          window.updateBatchDeleteProgress({
+            current: 0,
+            total: 0, // We don't know the total yet
+            succeeded: 0,
+            failed: 0,
+            status: `Preparing to delete recordings matching filter...`,
+            complete: false
+          });
+        }
+      }
+      
+      // Get the total count from the current page's filter
+      // This will help us set a more accurate progress indicator
+      let totalCount = 0;
+      try {
+        // Build query parameters for the API request
+        const params = new URLSearchParams();
+        
+        // Add date range parameters
+        if (filter.start) {
+          params.append('start', filter.start);
+        }
+        
+        if (filter.end) {
+          params.append('end', filter.end);
+        }
+        
+        // Add stream filter
+        if (filter.stream_name) {
+          params.append('stream', filter.stream_name);
+        }
+        
+        // Add detection filter
+        if (filter.detection) {
+          params.append('detection', '1');
+        }
+        
+        // Set page size to 1 to minimize data transfer, we just need the total count
+        params.append('page', '1');
+        params.append('limit', '1');
+        
+        console.log('Getting total count with params:', params.toString());
+        
+        // Fetch recordings to get pagination info
+        const response = await fetch(`/api/recordings?${params.toString()}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.pagination && data.pagination.total) {
+            totalCount = data.pagination.total;
+            console.log(`Found ${totalCount} recordings matching filter`);
+            
+            // Update the progress UI with the total count
+            if (typeof window.updateBatchDeleteProgress === 'function') {
+              window.updateBatchDeleteProgress({
+                current: 0,
+                total: totalCount,
+                succeeded: 0,
+                failed: 0,
+                status: `Found ${totalCount} recordings matching filter. Starting deletion...`,
+                complete: false
+              });
+            }
+          }
+        }
+      } catch (countError) {
+        console.warn('Error getting recording count:', countError);
+        // Continue anyway, we'll just show an indeterminate progress
+      }
+      
+      // Set up an error handler in case the operation fails
+      const handleOperationError = (error) => {
+        console.error('Error in delete all operation:', error);
+        showStatusMessage('Error in delete all operation: ' + error.message);
+        
+        // Update the progress UI to show the error
+        if (typeof window.updateBatchDeleteProgress === 'function') {
+          window.updateBatchDeleteProgress({
+            current: 0,
+            total: 0,
+            succeeded: 0,
+            failed: 0,
+            status: `Error: ${error.message}`,
+            complete: true
+          });
+        }
+        
+        return { succeeded: 0, failed: 0 };
+      };
+      
+        // Check if WebSocket client is available
+        if (window.wsClient && window.wsClient.isConnected()) {
+          console.log('Using WebSocket for batch delete with filter');
+          
+          // Initialize batch delete client if needed
+          if (!window.batchDeleteClient) {
+            if (typeof BatchDeleteRecordingsClient !== 'undefined') {
+              window.batchDeleteClient = new BatchDeleteRecordingsClient(window.wsClient);
+            } else {
+              console.warn('BatchDeleteRecordingsClient not available, falling back to HTTP');
+              return recordingsAPI.deleteAllFilteredRecordingsHttp(filter);
+            }
+          }
+          
+          // Set up a timeout to handle server crashes
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => {
+              reject(new Error('Operation timed out or server crashed. Some recordings may have been deleted.'));
+            }, 60000); // 60 second timeout
+          });
+          
+          try {
+            // Race between the delete operation and the timeout
+            // Pass the total count to the WebSocket client
+            const result = await Promise.race([
+              window.batchDeleteClient.deleteWithProgress({ 
+                filter, 
+                totalCount // Pass the total count to the WebSocket client
+              }),
+              timeoutPromise
+            ]);
+            
+            return result;
+          } catch (wsError) {
+            console.error('WebSocket error or timeout:', wsError);
+            
+            // If we got a timeout or server crash, reload the recordings to show what was deleted
+            setTimeout(() => {
+              if (typeof loadRecordings === 'function') {
+                loadRecordings();
+              }
+            }, 1000);
+            
+            return handleOperationError(wsError);
+          }
+        } else {
+          console.log('WebSocket not connected, using HTTP for batch delete with filter');
+          return recordingsAPI.deleteAllFilteredRecordingsHttp(filter);
+        }
+    } catch (error) {
+      console.error('Error in delete all operation:', error);
+      showStatusMessage('Error in delete all operation: ' + error.message);
+      return { succeeded: 0, failed: 0 };
+    }
+  },
+  
+  /**
+   * Delete all recordings matching filter using HTTP (fallback)
+   * @param {Object} filter Filter object
+   * @returns {Promise<Object>} Result with success and error counts
+   */
+  deleteAllFilteredRecordingsHttp: async (filter) => {
+    try {
       // Use the batch delete endpoint with filter
       const deleteResponse = await fetch('/api/recordings/batch-delete', {
         method: 'POST',
@@ -274,7 +471,7 @@ export const recordingsAPI = {
       
       return result;
     } catch (error) {
-      console.error('Error in delete all operation:', error);
+      console.error('Error in HTTP delete all operation:', error);
       showStatusMessage('Error in delete all operation: ' + error.message);
       return { succeeded: 0, failed: 0 };
     }

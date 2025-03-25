@@ -85,30 +85,30 @@ export function TimelinePage() {
   // Load streams for dropdown
   const loadStreams = () => {
     setState(prev => ({ ...prev, isLoading: true }));
-    
+
     fetch('/api/streams')
-      .then(response => {
-        if (!response.ok) {
-          throw new Error('Failed to load streams');
-        }
-        return response.json();
-      })
-      .then(data => {
-        const streams = data || [];
-        setState(prev => ({ 
-          ...prev, 
-          streams,
-          isLoading: false
-        }));
-        
-        // Update global state
-        timelineState.setState({ streams });
-      })
-      .catch(error => {
-        console.error('Error loading streams:', error);
-        showStatusMessage('Error loading streams: ' + error.message, 'error');
-        setState(prev => ({ ...prev, isLoading: false }));
-      });
+        .then(response => {
+          if (!response.ok) {
+            throw new Error('Failed to load streams');
+          }
+          return response.json();
+        })
+        .then(data => {
+          const streams = data || [];
+          setState(prev => ({
+            ...prev,
+            streams,
+            isLoading: false
+          }));
+
+          // Update global state
+          timelineState.setState({ streams });
+        })
+        .catch(error => {
+          console.error('Error loading streams:', error);
+          showStatusMessage('Error loading streams: ' + error.message, 'error');
+          setState(prev => ({ ...prev, isLoading: false }));
+        });
   };
 
   // Load timeline data based on selected stream and date
@@ -120,86 +120,86 @@ export function TimelinePage() {
 
     setState(prev => ({ ...prev, isLoading: true }));
     showStatusMessage('Loading timeline data...', 'info');
-    
+
     // Calculate start and end times (full day)
     const startDate = new Date(state.selectedDate);
     startDate.setHours(0, 0, 0, 0);
-    
+
     const endDate = new Date(state.selectedDate);
     endDate.setHours(23, 59, 59, 999);
-    
+
     // Format dates for API
     const startTime = startDate.toISOString();
     const endTime = endDate.toISOString();
-    
+
     console.log(`Loading timeline data for stream ${state.selectedStream} from ${startTime} to ${endTime}`);
-    
+
     // Update global state
     timelineState.setState({
       selectedStream: state.selectedStream,
       selectedDate: state.selectedDate
     });
-    
+
     // Fetch timeline segments
     fetch(`/api/timeline/segments?stream=${encodeURIComponent(state.selectedStream)}&start=${encodeURIComponent(startTime)}&end=${encodeURIComponent(endTime)}`)
-      .then(response => {
-        if (!response.ok) {
-          throw new Error('Failed to load timeline data');
-        }
-        return response.json();
-      })
-      .then(data => {
-        console.log('Timeline data received:', data);
-        const timelineSegments = data.segments || [];
-        
-        if (timelineSegments.length === 0) {
-          showStatusMessage('No recordings found for the selected date', 'warning');
-          setState(prev => ({ 
-            ...prev, 
+        .then(response => {
+          if (!response.ok) {
+            throw new Error('Failed to load timeline data');
+          }
+          return response.json();
+        })
+        .then(data => {
+          console.log('Timeline data received:', data);
+          const timelineSegments = data.segments || [];
+
+          if (timelineSegments.length === 0) {
+            showStatusMessage('No recordings found for the selected date', 'warning');
+            setState(prev => ({
+              ...prev,
+              isLoading: false,
+              hasData: false
+            }));
+
+            // Update global state
+            timelineState.setState({
+              timelineSegments: [],
+              currentSegmentIndex: -1,
+              currentTime: null,
+              isPlaying: false
+            });
+            return;
+          }
+
+          setState(prev => ({
+            ...prev,
             isLoading: false,
-            hasData: false
+            hasData: true
           }));
-          
-          // Update global state
+
+          // Update global state with the first segment selected
           timelineState.setState({
-            timelineSegments: [],
-            currentSegmentIndex: -1,
-            currentTime: null,
+            timelineSegments,
+            currentSegmentIndex: 0,
+            currentTime: timelineSegments[0].start_timestamp,
             isPlaying: false
           });
-          return;
-        }
-        
-        setState(prev => ({ 
-          ...prev, 
-          isLoading: false,
-          hasData: true
-        }));
-        
-        // Update global state with the first segment selected
-        timelineState.setState({
-          timelineSegments,
-          currentSegmentIndex: 0,
-          currentTime: timelineSegments[0].start_timestamp,
-          isPlaying: false
+
+          // Preload the first segment's video
+          const videoPlayer = document.querySelector('#video-player video');
+          if (videoPlayer) {
+            console.log('Preloading first segment video:', timelineSegments[0]);
+            videoPlayer.src = `/api/recordings/play/${timelineSegments[0].id}`;
+            videoPlayer.load(); // Just load but don't play yet
+          }
+
+          // Show success message
+          showStatusMessage(`Loaded ${timelineSegments.length} recording segments`, 'success');
+        })
+        .catch(error => {
+          console.error('Error loading timeline data:', error);
+          showStatusMessage('Error loading timeline data: ' + error.message, 'error');
+          setState(prev => ({ ...prev, isLoading: false, hasData: false }));
         });
-        
-        // Preload the first segment's video
-        const videoPlayer = document.querySelector('#video-player video');
-        if (videoPlayer) {
-          console.log('Preloading first segment video:', timelineSegments[0]);
-          videoPlayer.src = `/api/recordings/play/${timelineSegments[0].id}`;
-          videoPlayer.load(); // Just load but don't play yet
-        }
-        
-        // Show success message
-        showStatusMessage(`Loaded ${timelineSegments.length} recording segments`, 'success');
-      })
-      .catch(error => {
-        console.error('Error loading timeline data:', error);
-        showStatusMessage('Error loading timeline data: ' + error.message, 'error');
-        setState(prev => ({ ...prev, isLoading: false, hasData: false }));
-      });
   };
 
   // Handle stream selection change
@@ -221,17 +221,17 @@ export function TimelinePage() {
           <a href="timeline.html" class="px-3 py-1 bg-blue-500 text-white rounded-r-md">Timeline View</a>
         </div>
       </div>
-      
+
       <!-- Stream selector and date picker -->
       <div class="flex flex-wrap gap-4 mb-6">
         <div class="stream-selector flex-grow">
           <label for="stream-selector" class="block mb-2">Stream</label>
-          <select 
-            id="stream-selector" 
-            class="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-            value=${state.selectedStream}
-            onChange=${handleStreamChange}
-            disabled=${state.isLoading}
+          <select
+              id="stream-selector"
+              class="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              value=${state.selectedStream}
+              onChange=${handleStreamChange}
+              disabled=${state.isLoading}
           >
             <option value="" disabled selected>Select a stream</option>
             ${state.streams.map(stream => html`
@@ -239,40 +239,40 @@ export function TimelinePage() {
             `)}
           </select>
         </div>
-        
+
         <div class="date-selector flex-grow">
           <label for="timeline-date" class="block mb-2">Date</label>
-          <input 
-            type="date" 
-            id="timeline-date" 
-            class="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-            value=${state.selectedDate}
-            onChange=${handleDateChange}
-            disabled=${state.isLoading}
+          <input
+              type="date"
+              id="timeline-date"
+              class="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              value=${state.selectedDate}
+              onChange=${handleDateChange}
+              disabled=${state.isLoading}
           />
         </div>
-        
+
         <div class="flex items-end">
-          <button 
-            id="apply-button" 
-            class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-            onClick=${loadTimelineData}
-            disabled=${state.isLoading || state.selectedStream === ''}
+          <button
+              id="apply-button"
+              class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick=${loadTimelineData}
+              disabled=${state.isLoading || state.selectedStream === ''}
           >
             ${state.isLoading ? 'Loading...' : 'Apply'}
           </button>
         </div>
       </div>
-      
+
       <!-- Current time display and controls in a single row -->
       <div class="flex justify-between items-center mb-2">
         <div id="time-display" class="timeline-time-display bg-gray-200 dark:bg-gray-700 px-3 py-1 rounded font-mono text-base">00:00:00</div>
-        
+
         <div class="flex items-center gap-2">
-          <button 
-            class="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded flex items-center gap-1"
-            onClick=${() => timelineState.setState({ showOnlySegments: !timelineState.showOnlySegments })}
-            title="Toggle between showing the full day or focusing on segments with recordings"
+          <button
+              class="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded flex items-center gap-1"
+              onClick=${() => timelineState.setState({ showOnlySegments: !timelineState.showOnlySegments })}
+              title="Toggle between showing the full day or focusing on segments with recordings"
           >
             <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -282,24 +282,24 @@ export function TimelinePage() {
           </button>
         </div>
       </div>
-      
+
       <!-- Video player -->
       <${TimelinePlayer} />
-      
+
       <!-- Playback controls -->
       <${TimelineControls} />
-      
+
       <!-- Timeline -->
-      <div 
-        id="timeline-container" 
-        class="relative w-full h-24 bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg mb-6 overflow-hidden"
-        ref=${timelineContainerRef}
+      <div
+          id="timeline-container"
+          class="relative w-full h-24 bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg mb-6 overflow-hidden"
+          ref=${timelineContainerRef}
       >
         <${TimelineRuler} />
         <${TimelineSegments} />
         <${TimelineCursor} />
       </div>
-      
+
       <!-- Instructions -->
       <div class="mt-6 p-4 bg-gray-200 dark:bg-gray-800 rounded">
         <h3 class="text-lg font-semibold mb-2">How to use the timeline:</h3>

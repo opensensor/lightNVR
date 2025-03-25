@@ -22,7 +22,12 @@ export function TimelineCursor() {
 
   // Subscribe to timeline state changes
   useEffect(() => {
+    console.log('TimelineCursor: Setting up subscription to timelineState');
+    
     const unsubscribe = timelineState.subscribe(state => {
+      console.log('TimelineCursor: Received state update:', state);
+      console.log('TimelineCursor: Current time:', state.currentTime);
+      
       setStartHour(state.timelineStartHour);
       setEndHour(state.timelineEndHour);
       setCurrentTime(state.currentTime);
@@ -33,6 +38,9 @@ export function TimelineCursor() {
       // Update cursor position
       updateCursorPosition(state.currentTime, state.timelineStartHour, state.timelineEndHour);
     });
+    
+    // Log initial state
+    console.log('TimelineCursor: Initial timelineState:', timelineState);
     
     return () => unsubscribe();
   }, []);

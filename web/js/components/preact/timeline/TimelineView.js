@@ -13,10 +13,10 @@ import { TimelinePage } from './TimelinePage.js';
 export function loadTimelineView() {
   const mainContent = document.getElementById('main-content');
   if (!mainContent) return;
-  
+
   // Clear any existing content
   mainContent.innerHTML = '';
-  
+
   // Render the TimelinePage component to the container
   render(html`<${TimelinePage} />`, mainContent);
 }

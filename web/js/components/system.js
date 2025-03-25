@@ -3,10 +3,21 @@
  * Contains functionality for system operations (info, logs, restart, shutdown, backup)
  */
 
+// WebSocket client instance
+let wsClient = null;
+// Flag to track if we're subscribed to system logs
+let subscribedToSystemLogs = false;
+
 /**
  * Set up event handlers for system page
  */
 function setupSystemHandlers() {
+    // Initialize WebSocket client if not already initialized
+    if (!wsClient && typeof WebSocketClient === 'function') {
+        wsClient = new WebSocketClient();
+        console.log('WebSocket client initialized for system page');
+    }
+    
     // Set up refresh button
     const refreshBtn = document.getElementById('refresh-system-btn');
     if (refreshBtn) {
@@ -101,30 +112,173 @@ function loadSystemInfo() {
 
 /**
  * Load system logs
+ * Uses WebSocket if available, falls back to HTTP
  */
 function loadSystemLogs() {
     const logsContainer = document.getElementById('system-logs');
     if (!logsContainer) return;
 
-    // Fetch logs from API
-    fetch('/api/system/logs')
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Failed to load system logs');
-            }
-            return response.json();
-        })
-        .then(data => {
-            if (data.logs && Array.isArray(data.logs)) {
-                logsContainer.textContent = data.logs.join('\n');
-            } else {
-                logsContainer.textContent = 'No logs available';
-            }
-        })
-        .catch(error => {
-            console.error('Error loading system logs:', error);
-            logsContainer.textContent = 'Error loading logs';
-        });
+    // If WebSocket client is available and connected, use it
+    if (wsClient && wsClient.isConnected()) {
+        // Subscribe to system logs if not already subscribed
+        if (!subscribedToSystemLogs) {
+            console.log('Subscribing to system logs via WebSocket');
+            
+            // Register handler for system logs updates
+            wsClient.on('update', 'system/logs', (payload) => {
+                console.log('Received system logs update via WebSocket:', payload);
+                
+                if (payload && payload.logs && Array.isArray(payload.logs)) {
+                    const logsContainer = document.getElementById('system-logs');
+                    if (logsContainer) {
+                        // Clear existing logs
+                        logsContainer.innerHTML = '';
+                        
+                        // Create log entries
+                        payload.logs.forEach(log => {
+                            // Create log entry element
+                            const logEntry = document.createElement('div');
+                            logEntry.className = 'log-entry';
+                            
+                            // Add timestamp
+                            const timestamp = document.createElement('span');
+                            timestamp.className = 'text-gray-500 dark:text-gray-400';
+                            timestamp.textContent = log.timestamp || 'Unknown';
+                            logEntry.appendChild(timestamp);
+                            
+                            // Add level
+                            const level = document.createElement('span');
+                            level.className = 'mx-2';
+                            
+                            // Format level based on value
+                            let levelClass = '';
+                            let levelText = (log.level || 'info').toUpperCase();
+                            
+                            switch (log.level) {
+                                case 'error':
+                                    levelClass = 'px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+                                    break;
+                                case 'warning':
+                                    levelClass = 'px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
+                                    break;
+                                case 'info':
+                                    levelClass = 'px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
+                                    break;
+                                case 'debug':
+                                    levelClass = 'px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
+                                    break;
+                                default:
+                                    levelClass = 'px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
+                            }
+                            
+                            level.className += ' ' + levelClass;
+                            level.textContent = levelText;
+                            logEntry.appendChild(level);
+                            
+                            // Add message
+                            const message = document.createElement('span');
+                            message.className = log.level === 'error' ? 'text-red-600 dark:text-red-400' : '';
+                            message.textContent = log.message || '';
+                            logEntry.appendChild(message);
+                            
+                            // Add log entry to container
+                            logsContainer.appendChild(logEntry);
+                        });
+                        
+                        // Scroll to bottom of logs container
+                        logsContainer.scrollTop = logsContainer.scrollHeight;
+                    }
+                }
+            });
+            
+            // Subscribe to system logs topic
+            wsClient.subscribe('system/logs');
+            subscribedToSystemLogs = true;
+        }
+    } else {
+        console.log('WebSocket not available or not connected, using HTTP fallback for system logs');
+        
+        // Fetch logs from API (HTTP fallback)
+        fetch('/api/system/logs')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to load system logs');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.logs && Array.isArray(data.logs)) {
+                    // Clear existing logs
+                    logsContainer.innerHTML = '';
+                    
+                    // Create log entries
+                    data.logs.forEach(log => {
+                        // Create log entry element
+                        const logEntry = document.createElement('div');
+                        logEntry.className = 'log-entry';
+                        
+                        // Add timestamp
+                        const timestamp = document.createElement('span');
+                        timestamp.className = 'text-gray-500 dark:text-gray-400';
+                        timestamp.textContent = log.timestamp || 'Unknown';
+                        logEntry.appendChild(timestamp);
+                        
+                        // Add level
+                        const level = document.createElement('span');
+                        level.className = 'mx-2';
+                        
+                        // Format level based on value
+                        let levelClass = '';
+                        let levelText = (log.level || 'info').toUpperCase();
+                        
+                        switch (log.level) {
+                            case 'error':
+                                levelClass = 'px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+                                break;
+                            case 'warning':
+                                levelClass = 'px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
+                                break;
+                            case 'info':
+                                levelClass = 'px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
+                                break;
+                            case 'debug':
+                                levelClass = 'px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
+                                break;
+                            default:
+                                levelClass = 'px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
+                        }
+                        
+                        level.className += ' ' + levelClass;
+                        level.textContent = levelText;
+                        logEntry.appendChild(level);
+                        
+                        // Add message
+                        const message = document.createElement('span');
+                        message.className = log.level === 'error' ? 'text-red-600 dark:text-red-400' : '';
+                        message.textContent = log.message || '';
+                        logEntry.appendChild(message);
+                        
+                        // Add log entry to container
+                        logsContainer.appendChild(logEntry);
+                    });
+                    
+                    // Scroll to bottom of logs container
+                    logsContainer.scrollTop = logsContainer.scrollHeight;
+                } else {
+                    logsContainer.innerHTML = '<div class="text-gray-500 dark:text-gray-400">No logs available</div>';
+                }
+            })
+            .catch(error => {
+                console.error('Error loading system logs:', error);
+                logsContainer.textContent = 'Error loading logs';
+                
+                // If WebSocket is available but not connected, try to connect
+                if (wsClient && !wsClient.isConnected()) {
+                    console.log('Attempting to reconnect WebSocket');
+                    wsClient.connect();
+                }
+            });
+    }
 }
 
 /**

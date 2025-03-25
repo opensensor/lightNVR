@@ -20,12 +20,20 @@ export function TimelineRuler() {
 
   // Subscribe to timeline state changes
   useEffect(() => {
+    console.log('TimelineRuler: Setting up subscription to timelineState');
+    
     const unsubscribe = timelineState.subscribe(state => {
+      console.log('TimelineRuler: Received state update:', state);
+      console.log('TimelineRuler: Segments in update:', state.timelineSegments?.length || 0);
+      
       // Calculate time range based on zoom level
       const hoursPerView = 24 / state.zoomLevel;
+      console.log('TimelineRuler: Hours per view:', hoursPerView);
       
       // If we're showing only segments with recordings, adjust the view
       if (state.showOnlySegments && state.timelineSegments && state.timelineSegments.length > 0) {
+        console.log('TimelineRuler: Adjusting view for segments only mode');
+        
         // Find the earliest and latest segments
         let earliestHour = 24;
         let latestHour = 0;
@@ -41,6 +49,8 @@ export function TimelineRuler() {
           latestHour = Math.max(latestHour, endHour);
         });
         
+        console.log('TimelineRuler: Raw segment hours range:', { earliestHour, latestHour });
+        
         // Add some padding
         earliestHour = Math.max(0, earliestHour - 0.5);
         latestHour = Math.min(24, latestHour + 0.5);
@@ -52,6 +62,8 @@ export function TimelineRuler() {
           latestHour = Math.min(24, midpoint + 0.5);
         }
         
+        console.log('TimelineRuler: Adjusted segment hours range:', { earliestHour, latestHour });
+        
         setStartHour(earliestHour);
         setEndHour(latestHour);
         
@@ -61,6 +73,8 @@ export function TimelineRuler() {
           timelineEndHour: latestHour
         });
       } else {
+        console.log('TimelineRuler: Using standard view mode');
+        
         // If we have a current time, center the view around it
         let newStartHour = state.timelineStartHour;
         let newEndHour = state.timelineEndHour;
@@ -68,6 +82,11 @@ export function TimelineRuler() {
         if (state.currentTime !== null) {
           const currentDate = new Date(state.currentTime * 1000);
           const currentHour = currentDate.getHours() + (currentDate.getMinutes() / 60) + (currentDate.getSeconds() / 3600);
+          
+          console.log('TimelineRuler: Centering around current time:', { 
+            currentTime: new Date(state.currentTime * 1000).toLocaleTimeString(),
+            currentHour 
+          });
           
           // Center the view around the current time
           newStartHour = Math.max(0, Math.min(24 - hoursPerView, currentHour - (hoursPerView / 2)));
@@ -79,15 +98,21 @@ export function TimelineRuler() {
           }
         } else {
           // No current time, just adjust the view based on zoom level
+          console.log('TimelineRuler: No current time, adjusting based on zoom level');
+          
           newStartHour = Math.max(0, Math.min(24 - hoursPerView, state.timelineStartHour));
           newEndHour = Math.min(24, newStartHour + hoursPerView);
         }
+        
+        console.log('TimelineRuler: New hour range:', { newStartHour, newEndHour });
         
         setStartHour(newStartHour);
         setEndHour(newEndHour);
         
         // Update global state with calculated values
         if (newStartHour !== state.timelineStartHour || newEndHour !== state.timelineEndHour) {
+          console.log('TimelineRuler: Updating global state with new hour range');
+          
           timelineState.setState({
             timelineStartHour: newStartHour,
             timelineEndHour: newEndHour
@@ -97,6 +122,9 @@ export function TimelineRuler() {
       
       setZoomLevel(state.zoomLevel);
     });
+    
+    // Log initial state
+    console.log('TimelineRuler: Initial timelineState:', timelineState);
     
     return () => unsubscribe();
   }, []);

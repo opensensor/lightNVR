@@ -21,6 +21,8 @@ include_directories(
     ${FFMPEG_INCLUDE_DIRS}
     ${SQLITE_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}/../external/inih
+    ${CMAKE_CURRENT_SOURCE_DIR}/../external/mongoose
+    ${CMAKE_CURRENT_SOURCE_DIR}/../external/cjson
 )
 
 # Define source files needed for tests
@@ -29,12 +31,40 @@ set(DETECTION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/sod_realnet.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/motion_detection.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/logger.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/config.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/web/logger_websocket.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/web/api_handlers_system_ws.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/web/websocket_manager.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/onvif_discovery_messages.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/web/api_handlers_system.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/web/mongoose_server.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/web/mongoose_server_websocket.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/database/db_core.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/database/db_streams.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/database/db_schema.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../external/inih/ini.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../external/cjson/cJSON.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../external/mongoose/mongoose.c
 )
 
 # Define motion detection sources
 set(MOTION_DETECTION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/motion_detection.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/logger.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/config.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/web/logger_websocket.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/web/api_handlers_system_ws.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/web/websocket_manager.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/onvif_discovery_messages.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/web/api_handlers_system.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/web/mongoose_server.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/web/mongoose_server_websocket.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/database/db_core.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/database/db_streams.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/database/db_schema.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../external/inih/ini.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../external/cjson/cJSON.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../external/mongoose/mongoose.c
 )
 
 # Add SOD definition if enabled
@@ -62,6 +92,7 @@ if(ENABLE_SOD)
         pthread
         dl
         sod
+        sqlite3
     )
 
     target_link_libraries(test_sod_voc
@@ -70,6 +101,7 @@ if(ENABLE_SOD)
         pthread
         dl
         sod
+        sqlite3
     )
 
     # Set output directory for test binaries
