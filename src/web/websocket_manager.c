@@ -190,27 +190,18 @@ void websocket_manager_shutdown(void) {
             if (s_clients[i].active && s_clients[i].conn) {
                 // Mark connection for closing
                 s_clients[i].conn->is_closing = 1;
+                // Explicitly set active to false to prevent further operations on this client
+                s_clients[i].active = false;
                 closed_count++;
             }
         }
         
         log_info("Marked %d WebSocket connections for closing", closed_count);
         
-        // IMPORTANT: Don't reset state immediately - give connections time to close
-        pthread_mutex_unlock(&s_mutex);
-        
-        // Wait a short time for connections to start closing
-        usleep(100000);  // 100ms
-    }
-    
-    // Wait a bit longer for connections to finish closing
-    usleep(500000);  // 500ms
-    
-    // Now it's safer to clean up the state
-    if (pthread_mutex_trylock(&s_mutex) == 0) {
-        // Reset state after waiting for connections to close
+        // IMPORTANT: Reset state immediately to prevent any lingering references
         memset(s_clients, 0, sizeof(s_clients));
         memset(s_handlers, 0, sizeof(s_handlers));
+        
         pthread_mutex_unlock(&s_mutex);
     }
     
