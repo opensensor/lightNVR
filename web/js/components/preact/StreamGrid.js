@@ -2,7 +2,6 @@
  * Stream grid functionality for LiveView
  */
 
-import { showLoading, hideLoading } from './utils.js';
 import { initializeVideoPlayer } from './VideoPlayer.js';
 import { takeSnapshot } from './SnapshotManager.js';
 import { toggleStreamFullscreen } from './FullscreenManager.js';
@@ -102,11 +101,6 @@ export function updateVideoGrid(
  */
 export async function loadStreams(setStreams, setSelectedStream, videoGridRef) {
   try {
-    // Show loading state
-    if (videoGridRef) {
-      showLoading(videoGridRef);
-    }
-    
     // Fetch streams from API
     const response = await fetch('/api/streams');
     if (!response.ok) {
@@ -148,21 +142,6 @@ export async function loadStreams(setStreams, setSelectedStream, videoGridRef) {
     console.error('Error loading streams for live view:', error);
     showStatusMessage('Error loading streams: ' + error.message);
     
-    // Show error placeholder
-    if (videoGridRef) {
-      videoGridRef.innerHTML = `
-        <div class="placeholder flex flex-col justify-center items-center col-span-full row-span-full bg-white dark:bg-gray-800 rounded-lg shadow-md text-center p-8">
-          <p class="mb-6 text-gray-600 dark:text-gray-300 text-lg">Error loading streams</p>
-          <a href="streams.html" class="btn-primary px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">Configure Streams</a>
-        </div>
-      `;
-    }
-    
     return [];
-  } finally {
-    // Hide loading state
-    if (videoGridRef) {
-      hideLoading(videoGridRef);
-    }
   }
 }

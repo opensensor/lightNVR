@@ -7,6 +7,7 @@ import { h } from '../../preact.min.js';
 import { html } from '../../html-helper.js';
 import { useState, useEffect, useRef } from '../../preact.hooks.module.js';
 import { showStatusMessage } from './UI.js';
+import { ContentLoader } from './LoadingIndicator.js';
 
 /**
  * StreamsView component
@@ -48,6 +49,10 @@ export function StreamsView() {
   const [detectionModels, setDetectionModels] = useState([]);
   const [isEditing, setIsEditing] = useState(false);
   
+  // State for loading and data status
+  const [isLoading, setIsLoading] = useState(false);
+  const [hasData, setHasData] = useState(false);
+
   // Load streams on mount
   useEffect(() => {
     loadStreams();
@@ -57,16 +62,24 @@ export function StreamsView() {
   // Load streams from API
   const loadStreams = async () => {
     try {
+      setIsLoading(true);
+      setHasData(false);
+      
       const response = await fetch('/api/streams');
       if (!response.ok) {
         throw new Error('Failed to load streams');
       }
       
       const data = await response.json();
-      setStreams(data || []);
+      const streamsData = data || [];
+      setStreams(streamsData);
+      setHasData(streamsData.length > 0);
     } catch (error) {
       console.error('Error loading streams:', error);
       showStatusMessage('Error loading streams: ' + error.message);
+      setHasData(false);
+    } finally {
+      setIsLoading(false);
     }
   };
   
@@ -522,69 +535,70 @@ export function StreamsView() {
         </div>
       </div>
       
-      <div class="streams-container bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
-        <div class="overflow-x-auto">
-          <table id="streams-table" class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead class="bg-gray-50 dark:bg-gray-700">
-              <tr>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Name</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">URL</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Resolution</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">FPS</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Recording</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody class="bg-white divide-y divide-gray-200 dark:bg-gray-800 dark:divide-gray-700">
-              ${streams.length === 0 ? html`
+      <${ContentLoader}
+        isLoading=${isLoading}
+        hasData=${hasData}
+        loadingMessage="Loading streams..."
+        emptyMessage="No streams configured yet. Click 'Add Stream' to create one."
+      >
+        <div class="streams-container bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+          <div class="overflow-x-auto">
+            <table id="streams-table" class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+              <thead class="bg-gray-50 dark:bg-gray-700">
                 <tr>
-                  <td colspan="6" class="px-6 py-4 text-center text-gray-500 dark:text-gray-400">
-                    No streams configured
-                  </td>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Name</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">URL</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Resolution</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">FPS</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Recording</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
                 </tr>
-              ` : streams.map(stream => html`
-                <tr key=${stream.name} class="hover:bg-gray-50 dark:hover:bg-gray-700">
-                  <td class="px-6 py-4 whitespace-nowrap">
-                    <div class="flex items-center">
-                      <span class=${`status-indicator w-2 h-2 rounded-full mr-2 ${stream.enabled ? 'bg-green-500' : 'bg-red-500'}`}></span>
-                      ${stream.name}
-                    </div>
-                  </td>
-                  <td class="px-6 py-4 whitespace-nowrap">${stream.url}</td>
-                  <td class="px-6 py-4 whitespace-nowrap">${stream.width}x${stream.height}</td>
-                  <td class="px-6 py-4 whitespace-nowrap">${stream.fps}</td>
-                  <td class="px-6 py-4 whitespace-nowrap">
-                    ${stream.record ? 'Enabled' : 'Disabled'}
-                    ${stream.detection_based_recording ? ' (Detection)' : ''}
-                  </td>
-                  <td class="px-6 py-4 whitespace-nowrap">
-                    <div class="flex space-x-2">
-                      <button 
-                        class="p-1 rounded-full text-blue-600 hover:bg-blue-100 dark:text-blue-400 dark:hover:bg-blue-900 focus:outline-none"
-                        onClick=${() => openEditStreamModal(stream.name)}
-                        title="Edit"
-                      >
-                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"></path>
-                        </svg>
-                      </button>
-                      <button 
-                        class="p-1 rounded-full text-red-600 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-900 focus:outline-none"
-                        onClick=${() => deleteStream(stream.name)}
-                        title="Delete"
-                      >
-                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                          <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"></path>
-                        </svg>
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              `)}
-            </tbody>
-          </table>
+              </thead>
+              <tbody class="bg-white divide-y divide-gray-200 dark:bg-gray-800 dark:divide-gray-700">
+                ${streams.map(stream => html`
+                  <tr key=${stream.name} class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <td class="px-6 py-4 whitespace-nowrap">
+                      <div class="flex items-center">
+                        <span class=${`status-indicator w-2 h-2 rounded-full mr-2 ${stream.enabled ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                        ${stream.name}
+                      </div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">${stream.url}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">${stream.width}x${stream.height}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">${stream.fps}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                      ${stream.record ? 'Enabled' : 'Disabled'}
+                      ${stream.detection_based_recording ? ' (Detection)' : ''}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                      <div class="flex space-x-2">
+                        <button 
+                          class="p-1 rounded-full text-blue-600 hover:bg-blue-100 dark:text-blue-400 dark:hover:bg-blue-900 focus:outline-none"
+                          onClick=${() => openEditStreamModal(stream.name)}
+                          title="Edit"
+                        >
+                          <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"></path>
+                          </svg>
+                        </button>
+                        <button 
+                          class="p-1 rounded-full text-red-600 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-900 focus:outline-none"
+                          onClick=${() => deleteStream(stream.name)}
+                          title="Delete"
+                        >
+                          <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                            <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                          </svg>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                `)}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      <//>
       
       ${modalVisible && html`
         <div id="stream-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 transition-opacity duration-300">

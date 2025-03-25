@@ -13,6 +13,7 @@ import { TimelineCursor } from './TimelineCursor.js';
 import { TimelinePlayer } from './TimelinePlayer.js';
 import { SpeedControls } from './SpeedControls.js';
 import { showStatusMessage } from '../UI.js';
+import { ContentLoader } from '../LoadingIndicator.js';
 
 // Timeline state store
 const timelineState = {
@@ -120,7 +121,7 @@ export function TimelinePage() {
       return;
     }
 
-    setState(prev => ({ ...prev, isLoading: true }));
+    setState(prev => ({ ...prev, isLoading: true, hasData: false }));
     showStatusMessage('Loading timeline data...', 'info');
 
     // Calculate start and end times (full day)
@@ -155,7 +156,6 @@ export function TimelinePage() {
           const timelineSegments = data.segments || [];
 
           if (timelineSegments.length === 0) {
-            showStatusMessage('No recordings found for the selected date', 'warning');
             setState(prev => ({
               ...prev,
               isLoading: false,
@@ -169,6 +169,9 @@ export function TimelinePage() {
               currentTime: null,
               isPlaying: false
             });
+            
+            // Only show message after loading is complete
+            showStatusMessage('No recordings found for the selected date', 'warning');
             return;
           }
 
@@ -287,22 +290,30 @@ export function TimelinePage() {
         </div>
       </div>
 
-      <!-- Video player -->
-      <${TimelinePlayer} />
-
-      <!-- Playback controls -->
-      <${TimelineControls} />
-
-      <!-- Timeline -->
-      <div
-          id="timeline-container"
-          class="relative w-full h-24 bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg mb-6 overflow-hidden"
-          ref=${timelineContainerRef}
+      <!-- Content with loading state -->
+      <${ContentLoader} 
+        isLoading=${state.isLoading} 
+        hasData=${state.hasData}
+        loadingMessage="Loading timeline data..."
+        emptyMessage="No recordings found for the selected date and stream"
       >
-        <${TimelineRuler} />
-        <${TimelineSegments} />
-        <${TimelineCursor} />
-      </div>
+        <!-- Video player -->
+        <${TimelinePlayer} />
+
+        <!-- Playback controls -->
+        <${TimelineControls} />
+
+        <!-- Timeline -->
+        <div
+            id="timeline-container"
+            class="relative w-full h-24 bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg mb-6 overflow-hidden"
+            ref=${timelineContainerRef}
+        >
+          <${TimelineRuler} />
+          <${TimelineSegments} />
+          <${TimelineCursor} />
+        </div>
+      <//>
 
       <!-- Instructions -->
       <div class="mt-6 p-4 bg-gray-200 dark:bg-gray-800 rounded">

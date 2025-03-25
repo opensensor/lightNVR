@@ -7,6 +7,7 @@ import { h } from '../../preact.min.js';
 import { html } from '../../html-helper.js';
 import { useState, useEffect, useRef } from '../../preact.hooks.module.js';
 import { showStatusMessage, showVideoModal, DeleteConfirmationModal } from './UI.js';
+import { ContentLoader } from './LoadingIndicator.js';
 
 // Import components
 import { FiltersSidebar } from './recordings/FiltersSidebar.js';
@@ -137,10 +138,16 @@ export function RecordingsView() {
     setFiltersVisible(!filtersVisible);
   };
   
+  // State for loading and data status
+  const [isLoading, setIsLoading] = useState(false);
+  const [hasData, setHasData] = useState(false);
+
   // Load recordings
   const loadRecordings = async (page = pagination.currentPage, updateUrl = true) => {
     try {
       // Show loading state
+      setIsLoading(true);
+      setHasData(false);
       setRecordings([]);
       
       // Create a pagination object with the specified page
@@ -158,13 +165,18 @@ export function RecordingsView() {
       const data = await recordingsAPI.loadRecordings(filters, paginationWithPage, sortField, sortDirection);
       
       // Store recordings in the component state
-      setRecordings(data.recordings || []);
+      const recordings = data.recordings || [];
+      setRecordings(recordings);
+      setHasData(recordings.length > 0);
       
       // Update pagination
       updatePaginationFromResponse(data, page);
     } catch (error) {
       console.error('Error loading recordings:', error);
       showStatusMessage('Error loading recordings: ' + error.message);
+      setHasData(false);
+    } finally {
+      setIsLoading(false);
     }
   };
   
@@ -598,28 +610,35 @@ export function RecordingsView() {
             hasActiveFilters=${hasActiveFilters}
           />
           
-          <${RecordingsTable}
-            recordings=${recordings}
-            sortField=${sortField}
-            sortDirection=${sortDirection}
-            sortBy=${sortBy}
-            selectedRecordings=${selectedRecordings}
-            toggleRecordingSelection=${toggleRecordingSelection}
-            selectAll=${selectAll}
-            toggleSelectAll=${toggleSelectAll}
-            getSelectedCount=${getSelectedCount}
-            openDeleteModal=${openDeleteModal}
-            playRecording=${playRecording}
-            downloadRecording=${downloadRecording}
-            deleteRecording=${deleteRecording}
-            recordingsTableBodyRef=${recordingsTableBodyRef}
-            pagination=${pagination}
-          />
-          
-          <${PaginationControls}
-            pagination=${pagination}
-            goToPage=${goToPage}
-          />
+          <${ContentLoader}
+            isLoading=${isLoading}
+            hasData=${hasData}
+            loadingMessage="Loading recordings..."
+            emptyMessage="No recordings found matching your criteria"
+          >
+            <${RecordingsTable}
+              recordings=${recordings}
+              sortField=${sortField}
+              sortDirection=${sortDirection}
+              sortBy=${sortBy}
+              selectedRecordings=${selectedRecordings}
+              toggleRecordingSelection=${toggleRecordingSelection}
+              selectAll=${selectAll}
+              toggleSelectAll=${toggleSelectAll}
+              getSelectedCount=${getSelectedCount}
+              openDeleteModal=${openDeleteModal}
+              playRecording=${playRecording}
+              downloadRecording=${downloadRecording}
+              deleteRecording=${deleteRecording}
+              recordingsTableBodyRef=${recordingsTableBodyRef}
+              pagination=${pagination}
+            />
+            
+            <${PaginationControls}
+              pagination=${pagination}
+              goToPage=${goToPage}
+            />
+          <//>
         </div>
       </div>
       

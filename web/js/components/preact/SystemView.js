@@ -7,6 +7,7 @@ import { h } from '../../preact.min.js';
 import { html } from '../../html-helper.js';
 import { useState, useEffect } from '../../preact.hooks.module.js';
 import { showStatusMessage } from './UI.js';
+import { ContentLoader } from './LoadingIndicator.js';
 
 /**
  * Helper function to check if a log level meets the minimum required level
@@ -103,6 +104,10 @@ export function SystemView() {
   const [isRestarting, setIsRestarting] = useState(false);
   const [isShuttingDown, setIsShuttingDown] = useState(false);
   
+  // State for loading and data status
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasData, setHasData] = useState(false);
+
   // Load system info and logs on mount
   useEffect(() => {
     loadSystemInfo();
@@ -281,6 +286,8 @@ export function SystemView() {
   // Load system info from API
   const loadSystemInfo = async () => {
     try {
+      setIsLoading(true);
+      
       const response = await fetch('/api/system/info');
       if (!response.ok) {
         throw new Error('Failed to load system info');
@@ -288,9 +295,13 @@ export function SystemView() {
       
       const data = await response.json();
       setSystemInfo(data);
+      setHasData(true);
     } catch (error) {
       console.error('Error loading system info:', error);
       // Don't show error message for this, just log it
+      setHasData(false);
+    } finally {
+      setIsLoading(false);
     }
   };
   
@@ -512,7 +523,13 @@ export function SystemView() {
         </div>
       </div>
       
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+      <${ContentLoader}
+        isLoading=${isLoading}
+        hasData=${hasData}
+        loadingMessage="Loading system information..."
+        emptyMessage="System information not available. Please try again later."
+      >
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
           <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">System Information</h3>
           <div class="space-y-2">
@@ -620,9 +637,9 @@ export function SystemView() {
             </div>
           </div>
         </div>
-      </div>
-      
-      <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 mb-4">
+        </div>
+        
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 mb-4">
         <div class="flex justify-between items-center mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">
           <h3 class="text-lg font-semibold">System Logs</h3>
           <div class="flex space-x-2">
@@ -662,7 +679,8 @@ export function SystemView() {
             >
               Clear Logs
             </button>
-          </div>
+            </div>
+      <//>
         </div>
         <div class="logs-container bg-gray-100 dark:bg-gray-900 rounded p-4 overflow-auto max-h-96 font-mono text-sm">
           ${logs.length === 0 ? html`

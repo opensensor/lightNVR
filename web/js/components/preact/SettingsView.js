@@ -7,6 +7,7 @@ import { h } from '../../preact.min.js';
 import { html } from '../../html-helper.js';
 import { useState, useEffect, useRef } from '../../preact.hooks.module.js';
 import { showStatusMessage } from './UI.js';
+import { ContentLoader } from './LoadingIndicator.js';
 
 /**
  * SettingsView component
@@ -33,6 +34,10 @@ export function SettingsView() {
     defaultPostBuffer: 10
   });
   
+  // State for loading and data status
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasData, setHasData] = useState(false);
+
   // Load settings on mount
   useEffect(() => {
     loadSettings();
@@ -41,6 +46,8 @@ export function SettingsView() {
   // Load settings from API
   const loadSettings = async () => {
     try {
+      setIsLoading(true);
+      
       const response = await fetch('/api/settings');
       if (!response.ok) {
         throw new Error('Failed to load settings');
@@ -75,9 +82,14 @@ export function SettingsView() {
         ...prev,
         ...mappedData
       }));
+      
+      setHasData(true);
     } catch (error) {
       console.error('Error loading settings:', error);
       showStatusMessage('Error loading settings: ' + error.message);
+      setHasData(false);
+    } finally {
+      setIsLoading(false);
     }
   };
   
@@ -158,27 +170,32 @@ export function SettingsView() {
         </div>
       </div>
       
-      <div class="settings-container space-y-6">
-        <div class="settings-group bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-          <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">General Settings</h3>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-log-level" class="font-medium">Log Level</label>
-            <select 
-              id="setting-log-level" 
-              name="logLevel"
-              class="col-span-2 p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-              value=${settings.logLevel}
-              onChange=${handleInputChange}
-            >
-              <option value="0">Error</option>
-              <option value="1">Warning</option>
-              <option value="2">Info</option>
-              <option value="3">Debug</option>
-            </select>
+      <${ContentLoader}
+        isLoading=${isLoading}
+        hasData=${hasData}
+        loadingMessage="Loading settings..."
+        emptyMessage="No settings available. Please try again later."
+      >
+        <div class="settings-container space-y-6">
+          <div class="settings-group bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+            <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">General Settings</h3>
+            <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+              <label for="setting-log-level" class="font-medium">Log Level</label>
+              <select 
+                id="setting-log-level" 
+                name="logLevel"
+                class="col-span-2 p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                value=${settings.logLevel}
+                onChange=${handleInputChange}
+              >
+                <option value="0">Error</option>
+                <option value="1">Warning</option>
+                <option value="2">Info</option>
+                <option value="3">Debug</option>
+              </select>
+            </div>
           </div>
-        </div>
-        
-        <div class="settings-group bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+          <div class="settings-group bg-white dark:bg-gray-800 rounded-lg shadow p-4">
           <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">Storage Settings</h3>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-storage-path" class="font-medium">Storage Path</label>
@@ -242,9 +259,9 @@ export function SettingsView() {
               onChange=${handleInputChange}
             />
           </div>
-        </div>
-        
-        <div class="settings-group bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+          </div>
+          
+          <div class="settings-group bg-white dark:bg-gray-800 rounded-lg shadow p-4">
           <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">Web Interface Settings</h3>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-web-port" class="font-medium">Web Port</label>
@@ -294,9 +311,9 @@ export function SettingsView() {
               onChange=${handleInputChange}
             />
           </div>
-        </div>
-        
-        <div class="settings-group bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+          </div>
+          
+          <div class="settings-group bg-white dark:bg-gray-800 rounded-lg shadow p-4">
           <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">Memory Optimization</h3>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-buffer-size" class="font-medium">Buffer Size (KB)</label>
@@ -335,9 +352,9 @@ export function SettingsView() {
               onChange=${handleInputChange}
             />
           </div>
-        </div>
-        
-        <div class="settings-group bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+          </div>
+          
+          <div class="settings-group bg-white dark:bg-gray-800 rounded-lg shadow p-4">
           <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">Detection-Based Recording</h3>
           <div class="setting mb-4">
             <p class="setting-description mb-2 text-gray-700 dark:text-gray-300">
@@ -419,8 +436,9 @@ export function SettingsView() {
               <span class="hint text-sm text-gray-500 dark:text-gray-400">Seconds of video to keep after detection</span>
             </div>
           </div>
+          </div>
         </div>
-      </div>
+      <//>
     </section>
   `;
 }
