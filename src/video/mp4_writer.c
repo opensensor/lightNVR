@@ -30,7 +30,6 @@
 #include "video/streams.h"
 #include "video/mp4_writer.h"
 
-extern pthread_mutex_t recordings_mutex;
 extern active_recording_t active_recordings[MAX_STREAMS];
 
 
@@ -51,6 +50,7 @@ mp4_writer_t *mp4_writer_create(const char *output_path, const char *stream_name
     writer->last_dts = AV_NOPTS_VALUE;
     writer->is_initialized = 0;
     writer->creation_time = time(NULL);
+    writer->last_packet_time = 0;  // Initialize to 0 to indicate no packets written yet
 
     log_info("Created MP4 writer for stream %s at %s", stream_name, output_path);
 
@@ -204,7 +204,8 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
     }
 
     if (!in_pkt) {
-        log_error("Null packet passed to mp4_writer_write_packet for %s", writer->stream_name);
+        // Fix null pointer dereference by not accessing writer->stream_name if writer is NULL
+        log_error("Null packet passed to mp4_writer_write_packet");
         return -1;
     }
 
@@ -243,15 +244,16 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
 
     // Enhanced timestamp handling to fix non-monotonic DTS issues
     if (writer->first_dts == AV_NOPTS_VALUE) {
-        // Wait for a key frame to start if possible
-        if (!(in_pkt->flags & AV_PKT_FLAG_KEY)) {
-            // Skip non-key frames at the beginning
-            log_debug("Skipping non-key frame at start of MP4 recording");
-            av_packet_unref(&pkt);
-            return 0; // Return success but don't process this packet
+        // For the first packet, set up the timestamp reference
+        // We'll use the first keyframe we encounter, but we'll also accept non-keyframes
+        // if they come first to avoid gaps between recordings
+        if (in_pkt->flags & AV_PKT_FLAG_KEY) {
+            log_debug("Starting MP4 recording with keyframe");
+        } else {
+            log_debug("Starting MP4 recording with non-keyframe (to avoid gaps)");
         }
         
-        // First packet (key frame) - use its DTS as reference
+        // First packet - use its DTS as reference
         writer->first_dts = pkt.dts != AV_NOPTS_VALUE ? pkt.dts : pkt.pts;
         writer->first_pts = pkt.pts != AV_NOPTS_VALUE ? pkt.pts : pkt.dts;
 
@@ -342,11 +344,21 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
                  (long long)pkt.pts, (long long)pkt.dts);
     }
 
+    // Write the packet directly
     ret = av_interleaved_write_frame(writer->output_ctx, &pkt);
+    
+    // Flush on key frames to ensure data is written to disk
+    if (pkt.flags & AV_PKT_FLAG_KEY && writer->output_ctx && writer->output_ctx->pb) {
+        avio_flush(writer->output_ctx->pb);
+    }
+    
     if (ret < 0) {
         char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
         av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
         log_error("Error writing MP4 packet: %s", error_buf);
+    } else {
+        // Update the last packet time when a packet is successfully written
+        writer->last_packet_time = time(NULL);
     }
 
     // Free packet resources
@@ -384,41 +396,37 @@ void mp4_writer_close(mp4_writer_t *writer) {
     
     memset(output_path, 0, PATH_MAX);
     memset(stream_name, 0, MAX_STREAM_NAME);
-    
-    // Use a critical section to safely extract and nullify the output context
-    // This prevents race conditions where multiple threads might try to close the same writer
-    {
-        // Safely copy all needed data with proper validation
-        bool valid_output_path = writer->output_path && writer->output_path[0] != '\0';
-        bool valid_stream_name = writer->stream_name && writer->stream_name[0] != '\0';
-        
-        // Only copy if the fields are valid
-        if (valid_output_path) {
-            strncpy(output_path, writer->output_path, PATH_MAX - 1);
-            output_path[PATH_MAX - 1] = '\0';
-        }
 
-        if (valid_stream_name) {
-            strncpy(stream_name, writer->stream_name, MAX_STREAM_NAME - 1);
-            stream_name[MAX_STREAM_NAME - 1] = '\0';
-        } else {
-            strncpy(stream_name, "unknown", MAX_STREAM_NAME - 1);
-        }
-        
-        // Safely copy other fields
-        creation_time = writer->creation_time;
-        was_initialized = writer->is_initialized;
-        first_dts = writer->first_dts;
-        last_dts = writer->last_dts;
-        time_base = writer->time_base;
-        
-        // Extract the output context and immediately set it to NULL to prevent double-free
-        output_ctx = writer->output_ctx;
-        writer->output_ctx = NULL;
-        
-        // Mark as not initialized to prevent further packet writes
-        writer->is_initialized = 0;
+    // Safely copy all needed data with proper validation
+    bool valid_output_path = writer->output_path && writer->output_path[0] != '\0';
+    bool valid_stream_name = writer->stream_name && writer->stream_name[0] != '\0';
+    
+    // Only copy if the fields are valid
+    if (valid_output_path) {
+        strncpy(output_path, writer->output_path, PATH_MAX - 1);
+        output_path[PATH_MAX - 1] = '\0';
     }
+
+    if (valid_stream_name) {
+        strncpy(stream_name, writer->stream_name, MAX_STREAM_NAME - 1);
+        stream_name[MAX_STREAM_NAME - 1] = '\0';
+    } else {
+        strncpy(stream_name, "unknown", MAX_STREAM_NAME - 1);
+    }
+    
+    // Safely copy other fields
+    creation_time = writer->creation_time;
+    was_initialized = writer->is_initialized;
+    first_dts = writer->first_dts;
+    last_dts = writer->last_dts;
+    time_base = writer->time_base;
+    
+    // Extract the output context and immediately set it to NULL to prevent double-free
+    output_ctx = writer->output_ctx;
+    writer->output_ctx = NULL;
+    
+    // Mark as not initialized to prevent further packet writes
+    writer->is_initialized = 0;
 
     // Log the operation
     log_info("Closing MP4 writer for stream %s at %s",
@@ -470,7 +478,6 @@ void mp4_writer_close(mp4_writer_t *writer) {
             // Ensure recording is properly updated in database
             if (was_initialized) {
                 // Find any active recordings for this stream in our tracking array
-                pthread_mutex_lock(&recordings_mutex);
                 bool found = false;
 
                 for (int i = 0; i < MAX_STREAMS; i++) {
@@ -551,8 +558,6 @@ void mp4_writer_close(mp4_writer_t *writer) {
                         log_error("Failed to create database entry for completed recording");
                     }
                 }
-
-                pthread_mutex_unlock(&recordings_mutex);
             }
         } else {
             log_error("MP4 file missing or too small: %s", output_path);

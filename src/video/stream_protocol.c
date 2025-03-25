@@ -168,6 +168,9 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
         av_dict_set(&input_options, "reconnect", "1", 0); // Enable reconnection
         av_dict_set(&input_options, "reconnect_streamed", "1", 0); // Reconnect if streaming
         av_dict_set(&input_options, "reconnect_delay_max", "2", 0); // Max 2 seconds between reconnection attempts (reduced from 5s)
+        
+        // Add more tolerant timestamp handling for TCP streams as well
+        av_dict_set(&input_options, "fflags", "genpts+discardcorrupt", 0);
     }
     
     // Check if this is an ONVIF stream and apply ONVIF-specific options

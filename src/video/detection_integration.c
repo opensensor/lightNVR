@@ -54,9 +54,6 @@ typedef struct {
 } buffer_pool_item_t;
 
 static buffer_pool_item_t buffer_pool[MAX_BUFFER_POOL_SIZE] = {0};
-static pthread_mutex_t buffer_pool_mutex = PTHREAD_MUTEX_INITIALIZER;
-// Make these variables accessible from other files
-pthread_mutex_t active_detections_mutex = PTHREAD_MUTEX_INITIALIZER;
 int active_detections = 0;
 
 // Track which streams are currently being processed for detection
@@ -237,7 +234,6 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
              (channels == 1) ? "grayscale" : "RGB", stream_name);
 
     // Check if this stream is already being processed
-    pthread_mutex_lock(&active_detections_mutex);
     bool stream_already_active = false;
     
     for (int i = 0; i < MAX_CONCURRENT_DETECTIONS; i++) {
@@ -257,7 +253,6 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                     active_detections, MAX_CONCURRENT_DETECTIONS, stream_name);
         }
     }
-    pthread_mutex_unlock(&active_detections_mutex);
 
     // Get a buffer from the pool or allocate a new one
     size_t required_size = frame->width * frame->height * channels;
@@ -265,7 +260,6 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     
     // Try multiple times to get a buffer (with retries)
     for (int retry = 0; retry < BUFFER_ALLOCATION_RETRIES && !packed_buffer; retry++) {
-        pthread_mutex_lock(&buffer_pool_mutex);
         
         // First try to find an existing buffer in the pool
         for (int i = 0; i < MAX_BUFFER_POOL_SIZE; i++) {
@@ -275,7 +269,6 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                 packed_buffer = buffer_pool[i].buffer;
                 log_info("Reusing buffer from pool (index %d, size %zu, retry %d)", 
                         i, buffer_pool[i].size, retry);
-                pthread_mutex_unlock(&buffer_pool_mutex);
                 break;
             }
         }
@@ -304,9 +297,7 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
             
             // If still no slot, we can't allocate a new buffer
             if (empty_slot == -1) {
-                log_error("No available slots in buffer pool (retry %d)", retry);
-                pthread_mutex_unlock(&buffer_pool_mutex);
-                
+                log_error("No available slots in buffer pool (retry %d)", retry);                
                 // If this is the last retry, give up
                 if (retry == BUFFER_ALLOCATION_RETRIES - 1) {
                     goto cleanup;
@@ -329,7 +320,6 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                 if (!buffer_pool[empty_slot].buffer) {
                     log_error("Failed to allocate packed buffer for frame (size: %zu, retry %d)", 
                              required_size, retry);
-                    pthread_mutex_unlock(&buffer_pool_mutex);
                     
                     // If this is the last retry, give up
                     if (retry == BUFFER_ALLOCATION_RETRIES - 1) {
@@ -349,7 +339,6 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
             packed_buffer = buffer_pool[empty_slot].buffer;
             log_info("Allocated buffer for pool (index %d, size %zu, retry %d)", 
                     empty_slot, required_size, retry);
-            pthread_mutex_unlock(&buffer_pool_mutex);
         }
     }
     
@@ -366,7 +355,6 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     }
     
     // Increment active detections counter and track this stream
-    pthread_mutex_lock(&active_detections_mutex);
     
     // Add this stream to the active list if it's not already there
     if (!stream_already_active) {
@@ -389,7 +377,6 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     
     active_detections++;
     log_info("Active detections: %d/%d for stream %s", active_detections, MAX_CONCURRENT_DETECTIONS, stream_name);
-    pthread_mutex_unlock(&active_detections_mutex);
 
     // Log some debug info about the packed buffer
     log_info("Packed buffer first 12 bytes: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
@@ -600,15 +587,11 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
             time_t last_used;
             bool is_large_model;
         } global_model_cache[MAX_STREAMS] = {{{0}}};
-        static pthread_mutex_t global_model_cache_mutex = PTHREAD_MUTEX_INITIALIZER;
         
         // Find model in cache or load it
         detection_model_t model = NULL;
         int cache_idx = -1;
-        
-        // Lock the global model cache
-        pthread_mutex_lock(&global_model_cache_mutex);
-        
+                
         // Look for model in global cache first
         for (int i = 0; i < MAX_STREAMS; i++) {
             if (global_model_cache[i].path[0] != '\0' && 
@@ -617,12 +600,9 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                 cache_idx = i;
                 global_model_cache[i].last_used = time(NULL);
                 log_info("Using globally cached detection model for %s", full_model_path);
-                pthread_mutex_unlock(&global_model_cache_mutex);
                 break;
             }
-        }
-        pthread_mutex_unlock(&global_model_cache_mutex);
-        
+        }        
         // If not found in global cache, check local cache
         if (!model) {
             // Look for model in local cache
@@ -635,18 +615,15 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                     log_info("Using locally cached detection model for %s", full_model_path);
                     
                     // Also add to global cache for other streams to use
-                    pthread_mutex_lock(&global_model_cache_mutex);
                     for (int j = 0; j < MAX_STREAMS; j++) {
                         if (global_model_cache[j].path[0] == '\0') {
                             strncpy(global_model_cache[j].path, full_model_path, MAX_PATH_LENGTH - 1);
                             global_model_cache[j].model = model;
                             global_model_cache[j].last_used = time(NULL);
                             log_info("Added model to global cache: %s", full_model_path);
-                            pthread_mutex_unlock(&global_model_cache_mutex);
                             break;
                         }
                     }
-                    pthread_mutex_unlock(&global_model_cache_mutex);
                     break;
                 }
             }
@@ -677,7 +654,6 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                     
                     // Check if this model is in the global cache before unloading
                     bool in_global_cache = false;
-                    pthread_mutex_lock(&global_model_cache_mutex);
                     for (int i = 0; i < MAX_STREAMS; i++) {
                         if (global_model_cache[i].path[0] != '\0' && 
                             strcmp(global_model_cache[i].path, model_cache[oldest_idx].path) == 0) {
@@ -685,7 +661,6 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                             break;
                         }
                     }
-                    pthread_mutex_unlock(&global_model_cache_mutex);
                     
                     // Only unload if not in global cache
                     if (!in_global_cache) {
@@ -699,14 +674,12 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                 }
                 
                 // Check if model is already loaded in global cache
-                pthread_mutex_lock(&global_model_cache_mutex);
                 for (int i = 0; i < MAX_STREAMS; i++) {
                     if (global_model_cache[i].path[0] != '\0' && 
                         strcmp(global_model_cache[i].path, full_model_path) == 0) {
                         model = global_model_cache[i].model;
                         global_model_cache[i].last_used = time(NULL);
                         log_info("Found model in global cache after slot search: %s", full_model_path);
-                        pthread_mutex_unlock(&global_model_cache_mutex);
                         
                         // Cache locally
                         strncpy(model_cache[oldest_idx].path, full_model_path, MAX_PATH_LENGTH - 1);
@@ -716,7 +689,6 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                         break;
                     }
                 }
-                pthread_mutex_unlock(&global_model_cache_mutex);
                 
                 // If still not found, load the model
                 if (!model) {
@@ -742,7 +714,6 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                         log_info("Cached detection model for %s in local slot %d", full_model_path, oldest_idx);
                         
                         // Also add to global cache
-                        pthread_mutex_lock(&global_model_cache_mutex);
                         for (int i = 0; i < MAX_STREAMS; i++) {
                             if (global_model_cache[i].path[0] == '\0') {
                                 strncpy(global_model_cache[i].path, full_model_path, MAX_PATH_LENGTH - 1);
@@ -752,7 +723,6 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                                 break;
                             }
                         }
-                        pthread_mutex_unlock(&global_model_cache_mutex);
                     }
                 }
             }
@@ -795,34 +765,30 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
 cleanup:
     // Cleanup - ensure all resources are properly freed
     if (packed_buffer) {
-    // Return the buffer to the pool
-    pthread_mutex_lock(&buffer_pool_mutex);
-    for (int i = 0; i < MAX_BUFFER_POOL_SIZE; i++) {
-        if (buffer_pool[i].buffer == packed_buffer) {
-            buffer_pool[i].in_use = false;
-            buffer_pool[i].last_used = time(NULL);
-            log_info("Returned buffer to pool (index %d)", i);
-            break;
+        // Return the buffer to the pool
+        for (int i = 0; i < MAX_BUFFER_POOL_SIZE; i++) {
+            if (buffer_pool[i].buffer == packed_buffer) {
+                buffer_pool[i].in_use = false;
+                buffer_pool[i].last_used = time(NULL);
+                log_info("Returned buffer to pool (index %d)", i);
+                break;
+            }
         }
-    }
-    pthread_mutex_unlock(&buffer_pool_mutex);
-    
-    // Decrement active detections counter and remove this stream from the active list
-    pthread_mutex_lock(&active_detections_mutex);
-    if (active_detections > 0) {
-        active_detections--;
-    }
-    
-    // Remove this stream from the active list
-    for (int i = 0; i < MAX_CONCURRENT_DETECTIONS; i++) {
-        if (strcmp(active_detection_streams[i], stream_name) == 0) {
-            active_detection_streams[i][0] = '\0';
-            break;
+        
+        // Decrement active detections counter and remove this stream from the active list
+        if (active_detections > 0) {
+            active_detections--;
         }
-    }
-    
-    log_info("Active detections: %d/%d after completing %s", active_detections, MAX_CONCURRENT_DETECTIONS, stream_name);
-    pthread_mutex_unlock(&active_detections_mutex);
+        
+        // Remove this stream from the active list
+        for (int i = 0; i < MAX_CONCURRENT_DETECTIONS; i++) {
+            if (strcmp(active_detection_streams[i], stream_name) == 0) {
+                active_detection_streams[i][0] = '\0';
+                break;
+            }
+        }
+        
+        log_info("Active detections: %d/%d after completing %s", active_detections, MAX_CONCURRENT_DETECTIONS, stream_name);
     }
     
     if (buffer) {
@@ -846,7 +812,6 @@ cleanup:
  * This should be called when the application is exiting
  */
 void cleanup_detection_resources(void) {
-    pthread_mutex_lock(&buffer_pool_mutex);
     
     // Free all buffers in the pool
     for (int i = 0; i < MAX_BUFFER_POOL_SIZE; i++) {
@@ -858,6 +823,5 @@ void cleanup_detection_resources(void) {
         }
     }
     
-    pthread_mutex_unlock(&buffer_pool_mutex);
     log_info("Cleaned up detection resources");
 }

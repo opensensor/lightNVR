@@ -39,9 +39,7 @@ void cleanup_hls_streaming_backend(void) {
     // Create a local copy of all stream names that need to be stopped
     char stream_names[MAX_STREAMS][MAX_STREAM_NAME];
     int stream_count = 0;
-    
-    pthread_mutex_lock(&hls_contexts_mutex);
-    
+
     // Collect all stream names first
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (streaming_contexts[i]) {
@@ -50,9 +48,7 @@ void cleanup_hls_streaming_backend(void) {
             stream_count++;
         }
     }
-    
-    pthread_mutex_unlock(&hls_contexts_mutex);
-    
+
     // Now stop each stream one by one
     for (int i = 0; i < stream_count; i++) {
         log_info("Stopping HLS stream: %s", stream_names[i]);

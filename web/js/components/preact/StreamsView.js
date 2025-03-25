@@ -142,7 +142,7 @@ export function StreamsView() {
       fps: stream.fps || 15,
       protocol: stream.protocol?.toString() || '0',
       priority: stream.priority?.toString() || '5',
-      segment: stream.segment || 30,
+      segment: stream.segment_duration || 30,
       detectionThreshold: stream.detection_threshold || 50,
       detectionInterval: stream.detection_interval || 10,
       preBuffer: stream.pre_detection_buffer || 10,
@@ -197,7 +197,7 @@ export function StreamsView() {
         fps: parseInt(currentStream.fps, 10),
         protocol: parseInt(currentStream.protocol, 10),
         priority: parseInt(currentStream.priority, 10),
-        segment: parseInt(currentStream.segment, 10),
+        segment_duration: parseInt(currentStream.segment, 10),
         // Map form fields to API fields
         streaming_enabled: currentStream.streamingEnabled,
         is_onvif: currentStream.isOnvif,

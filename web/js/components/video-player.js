@@ -86,7 +86,14 @@ function initializeVideoPlayer(stream) {
             startLevel: -1,                 // Auto-select quality level based on network conditions
             abrEwmaDefaultEstimate: 500000, // Start with a lower bandwidth estimate (500kbps)
             abrBandWidthFactor: 0.7,        // Be more conservative with bandwidth estimates
-            abrBandWidthUpFactor: 0.5       // Be more conservative when increasing quality
+            abrBandWidthUpFactor: 0.5,      // Be more conservative when increasing quality
+            // fMP4 specific settings
+            fLoader: undefined,             // Use default fragment loader
+            pLoader: undefined,             // Use default playlist loader
+            cmcd: undefined,                // No CMCD (Common Media Client Data) parameters
+            enableDateRangeMetadataCues: true, // Enable date range metadata
+            progressive: false,             // Not using progressive download
+            lowLatencyMode: false           // Not using low latency mode
         });
 
         hls.loadSource(hlsStreamUrl);

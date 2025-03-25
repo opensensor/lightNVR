@@ -24,6 +24,7 @@ struct mp4_writer {
     AVRational time_base;
     int is_initialized;
     time_t creation_time;
+    time_t last_packet_time;  // Time when the last packet was written
 };
 
 /**

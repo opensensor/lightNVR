@@ -7,6 +7,7 @@
 #include <sys/types.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <stdatomic.h>
 
 #include "core/logger.h"
 #include "core/config.h"
@@ -58,14 +59,17 @@ int start_hls_stream(const char *stream_name) {
     log_info("Added HLS reference to stream %s", stream_name);
 
     // Check if already running
-    pthread_mutex_lock(&hls_contexts_mutex);
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (streaming_contexts[i] && strcmp(streaming_contexts[i]->config.name, stream_name) == 0) {
-            pthread_mutex_unlock(&hls_contexts_mutex);
             log_info("HLS stream %s already running", stream_name);
             return 0;  // Already running
         }
     }
+    
+    // Clear any existing HLS segments for this stream
+    // This ensures we start with a clean slate
+    log_info("Clearing any existing HLS segments for stream %s before starting", stream_name);
+    clear_stream_hls_segments(stream_name);
 
     // Find empty slot
     int slot = -1;
@@ -77,7 +81,6 @@ int start_hls_stream(const char *stream_name) {
     }
 
     if (slot == -1) {
-        pthread_mutex_unlock(&hls_contexts_mutex);
         log_error("No slot available for new HLS stream");
         return -1;
     }
@@ -85,14 +88,13 @@ int start_hls_stream(const char *stream_name) {
     // Create context
     hls_stream_ctx_t *ctx = malloc(sizeof(hls_stream_ctx_t));
     if (!ctx) {
-        pthread_mutex_unlock(&hls_contexts_mutex);
         log_error("Memory allocation failed for HLS streaming context");
         return -1;
     }
 
     memset(ctx, 0, sizeof(hls_stream_ctx_t));
     memcpy(&ctx->config, &config, sizeof(stream_config_t));
-    ctx->running = 1;
+    atomic_store(&ctx->running, 1);  // Use atomic store for thread-safe initialization
 
     // Create output paths
     config_t *global_config = get_streaming_config();
@@ -111,7 +113,6 @@ int start_hls_stream(const char *stream_name) {
     if (ret != 0) {
         log_error("Failed to create HLS directory: %s (return code: %d)", ctx->output_path, ret);
         free(ctx);
-        pthread_mutex_unlock(&hls_contexts_mutex);
         return -1;
     }
 
@@ -135,7 +136,6 @@ int start_hls_stream(const char *stream_name) {
     if (!test) {
         log_error("Directory is not writable: %s (error: %s)", ctx->output_path, strerror(errno));
         free(ctx);
-        pthread_mutex_unlock(&hls_contexts_mutex);
         return -1;
     }
     fclose(test);
@@ -148,14 +148,12 @@ int start_hls_stream(const char *stream_name) {
     // Start streaming thread
     if (pthread_create(&ctx->thread, NULL, hls_stream_thread, ctx) != 0) {
         free(ctx);
-        pthread_mutex_unlock(&hls_contexts_mutex);
         log_error("Failed to create HLS streaming thread for %s", stream_name);
         return -1;
     }
 
     // Store context
     streaming_contexts[slot] = ctx;
-    pthread_mutex_unlock(&hls_contexts_mutex);
 
     log_info("Started HLS stream for %s in slot %d", stream_name, slot);
 
@@ -169,6 +167,11 @@ int start_hls_stream(const char *stream_name) {
 int restart_hls_stream(const char *stream_name) {
     log_info("Force restarting HLS stream for %s", stream_name);
     
+    // Clear the HLS segments before stopping the stream
+    // This ensures that when the stream is restarted, it will create new segments
+    log_info("Clearing HLS segments for stream %s before restart", stream_name);
+    clear_stream_hls_segments(stream_name);
+    
     // First stop the stream if it's running
     int stop_result = stop_hls_stream(stream_name);
     if (stop_result != 0) {
@@ -177,6 +180,18 @@ int restart_hls_stream(const char *stream_name) {
     
     // Wait a bit to ensure resources are released
     usleep(500000); // 500ms
+    
+    // Verify that the HLS directory exists and is writable
+    config_t *global_config = get_streaming_config();
+    if (global_config) {
+        char hls_dir[MAX_PATH_LENGTH];
+        snprintf(hls_dir, MAX_PATH_LENGTH, "%s/hls/%s", 
+                global_config->storage_path, stream_name);
+        
+        // Ensure the directory exists and has proper permissions
+        log_info("Ensuring HLS directory exists and is writable: %s", hls_dir);
+        ensure_hls_directory(hls_dir, stream_name);
+    }
     
     // Start the stream again
     int start_result = start_hls_stream(stream_name);
@@ -203,7 +218,6 @@ int stop_hls_stream(const char *stream_name) {
     if (state) {
         // Only disable callbacks if we're actually stopping the stream
         // This prevents disabling callbacks when the stream doesn't exist
-        pthread_mutex_lock(&hls_contexts_mutex);
         bool found = false;
         for (int i = 0; i < MAX_STREAMS; i++) {
             if (streaming_contexts[i] && strcmp(streaming_contexts[i]->config.name, stream_name) == 0) {
@@ -211,8 +225,7 @@ int stop_hls_stream(const char *stream_name) {
                 break;
             }
         }
-        pthread_mutex_unlock(&hls_contexts_mutex);
-        
+
         if (found) {
             // Disable callbacks to prevent new packets from being processed
             set_stream_callbacks_enabled(state, false);
@@ -221,12 +234,6 @@ int stop_hls_stream(const char *stream_name) {
             log_info("Stream %s not found in HLS contexts, not disabling callbacks", stream_name);
         }
     }
-    
-    // CRITICAL FIX: Use a static mutex to prevent concurrent access during stopping
-    static pthread_mutex_t stop_mutex = PTHREAD_MUTEX_INITIALIZER;
-    pthread_mutex_lock(&stop_mutex);
-
-    pthread_mutex_lock(&hls_contexts_mutex);
 
     // Find the stream context
     hls_stream_ctx_t *ctx = NULL;
@@ -243,8 +250,6 @@ int stop_hls_stream(const char *stream_name) {
 
     if (!found) {
         log_warn("HLS stream %s not found for stopping", stream_name);
-        pthread_mutex_unlock(&hls_contexts_mutex);
-        pthread_mutex_unlock(&stop_mutex);
         // Don't re-enable callbacks here - the stream wasn't found so we never disabled them
         return -1;
     }
@@ -252,16 +257,14 @@ int stop_hls_stream(const char *stream_name) {
     // CRITICAL FIX: Check if the stream is already stopped
     if (!ctx->running) {
         log_warn("HLS stream %s is already stopped", stream_name);
-        pthread_mutex_unlock(&hls_contexts_mutex);
-        pthread_mutex_unlock(&stop_mutex);
         // Don't re-enable callbacks here - the stream is already stopped
         return 0;
     }
 
     // No need to clear packet callbacks since we're using a single thread approach
     
-    // Now mark as not running
-    ctx->running = 0;
+    // Now mark as not running using atomic store for thread safety
+    atomic_store(&ctx->running, 0);
     log_info("Marked HLS stream %s as stopping (index: %d)", stream_name, index);
     
     // Reset the timestamp tracker for this stream to ensure clean state when restarted
@@ -271,9 +274,6 @@ int stop_hls_stream(const char *stream_name) {
     
     // Store a local copy of the thread to join
     pthread_t thread_to_join = ctx->thread;
-
-    // Unlock before joining thread to prevent deadlocks
-    pthread_mutex_unlock(&hls_contexts_mutex);
 
     // Join thread with a longer timeout (10 seconds instead of 5)
     int join_result = pthread_join_with_timeout(thread_to_join, NULL, 10);
@@ -286,9 +286,6 @@ int stop_hls_stream(const char *stream_name) {
     } else {
         log_info("Successfully joined thread for stream %s", stream_name);
     }
-
-    // Re-lock for cleanup
-    pthread_mutex_lock(&hls_contexts_mutex);
 
     // Verify context is still valid
     if (index >= 0 && index < MAX_STREAMS && streaming_contexts[index] == ctx) {
@@ -311,9 +308,6 @@ int stop_hls_stream(const char *stream_name) {
     } else {
         log_warn("Context for stream %s was modified during cleanup", stream_name);
     }
-
-    pthread_mutex_unlock(&hls_contexts_mutex);
-    pthread_mutex_unlock(&stop_mutex);
 
     log_info("Stopped HLS stream %s", stream_name);
     

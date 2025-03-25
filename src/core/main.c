@@ -16,6 +16,7 @@
 #include "core/config.h"
 #include "core/logger.h"
 #include "core/daemon.h"
+#include "core/shutdown_coordinator.h"
 #include "video/stream_manager.h"
 #include "video/stream_state.h"
 #include "video/stream_state_adapter.h"
@@ -35,6 +36,7 @@
 // External function declarations
 void init_recordings_system(void);
 #include "database/database_manager.h"
+#include "database/db_schema_cache.h"
 #include "web/http_server.h"
 #include "web/mongoose_server.h"
 #include "web/api_handlers.h"
@@ -65,12 +67,15 @@ static void signal_handler(int sig) {
     // Log the signal received
     log_info("Received signal %d, shutting down...", sig);
     
+    // Initiate shutdown sequence through the coordinator
+    initiate_shutdown();
+    
     // Set the running flag to false to trigger shutdown
     running = false;
     
     // For Linux 4.4 embedded systems, we need a more robust approach
     // Set an alarm to force exit if normal shutdown doesn't work
-    alarm(10); // Force exit after 10 seconds if normal shutdown fails
+    alarm(15); // Force exit after 15 seconds if normal shutdown fails
 }
 
 // Alarm signal handler for forced exit
@@ -398,6 +403,13 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    // Initialize shutdown coordinator
+    if (init_shutdown_coordinator() != 0) {
+        log_error("Failed to initialize shutdown coordinator");
+        return EXIT_FAILURE;
+    }
+    log_info("Shutdown coordinator initialized");
+
     // Initialize signal handlers
     init_signals();
 
@@ -431,6 +443,11 @@ int main(int argc, char *argv[]) {
         log_error("Failed to initialize database");
         goto cleanup;
     }
+    
+    // Initialize schema cache
+    log_info("Initializing schema cache...");
+    init_schema_cache();
+    log_info("Schema cache initialized");
 
     // Initialize storage manager
     if (init_storage_manager(config.storage_path, config.max_storage_size) != 0) {
@@ -690,59 +707,109 @@ cleanup:
     } else if (cleanup_pid > 0) {
         // Parent process - continue with cleanup
         
-    // First stop all streams to ensure proper finalization of recordings
-    log_info("Stopping all active streams...");
-    
-    // CRITICAL FIX: First, clear all packet callbacks to prevent further processing
-    // This must be done before stopping streams to prevent race conditions
-    log_info("Clearing all packet callbacks...");
-    for (int i = 0; i < MAX_STREAMS; i++) {
-        stream_reader_ctx_t *reader = get_stream_reader_by_index(i);
-        if (reader) {
-            // Safely clear the callback
-            set_packet_callback(reader, NULL, NULL);
-        }
-    }
-    
-    // Wait a moment for callbacks to clear and any in-progress operations to complete
-    usleep(500000);  // 500ms - increased from 250ms for better safety
-    
-    // Stop all detection stream readers first
-    log_info("Stopping all detection stream readers...");
-    for (int i = 0; i < config.max_streams; i++) {
-        if (config.streams[i].name[0] != '\0' && 
-            config.streams[i].detection_based_recording && 
-            config.streams[i].detection_model[0] != '\0') {
-            
-            log_info("Stopping detection stream reader for: %s", config.streams[i].name);
-            stop_detection_stream_reader(config.streams[i].name);
-        }
-    }
-    
-    // Wait for detection stream readers to stop
-    usleep(500000);  // 500ms
-    
-    // Stop all streams to ensure clean shutdown
-    for (int i = 0; i < config.max_streams; i++) {
-        if (config.streams[i].name[0] != '\0') {
-            stream_handle_t stream = get_stream_by_name(config.streams[i].name);
-            if (stream) {
-                log_info("Stopping stream: %s", config.streams[i].name);
-                stop_stream(stream);
+        // Components should already be registered during initialization
+        // No need to register them again during shutdown
+        log_info("Starting shutdown sequence for all components...");
+        
+        // First, clear all packet callbacks to prevent further processing
+        log_info("Clearing all packet callbacks...");
+        for (int i = 0; i < MAX_STREAMS; i++) {
+            stream_reader_ctx_t *reader = get_stream_reader_by_index(i);
+            if (reader) {
+                // Safely clear the callback
+                set_packet_callback(reader, NULL, NULL);
             }
         }
-    }
-    
-    // Wait longer for streams to stop
-    usleep(1500000);  // 1500ms - increased from 1000ms for better safety
+        
+        // Wait a moment for callbacks to clear and any in-progress operations to complete
+        usleep(500000);  // 500ms
+        
+        // Stop all detection stream readers first
+        log_info("Stopping all detection stream readers...");
+        for (int i = 0; i < config.max_streams; i++) {
+            if (config.streams[i].name[0] != '\0' && 
+                config.streams[i].detection_based_recording && 
+                config.streams[i].detection_model[0] != '\0') {
+                
+                log_info("Stopping detection stream reader for: %s", config.streams[i].name);
+                stop_detection_stream_reader(config.streams[i].name);
+                
+                // Update component state
+                char component_name[128];
+                snprintf(component_name, sizeof(component_name), "detection_thread_%s", config.streams[i].name);
+                int component_id = -1;
+                for (int j = 0; j < atomic_load(&get_shutdown_coordinator()->component_count); j++) {
+                    if (strcmp(get_shutdown_coordinator()->components[j].name, component_name) == 0) {
+                        component_id = j;
+                        break;
+                    }
+                }
+                if (component_id >= 0) {
+                    update_component_state(component_id, COMPONENT_STOPPED);
+                }
+            }
+        }
+        
+        // Wait for detection stream readers to stop
+        usleep(500000);  // 500ms
+        
+        // Stop all streams to ensure clean shutdown
+        for (int i = 0; i < config.max_streams; i++) {
+            if (config.streams[i].name[0] != '\0') {
+                stream_handle_t stream = get_stream_by_name(config.streams[i].name);
+                if (stream) {
+                    log_info("Stopping stream: %s", config.streams[i].name);
+                    stop_stream(stream);
+                }
+            }
+        }
+        
+        // Wait longer for streams to stop
+        usleep(1500000);  // 1500ms
         
         // Finalize all MP4 recordings first before cleaning up the backend
         log_info("Finalizing all MP4 recordings...");
         close_all_mp4_writers();
         
+        // Update MP4 writer components state
+        for (int i = 0; i < config.max_streams; i++) {
+            if (config.streams[i].name[0] != '\0' && config.streams[i].record) {
+                char component_name[128];
+                snprintf(component_name, sizeof(component_name), "mp4_writer_%s", config.streams[i].name);
+                int component_id = -1;
+                for (int j = 0; j < atomic_load(&get_shutdown_coordinator()->component_count); j++) {
+                    if (strcmp(get_shutdown_coordinator()->components[j].name, component_name) == 0) {
+                        component_id = j;
+                        break;
+                    }
+                }
+                if (component_id >= 0) {
+                    update_component_state(component_id, COMPONENT_STOPPED);
+                }
+            }
+        }
+        
         // Clean up HLS directories
         log_info("Cleaning up HLS directories...");
         cleanup_hls_directories();
+        
+        // Update HLS writer components state
+        for (int i = 0; i < config.max_streams; i++) {
+            if (config.streams[i].name[0] != '\0') {
+                char component_name[128];
+                snprintf(component_name, sizeof(component_name), "hls_writer_%s", config.streams[i].name);
+                int component_id = -1;
+                for (int j = 0; j < atomic_load(&get_shutdown_coordinator()->component_count); j++) {
+                    if (strcmp(get_shutdown_coordinator()->components[j].name, component_name) == 0) {
+                        component_id = j;
+                        break;
+                    }
+                }
+                if (component_id >= 0) {
+                    update_component_state(component_id, COMPONENT_STOPPED);
+                }
+            }
+        }
         
         // Now clean up the backends in the correct order
         log_info("Cleaning up detection stream system...");
@@ -779,6 +846,14 @@ cleanup:
         http_server_stop(http_server);
         http_server_destroy(http_server);
         
+        // Update server thread pool component state
+        for (int j = 0; j < atomic_load(&get_shutdown_coordinator()->component_count); j++) {
+            if (strcmp(get_shutdown_coordinator()->components[j].name, "server_thread_pool") == 0) {
+                update_component_state(j, COMPONENT_STOPPED);
+                break;
+            }
+        }
+        
         log_info("Shutting down stream manager...");
         shutdown_stream_manager();
         
@@ -791,8 +866,28 @@ cleanup:
         log_info("Shutting down storage manager...");
         shutdown_storage_manager();
         
+        // Add a memory barrier before database shutdown to ensure all previous operations are complete
+        __sync_synchronize();
+        
         log_info("Shutting down database...");
         shutdown_database();
+        
+        // Free schema cache
+        log_info("Freeing schema cache...");
+        free_schema_cache();
+        
+        // Wait for all components to stop
+        log_info("Waiting for all components to stop...");
+        if (!wait_for_all_components_stopped(5)) {
+            log_warn("Not all components stopped within timeout, continuing anyway");
+        }
+        
+        // Clean up the shutdown coordinator
+        log_info("Cleaning up shutdown coordinator...");
+        shutdown_coordinator_cleanup();
+        
+        // Add a small delay after database shutdown to ensure all resources are properly released
+        usleep(100000);  // 100ms
         
         // Kill the watchdog timer since we completed successfully
         kill(cleanup_pid, SIGKILL);
@@ -844,6 +939,9 @@ cleanup:
         shutdown_stream_state_manager();
         shutdown_storage_manager();
         shutdown_database();
+        
+        // Clean up the shutdown coordinator
+        shutdown_coordinator_cleanup();
         
         // Restore signal mask
         pthread_sigmask(SIG_SETMASK, &old_mask, NULL);

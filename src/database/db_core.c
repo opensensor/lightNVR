@@ -299,17 +299,100 @@ int init_database(const char *db_path) {
 
 // Shutdown the database
 void shutdown_database(void) {
-    pthread_mutex_lock(&db_mutex);
+    log_info("Starting database shutdown process");
     
-    if (db != NULL) {
-        sqlite3_close(db);
-        db = NULL;
+    // Use a try-lock first to avoid deadlocks if the mutex is already locked
+    int lock_result = pthread_mutex_trylock(&db_mutex);
+    
+    if (lock_result == 0) {
+        // Successfully acquired the lock
+        log_info("Successfully acquired database mutex for shutdown");
+    } else if (lock_result == EBUSY) {
+        // Mutex is already locked, wait with timeout
+        log_warn("Database mutex is busy, waiting with timeout...");
+        
+        struct timespec timeout;
+        clock_gettime(CLOCK_REALTIME, &timeout);
+        timeout.tv_sec += 5; // 5 second timeout
+        
+        lock_result = pthread_mutex_timedlock(&db_mutex, &timeout);
+        if (lock_result != 0) {
+            log_error("Failed to acquire database mutex for shutdown: %s", strerror(lock_result));
+            log_warn("Proceeding with database shutdown without lock - this may cause issues");
+            // Continue without the lock - better than leaving the database open
+        } else {
+            log_info("Acquired database mutex after waiting");
+        }
+    } else {
+        // Other error
+        log_error("Error trying to lock database mutex: %s", strerror(lock_result));
+        log_warn("Proceeding with database shutdown without lock - this may cause issues");
+        // Continue without the lock - better than leaving the database open
     }
     
-    pthread_mutex_unlock(&db_mutex);
+    if (db != NULL) {
+        // Finalize all prepared statements before closing the database
+        // This helps prevent "corrupted size vs. prev_size in fastbins" errors
+        int stmt_count = 0;
+        sqlite3_stmt *stmt;
+        
+        log_info("Finalizing all prepared statements");
+        while ((stmt = sqlite3_next_stmt(db, NULL)) != NULL) {
+            log_info("Finalizing prepared statement %d during database shutdown", ++stmt_count);
+            sqlite3_finalize(stmt);
+        }
+        log_info("Finalized %d prepared statements", stmt_count);
+        
+        // Add a small delay to ensure all statements are properly finalized
+        usleep(100000);  // 100ms - increased from 50ms
+        
+        // Make a local copy of the database handle
+        sqlite3 *db_to_close = db;
+        // Set global handle to NULL first to prevent use-after-free
+        db = NULL;
+        
+        // Use sqlite3_close_v2 which is more forgiving with open statements
+        log_info("Closing database with sqlite3_close_v2");
+        int rc = sqlite3_close_v2(db_to_close);
+        if (rc != SQLITE_OK) {
+            log_warn("Error closing database: %s (code: %d)", sqlite3_errmsg(db_to_close), rc);
+            
+            // If there's an error, try to finalize any remaining statements
+            log_info("Attempting to finalize any remaining statements");
+            stmt_count = 0;
+            while ((stmt = sqlite3_next_stmt(db_to_close, NULL)) != NULL) {
+                log_info("Finalizing remaining statement %d", ++stmt_count);
+                sqlite3_finalize(stmt);
+            }
+            
+            // Add another delay
+            usleep(100000);  // 100ms
+            
+            // Try closing again
+            log_info("Retrying database close");
+            rc = sqlite3_close_v2(db_to_close);
+            if (rc != SQLITE_OK) {
+                log_error("Failed to close database after retry: %s (code: %d)", sqlite3_errmsg(db_to_close), rc);
+            }
+        }
+    } else {
+        log_warn("Database handle is already NULL during shutdown");
+    }
+    
+    // Only unlock if we successfully locked
+    if (lock_result == 0 || (lock_result == EBUSY && pthread_mutex_trylock(&db_mutex) == 0)) {
+        pthread_mutex_unlock(&db_mutex);
+    }
+    
+    // Add a longer delay before destroying the mutex to ensure no threads are still using it
+    log_info("Waiting before destroying database mutex");
+    usleep(200000);  // 200ms - increased from 100ms
+    
+    // Destroy the mutex
+    log_info("Destroying database mutex");
     pthread_mutex_destroy(&db_mutex);
     
-    log_info("Database shutdown");
+    log_info("Database shutdown complete");
 }
 
 // Begin a database transaction with improved error handling

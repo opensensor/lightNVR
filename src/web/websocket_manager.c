@@ -1,3 +1,7 @@
+#define _POSIX_C_SOURCE 200809L
+#define _XOPEN_SOURCE 700
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -179,43 +183,61 @@ void websocket_manager_shutdown(void) {
     // Set initialized to false first to prevent new operations
     s_initialized = false;
     
-    // Try to lock the mutex with a non-blocking approach to avoid deadlocks
-    if (pthread_mutex_trylock(&s_mutex) != 0) {
+    // CRITICAL FIX: Use a more robust approach to acquire the mutex
+    struct timespec timeout;
+    clock_gettime(CLOCK_REALTIME, &timeout);
+    timeout.tv_sec += 2; // 2 second timeout
+    
+    int mutex_result = pthread_mutex_timedlock(&s_mutex, &timeout);
+    if (mutex_result != 0) {
         log_warn("Could not acquire WebSocket mutex within timeout, forcing shutdown");
         // Continue with shutdown anyway
     } else {
         // Close all connections
         int closed_count = 0;
         for (int i = 0; i < MAX_CLIENTS; i++) {
-            if (s_clients[i].active && s_clients[i].conn) {
-                // Mark connection for closing
-                s_clients[i].conn->is_closing = 1;
+            if (s_clients[i].active) {
+                // CRITICAL FIX: Safely handle connection closing
+                if (s_clients[i].conn) {
+                    // Mark connection for closing
+                    s_clients[i].conn->is_closing = 1;
+                    s_clients[i].conn = NULL; // Clear the pointer to prevent use-after-free
+                }
+                
                 // Explicitly set active to false to prevent further operations on this client
                 s_clients[i].active = false;
+                
+                // CRITICAL FIX: Clear topic subscriptions
+                s_clients[i].topic_count = 0;
+                memset(s_clients[i].topics, 0, sizeof(s_clients[i].topics));
+                
                 closed_count++;
             }
         }
         
         log_info("Marked %d WebSocket connections for closing", closed_count);
         
-        // IMPORTANT: Clear client and handler state safely without using memset
-        // This prevents memory corruption during shutdown
-        for (int i = 0; i < MAX_CLIENTS; i++) {
-            s_clients[i].active = false;
-            s_clients[i].conn = NULL;
-            s_clients[i].topic_count = 0;
-        }
-        
+        // CRITICAL FIX: Clear handler state safely
         for (int i = 0; i < MAX_HANDLERS; i++) {
-            s_handlers[i].active = false;
-            s_handlers[i].handler = NULL;
+            if (s_handlers[i].active) {
+                s_handlers[i].active = false;
+                s_handlers[i].handler = NULL;
+                memset(s_handlers[i].topic, 0, sizeof(s_handlers[i].topic));
+            }
         }
         
         pthread_mutex_unlock(&s_mutex);
     }
     
-    // Destroy mutex
-    pthread_mutex_destroy(&s_mutex);
+    // CRITICAL FIX: Add a small delay to ensure connections are properly closed
+    // This helps prevent memory corruption during shutdown
+    usleep(100000); // 100ms
+    
+    // Destroy mutex with proper error handling
+    int destroy_result = pthread_mutex_destroy(&s_mutex);
+    if (destroy_result != 0) {
+        log_warn("Failed to destroy WebSocket mutex: %d", destroy_result);
+    }
     
     log_info("WebSocket manager shutdown complete");
     

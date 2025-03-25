@@ -161,10 +161,30 @@ int clear_stream_hls_segments(const char *stream_name) {
     snprintf(rm_cmd, sizeof(rm_cmd), "rm -f %s/*.ts", stream_hls_dir);
     int ret = system(rm_cmd);
     if (ret != 0) {
-        log_warn("Failed to remove HLS segment files in %s (return code: %d)", 
+        log_warn("Failed to remove HLS .ts segment files in %s (return code: %d)", 
                 stream_hls_dir, ret);
     } else {
-        log_info("Removed HLS segment files in %s", stream_hls_dir);
+        log_info("Removed HLS .ts segment files in %s", stream_hls_dir);
+    }
+    
+    // Remove all .m4s segment files (for fMP4)
+    snprintf(rm_cmd, sizeof(rm_cmd), "rm -f %s/*.m4s", stream_hls_dir);
+    ret = system(rm_cmd);
+    if (ret != 0) {
+        log_warn("Failed to remove HLS .m4s segment files in %s (return code: %d)", 
+                stream_hls_dir, ret);
+    } else {
+        log_info("Removed HLS .m4s segment files in %s", stream_hls_dir);
+    }
+    
+    // Remove init.mp4 file (for fMP4)
+    snprintf(rm_cmd, sizeof(rm_cmd), "rm -f %s/init.mp4", stream_hls_dir);
+    ret = system(rm_cmd);
+    if (ret != 0) {
+        log_warn("Failed to remove HLS init.mp4 file in %s (return code: %d)", 
+                stream_hls_dir, ret);
+    } else {
+        log_info("Removed HLS init.mp4 file in %s", stream_hls_dir);
     }
     
     // Remove all .m3u8 playlist files
@@ -238,7 +258,6 @@ void cleanup_hls_directories(void) {
             
             // Check if this stream is currently active
             bool is_active = false;
-            pthread_mutex_lock(&hls_contexts_mutex);
             for (int i = 0; i < MAX_STREAMS; i++) {
                 if (streaming_contexts[i] && 
                     strcmp(streaming_contexts[i]->config.name, entry->d_name) == 0 &&
@@ -247,8 +266,7 @@ void cleanup_hls_directories(void) {
                     break;
                 }
             }
-            pthread_mutex_unlock(&hls_contexts_mutex);
-            
+
             if (is_active) {
                 log_info("Stream %s is active, skipping cleanup of main playlist file", entry->d_name);
                 
@@ -271,7 +289,17 @@ void cleanup_hls_directories(void) {
                         stream_hls_dir);
                 int ret_find = system(rm_cmd);
                 if (ret_find != 0) {
-                    log_warn("Failed to remove old segments in %s (return code: %d)", 
+                    log_warn("Failed to remove old .ts segments in %s (return code: %d)", 
+                            stream_hls_dir, ret_find);
+                }
+                
+                // Also clean up old .m4s segments (for fMP4)
+                snprintf(rm_cmd, sizeof(rm_cmd), 
+                        "find %s -name \"*.m4s\" -type f -mmin +5 -delete", 
+                        stream_hls_dir);
+                ret_find = system(rm_cmd);
+                if (ret_find != 0) {
+                    log_warn("Failed to remove old .m4s segments in %s (return code: %d)", 
                             stream_hls_dir, ret_find);
                 }
                 
@@ -285,10 +313,30 @@ void cleanup_hls_directories(void) {
                 snprintf(rm_cmd, sizeof(rm_cmd), "rm -f %s/*.ts", stream_hls_dir);
                 int ret = system(rm_cmd);
                 if (ret != 0) {
-                    log_warn("Failed to remove HLS segment files in %s (return code: %d)", 
+                    log_warn("Failed to remove HLS .ts segment files in %s (return code: %d)", 
                             stream_hls_dir, ret);
                 } else {
-                    log_info("Removed HLS segment files in %s", stream_hls_dir);
+                    log_info("Removed HLS .ts segment files in %s", stream_hls_dir);
+                }
+                
+                // Remove all .m4s segment files (for fMP4)
+                snprintf(rm_cmd, sizeof(rm_cmd), "rm -f %s/*.m4s", stream_hls_dir);
+                ret = system(rm_cmd);
+                if (ret != 0) {
+                    log_warn("Failed to remove HLS .m4s segment files in %s (return code: %d)", 
+                            stream_hls_dir, ret);
+                } else {
+                    log_info("Removed HLS .m4s segment files in %s", stream_hls_dir);
+                }
+                
+                // Remove init.mp4 file (for fMP4)
+                snprintf(rm_cmd, sizeof(rm_cmd), "rm -f %s/init.mp4", stream_hls_dir);
+                ret = system(rm_cmd);
+                if (ret != 0) {
+                    log_warn("Failed to remove HLS init.mp4 file in %s (return code: %d)", 
+                            stream_hls_dir, ret);
+                } else {
+                    log_info("Removed HLS init.mp4 file in %s", stream_hls_dir);
                 }
                 
                 // Remove all .m3u8 playlist files

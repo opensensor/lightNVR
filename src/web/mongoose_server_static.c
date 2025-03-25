@@ -180,6 +180,10 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
                 content_type = "application/vnd.apple.mpegurl";
             } else if (strstr(file_name, ".ts")) {
                 content_type = "video/mp2t";
+            } else if (strstr(file_name, ".m4s")) {
+                content_type = "video/iso.segment";
+            } else if (strstr(file_name, "init.mp4")) {
+                content_type = "video/mp4";
             }
             
             // Serve the file with appropriate headers
@@ -190,6 +194,10 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
                 content_type_header = "Content-Type: application/vnd.apple.mpegurl\r\n";
             } else if (strstr(file_name, ".ts")) {
                 content_type_header = "Content-Type: video/mp2t\r\n";
+            } else if (strstr(file_name, ".m4s")) {
+                content_type_header = "Content-Type: video/iso.segment\r\n";
+            } else if (strstr(file_name, "init.mp4")) {
+                content_type_header = "Content-Type: video/mp4\r\n";
             }
             
             // Use more mobile-friendly cache headers

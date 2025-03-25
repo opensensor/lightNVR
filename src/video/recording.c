@@ -23,15 +23,12 @@
 // Array to store active recordings (one for each stream)
 // These are made non-static so they can be accessed from mp4_writer.c
 active_recording_t active_recordings[MAX_STREAMS];
-pthread_mutex_t recordings_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /**
  * Initialize the active recordings array
  */
 void init_recordings(void) {
-    pthread_mutex_lock(&recordings_mutex);
     memset(active_recordings, 0, sizeof(active_recordings));
-    pthread_mutex_unlock(&recordings_mutex);
 }
 
 /**
@@ -74,7 +71,6 @@ uint64_t start_recording(const char *stream_name, const char *output_path) {
 
     // Check if there's already an active recording for this stream
     uint64_t existing_recording_id = 0;
-    pthread_mutex_lock(&recordings_mutex);
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (active_recordings[i].recording_id > 0 && 
             strcmp(active_recordings[i].stream_name, stream_name) == 0) {
@@ -88,9 +84,7 @@ uint64_t start_recording(const char *stream_name, const char *output_path) {
             active_recordings[i].recording_id = 0;
             active_recordings[i].stream_name[0] = '\0';
             active_recordings[i].output_path[0] = '\0';
-            
-            pthread_mutex_unlock(&recordings_mutex);
-            
+
             // Mark the existing recording as complete
             time_t end_time = time(NULL);
             update_recording_metadata(existing_recording_id, end_time, 0, true);
@@ -99,11 +93,9 @@ uint64_t start_recording(const char *stream_name, const char *output_path) {
                     (unsigned long long)existing_recording_id);
             
             // Re-lock the mutex for the next section
-            pthread_mutex_lock(&recordings_mutex);
             break;
         }
     }
-    pthread_mutex_unlock(&recordings_mutex);
 
     // Create recording metadata
     recording_metadata_t metadata;
@@ -154,7 +146,6 @@ uint64_t start_recording(const char *stream_name, const char *output_path) {
     log_info("Recording metadata added to database with ID: %llu", (unsigned long long)recording_id);
 
     // Store active recording
-    pthread_mutex_lock(&recordings_mutex);
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (active_recordings[i].recording_id == 0) {
             active_recordings[i].recording_id = recording_id;
@@ -165,13 +156,11 @@ uint64_t start_recording(const char *stream_name, const char *output_path) {
             log_info("Started recording for stream %s with ID %llu", 
                     stream_name, (unsigned long long)recording_id);
             
-            pthread_mutex_unlock(&recordings_mutex);
             return recording_id;
         }
     }
     
     // No free slots
-    pthread_mutex_unlock(&recordings_mutex);
     log_error("No free slots for active recordings");
     return 0;
 }
@@ -181,9 +170,7 @@ uint64_t start_recording(const char *stream_name, const char *output_path) {
  */
 void update_recording(const char *stream_name) {
     if (!stream_name) return;
-    
-    pthread_mutex_lock(&recordings_mutex);
-    
+
     // Find the active recording for this stream
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (active_recordings[i].recording_id > 0 && 
@@ -193,10 +180,7 @@ void update_recording(const char *stream_name) {
             char output_path[MAX_PATH_LENGTH];
             strncpy(output_path, active_recordings[i].output_path, MAX_PATH_LENGTH - 1);
             output_path[MAX_PATH_LENGTH - 1] = '\0';
-            time_t start_time = active_recordings[i].start_time;
-            
-            pthread_mutex_unlock(&recordings_mutex);
-            
+
             // Calculate total size of all segments
             uint64_t total_size = 0;
             struct stat st;
@@ -224,8 +208,6 @@ void update_recording(const char *stream_name) {
             return;
         }
     }
-    
-    pthread_mutex_unlock(&recordings_mutex);
 }
 
 /**
@@ -233,9 +215,7 @@ void update_recording(const char *stream_name) {
  */
 void stop_recording(const char *stream_name) {
     if (!stream_name) return;
-    
-    pthread_mutex_lock(&recordings_mutex);
-    
+
     // Find the active recording for this stream
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (active_recordings[i].recording_id > 0 && 
@@ -251,9 +231,7 @@ void stop_recording(const char *stream_name) {
             active_recordings[i].recording_id = 0;
             active_recordings[i].stream_name[0] = '\0';
             active_recordings[i].output_path[0] = '\0';
-            
-            pthread_mutex_unlock(&recordings_mutex);
-            
+
             // Calculate final size of all segments
             uint64_t total_size = 0;
             struct stat st;
@@ -300,8 +278,6 @@ void stop_recording(const char *stream_name) {
             return;
         }
     }
-    
-    pthread_mutex_unlock(&recordings_mutex);
 }
 
 // This function is now defined in mp4_recording.c
@@ -316,21 +292,15 @@ int get_recording_state(const char *stream_name) {
         log_error("Invalid stream name for get_recording_state");
         return -1;
     }
-    
-    // First check if there's an active recording in the active_recordings array
-    pthread_mutex_lock(&recordings_mutex);
-    
+
     // Find the active recording for this stream
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (active_recordings[i].recording_id > 0 && 
             strcmp(active_recordings[i].stream_name, stream_name) == 0) {
-            pthread_mutex_unlock(&recordings_mutex);
             return 1; // Recording is active
         }
     }
-    
-    pthread_mutex_unlock(&recordings_mutex);
-    
+
     // If no active recording found in active_recordings, check if there's an active MP4 writer
     // using the function from mp4_recording.c
     mp4_writer_t *writer = get_mp4_writer_for_stream(stream_name);

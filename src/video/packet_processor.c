@@ -6,6 +6,7 @@
 #include <pthread.h>
 #include <string.h>
 #include <stdlib.h>
+#include <libavutil/time.h>  // For av_gettime()
 
 /**
  * Process a video packet for either HLS streaming or MP4 recording
@@ -39,55 +40,51 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
         log_error("process_video_packet: NULL stream name");
         return -1;
     }
+
+    // We'll only use a mutex for HLS writers, not for MP4 writers
+    // MP4 writers will operate without mutex protection to avoid deadlocks
+    pthread_mutex_t *mutex_to_use = NULL;
     
-    // CRITICAL FIX: Add per-stream mutex for thread safety during packet processing
-    // This prevents a global lock that could cause all streams to block on a single slow stream
-    static pthread_mutex_t global_mutex = PTHREAD_MUTEX_INITIALIZER;
-    static pthread_mutex_t stream_mutexes[MAX_STREAMS];
-    static char stream_names[MAX_STREAMS][MAX_STREAM_NAME];
-    static int mutex_initialized = 0;
-    
-    // Initialize the mutex array if needed
-    pthread_mutex_lock(&global_mutex);
-    if (!mutex_initialized) {
-        for (int i = 0; i < MAX_STREAMS; i++) {
-            pthread_mutex_init(&stream_mutexes[i], NULL);
-            memset(stream_names[i], 0, MAX_STREAM_NAME);
-        }
-        mutex_initialized = 1;
-    }
-    
-    // Find or create a mutex for this stream
-    int mutex_index = -1;
-    for (int i = 0; i < MAX_STREAMS; i++) {
-        if (stream_names[i][0] == '\0') {
-            // Found an empty slot
-            if (mutex_index == -1) {
-                mutex_index = i;
-                strncpy(stream_names[i], stream_name, MAX_STREAM_NAME - 1);
-                stream_names[i][MAX_STREAM_NAME - 1] = '\0';
+    if (writer_type == 0) {  // HLS writer
+        // For HLS writers, we'll still use a mutex to protect against race conditions
+        #define MUTEX_HASH_SIZE 16  // Must be a power of 2
+        static pthread_mutex_t hls_mutex_hash[MUTEX_HASH_SIZE];
+        static pthread_mutex_t mutex_init_mutex = PTHREAD_MUTEX_INITIALIZER;
+        static int mutex_initialized = 0;
+        
+        // Initialize the mutex array if needed
+        if (!mutex_initialized) {
+            pthread_mutex_lock(&mutex_init_mutex);
+            if (!mutex_initialized) {
+                for (int i = 0; i < MUTEX_HASH_SIZE; i++) {
+                    pthread_mutex_init(&hls_mutex_hash[i], NULL);
+                }
+                mutex_initialized = 1;
             }
-        } else if (strcmp(stream_names[i], stream_name) == 0) {
-            // Found existing stream
-            mutex_index = i;
-            break;
+            pthread_mutex_unlock(&mutex_init_mutex);
         }
+        
+        // Calculate a simple hash of the stream name
+        unsigned int hash = 0;
+        const char *p = stream_name;
+        while (*p) {
+            hash = (hash * 31) + (*p++);
+        }
+        
+        // Get the appropriate mutex for this stream
+        mutex_to_use = &hls_mutex_hash[hash & (MUTEX_HASH_SIZE - 1)];
+        
+        // Lock the mutex for this stream
+        pthread_mutex_lock(mutex_to_use);
     }
-    
-    // If we couldn't find a slot, use a fallback mutex
-    pthread_mutex_t *mutex_to_use = (mutex_index >= 0) ? 
-                                   &stream_mutexes[mutex_index] : 
-                                   &global_mutex;
-    
-    pthread_mutex_unlock(&global_mutex);
-    
-    // Lock the appropriate mutex for this stream
-    pthread_mutex_lock(mutex_to_use);
+    // For MP4 writers (writer_type == 1), we don't use any mutex
     
     // Validate packet data
     if (!pkt->data || pkt->size <= 0) {
         log_warn("Invalid packet (null data or zero size) for stream %s", stream_name);
-        pthread_mutex_unlock(mutex_to_use);
+        if (writer_type == 0 && mutex_to_use) {  // Only unlock for HLS writers
+            pthread_mutex_unlock(mutex_to_use);
+        }
         return -1;
     }
     
@@ -98,14 +95,18 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
     out_pkt = av_packet_alloc();
     if (!out_pkt) {
         log_error("Failed to allocate packet in process_video_packet for stream %s", stream_name);
-        pthread_mutex_unlock(mutex_to_use);
+        if (writer_type == 0 && mutex_to_use) {  // Only unlock for HLS writers
+            pthread_mutex_unlock(mutex_to_use);
+        }
         return -1;
     }
     
     if (av_packet_ref(out_pkt, pkt) < 0) {
         log_error("Failed to reference packet in process_video_packet for stream %s", stream_name);
         av_packet_free(&out_pkt);
-        pthread_mutex_unlock(mutex_to_use);
+        if (writer_type == 0 && mutex_to_use) {  // Only unlock for HLS writers
+            pthread_mutex_unlock(mutex_to_use);
+        }
         return -1;
     }
     
@@ -134,9 +135,10 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
         log_debug("Using timestamp tracker for stream %s with UDP flag: %s", 
                  stream_name, is_udp_stream ? "true" : "false");
                  
-        // Process UDP streams with special timestamp handling
-        if (is_udp_stream) {
-            log_debug("Applying UDP timestamp handling for stream %s", stream_name);
+            // Process all streams with special timestamp handling, not just UDP
+            // This ensures consistent timestamp handling for both UDP and TCP streams
+            log_debug("Applying timestamp handling for stream %s (UDP: %s)", 
+                     stream_name, is_udp_stream ? "true" : "false");
             
             // Handle missing timestamps
             if (out_pkt->pts == AV_NOPTS_VALUE && out_pkt->dts != AV_NOPTS_VALUE) {
@@ -179,18 +181,19 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
                     
                     out_pkt->pts = last_pts + frame_duration;
                     out_pkt->dts = out_pkt->pts;
-                    log_debug("Generated timestamps for UDP stream %s: pts=%lld, dts=%lld", 
+                    log_debug("Generated timestamps for stream %s: pts=%lld, dts=%lld", 
                              stream_name, (long long)out_pkt->pts, (long long)out_pkt->dts);
                 } else {
                     // If we don't have a last_pts, set a default starting value
                     out_pkt->pts = 1;
                     out_pkt->dts = 1;
-                    log_debug("Set default initial timestamps for UDP stream %s with no previous reference", 
+                    log_debug("Set default initial timestamps for stream %s with no previous reference", 
                              stream_name);
                 }
             }
             
             // Detect and handle timestamp discontinuities with additional safety checks
+            // Apply to all streams, not just UDP
             if (last_pts != AV_NOPTS_VALUE && out_pkt->pts != AV_NOPTS_VALUE) {
                 // Calculate frame duration
                 int64_t frame_duration = 0;
@@ -240,7 +243,7 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
                     
                     // Only log occasionally to avoid flooding logs
                     if (local_count % 10 == 1) {
-                        log_warn("Timestamp discontinuity detected in UDP stream %s: expected=%lld, actual=%lld, diff=%lld ms", 
+                        log_warn("Timestamp discontinuity detected in stream %s: expected=%lld, actual=%lld, diff=%lld ms", 
                                 stream_name, 
                                 (long long)local_expected_next_pts, 
                                 (long long)out_pkt->pts,
@@ -252,7 +255,8 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
                     }
                     
                     // For severe discontinuities, try to correct by using expected PTS
-                    if (pts_diff > 100 * frame_duration) {
+                    // Only do this for UDP streams or if we're using FMP4 format
+                    if ((is_udp_stream || writer_type == 0) && pts_diff > 100 * frame_duration) {
                         int64_t original_pts = out_pkt->pts;
                         out_pkt->pts = local_expected_next_pts;
                         out_pkt->dts = out_pkt->pts;
@@ -262,17 +266,18 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
                     }
                 }
                 
-                // FIXED: Calculate the next expected PTS locally
+                // Calculate the next expected PTS locally
                 int64_t next_expected_pts = out_pkt->pts + frame_duration;
                 
-                // Since we can't directly access the tracker structure, we'll just update our local variables
+                // Update our local variables
                 last_pts = out_pkt->pts;
                 expected_next_pts = next_expected_pts;
             } else {
-                // Since we can't directly access the tracker structure, we'll just update our local variables
-                last_pts = out_pkt->pts;
+                // Update our local variables if we have a valid PTS
+                if (out_pkt->pts != AV_NOPTS_VALUE) {
+                    last_pts = out_pkt->pts;
+                }
             }
-        }
     }
     
     // CRITICAL FIX: Use try/catch style with goto for better error handling
@@ -284,7 +289,9 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
         if (!hls_writer) {
             log_error("NULL HLS writer for stream %s", stream_name);
             av_packet_free(&out_pkt);
-            pthread_mutex_unlock(mutex_to_use);
+            if (mutex_to_use) {
+                pthread_mutex_unlock(mutex_to_use);
+            }
             return -1;
         }
         
@@ -292,7 +299,9 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
         if (!hls_writer->output_ctx) {
             log_error("HLS writer has been closed for stream %s", stream_name);
             av_packet_free(&out_pkt);
-            pthread_mutex_unlock(mutex_to_use);
+            if (mutex_to_use) {
+                pthread_mutex_unlock(mutex_to_use);
+            }
             return -1;
         }
         
@@ -321,8 +330,9 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
         // Removed adaptive frame dropping to improve quality
         // Always process all frames for better quality
         
-        // CRITICAL FIX: Use try/catch pattern with goto for error handling
-        ret = hls_writer_write_packet(hls_writer, out_pkt, input_stream);
+    // IMPROVED: Use a try/catch style with goto for better error handling
+    ret = hls_writer_write_packet(hls_writer, out_pkt, input_stream);
+        
         if (ret < 0) {
             // Only log errors for keyframes or every 200th packet to reduce log spam
             static int error_count = 0;
@@ -338,7 +348,9 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
         if (!mp4_writer) {
             log_error("NULL MP4 writer for stream %s", stream_name);
             av_packet_free(&out_pkt);
-            pthread_mutex_unlock(mutex_to_use);
+            if (writer_type == 0 && mutex_to_use) {  // Only unlock for HLS writers
+                pthread_mutex_unlock(mutex_to_use);
+            }
             return -1;
         }
         
@@ -367,8 +379,9 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
             if (out_pkt->dts <= 0) out_pkt->dts = 1;
         }
         
-        // Write the packet
-        ret = mp4_writer_write_packet(mp4_writer, out_pkt, input_stream);
+    // IMPROVED: Use a try/catch style with goto for better error handling
+    ret = mp4_writer_write_packet(mp4_writer, out_pkt, input_stream);
+        
         if (ret < 0) {
             // Only log errors for keyframes or every 200th packet to reduce log spam
             static int error_count = 0;
@@ -387,8 +400,10 @@ int process_video_packet(const AVPacket *pkt, const AVStream *input_stream,
         av_packet_free(&out_pkt);
     }
     
-    // CRITICAL FIX: Always unlock the appropriate mutex before returning
-    pthread_mutex_unlock(mutex_to_use);
+    // EMERGENCY FIX: Only unlock if we locked (only for HLS writers)
+    if (writer_type == 0 && mutex_to_use) {  // HLS writer
+        pthread_mutex_unlock(mutex_to_use);
+    }
     
     return ret;
 }

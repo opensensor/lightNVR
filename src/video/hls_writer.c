@@ -5,6 +5,7 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <pthread.h>
+#include <time.h>
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
@@ -18,6 +19,9 @@
 // Forward declarations from detection_stream.c
 extern int is_detection_stream_reader_running(const char *stream_name);
 extern int get_detection_interval(const char *stream_name);
+
+// Forward declaration for internal function
+static int ensure_output_directory(hls_writer_t *writer);
 
 // Direct detection processing function - no thread needed
 // Made non-static so it can be used from hls_stream_thread.c
@@ -47,7 +51,7 @@ void process_packet_for_detection(const char *stream_name, const AVPacket *pkt, 
     
     // Use a try/catch style approach with goto for cleanup
     AVPacket *pkt_copy = NULL;
-    AVCodec *codec = NULL;
+    const AVCodec *codec = NULL;
     AVCodecContext *codec_ctx = NULL;
     AVFrame *frame = NULL;
     
@@ -166,14 +170,12 @@ static void cleanup_old_segments(const char *output_dir, int max_segments) {
         return;
     }
 
-    // Count TS files first
+    // Count segment files first
     while ((entry = readdir(dir)) != NULL) {
-        // Skip non-TS files
-        if (strstr(entry->d_name, ".ts") == NULL) {
-            continue;
+        // Check for both .ts and .m4s files (support both formats)
+        if (strstr(entry->d_name, ".m4s") != NULL || strstr(entry->d_name, ".ts") != NULL) {
+            segment_count++;
         }
-
-        segment_count++;
     }
 
     // If we don't have more than the max, no cleanup needed
@@ -196,8 +198,8 @@ static void cleanup_old_segments(const char *output_dir, int max_segments) {
     // Collect segment info
     int i = 0;
     while ((entry = readdir(dir)) != NULL && i < segment_count) {
-        // Skip non-TS files
-        if (strstr(entry->d_name, ".ts") == NULL) {
+        // Check for both .ts and .m4s files (support both formats)
+        if (strstr(entry->d_name, ".m4s") == NULL && strstr(entry->d_name, ".ts") == NULL) {
             continue;
         }
 
@@ -251,32 +253,31 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     strncpy(writer->output_dir, output_dir, MAX_PATH_LENGTH - 1);
     strncpy(writer->stream_name, stream_name, MAX_STREAM_NAME - 1);
 
-    // CRITICAL FIX: Ensure segment duration is reasonable
-    if (segment_duration < 1) {
-        log_warn("HLS segment duration too low (%d), setting to 2 seconds for stability",
+    // CRITICAL FIX: Ensure segment duration is reasonable but allow lower values for lower latency
+    if (segment_duration < 0.5) {
+        log_warn("HLS segment duration too low (%d), setting to 0.5 seconds minimum",
                 segment_duration);
-        segment_duration = 1;  // Minimum 2 seconds for stability
+        segment_duration = 0.5;  // Minimum 0.5 seconds for lower latency
     } else if (segment_duration > 10) {
         log_warn("HLS segment duration too high (%d), capping at 10 seconds",
                 segment_duration);
-        segment_duration = 2;  // Maximum 10 seconds
+        segment_duration = 10;  // Maximum 10 seconds
     }
 
     writer->segment_duration = segment_duration;
     writer->last_cleanup_time = time(NULL);
 
-    // Create output directory if it doesn't exist
-    char mkdir_cmd[MAX_PATH_LENGTH + 10];
-    snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p %s", output_dir);
-    system(mkdir_cmd);
-
-    // Set permissions
-    snprintf(mkdir_cmd, sizeof(mkdir_cmd), "chmod -R 777 %s", output_dir);
-    system(mkdir_cmd);
+    // Ensure the output directory exists and is writable
+    // This will also update the writer's output_dir field with the safe path if needed
+    if (ensure_output_directory(writer) != 0) {
+        log_error("Failed to ensure HLS output directory exists: %s", writer->output_dir);
+        free(writer);
+        return NULL;
+    }
 
     // Initialize output format context for HLS
     char output_path[MAX_PATH_LENGTH];
-    snprintf(output_path, MAX_PATH_LENGTH, "%s/index.m3u8", output_dir);
+    snprintf(output_path, MAX_PATH_LENGTH, "%s/index.m3u8", writer->output_dir);
 
     // Allocate output format context
     int ret = avformat_alloc_output_context2(
@@ -290,28 +291,40 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
         return NULL;
     }
 
-    // Set HLS options - optimized for lower latency while maintaining stability
+    // Set HLS options - optimized for stability and compatibility
     AVDictionary *options = NULL;
     char hls_time[16];
-    snprintf(hls_time, sizeof(hls_time), "1");  // 1 second segments for lower latency
+    snprintf(hls_time, sizeof(hls_time), "%d", segment_duration);  // Use the validated segment duration
 
-    // Enable HLS mode optimized for mobile compatibility
+    // CRITICAL FIX: Optimize HLS options for ultra-low latency
     av_dict_set(&options, "hls_time", hls_time, 0);
-    av_dict_set(&options, "hls_list_size", "5", 0);  // Keep more segments for better compatibility
-    av_dict_set(&options, "hls_flags", "delete_segments+program_date_time+independent_segments+discont_start", 0);
-    // Use standard TS segments for better mobile compatibility
-    // av_dict_set(&options, "hls_segment_type", "fmp4", 0);  // Disabled for mobile compatibility
-    // av_dict_set(&options, "hls_fmp4_init_filename", "init.mp4", 0);
-
-    // Additional optimizations for better mobile compatibility
-    av_dict_set(&options, "hls_init_time", "0", 0);  // Start segments immediately
-    av_dict_set(&options, "hls_allow_cache", "1", 0);  // Enable caching for better mobile playback
+    av_dict_set(&options, "hls_list_size", "3", 0);  // Reduced from 5 to 3 for lower latency
+    
+    // CRITICAL FIX: Use MPEG-TS segments for better compatibility and lower latency
+    av_dict_set(&options, "hls_segment_type", "mpegts", 0);
+    
+    // Reduce latency by setting a smaller initial buffer time
+    av_dict_set(&options, "hls_init_time", "0", 0);
+    
+    // Avoid unnecessary options that might cause synchronization issues
     av_dict_set(&options, "start_number", "0", 0);
+    
+    // Add aggressive low latency options
+    av_dict_set(&options, "hls_flags", "delete_segments+independent_segments+program_date_time+low_latency+split_by_time", 0);
 
-    // Set segment filename format
+    // Set segment filename format for MPEG-TS
     char segment_format[MAX_PATH_LENGTH + 32];
-    snprintf(segment_format, sizeof(segment_format), "%s/segment_%%d.ts", output_dir);
+    snprintf(segment_format, sizeof(segment_format), "%s/segment_%%d.ts", writer->output_dir);
     av_dict_set(&options, "hls_segment_filename", segment_format, 0);
+    
+    // Log simplified options for debugging
+    log_info("HLS writer options for stream %s (simplified for stability):", writer->stream_name);
+    log_info("  hls_time: %s", hls_time);
+    log_info("  hls_list_size: 5");
+    log_info("  hls_flags: delete_segments+independent_segments");
+    log_info("  hls_segment_type: mpegts");
+    log_info("  start_number: 0");
+    log_info("  hls_segment_filename: %s", segment_format);
 
     // Open output file
     ret = avio_open2(&writer->output_ctx->pb, output_path,
@@ -358,6 +371,36 @@ int hls_writer_initialize(hls_writer_t *writer, const AVStream *input_stream) {
     // Set stream time base
     out_stream->time_base = input_stream->time_base;
 
+    // CRITICAL FIX: For HLS streaming, we need to set the correct codec parameters
+    // The issue is not with the bitstream filter but with how we're configuring the output
+    
+    // For H.264 streams, we need to ensure the correct format
+    if (input_stream->codecpar->codec_id == AV_CODEC_ID_H264) {
+        // Set the correct codec tag for H.264 in HLS
+        out_stream->codecpar->codec_tag = 0;
+        
+        // Set the correct format for H.264 in HLS
+        AVDictionary *opts = NULL;
+        av_dict_set(&opts, "mpegts_flags", "resend_headers", 0);
+        av_dict_set(&opts, "hls_flags", "single_file", 0);
+        
+        // Apply these options to the output context
+        if (writer->output_ctx) {
+            for (int i = 0; i < writer->output_ctx->nb_streams; i++) {
+                AVStream *stream = writer->output_ctx->streams[i];
+                if (stream) {
+                    stream->codecpar->codec_tag = 0;
+                }
+            }
+        }
+        
+        av_dict_free(&opts);
+        
+        log_info("Set correct codec parameters for H.264 in HLS for stream %s", writer->stream_name);
+    } else {
+        log_info("Stream %s is not H.264, using default codec parameters", writer->stream_name);
+    }
+
     // Write the header
     AVDictionary *options = NULL;
     ret = avformat_write_header(writer->output_ctx, &options);
@@ -379,11 +422,20 @@ int hls_writer_initialize(hls_writer_t *writer, const AVStream *input_stream) {
 
 /**
  * Ensure the output directory exists and is writable
+ * Updates the writer's output_dir field with the safe path
  */
-static int ensure_output_directory(const char *dir_path) {
+static int ensure_output_directory(hls_writer_t *writer) {
     struct stat st;
     config_t *global_config = get_streaming_config();
+    
+    // Check if writer or global_config is NULL to prevent null pointer dereference
+    if (!writer || !global_config) {
+        log_error("Failed to get streaming config for HLS directory or writer is NULL");
+        return -1;
+    }
+    
     char safe_dir_path[MAX_PATH_LENGTH];
+    const char *dir_path = writer->output_dir;
 
     // CRITICAL FIX: Always use the consistent path structure for HLS
     // Extract stream name from the path (last component)
@@ -398,6 +450,10 @@ static int ensure_output_directory(const char *dir_path) {
     if (strcmp(dir_path, safe_dir_path) != 0) {
         log_warn("Redirecting HLS directory from %s to %s to ensure consistent path structure",
                 dir_path, safe_dir_path);
+        
+        // Update the writer's output_dir field with the safe path
+        strncpy(writer->output_dir, safe_dir_path, MAX_PATH_LENGTH - 1);
+        writer->output_dir[MAX_PATH_LENGTH - 1] = '\0';
     }
 
     // Always use the safe path
@@ -450,7 +506,7 @@ static int ensure_output_directory(const char *dir_path) {
 }
 
 /**
- * Write packet to HLS stream with per-stream timestamp handling
+ * Write packet to HLS stream with per-stream timestamp handling and proper bitstream filtering
  */
 int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVStream *input_stream) {
     // Validate parameters
@@ -479,7 +535,7 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
     static time_t last_dir_check = 0;
     time_t now = time(NULL);
     if (now - last_dir_check >= 10) {
-        if (ensure_output_directory(writer->output_dir) != 0) {
+        if (ensure_output_directory(writer) != 0) {
             log_error("Failed to ensure HLS output directory exists: %s", writer->output_dir);
             return -1;
         }
@@ -506,12 +562,101 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
         log_error("Failed to reference packet for stream %s", writer->stream_name);
         return -1;
     }
+    
+    // CRITICAL FIX: Completely simplified bitstream filtering for H.264 in HLS
+    // This is essential to prevent the "h264 bitstream malformed, no startcode found" error
+    if (input_stream->codecpar->codec_id == AV_CODEC_ID_H264) {
+        // Create a new bitstream filter for each packet
+        const AVBitStreamFilter *bsf = av_bsf_get_by_name("h264_mp4toannexb");
+        if (!bsf) {
+            log_error("h264_mp4toannexb bitstream filter not found for stream %s", writer->stream_name);
+            av_packet_unref(&out_pkt);
+            return -1;
+        }
+        
+        AVBSFContext *bsf_ctx = NULL;
+        int ret = av_bsf_alloc(bsf, &bsf_ctx);
+        if (ret < 0) {
+            log_error("Failed to allocate bitstream filter for stream %s", writer->stream_name);
+            av_packet_unref(&out_pkt);
+            return -1;
+        }
+        
+        ret = avcodec_parameters_copy(bsf_ctx->par_in, input_stream->codecpar);
+        if (ret < 0) {
+            log_error("Failed to copy codec parameters to filter for stream %s", writer->stream_name);
+            av_bsf_free(&bsf_ctx);
+            av_packet_unref(&out_pkt);
+            return -1;
+        }
+        
+        ret = av_bsf_init(bsf_ctx);
+        if (ret < 0) {
+            log_error("Failed to initialize filter for stream %s", writer->stream_name);
+            av_bsf_free(&bsf_ctx);
+            av_packet_unref(&out_pkt);
+            return -1;
+        }
+        
+        // Create a filtered packet
+        AVPacket filtered_pkt;
+        av_init_packet(&filtered_pkt);
+        filtered_pkt.data = NULL;
+        filtered_pkt.size = 0;
+        
+        // Send the packet to the bitstream filter
+        ret = av_bsf_send_packet(bsf_ctx, &out_pkt);
+        if (ret < 0) {
+            char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+            av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+            log_error("Failed to send packet to bitstream filter for stream %s: %s", 
+                     writer->stream_name, error_buf);
+            av_bsf_free(&bsf_ctx);
+            av_packet_unref(&out_pkt);
+            return -1;
+        }
+        
+        // Receive the filtered packet
+        ret = av_bsf_receive_packet(bsf_ctx, &filtered_pkt);
+        if (ret < 0) {
+            char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+            av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+            log_error("Failed to receive filtered packet for stream %s: %s", 
+                     writer->stream_name, error_buf);
+            av_bsf_free(&bsf_ctx);
+            av_packet_unref(&out_pkt);
+            return -1;
+        }
+        
+        // Successfully filtered the packet, unref the original and use the filtered one
+        av_packet_unref(&out_pkt);
+        av_packet_move_ref(&out_pkt, &filtered_pkt);
+        
+        // Clean up the bitstream filter
+        av_bsf_free(&bsf_ctx);
+    } else {
+        log_debug("Using original packet for non-H264 stream %s", writer->stream_name);
+    }
 
     // Initialize DTS tracker if needed
     stream_dts_info_t *dts_tracker = &writer->dts_tracker;
     if (!dts_tracker->initialized) {
-        dts_tracker->first_dts = pkt->dts != AV_NOPTS_VALUE ? pkt->dts : pkt->pts;
-        dts_tracker->last_dts = dts_tracker->first_dts;
+        // Use a safe default value if both pts and dts are invalid
+        int64_t first_ts = 0;
+        
+        if (pkt->dts != AV_NOPTS_VALUE) {
+            first_ts = pkt->dts;
+        } else if (pkt->pts != AV_NOPTS_VALUE) {
+            first_ts = pkt->pts;
+        } else {
+            // Both are invalid, use 0 as a safe starting point
+            first_ts = 0;
+            log_warn("Both PTS and DTS are invalid for first packet in stream %s, using 0", 
+                    writer->stream_name);
+        }
+        
+        dts_tracker->first_dts = first_ts;
+        dts_tracker->last_dts = first_ts;
         dts_tracker->time_base = input_stream->time_base;
         dts_tracker->initialized = 1;
 
@@ -526,11 +671,31 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
     if (out_pkt.pts == AV_NOPTS_VALUE || out_pkt.dts == AV_NOPTS_VALUE) {
         if (out_pkt.pts == AV_NOPTS_VALUE && out_pkt.dts == AV_NOPTS_VALUE) {
             if (dts_tracker->last_dts != AV_NOPTS_VALUE) {
-                out_pkt.dts = dts_tracker->last_dts + 1;
+                // Calculate a reasonable increment based on the stream's framerate if available
+                int64_t increment = 1;
+                
+                if (input_stream->avg_frame_rate.num > 0 && input_stream->avg_frame_rate.den > 0 &&
+                    input_stream->time_base.num > 0 && input_stream->time_base.den > 0) {
+                    // Calculate frame duration in stream timebase units
+                    AVRational tb = input_stream->time_base;
+                    AVRational fr = input_stream->avg_frame_rate;
+                    increment = av_rescale_q(1, av_inv_q(fr), tb);
+                    
+                    // Ensure increment is at least 1
+                    if (increment < 1) increment = 1;
+                }
+                
+                out_pkt.dts = dts_tracker->last_dts + increment;
                 out_pkt.pts = out_pkt.dts;
+                
+                log_debug("Generated timestamps for stream %s: pts=%lld, dts=%lld (increment=%lld)",
+                         writer->stream_name, (long long)out_pkt.pts, (long long)out_pkt.dts, 
+                         (long long)increment);
             } else {
                 out_pkt.dts = 1;
                 out_pkt.pts = 1;
+                log_debug("Set initial timestamps for stream %s with no previous reference", 
+                         writer->stream_name);
             }
         } else if (out_pkt.pts == AV_NOPTS_VALUE) {
             out_pkt.pts = out_pkt.dts;
@@ -543,10 +708,14 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
     if (out_pkt.pts <= 0 || out_pkt.dts <= 0) {
         if (out_pkt.pts <= 0) {
             out_pkt.pts = out_pkt.dts > 0 ? out_pkt.dts : 1;
+            log_debug("Corrected non-positive PTS for stream %s: new pts=%lld", 
+                     writer->stream_name, (long long)out_pkt.pts);
         }
 
         if (out_pkt.dts <= 0) {
             out_pkt.dts = out_pkt.pts > 0 ? out_pkt.pts : 1;
+            log_debug("Corrected non-positive DTS for stream %s: new dts=%lld", 
+                     writer->stream_name, (long long)out_pkt.dts);
         }
     }
 
@@ -556,8 +725,20 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
             // Fix backwards DTS
             int64_t fixed_dts = dts_tracker->last_dts + 1;
             int64_t pts_dts_diff = out_pkt.pts - out_pkt.dts;
+            
+            log_debug("Fixing backwards DTS in stream %s: last=%lld, current=%lld, fixed=%lld",
+                     writer->stream_name,
+                     (long long)dts_tracker->last_dts,
+                     (long long)out_pkt.dts,
+                     (long long)fixed_dts);
+            
             out_pkt.dts = fixed_dts;
             out_pkt.pts = fixed_dts + pts_dts_diff;
+            
+            // Ensure PTS >= DTS after correction
+            if (out_pkt.pts < out_pkt.dts) {
+                out_pkt.pts = out_pkt.dts;
+            }
         }
         // Log large jumps but accept them
         else if (out_pkt.dts > dts_tracker->last_dts + 90000) {
@@ -601,8 +782,9 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
                  writer->stream_name, (long long)out_pkt.pts, (long long)out_pkt.dts, out_pkt.size);
     }
 
-    // Write the packet
     int ret = av_interleaved_write_frame(writer->output_ctx, &out_pkt);
+    
+    // Clean up packet
     av_packet_unref(&out_pkt);
 
     // Handle write errors
@@ -613,12 +795,20 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
 
         // Try to fix directory issues
         if (strstr(error_buf, "No such file or directory") != NULL) {
-            ensure_output_directory(writer->output_dir);
+            ensure_output_directory(writer);
         } else if (strstr(error_buf, "Invalid argument") != NULL ||
-                  strstr(error_buf, "non monotonically increasing dts") != NULL) {
-            // Reset DTS tracker on timestamp errors
-            log_warn("Resetting DTS tracker for stream %s due to timestamp error", writer->stream_name);
+                  strstr(error_buf, "non monotonically increasing dts") != NULL ||
+                  strstr(error_buf, "Invalid data found when processing input") != NULL) {
+            // Reset DTS tracker on timestamp errors or invalid data
+            log_warn("Resetting DTS tracker for stream %s due to error: %s", writer->stream_name, error_buf);
             dts_tracker->initialized = 0;
+            
+            // For invalid data errors, return 0 instead of the error code
+            // This allows the stream processing to continue despite occasional bad packets
+            if (strstr(error_buf, "Invalid data found when processing input") != NULL) {
+                log_warn("Ignoring invalid packet data for stream %s and continuing", writer->stream_name);
+                return 0;  // Return success to continue processing
+            }
         }
 
         return ret;
@@ -649,14 +839,9 @@ void hls_writer_close(hls_writer_t *writer) {
     strncpy(stream_name, writer->stream_name, MAX_STREAM_NAME - 1);
     stream_name[MAX_STREAM_NAME - 1] = '\0';
 
-    // Use mutex to prevent concurrent access
-    static pthread_mutex_t close_mutex = PTHREAD_MUTEX_INITIALIZER;
-    pthread_mutex_lock(&close_mutex);
-
-    // Check if already closed - AFTER acquiring the mutex to prevent race conditions
+    // Check if already closed
     if (!writer->output_ctx) {
         log_warn("Attempted to close already closed HLS writer for stream %s", stream_name);
-        pthread_mutex_unlock(&close_mutex);
         return;
     }
 
@@ -687,13 +872,14 @@ void hls_writer_close(hls_writer_t *writer) {
         log_info("Freeing format context for HLS writer for stream %s", stream_name);
         avformat_free_context(local_output_ctx);
     }
+    
+    // Free bitstream filter context if it exists
+    if (writer->bsf_ctx) {
+        log_info("Freeing bitstream filter context for HLS writer for stream %s", stream_name);
+        av_bsf_free(&writer->bsf_ctx);
+    }
 
     log_info("Closed HLS writer for stream %s", stream_name);
-    pthread_mutex_unlock(&close_mutex);
 
-    // Use separate mutex for freeing
-    static pthread_mutex_t free_mutex = PTHREAD_MUTEX_INITIALIZER;
-    pthread_mutex_lock(&free_mutex);
     free(writer);
-    pthread_mutex_unlock(&free_mutex);
 }

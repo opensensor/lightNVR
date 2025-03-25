@@ -18,6 +18,7 @@
 #include "web/api_handlers_recordings_batch_ws.h"
 #include "core/logger.h"
 #include "core/config.h"
+#include "core/shutdown_coordinator.h"
 #include "mongoose.h"
 #include "database/database_manager.h"
 #include "database/db_recordings.h"
@@ -218,6 +219,14 @@ void batch_delete_recordings_ws_task_function(void *arg) {
         return;
     }
     
+    // CRITICAL FIX: Check for shutdown before starting work
+    if (is_shutdown_initiated()) {
+        log_info("Skipping batch delete task due to system shutdown");
+        batch_delete_recordings_ws_task_free(task);
+        api_thread_pool_release();
+        return;
+    }
+    
     // Release the thread pool when this task is done
     bool release_needed = true;
     
@@ -401,19 +410,20 @@ void batch_delete_recordings_ws_task_function(void *arg) {
             return;
         }
         
-        // Send final result via WebSocket
-        if (task->use_websocket) {
-            // Extract results array as string
-            char *results_str = cJSON_PrintUnformatted(results_array);
-            if (results_str) {
-                send_final_result(task->client_id, error_count == 0, array_size, 
-                                success_count, error_count, results_str);
-                free(results_str);
-            } else {
-                send_final_result(task->client_id, error_count == 0, array_size, 
-                                success_count, error_count, "[]");
-            }
+    // Send final result via WebSocket
+    if (task->use_websocket && !is_shutdown_initiated()) {
+        // CRITICAL FIX: Check for shutdown before sending final result
+        // Extract results array as string
+        char *results_str = cJSON_PrintUnformatted(results_array);
+        if (results_str) {
+            send_final_result(task->client_id, error_count == 0, array_size, 
+                            success_count, error_count, results_str);
+            free(results_str);
+        } else {
+            send_final_result(task->client_id, error_count == 0, array_size, 
+                            success_count, error_count, "[]");
         }
+    }
         
         // Clean up
         free(json_str);
@@ -759,7 +769,8 @@ void batch_delete_recordings_ws_task_function(void *arg) {
     }
     
     // Send completion update
-    if (task->use_websocket) {
+    if (task->use_websocket && !is_shutdown_initiated()) {
+        // CRITICAL FIX: Check for shutdown before sending completion update
         // Send a final progress update with the complete flag set to true
         send_progress_update(task->client_id, 0, 0, 0, 0, "Operation complete", true);
         

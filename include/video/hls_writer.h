@@ -3,6 +3,8 @@
 
 #include <time.h>
 #include <libavformat/avformat.h>
+#include <libavcodec/avcodec.h>
+#include <libavcodec/bsf.h>
 
 #include "core/config.h"
 
@@ -30,6 +32,9 @@ typedef struct hls_writer_t {
 
     // Per-stream DTS tracking
     stream_dts_info_t dts_tracker;
+    
+    // Bitstream filter context for H.264 streams
+    AVBSFContext *bsf_ctx;
 } hls_writer_t;
 
 /**

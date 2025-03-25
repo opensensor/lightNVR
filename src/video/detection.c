@@ -94,7 +94,6 @@ typedef struct {
 } model_t;
 
 // Global variables
-static pthread_mutex_t detection_mutex = PTHREAD_MUTEX_INITIALIZER;
 static bool initialized = false;
 
 /**
@@ -104,9 +103,7 @@ int init_detection_system(void) {
     if (initialized) {
         return 0;  // Already initialized
     }
-    
-    pthread_mutex_lock(&detection_mutex);
-    
+
     // Check for SOD library
     #ifdef SOD_ENABLED
     // SOD is directly linked
@@ -171,8 +168,7 @@ int init_detection_system(void) {
     }
     
     initialized = true;
-    pthread_mutex_unlock(&detection_mutex);
-    
+
     log_info("Detection system initialized");
     return 0;
 }
@@ -184,9 +180,7 @@ void shutdown_detection_system(void) {
     if (!initialized) {
         return;
     }
-    
-    pthread_mutex_lock(&detection_mutex);
-    
+
     // Close dynamically loaded SOD library if needed
     #ifndef SOD_ENABLED
     if (sod_funcs.handle) {
@@ -200,8 +194,7 @@ void shutdown_detection_system(void) {
     
     initialized = false;
     sod_available = false;
-    pthread_mutex_unlock(&detection_mutex);
-    
+
     log_info("Detection system shutdown");
 }
 

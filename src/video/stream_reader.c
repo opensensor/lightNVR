@@ -36,6 +36,7 @@ static void *stream_reader_thread(void *arg) {
     stream_reader_ctx_t *ctx = (stream_reader_ctx_t *)arg;
     AVPacket *pkt = NULL;
     int ret;
+    time_t start_time = time(NULL);  // Record when we started
     
     // CRITICAL FIX: Add extra validation for context
     if (!ctx) {
@@ -168,6 +169,19 @@ static void *stream_reader_thread(void *arg) {
         }
         
         ret = av_read_frame(local_input_ctx, pkt);
+        
+        // CRITICAL FIX: Add timeout check for RTSP connections
+        // If we've been trying to connect for too long, log an error and mark as not running
+        if (ret < 0 && (ret == AVERROR_EOF || ret == AVERROR(EAGAIN))) {
+            time_t current_time = time(NULL);
+            if (current_time - start_time > 30) { // 30 second timeout
+                log_error("Timeout connecting to stream %s after 30 seconds, marking as failed", stream_name);
+                ctx->running = 0;
+                av_packet_unref(pkt);
+                pthread_mutex_unlock(&packet_mutex);
+                break;
+            }
+        }
         
         // Handle timestamp recovery for UDP streams - AFTER reading the packet
         if (ret >= 0) {
@@ -338,9 +352,7 @@ static void *stream_reader_thread(void *arg) {
                 pthread_mutex_unlock(&packet_mutex);  // CRITICAL FIX: Unlock mutex before reconnection logic
                 log_warn("Stream %s disconnected, attempting to reconnect...", stream_name);
                 
-                // CRITICAL FI
-                
-                // Use different reconnection strategies based on protocol
+                // CRITICAL FIX: Use different reconnection strategies based on protocol
                 static int reconnect_attempts = 0;
                 int backoff_time_ms;
                 
@@ -500,21 +512,34 @@ void init_stream_reader_backend(void) {
  */
 void cleanup_stream_reader_backend(void) {
     log_info("Cleaning up stream reader backend...");
-    pthread_mutex_lock(&contexts_mutex);
     
-    // Stop all running readers
+    // Create a local array to store contexts we need to clean up
+    // This prevents race conditions by ensuring we handle each context safely
+    typedef struct {
+        stream_reader_ctx_t *ctx;
+        pthread_t thread;
+        char stream_name[MAX_STREAM_NAME];
+        int index;
+    } cleanup_item_t;
+    
+    cleanup_item_t items_to_cleanup[MAX_STREAMS];
+    int cleanup_count = 0;
+    
+    // First collect all contexts under lock
+    pthread_mutex_lock(&contexts_mutex);
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (reader_contexts[i]) {
-            log_info("Stopping stream reader in slot %d: %s", i,
+            log_info("Preparing to stop stream reader in slot %d: %s", i,
                     reader_contexts[i]->config.name);
             
-            // Copy the stream name and thread for later use
-            char stream_name[MAX_STREAM_NAME];
-            strncpy(stream_name, reader_contexts[i]->config.name,
+            // Store context info for cleanup
+            items_to_cleanup[cleanup_count].ctx = reader_contexts[i];
+            items_to_cleanup[cleanup_count].thread = reader_contexts[i]->thread;
+            strncpy(items_to_cleanup[cleanup_count].stream_name, 
+                    reader_contexts[i]->config.name, 
                     MAX_STREAM_NAME - 1);
-            stream_name[MAX_STREAM_NAME - 1] = '\0';
-            
-            pthread_t thread_to_join = reader_contexts[i]->thread;
+            items_to_cleanup[cleanup_count].stream_name[MAX_STREAM_NAME - 1] = '\0';
+            items_to_cleanup[cleanup_count].index = i;
             
             // Mark as not running
             reader_contexts[i]->running = 0;
@@ -523,46 +548,48 @@ void cleanup_stream_reader_backend(void) {
             reader_contexts[i]->packet_callback = NULL;
             reader_contexts[i]->callback_data = NULL;
             
-            // Unlock before joining thread to prevent deadlocks
-            pthread_mutex_unlock(&contexts_mutex);
-            
-            // Try to join with a timeout
-            log_info("Waiting for stream reader thread for %s to exit", stream_name);
-            int join_result = pthread_join_with_timeout(thread_to_join, NULL, 3);
-            if (join_result != 0) {
-                log_warn("Could not join stream reader thread for %s within timeout: %s",
-                        stream_name, strerror(join_result));
-            } else {
-                log_info("Successfully joined stream reader thread for %s", stream_name);
+            // Close input context if it exists - this will force any blocking read operations to return
+            if (reader_contexts[i]->input_ctx) {
+                avformat_close_input(&reader_contexts[i]->input_ctx);
+                reader_contexts[i]->input_ctx = NULL;
             }
             
-            // Re-lock for cleanup
-            pthread_mutex_lock(&contexts_mutex);
-            
-            // Check if the context is still valid
-            int found = 0;
-            for (int j = 0; j < MAX_STREAMS; j++) {
-                if (reader_contexts[j] && strcmp(reader_contexts[j]->config.name, stream_name) == 0) {
-                    // Close input context if it exists
-                    if (reader_contexts[j]->input_ctx) {
-                        avformat_close_input(&reader_contexts[j]->input_ctx);
-                    }
-                    
-                    // Free context
-                    free(reader_contexts[j]);
-                    reader_contexts[j] = NULL;
-                    found = 1;
-                    break;
-                }
-            }
-            
-            if (!found) {
-                log_warn("Stream reader context for %s was already cleaned up", stream_name);
-            }
+            cleanup_count++;
         }
     }
-    
     pthread_mutex_unlock(&contexts_mutex);
+    
+    // Now join threads and free contexts outside the lock
+    for (int i = 0; i < cleanup_count; i++) {
+        // Try to join with a timeout
+        log_info("Waiting for stream reader thread for %s to exit", 
+                items_to_cleanup[i].stream_name);
+        
+        int join_result = pthread_join_with_timeout(items_to_cleanup[i].thread, NULL, 3);
+        if (join_result != 0) {
+            log_warn("Could not join stream reader thread for %s within timeout: %s",
+                    items_to_cleanup[i].stream_name, strerror(join_result));
+        } else {
+            log_info("Successfully joined stream reader thread for %s", 
+                    items_to_cleanup[i].stream_name);
+        }
+        
+        // Now that the thread is joined (or timed out), we can safely free the context
+        pthread_mutex_lock(&contexts_mutex);
+        
+        // Double-check that the context is still at the expected index
+        if (reader_contexts[items_to_cleanup[i].index] == items_to_cleanup[i].ctx) {
+            // Free context
+            free(reader_contexts[items_to_cleanup[i].index]);
+            reader_contexts[items_to_cleanup[i].index] = NULL;
+            log_info("Freed stream reader context for %s", items_to_cleanup[i].stream_name);
+        } else {
+            log_warn("Stream reader context for %s was already cleaned up or moved", 
+                    items_to_cleanup[i].stream_name);
+        }
+        
+        pthread_mutex_unlock(&contexts_mutex);
+    }
     
     log_info("Stream reader backend cleaned up");
 }

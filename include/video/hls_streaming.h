@@ -2,6 +2,7 @@
 #define HLS_STREAMING_H
 
 #include <pthread.h>
+#include <stdatomic.h>
 #include "core/config.h"
 #include "video/hls_writer.h"
 #include "video/stream_reader.h"
@@ -9,7 +10,7 @@
 // Structure for HLS streaming context
 typedef struct {
     stream_config_t config;
-    int running;
+    atomic_int running;  // Use atomic_int for thread-safe access
     pthread_t thread;
     char output_path[MAX_PATH_LENGTH];
     hls_writer_t *hls_writer;

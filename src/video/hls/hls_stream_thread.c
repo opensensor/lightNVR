@@ -10,17 +10,7 @@
 #include <time.h>
 #include <stdbool.h>
 #include <sys/time.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <pthread.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <time.h>
-#include <stdbool.h>
+#include <stdatomic.h>
 
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
@@ -29,6 +19,7 @@
 
 #include "core/logger.h"
 #include "core/config.h"
+#include "core/shutdown_coordinator.h"
 #include "video/stream_manager.h"
 #include "video/stream_state.h"
 #include "video/streams.h"
@@ -79,14 +70,14 @@ void *hls_stream_thread(void *arg) {
     stream_state_manager_t *state = get_stream_state_by_name(stream_name);
     if (!state) {
         log_error("Could not find stream state for %s", stream_name);
-        ctx->running = 0;
+        atomic_store(&ctx->running, 0);
         return NULL;
     }
 
     log_info("Starting HLS streaming thread for stream %s", stream_name);
 
-    // CRITICAL FIX: Check if we're still running before proceeding
-    if (!ctx->running) {
+    // CRITICAL FIX: Check if we're still running before proceeding using atomic load
+    if (!atomic_load(&ctx->running)) {
         log_warn("HLS streaming thread for %s started but already marked as not running", stream_name);
         return NULL;
     }
@@ -94,29 +85,30 @@ void *hls_stream_thread(void *arg) {
     // Verify output directory exists and is writable
     if (ensure_hls_directory(ctx->output_path, stream_name) != 0) {
         log_error("Failed to ensure HLS output directory: %s", ctx->output_path);
-        ctx->running = 0;
+        atomic_store(&ctx->running, 0);
         return NULL;
     }
 
     // CRITICAL FIX: Check if we're still running after directory creation
-    if (!ctx->running) {
+    if (!atomic_load(&ctx->running)) {
         log_info("HLS streaming thread for %s stopping after directory creation", stream_name);
         return NULL;
     }
 
     // Create HLS writer - adding the segment_duration parameter
+    // CRITICAL FIX: Use a smaller segment duration for lower latency
     int segment_duration = ctx->config.segment_duration > 0 ?
-                          ctx->config.segment_duration : 1;
+                          ctx->config.segment_duration : 0.5;
 
     ctx->hls_writer = hls_writer_create(ctx->output_path, stream_name, segment_duration);
     if (!ctx->hls_writer) {
         log_error("Failed to create HLS writer for %s", stream_name);
-        ctx->running = 0;
+        atomic_store(&ctx->running, 0);
         return NULL;
     }
 
     // CRITICAL FIX: Check if we're still running after HLS writer creation
-    if (!ctx->running) {
+    if (!atomic_load(&ctx->running)) {
         log_info("HLS streaming thread for %s stopping after HLS writer creation", stream_name);
         if (ctx->hls_writer) {
             hls_writer_close(ctx->hls_writer);
@@ -135,7 +127,7 @@ void *hls_stream_thread(void *arg) {
             ctx->hls_writer = NULL;
         }
 
-        ctx->running = 0;
+        atomic_store(&ctx->running, 0);
         return NULL;
     }
 
@@ -148,7 +140,7 @@ void *hls_stream_thread(void *arg) {
             ctx->hls_writer = NULL;
         }
 
-        ctx->running = 0;
+        atomic_store(&ctx->running, 0);
         return NULL;
     }
 
@@ -162,7 +154,7 @@ void *hls_stream_thread(void *arg) {
             ctx->hls_writer = NULL;
         }
 
-        ctx->running = 0;
+        atomic_store(&ctx->running, 0);
         return NULL;
     }
 
@@ -178,7 +170,7 @@ void *hls_stream_thread(void *arg) {
             ctx->hls_writer = NULL;
         }
 
-        ctx->running = 0;
+        atomic_store(&ctx->running, 0);
         return NULL;
     }
 
@@ -194,7 +186,7 @@ void *hls_stream_thread(void *arg) {
             ctx->hls_writer = NULL;
         }
 
-        ctx->running = 0;
+        atomic_store(&ctx->running, 0);
         return NULL;
     }
 
@@ -203,34 +195,44 @@ void *hls_stream_thread(void *arg) {
     // We'll only flush every 500ms (or on key frames)
     const int64_t flush_interval = 500000; // 500ms in microseconds
 
-    // Main packet reading loop
-    while (ctx->running) {
-        // Check if the stream state indicates we should stop
-        if (state) {
-            if (is_stream_state_stopping(state)) {
-                log_info("HLS streaming thread for %s stopping due to stream state STOPPING", stream_name);
-                ctx->running = 0;
-                break;
-            }
+    // Register with shutdown coordinator
+    char component_name[128];
+    snprintf(component_name, sizeof(component_name), "hls_writer_%s", stream_name);
+    int component_id = register_component(component_name, COMPONENT_HLS_WRITER, ctx, 60); // Lowest priority (60)
+    if (component_id >= 0) {
+        log_info("Registered HLS writer %s with shutdown coordinator (ID: %d)", stream_name, component_id);
+    }
 
-            if (!are_stream_callbacks_enabled(state)) {
-                log_info("HLS streaming thread for %s stopping due to callbacks disabled", stream_name);
-                ctx->running = 0;
-                break;
-            }
+    // Main packet reading loop
+    while (atomic_load(&ctx->running)) {
+        // Check if shutdown has been initiated
+        if (is_shutdown_initiated()) {
+            log_info("HLS streaming thread for %s stopping due to system shutdown", stream_name);
+            atomic_store(&ctx->running, 0);
+            break;
+        }
+        
+        // Check if the stream state indicates we should stop
+        if (is_stream_state_stopping(state)) {
+            log_info("HLS streaming thread for %s stopping due to stream state STOPPING", stream_name);
+            atomic_store(&ctx->running, 0);
+            break;
+        }
+
+        if (!are_stream_callbacks_enabled(state)) {
+            log_info("HLS streaming thread for %s stopping due to callbacks disabled", stream_name);
+            atomic_store(&ctx->running, 0);
+            break;
         }
 
         // Check if we should exit before potentially blocking on av_read_frame
-        if (!ctx->running) {
+        if (!atomic_load(&ctx->running)) {
             log_info("HLS streaming thread for %s detected shutdown before read", stream_name);
             break;
         }
         
-        // Periodically check if we should exit
-        // This is a safer approach than using AVFMT_FLAG_NONBLOCK which can cause issues
-        struct timespec ts = {0, 10000000}; // 10ms
-        nanosleep(&ts, NULL);
-        
+        // CRITICAL FIX: Simplify read operation to avoid potential deadlocks
+        // Use a simple read with no timeout or non-blocking mode
         ret = av_read_frame(input_ctx, pkt);
 
         if (ret < 0) {
@@ -272,46 +274,58 @@ void *hls_stream_thread(void *arg) {
         if (pkt->stream_index == video_stream_idx) {
             // Check if this is a key frame
             bool is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
+            
+            // If this is a key frame, update the keyframe time
+            if (is_key_frame) {
+                extern void update_keyframe_time(const char *stream_name);
+                update_keyframe_time(stream_name);
+                
+                // Log that we received a keyframe
+                log_debug("Received keyframe for stream %s at time %ld", stream_name, (long)time(NULL));
+            }
 
             // Write packet to HLS writer
             ret = hls_writer_write_packet(ctx->hls_writer, pkt, input_ctx->streams[video_stream_idx]);
 
-            // BALANCED APPROACH: Only flush on key frames or periodically
-            int64_t current_time = av_gettime();
-            bool should_flush = is_key_frame || (current_time - last_flush_time > flush_interval);
-
-            if (ret >= 0 && should_flush && ctx->hls_writer &&
-                ctx->hls_writer->output_ctx && ctx->hls_writer->output_ctx->pb) {
-                // Flush only when necessary to reduce I/O load
-                avio_flush(ctx->hls_writer->output_ctx->pb);
-                last_flush_time = current_time;
-
-                if (is_key_frame) {
+                // Flush directly
+                if (ret >= 0 && is_key_frame && ctx->hls_writer &&
+                    ctx->hls_writer->output_ctx && ctx->hls_writer->output_ctx->pb) {
+                    avio_flush(ctx->hls_writer->output_ctx->pb);
                     log_debug("Flushed on key frame for stream %s", stream_name);
                 }
-            } else if (ret < 0 && is_key_frame) {
-                // Only log errors for key frames to reduce log spam
-                char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
-                av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-                log_error("Failed to write packet to HLS for stream %s: %s", stream_name, error_buf);
-            }
 
-            // Pre-buffer handling for MP4 recordings
+            // Pre-buffer handling for MP4 recordings - after HLS processing to avoid delaying the live stream
+            // This ensures HLS packets are processed immediately without waiting for pre-buffer
             extern void add_packet_to_prebuffer(const char *stream_name, const AVPacket *pkt, const AVStream *stream);
             add_packet_to_prebuffer(stream_name, pkt, input_ctx->streams[video_stream_idx]);
 
-            // Check if there's an MP4 writer registered for active recordings
+            // CRITICAL FIX: Use a separate thread-local copy of the packet for MP4 recording
+            // This prevents potential deadlocks and data corruption between HLS and MP4 writers
             mp4_writer_t *mp4_writer = get_mp4_writer_for_stream(stream_name);
             if (mp4_writer) {
-                // Write the packet to the MP4 writer with proper error handling
-                ret = mp4_writer_write_packet(mp4_writer, pkt, input_ctx->streams[video_stream_idx]);
-                if (ret < 0) {
-                    // Only log errors for key frames to reduce log spam
-                    if (is_key_frame) {
-                        char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
-                        av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-                        log_error("Failed to write packet to MP4 for stream %s: %s", stream_name, error_buf);
+                // Create a clean copy of the packet for MP4 recording
+                AVPacket *mp4_pkt = av_packet_alloc();
+                if (mp4_pkt) {
+                    if (av_packet_ref(mp4_pkt, pkt) >= 0) {
+                        // Write the packet to the MP4 writer with proper error handling
+                        ret = mp4_writer_write_packet(mp4_writer, mp4_pkt, input_ctx->streams[video_stream_idx]);
+                        if (ret < 0) {
+                            // Only log errors for key frames to reduce log spam
+                            if (is_key_frame) {
+                                char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+                                av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+                                log_error("Failed to write packet to MP4 for stream %s: %s", stream_name, error_buf);
+                            }
+                        }
+                    } else {
+                        log_error("Failed to reference packet for MP4 recording for stream %s", stream_name);
                     }
+                    
+                    // Clean up the packet
+                    av_packet_unref(mp4_pkt);
+                    av_packet_free(&mp4_pkt);
+                } else {
+                    log_error("Failed to allocate packet for MP4 recording for stream %s", stream_name);
                 }
             }
 
@@ -323,9 +337,11 @@ void *hls_stream_thread(void *arg) {
                 bool is_memory_constrained = g_config.memory_constrained || (sysconf(_SC_PHYS_PAGES) * sysconf(_SC_PAGE_SIZE) < 1024*1024*1024); // Less than 1GB RAM
                 
                 // Get current time to check detection interval
-                static time_t last_detection_time = 0;
                 time_t current_time = time(NULL);
                 int detection_interval = get_detection_interval(stream_name);
+                
+                // Get the last detection time for this specific stream
+                time_t last_detection_time = get_last_detection_time(stream_name);
                 
                 // Only run detection if enough time has passed since the last detection
                 if (last_detection_time == 0 || (current_time - last_detection_time) >= detection_interval) {
@@ -335,7 +351,7 @@ void *hls_stream_thread(void *arg) {
                         if (!is_detection_thread_pool_busy()) {
                             log_info("Submitting detection task for stream %s to thread pool", stream_name);
                             if (submit_detection_task(stream_name, pkt, input_ctx->streams[video_stream_idx]->codecpar) == 0) {
-                                last_detection_time = current_time;
+                                update_last_detection_time(stream_name, current_time);
                             }
                         } else {
                             log_debug("Skipping detection on memory-constrained device - thread pool busy");
@@ -344,7 +360,7 @@ void *hls_stream_thread(void *arg) {
                         // On regular devices, always submit the task
                         log_info("Submitting detection task for stream %s to thread pool", stream_name);
                         if (submit_detection_task(stream_name, pkt, input_ctx->streams[video_stream_idx]->codecpar) == 0) {
-                            last_detection_time = current_time;
+                            update_last_detection_time(stream_name, current_time);
                         }
                     }
                 }
@@ -369,6 +385,12 @@ void *hls_stream_thread(void *arg) {
     
     if (writer_to_close) {
         hls_writer_close(writer_to_close);
+    }
+
+    // Update component state in shutdown coordinator
+    if (component_id >= 0) {
+        update_component_state(component_id, COMPONENT_STOPPED);
+        log_info("Updated HLS writer %s state to STOPPED in shutdown coordinator", stream_name);
     }
 
     log_info("HLS streaming thread for stream %s exited", stream_name);

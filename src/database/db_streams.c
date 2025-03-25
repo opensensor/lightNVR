@@ -12,6 +12,7 @@
 #include "database/db_streams.h"
 #include "database/db_core.h"
 #include "database/db_schema.h"
+#include "database/db_schema_cache.h"
 #include "core/logger.h"
 #include "core/config.h"
 
@@ -283,10 +284,10 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
     
     pthread_mutex_lock(db_mutex);
     
-    // Use our schema management functions to check for columns
-    bool has_detection_columns = column_exists("streams", "detection_based_recording");
-    bool has_protocol_column = column_exists("streams", "protocol");
-    bool has_onvif_column = column_exists("streams", "is_onvif");
+    // Use our cached schema management functions to check for columns
+    bool has_detection_columns = cached_column_exists("streams", "detection_based_recording");
+    bool has_protocol_column = cached_column_exists("streams", "protocol");
+    bool has_onvif_column = cached_column_exists("streams", "is_onvif");
     
     // Prepare SQL based on whether detection columns, protocol column, and is_onvif column exist
     const char *sql;
@@ -437,10 +438,10 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
     
     pthread_mutex_lock(db_mutex);
     
-    // Use our schema management functions to check for columns
-    bool has_detection_columns = column_exists("streams", "detection_based_recording");
-    bool has_protocol_column = column_exists("streams", "protocol");
-    bool has_onvif_column = column_exists("streams", "is_onvif");
+    // Use our cached schema management functions to check for columns
+    bool has_detection_columns = cached_column_exists("streams", "detection_based_recording");
+    bool has_protocol_column = cached_column_exists("streams", "protocol");
+    bool has_onvif_column = cached_column_exists("streams", "is_onvif");
     
     // Prepare SQL based on whether detection columns, protocol column, and is_onvif column exist
     const char *sql;

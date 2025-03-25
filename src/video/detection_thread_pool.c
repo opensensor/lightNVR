@@ -10,6 +10,7 @@
 #include <libavutil/avutil.h>
 
 #include "core/logger.h"
+#include "core/shutdown_coordinator.h"
 #include "video/detection_thread_pool.h"
 #include "video/hls_writer.h"
 
@@ -32,7 +33,20 @@ static void *detection_thread_func(void *arg) {
 
     log_info("Detection thread %d started", thread_id);
 
+    // Register with shutdown coordinator
+    char component_name[128];
+    snprintf(component_name, sizeof(component_name), "detection_thread_%d", thread_id);
+    int component_id = register_component(component_name, COMPONENT_DETECTION_THREAD, NULL, 100); // Highest priority (100)
+    if (component_id >= 0) {
+        log_info("Registered detection thread %d with shutdown coordinator (ID: %d)", thread_id, component_id);
+    }
+
     while (detection_thread_pool_running) {
+        // Check if shutdown has been initiated
+        if (is_shutdown_initiated()) {
+            log_info("Detection thread %d stopping due to system shutdown", thread_id);
+            break;
+        }
         // Wait for a task
         pthread_mutex_lock(&detection_tasks_mutex);
         while (detection_thread_pool_running && !detection_tasks[thread_id].in_use) {
@@ -45,10 +59,10 @@ static void *detection_thread_func(void *arg) {
             break;
         }
 
-        // Get task data
-        char stream_name[256];
-        strncpy(stream_name, detection_tasks[thread_id].stream_name, sizeof(stream_name) - 1);
-        stream_name[sizeof(stream_name) - 1] = '\0';
+        // Get task data - use MAX_STREAM_NAME to match the size in the detection_task_t struct
+        char stream_name[MAX_STREAM_NAME];
+        strncpy(stream_name, detection_tasks[thread_id].stream_name, MAX_STREAM_NAME - 1);
+        stream_name[MAX_STREAM_NAME - 1] = '\0';
 
         AVPacket *pkt = detection_tasks[thread_id].pkt;
         AVCodecParameters *codec_params = detection_tasks[thread_id].codec_params;
@@ -66,6 +80,12 @@ static void *detection_thread_func(void *arg) {
         avcodec_parameters_free(&codec_params);
 
         log_info("Detection thread %d completed task for stream %s", thread_id, stream_name);
+    }
+
+    // Update component state in shutdown coordinator
+    if (component_id >= 0) {
+        update_component_state(component_id, COMPONENT_STOPPED);
+        log_info("Updated detection thread %d state to STOPPED in shutdown coordinator", thread_id);
     }
 
     log_info("Detection thread %d exiting", thread_id);
@@ -113,6 +133,11 @@ int init_detection_thread_pool(void) {
  * Shutdown the detection thread pool
  */
 void shutdown_detection_thread_pool(void) {
+    // Check if shutdown has already been initiated
+    if (is_shutdown_initiated()) {
+        log_info("Shutdown already initiated, detection thread pool will be stopped");
+    }
+
     pthread_mutex_lock(&detection_tasks_mutex);
     detection_thread_pool_running = false;
     pthread_cond_broadcast(&detection_tasks_cond);
@@ -148,6 +173,12 @@ void shutdown_detection_thread_pool(void) {
 int submit_detection_task(const char *stream_name, const AVPacket *pkt, const AVCodecParameters *codec_params) {
     if (!stream_name || !pkt || !codec_params) {
         log_error("Invalid parameters for submit_detection_task");
+        return -1;
+    }
+
+    // Check if shutdown has been initiated
+    if (is_shutdown_initiated()) {
+        log_info("Shutdown initiated, not submitting detection task for stream %s", stream_name);
         return -1;
     }
 

@@ -85,7 +85,6 @@ static const mg_api_route_t s_api_routes[] = {
     {"GET", "/api/streams", mg_handle_get_streams},
     {"POST", "/api/streams", mg_handle_post_stream},
     {"POST", "/api/streams/test", mg_handle_test_stream},
-    {"POST", "/api/streams/#/toggle_streaming", mg_handle_toggle_streaming},
     {"GET", "/api/streams/#", mg_handle_get_stream},
     {"PUT", "/api/streams/#", mg_handle_put_stream},
     {"DELETE", "/api/streams/#", mg_handle_delete_stream},
@@ -120,6 +119,8 @@ static const mg_api_route_t s_api_routes[] = {
     {"GET", "/api/streaming/#/hls/index.m3u8", mg_handle_hls_master_playlist},
     {"GET", "/api/streaming/#/hls/stream.m3u8", mg_handle_hls_media_playlist},
     {"GET", "/api/streaming/#/hls/segment_#.ts", mg_handle_hls_segment},
+    {"GET", "/api/streaming/#/hls/segment_#.m4s", mg_handle_hls_segment},
+    {"GET", "/api/streaming/#/hls/init.mp4", mg_handle_hls_segment},
     
     // Streaming API - WebRTC
     {"POST", "/api/streaming/#/webrtc/offer", mg_handle_webrtc_offer},
@@ -214,7 +215,6 @@ static void init_route_table(void) {
     add_route("GET", "^/api/streams/([^/]+)$", mg_handle_get_stream);
     add_route("PUT", "^/api/streams/([^/]+)$", mg_handle_put_stream);
     add_route("DELETE", "^/api/streams/([^/]+)$", mg_handle_delete_stream);
-    add_route("POST", "^/api/streams/([^/]+)/toggle_streaming$", mg_handle_toggle_streaming);
     
     // Settings API
     add_route("GET", "^/api/settings$", mg_handle_get_settings);
@@ -245,6 +245,8 @@ static void init_route_table(void) {
     add_route("GET", "^/api/streaming/([^/]+)/hls/index\\.m3u8$", mg_handle_hls_master_playlist);
     add_route("GET", "^/api/streaming/([^/]+)/hls/stream\\.m3u8$", mg_handle_hls_media_playlist);
     add_route("GET", "^/api/streaming/([^/]+)/hls/segment_([^/]+)\\.ts$", mg_handle_hls_segment);
+    add_route("GET", "^/api/streaming/([^/]+)/hls/segment_([^/]+)\\.m4s$", mg_handle_hls_segment);
+    add_route("GET", "^/api/streaming/([^/]+)/hls/init\\.mp4$", mg_handle_hls_segment);
     
     // Streaming API - WebRTC
     add_route("POST", "^/api/streaming/([^/]+)/webrtc/offer$", mg_handle_webrtc_offer);
