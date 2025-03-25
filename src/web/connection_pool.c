@@ -1,3 +1,4 @@
+#define _GNU_SOURCE  // For pthread_timedjoin_np
 #include "web/connection_pool.h"
 #include "core/logger.h"
 #include <stdio.h>
@@ -6,6 +7,7 @@
 #include <stdbool.h>
 #include <time.h>
 #include <unistd.h>
+#include <errno.h>
 
 /**
  * @brief Initialize a connection pool
@@ -147,30 +149,49 @@ void connection_pool_shutdown(connection_pool_t *pool) {
         return;
     }
     
+    log_info("Starting connection pool shutdown sequence");
+    
     // Set shutdown flag and mark all connections as closing
     pthread_mutex_lock(&pool->mutex);
     pool->shutdown = true;
     
     // Mark all connections in the queue as closing
     conn_node_t *current = pool->conn_queue;
+    int conn_count = 0;
     while (current != NULL) {
         if (current->connection) {
             current->connection->is_closing = 1;
+            conn_count++;
         }
         current = current->next;
     }
+    log_debug("Marked %d connections for closing", conn_count);
     
     // Signal all threads to wake up and check the shutdown flag
     pthread_cond_broadcast(&pool->cond);
     pthread_mutex_unlock(&pool->mutex);
     
-    // Wait for all threads to exit
+    log_debug("Waiting for %d worker threads to exit", pool->thread_count);
+    
+    // Wait for all threads to exit with a timeout
     for (int i = 0; i < pool->thread_count; i++) {
-        pthread_join(pool->threads[i], NULL);
+        // Use a timeout to avoid hanging if a thread is stuck
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_sec += 5; // 5 second timeout
+        
+        int ret = pthread_timedjoin_np(pool->threads[i], NULL, &ts);
+        if (ret != 0) {
+            log_warn("Thread %d did not exit within timeout, continuing anyway", i);
+        }
     }
+    
+    log_debug("All worker threads have exited or timed out");
     
     // Clean up resources
     connection_pool_destroy(pool);
+    
+    log_info("Connection pool shutdown complete");
 }
 
 /**
@@ -183,31 +204,42 @@ void connection_pool_destroy(connection_pool_t *pool) {
         return;
     }
     
-    log_debug("Destroying connection pool");
+    log_debug("Destroying connection pool resources");
     
-    // Free resources
-    if (pool->threads) {
-        free(pool->threads);
-        pool->threads = NULL;
-    }
+    // Acquire the mutex one last time to ensure no other thread is accessing the pool
+    pthread_mutex_lock(&pool->mutex);
     
-    // Free connection queue
+    // Free connection queue first
     conn_node_t *current = pool->conn_queue;
+    int nodes_freed = 0;
     while (current != NULL) {
         conn_node_t *next = current->next;
         // Don't free the connection or server, they're managed elsewhere
         current->connection = NULL;
         current->server = NULL;
         free(current);
+        nodes_freed++;
         current = next;
     }
     pool->conn_queue = NULL;
+    log_debug("Freed %d connection nodes", nodes_freed);
     
-    pthread_mutex_destroy(&pool->mutex);
+    // Free threads array
+    if (pool->threads) {
+        free(pool->threads);
+        pool->threads = NULL;
+    }
+    
+    // Release the mutex before destroying it
+    pthread_mutex_unlock(&pool->mutex);
+    
+    // Destroy synchronization primitives
     pthread_cond_destroy(&pool->cond);
+    pthread_mutex_destroy(&pool->mutex);
     
+    // Finally free the pool structure
     free(pool);
-    log_debug("Connection pool destroyed");
+    log_debug("Connection pool resources destroyed");
 }
 
 /**
@@ -218,6 +250,19 @@ void connection_pool_destroy(connection_pool_t *pool) {
  */
 void *connection_worker_thread(void *arg) {
     connection_pool_t *pool = (connection_pool_t *)arg;
+    int thread_id = -1;
+    
+    // Get a unique thread ID for logging
+    pthread_mutex_lock(&pool->mutex);
+    for (int i = 0; i < pool->thread_count; i++) {
+        if (pthread_equal(pthread_self(), pool->threads[i])) {
+            thread_id = i;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&pool->mutex);
+    
+    log_debug("Connection worker thread %d started", thread_id);
     
     while (true) {
         // Wait for connection
@@ -226,7 +271,7 @@ void *connection_worker_thread(void *arg) {
         // Check if pool is shutting down immediately
         if (pool->shutdown) {
             pthread_mutex_unlock(&pool->mutex);
-            log_debug("Worker thread exiting due to shutdown");
+            log_info("Connection worker thread %d exiting due to shutdown", thread_id);
             pthread_exit(NULL);
         }
         
@@ -238,7 +283,7 @@ void *connection_worker_thread(void *arg) {
         // Check again if pool is shutting down after waiting
         if (pool->shutdown) {
             pthread_mutex_unlock(&pool->mutex);
-            log_debug("Worker thread exiting after wait due to shutdown");
+            log_info("Connection worker thread %d exiting after wait due to shutdown", thread_id);
             pthread_exit(NULL);
         }
         
@@ -256,28 +301,37 @@ void *connection_worker_thread(void *arg) {
             http_server_t *server = node->server;
             
             // Set connection data to indicate it's being handled by this thread
-            c->fn_data = server;
+            if (c) {
+                c->fn_data = server;
+                
+                // Mark this connection as being handled by a worker thread
+                c->is_resp = 1;
+            }
             
             // Free the node (but not the connection)
             free(node);
-            
-            // Mark this connection as being handled by a worker thread
-            c->is_resp = 1;
+            node = NULL;
             
             // The connection will remain associated with this thread until closed
             // We don't need to do anything here, as the main event loop will handle all events
             // and call the event handler for this connection
             
             // Wait for the connection to be closed, but also check the shutdown flag
-            while (c->is_closing == 0) {
+            // Use a volatile local copy of the connection pointer to prevent use-after-free
+            struct mg_connection *volatile conn = c;
+            while (conn && conn->is_closing == 0) {
                 // Check if the pool is shutting down
+                bool shutdown = false;
+                
                 pthread_mutex_lock(&pool->mutex);
-                bool shutdown = pool->shutdown;
+                shutdown = pool->shutdown;
                 pthread_mutex_unlock(&pool->mutex);
                 
                 if (shutdown) {
                     // Mark the connection as closing and break the loop
-                    c->is_closing = 1;
+                    if (conn) {
+                        conn->is_closing = 1;
+                    }
                     break;
                 }
                 
@@ -286,7 +340,7 @@ void *connection_worker_thread(void *arg) {
                 usleep(1000); // 1ms
             }
             
-            log_debug("Connection closed by worker thread");
+            log_debug("Connection closed by worker thread %d", thread_id);
         }
     }
     

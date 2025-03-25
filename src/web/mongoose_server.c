@@ -594,24 +594,39 @@ void http_server_destroy(http_server_handle_t server) {
         http_server_stop(server);
     }
 
-    // IMPORTANT: Changed shutdown order to prevent memory corruption
+    // IMPORTANT: Improved shutdown order to prevent memory corruption
+    
+    // First, mark all connections as closing to prevent new operations
+    log_info("Marking all connections for closing");
+    for (struct mg_connection *c = server->mgr->conns; c != NULL; c = c->next) {
+        c->is_closing = 1;
+    }
+    
     // First shutdown WebSocket manager to prevent any new WebSocket operations
     log_info("Shutting down WebSocket manager");
     websocket_manager_shutdown();
     
     // Wait a moment for WebSocket connections to finish closing
-    usleep(100000);  // 100ms
+    usleep(250000);  // 250ms - increased from 100ms for better safety
     
     // Then shutdown connection pool to ensure no more connections are processed
     if (server->conn_pool) {
         log_info("Shutting down connection pool");
-        connection_pool_shutdown(server->conn_pool);
-        server->conn_pool = NULL;  // Avoid double-free
+        
+        // Create a local copy of the connection pool pointer
+        connection_pool_t *pool = server->conn_pool;
+        
+        // Clear the server's pointer to the pool BEFORE shutting it down
+        // This prevents any other threads from accessing it after shutdown starts
+        server->conn_pool = NULL;
+        
+        // Now shutdown the connection pool
+        connection_pool_shutdown(pool);
         // Note: connection_pool_shutdown also frees the memory
     }
     
-    // Wait a moment for connections to finish closing
-    usleep(100000);  // 100ms
+    // Wait longer for connections to finish closing
+    usleep(250000);  // 250ms - increased from 100ms for better safety
     
     // Finally shutdown API thread pool
     log_info("Shutting down API thread pool");

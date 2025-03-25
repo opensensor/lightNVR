@@ -455,154 +455,257 @@ export function showStatusMessage(message, duration = 3000) {
     }, 300);
   }, duration);
 }
- 
+
 /**
- * Show a snapshot preview
- * @param {string} imageUrl - Data URL of the image
- * @param {string} title - Title for the snapshot
+ * Show a snapshot preview in a modal
+ * @param {string} imageData - The image data URL
+ * @param {string} streamName - The name of the stream
  */
-export function showSnapshotPreview(imageUrl, title) {
-  // Create overlay container
-  const overlay = document.createElement('div');
-  overlay.className = 'fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50';
-  overlay.id = 'snapshot-preview-overlay';
+export function showSnapshotPreview(imageData, streamName) {
+  // Get the existing snapshot modal created by setupModals()
+  const snapshotModal = document.getElementById('snapshot-preview-modal');
   
-  // Create preview container
-  const previewContainer = document.createElement('div');
-  previewContainer.className = 'bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl max-h-[90vh] flex flex-col';
-  previewContainer.style.width = '90%';
+  if (!snapshotModal) {
+    console.error('Snapshot modal not found. Make sure setupModals() has been called.');
+    return;
+  }
   
-  // Create header
-  const header = document.createElement('div');
-  header.className = 'flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700';
+  // Get modal elements
+  const snapshotTitle = document.getElementById('snapshot-preview-title');
+  const snapshotImage = document.getElementById('snapshot-preview-image');
+  const snapshotDownloadBtn = document.getElementById('snapshot-download-btn');
+  const snapshotCloseBtn = document.getElementById('snapshot-close-btn');
+  const closeButtons = snapshotModal.querySelectorAll('.close');
+  const modalContent = snapshotModal.querySelector('.modal-content');
   
-  const titleElement = document.createElement('h3');
-  titleElement.className = 'text-lg font-semibold text-gray-900 dark:text-white';
-  titleElement.textContent = title || 'Snapshot';
+  // Set the title and image
+  if (snapshotTitle) snapshotTitle.textContent = `Snapshot: ${streamName}`;
   
-  const closeButton = document.createElement('button');
-  closeButton.className = 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200';
-  closeButton.innerHTML = '✕';
-  closeButton.addEventListener('click', () => {
-    document.body.removeChild(overlay);
-  });
+  // Store the image data directly on the modal for later access
+  snapshotModal.dataset.imageData = imageData;
+  snapshotModal.dataset.streamName = streamName;
   
-  header.appendChild(titleElement);
-  header.appendChild(closeButton);
+  // Ensure the image is properly displayed
+  if (snapshotImage) {
+    snapshotImage.src = imageData;
+    snapshotImage.style.display = 'block'; // Make sure it's visible
+    snapshotImage.onload = () => {
+      console.log('Snapshot image loaded successfully');
+    };
+    snapshotImage.onerror = (e) => {
+      console.error('Error loading snapshot image:', e);
+    };
+  }
   
-  // Create image container
-  const imageContainer = document.createElement('div');
-  imageContainer.className = 'p-4 overflow-auto flex-grow';
-  
-  const image = document.createElement('img');
-  image.src = imageUrl;
-  image.className = 'max-w-full max-h-[70vh] mx-auto';
-  image.alt = title || 'Snapshot';
-  
-  imageContainer.appendChild(image);
-  
-  // Create footer with actions
-  const footer = document.createElement('div');
-  footer.className = 'p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end space-x-2';
-  
-  const downloadButton = document.createElement('button');
-  downloadButton.className = 'px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors';
-  downloadButton.textContent = 'Download';
-  downloadButton.addEventListener('click', () => {
-    try {
-      // For data URLs, we need to ensure proper handling
-      // First, check if it's a valid data URL
-      if (!imageUrl.startsWith('data:image/')) {
-        console.error('Invalid image URL format for download');
-        showStatusMessage('Failed to download: Invalid image format', 3000);
-        return;
-      }
-      
-      // Convert data URL to Blob
-      // Extract the base64 data from the data URL
-      const byteString = atob(imageUrl.split(',')[1]);
-      
-      // Get the MIME type from the data URL
-      const mimeType = imageUrl.split(',')[0].split(':')[1].split(';')[0];
-      
-      // Create an array buffer from the binary string
-      const arrayBuffer = new ArrayBuffer(byteString.length);
-      const intArray = new Uint8Array(arrayBuffer);
-      
-      // Fill the array buffer with the binary data
-      for (let i = 0; i < byteString.length; i++) {
-        intArray[i] = byteString.charCodeAt(i);
-      }
-      
-      // Create a Blob from the array buffer
-      const blob = new Blob([arrayBuffer], { type: mimeType });
-      
-      // Create an object URL from the Blob
-      const blobUrl = URL.createObjectURL(blob);
-      
-      // Create a download link with proper attributes
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = `snapshot-${Date.now()}.jpg`;
-      
-      // IMPORTANT CHANGE: Don't hide the link, and keep it in the DOM longer
-      // Add link to the document in a way that won't disrupt the UI but will remain active
-      link.style.position = 'absolute';
-      link.style.top = '0';
-      link.style.left = '0';
-      link.style.opacity = '0.01'; // Nearly invisible but technically visible
-      
-      // Add to document, click, but DON'T remove immediately
-      document.body.appendChild(link);
-      
-      // Click after a short delay to ensure the link is properly registered
-      setTimeout(() => {
-        link.click();
-        console.log('Download initiated with Blob URL');
-        showStatusMessage('Download started', 3000);
-        
-        // Clean up after a much longer delay to ensure download starts
-        // This is the key fix - keeping the link around longer
-        setTimeout(() => {
-          if (document.body.contains(link)) {
-            document.body.removeChild(link);
-          }
-          URL.revokeObjectURL(blobUrl);
-        }, 5000); // Wait 5 seconds before cleaning up
-      }, 100);
-    } catch (error) {
-      console.error('Error downloading snapshot:', error);
-      showStatusMessage('Failed to download: ' + error.message, 3000);
+  // Define close modal function
+  function closeModal() {
+    snapshotModal.classList.add('hidden');
+    if (modalContent) {
+      modalContent.classList.remove('scale-100');
+      modalContent.classList.add('scale-95');
     }
+  }
+  
+  // Set up close button event handlers
+  if (snapshotCloseBtn) {
+    snapshotCloseBtn.onclick = closeModal;
+  }
+  
+  closeButtons.forEach(button => {
+    button.onclick = closeModal;
   });
   
-  footer.appendChild(downloadButton);
-  
-  // Assemble the preview
-  previewContainer.appendChild(header);
-  previewContainer.appendChild(imageContainer);
-  previewContainer.appendChild(footer);
-  overlay.appendChild(previewContainer);
-  
-  // Add to document
-  document.body.appendChild(overlay);
-  
-  // Add event listener to close on escape key
-  const handleEscape = (e) => {
-    if (e.key === 'Escape') {
-      if (document.body.contains(overlay)) {
-        document.body.removeChild(overlay);
-      }
-      document.removeEventListener('keydown', handleEscape);
+  // Close on click outside
+  snapshotModal.onclick = function(event) {
+    if (event.target === snapshotModal) {
+      closeModal();
     }
   };
   
-  document.addEventListener('keydown', handleEscape);
-  
-  // Add event listener to close on background click
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) {
-      document.body.removeChild(overlay);
+  // Close on escape key
+  document.addEventListener('keydown', function(event) {
+    if (event.key === 'Escape' && !snapshotModal.classList.contains('hidden')) {
+      closeModal();
     }
   });
+  
+  // Set up download button
+  if (snapshotDownloadBtn) {
+    snapshotDownloadBtn.onclick = function() {
+      // Get the stored image data from the modal
+      const storedImageData = snapshotModal.dataset.imageData;
+      const storedStreamName = snapshotModal.dataset.streamName || streamName;
+      
+      if (!storedImageData) {
+        console.error('No image data available for download');
+        showStatusMessage('Download failed: No image data available', 5000);
+        return;
+      }
+      
+      console.log('Downloading snapshot with data URL length:', storedImageData.length);
+      
+      try {
+        // Create a temporary download iframe - this approach often works better on HTTP
+        console.log('Using iframe download method');
+        
+        // Create a canvas to resize and optimize the image
+        const canvas = document.createElement('canvas');
+        const img = new Image();
+        
+        img.onload = function() {
+          try {
+            console.log('Image loaded for optimization, original dimensions:', img.width, 'x', img.height);
+            
+            // Calculate new dimensions (max 1280px width/height while maintaining aspect ratio)
+            let newWidth = img.width;
+            let newHeight = img.height;
+            const maxDimension = 1280;
+            
+            if (newWidth > maxDimension || newHeight > maxDimension) {
+              if (newWidth > newHeight) {
+                newHeight = Math.round(newHeight * (maxDimension / newWidth));
+                newWidth = maxDimension;
+              } else {
+                newWidth = Math.round(newWidth * (maxDimension / newHeight));
+                newHeight = maxDimension;
+              }
+            }
+            
+            console.log('Resizing to:', newWidth, 'x', newHeight);
+            
+            // Set canvas dimensions to the new size
+            canvas.width = newWidth;
+            canvas.height = newHeight;
+            
+            // Draw the image on the canvas with the new dimensions
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0, newWidth, newHeight);
+            
+            // Convert to JPEG with lower quality to reduce size
+            const optimizedJpegData = canvas.toDataURL('image/jpeg', 0.8);
+            console.log('Optimized JPEG data URL length:', optimizedJpegData.length);
+            
+            // Create a download link with the optimized image
+            const filename = `snapshot_${storedStreamName}_${new Date().toISOString().replace(/[:.]/g, '-')}.jpg`;
+            
+            // Method 1: Try the iframe approach
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            document.body.appendChild(iframe);
+            
+            try {
+              // Write a simple HTML document to the iframe with a download link
+              const iframeDoc = iframe.contentWindow.document;
+              iframeDoc.open();
+              iframeDoc.write(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                  <title>Downloading...</title>
+                  <script>
+                    function startDownload() {
+                      const a = document.getElementById('download-link');
+                      a.click();
+                      setTimeout(function() {
+                        window.parent.postMessage('download-complete', '*');
+                      }, 1000);
+                    }
+                  </script>
+                </head>
+                <body onload="startDownload()">
+                  <a id="download-link" href="${optimizedJpegData}" download="${filename}">Download</a>
+                </body>
+                </html>
+              `);
+              iframeDoc.close();
+              
+              // Listen for the download complete message
+              window.addEventListener('message', function onMessage(e) {
+                if (e.data === 'download-complete') {
+                  window.removeEventListener('message', onMessage);
+                  document.body.removeChild(iframe);
+                  showStatusMessage('Snapshot downloaded successfully', 3000);
+                }
+              }, { once: true });
+              
+              // Fallback cleanup in case the message isn't received
+              setTimeout(() => {
+                if (document.body.contains(iframe)) {
+                  document.body.removeChild(iframe);
+                }
+              }, 5000);
+              
+            } catch (iframeError) {
+              console.error('Iframe download method failed:', iframeError);
+              document.body.removeChild(iframe);
+              
+              // Fallback to direct link method
+              tryDirectLinkDownload(optimizedJpegData, filename);
+            }
+          } catch (canvasError) {
+            console.error('Canvas processing error:', canvasError);
+            showStatusMessage('Download failed: Error processing image', 5000);
+            
+            // Try direct download with original data
+            tryDirectLinkDownload(storedImageData, `snapshot_${storedStreamName}_${new Date().toISOString().replace(/[:.]/g, '-')}.jpg`);
+          }
+        };
+        
+        img.onerror = function(e) {
+          console.error('Error loading image for optimization:', e);
+          showStatusMessage('Download failed: Could not load image', 5000);
+          
+          // Try direct download with original data
+          tryDirectLinkDownload(storedImageData, `snapshot_${storedStreamName}_${new Date().toISOString().replace(/[:.]/g, '-')}.jpg`);
+        };
+        
+        // Set the source to trigger loading
+        img.src = storedImageData;
+        
+      } catch (error) {
+        console.error('Error in snapshot download process:', error);
+        showStatusMessage('Download failed: ' + error.message, 5000);
+        
+        // Try direct download with original data as last resort
+        tryDirectLinkDownload(storedImageData, `snapshot_${storedStreamName}_${new Date().toISOString().replace(/[:.]/g, '-')}.jpg`);
+      }
+      
+      // Helper function for direct link download
+      function tryDirectLinkDownload(dataUrl, filename) {
+        console.log('Attempting direct link download');
+        try {
+          const link = document.createElement('a');
+          link.href = dataUrl;
+          link.download = filename;
+          link.target = '_blank'; // Try opening in a new tab
+          link.rel = 'noopener noreferrer';
+          document.body.appendChild(link);
+          link.click();
+          
+          // Clean up
+          setTimeout(() => {
+            document.body.removeChild(link);
+          }, 100);
+          
+          showStatusMessage('Download initiated', 3000);
+        } catch (linkError) {
+          console.error('Direct link download failed:', linkError);
+          showStatusMessage('Download failed: Browser restrictions', 5000);
+        }
+      }
+    };
+  }
+  
+  // Show the modal
+  snapshotModal.classList.remove('hidden');
+  
+  // Animate the modal content
+  if (modalContent) {
+    setTimeout(() => {
+      modalContent.classList.remove('scale-95', 'opacity-0');
+      modalContent.classList.add('scale-100', 'opacity-100');
+    }, 10);
+  }
 }

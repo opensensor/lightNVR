@@ -9,9 +9,6 @@ document.write('<script src="/js/core.js"></script>');
 // Load authentication module
 document.write('<script src="/js/components/auth.js"></script>');
 
-// Load UI components
-document.write('<script src="/js/components/ui.js"></script>');
-
 // Load stream management
 document.write('<script src="/js/components/streams.js"></script>');
 
