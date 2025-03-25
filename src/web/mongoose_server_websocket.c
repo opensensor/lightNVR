@@ -7,6 +7,7 @@
 #include "web/websocket_manager.h"
 #include "web/api_handlers_recordings_batch_ws.h"
 #include "web/api_handlers_system_ws.h"
+#include "web/register_websocket_handlers.h"
 #include "core/logger.h"
 #include "mongoose.h"
 
@@ -85,11 +86,8 @@ void mg_handle_websocket_upgrade(struct mg_connection *c, struct mg_http_message
  * @brief Register WebSocket handlers
  */
 void websocket_register_handlers(void) {
-    // Register WebSocket handler for batch delete recordings
-    websocket_manager_register_handler("recordings/batch-delete", websocket_handle_batch_delete_recordings);
-    
-    // Register WebSocket handler for system logs
-    websocket_manager_register_handler("system/logs", websocket_handle_system_logs);
+    // Call our new function to register all WebSocket handlers
+    register_websocket_handlers();
 }
 
 /**

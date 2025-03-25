@@ -120,6 +120,9 @@ void send_progress_update(const char *client_id, int current, int total,
         return;
     }
     
+    // Log the message type and topic for debugging
+    log_info("Creating WebSocket message with type 'progress' and topic 'recordings/batch-delete'");
+    
     // Create WebSocket message
     websocket_message_t *message = websocket_message_create(
         "progress", "recordings/batch-delete", payload);
@@ -177,6 +180,9 @@ void send_final_result(const char *client_id, bool success, int total,
     }
     
     log_info("Sending final result to client %s: %s", client_id, payload);
+    
+    // Log the message type and topic for debugging
+    log_info("Creating WebSocket message with type 'result' and topic 'recordings/batch-delete'");
     
     // Create WebSocket message
     websocket_message_t *message = websocket_message_create(
@@ -351,13 +357,16 @@ void batch_delete_recordings_ws_task_function(void *arg) {
                 success_count++;
                 log_info("Successfully deleted recording: %llu", (unsigned long long)id);
                 
-                // Send progress update
-                if (task->use_websocket) {
-                    char status[128];
-                    snprintf(status, sizeof(status), "Deleted recording %llu", (unsigned long long)id);
-                    send_progress_update(task->client_id, i + 1, array_size, 
-                                       success_count, error_count, status, false);
-                }
+            // Send progress update
+            if (task->use_websocket) {
+                char status[128];
+                snprintf(status, sizeof(status), "Deleted recording %llu", (unsigned long long)id);
+                send_progress_update(task->client_id, i + 1, array_size, 
+                                   success_count, error_count, status, false);
+                
+                // Add a small delay to ensure the WebSocket message is sent
+                usleep(5000);  // 5ms delay
+            }
             }
             
             // Add a small delay to avoid overwhelming the WebSocket connection
@@ -753,6 +762,15 @@ void batch_delete_recordings_ws_task_function(void *arg) {
     if (task->use_websocket) {
         // Send a final progress update with the complete flag set to true
         send_progress_update(task->client_id, 0, 0, 0, 0, "Operation complete", true);
+        
+        // Add a small delay to ensure the final message is sent
+        usleep(10000);  // 10ms delay
+        
+        // Send a duplicate final result message to ensure it's received
+        log_info("Sending duplicate final result message to ensure delivery");
+        
+        // Create a simple final result message
+        send_final_result(task->client_id, true, 0, 0, 0, "[]");
     }
     
     batch_delete_recordings_ws_task_free(task);

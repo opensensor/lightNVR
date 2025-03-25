@@ -10,6 +10,7 @@
 #include "core/logger.h"
 #include "../external/cjson/cJSON.h"
 #include "video/onvif_discovery_messages.h"
+#include "web/register_websocket_handlers.h"
 
 // Maximum number of clients and handlers
 #define MAX_CLIENTS 100
@@ -444,6 +445,9 @@ void websocket_manager_handle_message(struct mg_connection *c, const char *data,
                     websocket_manager_send_to_client(client_id, ack);
                     websocket_message_free(ack);
                 }
+                
+                // Make sure handlers are registered
+                register_websocket_handlers();
             }
         }
     } else if (strcmp(type, "unsubscribe") == 0) {
@@ -475,9 +479,21 @@ void websocket_manager_handle_message(struct mg_connection *c, const char *data,
         int handler_index = find_handler_by_topic(topic);
         if (handler_index >= 0 && s_handlers[handler_index].handler) {
             // Call handler directly without mutex locks
+            log_info("Found handler for topic %s, calling it", topic);
             s_handlers[handler_index].handler(client_id, payload);
         } else {
-            log_warn("No handler registered for topic %s", topic);
+            log_warn("No handler registered for topic %s, attempting to register handlers", topic);
+            // Try to register handlers again
+            register_websocket_handlers();
+            
+            // Check if handler is now registered
+            handler_index = find_handler_by_topic(topic);
+            if (handler_index >= 0 && s_handlers[handler_index].handler) {
+                log_info("Handler registered successfully, calling it now");
+                s_handlers[handler_index].handler(client_id, payload);
+            } else {
+                log_error("Still no handler registered for topic %s after registration attempt", topic);
+            }
         }
     }
     
@@ -585,6 +601,10 @@ bool websocket_manager_send_to_client(const char *client_id, const websocket_mes
     }
     pthread_mutex_unlock(&s_mutex);
     
+    // Log the message details for debugging
+    log_info("Sending message to client %s: type=%s, topic=%s, payload=%s", 
+             client_id, message->type, message->topic, message->payload);
+    
     // Convert message to JSON
     cJSON *json = cJSON_CreateObject();
     cJSON_AddStringToObject(json, "type", message->type);
@@ -600,14 +620,20 @@ bool websocket_manager_send_to_client(const char *client_id, const websocket_mes
         // If parsing failed, log an error and create a new JSON object
         log_error("Failed to parse payload as JSON: %s", message->payload);
         
-        // Create a new JSON object for the payload
-        cJSON *new_payload = cJSON_CreateObject();
-        cJSON_AddStringToObject(new_payload, "error", "Failed to parse payload");
-        cJSON_AddStringToObject(new_payload, "raw_payload", message->payload);
-        
-        // Add the new payload object
-        cJSON_AddItemToObject(json, "payload", new_payload);
-        log_debug("Added error payload object");
+        // For progress and result messages, try to add the payload as a string
+        if (strcmp(message->type, "progress") == 0 || strcmp(message->type, "result") == 0) {
+            log_info("Adding %s payload as string for client %s", message->type, client_id);
+            cJSON_AddStringToObject(json, "payload", message->payload);
+        } else {
+            // Create a new JSON object for the payload
+            cJSON *new_payload = cJSON_CreateObject();
+            cJSON_AddStringToObject(new_payload, "error", "Failed to parse payload");
+            cJSON_AddStringToObject(new_payload, "raw_payload", message->payload);
+            
+            // Add the new payload object
+            cJSON_AddItemToObject(json, "payload", new_payload);
+            log_debug("Added error payload object");
+        }
     }
     
     char *json_str = cJSON_PrintUnformatted(json);

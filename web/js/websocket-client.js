@@ -334,6 +334,11 @@ class WebSocketClient {
             
             console.log(`Received WebSocket message: ${message.type} ${message.topic}`, message);
             
+            // Debug log for progress and result messages
+            if (message.type === 'progress' || message.type === 'result') {
+                console.log(`Received ${message.type} message for topic ${message.topic}:`, message.payload);
+            }
+            
             // Always try to parse payload if it's a string (could be JSON)
             if (typeof message.payload === 'string') {
                 try {

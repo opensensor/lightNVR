@@ -585,4 +585,34 @@ function batchDeleteRecordingsByFilter(filter) {
 }
 
 // Initialize batch delete modal when the page loads
-document.addEventListener('DOMContentLoaded', initBatchDeleteModal);
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('Initializing batch delete modal');
+    initBatchDeleteModal();
+    
+    // Make sure the modal is visible in the DOM
+    const modalContainer = document.getElementById('batch-delete-modal-container');
+    if (!modalContainer) {
+        console.error('Batch delete modal container not found, creating it');
+        const container = document.createElement('div');
+        container.id = 'batch-delete-modal-container';
+        document.body.appendChild(container);
+        initBatchDeleteModal();
+    }
+    
+    // Make sure the global function is available
+    if (typeof window.updateBatchDeleteProgress !== 'function') {
+        console.error('updateBatchDeleteProgress function not available, setting it up');
+        window.updateBatchDeleteProgress = updateBatchDeleteProgress;
+    }
+    
+    // Make sure the global function is available
+    if (typeof window.showBatchDeleteModal !== 'function') {
+        console.error('showBatchDeleteModal function not available, setting it up');
+        window.showBatchDeleteModal = showBatchDeleteModal;
+    }
+});
+
+// Make functions globally available
+window.showBatchDeleteModal = showBatchDeleteModal;
+window.updateBatchDeleteProgress = updateBatchDeleteProgress;
+window.initBatchDeleteModal = initBatchDeleteModal;
