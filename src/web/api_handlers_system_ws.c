@@ -16,8 +16,8 @@ static int log_level_meets_minimum(const char *log_level, const char *min_level)
 // Map to store client log level preferences
 // Key: client_id, Value: log level string (error, warning, info, debug)
 typedef struct {
-    char client_id[64];
-    char log_level[16];
+    char client_id[48]; // Reduced from 64 to save stack space
+    char log_level[12]; // Reduced from 16 to save stack space
 } client_log_level_t;
 
 #define MAX_CLIENTS 100
@@ -263,8 +263,9 @@ static int send_filtered_logs_to_client(const char *client_id, const char *min_l
     for (int i = 0; i < count; i++) {
         if (logs[i] != NULL) {
             // Parse log line (format: [TIMESTAMP] [LEVEL] MESSAGE)
-            char timestamp[32] = "";
-            char log_level[16] = "";
+            // Use smaller buffers to reduce stack usage
+            char timestamp[24] = "";
+            char log_level[12] = "";
             char *message = NULL;
             
             // First, check if this is a standard format log
@@ -293,7 +294,11 @@ static int send_filtered_logs_to_client(const char *client_id, const char *min_l
                                     
                                     // Message starts after level
                                     message = level_end + 1;
-                                    while (*message == ' ') message++; // Skip leading spaces
+                                    if (message && *message) {
+                                        while (*message == ' ') message++; // Skip leading spaces
+                                    } else {
+                                        message = ""; // Set to empty string if NULL or empty
+                                    }
                                 }
                             }
                         }
@@ -326,7 +331,11 @@ static int send_filtered_logs_to_client(const char *client_id, const char *min_l
                             
                             // Message starts after level
                             message = level_end + 1;
-                            while (*message == ' ') message++; // Skip leading spaces
+                            if (message && *message) {
+                                while (*message == ' ') message++; // Skip leading spaces
+                            } else {
+                                message = ""; // Set to empty string if NULL or empty
+                            }
                         }
                     }
                 }
@@ -423,8 +432,8 @@ int websocket_broadcast_system_logs(void) {
     
     // First, parse all logs to extract log levels
     typedef struct {
-        char timestamp[32];
-        char level[16];
+        char timestamp[24]; // Reduced from 32 to save stack space
+        char level[12];     // Reduced from 16 to save stack space
         char *message;
         int original_index;
     } parsed_log_t;
@@ -477,7 +486,11 @@ int websocket_broadcast_system_logs(void) {
                                     
                                     // Message starts after level
                                     parsed_logs[i].message = level_end + 1;
-                                    while (*parsed_logs[i].message == ' ') parsed_logs[i].message++; // Skip leading spaces
+                                    if (parsed_logs[i].message && *parsed_logs[i].message) {
+                                        while (*parsed_logs[i].message == ' ') parsed_logs[i].message++; // Skip leading spaces
+                                    } else {
+                                        parsed_logs[i].message = ""; // Set to empty string if NULL or empty
+                                    }
                                 }
                             }
                         }
@@ -510,7 +523,11 @@ int websocket_broadcast_system_logs(void) {
                             
                             // Message starts after level
                             parsed_logs[i].message = level_end + 1;
-                            while (*parsed_logs[i].message == ' ') parsed_logs[i].message++; // Skip leading spaces
+                            if (parsed_logs[i].message && *parsed_logs[i].message) {
+                                while (*parsed_logs[i].message == ' ') parsed_logs[i].message++; // Skip leading spaces
+                            } else {
+                                parsed_logs[i].message = ""; // Set to empty string if NULL or empty
+                            }
                         }
                     }
                 }

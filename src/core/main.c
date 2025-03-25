@@ -63,24 +63,46 @@ void set_web_server_socket(int socket_fd) {
 }
 
 static void signal_handler(int sig) {
-    // Only log and set running flag if not in daemon mode
-    // Daemon mode has its own signal handler
+    // Log the signal received
     log_info("Received signal %d, shutting down...", sig);
+    
+    // Set the running flag to false to trigger shutdown
     running = false;
+    
+    // For Linux 4.4 embedded systems, we need a more robust approach
+    // Set an alarm to force exit if normal shutdown doesn't work
+    alarm(10); // Force exit after 10 seconds if normal shutdown fails
+}
+
+// Alarm signal handler for forced exit
+static void alarm_handler(int sig) {
+    log_warn("Shutdown timeout reached, forcing exit");
+    _exit(EXIT_SUCCESS); // Use _exit instead of exit to avoid calling atexit handlers
 }
 
 // Function to initialize signal handlers
 static void init_signals() {
-    // Only set up signal handlers in non-daemon mode
-    // Daemon mode sets up its own handlers in init_daemon()
-    if (!daemon_mode) {
-        struct sigaction sa;
-        memset(&sa, 0, sizeof(sa));
-        sa.sa_handler = signal_handler;
-        sigaction(SIGINT, &sa, NULL);
-        sigaction(SIGTERM, &sa, NULL);
-        sigaction(SIGHUP, &sa, NULL);
-    }
+    // Set up signal handlers for both daemon and non-daemon mode
+    // This ensures consistent behavior across all modes
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = signal_handler;
+    sigaction(SIGINT, &sa, NULL);
+    sigaction(SIGTERM, &sa, NULL);
+    sigaction(SIGHUP, &sa, NULL);
+    
+    // Set up alarm handler for forced exit
+    struct sigaction sa_alarm;
+    memset(&sa_alarm, 0, sizeof(sa_alarm));
+    sa_alarm.sa_handler = alarm_handler;
+    sigaction(SIGALRM, &sa_alarm, NULL);
+    
+    // Block SIGPIPE to prevent crashes when writing to closed sockets
+    // This is especially important for older Linux kernels
+    sigset_t set;
+    sigemptyset(&set);
+    sigaddset(&set, SIGPIPE);
+    pthread_sigmask(SIG_BLOCK, &set, NULL);
 }
 /**
  * Check if another instance is running and kill it if needed

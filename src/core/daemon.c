@@ -172,7 +172,7 @@ static void daemon_signal_handler(int sig) {
         // On Linux 4.4 embedded, we might need to force exit if signals aren't handled well
         // This is a fallback mechanism to ensure the daemon actually stops
         log_info("Setting up fallback exit timer for Linux 4.4 compatibility");
-        alarm(5); // Set an alarm to force exit after 5 seconds if normal shutdown fails
+        alarm(10); // Set an alarm to force exit after 10 seconds if normal shutdown fails
         break;
 
     case SIGHUP:
@@ -184,6 +184,13 @@ static void daemon_signal_handler(int sig) {
     case SIGALRM:
         // Handle the alarm signal (fallback for Linux 4.4)
         log_warn("Alarm triggered - forcing daemon exit for Linux 4.4 compatibility");
+        
+        // Force kill any child processes before exiting
+        log_warn("Sending SIGKILL to all child processes");
+        kill(0, SIGKILL); // Send SIGKILL to all processes in the process group
+        
+        // Force exit without calling atexit handlers
+        log_warn("Forcing immediate exit");
         _exit(EXIT_SUCCESS); // Use _exit instead of exit to avoid calling atexit handlers
         break;
 

@@ -811,9 +811,19 @@ void mg_handle_post_system_shutdown(struct mg_connection *c, struct mg_http_mess
     // Log shutdown
     log_info("System shutdown requested via API");
     
-    // Schedule shutdown
+    // Schedule shutdown with a more robust approach for MIPS systems
     extern volatile bool running;
     running = false;
+    
+    // Set an alarm to force exit if normal shutdown doesn't work
+    // This is especially important for Linux 4.4 embedded MIPS systems
+    log_info("Setting up fallback exit timer for Linux 4.4 compatibility");
+    alarm(10); // Force exit after 10 seconds if normal shutdown fails
+    
+    // For MIPS systems, we need to ensure the signal is processed immediately
+    // Send SIGTERM to self to trigger immediate shutdown
+    log_info("Sending SIGTERM to self to trigger immediate shutdown");
+    kill(getpid(), SIGTERM);
     
     log_info("Successfully handled POST /api/system/shutdown request");
 }
