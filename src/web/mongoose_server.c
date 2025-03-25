@@ -594,21 +594,28 @@ void http_server_destroy(http_server_handle_t server) {
         http_server_stop(server);
     }
 
-    // Shutdown WebSocket manager first to close all WebSocket connections
-    log_info("Shutting down WebSocket manager");
-    websocket_manager_shutdown();
-    
-    // Shutdown API thread pool
-    log_info("Shutting down API thread pool");
-    api_thread_pool_shutdown();
-    
-    // Shutdown connection pool if initialized
+    // IMPORTANT: Changed shutdown order to prevent memory corruption
+    // First shutdown connection pool to ensure no more WebSocket connections are processed
     if (server->conn_pool) {
         log_info("Shutting down connection pool");
         connection_pool_shutdown(server->conn_pool);
         server->conn_pool = NULL;  // Avoid double-free
         // Note: connection_pool_shutdown also frees the memory
     }
+    
+    // Wait a moment for connections to finish closing
+    usleep(500000);  // 500ms
+    
+    // Then shutdown API thread pool
+    log_info("Shutting down API thread pool");
+    api_thread_pool_shutdown();
+    
+    // Wait a moment for API threads to finish
+    usleep(250000);  // 250ms
+    
+    // Finally shutdown WebSocket manager
+    log_info("Shutting down WebSocket manager");
+    websocket_manager_shutdown();
 
     // Destroy global mutex
     pthread_mutex_destroy(&server->mutex);

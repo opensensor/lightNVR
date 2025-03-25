@@ -196,11 +196,21 @@ void websocket_manager_shutdown(void) {
         
         log_info("Marked %d WebSocket connections for closing", closed_count);
         
-        // Reset state immediately without waiting for connections to close
-        // This prevents hanging during shutdown
+        // IMPORTANT: Don't reset state immediately - give connections time to close
+        pthread_mutex_unlock(&s_mutex);
+        
+        // Wait a short time for connections to start closing
+        usleep(100000);  // 100ms
+    }
+    
+    // Wait a bit longer for connections to finish closing
+    usleep(500000);  // 500ms
+    
+    // Now it's safer to clean up the state
+    if (pthread_mutex_trylock(&s_mutex) == 0) {
+        // Reset state after waiting for connections to close
         memset(s_clients, 0, sizeof(s_clients));
         memset(s_handlers, 0, sizeof(s_handlers));
-        
         pthread_mutex_unlock(&s_mutex);
     }
     
@@ -210,9 +220,6 @@ void websocket_manager_shutdown(void) {
     log_info("WebSocket manager shutdown complete");
     
     pthread_mutex_unlock(&s_init_mutex);
-    
-    // Destroy initialization mutex - do this last
-    pthread_mutex_destroy(&s_init_mutex);
 }
 
 /**
@@ -601,8 +608,8 @@ bool websocket_manager_send_to_client(const char *client_id, const websocket_mes
     pthread_mutex_unlock(&s_mutex);
     
     // Log the message details for debugging
-    log_info("Sending message to client %s: type=%s, topic=%s, payload=%s", 
-             client_id, message->type, message->topic, message->payload);
+    log_info("Sending message to client %s: type=%s, topic=%s",
+             client_id, message->type, message->topic);
     
     // Convert message to JSON
     cJSON *json = cJSON_CreateObject();
@@ -644,7 +651,7 @@ bool websocket_manager_send_to_client(const char *client_id, const websocket_mes
     
     // Send message using the connection pointer we saved earlier
     mg_ws_send(conn, json_str, strlen(json_str), WEBSOCKET_OP_TEXT);
-    log_debug("Sent WebSocket message to client %s: %s", client_id, json_str);
+    log_debug("Sent WebSocket message to client %s", client_id);
     
     free(json_str);
     cJSON_Delete(json);
