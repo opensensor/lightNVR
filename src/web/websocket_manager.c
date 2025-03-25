@@ -198,9 +198,18 @@ void websocket_manager_shutdown(void) {
         
         log_info("Marked %d WebSocket connections for closing", closed_count);
         
-        // IMPORTANT: Reset state immediately to prevent any lingering references
-        memset(s_clients, 0, sizeof(s_clients));
-        memset(s_handlers, 0, sizeof(s_handlers));
+        // IMPORTANT: Clear client and handler state safely without using memset
+        // This prevents memory corruption during shutdown
+        for (int i = 0; i < MAX_CLIENTS; i++) {
+            s_clients[i].active = false;
+            s_clients[i].conn = NULL;
+            s_clients[i].topic_count = 0;
+        }
+        
+        for (int i = 0; i < MAX_HANDLERS; i++) {
+            s_handlers[i].active = false;
+            s_handlers[i].handler = NULL;
+        }
         
         pthread_mutex_unlock(&s_mutex);
     }
