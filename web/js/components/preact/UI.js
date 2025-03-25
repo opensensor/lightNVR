@@ -455,7 +455,7 @@ export function showStatusMessage(message, duration = 3000) {
     }, 300);
   }, duration);
 }
-
+ 
 /**
  * Show a snapshot preview
  * @param {string} imageUrl - Data URL of the image
@@ -509,13 +509,71 @@ export function showSnapshotPreview(imageUrl, title) {
   downloadButton.className = 'px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors';
   downloadButton.textContent = 'Download';
   downloadButton.addEventListener('click', () => {
-    // Create a download link
-    const link = document.createElement('a');
-    link.href = imageUrl;
-    link.download = `snapshot-${Date.now()}.jpg`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    try {
+      // For data URLs, we need to ensure proper handling
+      // First, check if it's a valid data URL
+      if (!imageUrl.startsWith('data:image/')) {
+        console.error('Invalid image URL format for download');
+        showStatusMessage('Failed to download: Invalid image format', 3000);
+        return;
+      }
+      
+      // Convert data URL to Blob
+      // Extract the base64 data from the data URL
+      const byteString = atob(imageUrl.split(',')[1]);
+      
+      // Get the MIME type from the data URL
+      const mimeType = imageUrl.split(',')[0].split(':')[1].split(';')[0];
+      
+      // Create an array buffer from the binary string
+      const arrayBuffer = new ArrayBuffer(byteString.length);
+      const intArray = new Uint8Array(arrayBuffer);
+      
+      // Fill the array buffer with the binary data
+      for (let i = 0; i < byteString.length; i++) {
+        intArray[i] = byteString.charCodeAt(i);
+      }
+      
+      // Create a Blob from the array buffer
+      const blob = new Blob([arrayBuffer], { type: mimeType });
+      
+      // Create an object URL from the Blob
+      const blobUrl = URL.createObjectURL(blob);
+      
+      // Create a download link with proper attributes
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = `snapshot-${Date.now()}.jpg`;
+      
+      // IMPORTANT CHANGE: Don't hide the link, and keep it in the DOM longer
+      // Add link to the document in a way that won't disrupt the UI but will remain active
+      link.style.position = 'absolute';
+      link.style.top = '0';
+      link.style.left = '0';
+      link.style.opacity = '0.01'; // Nearly invisible but technically visible
+      
+      // Add to document, click, but DON'T remove immediately
+      document.body.appendChild(link);
+      
+      // Click after a short delay to ensure the link is properly registered
+      setTimeout(() => {
+        link.click();
+        console.log('Download initiated with Blob URL');
+        showStatusMessage('Download started', 3000);
+        
+        // Clean up after a much longer delay to ensure download starts
+        // This is the key fix - keeping the link around longer
+        setTimeout(() => {
+          if (document.body.contains(link)) {
+            document.body.removeChild(link);
+          }
+          URL.revokeObjectURL(blobUrl);
+        }, 5000); // Wait 5 seconds before cleaning up
+      }, 100);
+    } catch (error) {
+      console.error('Error downloading snapshot:', error);
+      showStatusMessage('Failed to download: ' + error.message, 3000);
+    }
   });
   
   footer.appendChild(downloadButton);
