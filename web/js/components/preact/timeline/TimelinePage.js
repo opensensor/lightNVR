@@ -26,6 +26,7 @@ const timelineState = {
   timelineStartHour: 0,
   timelineEndHour: 24,
   currentTime: null,
+  prevCurrentTime: null, // Track previous currentTime to detect changes
   playbackSpeed: 1.0,
   showOnlySegments: false, // Whether to show only segments with recordings
   listeners: new Set(),
@@ -177,10 +178,12 @@ export function TimelinePage() {
           }));
 
           // Update global state with the first segment selected
+          const initialTime = timelineSegments[0].start_timestamp;
           timelineState.setState({
             timelineSegments,
             currentSegmentIndex: 0,
-            currentTime: timelineSegments[0].start_timestamp,
+            currentTime: initialTime,
+            prevCurrentTime: initialTime, // Initialize prevCurrentTime
             isPlaying: false
           });
 

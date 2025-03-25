@@ -26,6 +26,7 @@ export function TimelinePlayer() {
   const playbackIntervalRef = useRef(null);
   const lastTimeUpdateRef = useRef(null);
   const hlsPlayerRef = useRef(null);
+  const lastDragTimeRef = useRef(null);
 
   // Subscribe to timeline state changes
   useEffect(() => {
@@ -33,6 +34,11 @@ export function TimelinePlayer() {
       // Store previous values to check for changes
       const prevSegmentIndex = currentSegmentIndex;
       const prevIsPlaying = isPlaying;
+      // We need to track the previous currentTime to detect changes
+      // Use a ref to store the previous value since we don't have access to the previous state directly
+      const prevCurrentTime = timelineState.prevCurrentTime;
+      // Update the previous currentTime for the next state change
+      timelineState.prevCurrentTime = state.currentTime;
 
       // Update local state
       setCurrentSegmentIndex(state.currentSegmentIndex);
@@ -80,6 +86,35 @@ export function TimelinePlayer() {
 
           // Direct call to play video without updating state again
           playVideoDirectly(state.currentSegmentIndex, startTime);
+        }
+      } else if (state.currentTime !== prevCurrentTime && 
+          state.currentSegmentIndex >= 0 &&
+          state.timelineSegments &&
+          state.timelineSegments.length > 0 &&
+          state.currentSegmentIndex < state.timelineSegments.length) {
+        // Handle case where currentTime changed but segment index didn't
+        // This handles dragging the needle on the timeline
+        console.log(`Current time changed from ${prevCurrentTime} to ${state.currentTime}`);
+        
+        const segment = state.timelineSegments[state.currentSegmentIndex];
+        if (segment && videoRef.current) {
+          // Calculate the relative time within the segment
+          const relativeTime = state.currentTime - segment.start_timestamp;
+          console.log(`Seeking video to relative time: ${relativeTime}s`);
+          
+          // Check if this is a drag operation (multiple time changes in quick succession)
+          const now = Date.now();
+          const isDrag = lastDragTimeRef.current && (now - lastDragTimeRef.current < 500);
+          lastDragTimeRef.current = now;
+          
+          if (isDrag) {
+            console.log('Detected drag operation, reloading video at new position');
+            // Reload the video at the new position instead of just seeking
+            playVideoDirectly(state.currentSegmentIndex, relativeTime);
+          } else {
+            // Just seek the video to the new position
+            videoRef.current.currentTime = relativeTime;
+          }
         }
       }
 
@@ -130,8 +165,14 @@ export function TimelinePlayer() {
       // Calculate current timestamp based on video currentTime
       const currentTime = segment.start_timestamp + video.currentTime;
 
+      // Store the previous currentTime before updating
+      const prevCurrentTime = timelineState.currentTime;
+
       // Update timeline state
-      timelineState.setState({ currentTime });
+      timelineState.setState({ 
+        currentTime,
+        prevCurrentTime
+      });
 
       // Debug log for video progress
       if (Math.floor(video.currentTime) % 5 === 0 && video.currentTime > 0) { // Log every 5 seconds
@@ -482,8 +523,14 @@ export function TimelinePlayer() {
       // Calculate current timestamp based on video currentTime
       const currentTime = segment.start_timestamp + video.currentTime;
 
+      // Store the previous currentTime before updating
+      const prevCurrentTime = timelineState.currentTime;
+
       // Update timeline state
-      timelineState.setState({ currentTime });
+      timelineState.setState({ 
+        currentTime,
+        prevCurrentTime
+      });
 
       // Debug log for video progress
       if (Math.floor(video.currentTime) % 5 === 0 && video.currentTime > 0) { // Log every 5 seconds
@@ -740,4 +787,4 @@ export function TimelinePlayer() {
     <!-- Playback speed controls -->
     <${SpeedControls} />
   `;
-}1
+}

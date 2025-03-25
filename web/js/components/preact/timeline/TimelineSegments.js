@@ -122,57 +122,87 @@ export function TimelineSegments() {
       const segment = segments[i];
       if (clickTimestamp >= segment.start_timestamp && clickTimestamp <= segment.end_timestamp) {
         console.log(`Found segment ${i} containing timestamp:`, segment);
+        // Calculate relative time within the segment
+        const relativeTime = clickTimestamp - segment.start_timestamp;
+        console.log(`Relative time within segment: ${relativeTime}s`);
+        
+        // Always update the segment index, even if it's the same as the current one
+        // This ensures the video player will reload the segment if needed
+        console.log(`Setting currentSegmentIndex to ${i} (was ${currentSegmentIndex})`);
+        
         // Play this segment starting at the clicked time
-        playSegment(i, clickTimestamp);
+        playSegment(i, relativeTime);
         foundSegment = true;
         break;
       }
     }
     
-    if (!foundSegment && segments.length > 0) {
-      console.log('No segment contains the timestamp, finding closest segment');
-      // Find the closest segment
-      let closestSegment = -1;
-      let minDistance = Infinity;
-      
-      for (let i = 0; i < segments.length; i++) {
-        const segment = segments[i];
-        const startDistance = Math.abs(segment.start_timestamp - clickTimestamp);
-        const endDistance = Math.abs(segment.end_timestamp - clickTimestamp);
-        const distance = Math.min(startDistance, endDistance);
+    if (!foundSegment) {
+      if (segments.length > 0) {
+        console.log('No segment contains the timestamp, finding closest segment');
+        // Find the closest segment
+        let closestSegment = -1;
+        let minDistance = Infinity;
         
-        if (distance < minDistance) {
-          minDistance = distance;
-          closestSegment = i;
+        for (let i = 0; i < segments.length; i++) {
+          const segment = segments[i];
+          const startDistance = Math.abs(segment.start_timestamp - clickTimestamp);
+          const endDistance = Math.abs(segment.end_timestamp - clickTimestamp);
+          const distance = Math.min(startDistance, endDistance);
+          
+          if (distance < minDistance) {
+            minDistance = distance;
+            closestSegment = i;
+          }
         }
-      }
-      
-      if (closestSegment >= 0) {
-        console.log(`Playing closest segment ${closestSegment}:`, segments[closestSegment]);
-        // Play the closest segment
-        playSegment(closestSegment);
+        
+        if (closestSegment >= 0) {
+          console.log(`Playing closest segment ${closestSegment}:`, segments[closestSegment]);
+          // Always update the segment index, even if it's the same as the current one
+          console.log(`Setting currentSegmentIndex to ${closestSegment} (was ${currentSegmentIndex})`);
+          
+          // Play the closest segment
+          playSegment(closestSegment);
+        }
+      } else {
+        // No segments found, just update the currentTime
+        console.log('No segments found, just updating currentTime to:', clickTimestamp);
+        timelineState.setState({ 
+          currentTime: clickTimestamp,
+          prevCurrentTime: timelineState.currentTime
+        });
       }
     }
-    
-    // Update current time in timeline state
-    timelineState.setState({ currentTime: clickTimestamp });
   };
 
   // Play a specific segment
-  const playSegment = (index, startTime = null) => {
-    console.log(`TimelineSegments.playSegment(${index}, ${startTime})`);
+  const playSegment = (index, relativeTime = null) => {
+    console.log(`TimelineSegments.playSegment(${index}, ${relativeTime})`);
     
     if (index < 0 || index >= segments.length) {
       console.warn(`Invalid segment index: ${index}, segments length: ${segments.length}`);
       return;
     }
     
-    // Update timeline state
-    timelineState.setState({ 
-      currentSegmentIndex: index,
-      currentTime: startTime !== null ? startTime : segments[index].start_timestamp,
-      isPlaying: true
-    });
+    const segment = segments[index];
+    
+    // Calculate absolute timestamp for currentTime
+    const absoluteTime = relativeTime !== null 
+      ? segment.start_timestamp + relativeTime 
+      : segment.start_timestamp;
+    
+    // Force a segment index change by temporarily setting it to -1
+    // This ensures the TimelinePlayer will detect a change and reload the segment
+    timelineState.setState({ currentSegmentIndex: -1 });
+    
+    // Then update with the actual index and time
+    setTimeout(() => {
+      timelineState.setState({ 
+        currentSegmentIndex: index,
+        currentTime: absoluteTime,
+        isPlaying: true
+      });
+    }, 0);
   };
 
   // Render segments
