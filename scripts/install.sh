@@ -12,6 +12,8 @@ DATA_DIR="/var/lib/lightnvr"
 LOG_DIR="/var/log/lightnvr"
 RUN_DIR="/var/run/lightnvr"
 INSTALL_SOD=1
+DO_LDCONFIG=1
+INSTALL_SYSTEMD_SERVICE=1
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -45,6 +47,22 @@ while [[ $# -gt 0 ]]; do
             INSTALL_SOD=0
             shift
             ;;
+        --with-ldconfig)
+            DO_LDCONFIG=1
+            shift
+            ;;
+        --without-ldconfig)
+            DO_LDCONFIG=0
+            shift
+            ;;
+        --with-systemd)
+            INSTALL_SYSTEMD_SERVICE=1
+            shift
+            ;;
+        --without-systemd)
+            INSTALL_SYSTEMD_SERVICE=0
+            shift
+            ;;
         --help)
             echo "Usage: $0 [options]"
             echo "Options:"
@@ -55,6 +73,10 @@ while [[ $# -gt 0 ]]; do
             echo "  --run-dir=DIR      Run directory (default: /var/run/lightnvr)"
             echo "  --with-sod         Install with SOD support (default)"
             echo "  --without-sod      Install without SOD support"
+            echo "  --with-ldconfig    Run ldconfig after installing SOD library (default)"
+            echo "  --without-ldconfig Skip running ldconfig after installing SOD library"
+            echo "  --with-systemd     Install systemd service (default)"
+            echo "  --without-systemd  Skip installing systemd service"
             echo "  --help             Show this help message"
             exit 0
             ;;
@@ -140,7 +162,10 @@ if [ "$INSTALL_SOD" -eq 1 ]; then
         ln -sf "$PREFIX/lib/libsod.so.1" "$PREFIX/lib/libsod.so"
 
         # Run ldconfig to update the shared library cache
-        ldconfig
+        # we can skip with --without-ldconfig
+        if [ "$DO_LDCONFIG" -eq 1 ]; then
+            ldconfig
+        fi
 
         echo "SOD library installed to $PREFIX/lib/libsod.so.1.1.9"
     else
@@ -174,33 +199,39 @@ chown -R root:root "$DATA_DIR"
 chown -R root:root "$LOG_DIR"
 chown -R root:root "$RUN_DIR"
 
-# Create systemd service file
-echo "Creating systemd service file..."
-cat > /etc/systemd/system/lightnvr.service << EOF
-[Unit]
-Description=LightNVR - Lightweight Network Video Recorder
-After=network.target
+# skip systemd if --without-systemd flag set
+if [ "$INSTALL_SYSTEMD_SERVICE" -eq 0 ]; then
+    echo "Skipping systemd service installation (--without-systemd)"
+    exit 0
+else
+    # Create systemd service file
+    echo "Creating systemd service file..."
+    cat > /etc/systemd/system/lightnvr.service << EOF
+    [Unit]
+    Description=LightNVR - Lightweight Network Video Recorder
+    After=network.target
 
-[Service]
-Type=forking
-PIDFile=/var/run/lightnvr.pid
-Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-Environment="HOME=/root"
-Environment="PWD=/var/lib/lightnvr"
-WorkingDirectory=/var/lib/lightnvr
-ExecStart=$PREFIX/bin/lightnvr -c $CONFIG_DIR/lightnvr.ini -d
-Restart=on-failure
-RestartSec=5
-StandardOutput=journal
-StandardError=journal
+    [Service]
+    Type=forking
+    PIDFile=/var/run/lightnvr.pid
+    Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    Environment="HOME=/root"
+    Environment="PWD=/var/lib/lightnvr"
+    WorkingDirectory=/var/lib/lightnvr
+    ExecStart=$PREFIX/bin/lightnvr -c $CONFIG_DIR/lightnvr.ini -d
+    Restart=on-failure
+    RestartSec=5
+    StandardOutput=journal
+    StandardError=journal
 
-[Install]
-WantedBy=multi-user.target
+    [Install]
+    WantedBy=multi-user.target
 EOF
 
-# Reload systemd
-echo "Reloading systemd..."
-systemctl daemon-reload
+    # Reload systemd
+    echo "Reloading systemd..."
+    systemctl daemon-reload
+fi
 
 echo "Installation completed successfully!"
 echo ""
