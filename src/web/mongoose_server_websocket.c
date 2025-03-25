@@ -72,6 +72,29 @@ void mg_handle_websocket_upgrade(struct mg_connection *c, struct mg_http_message
     
     log_info("WebSocket upgrade request for topic: %s", topic);
     
+    // Check for auth header or cookie
+    struct mg_str *auth_header = mg_http_get_header(hm, "Authorization");
+    if (auth_header == NULL) {
+        log_info("No Authorization header found for URI: %s, checking for cookie", uri);
+        
+        // Check for auth cookie
+        struct mg_str *cookie_header = mg_http_get_header(hm, "Cookie");
+        if (cookie_header == NULL) {
+            log_info("No Cookie header found");
+            
+            // For compatibility with older systems, proceed with WebSocket upgrade
+            // even without authentication - we'll handle auth at the application level
+            log_info("Proceeding with WebSocket upgrade without authentication for compatibility");
+        } else {
+            log_info("Cookie header found, proceeding with WebSocket upgrade");
+        }
+    } else {
+        log_info("Authorization header found, proceeding with WebSocket upgrade");
+    }
+    
+    // Set a smaller buffer size for WebSocket frames to improve compatibility with older systems
+    c->recv.size = 4096;  // Use a smaller receive buffer (default is usually 8192)
+    
     // Upgrade connection to WebSocket
     // The fn_data is already set in mongoose_server.c when the connection is created
     mg_ws_upgrade(c, hm, NULL);

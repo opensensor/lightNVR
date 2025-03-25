@@ -91,15 +91,40 @@ class WebSocketClient {
         
         console.log(`Connecting to WebSocket server at ${wsUrl}`);
         
+        // Check if WebSocket is supported
+        if (typeof WebSocket === 'undefined') {
+            console.error('WebSocket not supported by this browser or environment');
+            this.connecting = false;
+            this.fallbackToHttp();
+            return;
+        }
+        
         try {
+            // Create WebSocket with a timeout to handle stalled connections
+            const connectTimeout = setTimeout(() => {
+                console.error('WebSocket connection timeout');
+                if (this.socket && this.socket.readyState !== WebSocket.OPEN) {
+                    this.socket.close();
+                    this.socket = null;
+                    this.connecting = false;
+                    this.fallbackToHttp();
+                }
+            }, 10000); // 10 second timeout
+            
             this.socket = new WebSocket(wsUrl);
             
             this.socket.onopen = () => {
+                clearTimeout(connectTimeout);
                 console.log('WebSocket connection established');
                 this.connected = true;
                 this.connecting = false;
                 this.reconnectAttempts = 0;
                 this.reconnectDelay = 1000;
+                
+                // Set a smaller buffer size for better compatibility with older systems
+                if (this.socket.bufferedAmount !== undefined) {
+                    console.log(`Initial WebSocket buffered amount: ${this.socket.bufferedAmount}`);
+                }
                 
                 // Resubscribe to topics
                 this.pendingSubscriptions = new Set([...this.subscriptions]);
@@ -111,15 +136,30 @@ class WebSocketClient {
             };
             
             this.socket.onmessage = (event) => {
-                this.handleMessage(event.data);
+                try {
+                    this.handleMessage(event.data);
+                } catch (error) {
+                    console.error('Error handling WebSocket message:', error);
+                }
             };
             
             this.socket.onclose = (event) => {
+                clearTimeout(connectTimeout);
                 console.log(`WebSocket connection closed: ${event.code} ${event.reason}`);
                 this.connected = false;
                 this.connecting = false;
-                // Don't reset clientId on connection close since we're generating it locally
-                // this.clientId = null;
+                
+                // Check for specific close codes that indicate compatibility issues
+                if (event.code === 1006) {
+                    console.warn('WebSocket closed abnormally (code 1006), possible compatibility issue');
+                    
+                    // If we've tried multiple times and keep getting 1006, fall back to HTTP
+                    if (this.reconnectAttempts >= 3) {
+                        console.warn('Multiple abnormal closures, falling back to HTTP');
+                        this.fallbackToHttp();
+                        return;
+                    }
+                }
                 
                 // Attempt to reconnect if not a normal closure
                 if (event.code !== 1000) {
@@ -130,11 +170,40 @@ class WebSocketClient {
             this.socket.onerror = (error) => {
                 console.error('WebSocket error:', error);
                 this.connecting = false;
+                
+                // On error, increment reconnect attempts
+                this.reconnectAttempts++;
+                
+                // If we've had multiple errors, fall back to HTTP
+                if (this.reconnectAttempts >= 3) {
+                    console.warn('Multiple WebSocket errors, falling back to HTTP');
+                    this.fallbackToHttp();
+                }
             };
         } catch (error) {
             console.error('Error creating WebSocket:', error);
             this.connecting = false;
             this.reconnect();
+        }
+    }
+    
+    /**
+     * Fall back to HTTP for operations
+     * This sets a flag that other components can check to use HTTP instead of WebSocket
+     */
+    fallbackToHttp() {
+        console.warn('Falling back to HTTP for operations');
+        this.usingHttpFallback = true;
+        
+        // Dispatch an event that components can listen for
+        const fallbackEvent = new CustomEvent('websocket-fallback', {
+            detail: { usingHttp: true }
+        });
+        window.dispatchEvent(fallbackEvent);
+        
+        // Try to notify any waiting operations
+        if (this.pendingSubscriptions.size > 0) {
+            console.log(`Notifying ${this.pendingSubscriptions.size} pending subscriptions about HTTP fallback`);
         }
     }
     

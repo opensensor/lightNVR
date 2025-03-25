@@ -259,54 +259,53 @@ void websocket_manager_handle_open(struct mg_connection *c) {
     
     log_info("WebSocket client connected: %s", s_clients[slot].id);
     
-    // Send welcome message with client ID
+    // Send welcome message with client ID - use a simpler approach for older systems
     char payload[256];
     snprintf(payload, sizeof(payload), "{\"client_id\":\"%s\"}", s_clients[slot].id);
     
     log_info("Preparing welcome message with payload: %s", payload);
     
-    websocket_message_t *message = websocket_message_create("welcome", "system", payload);
-    if (message) {
-        // Convert message to JSON
-        cJSON *json = cJSON_CreateObject();
-        cJSON_AddStringToObject(json, "type", message->type);
-        cJSON_AddStringToObject(json, "topic", message->topic);
-        
-        // Always parse payload as JSON
-        cJSON *payload_json = cJSON_Parse(message->payload);
-        if (payload_json) {
-            // If payload is valid JSON, add it as an object
-            cJSON_AddItemToObject(json, "payload", payload_json);
-            log_debug("Added payload as JSON object for welcome message");
+    // Create a simple JSON string directly without using cJSON for better compatibility
+    char welcome_message[512];
+    snprintf(welcome_message, sizeof(welcome_message), 
+             "{\"type\":\"welcome\",\"topic\":\"system\",\"payload\":%s}", payload);
+    
+    // Send the welcome message
+    log_info("Sending welcome message: %s", welcome_message);
+    
+    // Use a try-catch style approach with error handling
+    int send_result = -1;
+    
+    // Try to send the message
+    if (c && c->is_websocket) {
+        send_result = mg_ws_send(c, welcome_message, strlen(welcome_message), WEBSOCKET_OP_TEXT);
+        if (send_result > 0) {
+            log_info("Welcome message sent successfully (%d bytes)", send_result);
         } else {
-            // If parsing failed, log an error and create a new JSON object
-            log_error("Failed to parse welcome payload as JSON: %s", message->payload);
-            
-            // Create a new JSON object for the payload
-            cJSON *new_payload = cJSON_CreateObject();
-            cJSON_AddStringToObject(new_payload, "error", "Failed to parse payload");
-            cJSON_AddStringToObject(new_payload, "raw_payload", message->payload);
-            
-            // Add the new payload object
-            cJSON_AddItemToObject(json, "payload", new_payload);
-            log_debug("Added error payload object for welcome message");
+            log_error("Failed to send welcome message, error code: %d", send_result);
         }
-        
-        char *json_str = cJSON_PrintUnformatted(json);
-        if (json_str) {
-            // Send message
-            log_info("Sending welcome message: %s", json_str);
-            mg_ws_send(c, json_str, strlen(json_str), WEBSOCKET_OP_TEXT);
-            log_info("Welcome message sent");
-            free(json_str);
-        } else {
-            log_error("Failed to convert welcome message to JSON string");
-        }
-        
-        cJSON_Delete(json);
-        websocket_message_free(message);
     } else {
-        log_error("Failed to create welcome message");
+        log_error("Cannot send welcome message - connection is not a valid WebSocket");
+    }
+    
+    // If sending failed, try a simpler message format
+    if (send_result <= 0) {
+        log_info("Trying simplified welcome message format");
+        const char *simple_message = "{\"type\":\"welcome\",\"topic\":\"system\",\"payload\":{\"client_id\":\"";
+        const char *simple_message_end = "\"}}";
+        
+        char simple_welcome[384];
+        snprintf(simple_welcome, sizeof(simple_welcome), "%s%s%s", 
+                 simple_message, s_clients[slot].id, simple_message_end);
+        
+        if (c && c->is_websocket) {
+            send_result = mg_ws_send(c, simple_welcome, strlen(simple_welcome), WEBSOCKET_OP_TEXT);
+            if (send_result > 0) {
+                log_info("Simplified welcome message sent successfully (%d bytes)", send_result);
+            } else {
+                log_error("Failed to send simplified welcome message, error code: %d", send_result);
+            }
+        }
     }
     
     pthread_mutex_unlock(&s_mutex);
