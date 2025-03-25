@@ -29,6 +29,7 @@ const timelineState = {
   prevCurrentTime: null, // Track previous currentTime to detect changes
   playbackSpeed: 1.0,
   showOnlySegments: false, // Whether to show only segments with recordings
+  forceReload: false, // Flag to force video reload when clicking on segments
   listeners: new Set(),
 
   // Update state and notify listeners

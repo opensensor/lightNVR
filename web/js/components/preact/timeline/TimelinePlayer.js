@@ -28,14 +28,12 @@ export function TimelinePlayer() {
   const hlsPlayerRef = useRef(null);
   const lastDragTimeRef = useRef(null);
 
-  // Subscribe to timeline state changes
+// Subscribe to timeline state changes
   useEffect(() => {
     const unsubscribe = timelineState.subscribe(state => {
       // Store previous values to check for changes
       const prevSegmentIndex = currentSegmentIndex;
       const prevIsPlaying = isPlaying;
-      // We need to track the previous currentTime to detect changes
-      // Use a ref to store the previous value since we don't have access to the previous state directly
       const prevCurrentTime = timelineState.prevCurrentTime;
       // Update the previous currentTime for the next state change
       timelineState.prevCurrentTime = state.currentTime;
@@ -46,102 +44,100 @@ export function TimelinePlayer() {
       setSegments(state.timelineSegments || []);
       setPlaybackSpeed(state.playbackSpeed);
 
-      // If current segment index changed, play that segment
-      // But only if it's a real change, not just a state update
-      if (state.currentSegmentIndex !== prevSegmentIndex &&
-          state.currentSegmentIndex >= 0 &&
-          state.timelineSegments &&
+      // Check if we have valid segments and segment index
+      const hasValidSegment = state.timelineSegments &&
           state.timelineSegments.length > 0 &&
-          state.currentSegmentIndex < state.timelineSegments.length) {
+          state.currentSegmentIndex >= 0 &&
+          state.currentSegmentIndex < state.timelineSegments.length;
 
+      if (!hasValidSegment) {
+        console.warn('Invalid segment data or index');
+        return;
+      }
+
+      const currentSegment = state.timelineSegments[state.currentSegmentIndex];
+      if (!currentSegment) {
+        console.warn(`Segment at index ${state.currentSegmentIndex} is undefined`);
+        return;
+      }
+
+      // Calculate relative time within the segment
+      const relativeTime = state.currentTime !== null &&
+      state.currentTime >= currentSegment.start_timestamp
+          ? state.currentTime - currentSegment.start_timestamp
+          : 0;
+
+      // Determine if a video reload is needed
+      let needsReload = false;
+
+      // Case 1: forceReload flag is set - always reload video
+      if (state.forceReload) {
+        console.log('forceReload flag detected, reloading video');
+        needsReload = true;
+        // Reset the flag after detecting it
+        timelineState.forceReload = false;
+      }
+      // Case 2: Segment index changed - always reload video
+      else if (state.currentSegmentIndex !== prevSegmentIndex) {
         console.log(`Segment index changed from ${prevSegmentIndex} to ${state.currentSegmentIndex}`);
-
-        const segment = state.timelineSegments[state.currentSegmentIndex];
-        if (segment) {
-          const startTime = state.currentTime !== null &&
-          state.currentTime >= segment.start_timestamp
-              ? state.currentTime - segment.start_timestamp
-              : 0;
-
-          // Direct call to play video without updating state again
-          playVideoDirectly(state.currentSegmentIndex, startTime);
-        } else {
-          console.warn(`Segment at index ${state.currentSegmentIndex} is undefined`);
-        }
-      } else if (state.isPlaying !== prevIsPlaying && state.isPlaying &&
-          state.currentSegmentIndex >= 0 &&
-          state.timelineSegments &&
-          state.timelineSegments.length > 0 &&
-          state.currentSegmentIndex < state.timelineSegments.length) {
-        // Handle case where play state changed but segment index didn't
-        // This ensures clicking on the same segment again will play it
+        needsReload = true;
+      }
+      // Case 3: Play state changed to playing - reload if not already playing
+      else if (state.isPlaying && !prevIsPlaying) {
         console.log(`Play state changed to playing, ensuring video playback`);
-
-        const segment = state.timelineSegments[state.currentSegmentIndex];
-        if (segment) {
-          const startTime = state.currentTime !== null &&
-          state.currentTime >= segment.start_timestamp
-              ? state.currentTime - segment.start_timestamp
-              : 0;
-
-          // Direct call to play video without updating state again
-          playVideoDirectly(state.currentSegmentIndex, startTime);
-        }
-      } else if (state.currentTime !== prevCurrentTime && 
-          state.currentSegmentIndex >= 0 &&
-          state.timelineSegments &&
-          state.timelineSegments.length > 0 &&
-          state.currentSegmentIndex < state.timelineSegments.length) {
-        // Handle case where currentTime changed but segment index didn't
-        // This handles dragging the needle on the timeline
+        needsReload = true;
+      }
+      // Case 4: Current time changed significantly - handle as a seek or drag operation
+      else if (state.currentTime !== prevCurrentTime) {
         console.log(`Current time changed from ${prevCurrentTime} to ${state.currentTime}`);
-        
-        const segment = state.timelineSegments[state.currentSegmentIndex];
-        if (segment && videoRef.current) {
-          // Calculate the relative time within the segment
-          const relativeTime = state.currentTime - segment.start_timestamp;
-          console.log(`Seeking video to relative time: ${relativeTime}s`);
-          
-          // Check if this is a drag operation (multiple time changes in quick succession)
-          const now = Date.now();
-          const isDrag = lastDragTimeRef.current && (now - lastDragTimeRef.current < 500);
-          lastDragTimeRef.current = now;
-          
-          if (isDrag) {
-            console.log('Detected drag operation, reloading video at new position');
-            // Reload the video at the new position instead of just seeking
-            playVideoDirectly(state.currentSegmentIndex, relativeTime);
-          } else {
-            // Just seek the video to the new position
-            videoRef.current.currentTime = relativeTime;
-          }
+
+        // Check if this is a drag operation (multiple time changes in quick succession)
+        const now = Date.now();
+        const isDrag = lastDragTimeRef.current && (now - lastDragTimeRef.current < 500);
+        lastDragTimeRef.current = now;
+
+        // Always reload the video when the current time changes due to a user interaction
+        // This fixes the bug where adjusting the segment needle doesn't reload the video
+        // until the current segment finishes playing
+        needsReload = true;
+      }
+
+      // Case 4: External component changed segment or time but didn't trigger any of the above
+      // This is a new check that ensures proper loading when other components modify the state
+      // We can detect this by checking if the video source doesn't match the expected segment
+      if (!needsReload && videoRef.current) {
+        const expectedVideoSrc = getVideoSourceForSegment(currentSegment);
+        const currentVideoSrc = videoRef.current.src;
+
+        if (currentVideoSrc !== expectedVideoSrc) {
+          console.log('Video source mismatch detected, reloading video');
+          needsReload = true;
         }
+      }
+
+      // If we determined a reload is needed, play the video directly
+      if (needsReload) {
+        playVideoDirectly(state.currentSegmentIndex, relativeTime);
       }
 
       // Update playback speed if it changed
       if (state.playbackSpeed !== playbackSpeed && videoRef.current) {
         console.log(`Updating playback speed from ${playbackSpeed} to ${state.playbackSpeed}`);
         videoRef.current.playbackRate = state.playbackSpeed;
-
-        // Also update the local state
         setPlaybackSpeed(state.playbackSpeed);
       }
     });
 
-    return () => {
-      unsubscribe();
-
-      // Clean up interval
-      if (playbackIntervalRef.current) {
-        clearInterval(playbackIntervalRef.current);
-      }
-
-      // Clean up HLS player
-      if (hlsPlayerRef.current) {
-        hlsPlayerRef.current.destroy();
-      }
-    };
+    // Cleanup subscription when component unmounts
+    return () => unsubscribe();
   }, []);
+
+// This function would need to be implemented to get the expected video source for a segment
+  function getVideoSourceForSegment(segment) {
+    // Implementation depends on how your video sources are constructed
+    // Example implementation:
+    return segment.video_url || `${segment.base_url}/${segment.id}`;
+  }
 
   // Set up video event listeners
   useEffect(() => {
@@ -358,8 +354,8 @@ export function TimelinePlayer() {
       if (directVideo) {
         console.log('Found video element directly:', directVideo);
 
-        // Use direct MP4 playback
-        const recordingUrl = `/api/recordings/play/${segment.id}`;
+        // Use direct MP4 playback with a timestamp to prevent caching
+        const recordingUrl = `/api/recordings/play/${segment.id}?t=${Date.now()}`;
         console.log('Setting video source to:', recordingUrl);
 
         // Set the video source
@@ -389,6 +385,62 @@ export function TimelinePlayer() {
     }
 
     try {
+      // Force video reload by creating a new video element
+      // This is a more aggressive approach to ensure the video reloads
+      const videoContainer = video.parentElement;
+      if (videoContainer) {
+        console.log('Forcing complete video element reload');
+        
+        // Remove the old video element
+        videoContainer.removeChild(video);
+        
+        // Create a new video element with the same attributes
+        const newVideo = document.createElement('video');
+        newVideo.className = video.className;
+        newVideo.controls = true;
+        newVideo.playsInline = true;
+        newVideo.onended = onEnded;
+        
+        // Add the new video element to the container
+        videoContainer.appendChild(newVideo);
+        
+        // Update the ref to point to the new video element
+        videoRef.current = newVideo;
+        
+        // Use direct MP4 playback with a timestamp to prevent caching
+        const recordingUrl = `/api/recordings/play/${segment.id}?t=${Date.now()}`;
+        console.log('Setting video source to:', recordingUrl);
+        
+        // Set the new source
+        newVideo.src = recordingUrl;
+        
+        // Wait for metadata to load before setting currentTime and playbackRate
+        newVideo.onloadedmetadata = () => {
+          console.log('Video metadata loaded for new video element');
+          newVideo.currentTime = seekTime;
+          
+          // Set playback speed
+          newVideo.playbackRate = playbackSpeed;
+          console.log(`Setting playback rate to ${playbackSpeed}x`);
+          
+          // Play the video
+          newVideo.play().catch(error => {
+            console.error('Error playing video:', error);
+            showStatusMessage('Error playing video: ' + error.message, 'error');
+          });
+        };
+        
+        // Set up event listeners for the new video
+        newVideo.addEventListener('timeupdate', handleTimeUpdate);
+        newVideo.addEventListener('ended', handleEnded);
+        newVideo.addEventListener('error', handleError);
+        
+        return;
+      }
+      
+      // Fallback to the original approach if we can't replace the video element
+      console.log('Falling back to standard video reload approach');
+      
       // Use direct MP4 playback with a timestamp to prevent caching
       const recordingUrl = `/api/recordings/play/${segment.id}?t=${Date.now()}`;
       console.log('Setting video source to:', recordingUrl);

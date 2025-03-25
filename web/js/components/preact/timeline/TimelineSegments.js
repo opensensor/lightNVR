@@ -129,6 +129,7 @@ export function TimelineSegments() {
         // Always update the segment index, even if it's the same as the current one
         // This ensures the video player will reload the segment if needed
         console.log(`Setting currentSegmentIndex to ${i} (was ${currentSegmentIndex})`);
+        setCurrentSegmentIndex(i);
         
         // Play this segment starting at the clicked time
         playSegment(i, relativeTime);
@@ -191,18 +192,52 @@ export function TimelineSegments() {
       ? segment.start_timestamp + relativeTime 
       : segment.start_timestamp;
     
-    // Force a segment index change by temporarily setting it to -1
-    // This ensures the TimelinePlayer will detect a change and reload the segment
-    timelineState.setState({ currentSegmentIndex: -1 });
+    // Force a complete reset of the player state to ensure immediate transition
+    // First, pause any current playback and reset the segment index
+    timelineState.setState({ 
+      isPlaying: false,
+      currentSegmentIndex: -1
+    });
     
-    // Then update with the actual index and time
+    // Force a synchronous DOM update by accessing a property that causes a reflow
+    document.body.offsetHeight;
+    
+    // Now set the new segment index and start playing
+    // This two-step process ensures the player detects a complete state change
     setTimeout(() => {
+      console.log(`Setting new segment index to ${index} with time ${absoluteTime}`);
       timelineState.setState({ 
         currentSegmentIndex: index,
         currentTime: absoluteTime,
-        isPlaying: true
+        isPlaying: true,
+        forceReload: true
       });
-    }, 0);
+      
+      // Force the video player to reload by directly accessing the video element
+      setTimeout(() => {
+        const videoElement = document.querySelector('#video-player video');
+        if (videoElement) {
+          console.log('Directly manipulating video element to force reload');
+          
+          // Pause any current playback
+          videoElement.pause();
+          
+          // Clear the source and reload
+          videoElement.removeAttribute('src');
+          videoElement.load();
+          
+          // Set the new source with a timestamp to prevent caching
+          videoElement.src = `/api/recordings/play/${segment.id}?t=${Date.now()}`;
+          
+          // Set the current time and play
+          videoElement.onloadedmetadata = () => {
+            const seekTime = relativeTime !== null ? relativeTime : 0;
+            videoElement.currentTime = seekTime;
+            videoElement.play().catch(e => console.error('Error playing video:', e));
+          };
+        }
+      }, 50);
+    }, 50);
   };
 
   // Render segments
