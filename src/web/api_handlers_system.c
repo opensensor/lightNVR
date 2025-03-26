@@ -439,7 +439,7 @@ void mg_handle_get_system_info(struct mg_connection *c, struct mg_http_message *
                 }
             }
         }
-
+        
         cJSON_AddNumberToObject(streams_obj, "active", active_streams);
         cJSON_AddNumberToObject(streams_obj, "total", g_config.max_streams);
         
