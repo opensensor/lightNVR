@@ -1,9 +1,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
+#include <stdbool.h>
 
 #include "utils/memory.h"
 #include "core/logger.h"
+
+// Memory tracking variables
+static size_t total_memory_allocated = 0;
+static size_t peak_memory_allocated = 0;
 
 // Safe memory allocation
 void *safe_malloc(size_t size) {
@@ -91,4 +97,33 @@ void secure_zero_memory(void *ptr, size_t size) {
     while (size--) {
         *p++ = 0;
     }
+}
+
+// Track memory allocations
+void track_memory_allocation(size_t size, bool is_allocation) {
+    if (is_allocation) {
+        total_memory_allocated += size;
+        if (total_memory_allocated > peak_memory_allocated) {
+            peak_memory_allocated = total_memory_allocated;
+        }
+    } else {
+        if (size <= total_memory_allocated) {
+            total_memory_allocated -= size;
+        } else {
+            // This should not happen, but handle it gracefully
+            log_warn("Memory tracking inconsistency: trying to free %zu bytes when only %zu are tracked",
+                    size, total_memory_allocated);
+            total_memory_allocated = 0;
+        }
+    }
+}
+
+// Get total memory allocated
+size_t get_total_memory_allocated(void) {
+    return total_memory_allocated;
+}
+
+// Get peak memory allocated
+size_t get_peak_memory_allocated(void) {
+    return peak_memory_allocated;
 }

@@ -56,9 +56,10 @@ detection_config_t embedded_config = {
 // Current active configuration
 static detection_config_t *current_config = NULL;
 
-// Memory tracking
-static size_t total_allocated_memory = 0;
-static size_t peak_allocated_memory = 0;
+// External memory tracking functions
+extern void track_memory_allocation(size_t size, bool is_allocation);
+extern size_t get_total_memory_allocated(void);
+extern size_t get_peak_memory_allocated(void);
 
 /**
  * Initialize detection configuration
@@ -156,36 +157,13 @@ int set_detection_config(const detection_config_t* config) {
 }
 
 /**
- * Track memory allocations
- */
-void track_memory_allocation(size_t size, bool is_allocation) {
-    if (is_allocation) {
-        total_allocated_memory += size;
-        if (total_allocated_memory > peak_allocated_memory) {
-            peak_allocated_memory = total_allocated_memory;
-        }
-        log_debug("Memory allocated: %zu bytes, Total: %zu bytes, Peak: %zu bytes", 
-                 size, total_allocated_memory, peak_allocated_memory);
-    } else {
-        if (size <= total_allocated_memory) {
-            total_allocated_memory -= size;
-        } else {
-            log_error("Memory tracking error: attempting to free more memory than allocated");
-            total_allocated_memory = 0;
-        }
-        log_debug("Memory freed: %zu bytes, Total: %zu bytes, Peak: %zu bytes", 
-                 size, total_allocated_memory, peak_allocated_memory);
-    }
-}
-
-/**
  * Get current memory usage statistics for detection
  */
 void get_detection_memory_usage(size_t *total_memory, size_t *peak_memory) {
     if (total_memory) {
-        *total_memory = total_allocated_memory;
+        *total_memory = get_total_memory_allocated();
     }
     if (peak_memory) {
-        *peak_memory = peak_allocated_memory;
+        *peak_memory = get_peak_memory_allocated();
     }
 }

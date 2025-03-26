@@ -125,6 +125,7 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     uint8_t *buffer = NULL;
     uint8_t *packed_buffer = NULL;
     int detect_ret = -1;
+    bool active_detection_added = false;
 
     // Find the stream's frame counter
     int stream_idx = -1;
@@ -338,6 +339,7 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                 strncpy(active_stream, stream_name, MAX_STREAM_NAME - 1);
                 active_stream[MAX_STREAM_NAME - 1] = '\0';
                 added = true;
+                active_detection_added = true;
                 break;
             }
         }
@@ -346,11 +348,11 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
         // but don't track it (it will be treated as a one-off detection)
         if (!added) {
             log_warn("Detection tracking list full, processing stream %s as one-off detection", stream_name);
+        } else {
+            active_detections++;
+            log_info("Active detections: %d/%d for stream %s", active_detections, max_detections, stream_name);
         }
     }
-    
-    active_detections++;
-    log_info("Active detections: %d/%d for stream %s", active_detections, max_detections, stream_name);
 
     // Get the appropriate threshold for the model type
     float threshold = get_detection_threshold(model_type, stream_config.detection_threshold);
@@ -751,8 +753,11 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
         }
     }
     
-    // Decrement active detections counter
-    active_detections--;
+    // Only decrement active detections counter if we incremented it
+    if (active_detection_added) {
+        active_detections--;
+        log_info("Decremented active detections to %d after successful detection", active_detections);
+    }
     
     // Return the detection result
     return detect_ret;
@@ -785,8 +790,11 @@ cleanup:
         }
     }
     
-    // Decrement active detections counter
-    active_detections--;
+    // Only decrement active detections counter if we incremented it
+    if (active_detection_added) {
+        active_detections--;
+        log_info("Decremented active detections to %d after error", active_detections);
+    }
     
     return -1;
 }

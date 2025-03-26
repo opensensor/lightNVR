@@ -207,6 +207,10 @@ int return_buffer_to_pool(uint8_t *buffer) {
                 if (active_buffers > 0) {
                     active_buffers--;
                 }
+                // Log memory tracking
+                track_memory_allocation(buffer_pool[i].size, false);
+                log_debug("Memory freed: %zu bytes, Total: %zu bytes, Peak: %zu bytes", 
+                         buffer_pool[i].size, get_total_memory_allocated(), get_peak_memory_allocated());
                 log_info("Returned buffer to pool (index %d, active: %d/%d)", 
                         i, active_buffers, max_buffers);
                 return 0;
