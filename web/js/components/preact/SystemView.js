@@ -114,7 +114,19 @@ export function SystemView() {
     loadLogs();
     
     // Set up interval to refresh system info
-    const interval = setInterval(loadSystemInfo, 10000);
+    const systemInfoInterval = setInterval(loadSystemInfo, 10000);
+    
+    // Set up interval to refresh logs - this is the key change to implement polling behavior
+    // similar to batch delete functionality, only requesting logs when on the system page
+    const logsInterval = setInterval(() => {
+      // Only request logs if we're on the system page
+      if (document.getElementById('system-page')) {
+        console.log('Polling for system logs');
+        loadLogs();
+      } else {
+        console.log('Not on system page, skipping log polling');
+      }
+    }, 5000); // Poll every 5 seconds
     
     // Initialize WebSocket for system logs if available
     if (window.wsClient && typeof window.wsClient.subscribe === 'function') {
@@ -126,6 +138,12 @@ export function SystemView() {
       // Register handler for system logs updates
       const handleLogsUpdate = (payload) => {
         console.log('Received system logs update via WebSocket:', payload);
+        
+        // Only process updates if we're on the system page
+        if (!document.getElementById('system-page')) {
+          console.log('Not on system page, ignoring log update');
+          return;
+        }
         
         if (payload && payload.logs && Array.isArray(payload.logs)) {
           // Clean and normalize logs
@@ -187,9 +205,10 @@ export function SystemView() {
       console.log('WebSocket client not available for system logs, using HTTP fallback');
     }
     
-    // Clean up interval and WebSocket subscription on unmount
+    // Clean up intervals and WebSocket subscription on unmount
     return () => {
-      clearInterval(interval);
+      clearInterval(systemInfoInterval);
+      clearInterval(logsInterval);
       
       // Unsubscribe from system logs topic if WebSocket is available
       if (window.wsClient && typeof window.wsClient.unsubscribe === 'function') {
@@ -221,6 +240,12 @@ export function SystemView() {
       // Register handler for system logs updates with the new log level
       const handleLogsUpdate = (payload) => {
         console.log('Received system logs update via WebSocket:', payload);
+        
+        // Only process updates if we're on the system page
+        if (!document.getElementById('system-page')) {
+          console.log('Not on system page, ignoring log update');
+          return;
+        }
         
         if (payload && payload.logs && Array.isArray(payload.logs)) {
           // Clean and normalize logs

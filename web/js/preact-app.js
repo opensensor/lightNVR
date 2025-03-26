@@ -187,10 +187,8 @@ function initApp() {
       activeNav = 'nav-live';
       break;
     case 'recordings.html':
-      activeNav = 'nav-recordings';
-      break;
     case 'timeline.html':
-      activeNav = 'nav-timeline';
+      activeNav = 'nav-recordings';
       break;
     case 'streams.html':
       activeNav = 'nav-streams';

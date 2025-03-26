@@ -45,34 +45,15 @@ void shutdown_logger_websocket(void) {
  * @brief Broadcast system logs to WebSocket clients
  * 
  * This function is called by the logger after a log message is written.
- * It broadcasts the logs to all WebSocket clients subscribed to the system/logs topic.
- * To avoid excessive broadcasts, it only broadcasts at most once every MIN_BROADCAST_INTERVAL.
+ * Instead of broadcasting to all clients, it now only updates the last broadcast time
+ * so that when clients request logs, they get the latest data.
+ * This reduces memory and CPU overhead, especially on embedded devices.
  */
 void broadcast_logs_to_websocket(void) {
-    // Check if we should broadcast
-    struct timeval now;
-    gettimeofday(&now, NULL);
-    
-    // Calculate time difference in microseconds
-    long time_diff = (now.tv_sec - last_broadcast_time.tv_sec) * 1000000 + (now.tv_usec - last_broadcast_time.tv_usec);
-    
-    // Only broadcast if enough time has passed since the last broadcast
-    if (time_diff < MIN_BROADCAST_INTERVAL) {
-        return;
-    }
-    
-    // Try to acquire mutex
-    if (pthread_mutex_trylock(&broadcast_mutex) != 0) {
-        // Another thread is already broadcasting, skip this one
-        return;
-    }
-    
-    // Update last broadcast time
+    // Just update the last broadcast time
+    // Actual log sending will happen when clients request it
     gettimeofday(&last_broadcast_time, NULL);
     
-    // Broadcast logs to WebSocket clients
-    websocket_broadcast_system_logs();
-    
-    // Release mutex
-    pthread_mutex_unlock(&broadcast_mutex);
+    // No broadcasting here - clients will request logs when needed
+    // This significantly reduces memory and CPU overhead on embedded devices
 }

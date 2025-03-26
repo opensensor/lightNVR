@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <pthread.h>
 
 #include "web/api_handlers_system_ws.h"
 #include "web/websocket_manager.h"
@@ -427,17 +428,42 @@ static int send_filtered_logs_to_client(const char *client_id, const char *min_l
 /**
  * @brief Send system logs to all subscribed clients
  * 
+ * This function is now only called when explicitly requested by clients
+ * who are on the system page, similar to the batch delete functionality.
+ * This reduces memory and CPU overhead, especially on embedded devices.
+ * 
  * @return int Number of clients the message was sent to
  */
 int websocket_broadcast_system_logs(void) {
     log_info("websocket_broadcast_system_logs called");
     
+    // Limit the number of threads used for processing logs
+    // This helps reduce memory overhead on embedded devices
+    static pthread_mutex_t thread_limit_mutex = PTHREAD_MUTEX_INITIALIZER;
+    static int active_threads = 0;
+    const int max_threads = 2; // Maximum of 2 threads as requested
+    
+    // Try to acquire thread slot
+    pthread_mutex_lock(&thread_limit_mutex);
+    if (active_threads >= max_threads) {
+        log_info("Too many active log processing threads (%d), skipping this request", active_threads);
+        pthread_mutex_unlock(&thread_limit_mutex);
+        return 0;
+    }
+    active_threads++;
+    pthread_mutex_unlock(&thread_limit_mutex);
+    
+    // Get logs
     char **logs = NULL;
     int count = 0;
     
     get_system_logs(&logs, &count);
     
     if (logs == NULL || count == 0) {
+        // Release thread slot
+        pthread_mutex_lock(&thread_limit_mutex);
+        active_threads--;
+        pthread_mutex_unlock(&thread_limit_mutex);
         return 0;
     }
     
@@ -465,6 +491,11 @@ int websocket_broadcast_system_logs(void) {
             free(logs[i]);
         }
         free(logs);
+        
+        // Release thread slot
+        pthread_mutex_lock(&thread_limit_mutex);
+        active_threads--;
+        pthread_mutex_unlock(&thread_limit_mutex);
         
         return 0;
     }
@@ -653,6 +684,11 @@ int websocket_broadcast_system_logs(void) {
         free(logs[i]);
     }
     free(logs);
+    
+    // Release thread slot
+    pthread_mutex_lock(&thread_limit_mutex);
+    active_threads--;
+    pthread_mutex_unlock(&thread_limit_mutex);
     
     return clients_sent;
 }
