@@ -222,9 +222,13 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
         log_info("Using RGB format for non-RealNet model");
     }
 
+    // Check if we're running on an embedded device
+    bool is_embedded = is_embedded_device();
+    
     // Determine if we should downscale the frame based on model type and device
     int downscale_factor = get_downscale_factor(model_type);
-    log_info("Using downscale factor %d for model type %s", downscale_factor, model_type);
+    log_info("Using downscale factor %d for model type %s (embedded device: %s)", 
+             downscale_factor, model_type, is_embedded ? "yes" : "no");
 
     // Calculate dimensions after downscaling
     int target_width = frame->width / downscale_factor;
@@ -713,7 +717,13 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
             log_error("Failed to load detection model: %s", full_model_path);
         } else {
             // Use our improved detect_objects function for ALL model types
-            log_info("RUNNING DETECTION with unified detect_objects function");
+            log_info("RUNNING DETECTION with unified detect_objects function (embedded device: %s)", 
+                    is_embedded ? "yes" : "no");
+            
+            // Add more detailed logging for debugging
+            log_info("Detection parameters: model=%p, buffer=%p, width=%d, height=%d, channels=%d", 
+                    (void*)model, (void*)packed_buffer, target_width, target_height, channels);
+            
             detect_ret = detect_objects(model, packed_buffer, target_width, target_height, channels, &result);
             
             if (detect_ret != 0) {
