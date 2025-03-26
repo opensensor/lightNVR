@@ -77,6 +77,13 @@ void mg_handle_get_detection_results(struct mg_connection *c, struct mg_http_mes
     // Use the time range function
     int count = get_detections_from_db_time_range(stream_name, &result, max_age, start_time, end_time);
     
+    // Also get the timestamps for each detection
+    time_t timestamps[MAX_DETECTIONS];
+    memset(timestamps, 0, sizeof(timestamps));
+    
+    // Get timestamps for the detections
+    get_detection_timestamps(stream_name, &result, timestamps, max_age, start_time, end_time);
+    
     if (count < 0) {
         log_error("Failed to get detections from database for stream: %s", stream_name);
         mg_send_json_error(c, 500, "Failed to get detection results");
@@ -125,6 +132,7 @@ void mg_handle_get_detection_results(struct mg_connection *c, struct mg_http_mes
         cJSON_AddNumberToObject(detection, "y", result.detections[i].y);
         cJSON_AddNumberToObject(detection, "width", result.detections[i].width);
         cJSON_AddNumberToObject(detection, "height", result.detections[i].height);
+        cJSON_AddNumberToObject(detection, "timestamp", (double)timestamps[i]);
         
         cJSON_AddItemToArray(detections_array, detection);
     }

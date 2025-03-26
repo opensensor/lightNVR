@@ -423,6 +423,183 @@ int get_detections_from_db_time_range(const char *stream_name, detection_result_
 }
 
 /**
+ * Get timestamps for detections
+ * 
+ * @param stream_name Stream name
+ * @param result Detection results to match
+ * @param timestamps Array to store timestamps (must be same size as result->count)
+ * @param max_age Maximum age in seconds (0 for all)
+ * @param start_time Start time filter (0 for no filter)
+ * @param end_time End time filter (0 for no filter)
+ * @return 0 on success, non-zero on failure
+ */
+int get_detection_timestamps(const char *stream_name, detection_result_t *result, time_t *timestamps,
+                           uint64_t max_age, time_t start_time, time_t end_time) {
+    int rc;
+    sqlite3_stmt *stmt;
+    
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *db_mutex = get_db_mutex();
+    
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+    
+    if (!stream_name || !result || !timestamps) {
+        log_error("Invalid parameters for get_detection_timestamps");
+        return -1;
+    }
+    
+    pthread_mutex_lock(db_mutex);
+    
+    // Build query based on filters
+    char sql[512];
+    
+    if (start_time > 0 && end_time > 0) {
+        // Time range filter
+        snprintf(sql, sizeof(sql), 
+                "SELECT timestamp, label, confidence, x, y, width, height "
+                "FROM detections "
+                "WHERE stream_name = ? AND timestamp >= ? AND timestamp <= ? "
+                "ORDER BY timestamp DESC "
+                "LIMIT ?;");
+        
+        rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+            pthread_mutex_unlock(db_mutex);
+            return -1;
+        }
+        
+        // Bind parameters
+        sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 2, (sqlite3_int64)start_time);
+        sqlite3_bind_int64(stmt, 3, (sqlite3_int64)end_time);
+        sqlite3_bind_int(stmt, 4, MAX_DETECTIONS);
+    } else if (start_time > 0) {
+        // Start time filter only
+        snprintf(sql, sizeof(sql), 
+                "SELECT timestamp, label, confidence, x, y, width, height "
+                "FROM detections "
+                "WHERE stream_name = ? AND timestamp >= ? "
+                "ORDER BY timestamp DESC "
+                "LIMIT ?;");
+        
+        rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+            pthread_mutex_unlock(db_mutex);
+            return -1;
+        }
+        
+        // Bind parameters
+        sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 2, (sqlite3_int64)start_time);
+        sqlite3_bind_int(stmt, 3, MAX_DETECTIONS);
+    } else if (end_time > 0) {
+        // End time filter only
+        snprintf(sql, sizeof(sql), 
+                "SELECT timestamp, label, confidence, x, y, width, height "
+                "FROM detections "
+                "WHERE stream_name = ? AND timestamp <= ? "
+                "ORDER BY timestamp DESC "
+                "LIMIT ?;");
+        
+        rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+            pthread_mutex_unlock(db_mutex);
+            return -1;
+        }
+        
+        // Bind parameters
+        sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 2, (sqlite3_int64)end_time);
+        sqlite3_bind_int(stmt, 3, MAX_DETECTIONS);
+    } else if (max_age > 0) {
+        // Max age filter
+        // Calculate cutoff time
+        time_t cutoff_time = time(NULL) - max_age;
+        
+        // First get the latest timestamp
+        snprintf(sql, sizeof(sql), 
+                "SELECT timestamp, label, confidence, x, y, width, height "
+                "FROM detections "
+                "WHERE stream_name = ? AND timestamp >= ? "
+                "ORDER BY timestamp DESC "
+                "LIMIT ?;");
+        
+        rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+            pthread_mutex_unlock(db_mutex);
+            return -1;
+        }
+        
+        // Bind parameters
+        sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 2, (sqlite3_int64)cutoff_time);
+        sqlite3_bind_int(stmt, 3, MAX_DETECTIONS);
+    } else {
+        // No filters, just get the latest detections
+        snprintf(sql, sizeof(sql), 
+                "SELECT timestamp, label, confidence, x, y, width, height "
+                "FROM detections "
+                "WHERE stream_name = ? "
+                "ORDER BY timestamp DESC "
+                "LIMIT ?;");
+        
+        rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+            pthread_mutex_unlock(db_mutex);
+            return -1;
+        }
+        
+        // Bind parameters
+        sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
+        sqlite3_bind_int(stmt, 2, MAX_DETECTIONS);
+    }
+    
+    // Execute query and fetch results
+    int count = 0;
+    while (sqlite3_step(stmt) == SQLITE_ROW && count < result->count) {
+        // Get timestamp
+        timestamps[count] = (time_t)sqlite3_column_int64(stmt, 0);
+        
+        // Get detection data to match with result
+        const char *label = (const char *)sqlite3_column_text(stmt, 1);
+        float confidence = (float)sqlite3_column_double(stmt, 2);
+        float x = (float)sqlite3_column_double(stmt, 3);
+        float y = (float)sqlite3_column_double(stmt, 4);
+        float width = (float)sqlite3_column_double(stmt, 5);
+        float height = (float)sqlite3_column_double(stmt, 6);
+        
+        // Find matching detection in result
+        for (int i = 0; i < result->count; i++) {
+            if (strcmp(result->detections[i].label, label) == 0 &&
+                fabs(result->detections[i].confidence - confidence) < 0.001 &&
+                fabs(result->detections[i].x - x) < 0.001 &&
+                fabs(result->detections[i].y - y) < 0.001 &&
+                fabs(result->detections[i].width - width) < 0.001 &&
+                fabs(result->detections[i].height - height) < 0.001) {
+                // Found matching detection, store timestamp
+                timestamps[i] = timestamps[count];
+                break;
+            }
+        }
+        
+        count++;
+    }
+    
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(db_mutex);
+    
+    return 0;
+}
+
+/**
  * Get detection results from the database
  * 
  * @param stream_name Stream name

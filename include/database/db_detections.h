@@ -29,6 +29,20 @@ int get_detections_from_db_time_range(const char *stream_name, detection_result_
                                      uint64_t max_age, time_t start_time, time_t end_time);
 
 /**
+ * Get timestamps for detections
+ * 
+ * @param stream_name Stream name
+ * @param result Detection results to match
+ * @param timestamps Array to store timestamps (must be same size as result->count)
+ * @param max_age Maximum age in seconds (0 for all)
+ * @param start_time Start time filter (0 for no filter)
+ * @param end_time End time filter (0 for no filter)
+ * @return 0 on success, non-zero on failure
+ */
+int get_detection_timestamps(const char *stream_name, detection_result_t *result, time_t *timestamps,
+                           uint64_t max_age, time_t start_time, time_t end_time);
+
+/**
  * Get detection results from the database
  * 
  * @param stream_name Stream name

@@ -579,8 +579,43 @@ export function showVideoModal(videoUrl, title, downloadUrl) {
     const ctx = detectionCanvas.getContext('2d');
     ctx.clearRect(0, 0, detectionCanvas.width, detectionCanvas.height);
     
-    // Draw each detection
-    detections.forEach(detection => {
+    // Get current video time in seconds
+    const currentTime = video.currentTime;
+    
+    // Calculate the timestamp for the current video position
+    // We need to convert from video time (seconds from start of video) to unix timestamp
+    if (!recordingData || !recordingData.start_time) {
+      return;
+    }
+    
+    // Convert recording start time to seconds
+    const recordingStartTime = Math.floor(new Date(recordingData.start_time).getTime() / 1000);
+    
+    // Calculate current timestamp in the video
+    const currentTimestamp = recordingStartTime + Math.floor(currentTime);
+    
+    // Define a time window for showing detections (e.g., show detections within 5 seconds of current time)
+    const timeWindow = 5; // seconds
+    
+    // Filter detections to only show those within the time window
+    const visibleDetections = detections.filter(detection => {
+      if (!detection.timestamp) return false;
+      
+      // Check if detection is within the time window
+      return Math.abs(detection.timestamp - currentTimestamp) <= timeWindow;
+    });
+    
+    // Update status indicator with count of visible detections
+    if (detectionStatusIndicator) {
+      if (visibleDetections.length > 0) {
+        detectionStatusIndicator.textContent = `Showing ${visibleDetections.length} detection${visibleDetections.length !== 1 ? 's' : ''} at current time`;
+      } else {
+        detectionStatusIndicator.textContent = `No detections at current time (${detections.length} total)`;
+      }
+    }
+    
+    // Draw each visible detection
+    visibleDetections.forEach(detection => {
       // Calculate coordinates based on relative positions
       const x = detection.x * videoWidth;
       const y = detection.y * videoHeight;
@@ -620,6 +655,19 @@ export function showVideoModal(videoUrl, title, downloadUrl) {
   video.addEventListener('seeked', () => {
     if (detectionOverlayEnabled) {
       drawDetections();
+    }
+  });
+  
+  // Add timeupdate event to update detections as video plays
+  video.addEventListener('timeupdate', () => {
+    if (detectionOverlayEnabled) {
+      // Don't redraw on every timeupdate as it's too frequent
+      // Instead, redraw every 0.5 seconds
+      const currentTime = Math.floor(video.currentTime * 2) / 2;
+      if (video.lastDrawnTime !== currentTime) {
+        video.lastDrawnTime = currentTime;
+        drawDetections();
+      }
     }
   });
   
