@@ -89,17 +89,16 @@ int init_daemon(const char *pid_file) {
         }
     }
 
-    // Redirect standard file descriptors to /dev/null
+    // Redirect standard input to /dev/null but keep stdout/stderr for logging
     int dev_null = open("/dev/null", O_RDWR);
     if (dev_null == -1) {
         log_error("Failed to open /dev/null: %s", strerror(errno));
         return -1;
     }
 
-    if (dup2(dev_null, STDIN_FILENO) == -1 ||
-        dup2(dev_null, STDOUT_FILENO) == -1 ||
-        dup2(dev_null, STDERR_FILENO) == -1) {
-        log_error("Failed to redirect standard file descriptors: %s", strerror(errno));
+    // Only redirect stdin to /dev/null, keep stdout and stderr for logging
+    if (dup2(dev_null, STDIN_FILENO) == -1) {
+        log_error("Failed to redirect stdin: %s", strerror(errno));
         close(dev_null);
         return -1;
     }
