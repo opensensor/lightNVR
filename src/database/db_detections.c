@@ -8,6 +8,7 @@
 #include <time.h>
 #include <sqlite3.h>
 #include <stdbool.h>
+#include <math.h>
 
 #include "database/db_detections.h"
 #include "database/db_core.h"
