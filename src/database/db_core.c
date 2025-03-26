@@ -301,6 +301,10 @@ int init_database(const char *db_path) {
 void shutdown_database(void) {
     log_info("Starting database shutdown process");
     
+    // First, ensure all threads have stopped using the database
+    // by waiting a bit longer before acquiring the mutex
+    usleep(500000);  // 500ms to allow in-flight operations to complete
+    
     // Use a try-lock first to avoid deadlocks if the mutex is already locked
     int lock_result = pthread_mutex_trylock(&db_mutex);
     
@@ -313,7 +317,7 @@ void shutdown_database(void) {
         
         struct timespec timeout;
         clock_gettime(CLOCK_REALTIME, &timeout);
-        timeout.tv_sec += 5; // 5 second timeout
+        timeout.tv_sec += 10; // Increased to 10 second timeout
         
         lock_result = pthread_mutex_timedlock(&db_mutex, &timeout);
         if (lock_result != 0) {
@@ -331,29 +335,44 @@ void shutdown_database(void) {
     }
     
     if (db != NULL) {
+        // Store the database handle locally but DO NOT set the global to NULL yet
+        sqlite3 *db_to_close = db;
+        
         // Finalize all prepared statements before closing the database
         // This helps prevent "corrupted size vs. prev_size in fastbins" errors
         int stmt_count = 0;
         sqlite3_stmt *stmt;
         
         log_info("Finalizing all prepared statements");
-        while ((stmt = sqlite3_next_stmt(db, NULL)) != NULL) {
+        
+        // First pass: finalize all statements we can find
+        while ((stmt = sqlite3_next_stmt(db_to_close, NULL)) != NULL) {
             log_info("Finalizing prepared statement %d during database shutdown", ++stmt_count);
             sqlite3_finalize(stmt);
         }
         log_info("Finalized %d prepared statements", stmt_count);
         
-        // Add a small delay to ensure all statements are properly finalized
-        usleep(100000);  // 100ms - increased from 50ms
+        // Add a longer delay to ensure all statements are properly finalized
+        // and any pending operations have completed
+        usleep(500000);  // 500ms
         
-        // Make a local copy of the database handle
-        sqlite3 *db_to_close = db;
-        // Set global handle to NULL first to prevent use-after-free
-        db = NULL;
+        // Second pass: check for any remaining statements
+        stmt_count = 0;
+        while ((stmt = sqlite3_next_stmt(db_to_close, NULL)) != NULL) {
+            log_info("Finalizing remaining statement %d in second pass", ++stmt_count);
+            sqlite3_finalize(stmt);
+        }
+        
+        if (stmt_count > 0) {
+            log_info("Finalized %d additional statements in second pass", stmt_count);
+            // Add another delay if we found more statements
+            usleep(200000);  // 200ms
+        }
         
         // Use sqlite3_close_v2 which is more forgiving with open statements
         log_info("Closing database with sqlite3_close_v2");
         int rc = sqlite3_close_v2(db_to_close);
+        
         if (rc != SQLITE_OK) {
             log_warn("Error closing database: %s (code: %d)", sqlite3_errmsg(db_to_close), rc);
             
@@ -361,20 +380,28 @@ void shutdown_database(void) {
             log_info("Attempting to finalize any remaining statements");
             stmt_count = 0;
             while ((stmt = sqlite3_next_stmt(db_to_close, NULL)) != NULL) {
-                log_info("Finalizing remaining statement %d", ++stmt_count);
+                log_info("Finalizing remaining statement %d in error recovery", ++stmt_count);
                 sqlite3_finalize(stmt);
             }
             
             // Add another delay
-            usleep(100000);  // 100ms
+            usleep(300000);  // 300ms
             
             // Try closing again
             log_info("Retrying database close");
             rc = sqlite3_close_v2(db_to_close);
             if (rc != SQLITE_OK) {
                 log_error("Failed to close database after retry: %s (code: %d)", sqlite3_errmsg(db_to_close), rc);
+            } else {
+                log_info("Successfully closed database on retry");
             }
+        } else {
+            log_info("Successfully closed database");
         }
+        
+        // Only set the global handle to NULL after the database is successfully closed
+        // or after all attempts to close it have been made
+        db = NULL;
     } else {
         log_warn("Database handle is already NULL during shutdown");
     }
@@ -386,7 +413,7 @@ void shutdown_database(void) {
     
     // Add a longer delay before destroying the mutex to ensure no threads are still using it
     log_info("Waiting before destroying database mutex");
-    usleep(200000);  // 200ms - increased from 100ms
+    usleep(500000);  // 500ms
     
     // Destroy the mutex
     log_info("Destroying database mutex");

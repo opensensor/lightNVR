@@ -11,6 +11,7 @@
 #include <libgen.h>
 
 #include "core/logger.h"
+#include "core/logger_json.h"
 #include "web/logger_websocket.h"
 
 // Logger state
@@ -35,9 +36,6 @@ static const char *log_level_strings[] = {
     "DEBUG"
 };
 
-// Forward declaration for broadcast_logs_to_websocket
-extern void broadcast_logs_to_websocket(void);
-
 // Initialize the logging system
 int init_logger(void) {
     // Initialize mutex
@@ -54,6 +52,14 @@ int init_logger(void) {
     // Initialize logger WebSocket integration
     init_logger_websocket();
     
+    // Initialize JSON logger if log file is set and the function is available
+    extern __attribute__((weak)) int init_json_logger(const char *filename);
+    if (logger.log_filename[0] != '\0' && init_json_logger) {
+        char json_log_filename[512];
+        snprintf(json_log_filename, sizeof(json_log_filename), "%s.json", logger.log_filename);
+        init_json_logger(json_log_filename);
+    }
+    
     return 0;
 }
 
@@ -68,6 +74,12 @@ void shutdown_logger(void) {
     
     pthread_mutex_unlock(&logger.mutex);
     pthread_mutex_destroy(&logger.mutex);
+    
+    // Shutdown JSON logger if the function is available
+    extern __attribute__((weak)) void shutdown_json_logger(void);
+    if (shutdown_json_logger) {
+        shutdown_json_logger();
+    }
     
     // Shutdown logger WebSocket integration
     shutdown_logger_websocket();
@@ -174,19 +186,16 @@ int set_log_file(const char *filename) {
     logger.log_filename[sizeof(logger.log_filename) - 1] = '\0';
     
     pthread_mutex_unlock(&logger.mutex);
-    return 0;
-}
-
-// Enable or disable console logging
-// Note: With tee behavior enabled, this function is kept for API compatibility
-// but console logging is always enabled regardless of this setting
-void set_console_logging(int enable) {
-    pthread_mutex_lock(&logger.mutex);
-    logger.console_logging = enable; // Kept for backward compatibility
-    pthread_mutex_unlock(&logger.mutex);
     
-    // Broadcast logs to WebSocket clients
-    broadcast_logs_to_websocket();
+    // Initialize JSON logger with a corresponding JSON log file if the function is available
+    extern __attribute__((weak)) int init_json_logger(const char *filename);
+    if (init_json_logger) {
+        char json_log_filename[512];
+        snprintf(json_log_filename, sizeof(json_log_filename), "%s.json", filename);
+        init_json_logger(json_log_filename);
+    }
+    
+    return 0;
 }
 
 // Log a message at ERROR level
@@ -239,12 +248,18 @@ void log_message_v(log_level_t level, const char *format, va_list args) {
     
     time_t now;
     struct tm *tm_info;
-    char timestamp[20];
+    char timestamp[32];
+    char iso_timestamp[32];
     
     // Get current time
     time(&now);
     tm_info = localtime(&now);
+    
+    // Format timestamp for text log
     strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm_info);
+    
+    // Format ISO timestamp for JSON log
+    strftime(iso_timestamp, sizeof(iso_timestamp), "%Y-%m-%dT%H:%M:%S", tm_info);
     
     // Format the log message
     char message[4096];
@@ -266,8 +281,13 @@ void log_message_v(log_level_t level, const char *format, va_list args) {
     
     pthread_mutex_unlock(&logger.mutex);
     
-    // Broadcast logs to WebSocket clients
-    broadcast_logs_to_websocket();
+    // Write to JSON log file if the function is available
+    // This is a weak symbol that can be overridden by the actual implementation
+    // If the JSON logger is not linked, this will be a no-op
+    extern __attribute__((weak)) int write_json_log(log_level_t level, const char *timestamp, const char *message);
+    if (write_json_log) {
+        write_json_log(level, iso_timestamp, message);
+    }
 }
 
 // Get the string representation of a log level
@@ -332,5 +352,14 @@ int log_rotate(size_t max_size, int max_files) {
     }
     
     pthread_mutex_unlock(&logger.mutex);
+    
+    // Also rotate JSON log file if the function is available
+    extern __attribute__((weak)) int json_log_rotate(size_t max_size, int max_files);
+    if (json_log_rotate) {
+        char json_log_filename[512];
+        snprintf(json_log_filename, sizeof(json_log_filename), "%s.json", logger.log_filename);
+        json_log_rotate(max_size, max_files);
+    }
+    
     return 0;
 }

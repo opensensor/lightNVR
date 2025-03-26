@@ -268,6 +268,9 @@ class WebSocketClient {
         };
         
         try {
+            // Log the message being sent for debugging
+            console.log('Sending WebSocket message:', JSON.stringify(message));
+            
             this.socket.send(JSON.stringify(message));
             return true;
         } catch (error) {

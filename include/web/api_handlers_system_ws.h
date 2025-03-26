@@ -17,10 +17,13 @@
 void websocket_handle_system_logs(const char *client_id, const char *message);
 
 /**
- * @brief Send system logs to all subscribed clients
+ * @brief Fetch system logs with timestamp-based pagination
  * 
- * @return int Number of clients the message was sent to
+ * @param client_id WebSocket client ID
+ * @param min_level Minimum log level to include
+ * @param last_timestamp Last timestamp received by client (for pagination)
+ * @return int Number of logs sent
  */
-int websocket_broadcast_system_logs(void);
+int fetch_system_logs(const char *client_id, const char *min_level, const char *last_timestamp);
 
 #endif /* API_HANDLERS_SYSTEM_WS_H */

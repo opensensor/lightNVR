@@ -331,8 +331,6 @@ int main(int argc, char *argv[]) {
             log_warn("Failed to set log file: %s", config.log_file);
         } else {
             log_info("Logging to file: %s", config.log_file);
-            // Disable console logging to avoid double logging
-            set_console_logging(0);
         }
     }
     

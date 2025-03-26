@@ -13,6 +13,7 @@
 extern void get_system_logs(char ***logs, int *count);
 static int send_filtered_logs_to_client(const char *client_id, const char *min_level);
 static int log_level_meets_minimum(const char *log_level, const char *min_level);
+extern __attribute__((weak)) int get_json_logs(const char *min_level, const char *last_timestamp, char ***logs, int *count);
 
 // Map to store client log level preferences
 // Key: client_id, Value: log level string (error, warning, info, debug)
@@ -105,6 +106,9 @@ static void remove_client_log_level(const char *client_id) {
 void websocket_handle_system_logs(const char *client_id, const char *message) {
     log_debug("Handling WebSocket message for system logs from client %s: %s", client_id, message);
     
+    // Log the raw message for debugging
+    log_debug("Raw WebSocket message: %s", message);
+    
     // Parse message JSON
     cJSON *json = cJSON_Parse(message);
     if (json == NULL) {
@@ -125,10 +129,49 @@ void websocket_handle_system_logs(const char *client_id, const char *message) {
         return;
     }
     
-    // Extract message type
+    // Check if this is a direct payload or a full message with type/topic/payload
     cJSON *type_obj = cJSON_GetObjectItem(json, "type");
-    if (!type_obj || !cJSON_IsString(type_obj)) {
-        log_error("WebSocket message missing type field");
+    const char *type = NULL;
+    cJSON *payload_obj = NULL;
+    
+    if (type_obj && cJSON_IsString(type_obj)) {
+        // This is a full message with type/topic/payload
+        type = type_obj->valuestring;
+        payload_obj = cJSON_GetObjectItem(json, "payload");
+        
+        if (payload_obj && cJSON_IsObject(payload_obj)) {
+            // Use the payload object for further processing
+            log_debug("Found full message with type=%s and payload", type);
+        } else {
+            // No payload object, treat the whole message as the payload
+            payload_obj = json;
+            log_debug("No payload object found, treating whole message as payload");
+        }
+    } else {
+        // This is a direct payload without type/topic
+        // Determine the type based on the content
+        log_debug("Message appears to be a direct payload without type field");
+        
+        // Check for common fields to determine the type
+        if (cJSON_GetObjectItem(json, "level") != NULL) {
+            type = "fetch";
+            log_debug("Detected message type as 'fetch' based on payload content");
+            payload_obj = json;
+        } else if (cJSON_GetObjectItem(json, "client_id") != NULL) {
+            type = "subscribe";
+            log_debug("Detected message type as 'subscribe' based on payload content");
+            payload_obj = json;
+        } else {
+            // Default to subscribe if we can't determine
+            type = "subscribe";
+            log_debug("Could not determine message type, defaulting to 'subscribe'");
+            payload_obj = json;
+        }
+    }
+    
+    // If we still don't have a type, report an error
+    if (!type) {
+        log_error("WebSocket message missing type field and could not be determined: %s", message);
         
         // Send error message
         websocket_message_t *error_message = websocket_message_create(
@@ -145,8 +188,6 @@ void websocket_handle_system_logs(const char *client_id, const char *message) {
         cJSON_Delete(json);
         return;
     }
-    
-    const char *type = type_obj->valuestring;
     
     // Handle subscribe message
     if (strcmp(type, "subscribe") == 0) {
@@ -167,8 +208,8 @@ void websocket_handle_system_logs(const char *client_id, const char *message) {
         
         log_info("Client %s subscribed to system logs with level: %s", client_id, log_level);
         
-        // Send filtered logs to the client based on their log level preference
-        send_filtered_logs_to_client(client_id, log_level);
+        // Fetch logs using the new JSON-based approach
+        fetch_system_logs(client_id, log_level, NULL);
     }
     // Handle unsubscribe message
     else if (strcmp(type, "unsubscribe") == 0) {
@@ -176,6 +217,35 @@ void websocket_handle_system_logs(const char *client_id, const char *message) {
         
         // Remove client log level preference
         remove_client_log_level(client_id);
+    }
+    // Handle fetch message for pagination
+    else if (strcmp(type, "fetch") == 0) {
+        // Extract log level and last timestamp from parameters
+        const char *log_level = get_client_log_level(client_id); // Use stored preference
+        const char *last_timestamp = NULL;
+        
+        cJSON *params_obj = cJSON_GetObjectItem(json, "params");
+        if (params_obj && cJSON_IsObject(params_obj)) {
+            // Check if level is specified in the fetch request
+            cJSON *level_obj = cJSON_GetObjectItem(params_obj, "level");
+            if (level_obj && cJSON_IsString(level_obj)) {
+                log_level = level_obj->valuestring;
+                // Update stored preference
+                set_client_log_level(client_id, log_level);
+            }
+            
+            // Get last timestamp for pagination
+            cJSON *timestamp_obj = cJSON_GetObjectItem(params_obj, "last_timestamp");
+            if (timestamp_obj && cJSON_IsString(timestamp_obj)) {
+                last_timestamp = timestamp_obj->valuestring;
+            }
+        }
+        
+        log_info("Client %s fetching logs with level: %s, last_timestamp: %s", 
+                client_id, log_level, last_timestamp ? last_timestamp : "NULL");
+        
+        // Fetch logs using the new JSON-based approach
+        fetch_system_logs(client_id, log_level, last_timestamp);
     }
     // Handle unknown message type
     else {
@@ -423,6 +493,132 @@ static int send_filtered_logs_to_client(const char *client_id, const char *min_l
     free(logs);
     
     return result;
+}
+
+/**
+ * @brief Fetch system logs with timestamp-based pagination
+ * 
+ * @param client_id WebSocket client ID
+ * @param min_level Minimum log level to include
+ * @param last_timestamp Last timestamp received by client (for pagination)
+ * @return int Number of logs sent
+ */
+int fetch_system_logs(const char *client_id, const char *min_level, const char *last_timestamp) {
+    log_info("fetch_system_logs called for client %s with level %s, last_timestamp %s", 
+             client_id, min_level, last_timestamp ? last_timestamp : "NULL");
+    
+    // Get logs from JSON log file if the function is available
+    char **logs = NULL;
+    int count = 0;
+    int result = -1;
+    
+    if (get_json_logs) {
+        result = get_json_logs(min_level, last_timestamp, &logs, &count);
+    }
+    
+    // If JSON logs are not available or there was an error, fall back to regular logs
+    if (result != 0 || logs == NULL || count == 0) {
+        // Fall back to regular logs if JSON logs are not available
+        if (!get_json_logs) {
+            log_info("JSON logger not available, falling back to regular logs");
+            return send_filtered_logs_to_client(client_id, min_level);
+        }
+        
+        log_warn("No logs found or error getting logs");
+        
+        // Send empty logs array
+        cJSON *payload = cJSON_CreateObject();
+        cJSON_AddItemToObject(payload, "logs", cJSON_CreateArray());
+        cJSON_AddStringToObject(payload, "level", min_level);
+        cJSON_AddBoolToObject(payload, "more", false);
+        
+        // Convert payload to string
+        char *payload_str = cJSON_PrintUnformatted(payload);
+        
+        // Create WebSocket message
+        websocket_message_t *logs_message = websocket_message_create(
+            "update",
+            "system/logs",
+            payload_str
+        );
+        
+        if (logs_message != NULL) {
+            // Send logs to the client
+            websocket_manager_send_to_client(client_id, logs_message);
+            websocket_message_free(logs_message);
+        }
+        
+        cJSON_Delete(payload);
+        free(payload_str);
+        
+        return 0;
+    }
+    
+    // Create JSON array of logs
+    cJSON *logs_array = cJSON_CreateArray();
+    
+    // Track the latest timestamp for pagination
+    char latest_timestamp[32] = "";
+    
+    // Process each log entry (already in JSON format)
+    for (int i = 0; i < count; i++) {
+        if (logs[i] != NULL) {
+            // Parse JSON log entry
+            cJSON *log_entry = cJSON_Parse(logs[i]);
+            if (log_entry) {
+                // Add to logs array
+                cJSON_AddItemToArray(logs_array, log_entry);
+                
+                // Update latest timestamp for pagination
+                cJSON *timestamp = cJSON_GetObjectItem(log_entry, "timestamp");
+                if (timestamp && cJSON_IsString(timestamp) && timestamp->valuestring) {
+                    strncpy(latest_timestamp, timestamp->valuestring, sizeof(latest_timestamp) - 1);
+                    latest_timestamp[sizeof(latest_timestamp) - 1] = '\0';
+                }
+            }
+        }
+    }
+    
+    // Create JSON payload
+    cJSON *payload = cJSON_CreateObject();
+    cJSON_AddItemToObject(payload, "logs", logs_array);
+    // Include level at the top level for frontend filtering purposes
+    cJSON_AddStringToObject(payload, "level", min_level);
+    // Include latest timestamp for pagination
+    if (latest_timestamp[0] != '\0') {
+        cJSON_AddStringToObject(payload, "latest_timestamp", latest_timestamp);
+    }
+    // Indicate if there might be more logs
+    cJSON_AddBoolToObject(payload, "more", count >= 50); // Assume more if we hit the limit
+    
+    // Convert payload to string
+    char *payload_str = cJSON_PrintUnformatted(payload);
+    
+    // Create WebSocket message
+    websocket_message_t *logs_message = websocket_message_create(
+        "update",
+        "system/logs",
+        payload_str
+    );
+    
+    int sent = 0;
+    
+    if (logs_message != NULL) {
+        // Send logs to the client
+        sent = websocket_manager_send_to_client(client_id, logs_message);
+        websocket_message_free(logs_message);
+    }
+    
+    cJSON_Delete(payload);
+    free(payload_str);
+    
+    // Free logs
+    for (int i = 0; i < count; i++) {
+        free(logs[i]);
+    }
+    free(logs);
+    
+    return sent ? count : 0;
 }
 
 /**

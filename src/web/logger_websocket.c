@@ -8,6 +8,14 @@
 #include "core/logger.h"
 #include "web/api_handlers_system_ws.h"
 #include "web/logger_websocket.h"
+#include "web/websocket_manager.h"
+
+// Forward declarations with weak symbols
+extern __attribute__((weak)) int websocket_manager_get_subscribed_clients(const char *topic, char ***client_ids);
+extern __attribute__((weak)) websocket_message_t *websocket_message_create(const char *type, const char *topic, const char *payload);
+extern __attribute__((weak)) bool websocket_manager_send_to_client(const char *client_id, const websocket_message_t *message);
+extern __attribute__((weak)) void websocket_message_free(websocket_message_t *message);
+extern __attribute__((weak)) int fetch_system_logs(const char *client_id, const char *min_level, const char *last_timestamp);
 
 // Mutex to protect log broadcasting
 static pthread_mutex_t broadcast_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -45,15 +53,16 @@ void shutdown_logger_websocket(void) {
  * @brief Broadcast system logs to WebSocket clients
  * 
  * This function is called by the logger after a log message is written.
- * Instead of broadcasting to all clients, it now only updates the last broadcast time
- * so that when clients request logs, they get the latest data.
- * This reduces memory and CPU overhead, especially on embedded devices.
+ * Instead of broadcasting to all clients, it does nothing - clients will
+ * poll for logs when they need them using the fetch_system_logs function.
+ * This reduces unnecessary network traffic and processing.
  */
 void broadcast_logs_to_websocket(void) {
-    // Just update the last broadcast time
-    // Actual log sending will happen when clients request it
-    gettimeofday(&last_broadcast_time, NULL);
+    // This is intentionally empty - we're using a polling approach instead of broadcasting
+    // Clients will request logs when they need them via fetch_system_logs
     
-    // No broadcasting here - clients will request logs when needed
-    // This significantly reduces memory and CPU overhead on embedded devices
+    // No need to rate limit or check for minimum interval since we're not doing anything
+    
+    // Log at debug level to avoid filling logs with this message
+    // log_debug("broadcast_logs_to_websocket called but using polling approach instead");
 }
