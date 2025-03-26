@@ -15,7 +15,7 @@
 detection_config_t default_config = {
     // Memory constraints
     .buffer_pool_size = 8,          // 8 buffers in the pool
-    .concurrent_detections = 3,      // 3 concurrent detections
+    .concurrent_detections = 16,      // 3 concurrent detections
     .buffer_allocation_retries = 3,  // 3 retries for buffer allocation
     
     // Downscaling factors
@@ -37,11 +37,11 @@ detection_config_t embedded_config = {
     // Memory constraints
     .buffer_pool_size = 8,           // CRITICAL FIX: Increased from 4 to 8 buffers in the pool
     .concurrent_detections = 1,      // 1 concurrent detection
-    .buffer_allocation_retries = 5,  // CRITICAL FIX: Increased from 3 to 5 retries for buffer allocation
+    .buffer_allocation_retries = 3,  // CRITICAL FIX: Increased from 3 to 5 retries for buffer allocation
     
     // Downscaling factors
     .downscale_factor_default = 1,   // No downscaling by default
-    .downscale_factor_cnn = 3,       // CRITICAL FIX: Increased from 2x to 3x downscaling for CNN models
+    .downscale_factor_cnn = 6,       // downscaling for CNN models
     .downscale_factor_realnet = 1,   // No downscaling for RealNet models
     
     // Thresholds

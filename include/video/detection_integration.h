@@ -45,4 +45,12 @@ int get_active_detection_count(void);
  */
 int get_max_detection_count(void);
 
+/**
+ * Check if a detection is already in progress for a specific stream
+ * 
+ * @param stream_name The name of the stream to check
+ * @return true if detection is in progress, false otherwise
+ */
+bool is_detection_in_progress(const char *stream_name);
+
 #endif /* DETECTION_INTEGRATION_H */

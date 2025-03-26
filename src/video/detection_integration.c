@@ -273,26 +273,30 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     log_info("Converted frame to %s format for stream %s (dimensions: %dx%d)",
              (channels == 1) ? "grayscale" : "RGB", stream_name, target_width, target_height);
 
-    // Check if this stream is already being processed
+    // CRITICAL FIX: Check if this stream is already being processed
     bool stream_already_active = false;
     
     for (int i = 0; i < max_detections; i++) {
         char *active_stream = active_detection_streams + i * MAX_STREAM_NAME;
-        if (strcmp(active_stream, stream_name) == 0) {
+        if (active_stream[0] != '\0' && strcmp(active_stream, stream_name) == 0) {
             stream_already_active = true;
             break;
         }
     }
     
-    // If this stream is already being processed, we can continue
-    // Otherwise, check if we have room for another stream
-    if (!stream_already_active) {
-        // If we're at the limit, log a warning but still try to process
-        // This allows all streams to get a chance at detection
-        if (active_detections >= max_detections) {
-            log_warn("High detection load: %d concurrent detections (limit: %d), stream %s may experience delays", 
-                    active_detections, max_detections, stream_name);
-        }
+    // If this stream is already being processed, skip this detection request
+    // This prevents multiple detections from running simultaneously for the same stream
+    if (stream_already_active) {
+        log_warn("Detection already in progress for stream %s, skipping this request", stream_name);
+        // Update the last detection time to prevent immediate retry
+        last_detection_times[stream_idx] = current_time;
+        return 0; // Skip this frame
+    }
+    
+    // Check if we have room for another detection
+    if (active_detections >= max_detections) {
+        log_warn("High detection load: %d concurrent detections (limit: %d), stream %s may experience delays", 
+                active_detections, max_detections, stream_name);
     }
 
     // Get a buffer from the pool
@@ -737,6 +741,16 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
         }
     }
 
+    // CRITICAL FIX: Remove this stream from the active list
+    for (int i = 0; i < max_detections; i++) {
+        char *active_stream = active_detection_streams + i * MAX_STREAM_NAME;
+        if (active_stream[0] != '\0' && strcmp(active_stream, stream_name) == 0) {
+            log_info("Removing stream %s from active detection list (slot %d)", stream_name, i);
+            active_stream[0] = '\0'; // Clear the slot
+            break;
+        }
+    }
+    
     // Decrement active detections counter
     active_detections--;
     
@@ -759,6 +773,16 @@ cleanup:
     
     if (packed_buffer) {
         return_buffer_to_pool(packed_buffer);
+    }
+    
+    // CRITICAL FIX: Remove this stream from the active list in case of error
+    for (int i = 0; i < max_detections; i++) {
+        char *active_stream = active_detection_streams + i * MAX_STREAM_NAME;
+        if (active_stream[0] != '\0' && strcmp(active_stream, stream_name) == 0) {
+            log_info("Removing stream %s from active detection list on error (slot %d)", stream_name, i);
+            active_stream[0] = '\0'; // Clear the slot
+            break;
+        }
     }
     
     // Decrement active detections counter
@@ -795,4 +819,23 @@ int get_active_detection_count(void) {
  */
 int get_max_detection_count(void) {
     return max_detections;
+}
+
+/**
+ * Check if a detection is already in progress for a specific stream
+ */
+bool is_detection_in_progress(const char *stream_name) {
+    if (!stream_name || !active_detection_streams) {
+        return false;
+    }
+    
+    // Check if this stream is in the active list
+    for (int i = 0; i < max_detections; i++) {
+        char *active_stream = active_detection_streams + i * MAX_STREAM_NAME;
+        if (active_stream[0] != '\0' && strcmp(active_stream, stream_name) == 0) {
+            return true;
+        }
+    }
+    
+    return false;
 }
