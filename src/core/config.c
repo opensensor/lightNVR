@@ -70,6 +70,7 @@ void load_default_config(config_t *config) {
         config->streams[i].pre_detection_buffer = 5; // 5 seconds before detection
         config->streams[i].post_detection_buffer = 10; // 10 seconds after detection
         config->streams[i].streaming_enabled = true; // Enable streaming by default
+        config->streams[i].record_audio = false; // Disable audio recording by default
     }
 }
 
@@ -314,6 +315,9 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             config->streams[stream_idx].pre_detection_buffer = atoi(value);
         } else if (strcmp(name, "post_detection_buffer") == 0) {
             config->streams[stream_idx].post_detection_buffer = atoi(value);
+        } else if (strcmp(name, "record_audio") == 0) {
+            config->streams[stream_idx].record_audio = 
+                (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         }
     }
     // Memory optimization
@@ -813,21 +817,29 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "hw_accel_enabled = %s\n", config->hw_accel_enabled ? "true" : "false");
     fprintf(file, "hw_accel_device = %s\n", config->hw_accel_device);
     
-    // Write stream-specific detection settings
+    // Write stream-specific settings
     for (int i = 0; i < config->max_streams; i++) {
-        if (strlen(config->streams[i].name) > 0 && config->streams[i].detection_based_recording) {
+        if (strlen(config->streams[i].name) > 0 && 
+            (config->streams[i].detection_based_recording || config->streams[i].record_audio)) {
             fprintf(file, "\n[stream.%s]\n", config->streams[i].name);
-            fprintf(file, "detection_based_recording = %s\n", 
-                    config->streams[i].detection_based_recording ? "true" : "false");
             
-            if (config->streams[i].detection_model[0] != '\0') {
-                fprintf(file, "detection_model = %s\n", config->streams[i].detection_model);
+            // Write detection-based recording settings if enabled
+            if (config->streams[i].detection_based_recording) {
+                fprintf(file, "detection_based_recording = %s\n", 
+                        config->streams[i].detection_based_recording ? "true" : "false");
+                
+                if (config->streams[i].detection_model[0] != '\0') {
+                    fprintf(file, "detection_model = %s\n", config->streams[i].detection_model);
+                }
+                
+                fprintf(file, "detection_interval = %d\n", config->streams[i].detection_interval);
+                fprintf(file, "detection_threshold = %.2f\n", config->streams[i].detection_threshold);
+                fprintf(file, "pre_detection_buffer = %d\n", config->streams[i].pre_detection_buffer);
+                fprintf(file, "post_detection_buffer = %d\n", config->streams[i].post_detection_buffer);
             }
             
-            fprintf(file, "detection_interval = %d\n", config->streams[i].detection_interval);
-            fprintf(file, "detection_threshold = %.2f\n", config->streams[i].detection_threshold);
-            fprintf(file, "pre_detection_buffer = %d\n", config->streams[i].pre_detection_buffer);
-            fprintf(file, "post_detection_buffer = %d\n", config->streams[i].post_detection_buffer);
+            // Write audio recording setting
+            fprintf(file, "record_audio = %s\n", config->streams[i].record_audio ? "true" : "false");
         }
     }
     
@@ -901,6 +913,8 @@ void print_config(const config_t *config) {
             printf("      Segment Duration: %d seconds\n", config->streams[i].segment_duration);
             printf("      Detection-based Recording: %s\n", 
                    config->streams[i].detection_based_recording ? "true" : "false");
+            printf("      Record Audio: %s\n",
+                   config->streams[i].record_audio ? "true" : "false");
             
             if (config->streams[i].detection_based_recording) {
                 printf("      Detection Model: %s\n", 

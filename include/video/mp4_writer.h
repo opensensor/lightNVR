@@ -17,7 +17,8 @@ struct mp4_writer {
     char stream_name[MAX_STREAM_NAME];
     AVFormatContext *output_ctx;
     int video_stream_idx;
-    int has_audio;
+    int audio_stream_idx;     // Index of the audio stream (-1 if none)
+    int has_audio;            // Flag indicating if audio is enabled
     int64_t first_dts;
     int64_t first_pts;
     int64_t last_dts;

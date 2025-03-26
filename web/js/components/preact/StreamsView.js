@@ -114,6 +114,7 @@ export function StreamsView() {
       priority: '5',
       segment: 30,
       record: true,
+      recordAudio: true,
       detectionEnabled: false,
       detectionModel: '',
       detectionThreshold: 50,
@@ -151,7 +152,8 @@ export function StreamsView() {
       streamingEnabled: stream.streaming_enabled !== undefined ? stream.streaming_enabled : true,
       isOnvif: stream.is_onvif !== undefined ? stream.is_onvif : false,
       detectionEnabled: stream.detection_based_recording || false,
-      detectionModel: stream.detection_model || ''
+      detectionModel: stream.detection_model || '',
+      recordAudio: stream.record_audio !== undefined ? stream.record_audio : true
       });
       setIsEditing(true);
       setModalVisible(true);
@@ -206,7 +208,8 @@ export function StreamsView() {
         detection_threshold: currentStream.detectionThreshold,
         detection_interval: parseInt(currentStream.detectionInterval, 10),
         pre_detection_buffer: parseInt(currentStream.preBuffer, 10),
-        post_detection_buffer: parseInt(currentStream.postBuffer, 10)
+        post_detection_buffer: parseInt(currentStream.postBuffer, 10),
+        record_audio: currentStream.recordAudio
       };
       
       const url = isEditing 
@@ -780,6 +783,18 @@ export function StreamsView() {
                     onChange=${handleInputChange}
                   />
                   <label for="stream-record" class="ml-2 block text-sm">Record</label>
+                </div>
+                <div class="form-group flex items-center">
+                  <input 
+                    type="checkbox" 
+                    id="stream-record-audio" 
+                    name="recordAudio"
+                    class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    checked=${currentStream.recordAudio}
+                    onChange=${handleInputChange}
+                  />
+                  <label for="stream-record-audio" class="ml-2 block text-sm">Record Audio</label>
+                  <span class="ml-2 text-xs text-gray-500 dark:text-gray-400">Include audio in recordings if available in the stream</span>
                 </div>
                 
                 <!-- Detection-based recording options -->

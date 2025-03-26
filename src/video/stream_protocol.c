@@ -108,6 +108,11 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
     av_dict_set(&input_options, "reconnect_streamed", "1", 0); // Reconnect if streaming
     av_dict_set(&input_options, "reconnect_delay_max", "5", 0); // Max 5 seconds between reconnection attempts
     
+    // Add options to improve audio capture, similar to ffplay flags
+    av_dict_set(&input_options, "fflags", "nobuffer", 0); // Reduce buffering
+    av_dict_set(&input_options, "flags", "low_delay", 0); // Prioritize low delay
+    av_dict_set(&input_options, "framedrop", "1", 0);     // Allow frame dropping
+    
     if (protocol == STREAM_PROTOCOL_UDP) {
         // Check if this is a multicast stream with robust error handling
         is_multicast = is_multicast_url(url);
@@ -163,14 +168,15 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
         // TCP-specific options with improved reliability
         av_dict_set(&input_options, "stimeout", "5000000", 0); // 5 second timeout in microseconds
         av_dict_set(&input_options, "rtsp_transport", "tcp", 0); // Force TCP for RTSP
-        av_dict_set(&input_options, "analyzeduration", "2000000", 0); // 2 seconds analyze duration
-        av_dict_set(&input_options, "probesize", "1000000", 0); // 1MB probe size
+        av_dict_set(&input_options, "analyzeduration", "5000000", 0); // 5 seconds analyze duration (increased for better audio detection)
+        av_dict_set(&input_options, "probesize", "5000000", 0); // 5MB probe size (increased for better audio detection)
         av_dict_set(&input_options, "reconnect", "1", 0); // Enable reconnection
         av_dict_set(&input_options, "reconnect_streamed", "1", 0); // Reconnect if streaming
         av_dict_set(&input_options, "reconnect_delay_max", "2", 0); // Max 2 seconds between reconnection attempts (reduced from 5s)
         
         // Add more tolerant timestamp handling for TCP streams as well
-        av_dict_set(&input_options, "fflags", "genpts+discardcorrupt", 0);
+        // Combine with nobuffer flag to improve audio capture
+        av_dict_set(&input_options, "fflags", "genpts+discardcorrupt+nobuffer", 0);
     }
     
     // Check if this is an ONVIF stream and apply ONVIF-specific options
@@ -180,11 +186,11 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
         
         // ONVIF-specific options for better reliability
         av_dict_set(&input_options, "stimeout", "10000000", 0); // 10 second timeout in microseconds
-        av_dict_set(&input_options, "analyzeduration", "3000000", 0); // 3 seconds analyze duration
-        av_dict_set(&input_options, "probesize", "2000000", 0); // 2MB probe size
+        av_dict_set(&input_options, "analyzeduration", "5000000", 0); // 5 seconds analyze duration (increased for better audio detection)
+        av_dict_set(&input_options, "probesize", "5000000", 0); // 5MB probe size (increased for better audio detection)
         
-        // More tolerant timestamp handling for ONVIF streams
-        av_dict_set(&input_options, "fflags", "genpts+discardcorrupt", 0);
+        // More tolerant timestamp handling for ONVIF streams with audio support
+        av_dict_set(&input_options, "fflags", "genpts+discardcorrupt+nobuffer", 0);
         
         // ONVIF streams may need more time to start
         av_dict_set(&input_options, "rw_timeout", "15000000", 0); // 15 second read/write timeout
@@ -259,6 +265,21 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
     if (*input_ctx && (*input_ctx)->nb_streams > 0) {
         log_info("Successfully opened input stream: %s with %d streams", 
                 url, (*input_ctx)->nb_streams);
+        
+        // Log information about detected streams
+        for (unsigned int i = 0; i < (*input_ctx)->nb_streams; i++) {
+            AVStream *stream = (*input_ctx)->streams[i];
+            if (stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+                log_info("Stream %d: Video stream detected (codec: %d, width: %d, height: %d)", 
+                        i, stream->codecpar->codec_id, stream->codecpar->width, stream->codecpar->height);
+            } else if (stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
+                log_info("Stream %d: Audio stream detected (codec: %d, channels: %d, sample_rate: %d)", 
+                        i, stream->codecpar->codec_id, stream->codecpar->ch_layout.nb_channels, stream->codecpar->sample_rate);
+            } else {
+                log_info("Stream %d: Other stream type detected (type: %d)", 
+                        i, stream->codecpar->codec_type);
+            }
+        }
     } else {
         log_warn("Opened input stream but no streams found: %s", url);
     }
@@ -293,6 +314,23 @@ int find_video_stream_index(AVFormatContext *input_ctx) {
 
     for (unsigned int i = 0; i < input_ctx->nb_streams; i++) {
         if (input_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+/**
+ * Find audio stream index in the input context
+ */
+int find_audio_stream_index(AVFormatContext *input_ctx) {
+    if (!input_ctx) {
+        return -1;
+    }
+
+    for (unsigned int i = 0; i < input_ctx->nb_streams; i++) {
+        if (input_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
             return i;
         }
     }

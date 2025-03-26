@@ -17,6 +17,7 @@ typedef struct {
     pthread_t thread;
     AVFormatContext *input_ctx;
     int video_stream_idx;
+    int audio_stream_idx;   // Index of the audio stream (-1 if none)
     int dedicated;          // Flag to indicate if this is a dedicated stream reader
     
     // Callback function for packet processing

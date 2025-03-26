@@ -51,6 +51,8 @@ mp4_writer_t *mp4_writer_create(const char *output_path, const char *stream_name
     writer->is_initialized = 0;
     writer->creation_time = time(NULL);
     writer->last_packet_time = 0;  // Initialize to 0 to indicate no packets written yet
+    writer->audio_stream_idx = -1; // Initialize to -1 to indicate no audio stream
+    writer->has_audio = 0;         // Initialize to 0 to indicate no audio
 
     log_info("Created MP4 writer for stream %s at %s", stream_name, output_path);
 
@@ -116,6 +118,17 @@ static int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, cons
         return -1;
     }
 
+    // Check if audio recording is enabled for this stream
+    stream_handle_t stream = get_stream_by_name(writer->stream_name);
+    if (stream) {
+        stream_config_t config;
+        if (get_stream_config(stream, &config) == 0) {
+            writer->has_audio = config.record_audio;
+            log_info("Audio recording %s for stream %s", 
+                    writer->has_audio ? "enabled" : "disabled", writer->stream_name);
+        }
+    }
+
     // Add video stream
     AVStream *out_stream = avformat_new_stream(writer->output_ctx, NULL);
     if (!out_stream) {
@@ -141,7 +154,19 @@ static int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, cons
     writer->time_base = input_stream->time_base;
 
     // Store video stream index
-    writer->video_stream_idx = 0;  // We only have one stream
+    writer->video_stream_idx = 0;  // First stream is video
+    writer->audio_stream_idx = -1; // Initialize to -1 (no audio)
+
+    // If audio recording is enabled, check for audio streams in the input format context
+    if (writer->has_audio) {
+        // We need to get the input format context to find audio streams
+        // This would typically be passed from the stream reader
+        // For now, we'll handle audio streams as they come in mp4_writer_write_packet
+        log_info("Audio recording enabled for stream %s", writer->stream_name);
+        
+        // The audio stream will be added when the first audio packet is received
+        // in mp4_writer_write_packet
+    }
 
     // Add metadata
     av_dict_set(&writer->output_ctx->metadata, "title", writer->stream_name, 0);
@@ -338,13 +363,57 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
     // Update last DTS to maintain monotonic increase
     writer->last_dts = pkt.dts;
 
-    // Write packet
-    pkt.stream_index = writer->video_stream_idx;
-
-    // Log key frame information for debugging
-    if (pkt.flags & AV_PKT_FLAG_KEY) {
-        log_debug("Writing keyframe to MP4: pts=%lld, dts=%lld",
-                 (long long)pkt.pts, (long long)pkt.dts);
+    // Determine if this is a video or audio packet
+    bool is_audio = false;
+    if (input_stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
+        is_audio = true;
+        
+        // Check if we have audio support enabled
+        if (!writer->has_audio) {
+            // Audio recording is disabled, skip this packet
+            av_packet_unref(&pkt);
+            return 0;
+        }
+        
+        // Check if we need to initialize audio stream
+        if (writer->audio_stream_idx == -1) {
+            // Create a new audio stream in the output
+            AVStream *audio_stream = avformat_new_stream(writer->output_ctx, NULL);
+            if (!audio_stream) {
+                log_error("Failed to create audio stream for MP4 writer");
+                av_packet_unref(&pkt);
+                return -1;
+            }
+            
+            // Copy codec parameters
+            ret = avcodec_parameters_copy(audio_stream->codecpar, input_stream->codecpar);
+            if (ret < 0) {
+                char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+                av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+                log_error("Failed to copy audio codec parameters: %s", error_buf);
+                av_packet_unref(&pkt);
+                return -1;
+            }
+            
+            // Set stream time base
+            audio_stream->time_base = input_stream->time_base;
+            
+            // Store audio stream index
+            writer->audio_stream_idx = audio_stream->index;
+            log_info("Added audio stream to MP4 recording for %s", writer->stream_name);
+        }
+        
+        // Set the stream index for the audio packet
+        pkt.stream_index = writer->audio_stream_idx;
+    } else {
+        // This is a video packet
+        pkt.stream_index = writer->video_stream_idx;
+        
+        // Log key frame information for debugging
+        if (pkt.flags & AV_PKT_FLAG_KEY) {
+            log_debug("Writing keyframe to MP4: pts=%lld, dts=%lld",
+                     (long long)pkt.pts, (long long)pkt.dts);
+        }
     }
 
     // Write the packet directly

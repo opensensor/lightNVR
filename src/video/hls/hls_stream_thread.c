@@ -173,6 +173,16 @@ void *hls_stream_thread(void *arg) {
         atomic_store(&ctx->running, 0);
         return NULL;
     }
+    
+    // Find audio stream if available
+    int audio_stream_idx = -1;
+    for (unsigned int i = 0; i < input_ctx->nb_streams; i++) {
+        if (input_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
+            audio_stream_idx = i;
+            log_info("Found audio stream at index %d for %s", audio_stream_idx, stream_name);
+            break;
+        }
+    }
 
     // Initialize packet
     pkt = av_packet_alloc();
@@ -362,6 +372,51 @@ void *hls_stream_thread(void *arg) {
                         if (submit_detection_task(stream_name, pkt, input_ctx->streams[video_stream_idx]->codecpar) == 0) {
                             update_last_detection_time(stream_name, current_time);
                         }
+                    }
+                }
+            }
+        }
+        // Process audio packets if audio stream is available
+        else if (audio_stream_idx != -1 && pkt->stream_index == audio_stream_idx) {
+            // Get the stream configuration to check if audio recording is enabled
+            stream_config_t config;
+            bool record_audio = false;
+            if (get_stream_config(stream, &config) == 0) {
+                record_audio = config.record_audio;
+            }
+            
+            // Only process audio packets if audio recording is enabled
+            if (record_audio) {
+                // Get the MP4 writer for this stream
+                mp4_writer_t *mp4_writer = get_mp4_writer_for_stream(stream_name);
+                if (mp4_writer && mp4_writer->has_audio) {
+                    // Create a clean copy of the packet for MP4 recording
+                    AVPacket *mp4_pkt = av_packet_alloc();
+                    if (mp4_pkt) {
+                        if (av_packet_ref(mp4_pkt, pkt) >= 0) {
+                            // Write the audio packet to the MP4 writer
+                            ret = mp4_writer_write_packet(mp4_writer, mp4_pkt, input_ctx->streams[audio_stream_idx]);
+                            if (ret < 0) {
+                                // Only log occasional errors to reduce log spam
+                                static time_t last_error_log = 0;
+                                time_t now = time(NULL);
+                                if (now - last_error_log > 10) { // Log at most every 10 seconds
+                                    char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+                                    av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+                                    log_error("Failed to write audio packet to MP4 for stream %s: %s", 
+                                             stream_name, error_buf);
+                                    last_error_log = now;
+                                }
+                            }
+                        } else {
+                            log_error("Failed to reference audio packet for MP4 recording for stream %s", stream_name);
+                        }
+                        
+                        // Clean up the packet
+                        av_packet_unref(mp4_pkt);
+                        av_packet_free(&mp4_pkt);
+                    } else {
+                        log_error("Failed to allocate packet for audio MP4 recording for stream %s", stream_name);
                     }
                 }
             }
