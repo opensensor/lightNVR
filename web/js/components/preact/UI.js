@@ -417,6 +417,54 @@ export function showVideoModal(videoUrl, title, downloadUrl) {
   // Add checkbox container to detection controls
   detectionControlsContainer.appendChild(detectionCheckboxContainer);
   
+  // Create sensitivity slider container
+  const sensitivityContainer = document.createElement('div');
+  sensitivityContainer.className = 'flex flex-col w-full mt-2 mb-2';
+  
+  // Create sensitivity label
+  const sensitivityLabel = document.createElement('label');
+  sensitivityLabel.htmlFor = 'detection-sensitivity-slider';
+  sensitivityLabel.className = 'text-sm font-medium text-gray-700 dark:text-gray-300 mb-1';
+  sensitivityLabel.textContent = 'Detection Sensitivity';
+  
+  // Create sensitivity value display
+  const sensitivityValue = document.createElement('div');
+  sensitivityValue.id = 'detection-sensitivity-value';
+  sensitivityValue.className = 'text-xs text-gray-600 dark:text-gray-400 text-center mb-1';
+  sensitivityValue.textContent = 'Time Window: 2 seconds';
+  
+  // Create sensitivity slider
+  const sensitivitySlider = document.createElement('input');
+  sensitivitySlider.type = 'range';
+  sensitivitySlider.id = 'detection-sensitivity-slider';
+  sensitivitySlider.className = 'w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700';
+  sensitivitySlider.min = '1';
+  sensitivitySlider.max = '10';
+  sensitivitySlider.step = '1';
+  sensitivitySlider.value = '2';
+  
+  // Add elements to sensitivity container
+  sensitivityContainer.appendChild(sensitivityLabel);
+  sensitivityContainer.appendChild(sensitivitySlider);
+  sensitivityContainer.appendChild(sensitivityValue);
+  
+  // Add event listener to the sensitivity slider
+  sensitivitySlider.addEventListener('input', () => {
+    // Update the time window value
+    timeWindow = parseInt(sensitivitySlider.value);
+    
+    // Update the sensitivity value display
+    sensitivityValue.textContent = `Time Window: ${timeWindow} second${timeWindow !== 1 ? 's' : ''}`;
+    
+    // Redraw detections if enabled
+    if (detectionOverlayEnabled) {
+      drawDetections();
+    }
+  });
+  
+  // Add sensitivity container to detection controls
+  detectionControlsContainer.appendChild(sensitivityContainer);
+  
   // Create detection status indicator
   const detectionStatusIndicator = document.createElement('div');
   detectionStatusIndicator.id = 'detection-status-indicator';
@@ -477,6 +525,7 @@ export function showVideoModal(videoUrl, title, downloadUrl) {
   let recordingData = null;
   let detections = [];
   let detectionOverlayEnabled = false;
+  let timeWindow = parseInt(sensitivitySlider.value); // Time window in seconds for detection visibility
   
   // Extract recording ID from URL
   const recordingIdMatch = videoUrl.match(/\/play\/(\d+)/);
@@ -594,8 +643,8 @@ export function showVideoModal(videoUrl, title, downloadUrl) {
     // Calculate current timestamp in the video
     const currentTimestamp = recordingStartTime + Math.floor(currentTime);
     
-    // Define a time window for showing detections (e.g., show detections within 5 seconds of current time)
-    const timeWindow = 5; // seconds
+    // Use the time window value from the slider
+    // timeWindow is already defined at the top level
     
     // Filter detections to only show those within the time window
     const visibleDetections = detections.filter(detection => {

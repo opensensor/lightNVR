@@ -62,11 +62,70 @@ export function RecordingsView() {
     
     // First load streams to populate the filter dropdown
     loadStreams().then(() => {
-      // Load filters from URL if present
-      loadFiltersFromUrl();
+      // Check for URL parameters
+      const urlFilters = urlUtils.getFiltersFromUrl();
       
-      // Then load recordings data
-      loadRecordings();
+      if (urlFilters) {
+        console.log('Found URL filters:', urlFilters);
+        
+        // Check specifically for detection parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('detection') && urlParams.get('detection') === '1') {
+          // Ensure recordingType is set to 'detection'
+          urlFilters.filters.recordingType = 'detection';
+        }
+        
+        // Update state with URL filters
+        setFilters(urlFilters.filters);
+        setPagination(prev => ({
+          ...prev,
+          currentPage: urlFilters.page || 1,
+          pageSize: urlFilters.limit || 20
+        }));
+        setSortField(urlFilters.sort || 'start_time');
+        setSortDirection(urlFilters.order || 'desc');
+        
+        // Make a direct API call with the URL filters to avoid state update timing issues
+        const paginationWithPage = {
+          ...pagination,
+          currentPage: urlFilters.page || 1,
+          pageSize: urlFilters.limit || 20
+        };
+        
+        console.log('Making direct API call with filters:', urlFilters.filters);
+        
+        // Load recordings directly with the URL filters
+        recordingsAPI.loadRecordings(
+          urlFilters.filters, 
+          paginationWithPage, 
+          urlFilters.sort || 'start_time', 
+          urlFilters.order || 'desc'
+        ).then(data => {
+          // Store recordings in the component state
+          const recordings = data.recordings || [];
+          setRecordings(recordings);
+          setHasData(recordings.length > 0);
+          
+          // Update pagination
+          updatePaginationFromResponse(data, urlFilters.page || 1);
+          
+          // Set loading state
+          setIsLoading(false);
+        }).catch(error => {
+          console.error('Error loading recordings:', error);
+          showStatusMessage('Error loading recordings: ' + error.message);
+          setHasData(false);
+          setIsLoading(false);
+        });
+        
+        // Set loading state
+        setIsLoading(true);
+        setHasData(false);
+        setRecordings([]);
+      } else {
+        // No URL filters, just load with default settings
+        loadRecordings();
+      }
     });
     
     // Handle responsive behavior
@@ -112,6 +171,13 @@ export function RecordingsView() {
   const loadFiltersFromUrl = () => {
     const urlFilters = urlUtils.getFiltersFromUrl();
     if (urlFilters) {
+      // Check specifically for detection parameter
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.has('detection') && urlParams.get('detection') === '1') {
+        // Ensure recordingType is set to 'detection'
+        urlFilters.filters.recordingType = 'detection';
+      }
+      
       setFilters(urlFilters.filters);
       setPagination(prev => ({
         ...prev,
@@ -120,7 +186,21 @@ export function RecordingsView() {
       }));
       setSortField(urlFilters.sort || 'start_time');
       setSortDirection(urlFilters.order || 'desc');
+      
+      // If detection parameter is present, ensure it's included in the URL when we update it
+      if (urlParams.has('detection') && urlParams.get('detection') === '1') {
+        setTimeout(() => {
+          const currentUrl = new URL(window.location.href);
+          if (!currentUrl.searchParams.has('detection')) {
+            currentUrl.searchParams.set('detection', '1');
+            window.history.replaceState({ path: currentUrl.href }, '', currentUrl.href);
+          }
+        }, 0);
+      }
+      
+      return urlFilters; // Return the filters so we can use them directly
     }
+    return null;
   };
   
   // Handle responsive filters
@@ -144,6 +224,8 @@ export function RecordingsView() {
 
   // Load recordings
   const loadRecordings = async (page = pagination.currentPage, updateUrl = true) => {
+    // Debug log to check filters
+    console.log('Loading recordings with filters:', JSON.stringify(filters));
     try {
       // Show loading state
       setIsLoading(true);
@@ -285,14 +367,17 @@ export function RecordingsView() {
   };
   
   // Apply filters
-  const applyFilters = () => {
-    // Reset to first page when applying filters
-    setPagination(prev => ({
-      ...prev,
-      currentPage: 1
-    }));
+  const applyFilters = (resetToFirstPage = true) => {
+    // Reset to first page when applying filters (unless specified otherwise)
+    if (resetToFirstPage) {
+      setPagination(prev => ({
+        ...prev,
+        currentPage: 1
+      }));
+    }
     
-    loadRecordings();
+    // Make the API call with current filters
+    loadRecordings(resetToFirstPage ? 1 : pagination.currentPage);
   };
   
   // Reset filters

@@ -15,7 +15,7 @@ export const urlUtils = {
     const urlParams = new URLSearchParams(window.location.search);
     
     // Check if we have any filter parameters
-    if (!urlParams.has('dateRange') && !urlParams.has('page') && !urlParams.has('sort')) {
+    if (!urlParams.has('dateRange') && !urlParams.has('page') && !urlParams.has('sort') && !urlParams.has('detection')) {
       return null;
     }
     
@@ -148,9 +148,11 @@ export const urlUtils = {
     // Get URL parameters
     const urlParams = new URLSearchParams(window.location.search);
     
+    // Create a new filters object based on the current filters
+    const newFilters = { ...filters };
+    
     // Date range
     if (urlParams.has('dateRange')) {
-      const newFilters = { ...filters };
       newFilters.dateRange = urlParams.get('dateRange');
       
       if (newFilters.dateRange === 'custom') {
@@ -167,19 +169,20 @@ export const urlUtils = {
           newFilters.endTime = urlParams.get('endTime');
         }
       }
-      
-      // Stream
-      if (urlParams.has('stream')) {
-        newFilters.streamId = urlParams.get('stream');
-      }
-      
-      // Recording type
-      if (urlParams.has('detection') && urlParams.get('detection') === '1') {
-        newFilters.recordingType = 'detection';
-      }
-      
-      setFilters(newFilters);
     }
+    
+    // Stream
+    if (urlParams.has('stream')) {
+      newFilters.streamId = urlParams.get('stream');
+    }
+    
+    // Recording type - IMPORTANT: Check for this parameter even if dateRange is not present
+    if (urlParams.has('detection') && urlParams.get('detection') === '1') {
+      newFilters.recordingType = 'detection';
+    }
+    
+    // Update filters state
+    setFilters(newFilters);
     
     // Pagination
     if (urlParams.has('page')) {
@@ -214,6 +217,9 @@ export const urlUtils = {
   updateUrlWithFilters: (filters, pagination, sortField, sortDirection) => {
     // Create URL parameters object based on current URL to preserve any existing parameters
     const params = new URLSearchParams(window.location.search);
+    
+    // Add a timestamp parameter to prevent caching issues
+    params.set('t', Date.now().toString());
     
     // Update or add date range parameters
     params.set('dateRange', filters.dateRange);
@@ -257,5 +263,13 @@ export const urlUtils = {
     // Update URL without reloading the page
     const newUrl = `${window.location.pathname}?${params.toString()}`;
     window.history.pushState({ path: newUrl }, '', newUrl);
+    
+    // Also update the reload behavior to maintain URL parameters
+    // This is the key to preserving parameters during page reload
+    const reloadUrl = newUrl;
+    window.onbeforeunload = function() {
+      // Replace the current URL with our preserved URL just before reload
+      window.history.replaceState({ path: reloadUrl }, '', reloadUrl);
+    };
   }
 };
