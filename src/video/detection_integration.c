@@ -33,44 +33,54 @@
 #include "video/sod_integration.h"
 #include "utils/memory.h"
 
-// Define model types
-#define MODEL_TYPE_SOD "sod"
-#define MODEL_TYPE_SOD_REALNET "sod_realnet"
-#define MODEL_TYPE_TFLITE "tflite"
-
-// Debug flag to enable/disable frame saving
-static int save_frames_for_debug = 1;  // Set to 1 to enable frame saving
-
-// Memory pool for packed buffers to avoid frequent allocations
-#define MAX_BUFFER_POOL_SIZE 8  // Maximum number of buffers in the pool (increased from 4)
-#define MAX_CONCURRENT_DETECTIONS 3  // Maximum number of concurrent detections (increased from 3)
-#define BUFFER_ALLOCATION_RETRIES 3  // Number of retries for buffer allocation
-
-typedef struct {
-    uint8_t *buffer;
-    size_t size;
-    bool in_use;
-    time_t last_used;  // Track when the buffer was last used
-} buffer_pool_item_t;
-
-static buffer_pool_item_t buffer_pool[MAX_BUFFER_POOL_SIZE] = {0};
-int active_detections = 0;
+// Include our new modules
+#include "video/detection_config.h"
+#include "video/detection_buffer.h"
+#include "video/detection_embedded.h"
+#include "video/detection_integration.h"
 
 // Track which streams are currently being processed for detection
-static char active_detection_streams[MAX_CONCURRENT_DETECTIONS][MAX_STREAM_NAME] = {{0}};
+static char *active_detection_streams = NULL;
+static int active_detections = 0;
+static int max_detections = 0;
 
-// Use the file_exists and detect_model_type functions from sod_integration.c
+/**
+ * Initialize the detection integration system
+ */
+int init_detection_integration(void) {
+    // Initialize configuration
+    if (init_detection_config() != 0) {
+        log_error("Failed to initialize detection configuration");
+        return -1;
+    }
+    
+    // Initialize buffer pool
+    if (init_buffer_pool() != 0) {
+        log_error("Failed to initialize buffer pool");
+        return -1;
+    }
+    
+    // Get configuration
+    detection_config_t *config = get_detection_config();
+    if (!config) {
+        log_error("Failed to get detection configuration");
+        return -1;
+    }
+    
+    // Allocate active detection streams array
+    max_detections = config->concurrent_detections;
+    active_detection_streams = (char *)calloc(max_detections, MAX_STREAM_NAME);
+    if (!active_detection_streams) {
+        log_error("Failed to allocate active detection streams array");
+        return -1;
+    }
+    
+    log_info("Detection integration initialized with %d max concurrent detections", max_detections);
+    return 0;
+}
 
 /**
  * Process a decoded frame for detection
- * This function should be called from the HLS streaming code with already decoded frames
- *
- * Revised to perform detection and pass results to process_frame_for_detection
- *
- * @param stream_name The name of the stream
- * @param frame The decoded AVFrame
- * @param detection_interval How often to process frames (e.g., every 10 frames)
- * @return 0 on success, -1 on error
  */
 int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame, int detection_interval) {
     // CRITICAL FIX: Add extra validation for all parameters
@@ -88,6 +98,21 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     if (frame->width <= 0 || frame->height <= 0 || !frame->data[0]) {
         log_error("process_decoded_frame_for_detection: Invalid frame dimensions or data for stream %s: width=%d, height=%d, data=%p", 
                  stream_name, frame->width, frame->height, (void*)frame->data[0]);
+        return -1;
+    }
+    
+    // Initialize if not already done
+    if (!active_detection_streams) {
+        if (init_detection_integration() != 0) {
+            log_error("Failed to initialize detection integration");
+            return -1;
+        }
+    }
+    
+    // Get configuration
+    detection_config_t *config = get_detection_config();
+    if (!config) {
+        log_error("Failed to get detection configuration");
         return -1;
     }
     
@@ -162,23 +187,23 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
         return -1;
     }
 
-    stream_config_t config;
-    if (get_stream_config(stream_handle, &config) != 0) {
+    stream_config_t stream_config;
+    if (get_stream_config(stream_handle, &stream_config) != 0) {
         log_error("Failed to get stream config for %s", stream_name);
         return -1;
     }
 
     // Check if detection is enabled for this stream
-    if (!config.detection_based_recording || config.detection_model[0] == '\0') {
+    if (!stream_config.detection_based_recording || stream_config.detection_model[0] == '\0') {
         log_info("Detection not enabled for stream %s", stream_name);
         return 0;
     }
 
-    log_info("Detection enabled for stream %s with model %s", stream_name, config.detection_model);
+    log_info("Detection enabled for stream %s with model %s", stream_name, stream_config.detection_model);
 
     // Determine model type to use the correct image format
-    const char *model_type = detect_model_type(config.detection_model);
-    log_info("Detected model type: %s for model %s", model_type, config.detection_model);
+    const char *model_type = detect_model_type(stream_config.detection_model);
+    log_info("Detected model type: %s for model %s", model_type, stream_config.detection_model);
 
     // For RealNet models, we need grayscale images
     // For CNN models, we need RGB images
@@ -196,10 +221,25 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
         log_info("Using RGB format for non-RealNet model");
     }
 
-    // Convert frame to the appropriate format for detection
+    // Determine if we should downscale the frame based on model type and device
+    int downscale_factor = get_downscale_factor(model_type);
+    log_info("Using downscale factor %d for model type %s", downscale_factor, model_type);
+
+    // Calculate dimensions after downscaling
+    int target_width = frame->width / downscale_factor;
+    int target_height = frame->height / downscale_factor;
+    
+    // Ensure dimensions are even (required by some codecs)
+    target_width = (target_width / 2) * 2;
+    target_height = (target_height / 2) * 2;
+    
+    log_info("Original dimensions: %dx%d, Target dimensions: %dx%d (downscale factor: %d)",
+             frame->width, frame->height, target_width, target_height, downscale_factor);
+
+    // Convert frame to the appropriate format for detection with downscaling if needed
     sws_ctx = sws_getContext(
         frame->width, frame->height, frame->format,
-        frame->width, frame->height, target_format,
+        target_width, target_height, target_format,
         SWS_BILINEAR, NULL, NULL, NULL);
 
     if (!sws_ctx) {
@@ -215,7 +255,7 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     }
 
     // Allocate buffer for converted frame - ensure it's large enough
-    int buffer_size = av_image_get_buffer_size(target_format, frame->width, frame->height, 1);
+    int buffer_size = av_image_get_buffer_size(target_format, target_width, target_height, 1);
     buffer = (uint8_t *)av_malloc(buffer_size);
     if (!buffer) {
         log_error("Failed to allocate buffer for converted frame for stream %s", stream_name);
@@ -224,20 +264,21 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
 
     // Setup converted frame
     av_image_fill_arrays(converted_frame->data, converted_frame->linesize, buffer,
-                        target_format, frame->width, frame->height, 1);
+                        target_format, target_width, target_height, 1);
 
-    // Convert frame to target format
+    // Convert frame to target format with downscaling
     sws_scale(sws_ctx, (const uint8_t * const *)frame->data, frame->linesize, 0,
              frame->height, converted_frame->data, converted_frame->linesize);
 
-    log_info("Converted frame to %s format for stream %s",
-             (channels == 1) ? "grayscale" : "RGB", stream_name);
+    log_info("Converted frame to %s format for stream %s (dimensions: %dx%d)",
+             (channels == 1) ? "grayscale" : "RGB", stream_name, target_width, target_height);
 
     // Check if this stream is already being processed
     bool stream_already_active = false;
     
-    for (int i = 0; i < MAX_CONCURRENT_DETECTIONS; i++) {
-        if (strcmp(active_detection_streams[i], stream_name) == 0) {
+    for (int i = 0; i < max_detections; i++) {
+        char *active_stream = active_detection_streams + i * MAX_STREAM_NAME;
+        if (strcmp(active_stream, stream_name) == 0) {
             stream_already_active = true;
             break;
         }
@@ -248,99 +289,15 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     if (!stream_already_active) {
         // If we're at the limit, log a warning but still try to process
         // This allows all streams to get a chance at detection
-        if (active_detections >= MAX_CONCURRENT_DETECTIONS) {
+        if (active_detections >= max_detections) {
             log_warn("High detection load: %d concurrent detections (limit: %d), stream %s may experience delays", 
-                    active_detections, MAX_CONCURRENT_DETECTIONS, stream_name);
+                    active_detections, max_detections, stream_name);
         }
     }
 
-    // Get a buffer from the pool or allocate a new one
-    size_t required_size = frame->width * frame->height * channels;
-    packed_buffer = NULL;
-    
-    // Try multiple times to get a buffer (with retries)
-    for (int retry = 0; retry < BUFFER_ALLOCATION_RETRIES && !packed_buffer; retry++) {
-        
-        // First try to find an existing buffer in the pool
-        for (int i = 0; i < MAX_BUFFER_POOL_SIZE; i++) {
-            if (!buffer_pool[i].in_use && buffer_pool[i].buffer && buffer_pool[i].size >= required_size) {
-                buffer_pool[i].in_use = true;
-                buffer_pool[i].last_used = time(NULL);
-                packed_buffer = buffer_pool[i].buffer;
-                log_info("Reusing buffer from pool (index %d, size %zu, retry %d)", 
-                        i, buffer_pool[i].size, retry);
-                break;
-            }
-        }
-        
-        // If no suitable buffer found, try to allocate a new one
-        if (!packed_buffer) {
-            // Find an empty slot in the pool
-            int empty_slot = -1;
-            for (int i = 0; i < MAX_BUFFER_POOL_SIZE; i++) {
-                if (!buffer_pool[i].buffer) {
-                    empty_slot = i;
-                    break;
-                }
-            }
-            
-            // If no empty slot, try to find the oldest unused buffer
-            if (empty_slot == -1) {
-                time_t oldest_time = time(NULL);
-                for (int i = 0; i < MAX_BUFFER_POOL_SIZE; i++) {
-                    if (!buffer_pool[i].in_use && buffer_pool[i].last_used < oldest_time) {
-                        oldest_time = buffer_pool[i].last_used;
-                        empty_slot = i;
-                    }
-                }
-            }
-            
-            // If still no slot, we can't allocate a new buffer
-            if (empty_slot == -1) {
-                log_error("No available slots in buffer pool (retry %d)", retry);                
-                // If this is the last retry, give up
-                if (retry == BUFFER_ALLOCATION_RETRIES - 1) {
-                    goto cleanup;
-                }
-                
-                // Wait a bit before retrying
-                usleep(100000); // 100ms
-                continue;
-            }
-            
-            // If there's an existing buffer but it's too small, free it
-            if (buffer_pool[empty_slot].buffer && buffer_pool[empty_slot].size < required_size) {
-                free(buffer_pool[empty_slot].buffer);
-                buffer_pool[empty_slot].buffer = NULL;
-            }
-            
-            // Allocate a new buffer if needed
-            if (!buffer_pool[empty_slot].buffer) {
-                buffer_pool[empty_slot].buffer = (uint8_t *)safe_malloc(required_size);
-                if (!buffer_pool[empty_slot].buffer) {
-                    log_error("Failed to allocate packed buffer for frame (size: %zu, retry %d)", 
-                             required_size, retry);
-                    
-                    // If this is the last retry, give up
-                    if (retry == BUFFER_ALLOCATION_RETRIES - 1) {
-                        goto cleanup;
-                    }
-                    
-                    // Wait a bit before retrying
-                    usleep(100000); // 100ms
-                    continue;
-                }
-                
-                buffer_pool[empty_slot].size = required_size;
-            }
-            
-            buffer_pool[empty_slot].in_use = true;
-            buffer_pool[empty_slot].last_used = time(NULL);
-            packed_buffer = buffer_pool[empty_slot].buffer;
-            log_info("Allocated buffer for pool (index %d, size %zu, retry %d)", 
-                    empty_slot, required_size, retry);
-        }
-    }
+    // Get a buffer from the pool
+    size_t required_size = target_width * target_height * channels;
+    packed_buffer = get_buffer_from_pool(required_size);
     
     if (!packed_buffer) {
         log_error("Failed to allocate packed buffer for frame");
@@ -348,10 +305,10 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     }
 
     // Copy each row, removing stride padding
-    for (int y = 0; y < frame->height; y++) {
-        memcpy(packed_buffer + y * frame->width * channels,
+    for (int y = 0; y < target_height; y++) {
+        memcpy(packed_buffer + y * target_width * channels,
                converted_frame->data[0] + y * converted_frame->linesize[0],
-               frame->width * channels);
+               target_width * channels);
     }
     
     // Increment active detections counter and track this stream
@@ -359,10 +316,11 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     // Add this stream to the active list if it's not already there
     if (!stream_already_active) {
         bool added = false;
-        for (int i = 0; i < MAX_CONCURRENT_DETECTIONS; i++) {
-            if (active_detection_streams[i][0] == '\0') {
-                strncpy(active_detection_streams[i], stream_name, MAX_STREAM_NAME - 1);
-                active_detection_streams[i][MAX_STREAM_NAME - 1] = '\0';
+        for (int i = 0; i < max_detections; i++) {
+            char *active_stream = active_detection_streams + i * MAX_STREAM_NAME;
+            if (active_stream[0] == '\0') {
+                strncpy(active_stream, stream_name, MAX_STREAM_NAME - 1);
+                active_stream[MAX_STREAM_NAME - 1] = '\0';
                 added = true;
                 break;
             }
@@ -376,34 +334,18 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     }
     
     active_detections++;
-    log_info("Active detections: %d/%d for stream %s", active_detections, MAX_CONCURRENT_DETECTIONS, stream_name);
-
-    // Log some debug info about the packed buffer
-    log_info("Packed buffer first 12 bytes: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
-            packed_buffer[0], packed_buffer[1], packed_buffer[2], packed_buffer[3],
-            packed_buffer[4], packed_buffer[5], packed_buffer[6], packed_buffer[7],
-            packed_buffer[8], packed_buffer[9], packed_buffer[10], packed_buffer[11]);
+    log_info("Active detections: %d/%d for stream %s", active_detections, max_detections, stream_name);
 
     // Get the appropriate threshold for the model type
-    float threshold = config.detection_threshold;
-    if (threshold <= 0.0f) {
-        if (strcmp(model_type, MODEL_TYPE_SOD_REALNET) == 0) {
-            threshold = 5.0f; // RealNet models typically use 5.0
-            log_info("Using default threshold of 5.0 for RealNet model");
-        } else {
-            threshold = 0.3f; // CNN models typically use 0.3
-            log_info("Using default threshold of 0.3 for CNN model");
-        }
-    } else {
-        log_info("Using configured threshold of %.2f for model", threshold);
-    }
+    float threshold = get_detection_threshold(model_type, stream_config.detection_threshold);
+    log_info("Using threshold %.2f for model %s", threshold, model_type);
 
     // Get global config to access models path
     extern config_t g_config;
     
     // Check if model_path is a relative path
     char full_model_path[MAX_PATH_LENGTH];
-    if (config.detection_model[0] != '/') {
+    if (stream_config.detection_model[0] != '/') {
         // Construct full path using configured models path from INI if it exists
         if (g_config.models_path && strlen(g_config.models_path) > 0) {
             // Calculate available space for model name
@@ -411,16 +353,16 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
             size_t model_max_len = MAX_PATH_LENGTH - prefix_len - 1; // -1 for null terminator
             
             // Ensure model name isn't too long
-            size_t model_len = strlen(config.detection_model);
+            size_t model_len = strlen(stream_config.detection_model);
             if (model_len > model_max_len) {
                 log_error("Model name too long: %s (max allowed: %zu chars)", 
-                         config.detection_model, model_max_len);
+                         stream_config.detection_model, model_max_len);
                 goto cleanup;
             }
             
             // Safe to use snprintf now
             int ret = snprintf(full_model_path, MAX_PATH_LENGTH, "%s/%s", 
-                              g_config.models_path, config.detection_model);
+                              g_config.models_path, stream_config.detection_model);
             
             // Check for truncation
             if (ret < 0 || ret >= MAX_PATH_LENGTH) {
@@ -435,16 +377,16 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
             size_t model_max_len = MAX_PATH_LENGTH - prefix_len - 1; // -1 for null terminator
             
             // Ensure model name isn't too long
-            size_t model_len = strlen(config.detection_model);
+            size_t model_len = strlen(stream_config.detection_model);
             if (model_len > model_max_len) {
                 log_error("Model name too long: %s (max allowed: %zu chars)", 
-                         config.detection_model, model_max_len);
+                         stream_config.detection_model, model_max_len);
                 goto cleanup;
             }
             
             // Safe to use snprintf now
             int ret = snprintf(full_model_path, MAX_PATH_LENGTH, "%s%s", 
-                              prefix, config.detection_model);
+                              prefix, stream_config.detection_model);
             
             // Check for truncation
             if (ret < 0 || ret >= MAX_PATH_LENGTH) {
@@ -473,17 +415,17 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                     size_t model_max_len = MAX_PATH_LENGTH - prefix_len - 1; // -1 for null terminator
                     
                     // Ensure model name isn't too long
-                    size_t model_len = strlen(config.detection_model);
+                    size_t model_len = strlen(stream_config.detection_model);
                     if (model_len > model_max_len) {
                         log_error("Model name too long for alternative location: %s (max allowed: %zu chars)", 
-                                 config.detection_model, model_max_len);
+                                 stream_config.detection_model, model_max_len);
                         continue; // Try next location
                     }
                     
                     // Safe to use snprintf now
                     int ret = snprintf(alt_path, MAX_PATH_LENGTH, "%s%s", 
                                       locations[i],
-                                      config.detection_model);
+                                      stream_config.detection_model);
                     
                     // Check for truncation
                     if (ret < 0 || ret >= MAX_PATH_LENGTH) {
@@ -500,7 +442,7 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
         }
     } else {
         // Already an absolute path
-        strncpy(full_model_path, config.detection_model, MAX_PATH_LENGTH - 1);
+        strncpy(full_model_path, stream_config.detection_model, MAX_PATH_LENGTH - 1);
     }
 
     log_info("Using model path: %s", full_model_path);
@@ -513,7 +455,7 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     time_t frame_time = time(NULL);
     
     // Check if we should use motion detection
-    bool use_motion_detection = (strcmp(config.detection_model, "motion") == 0);
+    bool use_motion_detection = (strcmp(stream_config.detection_model, "motion") == 0);
 
     // If the model is "motion", enable optimized motion detection
     if (use_motion_detection) {
@@ -544,7 +486,7 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
         
         // Run optimized motion detection only if it's properly enabled
         if (is_motion_detection_enabled(stream_name)) {
-            int motion_ret = detect_motion(stream_name, packed_buffer, frame->width, frame->height,
+            int motion_ret = detect_motion(stream_name, packed_buffer, target_width, target_height,
                                           channels, frame_time, &motion_result);
             
             if (motion_ret == 0 && motion_result.count > 0) {
@@ -552,8 +494,8 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                         stream_name, motion_result.detections[0].confidence);
                 
                 // Pass motion detection results to process_frame_for_recording
-                int ret = process_frame_for_recording(stream_name, packed_buffer, frame->width,
-                                                     frame->height, channels, frame_time, &motion_result);
+                int ret = process_frame_for_recording(stream_name, packed_buffer, target_width,
+                                                     target_height, channels, frame_time, &motion_result);
                 
                 if (ret != 0) {
                     log_error("Failed to process optimized motion detection results for recording (error code: %d)", ret);
@@ -697,7 +639,7 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                     
                     // Use the SOD integration function to load the model
                     char resolved_path[MAX_PATH_LENGTH];
-                    model = load_sod_model_for_detection(config.detection_model, threshold, 
+                    model = load_sod_model_for_detection(stream_config.detection_model, threshold, 
                                                        resolved_path, MAX_PATH_LENGTH);
                     
                     if (model) {
@@ -733,7 +675,7 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
         } else {
             // Use our improved detect_objects function for ALL model types
             log_info("RUNNING DETECTION with unified detect_objects function");
-            detect_ret = detect_objects(model, packed_buffer, frame->width, frame->height, channels, &result);
+            detect_ret = detect_objects(model, packed_buffer, target_width, target_height, channels, &result);
             
             if (detect_ret != 0) {
                 log_error("Detection failed (error code: %d)", detect_ret);
@@ -750,78 +692,74 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                 }
                 
                 // Pass detection results to process_frame_for_recording
-                int ret = process_frame_for_recording(stream_name, packed_buffer, frame->width,
-                                                     frame->height, channels, frame_time, &result);
+                int ret = process_frame_for_recording(stream_name, packed_buffer, target_width,
+                                                     target_height, channels, frame_time, &result);
                 
                 if (ret != 0) {
                     log_error("Failed to process detection results for recording (error code: %d)", ret);
                 }
             }
             
-            // Note: We don't unload the model here, it stays in the cache
+            // Note: We don't unload the model here, it's kept in the cache
         }
     }
 
-cleanup:
-    // Cleanup - ensure all resources are properly freed
-    if (packed_buffer) {
-        // Return the buffer to the pool
-        for (int i = 0; i < MAX_BUFFER_POOL_SIZE; i++) {
-            if (buffer_pool[i].buffer == packed_buffer) {
-                buffer_pool[i].in_use = false;
-                buffer_pool[i].last_used = time(NULL);
-                log_info("Returned buffer to pool (index %d)", i);
-                break;
-            }
-        }
-        
-        // Decrement active detections counter and remove this stream from the active list
-        if (active_detections > 0) {
-            active_detections--;
-        }
-        
-        // Remove this stream from the active list
-        for (int i = 0; i < MAX_CONCURRENT_DETECTIONS; i++) {
-            if (strcmp(active_detection_streams[i], stream_name) == 0) {
-                active_detection_streams[i][0] = '\0';
-                break;
-            }
-        }
-        
-        log_info("Active detections: %d/%d after completing %s", active_detections, MAX_CONCURRENT_DETECTIONS, stream_name);
-    }
+    // Decrement active detections counter
+    active_detections--;
     
-    if (buffer) {
-        av_free(buffer);
+    // Return the detection result
+    return detect_ret;
+
+cleanup:
+    // Free resources
+    if (sws_ctx) {
+        sws_freeContext(sws_ctx);
     }
     
     if (converted_frame) {
         av_frame_free(&converted_frame);
     }
     
-    if (sws_ctx) {
-        sws_freeContext(sws_ctx);
+    if (buffer) {
+        av_free(buffer);
     }
-
-    log_info("Finished processing frame %d for detection", frame_counter);
-    return (detect_ret == 0) ? 0 : -1;
+    
+    if (packed_buffer) {
+        return_buffer_to_pool(packed_buffer);
+    }
+    
+    // Decrement active detections counter
+    active_detections--;
+    
+    return -1;
 }
 
 /**
  * Cleanup detection resources when shutting down
- * This should be called when the application is exiting
  */
 void cleanup_detection_resources(void) {
-    
-    // Free all buffers in the pool
-    for (int i = 0; i < MAX_BUFFER_POOL_SIZE; i++) {
-        if (buffer_pool[i].buffer) {
-            free(buffer_pool[i].buffer);
-            buffer_pool[i].buffer = NULL;
-            buffer_pool[i].size = 0;
-            buffer_pool[i].in_use = false;
-        }
+    // Free active detection streams array
+    if (active_detection_streams) {
+        free(active_detection_streams);
+        active_detection_streams = NULL;
     }
     
-    log_info("Cleaned up detection resources");
+    // Cleanup buffer pool
+    cleanup_buffer_pool();
+    
+    log_info("Detection resources cleaned up");
+}
+
+/**
+ * Get the number of active detections
+ */
+int get_active_detection_count(void) {
+    return active_detections;
+}
+
+/**
+ * Get the maximum number of concurrent detections
+ */
+int get_max_detection_count(void) {
+    return max_detections;
 }

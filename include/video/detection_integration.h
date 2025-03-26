@@ -6,12 +6,13 @@
 #include <pthread.h>
 #include <stdbool.h>
 
-// Maximum number of concurrent detections
-#define MAX_CONCURRENT_DETECTIONS 3
-
-// Expose detection state variables for memory-constrained optimization
-extern pthread_mutex_t active_detections_mutex;
-extern int active_detections;
+/**
+ * Initialize the detection integration system
+ * This should be called at startup
+ * 
+ * @return 0 on success, non-zero on failure
+ */
+int init_detection_integration(void);
 
 /**
  * Process a decoded frame for detection
@@ -29,5 +30,19 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
  * This should be called when the application is exiting
  */
 void cleanup_detection_resources(void);
+
+/**
+ * Get the number of active detections
+ * 
+ * @return Number of active detections
+ */
+int get_active_detection_count(void);
+
+/**
+ * Get the maximum number of concurrent detections
+ * 
+ * @return Maximum number of concurrent detections
+ */
+int get_max_detection_count(void);
 
 #endif /* DETECTION_INTEGRATION_H */
