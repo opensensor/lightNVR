@@ -80,10 +80,38 @@ int get_downscale_factor(const char *model_type) {
         return config->downscale_factor_default;
     }
     
-    // For embedded devices, use model-specific factors
+    // CRITICAL FIX: For embedded devices, use more aggressive downscaling for CNN models
     if (strcmp(model_type, MODEL_TYPE_SOD) == 0) {
-        return config->downscale_factor_cnn;
+        // For CNN models on embedded devices, use a higher downscale factor
+        // This significantly reduces memory usage and processing time
+        int downscale = config->downscale_factor_cnn;
+        
+        // Check available memory to determine if we need more aggressive downscaling
+        FILE *meminfo = fopen("/proc/meminfo", "r");
+        if (meminfo) {
+            char line[256];
+            unsigned long available_mem_kb = 0;
+            
+            while (fgets(line, sizeof(line), meminfo)) {
+                if (strncmp(line, "MemAvailable:", 13) == 0) {
+                    sscanf(line, "MemAvailable: %lu", &available_mem_kb);
+                    break;
+                }
+            }
+            fclose(meminfo);
+            
+            // If available memory is very low (less than 50MB), use more aggressive downscaling
+            if (available_mem_kb > 0 && available_mem_kb < 50 * 1024) {
+                log_warn("Very low memory available (%lu KB), using more aggressive downscaling", 
+                        available_mem_kb);
+                downscale = 4; // More aggressive downscaling
+            }
+        }
+        
+        log_info("Using downscale factor %d for CNN model on embedded device", downscale);
+        return downscale;
     } else if (strcmp(model_type, MODEL_TYPE_SOD_REALNET) == 0) {
+        // RealNet models are already optimized for embedded devices
         return config->downscale_factor_realnet;
     }
     

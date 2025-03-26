@@ -59,6 +59,13 @@ int get_active_buffer_count(void);
 int get_max_buffer_count(void);
 
 /**
+ * Emergency cleanup of buffer pool
+ * This frees all buffers that have been in use for too long
+ * Call this when buffer allocation fails to recover from leaks
+ */
+void emergency_buffer_pool_cleanup(void);
+
+/**
  * Track memory allocations
  * 
  * @param size Size of the allocation

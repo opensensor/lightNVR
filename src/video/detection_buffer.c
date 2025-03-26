@@ -186,23 +186,85 @@ uint8_t* get_buffer_from_pool(size_t required_size) {
  * Return a buffer to the pool
  */
 int return_buffer_to_pool(uint8_t *buffer) {
-    if (!buffer || !buffer_pool) {
+    if (!buffer) {
+        log_warn("Attempted to return NULL buffer to pool");
+        return -1;
+    }
+    
+    if (!buffer_pool) {
+        log_warn("Buffer pool not initialized when returning buffer");
+        // Free the buffer directly to prevent memory leak
+        free(buffer);
         return -1;
     }
     
     // Find the buffer in the pool
     for (int i = 0; i < max_buffers; i++) {
         if (buffer_pool[i].buffer == buffer) {
-            buffer_pool[i].in_use = false;
-            buffer_pool[i].last_used = time(NULL);
-            active_buffers--;
-            log_info("Returned buffer to pool (index %d)", i);
-            return 0;
+            if (buffer_pool[i].in_use) {
+                buffer_pool[i].in_use = false;
+                buffer_pool[i].last_used = time(NULL);
+                if (active_buffers > 0) {
+                    active_buffers--;
+                }
+                log_info("Returned buffer to pool (index %d, active: %d/%d)", 
+                        i, active_buffers, max_buffers);
+                return 0;
+            } else {
+                log_warn("Buffer already marked as not in use (index %d)", i);
+                return 0; // Still consider this a success
+            }
         }
     }
     
-    log_error("Buffer not found in pool");
+    // CRITICAL FIX: If buffer not found in pool, free it directly to prevent memory leak
+    log_error("Buffer %p not found in pool, freeing directly", (void*)buffer);
+    free(buffer);
     return -1;
+}
+
+/**
+ * Emergency cleanup of buffer pool - free all buffers that have been in use for too long
+ * This helps recover from situations where buffers aren't properly returned
+ */
+void emergency_buffer_pool_cleanup(void) {
+    if (!buffer_pool) {
+        return;
+    }
+    
+    time_t current_time = time(NULL);
+    int freed_count = 0;
+    
+    log_warn("Performing emergency buffer pool cleanup");
+    
+    for (int i = 0; i < max_buffers; i++) {
+        if (buffer_pool[i].in_use && buffer_pool[i].buffer) {
+            // If buffer has been in use for more than 30 seconds, assume it's leaked
+            if (current_time - buffer_pool[i].last_used > 30) {
+                log_warn("Freeing leaked buffer (index %d, in use for %ld seconds)",
+                        i, current_time - buffer_pool[i].last_used);
+                
+                // Track memory before freeing
+                track_memory_allocation(buffer_pool[i].size, false);
+                free(buffer_pool[i].buffer);
+                buffer_pool[i].buffer = NULL;
+                buffer_pool[i].size = 0;
+                buffer_pool[i].in_use = false;
+                freed_count++;
+                
+                if (active_buffers > 0) {
+                    active_buffers--;
+                }
+            }
+        }
+    }
+    
+    if (freed_count > 0) {
+        log_info("Emergency cleanup freed %d buffers, active buffers now: %d/%d", 
+                freed_count, active_buffers, max_buffers);
+    } else {
+        log_info("Emergency cleanup found no leaked buffers");
+    }
 }
 
 /**

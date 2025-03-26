@@ -301,7 +301,19 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     
     if (!packed_buffer) {
         log_error("Failed to allocate packed buffer for frame");
-        goto cleanup;
+        
+        // CRITICAL FIX: Try emergency cleanup to recover from potential buffer leaks
+        log_warn("Attempting emergency buffer pool cleanup to recover from potential leaks");
+        emergency_buffer_pool_cleanup();
+        
+        // Try one more time after cleanup
+        packed_buffer = get_buffer_from_pool(required_size);
+        if (!packed_buffer) {
+            log_error("Still failed to allocate packed buffer after emergency cleanup");
+            goto cleanup;
+        }
+        
+        log_info("Successfully allocated buffer after emergency cleanup");
     }
 
     // Copy each row, removing stride padding
