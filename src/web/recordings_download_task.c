@@ -48,6 +48,7 @@ download_recording_task_t *download_recording_task_create(struct mg_connection *
 void download_recording_task_free(download_recording_task_t *task) {
     if (task) {
         free(task);
+        task = NULL; // Prevent use-after-free
     }
 }
 
@@ -57,36 +58,36 @@ void download_recording_task_free(download_recording_task_t *task) {
  * @param arg Task argument (download_recording_task_t*)
  */
 void download_recording_task_function(void *arg) {
+    // Validate task
+    if (!arg) {
+        log_error("Invalid download recording task (NULL)");
+        return;
+    }
+    
     download_recording_task_t *task = (download_recording_task_t *)arg;
-    if (!task) {
-        log_error("Invalid download recording task");
-        return;
-    }
     
-    struct mg_connection *c = task->connection;
-    if (!c) {
-        log_error("Invalid Mongoose connection");
-        download_recording_task_free(task);
-        return;
-    }
-    
-    // Release the thread pool when this task is done
+    // Local variables to track resources that need cleanup
+    struct mg_connection *c = NULL;
+    FILE *file = NULL;
+    char *buffer = NULL;
     bool release_needed = true;
+    recording_metadata_t recording = {0};
+    
+    // Validate connection
+    c = task->connection;
+    if (!c) {
+        log_error("Invalid Mongoose connection (NULL)");
+        goto cleanup;
+    }
     
     uint64_t id = task->id;
-    
     log_info("Handling GET /api/recordings/download/%llu request", (unsigned long long)id);
     
     // Get recording from database
-    recording_metadata_t recording;
     if (get_recording_metadata_by_id(id, &recording) != 0) {
         log_error("Recording not found: %llu", (unsigned long long)id);
         mg_send_json_error(c, 404, "Recording not found");
-        download_recording_task_free(task);
-        if (release_needed) {
-            api_thread_pool_release();
-        }
-        return;
+        goto cleanup;
     }
     
     // Check if file exists
@@ -94,23 +95,15 @@ void download_recording_task_function(void *arg) {
     if (stat(recording.file_path, &st) != 0) {
         log_error("Recording file not found: %s", recording.file_path);
         mg_send_json_error(c, 404, "Recording file not found");
-        download_recording_task_free(task);
-        if (release_needed) {
-            api_thread_pool_release();
-        }
-        return;
+        goto cleanup;
     }
     
     // Open file
-    FILE *file = fopen(recording.file_path, "rb");
+    file = fopen(recording.file_path, "rb");
     if (!file) {
         log_error("Failed to open recording file: %s", recording.file_path);
         mg_send_json_error(c, 500, "Failed to open recording file");
-        download_recording_task_free(task);
-        if (release_needed) {
-            api_thread_pool_release();
-        }
-        return;
+        goto cleanup;
     }
     
     // Extract filename from path
@@ -153,38 +146,24 @@ void download_recording_task_function(void *arg) {
     
     // Send file content
     // Allocate buffer on heap instead of stack for embedded devices
-    char *buffer = malloc(8192); // Smaller buffer size for embedded devices
+    const size_t BUFFER_SIZE = 8192; // Fixed buffer size
+    buffer = malloc(BUFFER_SIZE);
     if (!buffer) {
         log_error("Failed to allocate memory for file buffer");
-        if (fclose(file) != 0) {
-            log_error("Error closing file: %s", strerror(errno));
-        }
-        file = NULL;
-        download_recording_task_free(task);
-        if (release_needed) {
-            api_thread_pool_release();
-        }
-        return;
+        goto cleanup;
     }
-    
-    size_t bytes_read;
     
     // Add additional safety check for connection
     if (!c || c->is_closing) {
         log_error("Connection is invalid or closing, aborting download request");
-        if (fclose(file) != 0) {
-            log_error("Error closing file: %s", strerror(errno));
-        }
-        file = NULL;
-        free(buffer); // Free the buffer
-        download_recording_task_free(task);
-        if (release_needed) {
-            api_thread_pool_release();
-        }
-        return;
+        goto cleanup;
     }
     
     log_debug("Starting to send file data in chunks (download)");
+    
+    // Read and send file in chunks
+    size_t bytes_read = 0;
+    size_t total_sent = 0;
     
     while (1) {
         // Check if connection is still valid
@@ -193,20 +172,16 @@ void download_recording_task_function(void *arg) {
             break;
         }
         
-        // Additional safety check for buffer
-        if (!buffer) {
-            log_error("Buffer became invalid during download");
-            break;
-        }
-        
-        // Additional safety check for file
+        // Check if file is still valid
         if (!file) {
             log_error("File pointer became invalid during download");
             break;
         }
         
-        bytes_read = fread(buffer, 1, 8192, file);
+        // Read a chunk from the file
+        bytes_read = fread(buffer, 1, BUFFER_SIZE, file);
         
+        // Check for end of file or error
         if (bytes_read <= 0) {
             if (feof(file)) {
                 log_info("End of file reached for download serving");
@@ -215,34 +190,50 @@ void download_recording_task_function(void *arg) {
                 log_error("Error reading file during download serving: %s", strerror(errno));
                 break;
             }
+            // If neither EOF nor error, but no bytes read, break to avoid infinite loop
+            break;
         }
         
         // Send the chunk to the client
         if (bytes_read > 0) {
-            // Additional safety check before sending
+            // Double-check connection before sending
             if (!c || c->is_closing) {
                 log_error("Connection became invalid before sending chunk");
                 break;
             }
+            
+            // Send data
             mg_send(c, buffer, bytes_read);
+            total_sent += bytes_read;
+            
+            // Log progress for large files
+            if (total_sent % (1024 * 1024) == 0) { // Log every 1MB
+                log_debug("Download progress: %zu bytes sent (%zu%%)", 
+                         total_sent, (total_sent * 100) / st.st_size);
+            }
         }
     }
     
-    // Free the buffer
-    free(buffer);
-    buffer = NULL;
-    
-    log_debug("Finished sending file data (download)");
-    
-    // Close file
-    if (fclose(file) != 0) {
-        log_error("Error closing file during download: %s", strerror(errno));
+    log_debug("Finished sending file data (download): %zu bytes sent", total_sent);
+
+cleanup:
+    // Clean up resources
+    if (buffer) {
+        free(buffer);
+        buffer = NULL;
     }
-    file = NULL; // Prevent use-after-free
     
-    log_debug("Connection closed");
+    if (file) {
+        if (fclose(file) != 0) {
+            log_error("Error closing file during download: %s", strerror(errno));
+        }
+        file = NULL;
+    }
     
-    download_recording_task_free(task);
+    if (task) {
+        download_recording_task_free(task);
+        task = NULL;
+    }
     
     // Release the thread pool if needed
     if (release_needed) {
