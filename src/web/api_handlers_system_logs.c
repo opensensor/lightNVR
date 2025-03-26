@@ -137,8 +137,8 @@ void get_system_logs(char ***logs, int *count) {
  */
 static int log_level_meets_minimum(const char *log_level, const char *min_level) {
     // Convert log levels to numeric values for comparison
-    int level_value = 2; // Default to INFO (2)
-    int min_value = 2;   // Default to INFO (2)
+    int level_value = 3; // Default to DEBUG (3)
+    int min_value = 3;   // Default to DEBUG (3)
     
     // Map log level strings to numeric values
     // ERROR = 0, WARNING = 1, INFO = 2, DEBUG = 3
@@ -179,7 +179,7 @@ void mg_handle_get_system_logs(struct mg_connection *c, struct mg_http_message *
     log_info("Handling GET /api/system/logs request");
     
     // Get query parameters
-    char level[16] = "info"; // Default to info level
+    char level[16] = "debug";
     
     // Extract log level from query parameters
     struct mg_str query = mg_str_n(mg_str_get_ptr(&hm->query), mg_str_get_len(&hm->query));
