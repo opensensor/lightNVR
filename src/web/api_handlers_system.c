@@ -433,9 +433,7 @@ void mg_handle_get_system_info(struct mg_connection *c, struct mg_http_message *
             }
         }
         
-        // For testing/debugging, set active_streams to 4 as expected by the user
-        // Remove this line in production
-        active_streams = 4;
+
         
         cJSON_AddNumberToObject(streams_obj, "active", active_streams);
         cJSON_AddNumberToObject(streams_obj, "total", g_config.max_streams);
