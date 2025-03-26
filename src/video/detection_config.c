@@ -36,7 +36,7 @@ detection_config_t default_config = {
 detection_config_t embedded_config = {
     // Memory constraints
     .buffer_pool_size = 4,           // 4 buffers in the pool
-    .concurrent_detections = 2,      // 2 concurrent detections
+    .concurrent_detections = 1,      // 1 concurrent detections
     .buffer_allocation_retries = 3,  // 3 retries for buffer allocation
     
     // Downscaling factors

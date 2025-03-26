@@ -339,6 +339,11 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     // Get the appropriate threshold for the model type
     float threshold = get_detection_threshold(model_type, stream_config.detection_threshold);
     log_info("Using threshold %.2f for model %s", threshold, model_type);
+    
+    // CRITICAL FIX: Log more details about the detection configuration
+    log_info("DETECTION DEBUG: Stream=%s, Model=%s, Type=%s, Threshold=%.2f, Dimensions=%dx%d, Channels=%d",
+             stream_name, stream_config.detection_model, model_type, threshold, 
+             target_width, target_height, channels);
 
     // Get global config to access models path
     extern config_t g_config;
@@ -637,10 +642,26 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                     // Load the new model using the SOD integration module
                     log_info("LOADING DETECTION MODEL: %s with threshold: %.2f", full_model_path, threshold);
                     
+                    // CRITICAL FIX: Check if SOD is enabled at compile time
+                    #ifdef SOD_ENABLED
+                    log_info("SOD is enabled at compile time");
+                    #else
+                    log_warn("SOD is NOT enabled at compile time, will try dynamic loading");
+                    #endif
+                    
                     // Use the SOD integration function to load the model
                     char resolved_path[MAX_PATH_LENGTH];
+                    log_info("Calling load_sod_model_for_detection with model=%s, threshold=%.2f", 
+                             stream_config.detection_model, threshold);
                     model = load_sod_model_for_detection(stream_config.detection_model, threshold, 
                                                        resolved_path, MAX_PATH_LENGTH);
+                    
+                    if (!model) {
+                        log_error("CRITICAL ERROR: Failed to load model %s", stream_config.detection_model);
+                    } else {
+                        log_info("Successfully loaded model %s (resolved to %s)", 
+                                 stream_config.detection_model, resolved_path);
+                    }
                     
                     if (model) {
                         // Update the full_model_path with the resolved path
