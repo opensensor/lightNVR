@@ -953,6 +953,18 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
         log_error("Connection error: %s", (char *)ev_data);
     } else if (ev == MG_EV_POLL) {
         // Poll event - do nothing
+    } else if (ev == MG_EV_READ || ev == MG_EV_WRITE) {
+        // Read/write events - normal socket operations
+        // No need to log these high-frequency events
+    } else if (ev == 7) {
+        // Event 7 appears to be related to WebSocket data frame start
+        // Handle silently to avoid log spam
+    } else if (ev == 8) {
+        // Event 8 appears to be related to WebSocket data frame continuation
+        // Handle silently to avoid log spam
+    } else if (ev == 10) {
+        // Event 10 appears to be related to connection activity
+        // Handle silently to avoid log spam
     } else {
         // Other events
         log_debug("Unhandled event: %d", ev);

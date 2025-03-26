@@ -234,6 +234,7 @@ void free_frame_buffer(int buffer_idx) {
     // Now free the memory outside the lock
     if (frames_to_free) {
         free(frames_to_free);
+        frames_to_free = NULL;
     }
     
     // Destroy the mutex
@@ -303,7 +304,12 @@ void flush_prebuffer_to_mp4(const char *stream_name) {
         }
     }
     
-    // Get the MP4 writer for this stream while still holding the lock
+    if (buffer_idx < 0) {
+        log_info("No pre-buffer found for stream %s", local_stream_name);
+        return;
+    }
+    
+    // Get the MP4 writer for this stream
     mp4_writer_t *writer = NULL;
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (mp4_writers[i] && 
@@ -314,13 +320,14 @@ void flush_prebuffer_to_mp4(const char *stream_name) {
         }
     }
 
-    if (buffer_idx < 0) {
-        log_info("No pre-buffer found for stream %s", local_stream_name);
+    if (!writer) {
+        log_error("No MP4 writer found for stream %s", local_stream_name);
         return;
     }
 
-    if (!writer) {
-        log_error("No MP4 writer found for stream %s", local_stream_name);
+    // Validate that the writer is still valid
+    if (!writer->is_initialized && writer->output_ctx == NULL) {
+        log_error("MP4 writer for stream %s is no longer valid", local_stream_name);
         return;
     }
 

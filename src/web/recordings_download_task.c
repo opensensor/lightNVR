@@ -193,7 +193,19 @@ void download_recording_task_function(void *arg) {
             break;
         }
         
-        bytes_read = fread(buffer, 1, sizeof(buffer), file);
+        // Additional safety check for buffer
+        if (!buffer) {
+            log_error("Buffer became invalid during download");
+            break;
+        }
+        
+        // Additional safety check for file
+        if (!file) {
+            log_error("File pointer became invalid during download");
+            break;
+        }
+        
+        bytes_read = fread(buffer, 1, 8192, file);
         
         if (bytes_read <= 0) {
             if (feof(file)) {
@@ -207,6 +219,11 @@ void download_recording_task_function(void *arg) {
         
         // Send the chunk to the client
         if (bytes_read > 0) {
+            // Additional safety check before sending
+            if (!c || c->is_closing) {
+                log_error("Connection became invalid before sending chunk");
+                break;
+            }
             mg_send(c, buffer, bytes_read);
         }
     }

@@ -103,6 +103,9 @@ static int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, cons
 
     // Log the full output path
     log_info("Initializing MP4 writer to output file: %s", writer->output_path);
+    
+    // Free dir_path as it's no longer needed
+    free(dir_path);
 
     // Create output format context
     ret = avformat_alloc_output_context2(&writer->output_ctx, NULL, "mp4", writer->output_path);
