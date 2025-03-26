@@ -39,6 +39,7 @@ typedef struct {
     int post_detection_buffer; // Seconds to keep after detection
     bool streaming_enabled; // Whether HLS streaming is enabled for this stream
     stream_protocol_t protocol; // Stream protocol (TCP, UDP, or ONVIF)
+    bool record_audio; // Whether to record audio with video
     
     // ONVIF specific fields
     char onvif_username[64];

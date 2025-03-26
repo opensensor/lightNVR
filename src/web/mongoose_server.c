@@ -498,6 +498,9 @@ http_server_handle_t mongoose_server_init(const http_server_config_t *config) {
     return server;
 }
 
+// External function to set the web server socket for signal handling
+extern void set_web_server_socket(int socket_fd);
+
 /**
  * @brief Start HTTP server
  */
@@ -525,6 +528,13 @@ int http_server_start(http_server_handle_t server) {
     if (c == NULL) {
         log_error("Failed to start server on %s", listen_url);
         return -1;
+    }
+    
+    // Store the socket file descriptor for signal handling
+    if (c->fd != NULL) {
+        int socket_fd = (int)(size_t)c->fd;
+        set_web_server_socket(socket_fd);
+        log_debug("Stored web server socket: %d", socket_fd);
     }
 
     // Configure SSL if enabled
@@ -571,6 +581,14 @@ void http_server_stop(http_server_handle_t server) {
     // Signal all connections to close
     for (struct mg_connection *c = server->mgr->conns; c != NULL; c = c->next) {
         c->is_closing = 1;
+        
+        // Close the socket explicitly to ensure it's released
+        if (c->fd != NULL) {
+            int socket_fd = (int)(size_t)c->fd;
+            log_debug("Closing socket: %d", socket_fd);
+            close(socket_fd);
+            c->fd = NULL;  // Mark as closed
+        }
     }
 
     // Give connections time to close gracefully
@@ -579,6 +597,9 @@ void http_server_stop(http_server_handle_t server) {
 
     // Free Mongoose event manager
     mg_mgr_free(server->mgr);
+
+    // Reset the web server socket
+    set_web_server_socket(-1);
 
     log_info("HTTP server stopped");
 }

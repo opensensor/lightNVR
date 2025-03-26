@@ -70,6 +70,7 @@ void mg_handle_post_stream(struct mg_connection *c, struct mg_http_message *hm) 
     config.pre_detection_buffer = 5;
     config.post_detection_buffer = 5;
     config.protocol = STREAM_PROTOCOL_TCP;
+    config.record_audio = true; // Default to true for new streams
     
     // Override with provided values
     cJSON *enabled = cJSON_GetObjectItem(stream_json, "enabled");
@@ -151,6 +152,13 @@ void mg_handle_post_stream(struct mg_connection *c, struct mg_http_message *hm) 
     cJSON *protocol = cJSON_GetObjectItem(stream_json, "protocol");
     if (protocol && cJSON_IsNumber(protocol)) {
         config.protocol = (stream_protocol_t)protocol->valueint;
+    }
+    
+    cJSON *record_audio = cJSON_GetObjectItem(stream_json, "record_audio");
+    if (record_audio && cJSON_IsBool(record_audio)) {
+        config.record_audio = cJSON_IsTrue(record_audio);
+        log_info("Audio recording %s for stream %s", 
+                config.record_audio ? "enabled" : "disabled", config.name);
     }
     
     // Check if isOnvif flag is set in the request
@@ -428,6 +436,19 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
     if (post_detection_buffer && cJSON_IsNumber(post_detection_buffer)) {
         config.post_detection_buffer = post_detection_buffer->valueint;
         config_changed = true;
+    }
+    
+    cJSON *record_audio = cJSON_GetObjectItem(stream_json, "record_audio");
+    if (record_audio && cJSON_IsBool(record_audio)) {
+        bool original_record_audio = config.record_audio;
+        config.record_audio = cJSON_IsTrue(record_audio);
+        if (original_record_audio != config.record_audio) {
+            config_changed = true;
+            requires_restart = true;  // Audio recording changes require restart
+            log_info("Audio recording changed from %s to %s - restart required", 
+                    original_record_audio ? "enabled" : "disabled", 
+                    config.record_audio ? "enabled" : "disabled");
+        }
     }
     
     cJSON *protocol = cJSON_GetObjectItem(stream_json, "protocol");

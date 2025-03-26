@@ -13,7 +13,7 @@
 #include "core/logger.h"
 
 // Current schema version - increment this when adding new migrations
-#define CURRENT_SCHEMA_VERSION 3
+#define CURRENT_SCHEMA_VERSION 4
 
 // Migration function type
 typedef int (*migration_func_t)(void);
@@ -21,12 +21,14 @@ typedef int (*migration_func_t)(void);
 // Migration function prototypes
 static int migration_v1_to_v2(void);
 static int migration_v2_to_v3(void);
+static int migration_v3_to_v4(void);
 
 // Array of migration functions
 static migration_func_t migrations[] = {
     NULL,               // No migration for v0->v1 (initial schema)
     migration_v1_to_v2, // v1->v2
-    migration_v2_to_v3  // v2->v3
+    migration_v2_to_v3, // v2->v3
+    migration_v3_to_v4  // v3->v4
 };
 
 /**
@@ -447,5 +449,22 @@ static int migration_v2_to_v3(void) {
     rc |= add_column_if_not_exists("streams", "is_onvif", "INTEGER DEFAULT 0");
     
     log_info("Completed migration v2 to v3 with result: %d", rc);
+    return rc;
+}
+
+/**
+ * Migration from version 3 to 4
+ * - Add record_audio column to streams table
+ */
+static int migration_v3_to_v4(void) {
+    log_info("Running migration from v3 to v4: Adding record_audio column to streams table");
+    
+    int rc = 0;
+    
+    // Add record_audio column to streams table
+    log_info("Adding record_audio column");
+    rc |= add_column_if_not_exists("streams", "record_audio", "INTEGER DEFAULT 1");
+    
+    log_info("Completed migration v3 to v4 with result: %d", rc);
     return rc;
 }

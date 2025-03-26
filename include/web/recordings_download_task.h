@@ -29,14 +29,8 @@ download_recording_task_t *download_recording_task_create(struct mg_connection *
 void download_recording_task_free(download_recording_task_t *task);
 
 /**
- * @brief Download recording task function
- * 
- * @param arg Task argument (download_recording_task_t*)
- */
-void download_recording_task_function(void *arg);
-
-/**
  * @brief Direct handler for GET /api/recordings/download/:id
+ * Uses Mongoose's built-in file serving capability to serve the recording file
  */
 void mg_handle_download_recording(struct mg_connection *c, struct mg_http_message *hm);
 
