@@ -505,6 +505,10 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
              config.detection_model, config.detection_threshold, config.detection_interval,
              config.pre_detection_buffer, config.post_detection_buffer);
     
+    // Check if stream is running - we'll need this information for detection settings changes
+    stream_status_t status = get_stream_status(stream);
+    bool is_running = (status == STREAM_STATUS_RUNNING || status == STREAM_STATUS_STARTING);
+    
     // Update stream configuration in database first
     if (update_stream_config(decoded_id, &config) != 0) {
         log_error("Failed to update stream configuration in database");
@@ -538,6 +542,16 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
         log_warn("Failed to update detection recording for stream %s", config.name);
     }
     
+    // If detection settings were changed and the stream is running,
+    // we need to restart the stream to apply the new detection settings
+    if (config_changed && 
+        (detection_based_recording != NULL || detection_model != NULL || 
+         detection_threshold != NULL || detection_interval != NULL) && 
+        is_running && !requires_restart) {
+        log_info("Detection settings changed for stream %s, marking for restart to apply changes", config.name);
+        requires_restart = true;
+    }
+    
     // Update other stream properties in memory
     if (set_stream_recording(stream, config.record) != 0) {
         log_warn("Failed to update recording setting for stream %s", config.name);
@@ -559,8 +573,7 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
     // Restart stream if configuration changed and either:
     // 1. Critical parameters requiring restart were changed (URL, protocol)
     // 2. The stream is currently running
-    stream_status_t status = get_stream_status(stream);
-    bool is_running = (status == STREAM_STATUS_RUNNING || status == STREAM_STATUS_STARTING);
+    // Note: We already checked the stream status earlier
     
     if (config_changed && (requires_restart || is_running)) {
         log_info("Restarting stream %s (requires_restart=%s, is_running=%s)", 
