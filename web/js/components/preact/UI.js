@@ -300,21 +300,35 @@ export function showVideoModal(videoUrl, title, downloadUrl) {
   
   videoContainer.appendChild(video);
   
-  // Create speed controls container with Tailwind classes
-  const speedControlsContainer = document.createElement('div');
-  speedControlsContainer.id = 'recordings-speed-controls';
-  speedControlsContainer.className = 'mt-6 mb-8 p-4 border-2 border-green-500 rounded-lg bg-white dark:bg-gray-800 shadow-md mx-4';
+  // Create controls container with Tailwind classes
+  const controlsContainer = document.createElement('div');
+  controlsContainer.id = 'recordings-controls';
+  controlsContainer.className = 'mt-6 mb-8 p-4 border-2 border-green-500 rounded-lg bg-white dark:bg-gray-800 shadow-md mx-4';
   // Add inline styles to ensure visibility
-  speedControlsContainer.style.width = 'calc(100% - 2rem)';
-  speedControlsContainer.style.display = 'block';
-  speedControlsContainer.style.position = 'relative';
-  speedControlsContainer.style.zIndex = '100';
+  controlsContainer.style.width = 'calc(100% - 2rem)';
+  controlsContainer.style.display = 'block';
+  controlsContainer.style.position = 'relative';
+  controlsContainer.style.zIndex = '100';
   
   // Create heading
   const heading = document.createElement('h3');
   heading.className = 'text-lg font-bold text-center mb-4 text-gray-800 dark:text-white';
-  heading.textContent = 'PLAYBACK SPEED CONTROLS';
-  speedControlsContainer.appendChild(heading);
+  heading.textContent = 'PLAYBACK CONTROLS';
+  controlsContainer.appendChild(heading);
+  
+  // Create controls grid container
+  const controlsGrid = document.createElement('div');
+  controlsGrid.className = 'grid grid-cols-1 md:grid-cols-2 gap-4';
+  
+  // Create speed controls section
+  const speedControlsSection = document.createElement('div');
+  speedControlsSection.className = 'border-b pb-4 md:border-b-0 md:border-r md:pr-4 md:pb-0';
+  
+  // Create speed section heading
+  const speedHeading = document.createElement('h4');
+  speedHeading.className = 'font-bold text-center mb-2 text-gray-700 dark:text-gray-300';
+  speedHeading.textContent = 'Playback Speed';
+  speedControlsSection.appendChild(speedHeading);
   
   // Create speed buttons container
   const speedButtonsContainer = document.createElement('div');
@@ -353,15 +367,73 @@ export function showVideoModal(videoUrl, title, downloadUrl) {
     speedButtonsContainer.appendChild(button);
   });
   
-  // Add buttons container to speed controls
-  speedControlsContainer.appendChild(speedButtonsContainer);
+  // Add buttons container to speed controls section
+  speedControlsSection.appendChild(speedButtonsContainer);
   
   // Add current speed indicator
   const currentSpeedIndicator = document.createElement('div');
   currentSpeedIndicator.id = 'current-speed-indicator';
-  currentSpeedIndicator.className = 'mt-4 text-center font-bold text-green-600 dark:text-green-400';
+  currentSpeedIndicator.className = 'mt-2 text-center font-bold text-green-600 dark:text-green-400';
   currentSpeedIndicator.textContent = 'Current Speed: 1× (Normal)';
-  speedControlsContainer.appendChild(currentSpeedIndicator);
+  speedControlsSection.appendChild(currentSpeedIndicator);
+  
+  // Add speed controls section to grid
+  controlsGrid.appendChild(speedControlsSection);
+  
+  // Create detection overlay section
+  const detectionSection = document.createElement('div');
+  detectionSection.className = 'pt-4 md:pt-0 md:pl-4';
+  
+  // Create detection section heading
+  const detectionHeading = document.createElement('h4');
+  detectionHeading.className = 'font-bold text-center mb-2 text-gray-700 dark:text-gray-300';
+  detectionHeading.textContent = 'Detection Overlays';
+  detectionSection.appendChild(detectionHeading);
+  
+  // Create detection controls container
+  const detectionControlsContainer = document.createElement('div');
+  detectionControlsContainer.className = 'flex flex-col items-center gap-2';
+  
+  // Create detection checkbox container
+  const detectionCheckboxContainer = document.createElement('div');
+  detectionCheckboxContainer.className = 'flex items-center gap-2 mb-2';
+  
+  // Create detection checkbox
+  const detectionCheckbox = document.createElement('input');
+  detectionCheckbox.type = 'checkbox';
+  detectionCheckbox.id = 'detection-overlay-checkbox';
+  detectionCheckbox.className = 'w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 dark:focus:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600';
+  
+  // Create detection checkbox label
+  const detectionCheckboxLabel = document.createElement('label');
+  detectionCheckboxLabel.htmlFor = 'detection-overlay-checkbox';
+  detectionCheckboxLabel.className = 'text-sm font-medium text-gray-700 dark:text-gray-300';
+  detectionCheckboxLabel.textContent = 'Show Detection Overlays';
+  
+  // Add checkbox and label to container
+  detectionCheckboxContainer.appendChild(detectionCheckbox);
+  detectionCheckboxContainer.appendChild(detectionCheckboxLabel);
+  
+  // Add checkbox container to detection controls
+  detectionControlsContainer.appendChild(detectionCheckboxContainer);
+  
+  // Create detection status indicator
+  const detectionStatusIndicator = document.createElement('div');
+  detectionStatusIndicator.id = 'detection-status-indicator';
+  detectionStatusIndicator.className = 'text-center text-sm text-gray-600 dark:text-gray-400';
+  detectionStatusIndicator.textContent = 'No detections loaded';
+  
+  // Add status indicator to detection controls
+  detectionControlsContainer.appendChild(detectionStatusIndicator);
+  
+  // Add detection controls to detection section
+  detectionSection.appendChild(detectionControlsContainer);
+  
+  // Add detection section to grid
+  controlsGrid.appendChild(detectionSection);
+  
+  // Add controls grid to container
+  controlsContainer.appendChild(controlsGrid);
   
   // Create footer with actions
   const footer = document.createElement('div');
@@ -377,10 +449,184 @@ export function showVideoModal(videoUrl, title, downloadUrl) {
     footer.appendChild(downloadButton);
   }
   
+  // Create detection overlay canvas container
+  const canvasContainer = document.createElement('div');
+  canvasContainer.className = 'relative';
+  canvasContainer.style.position = 'relative';
+  canvasContainer.style.width = '100%';
+  canvasContainer.style.height = '100%';
+  
+  // Create detection overlay canvas
+  const detectionCanvas = document.createElement('canvas');
+  detectionCanvas.id = 'detection-overlay-canvas';
+  detectionCanvas.className = 'absolute top-0 left-0 w-full h-full pointer-events-none';
+  detectionCanvas.style.position = 'absolute';
+  detectionCanvas.style.top = '0';
+  detectionCanvas.style.left = '0';
+  detectionCanvas.style.width = '100%';
+  detectionCanvas.style.height = '100%';
+  detectionCanvas.style.pointerEvents = 'none';
+  detectionCanvas.style.display = 'none'; // Hidden by default
+  
+  // Wrap video in canvas container
+  canvasContainer.appendChild(video);
+  canvasContainer.appendChild(detectionCanvas);
+  videoContainer.appendChild(canvasContainer);
+  
+  // Store recording data for detection overlay
+  let recordingData = null;
+  let detections = [];
+  let detectionOverlayEnabled = false;
+  
+  // Extract recording ID from URL
+  const recordingIdMatch = videoUrl.match(/\/play\/(\d+)/);
+  if (recordingIdMatch && recordingIdMatch[1]) {
+    const recordingId = parseInt(recordingIdMatch[1], 10);
+    
+    // Fetch recording data
+    fetch(`/api/recordings/${recordingId}`)
+      .then(response => response.json())
+      .then(data => {
+        recordingData = data;
+        
+        // Check if recording has detections
+        if (recordingData && recordingData.stream && recordingData.start_time && recordingData.end_time) {
+          // Convert timestamps to seconds
+          const startTime = Math.floor(new Date(recordingData.start_time).getTime() / 1000);
+          const endTime = Math.floor(new Date(recordingData.end_time).getTime() / 1000);
+          
+          // Query the detections API
+          const params = new URLSearchParams({
+            start: startTime,
+            end: endTime
+          });
+          
+          return fetch(`/api/detection/results/${recordingData.stream}?${params.toString()}`);
+        }
+        
+        throw new Error('Recording data incomplete');
+      })
+      .then(response => response.json())
+      .then(data => {
+        detections = data.detections || [];
+        
+        if (detections.length > 0) {
+          detectionStatusIndicator.textContent = `${detections.length} detection${detections.length !== 1 ? 's' : ''} available`;
+          detectionStatusIndicator.className = 'text-center text-sm font-medium text-green-600 dark:text-green-400';
+          
+          // Enable checkbox
+          detectionCheckbox.disabled = false;
+        } else {
+          detectionStatusIndicator.textContent = 'No detections found for this recording';
+          
+          // Disable checkbox
+          detectionCheckbox.disabled = true;
+        }
+      })
+      .catch(error => {
+        console.error('Error fetching detection data:', error);
+        detectionStatusIndicator.textContent = 'Error loading detections';
+        detectionStatusIndicator.className = 'text-center text-sm font-medium text-red-600 dark:text-red-400';
+        
+        // Disable checkbox
+        detectionCheckbox.disabled = true;
+      });
+  }
+  
+  // Handle detection overlay checkbox change
+  detectionCheckbox.addEventListener('change', () => {
+    detectionOverlayEnabled = detectionCheckbox.checked;
+    
+    if (detectionOverlayEnabled) {
+      // Show canvas
+      detectionCanvas.style.display = 'block';
+      
+      // Draw detections
+      drawDetections();
+      
+      // Update status
+      detectionStatusIndicator.textContent = `Showing ${detections.length} detection${detections.length !== 1 ? 's' : ''}`;
+    } else {
+      // Hide canvas
+      detectionCanvas.style.display = 'none';
+      
+      // Update status
+      detectionStatusIndicator.textContent = `${detections.length} detection${detections.length !== 1 ? 's' : ''} available`;
+    }
+  });
+  
+  // Function to draw detections on canvas
+  function drawDetections() {
+    if (!detectionOverlayEnabled || !video || !detectionCanvas || detections.length === 0) {
+      return;
+    }
+    
+    // Get video dimensions
+    const videoWidth = video.videoWidth;
+    const videoHeight = video.videoHeight;
+    
+    if (videoWidth === 0 || videoHeight === 0) {
+      // Video dimensions not available yet, try again later
+      requestAnimationFrame(drawDetections);
+      return;
+    }
+    
+    // Set canvas dimensions to match video
+    detectionCanvas.width = videoWidth;
+    detectionCanvas.height = videoHeight;
+    
+    // Get canvas context
+    const ctx = detectionCanvas.getContext('2d');
+    ctx.clearRect(0, 0, detectionCanvas.width, detectionCanvas.height);
+    
+    // Draw each detection
+    detections.forEach(detection => {
+      // Calculate coordinates based on relative positions
+      const x = detection.x * videoWidth;
+      const y = detection.y * videoHeight;
+      const width = detection.width * videoWidth;
+      const height = detection.height * videoHeight;
+      
+      // Draw bounding box
+      ctx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, width, height);
+      
+      // Draw label background
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      const labelText = `${detection.label} (${Math.round(detection.confidence * 100)}%)`;
+      const labelWidth = ctx.measureText(labelText).width + 10;
+      ctx.fillRect(x, y - 20, labelWidth, 20);
+      
+      // Draw label text
+      ctx.fillStyle = 'white';
+      ctx.font = '12px Arial';
+      ctx.fillText(labelText, x + 5, y - 5);
+    });
+    
+    // Request next frame if video is playing
+    if (!video.paused && !video.ended) {
+      requestAnimationFrame(drawDetections);
+    }
+  }
+  
+  // Handle video events
+  video.addEventListener('play', () => {
+    if (detectionOverlayEnabled) {
+      drawDetections();
+    }
+  });
+  
+  video.addEventListener('seeked', () => {
+    if (detectionOverlayEnabled) {
+      drawDetections();
+    }
+  });
+  
   // Assemble the modal
   modalContainer.appendChild(header);
   modalContainer.appendChild(videoContainer);
-  modalContainer.appendChild(speedControlsContainer); // Add speed controls
+  modalContainer.appendChild(controlsContainer); // Add controls
   modalContainer.appendChild(footer);
   overlay.appendChild(modalContainer);
   

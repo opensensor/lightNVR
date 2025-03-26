@@ -16,6 +16,19 @@
 int store_detections_in_db(const char *stream_name, const detection_result_t *result, time_t timestamp);
 
 /**
+ * Get detection results from the database with time range filtering
+ * 
+ * @param stream_name Stream name
+ * @param result Detection results to fill
+ * @param max_age Maximum age in seconds (0 for all)
+ * @param start_time Start time filter (0 for no filter)
+ * @param end_time End time filter (0 for no filter)
+ * @return Number of detections found, or -1 on error
+ */
+int get_detections_from_db_time_range(const char *stream_name, detection_result_t *result, 
+                                     uint64_t max_age, time_t start_time, time_t end_time);
+
+/**
  * Get detection results from the database
  * 
  * @param stream_name Stream name

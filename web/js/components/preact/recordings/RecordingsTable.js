@@ -91,6 +91,9 @@ export function RecordingsTable({
                 </div>
               </th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                Detections
+              </th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                 Actions
               </th>
             </tr>
@@ -116,6 +119,17 @@ export function RecordingsTable({
                 <td class="px-6 py-4 whitespace-nowrap">${formatUtils.formatDateTime(recording.start_time)}</td>
                 <td class="px-6 py-4 whitespace-nowrap">${formatUtils.formatDuration(recording.duration)}</td>
                 <td class="px-6 py-4 whitespace-nowrap">${recording.size || ''}</td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                  ${recording.has_detections ? html`
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100">
+                      <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"></path>
+                        <path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"></path>
+                      </svg>
+                      Yes
+                    </span>
+                  ` : ''}
+                </td>
                 <td class="px-6 py-4 whitespace-nowrap">
                   <div class="flex space-x-2">
                     <button class="p-1 rounded-full text-blue-600 hover:bg-blue-100 dark:text-blue-400 dark:hover:bg-blue-900 focus:outline-none"

@@ -127,6 +127,23 @@ export const recordingsAPI = {
       const data = await response.json();
       console.log('Recordings data received:', data);
       
+      // Check for detections for each recording
+      if (data.recordings && data.recordings.length > 0) {
+        // Process recordings in batches to avoid too many parallel requests
+        const batchSize = 5;
+        for (let i = 0; i < data.recordings.length; i += batchSize) {
+          const batch = data.recordings.slice(i, i + batchSize);
+          await Promise.all(batch.map(async (recording) => {
+            try {
+              recording.has_detections = await recordingsAPI.checkRecordingHasDetections(recording);
+            } catch (error) {
+              console.error(`Error checking detections for recording ${recording.id}:`, error);
+              recording.has_detections = false;
+            }
+          }));
+        }
+      }
+      
       return data;
     } catch (error) {
       console.error('Error loading recordings:', error);
@@ -474,6 +491,74 @@ export const recordingsAPI = {
       console.error('Error in HTTP delete all operation:', error);
       showStatusMessage('Error in delete all operation: ' + error.message);
       return { succeeded: 0, failed: 0 };
+    }
+  },
+  
+  /**
+   * Check if a recording has associated detections
+   * @param {Object} recording Recording to check
+   * @returns {Promise<boolean>} True if the recording has detections, false otherwise
+   */
+  checkRecordingHasDetections: async (recording) => {
+    if (!recording || !recording.id || !recording.stream || !recording.start_time || !recording.end_time) {
+      return false;
+    }
+    
+    try {
+      // Convert timestamps to seconds
+      const startTime = Math.floor(new Date(recording.start_time).getTime() / 1000);
+      const endTime = Math.floor(new Date(recording.end_time).getTime() / 1000);
+      
+      // Query the detections API to check if there are any detections in this time range
+      const params = new URLSearchParams({
+        start: startTime,
+        end: endTime
+      });
+      
+      const response = await fetch(`/api/detection/results/${recording.stream}?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error('Failed to check detections');
+      }
+      
+      const data = await response.json();
+      return data.detections && data.detections.length > 0;
+    } catch (error) {
+      console.error('Error checking detections:', error);
+      return false;
+    }
+  },
+  
+  /**
+   * Get detections for a recording
+   * @param {Object} recording Recording to get detections for
+   * @returns {Promise<Array>} Array of detections
+   */
+  getRecordingDetections: async (recording) => {
+    if (!recording || !recording.id || !recording.stream || !recording.start_time || !recording.end_time) {
+      return [];
+    }
+    
+    try {
+      // Convert timestamps to seconds
+      const startTime = Math.floor(new Date(recording.start_time).getTime() / 1000);
+      const endTime = Math.floor(new Date(recording.end_time).getTime() / 1000);
+      
+      // Query the detections API to get detections in this time range
+      const params = new URLSearchParams({
+        start: startTime,
+        end: endTime
+      });
+      
+      const response = await fetch(`/api/detection/results/${recording.stream}?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error('Failed to get detections');
+      }
+      
+      const data = await response.json();
+      return data.detections || [];
+    } catch (error) {
+      console.error('Error getting detections:', error);
+      return [];
     }
   },
   

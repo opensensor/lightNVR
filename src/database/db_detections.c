@@ -204,9 +204,12 @@ int store_detections_in_db(const char *stream_name, const detection_result_t *re
  * @param stream_name Stream name
  * @param result Detection results to fill
  * @param max_age Maximum age in seconds (0 for all)
+ * @param start_time Start time filter (0 for no filter)
+ * @param end_time End time filter (0 for no filter)
  * @return Number of detections found, or -1 on error
  */
-int get_detections_from_db(const char *stream_name, detection_result_t *result, uint64_t max_age) {
+int get_detections_from_db_time_range(const char *stream_name, detection_result_t *result, 
+                                     uint64_t max_age, time_t start_time, time_t end_time) {
     int rc;
     sqlite3_stmt *stmt;
     
@@ -219,7 +222,7 @@ int get_detections_from_db(const char *stream_name, detection_result_t *result, 
     }
     
     if (!stream_name || !result) {
-        log_error("Invalid parameters for get_detections_from_db");
+        log_error("Invalid parameters for get_detections_from_db_time_range");
         return -1;
     }
     
@@ -228,12 +231,86 @@ int get_detections_from_db(const char *stream_name, detection_result_t *result, 
     
     pthread_mutex_lock(db_mutex);
     
-    // Build query based on max_age
-    // Modified to only return the latest detection timestamp
+    // Build query based on filters
     char sql[512];
-    if (max_age > 0) {
+    
+    if (start_time > 0 && end_time > 0) {
+        // Time range filter
+        log_info("Getting detections for stream %s between %lld and %lld", 
+                stream_name, (long long)start_time, (long long)end_time);
+        
+        snprintf(sql, sizeof(sql), 
+                "SELECT label, confidence, x, y, width, height "
+                "FROM detections "
+                "WHERE stream_name = ? AND timestamp >= ? AND timestamp <= ? "
+                "ORDER BY timestamp DESC "
+                "LIMIT ?;");
+        
+        rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+            pthread_mutex_unlock(db_mutex);
+            return -1;
+        }
+        
+        // Bind parameters
+        sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 2, (sqlite3_int64)start_time);
+        sqlite3_bind_int64(stmt, 3, (sqlite3_int64)end_time);
+        sqlite3_bind_int(stmt, 4, MAX_DETECTIONS);
+    } else if (start_time > 0) {
+        // Start time filter only
+        log_info("Getting detections for stream %s from %lld", 
+                stream_name, (long long)start_time);
+        
+        snprintf(sql, sizeof(sql), 
+                "SELECT label, confidence, x, y, width, height "
+                "FROM detections "
+                "WHERE stream_name = ? AND timestamp >= ? "
+                "ORDER BY timestamp DESC "
+                "LIMIT ?;");
+        
+        rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+            pthread_mutex_unlock(db_mutex);
+            return -1;
+        }
+        
+        // Bind parameters
+        sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 2, (sqlite3_int64)start_time);
+        sqlite3_bind_int(stmt, 3, MAX_DETECTIONS);
+    } else if (end_time > 0) {
+        // End time filter only
+        log_info("Getting detections for stream %s until %lld", 
+                stream_name, (long long)end_time);
+        
+        snprintf(sql, sizeof(sql), 
+                "SELECT label, confidence, x, y, width, height "
+                "FROM detections "
+                "WHERE stream_name = ? AND timestamp <= ? "
+                "ORDER BY timestamp DESC "
+                "LIMIT ?;");
+        
+        rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+            pthread_mutex_unlock(db_mutex);
+            return -1;
+        }
+        
+        // Bind parameters
+        sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 2, (sqlite3_int64)end_time);
+        sqlite3_bind_int(stmt, 3, MAX_DETECTIONS);
+    } else if (max_age > 0) {
+        // Max age filter
         // Calculate cutoff time
         time_t cutoff_time = time(NULL) - max_age;
+        
+        log_info("Getting detections for stream %s since %lld (max age %llu seconds)", 
+                stream_name, (long long)cutoff_time, (unsigned long long)max_age);
         
         // First get the latest timestamp
         snprintf(sql, sizeof(sql), 
@@ -285,11 +362,10 @@ int get_detections_from_db(const char *stream_name, detection_result_t *result, 
         sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
         sqlite3_bind_int64(stmt, 2, (sqlite3_int64)latest_timestamp);
         sqlite3_bind_int(stmt, 3, MAX_DETECTIONS);
-        
-        log_info("Getting latest detections for stream %s at timestamp %lld", 
-                stream_name, (long long)latest_timestamp);
     } else {
-        // No age filter, just get the latest timestamp
+        // No filters, just get the latest detections
+        log_info("Getting latest detections for stream %s (no time filters)", stream_name);
+        
         snprintf(sql, sizeof(sql), 
                 "SELECT label, confidence, x, y, width, height "
                 "FROM detections "
@@ -344,6 +420,19 @@ int get_detections_from_db(const char *stream_name, detection_result_t *result, 
     
     log_info("Found %d detections in database for stream %s", count, stream_name);
     return count;
+}
+
+/**
+ * Get detection results from the database
+ * 
+ * @param stream_name Stream name
+ * @param result Detection results to fill
+ * @param max_age Maximum age in seconds (0 for all)
+ * @return Number of detections found, or -1 on error
+ */
+int get_detections_from_db(const char *stream_name, detection_result_t *result, uint64_t max_age) {
+    // Call the new function with no time range filters
+    return get_detections_from_db_time_range(stream_name, result, max_age, 0, 0);
 }
 
 /**

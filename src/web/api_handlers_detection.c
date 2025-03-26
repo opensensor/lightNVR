@@ -44,11 +44,38 @@ void mg_handle_get_detection_results(struct mg_connection *c, struct mg_http_mes
         return;
     }
     
+    // Parse query parameters for time range
+    struct mg_str query = hm->query;
+    time_t start_time = 0;
+    time_t end_time = 0;
+    
+    // Extract start time parameter
+    char start_str[32] = {0};
+    if (mg_http_get_var(&query, "start", start_str, sizeof(start_str)) > 0) {
+        start_time = (time_t)strtoll(start_str, NULL, 10);
+        log_info("Using start_time filter: %lld", (long long)start_time);
+    }
+    
+    // Extract end time parameter
+    char end_str[32] = {0};
+    if (mg_http_get_var(&query, "end", end_str, sizeof(end_str)) > 0) {
+        end_time = (time_t)strtoll(end_str, NULL, 10);
+        log_info("Using end_time filter: %lld", (long long)end_time);
+    }
+    
+    // If no time range specified, use default MAX_DETECTION_AGE
+    uint64_t max_age = MAX_DETECTION_AGE;
+    if (start_time > 0 || end_time > 0) {
+        // Custom time range specified, don't use max_age
+        max_age = 0;
+    }
+    
     // Get detection results for the stream
     detection_result_t result;
     memset(&result, 0, sizeof(detection_result_t));
     
-    int count = get_detections_from_db(stream_name, &result, MAX_DETECTION_AGE);
+    // Use the time range function
+    int count = get_detections_from_db_time_range(stream_name, &result, max_age, start_time, end_time);
     
     if (count < 0) {
         log_error("Failed to get detections from database for stream: %s", stream_name);
