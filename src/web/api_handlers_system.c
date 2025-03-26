@@ -87,32 +87,47 @@ void mg_handle_get_system_info(struct mg_connection *c, struct mg_http_message *
         }
     }
     
+    // Get system-wide memory information first
+    struct sysinfo sys_info;
+    unsigned long long system_total = 0;
+    unsigned long long system_free = 0;
+    unsigned long long system_used = 0;
+    
+    if (sysinfo(&sys_info) == 0) {
+        // Calculate memory values in bytes
+        system_total = sys_info.totalram * sys_info.mem_unit;
+        system_free = sys_info.freeram * sys_info.mem_unit;
+        system_used = system_total - system_free;
+    }
+    
     // Get memory information for the LightNVR process
     cJSON *memory = cJSON_CreateObject();
     if (memory) {
         // Get process memory usage using /proc/self/status
         FILE *fp = fopen("/proc/self/status", "r");
-        unsigned long vm_size = 0;
         unsigned long vm_rss = 0;
         
         if (fp) {
             char line[256];
             while (fgets(line, sizeof(line), fp)) {
-                if (strncmp(line, "VmSize:", 7) == 0) {
-                    // VmSize is in kB
-                    sscanf(line + 7, "%lu", &vm_size);
-                } else if (strncmp(line, "VmRSS:", 6) == 0) {
-                    // VmRSS is in kB
+                if (strncmp(line, "VmRSS:", 6) == 0) {
+                    // VmRSS is in kB - actual physical memory used
                     sscanf(line + 6, "%lu", &vm_rss);
+                    break;
                 }
             }
             fclose(fp);
         }
         
         // Convert kB to bytes
-        unsigned long long total = vm_size * 1024;
         unsigned long long used = vm_rss * 1024;
-        unsigned long long free = total - used;
+        
+        // Use the system total memory as the total for LightNVR as well
+        // This makes it simpler to understand the memory usage
+        unsigned long long total = system_total;
+        
+        // Calculate free as the difference between total and used
+        unsigned long long free = (total > used) ? (total - used) : 0;
         
         cJSON_AddNumberToObject(memory, "total", total);
         cJSON_AddNumberToObject(memory, "used", used);
@@ -125,17 +140,9 @@ void mg_handle_get_system_info(struct mg_connection *c, struct mg_http_message *
     // Get system-wide memory information
     cJSON *system_memory = cJSON_CreateObject();
     if (system_memory) {
-        struct sysinfo sys_info;
-        if (sysinfo(&sys_info) == 0) {
-            // Calculate memory values in bytes
-            unsigned long long total = sys_info.totalram * sys_info.mem_unit;
-            unsigned long long free = sys_info.freeram * sys_info.mem_unit;
-            unsigned long long used = total - free;
-            
-            cJSON_AddNumberToObject(system_memory, "total", total);
-            cJSON_AddNumberToObject(system_memory, "used", used);
-            cJSON_AddNumberToObject(system_memory, "free", free);
-        }
+        cJSON_AddNumberToObject(system_memory, "total", system_total);
+        cJSON_AddNumberToObject(system_memory, "used", system_used);
+        cJSON_AddNumberToObject(system_memory, "free", system_free);
         
         // Add system memory object to info
         cJSON_AddItemToObject(info, "systemMemory", system_memory);
@@ -432,8 +439,6 @@ void mg_handle_get_system_info(struct mg_connection *c, struct mg_http_message *
                 }
             }
         }
-        
-
         
         cJSON_AddNumberToObject(streams_obj, "active", active_streams);
         cJSON_AddNumberToObject(streams_obj, "total", g_config.max_streams);

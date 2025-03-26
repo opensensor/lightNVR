@@ -60,4 +60,26 @@ int safe_strcat(char *dest, const char *src, size_t size);
  */
 void secure_zero_memory(void *ptr, size_t size);
 
+/**
+ * Track memory allocations for debugging and leak detection
+ *
+ * @param size Size of memory being allocated or freed
+ * @param is_allocation True if allocating, false if freeing
+ */
+void track_memory_allocation(size_t size, bool is_allocation);
+
+/**
+ * Get the total amount of memory currently allocated
+ *
+ * @return Total memory allocated in bytes
+ */
+size_t get_total_memory_allocated(void);
+
+/**
+ * Get the peak memory usage since program start
+ *
+ * @return Peak memory allocated in bytes
+ */
+size_t get_peak_memory_allocated(void);
+
 #endif /* MEMORY_UTILS_H */
