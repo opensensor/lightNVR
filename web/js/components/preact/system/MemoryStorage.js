@@ -1,0 +1,60 @@
+/**
+ * MemoryStorage Component
+ * Displays memory and storage information with progress bars
+ */
+
+import { h } from '../../../preact.min.js';
+import { html } from '../../../html-helper.js';
+
+/**
+ * MemoryStorage component
+ * @param {Object} props Component props
+ * @param {Object} props.systemInfo System information object
+ * @param {Function} props.formatBytes Function to format bytes to human-readable size
+ * @returns {JSX.Element} MemoryStorage component
+ */
+export function MemoryStorage({ systemInfo, formatBytes }) {
+  return html`
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+      <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">Memory & Storage</h3>
+      <div class="space-y-4">
+        <div>
+          <div class="flex justify-between mb-1">
+            <span class="font-medium">LightNVR Memory:</span>
+            <span>${systemInfo.memory?.used ? formatBytes(systemInfo.memory.used) : '0'} / ${systemInfo.memory?.total ? formatBytes(systemInfo.memory.total) : '0'}</span>
+          </div>
+          <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
+            <div class="bg-blue-600 h-2.5 rounded-full" style=${`width: ${systemInfo.memory?.total ? (systemInfo.memory.used / systemInfo.memory.total * 100).toFixed(1) : 0}%`}></div>
+          </div>
+        </div>
+        <div>
+          <div class="flex justify-between mb-1">
+            <span class="font-medium">System Memory:</span>
+            <span>${systemInfo.systemMemory?.used ? formatBytes(systemInfo.systemMemory.used) : '0'} / ${systemInfo.systemMemory?.total ? formatBytes(systemInfo.systemMemory.total) : '0'}</span>
+          </div>
+          <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
+            <div class="bg-blue-600 h-2.5 rounded-full" style=${`width: ${systemInfo.systemMemory?.total ? (systemInfo.systemMemory.used / systemInfo.systemMemory.total * 100).toFixed(1) : 0}%`}></div>
+          </div>
+        </div>
+        <div>
+          <div class="flex justify-between mb-1">
+            <span class="font-medium">LightNVR Storage:</span>
+            <span>${systemInfo.disk?.used ? formatBytes(systemInfo.disk.used) : '0'} / ${systemInfo.disk?.total ? formatBytes(systemInfo.disk.total) : '0'}</span>
+          </div>
+          <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
+            <div class="bg-blue-600 h-2.5 rounded-full" style=${`width: ${systemInfo.disk?.total ? (systemInfo.disk.used / systemInfo.disk.total * 100).toFixed(1) : 0}%`}></div>
+          </div>
+        </div>
+        <div>
+          <div class="flex justify-between mb-1">
+            <span class="font-medium">System Storage:</span>
+            <span>${systemInfo.systemDisk?.used ? formatBytes(systemInfo.systemDisk.used) : '0'} / ${systemInfo.systemDisk?.total ? formatBytes(systemInfo.systemDisk.total) : '0'}</span>
+          </div>
+          <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
+            <div class="bg-blue-600 h-2.5 rounded-full" style=${`width: ${systemInfo.systemDisk?.total ? (systemInfo.systemDisk.used / systemInfo.systemDisk.total * 100).toFixed(1) : 0}%`}></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
