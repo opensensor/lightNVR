@@ -24,7 +24,7 @@ int ensure_hls_directory(const char *output_dir, const char *stream_name) {
         return -1;
     }
 
-    // CRITICAL FIX: Always use the consistent path structure for HLS
+    //  Always use the consistent path structure for HLS
     // Always use the storage path from the config
     char safe_output_dir[MAX_PATH_LENGTH];
     snprintf(safe_output_dir, sizeof(safe_output_dir), "%s/hls/%s", 

@@ -162,7 +162,7 @@ void connection_pool_shutdown(connection_pool_t *pool) {
         if (current->connection) {
             current->connection->is_closing = 1;
             
-            // CRITICAL FIX: Explicitly close the socket to ensure it's released
+            //  Explicitly close the socket to ensure it's released
             if (current->connection->fd != NULL) {
                 int socket_fd = (int)(size_t)current->connection->fd;
                 log_debug("Closing connection socket: %d", socket_fd);
@@ -205,7 +205,7 @@ void connection_pool_shutdown(connection_pool_t *pool) {
         if (ret != 0) {
             log_warn("Thread %d did not exit within timeout, continuing anyway", i);
             
-            // CRITICAL FIX: Try to cancel the thread if it didn't exit within timeout
+            //  Try to cancel the thread if it didn't exit within timeout
             pthread_cancel(pool->threads[i]);
             
             // Give it a short time to clean up after cancellation
@@ -215,7 +215,7 @@ void connection_pool_shutdown(connection_pool_t *pool) {
     
     log_debug("All worker threads have exited or timed out");
     
-    // CRITICAL FIX: Add a delay before destroying resources
+    //  Add a delay before destroying resources
     // This helps ensure all threads have fully exited
     usleep(500000); // 500ms
     

@@ -80,7 +80,7 @@ int get_downscale_factor(const char *model_type) {
         return config->downscale_factor_default;
     }
     
-    // CRITICAL FIX: For embedded devices, use more aggressive downscaling for CNN models
+    //  For embedded devices, use more aggressive downscaling for CNN models
     if (strcmp(model_type, MODEL_TYPE_SOD) == 0) {
         // For CNN models on embedded devices, use a higher downscale factor
         // This significantly reduces memory usage and processing time

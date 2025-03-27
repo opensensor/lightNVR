@@ -219,7 +219,7 @@ void batch_delete_recordings_ws_task_function(void *arg) {
         return;
     }
     
-    // CRITICAL FIX: Check for shutdown before starting work
+    //  Check for shutdown before starting work
     if (is_shutdown_initiated()) {
         log_info("Skipping batch delete task due to system shutdown");
         batch_delete_recordings_ws_task_free(task);
@@ -412,7 +412,7 @@ void batch_delete_recordings_ws_task_function(void *arg) {
         
     // Send final result via WebSocket
     if (task->use_websocket && !is_shutdown_initiated()) {
-        // CRITICAL FIX: Check for shutdown before sending final result
+        //  Check for shutdown before sending final result
         // Extract results array as string
         char *results_str = cJSON_PrintUnformatted(results_array);
         if (results_str) {
@@ -770,7 +770,7 @@ void batch_delete_recordings_ws_task_function(void *arg) {
     
     // Send completion update
     if (task->use_websocket && !is_shutdown_initiated()) {
-        // CRITICAL FIX: Check for shutdown before sending completion update
+        //  Check for shutdown before sending completion update
         // Send a final progress update with the complete flag set to true
         send_progress_update(task->client_id, 0, 0, 0, 0, "Operation complete", true);
         

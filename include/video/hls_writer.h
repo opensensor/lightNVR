@@ -35,6 +35,12 @@ typedef struct hls_writer_t {
     
     // Bitstream filter context for H.264 streams
     AVBSFContext *bsf_ctx;
+    
+    // Thread context for standalone operation
+    void *thread_ctx;
+    
+    // Mutex for thread safety
+    pthread_mutex_t mutex;
 } hls_writer_t;
 
 /**

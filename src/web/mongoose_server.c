@@ -64,6 +64,7 @@ static int match_route(const char *method, const char *uri, struct mg_http_messa
 void mg_handle_websocket_upgrade(struct mg_connection *c, struct mg_http_message *hm);
 void mg_handle_batch_delete_recordings_ws(struct mg_connection *c, struct mg_http_message *hm);
 void websocket_register_handlers(void);
+void websocket_manager_handle_close(struct mg_connection *c);
 
 // API handler function type
 typedef void (*mg_api_handler_t)(struct mg_connection *c, struct mg_http_message *hm);
@@ -589,26 +590,38 @@ void http_server_stop(http_server_handle_t server) {
     int connection_count = 0;
     for (struct mg_connection *c = server->mgr->conns; c != NULL; c = c->next) {
         connection_count++;
-        c->is_closing = 1;
         
-        // Close the socket explicitly to ensure it's released
-        if (c->fd != NULL) {
-            int socket_fd = (int)(size_t)c->fd;
-            log_debug("Closing socket: %d", socket_fd);
+        //  Check if connection is already closing
+        if (!c->is_closing) {
+            c->is_closing = 1;
             
-            // CRITICAL FIX: Set SO_LINGER to force immediate socket closure
-            struct linger so_linger;
-            so_linger.l_onoff = 1;
-            so_linger.l_linger = 0;
-            setsockopt(socket_fd, SOL_SOCKET, SO_LINGER, &so_linger, sizeof(so_linger));
+            //  Send proper close frame for WebSocket connections
+            if (c->is_websocket) {
+                mg_ws_send(c, "", 0, WEBSOCKET_OP_CLOSE);
+                log_debug("Sent WebSocket close frame to connection");
+            }
             
-            // CRITICAL FIX: Set socket to non-blocking mode to avoid hang on close
-            int flags = fcntl(socket_fd, F_GETFL, 0);
-            fcntl(socket_fd, F_SETFL, flags | O_NONBLOCK);
-            
-            // Now close the socket
-            close(socket_fd);
-            c->fd = NULL;  // Mark as closed
+            // Close the socket explicitly to ensure it's released
+            if (c->fd != NULL) {
+                int socket_fd = (int)(size_t)c->fd;
+                log_debug("Closing socket: %d", socket_fd);
+                
+                //  Set SO_LINGER to force immediate socket closure
+                struct linger so_linger;
+                so_linger.l_onoff = 1;
+                so_linger.l_linger = 0;
+                setsockopt(socket_fd, SOL_SOCKET, SO_LINGER, &so_linger, sizeof(so_linger));
+                
+                //  Set socket to non-blocking mode to avoid hang on close
+                int flags = fcntl(socket_fd, F_GETFL, 0);
+                fcntl(socket_fd, F_SETFL, flags | O_NONBLOCK);
+                
+                // Now close the socket
+                close(socket_fd);
+                c->fd = NULL;  // Mark as closed
+            }
+        } else {
+            log_debug("Connection already marked for closing");
         }
     }
     
@@ -796,7 +809,7 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
         server->active_connections++;
         pthread_mutex_unlock(&server->mutex);
         
-        // CRITICAL FIX: Do not add connections to the pool here
+        //  Do not add connections to the pool here
         // Let the main event loop handle all events for all connections
         // This ensures proper event handling and prevents connections from being orphaned
         
@@ -993,9 +1006,16 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
         }
         pthread_mutex_unlock(&server->mutex);
         
-        // If this was a WebSocket connection, update the shutdown coordinator
+        // If this was a WebSocket connection, handle cleanup
         if (c->is_websocket) {
             log_debug("WebSocket connection closed");
+            
+            // Check if WebSocket manager is initialized
+            if (websocket_manager_is_initialized()) {
+                // Handle WebSocket connection close
+                websocket_manager_handle_close(c);
+                log_info("WebSocket resources cleaned up");
+            }
             
             // Include the shutdown coordinator header
             #include "core/shutdown_coordinator.h"
@@ -1058,7 +1078,7 @@ static void *mongoose_server_event_loop(void *arg) {
     // Run event loop until server is stopped
     int poll_count = 0;
     while (server->running) {
-        // CRITICAL FIX: Poll for events with a shorter timeout to be more responsive
+        //  Poll for events with a shorter timeout to be more responsive
         // Reduced from 100ms to 10ms for better responsiveness
         mg_mgr_poll(server->mgr, 10);
         

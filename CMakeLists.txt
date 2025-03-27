@@ -185,6 +185,9 @@ file(GLOB_RECURSE ROOT_SOURCES "src/*.c")
 file(GLOB VIDEO_SOURCES "src/video/*.c")
 list(FILTER VIDEO_SOURCES EXCLUDE REGEX ".*motion_detection_optimized\\.c$")
 
+# Add HLS sources
+file(GLOB HLS_SOURCES "src/video/hls/*.c")
+
 # Combine all sources
 set(SOURCES
         ${CORE_SOURCES}
@@ -192,6 +195,7 @@ set(SOURCES
         ${STORAGE_SOURCES}
         ${UTILS_SOURCES}
         ${VIDEO_SOURCES}
+        ${HLS_SOURCES}
         ${WEB_SOURCES}
         ${ROOT_SOURCES}
         "${INIH_INCLUDE_DIR}/ini.c"

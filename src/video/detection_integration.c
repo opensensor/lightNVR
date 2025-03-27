@@ -83,7 +83,7 @@ int init_detection_integration(void) {
  * Process a decoded frame for detection
  */
 int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame, int detection_interval) {
-    // CRITICAL FIX: Add extra validation for all parameters
+    //  Add extra validation for all parameters
     if (!stream_name) {
         log_error("process_decoded_frame_for_detection: NULL stream name");
         return -1;
@@ -94,7 +94,7 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
         return -1;
     }
     
-    // CRITICAL FIX: Validate frame data
+    //  Validate frame data
     if (frame->width <= 0 || frame->height <= 0 || !frame->data[0]) {
         log_error("process_decoded_frame_for_detection: Invalid frame dimensions or data for stream %s: width=%d, height=%d, data=%p", 
                  stream_name, frame->width, frame->height, (void*)frame->data[0]);
@@ -278,7 +278,7 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     log_info("Converted frame to %s format for stream %s (dimensions: %dx%d)",
              (channels == 1) ? "grayscale" : "RGB", stream_name, target_width, target_height);
 
-    // CRITICAL FIX: Check if this stream is already being processed
+    //  Check if this stream is already being processed
     bool stream_already_active = false;
     
     for (int i = 0; i < max_detections; i++) {
@@ -311,7 +311,7 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     if (!packed_buffer) {
         log_error("Failed to allocate packed buffer for frame");
         
-        // CRITICAL FIX: Try emergency cleanup to recover from potential buffer leaks
+        //  Try emergency cleanup to recover from potential buffer leaks
         log_warn("Attempting emergency buffer pool cleanup to recover from potential leaks");
         emergency_buffer_pool_cleanup();
         
@@ -362,7 +362,7 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     float threshold = get_detection_threshold(model_type, stream_config.detection_threshold);
     log_info("Using threshold %.2f for model %s", threshold, model_type);
     
-    // CRITICAL FIX: Log more details about the detection configuration
+    //  Log more details about the detection configuration
     log_info("DETECTION DEBUG: Stream=%s, Model=%s, Type=%s, Threshold=%.2f, Dimensions=%dx%d, Channels=%d",
              stream_name, stream_config.detection_model, model_type, threshold, 
              target_width, target_height, channels);
@@ -664,7 +664,7 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                     // Load the new model using the SOD integration module
                     log_info("LOADING DETECTION MODEL: %s with threshold: %.2f", full_model_path, threshold);
                     
-                    // CRITICAL FIX: Check if SOD is enabled at compile time
+                    //  Check if SOD is enabled at compile time
                     #ifdef SOD_ENABLED
                     log_info("SOD is enabled at compile time");
                     #else
@@ -753,7 +753,7 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
         }
     }
 
-    // CRITICAL FIX: Remove this stream from the active list
+    //  Remove this stream from the active list
     for (int i = 0; i < max_detections; i++) {
         char *active_stream = active_detection_streams + i * MAX_STREAM_NAME;
         if (active_stream[0] != '\0' && strcmp(active_stream, stream_name) == 0) {
@@ -790,7 +790,7 @@ cleanup:
         return_buffer_to_pool(packed_buffer);
     }
     
-    // CRITICAL FIX: Remove this stream from the active list in case of error
+    //  Remove this stream from the active list in case of error
     for (int i = 0; i < max_detections; i++) {
         char *active_stream = active_detection_streams + i * MAX_STREAM_NAME;
         if (active_stream[0] != '\0' && strcmp(active_stream, stream_name) == 0) {

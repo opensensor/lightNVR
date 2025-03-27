@@ -38,13 +38,13 @@ static void *stream_reader_thread(void *arg) {
     int ret;
     time_t start_time = time(NULL);  // Record when we started
     
-    // CRITICAL FIX: Add extra validation for context
+    //  Add extra validation for context
     if (!ctx) {
         log_error("NULL context passed to stream reader thread");
         return NULL;
     }
     
-    // CRITICAL FIX: Create a local copy of the stream name for thread safety
+    //  Create a local copy of the stream name for thread safety
     char stream_name[MAX_STREAM_NAME];
     strncpy(stream_name, ctx->config.name, MAX_STREAM_NAME - 1);
     stream_name[MAX_STREAM_NAME - 1] = '\0';
@@ -52,7 +52,7 @@ static void *stream_reader_thread(void *arg) {
     log_info("Starting stream reader thread for stream %s (dedicated: %d)", 
              stream_name, ctx->dedicated);
     
-    // CRITICAL FIX: Check if we're still running before proceeding
+    //  Check if we're still running before proceeding
     if (!ctx->running) {
         log_warn("Stream reader thread for %s started but already marked as not running", stream_name);
         return NULL;
@@ -62,7 +62,7 @@ static void *stream_reader_thread(void *arg) {
     int retry_count = 0;
     const int max_retries = 5;
     
-    while (retry_count < max_retries && ctx->running) {  // CRITICAL FIX: Check running state in loop condition
+    while (retry_count < max_retries && ctx->running) {  //  Check running state in loop condition
         ret = open_input_stream(&ctx->input_ctx, ctx->config.url, ctx->config.protocol);
         if (ret == 0) {
             // Successfully opened the stream
@@ -82,7 +82,7 @@ static void *stream_reader_thread(void *arg) {
         log_error("Failed to open input stream for %s (attempt %d/%d)", 
                  stream_name, retry_count + 1, max_retries);
         
-        // CRITICAL FIX: Check if we're still running before sleeping
+        //  Check if we're still running before sleeping
         if (!ctx->running) {
             log_info("Stream reader thread for %s stopping during connection attempts", stream_name);
             return NULL;
@@ -93,7 +93,7 @@ static void *stream_reader_thread(void *arg) {
         retry_count++;
     }
     
-    // CRITICAL FIX: Check running state again after connection attempts
+    //  Check running state again after connection attempts
     if (!ctx->running) {
         log_info("Stream reader thread for %s stopping after connection attempts", stream_name);
         if (ctx->input_ctx) {
@@ -137,12 +137,12 @@ static void *stream_reader_thread(void *arg) {
         return NULL;
     }
     
-    // CRITICAL FIX: Initialize timestamp tracking variables
+    //  Initialize timestamp tracking variables
     ctx->last_pts_initialized = 0;
     ctx->last_pts = AV_NOPTS_VALUE;
     ctx->frame_duration = 0;
     
-    // CRITICAL FIX: Create a mutex for thread-safe packet processing
+    //  Create a mutex for thread-safe packet processing
     pthread_mutex_t packet_mutex = PTHREAD_MUTEX_INITIALIZER;
     
     // Main packet reading loop
@@ -154,24 +154,24 @@ static void *stream_reader_thread(void *arg) {
             continue;
         }
         
-        // CRITICAL FIX: Check if we're still running before reading a frame
+        //  Check if we're still running before reading a frame
         // This prevents race conditions during shutdown
         if (!ctx->running) {
             av_usleep(5000);  // 5ms
             continue;
         }
         
-        // CRITICAL FIX: Use a local copy of the input context to avoid race conditions
+        //  Use a local copy of the input context to avoid race conditions
         AVFormatContext *local_input_ctx = ctx->input_ctx;
         if (!local_input_ctx) {
             av_usleep(5000);  // 5ms
             continue;
         }
         
-        // CRITICAL FIX: Lock mutex before reading frame to prevent concurrent access
+        //  Lock mutex before reading frame to prevent concurrent access
         pthread_mutex_lock(&packet_mutex);
         
-        // CRITICAL FIX: Check running state again after acquiring lock
+        //  Check running state again after acquiring lock
         if (!ctx->running) {
             pthread_mutex_unlock(&packet_mutex);
             av_usleep(5000);  // 5ms
@@ -180,7 +180,7 @@ static void *stream_reader_thread(void *arg) {
         
         ret = av_read_frame(local_input_ctx, pkt);
         
-        // CRITICAL FIX: Add timeout check for RTSP connections
+        //  Add timeout check for RTSP connections
         // If we've been trying to connect for too long, log an error and mark as not running
         if (ret < 0 && (ret == AVERROR_EOF || ret == AVERROR(EAGAIN))) {
             time_t current_time = time(NULL);
@@ -195,7 +195,7 @@ static void *stream_reader_thread(void *arg) {
         
         // Handle timestamp recovery for UDP streams - AFTER reading the packet
         if (ret >= 0) {
-            // CRITICAL FIX: Check if we're still running after reading a frame
+            //  Check if we're still running after reading a frame
             // This prevents race conditions during shutdown
             if (!ctx->running) {
                 av_packet_unref(pkt);
@@ -211,7 +211,7 @@ static void *stream_reader_thread(void *arg) {
                  (long long)(pkt->dts != AV_NOPTS_VALUE ? pkt->dts : -1), 
                  pkt->size);
             
-            // CRITICAL FIX: We're already holding packet_mutex, no need for additional mutex
+            //  We're already holding packet_mutex, no need for additional mutex
             // This simplifies the code and reduces the risk of deadlocks
             if (ctx->config.protocol == STREAM_PROTOCOL_UDP) {
                 
@@ -225,7 +225,7 @@ static void *stream_reader_thread(void *arg) {
                             stream_name);
                 }
                 
-                // CRITICAL FIX: Add additional validation for local_input_ctx and stream index
+                //  Add additional validation for local_input_ctx and stream index
                 if (ctx->frame_duration == 0 && local_input_ctx && 
                     ctx->video_stream_idx >= 0 && ctx->video_stream_idx < local_input_ctx->nb_streams &&
                     local_input_ctx->streams[ctx->video_stream_idx]) {
@@ -238,7 +238,7 @@ static void *stream_reader_thread(void *arg) {
                         AVRational fr = local_input_ctx->streams[ctx->video_stream_idx]->avg_frame_rate;
                         
                         // Avoid division by zero
-                        if (fr.den > 0 && tb.num > 0 && tb.den > 0) {  // CRITICAL FIX: Validate timebase
+                        if (fr.den > 0 && tb.num > 0 && tb.den > 0) {  //  Validate timebase
                             ctx->frame_duration = av_rescale_q(1, av_inv_q(fr), tb);
                         } else {
                             // Default to a reasonable value if framerate or timebase is invalid
@@ -339,7 +339,7 @@ static void *stream_reader_thread(void *arg) {
                     pkt->dts = 1;
                 }
                 
-                // CRITICAL FIX: Additional safety check for negative timestamps
+                //  Additional safety check for negative timestamps
                 if (pkt->pts <= 0 || pkt->dts <= 0) {
                     log_warn("Non-positive timestamps detected in TCP stream %s: pts=%lld, dts=%lld", 
                             stream_name, (long long)pkt->pts, (long long)pkt->dts);
@@ -359,10 +359,10 @@ static void *stream_reader_thread(void *arg) {
             if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN)) {
                 // End of stream or resource temporarily unavailable
                 av_packet_unref(pkt);
-                pthread_mutex_unlock(&packet_mutex);  // CRITICAL FIX: Unlock mutex before reconnection logic
+                pthread_mutex_unlock(&packet_mutex);  //  Unlock mutex before reconnection logic
                 log_warn("Stream %s disconnected, attempting to reconnect...", stream_name);
                 
-                // CRITICAL FIX: Use different reconnection strategies based on protocol
+                //  Use different reconnection strategies based on protocol
                 static int reconnect_attempts = 0;
                 int backoff_time_ms;
                 
@@ -474,7 +474,7 @@ static void *stream_reader_thread(void *arg) {
                          (long long)pkt->pts, (long long)pkt->dts, pkt->size);
             }
             
-            // CRITICAL FIX: Double-check that we're still running and have a valid callback
+            //  Double-check that we're still running and have a valid callback
             // This prevents use-after-free issues during shutdown
             if (!ctx->running || !ctx->packet_callback) {
                 // Skip processing if we're shutting down or callback was cleared
@@ -720,11 +720,11 @@ int stop_stream_reader(stream_reader_ctx_t *ctx) {
     // Log that we're attempting to stop the reader
     log_info("Attempting to stop stream reader: %s", stream_name);
     
-    // CRITICAL FIX: Use a static mutex to prevent concurrent access during stopping
+    //  Use a static mutex to prevent concurrent access during stopping
     static pthread_mutex_t stop_mutex = PTHREAD_MUTEX_INITIALIZER;
     pthread_mutex_lock(&stop_mutex);
     
-    // CRITICAL FIX: Check if the reader is already stopped
+    //  Check if the reader is already stopped
     if (!ctx->running) {
         log_warn("Stream reader for %s is already stopped", stream_name);
         pthread_mutex_unlock(&stop_mutex);
@@ -749,7 +749,7 @@ int stop_stream_reader(stream_reader_ctx_t *ctx) {
         return -1;
     }
     
-    // CRITICAL FIX: First safely clear the callback to prevent any further processing
+    //  First safely clear the callback to prevent any further processing
     // This must be done before marking as not running to prevent race conditions
     ctx->packet_callback = NULL;
     ctx->callback_data = NULL;
@@ -794,7 +794,7 @@ int stop_stream_reader(stream_reader_ctx_t *ctx) {
     
     log_info("Successfully stopped stream reader for %s", stream_name);
     
-    // CRITICAL FIX: Unlock the stop mutex
+    //  Unlock the stop mutex
     pthread_mutex_unlock(&stop_mutex);
     
     return 0;

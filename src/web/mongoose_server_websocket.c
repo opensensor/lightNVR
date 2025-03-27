@@ -20,6 +20,12 @@
 void mg_handle_websocket_upgrade(struct mg_connection *c, struct mg_http_message *hm) {
     log_info("Handling WebSocket upgrade request");
     
+    //  Check if connection is valid
+    if (!c) {
+        log_error("Invalid connection pointer in mg_handle_websocket_upgrade");
+        return;
+    }
+    
     // Make sure WebSocket manager is initialized
     if (!websocket_manager_is_initialized()) {
         log_error("WebSocket manager not initialized");
@@ -109,14 +115,25 @@ void mg_handle_websocket_upgrade(struct mg_connection *c, struct mg_http_message
         // Higher priority components are stopped first during shutdown
         int component_id = register_component(conn_name, COMPONENT_SERVER_THREAD, c, 5);
         if (component_id >= 0) {
-            // Store the component ID in a custom field in the connection's user data
+            //  Store the component ID in a more reliable way
+            // We'll use a custom field in the connection's user data
             // We can't modify the connection struct directly, but we can use the existing fn_data
             // which is already set to the server instance
             log_debug("Registered WebSocket connection %s with shutdown coordinator, ID: %d", 
                      conn_name, component_id);
+            
+            //  Set a flag in the connection to indicate it's registered
+            // This will be used during shutdown to properly unregister the component
+            c->is_draining = 1;  // Repurpose this flag to indicate registration with shutdown coordinator
         } else {
             log_warn("Failed to register WebSocket connection with shutdown coordinator");
         }
+    }
+    
+    //  Check if connection is already closing before upgrading
+    if (c->is_closing) {
+        log_warn("Connection is already closing, skipping WebSocket upgrade");
+        return;
     }
     
     // Upgrade connection to WebSocket

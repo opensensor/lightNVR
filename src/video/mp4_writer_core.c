@@ -118,15 +118,42 @@ void mp4_writer_close(mp4_writer_t *writer) {
              writer->stream_name ? writer->stream_name : "unknown", 
              writer->output_path ? writer->output_path : "unknown");
     
+    //  First, mark the recording as complete in the database if needed
+    if (writer->current_recording_id > 0) {
+        // Get the file size before marking as complete
+        struct stat st;
+        uint64_t size_bytes = 0;
+        
+        if (writer->output_path && stat(writer->output_path, &st) == 0) {
+            size_bytes = st.st_size;
+            log_info("Final file size for %s: %llu bytes", 
+                    writer->output_path, (unsigned long long)size_bytes);
+            
+            // Mark the recording as complete with the correct file size
+            update_recording_metadata(writer->current_recording_id, time(NULL), size_bytes, true);
+            log_info("Marked recording (ID: %llu) as complete during writer close", 
+                    (unsigned long long)writer->current_recording_id);
+        } else if (writer->output_path) {
+            log_warn("Failed to get file size for %s during close", writer->output_path);
+            
+            // Still mark the recording as complete, but with size 0
+            update_recording_metadata(writer->current_recording_id, time(NULL), 0, true);
+            log_info("Marked recording (ID: %llu) as complete during writer close (size unknown)", 
+                    (unsigned long long)writer->current_recording_id);
+        }
+    }
+    
     // First, stop any recording thread if it's running
     if (writer->thread_ctx) {
         mp4_writer_stop_recording_thread(writer);
+        //  thread_ctx should now be NULL if join was successful
+        // If join failed, the thread was detached and will clean up itself
     }
     
     // Close the output context if it exists
     if (writer->output_ctx) {
         // Write trailer if the context is initialized
-        if (writer->is_initialized) {
+        if (writer->is_initialized && writer->output_ctx->pb) {
             int ret = av_write_trailer(writer->output_ctx);
             if (ret < 0) {
                 char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
@@ -145,9 +172,23 @@ void mp4_writer_close(mp4_writer_t *writer) {
         writer->output_ctx = NULL;
     }
     
-    // Destroy mutexes
-    pthread_mutex_destroy(&writer->mutex);
-    pthread_mutex_destroy(&writer->audio.mutex);
+    //  Ensure we're not in the middle of a rotation
+    if (writer->is_rotating) {
+        log_warn("MP4 writer was still rotating during close, forcing rotation to complete");
+        writer->is_rotating = 0;
+        writer->waiting_for_keyframe = 0;
+    }
+    
+    // Destroy mutexes with proper error handling
+    int mutex_result = pthread_mutex_destroy(&writer->mutex);
+    if (mutex_result != 0) {
+        log_warn("Failed to destroy writer mutex: %s", strerror(mutex_result));
+    }
+    
+    mutex_result = pthread_mutex_destroy(&writer->audio.mutex);
+    if (mutex_result != 0) {
+        log_warn("Failed to destroy audio mutex: %s", strerror(mutex_result));
+    }
     
     // Free the writer structure
     free(writer);

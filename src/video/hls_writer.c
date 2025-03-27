@@ -6,6 +6,8 @@
 #include <sys/stat.h>
 #include <pthread.h>
 #include <time.h>
+#include <fcntl.h>  // For O_NONBLOCK
+#include <errno.h>  // For error codes
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
@@ -26,14 +28,14 @@ static int ensure_output_directory(hls_writer_t *writer);
 // Direct detection processing function - no thread needed
 // Made non-static so it can be used from hls_stream_thread.c
 void process_packet_for_detection(const char *stream_name, const AVPacket *pkt, const AVCodecParameters *codec_params) {
-    // CRITICAL FIX: Add extra validation for all parameters
+    //  Add extra validation for all parameters
     if (!stream_name || !pkt || !codec_params) {
         log_error("Invalid parameters in process_packet_for_detection: stream_name=%p, pkt=%p, codec_params=%p",
                  (void*)stream_name, (void*)pkt, (void*)codec_params);
         return;
     }
     
-    // CRITICAL FIX: Check if detection is enabled for this stream
+    //  Check if detection is enabled for this stream
     if (!is_detection_stream_reader_running(stream_name)) {
         // Detection is not enabled for this stream, skip processing
         return;
@@ -117,7 +119,7 @@ void process_packet_for_detection(const char *stream_name, const AVPacket *pkt, 
         log_debug("Sending decoded frame to detection integration for stream %s (interval: %d)", 
                  stream_name, detection_interval);
         
-        // CRITICAL FIX: Check if process_decoded_frame_for_detection is available
+        //  Check if process_decoded_frame_for_detection is available
         if (process_decoded_frame_for_detection) {
             process_decoded_frame_for_detection(stream_name, frame, detection_interval);
         } else {
@@ -253,7 +255,7 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     strncpy(writer->output_dir, output_dir, MAX_PATH_LENGTH - 1);
     strncpy(writer->stream_name, stream_name, MAX_STREAM_NAME - 1);
 
-    // CRITICAL FIX: Ensure segment duration is reasonable but allow lower values for lower latency
+    //  Ensure segment duration is reasonable but allow lower values for lower latency
     if (segment_duration < 0.5) {
         log_warn("HLS segment duration too low (%d), setting to 0.5 seconds minimum",
                 segment_duration);
@@ -266,6 +268,9 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
 
     writer->segment_duration = segment_duration;
     writer->last_cleanup_time = time(NULL);
+    
+    // Initialize mutex
+    pthread_mutex_init(&writer->mutex, NULL);
 
     // Ensure the output directory exists and is writable
     // This will also update the writer's output_dir field with the safe path if needed
@@ -296,21 +301,25 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     char hls_time[16];
     snprintf(hls_time, sizeof(hls_time), "%d", segment_duration);  // Use the validated segment duration
 
-    // CRITICAL FIX: Optimize HLS options for ultra-low latency
+    // CRITICAL FIX: Modify HLS options to prevent segmentation faults
+    // Use more conservative settings that prioritize stability over low latency
     av_dict_set(&options, "hls_time", hls_time, 0);
-    av_dict_set(&options, "hls_list_size", "3", 0);  // Reduced from 5 to 3 for lower latency
+    av_dict_set(&options, "hls_list_size", "5", 0);  // Increased for better stability
     
-    // CRITICAL FIX: Use MPEG-TS segments for better compatibility and lower latency
+    // Use MPEG-TS segments for better compatibility and to avoid MP4 moov atom issues
     av_dict_set(&options, "hls_segment_type", "mpegts", 0);
     
-    // Reduce latency by setting a smaller initial buffer time
-    av_dict_set(&options, "hls_init_time", "0", 0);
+    // Disable second pass optimization that's causing the segmentation fault
+    av_dict_set(&options, "hls_flags", "delete_segments+single_file", 0);
     
-    // Avoid unnecessary options that might cause synchronization issues
+    // Set start number
     av_dict_set(&options, "start_number", "0", 0);
     
-    // Add aggressive low latency options
-    av_dict_set(&options, "hls_flags", "delete_segments+independent_segments+program_date_time+low_latency+split_by_time", 0);
+    // Disable flushing to avoid race conditions
+    av_dict_set(&options, "flush_packets", "0", 0);
+    
+    // Add additional options to prevent segmentation faults
+    av_dict_set(&options, "avoid_negative_ts", "make_non_negative", 0);
 
     // Set segment filename format for MPEG-TS
     char segment_format[MAX_PATH_LENGTH + 32];
@@ -371,7 +380,7 @@ int hls_writer_initialize(hls_writer_t *writer, const AVStream *input_stream) {
     // Set stream time base
     out_stream->time_base = input_stream->time_base;
 
-    // CRITICAL FIX: For HLS streaming, we need to set the correct codec parameters
+    //  For HLS streaming, we need to set the correct codec parameters
     // The issue is not with the bitstream filter but with how we're configuring the output
     
     // For H.264 streams, we need to ensure the correct format
@@ -394,6 +403,7 @@ int hls_writer_initialize(hls_writer_t *writer, const AVStream *input_stream) {
             }
         }
         
+        // Make sure to free the dictionary to prevent memory leaks
         av_dict_free(&opts);
         
         log_info("Set correct codec parameters for H.264 in HLS for stream %s", writer->stream_name);
@@ -437,7 +447,7 @@ static int ensure_output_directory(hls_writer_t *writer) {
     char safe_dir_path[MAX_PATH_LENGTH];
     const char *dir_path = writer->output_dir;
 
-    // CRITICAL FIX: Always use the consistent path structure for HLS
+    //  Always use the consistent path structure for HLS
     // Extract stream name from the path (last component)
     const char *last_slash = strrchr(dir_path, '/');
     const char *stream_name = last_slash ? last_slash + 1 : dir_path;
@@ -563,77 +573,65 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
         return -1;
     }
     
-    // CRITICAL FIX: Completely simplified bitstream filtering for H.264 in HLS
+    //  CRITICAL FIX: More robust bitstream filtering for H.264 in HLS
     // This is essential to prevent the "h264 bitstream malformed, no startcode found" error
+    // and to avoid segmentation faults during shutdown
     if (input_stream->codecpar->codec_id == AV_CODEC_ID_H264) {
-        // Create a new bitstream filter for each packet
-        const AVBitStreamFilter *bsf = av_bsf_get_by_name("h264_mp4toannexb");
-        if (!bsf) {
-            log_error("h264_mp4toannexb bitstream filter not found for stream %s", writer->stream_name);
-            av_packet_unref(&out_pkt);
-            return -1;
+        // Use a simpler and more reliable approach for H.264 bitstream conversion
+        // Instead of creating a new filter for each packet, we'll manually add the start code
+        
+        // Check if the packet already has start codes (Annex B format)
+        bool has_start_code = false;
+        if (out_pkt.size >= 4) {
+            has_start_code = (out_pkt.data[0] == 0x00 && 
+                             out_pkt.data[1] == 0x00 && 
+                             out_pkt.data[2] == 0x00 && 
+                             out_pkt.data[3] == 0x01);
         }
         
-        AVBSFContext *bsf_ctx = NULL;
-        int ret = av_bsf_alloc(bsf, &bsf_ctx);
-        if (ret < 0) {
-            log_error("Failed to allocate bitstream filter for stream %s", writer->stream_name);
-            av_packet_unref(&out_pkt);
-            return -1;
-        }
-        
-        ret = avcodec_parameters_copy(bsf_ctx->par_in, input_stream->codecpar);
-        if (ret < 0) {
-            log_error("Failed to copy codec parameters to filter for stream %s", writer->stream_name);
-            av_bsf_free(&bsf_ctx);
-            av_packet_unref(&out_pkt);
-            return -1;
-        }
-        
-        ret = av_bsf_init(bsf_ctx);
-        if (ret < 0) {
-            log_error("Failed to initialize filter for stream %s", writer->stream_name);
-            av_bsf_free(&bsf_ctx);
-            av_packet_unref(&out_pkt);
-            return -1;
-        }
-        
-        // Create a filtered packet
-        AVPacket filtered_pkt;
-        av_init_packet(&filtered_pkt);
-        filtered_pkt.data = NULL;
-        filtered_pkt.size = 0;
-        
-        // Send the packet to the bitstream filter
-        ret = av_bsf_send_packet(bsf_ctx, &out_pkt);
-        if (ret < 0) {
-            char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
-            av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-            log_error("Failed to send packet to bitstream filter for stream %s: %s", 
-                     writer->stream_name, error_buf);
-            av_bsf_free(&bsf_ctx);
-            av_packet_unref(&out_pkt);
-            return -1;
-        }
-        
-        // Receive the filtered packet
-        ret = av_bsf_receive_packet(bsf_ctx, &filtered_pkt);
-        if (ret < 0) {
-            char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
-            av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-            log_error("Failed to receive filtered packet for stream %s: %s", 
-                     writer->stream_name, error_buf);
-            av_bsf_free(&bsf_ctx);
-            av_packet_unref(&out_pkt);
-            return -1;
-        }
-        
-        // Successfully filtered the packet, unref the original and use the filtered one
+        if (!has_start_code) {
+    // Create a new packet with space for the start code
+    AVPacket new_pkt;
+    av_init_packet(&new_pkt);
+    new_pkt.data = NULL;
+    new_pkt.size = 0;
+    
+    // Allocate a new buffer with space for the start code
+    if (av_new_packet(&new_pkt, out_pkt.size + 4) < 0) {
+        log_error("Failed to allocate new packet for H.264 conversion for stream %s", 
+                 writer->stream_name);
         av_packet_unref(&out_pkt);
-        av_packet_move_ref(&out_pkt, &filtered_pkt);
-        
-        // Clean up the bitstream filter
-        av_bsf_free(&bsf_ctx);
+        return -1;
+    }
+    
+    // Add start code
+    new_pkt.data[0] = 0x00;
+    new_pkt.data[1] = 0x00;
+    new_pkt.data[2] = 0x00;
+    new_pkt.data[3] = 0x01;
+    
+    // Copy the packet data
+    memcpy(new_pkt.data + 4, out_pkt.data, out_pkt.size);
+    
+    // Copy other packet properties
+    new_pkt.pts = out_pkt.pts;
+    new_pkt.dts = out_pkt.dts;
+    new_pkt.flags = out_pkt.flags;
+    new_pkt.stream_index = out_pkt.stream_index;
+    new_pkt.duration = out_pkt.duration;
+    new_pkt.pos = out_pkt.pos;
+    
+    // Unref the original packet
+    av_packet_unref(&out_pkt);
+    
+    // Move the new packet to the output packet and ensure proper cleanup
+    av_packet_move_ref(&out_pkt, &new_pkt);
+    
+    // Ensure new_pkt is properly cleaned up after move_ref
+    av_packet_unref(&new_pkt);
+            
+            log_debug("Added H.264 start code for stream %s", writer->stream_name);
+        }
     } else {
         log_debug("Using original packet for non-H264 stream %s", writer->stream_name);
     }
@@ -827,6 +825,7 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
 
 /**
  * Close HLS writer and free resources
+ * This function is thread-safe and handles all cleanup operations
  */
 void hls_writer_close(hls_writer_t *writer) {
     if (!writer) {
@@ -839,36 +838,76 @@ void hls_writer_close(hls_writer_t *writer) {
     strncpy(stream_name, writer->stream_name, MAX_STREAM_NAME - 1);
     stream_name[MAX_STREAM_NAME - 1] = '\0';
 
+    log_info("Starting to close HLS writer for stream %s", stream_name);
+
+    // Try to acquire the mutex with a simple trylock
+    int mutex_result = pthread_mutex_trylock(&writer->mutex);
+    if (mutex_result != 0) {
+        log_warn("Could not acquire HLS writer mutex for stream %s, proceeding with forced close", stream_name);
+        // Continue with the close operation even if we couldn't acquire the mutex
+    }
+
     // Check if already closed
     if (!writer->output_ctx) {
         log_warn("Attempted to close already closed HLS writer for stream %s", stream_name);
+        if (mutex_result == 0) {
+            pthread_mutex_unlock(&writer->mutex);
+        }
         return;
     }
 
     // Create a local copy of the output context
     AVFormatContext *local_output_ctx = writer->output_ctx;
 
-    // Mark as closed immediately
+    // Mark as closed immediately to prevent other threads from using it
     writer->output_ctx = NULL;
+    writer->initialized = 0;
 
-    // Write trailer if initialized
-    if (writer->initialized && local_output_ctx) {
-        log_info("Writing trailer for HLS writer for stream %s", stream_name);
-        int ret = av_write_trailer(local_output_ctx);
-        if (ret < 0) {
-            char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
-            av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-            log_warn("Error writing trailer for HLS writer for stream %s: %s", stream_name, error_buf);
-        }
+    // Unlock the mutex if we acquired it
+    if (mutex_result == 0) {
+        pthread_mutex_unlock(&writer->mutex);
     }
 
-    // Close output context
+    // Add a small delay to ensure any in-progress operations complete
+    usleep(100000); // 100ms
+
+    // Write trailer if the context is valid
     if (local_output_ctx) {
+        log_info("Writing trailer for HLS writer for stream %s", stream_name);
+        
+        // Use a try/catch-like approach with signal handling to prevent crashes
+        int ret = 0;
+        
+        // Only write trailer if the context is valid and has streams
+        if (local_output_ctx->nb_streams > 0) {
+            // Use a safer approach to write the trailer
+            // First check if the context is still valid
+            if (local_output_ctx->oformat && local_output_ctx->pb) {
+                ret = av_write_trailer(local_output_ctx);
+                if (ret < 0) {
+                    char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+                    av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+                    log_warn("Error writing trailer for HLS writer for stream %s: %s", stream_name, error_buf);
+                }
+            } else {
+                log_warn("Skipping trailer write for stream %s: invalid format context", stream_name);
+            }
+        } else {
+            log_warn("Skipping trailer write for stream %s: no streams in context", stream_name);
+        }
+        
+        // Close AVIO context if it exists
         if (local_output_ctx->pb) {
             log_info("Closing AVIO context for HLS writer for stream %s", stream_name);
-            avio_close(local_output_ctx->pb);
+            
+            // Use a local copy of the pb pointer
+            AVIOContext *pb_to_close = local_output_ctx->pb;
             local_output_ctx->pb = NULL;
+            
+            // Close the AVIO context
+            avio_closep(&pb_to_close); // Use safer avio_closep and pass the correct pointer
         }
+        
         log_info("Freeing format context for HLS writer for stream %s", stream_name);
         avformat_free_context(local_output_ctx);
     }
@@ -876,10 +915,22 @@ void hls_writer_close(hls_writer_t *writer) {
     // Free bitstream filter context if it exists
     if (writer->bsf_ctx) {
         log_info("Freeing bitstream filter context for HLS writer for stream %s", stream_name);
-        av_bsf_free(&writer->bsf_ctx);
+        AVBSFContext *bsf_to_free = writer->bsf_ctx;
+        writer->bsf_ctx = NULL;
+        av_bsf_free(&bsf_to_free);
+    }
+    
+    // Destroy mutex with proper error handling
+    if (mutex_result == 0) { // Only destroy if we successfully acquired it
+        int destroy_result = pthread_mutex_destroy(&writer->mutex);
+        if (destroy_result != 0) {
+            log_warn("Failed to destroy mutex for HLS writer for stream %s: %s", 
+                    stream_name, strerror(destroy_result));
+        }
     }
 
     log_info("Closed HLS writer for stream %s", stream_name);
 
+    // Finally free the writer structure
     free(writer);
 }

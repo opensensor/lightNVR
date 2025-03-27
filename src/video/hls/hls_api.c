@@ -254,7 +254,7 @@ int stop_hls_stream(const char *stream_name) {
         return -1;
     }
     
-    // CRITICAL FIX: Check if the stream is already stopped
+    //  Check if the stream is already stopped
     if (!ctx->running) {
         log_warn("HLS stream %s is already stopped", stream_name);
         // Don't re-enable callbacks here - the stream is already stopped

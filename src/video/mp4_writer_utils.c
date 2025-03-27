@@ -100,13 +100,13 @@ int apply_h264_annexb_filter(AVPacket *packet, enum AVCodecID codec_id) {
  * Enhanced MP4 writer initialization with better path handling and logging
  * and proper audio stream handling
  * 
- * CRITICAL FIX: Only initialize on keyframes for video packets to ensure clean recordings
- * CRITICAL FIX: Properly handle audio stream initialization
+ *  Only initialize on keyframes for video packets to ensure clean recordings
+ *  Properly handle audio stream initialization
  */
 int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, const AVStream *input_stream) {
     int ret;
 
-    // CRITICAL FIX: Ensure we only initialize on keyframes for video packets
+    //  Ensure we only initialize on keyframes for video packets
     if (input_stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
         // Check if this is a keyframe
         bool is_keyframe = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
@@ -183,7 +183,7 @@ int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, const AVStr
         return -1;
     }
 
-    // CRITICAL FIX: Always enable audio recording by default
+    //  Always enable audio recording by default
     writer->has_audio = 1;
     log_info("Audio recording enabled by default for stream %s", writer->stream_name);
 
@@ -210,7 +210,7 @@ int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, const AVStr
             return -1;
         }
         
-        // CRITICAL FIX: Apply h264_mp4toannexb bitstream filter for H.264 streams
+        //  Apply h264_mp4toannexb bitstream filter for H.264 streams
         // This fixes the "h264 bitstream malformed, no startcode found" error
         if (input_stream->codecpar->codec_id == AV_CODEC_ID_H264) {
             log_info("Set correct codec parameters for H.264 in MP4 for stream %s", 
@@ -398,7 +398,7 @@ int mp4_writer_add_audio_stream(mp4_writer_t *writer, const AVCodecParameters *c
         return -1;
     }
 
-    // CRITICAL FIX: Initialize audio.first_dts to AV_NOPTS_VALUE if not already set
+    //  Initialize audio.first_dts to AV_NOPTS_VALUE if not already set
     if (writer->audio.first_dts != AV_NOPTS_VALUE) {
         log_debug("Audio first_dts already set to %lld for %s", 
                  (long long)writer->audio.first_dts, 

@@ -26,37 +26,6 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
     memcpy(uri, hm->uri.buf, uri_len);
     uri[uri_len] = '\0';
     
-    // Special case: handle "/%s" path which is causing redirection issues
-    // This is likely coming from a client-side formatting issue
-    if (strcmp(uri, "/%s") == 0) {
-        log_info("Detected problematic '/%%s' path, redirecting to /index.html");
-        
-        // Get Authorization header if present
-        struct mg_str *auth_header = mg_http_get_header(hm, "Authorization");
-        
-            mg_printf(c, "HTTP/1.1 302 Found\r\n");
-            mg_printf(c, "Location: /index.html\r\n");
-            
-            // If there's an Authorization header, include it in the redirect
-            if (auth_header != NULL) {
-                mg_printf(c, "Authorization: %.*s\r\n", (int) auth_header->len, auth_header->buf);
-            }
-            
-            mg_printf(c, "Content-Length: 0\r\n");
-            mg_printf(c, "Connection: close\r\n"); // CRITICAL FIX: Add Connection: close header
-            mg_printf(c, "\r\n");
-        return;
-    }
-    
-    // Special case: handle root path "/" directly by serving index.html
-    if (strcmp(uri, "/") == 0) {
-        log_info("Handling root path '/', serving index.html directly as a static file");
-        
-        // Simply change the URI to index.html and continue processing
-        strncpy(uri, "/index.html", sizeof(uri) - 1);
-        uri[sizeof(uri) - 1] = '\0';
-    }
-    
     // Check if this is a static asset that should bypass authentication
     bool is_static_asset = false;
     if (strncmp(uri, "/js/", 4) == 0 || 
@@ -231,37 +200,16 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
     char file_path[MAX_PATH_LENGTH * 2];
     snprintf(file_path, sizeof(file_path), "%s%s", server->config.web_root, uri);
 
-    // If path ends with '/', append 'index.html' (which serves as our index)
-    size_t path_len = strlen(file_path);
-    if (path_len > 0 && file_path[path_len - 1] == '/') {
-        strncat(file_path, "index.html", sizeof(file_path) - path_len - 1);
-    }
-
     // Check if file exists
     struct stat st;
     if (stat(file_path, &st) == 0) {
         // Check if it's a directory
         if (S_ISDIR(st.st_mode)) {
-            // Redirect to add trailing slash if needed
-            if (uri[strlen(uri) - 1] != '/') {
-                // Create a fixed redirect URL with the trailing slash
-                char redirect_path[MAX_PATH_LENGTH * 2];
-                snprintf(redirect_path, sizeof(redirect_path), "%s/", uri);
-                
-            // Use a complete HTTP response with fixed headers to avoid any string formatting issues
-            mg_printf(c, "HTTP/1.1 301 Moved Permanently\r\n");
-            mg_printf(c, "Location: %s\r\n", redirect_path);
-            mg_printf(c, "Content-Length: 0\r\n");
-            mg_printf(c, "Connection: close\r\n"); // CRITICAL FIX: Add Connection: close header to ensure the connection is closed
-            mg_printf(c, "\r\n");
+            // Try to serve index.html as the index
+            strncat(file_path, "index.html", sizeof(file_path) - strlen(file_path) - 1);
+            if (stat(file_path, &st) != 0 || !S_ISREG(st.st_mode)) {
+                mg_http_reply(c, 403, "", "403 Forbidden\n");
                 return;
-            } else {
-                // Try to serve index.html as the index
-                strncat(file_path, "index.html", sizeof(file_path) - strlen(file_path) - 1);
-                if (stat(file_path, &st) != 0 || !S_ISREG(st.st_mode)) {
-                    mg_http_reply(c, 403, "", "403 Forbidden\n");
-                    return;
-                }
             }
         }
 

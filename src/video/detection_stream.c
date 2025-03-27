@@ -55,7 +55,7 @@ void init_detection_stream_system(void) {
 /**
  * Shutdown detection stream system
  * 
- * CRITICAL FIX: Modified to work with the new architecture where the HLS streaming thread
+ *  Modified to work with the new architecture where the HLS streaming thread
  * handles detection instead of using a dedicated stream reader.
  */
 void shutdown_detection_stream_system(void) {
@@ -93,7 +93,7 @@ void shutdown_detection_stream_system(void) {
 /**
  * Start a detection stream reader for a stream
  * 
- * CRITICAL FIX: Modified to work with the new architecture where the HLS streaming thread
+ *  Modified to work with the new architecture where the HLS streaming thread
  * handles detection instead of using a dedicated stream reader.
  * 
  * @param stream_name The name of the stream
@@ -139,7 +139,7 @@ int start_detection_stream_reader(const char *stream_name, int detection_interva
     
     pthread_mutex_lock(&detection_streams[slot].mutex);
     
-    // CRITICAL FIX: No longer need to start a dedicated stream reader
+    //  No longer need to start a dedicated stream reader
     // Just store the detection configuration
     
     // Initialize detection stream
@@ -147,7 +147,7 @@ int start_detection_stream_reader(const char *stream_name, int detection_interva
     detection_streams[slot].detection_interval = detection_interval;
     detection_streams[slot].frame_counter = 0;
     
-    // CRITICAL FIX: Set reader_ctx to a non-NULL value to indicate detection is enabled
+    //  Set reader_ctx to a non-NULL value to indicate detection is enabled
     // This is just a marker, we don't actually use the reader
     detection_streams[slot].reader_ctx = (stream_reader_ctx_t*)1;
     
@@ -163,7 +163,7 @@ int start_detection_stream_reader(const char *stream_name, int detection_interva
 /**
  * Stop a detection stream reader for a stream
  * 
- * CRITICAL FIX: Modified to work with the new architecture where the HLS streaming thread
+ *  Modified to work with the new architecture where the HLS streaming thread
  * handles detection instead of using a dedicated stream reader.
  * 
  * @param stream_name The name of the stream
@@ -197,7 +197,7 @@ int stop_detection_stream_reader(const char *stream_name) {
     
     pthread_mutex_lock(&detection_streams[slot].mutex);
     
-    // CRITICAL FIX: No need to stop a stream reader, just clear the configuration
+    //  No need to stop a stream reader, just clear the configuration
     
     // Clear the detection stream data
     detection_streams[slot].reader_ctx = NULL;

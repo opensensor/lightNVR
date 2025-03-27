@@ -221,7 +221,7 @@ int return_buffer_to_pool(uint8_t *buffer) {
         }
     }
     
-    // CRITICAL FIX: If buffer not found in pool, free it directly to prevent memory leak
+    //  If buffer not found in pool, free it directly to prevent memory leak
     log_error("Buffer %p not found in pool, freeing directly", (void*)buffer);
     free(buffer);
     return -1;

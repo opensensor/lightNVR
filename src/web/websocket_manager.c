@@ -28,6 +28,7 @@ typedef struct {
     char topics[MAX_TOPICS][64];    // Subscribed topics
     int topic_count;                // Number of subscribed topics
     bool active;                    // Whether the client is active
+    time_t last_activity;           // Last activity timestamp
 } websocket_client_t;
 
 // Handler structure
@@ -45,6 +46,9 @@ static bool s_initialized = false;
 
 // Global mutex to protect initialization
 static pthread_mutex_t s_init_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// Forward declaration for cleanup function
+static void websocket_manager_cleanup_inactive_clients(void);
 
 /**
  * @brief Generate a random client ID
@@ -131,6 +135,33 @@ static int find_free_handler_slot(void) {
 }
 
 /**
+ * @brief Remove a client by connection
+ * 
+ * @param conn Mongoose connection
+ * @return bool true if client was removed, false otherwise
+ */
+static bool remove_client_by_connection(const struct mg_connection *conn) {
+    pthread_mutex_lock(&s_mutex);
+    
+    int client_index = find_client_by_connection(conn);
+    if (client_index < 0) {
+        pthread_mutex_unlock(&s_mutex);
+        return false;
+    }
+    
+    // Log client removal
+    log_info("Removing WebSocket client: %s", s_clients[client_index].id);
+    
+    // Mark client as inactive
+    s_clients[client_index].active = false;
+    s_clients[client_index].conn = NULL;
+    s_clients[client_index].topic_count = 0;
+    
+    pthread_mutex_unlock(&s_mutex);
+    return true;
+}
+
+/**
  * @brief Initialize WebSocket manager
  * 
  * @return int 0 on success, non-zero on error
@@ -183,7 +214,7 @@ void websocket_manager_shutdown(void) {
     // Set initialized to false first to prevent new operations
     s_initialized = false;
     
-    // CRITICAL FIX: Use a more robust approach to acquire the mutex
+    //  Use a more robust approach to acquire the mutex
     struct timespec timeout;
     clock_gettime(CLOCK_REALTIME, &timeout);
     timeout.tv_sec += 5; // Increased to 5 second timeout for better reliability
@@ -209,27 +240,38 @@ void websocket_manager_shutdown(void) {
         int closed_count = 0;
         for (int i = 0; i < MAX_CLIENTS; i++) {
             if (s_clients[i].active) {
-                // CRITICAL FIX: Safely handle connection closing
+                //  Safely handle connection closing
                 if (s_clients[i].conn) {
                     // Send a proper WebSocket close frame before marking for closing
-                    mg_ws_send(s_clients[i].conn, "", 0, WEBSOCKET_OP_CLOSE);
-                    
-                    // Mark connection for closing
-                    s_clients[i].conn->is_closing = 1;
-                    
-                    // CRITICAL FIX: Explicitly close the socket to ensure it's released
-                    if (s_clients[i].conn->fd != NULL) {
-                        int socket_fd = (int)(size_t)s_clients[i].conn->fd;
-                        log_debug("Closing WebSocket socket: %d", socket_fd);
-                        close(socket_fd);
-                        s_clients[i].conn->fd = NULL;  // Mark as closed
+                    //  Check if connection is still valid before sending
+                    if (s_clients[i].conn->is_websocket && !s_clients[i].conn->is_closing) {
+                        mg_ws_send(s_clients[i].conn, "", 0, WEBSOCKET_OP_CLOSE);
+                        
+                        // Mark connection for closing
+                        s_clients[i].conn->is_closing = 1;
+                        
+                        //  Explicitly close the socket to ensure it's released
+                        if (s_clients[i].conn->fd != NULL) {
+                            int socket_fd = (int)(size_t)s_clients[i].conn->fd;
+                            log_debug("Closing WebSocket socket: %d", socket_fd);
+                            
+                            //  Set socket to non-blocking mode to avoid hang on close
+                            int flags = fcntl(socket_fd, F_GETFL, 0);
+                            fcntl(socket_fd, F_SETFL, flags | O_NONBLOCK);
+                            
+                            // Now close the socket
+                            close(socket_fd);
+                            s_clients[i].conn->fd = NULL;  // Mark as closed
+                        }
+                    } else {
+                        log_debug("Connection %d is already closing or not a websocket", i);
                     }
                 }
                 
                 // Explicitly set active to false to prevent further operations on this client
                 s_clients[i].active = false;
                 
-                // CRITICAL FIX: Clear topic subscriptions
+                //  Clear topic subscriptions
                 s_clients[i].topic_count = 0;
                 memset(s_clients[i].topics, 0, sizeof(s_clients[i].topics));
                 
@@ -239,7 +281,7 @@ void websocket_manager_shutdown(void) {
         
         log_info("Sent close frames to %d WebSocket connections", closed_count);
         
-        // CRITICAL FIX: Clear handler state safely
+        //  Clear handler state safely
         for (int i = 0; i < MAX_HANDLERS; i++) {
             if (s_handlers[i].active) {
                 s_handlers[i].active = false;
@@ -251,7 +293,7 @@ void websocket_manager_shutdown(void) {
         pthread_mutex_unlock(&s_mutex);
     }
     
-    // CRITICAL FIX: Add a longer delay to ensure close frames are sent before clearing connection pointers
+    //  Add a longer delay to ensure close frames are sent before clearing connection pointers
     // This helps prevent memory corruption during shutdown
     usleep(500000); // 500ms - increased to ensure frames are sent
     
@@ -267,20 +309,13 @@ void websocket_manager_shutdown(void) {
         log_warn("Could not acquire WebSocket mutex to clear connection pointers");
     }
     
+    //  Wait a bit longer to ensure all operations on the mutex have completed
+    usleep(100000); // 100ms additional delay
+    
     // Destroy mutex with proper error handling
     int destroy_result = pthread_mutex_destroy(&s_mutex);
     if (destroy_result != 0) {
-        log_warn("Failed to destroy WebSocket mutex: %d", destroy_result);
-        // If EBUSY, try again after a delay
-        if (destroy_result == EBUSY) {
-            usleep(500000); // 500ms delay
-            destroy_result = pthread_mutex_destroy(&s_mutex);
-            if (destroy_result != 0) {
-                log_error("Still failed to destroy WebSocket mutex after retry: %d", destroy_result);
-            } else {
-                log_info("Successfully destroyed WebSocket mutex after retry");
-            }
-        }
+        log_warn("Failed to destroy WebSocket mutex: %d (%s)", destroy_result, strerror(destroy_result));
     }
     
     log_info("WebSocket manager shutdown complete");
@@ -314,6 +349,9 @@ void websocket_manager_handle_open(struct mg_connection *c) {
     
     pthread_mutex_lock(&s_mutex);
     
+    // Clean up inactive clients before adding a new one
+    websocket_manager_cleanup_inactive_clients();
+    
     // Find a free client slot
     int slot = find_free_client_slot();
     if (slot < 0) {
@@ -326,6 +364,7 @@ void websocket_manager_handle_open(struct mg_connection *c) {
     s_clients[slot].active = true;
     s_clients[slot].conn = c;
     s_clients[slot].topic_count = 0;
+    s_clients[slot].last_activity = time(NULL);
     
     // Generate client ID
     generate_client_id(s_clients[slot].id, sizeof(s_clients[slot].id));
@@ -473,6 +512,9 @@ void websocket_manager_handle_message(struct mg_connection *c, const char *data,
         return;
     }
     
+    // Update last activity timestamp
+    s_clients[client_index].last_activity = time(NULL);
+    
     // Make a copy of the client ID to use after releasing the mutex
     char client_id[64];
     strncpy(client_id, s_clients[client_index].id, sizeof(client_id) - 1);
@@ -482,8 +524,20 @@ void websocket_manager_handle_message(struct mg_connection *c, const char *data,
     // Handle message based on type
     if (strcmp(type, "subscribe") == 0) {
         // Subscribe to topic
+        pthread_mutex_lock(&s_mutex);
+        client_index = find_client_by_id(client_id);
+        if (client_index < 0) {
+            log_error("Client not found: %s", client_id);
+            pthread_mutex_unlock(&s_mutex);
+            free(payload);
+            cJSON_Delete(json);
+            free(message);
+            return;
+        }
+        
         if (s_clients[client_index].topic_count >= MAX_TOPICS) {
             log_error("Client %s has too many subscriptions", client_id);
+            pthread_mutex_unlock(&s_mutex);
         } else {
             // Check if already subscribed
             bool already_subscribed = false;
@@ -509,6 +563,8 @@ void websocket_manager_handle_message(struct mg_connection *c, const char *data,
                     log_info("Subscription payload contains client_id: %s", payload_client_id->valuestring);
                 }
                 
+                pthread_mutex_unlock(&s_mutex);
+                
                 // Send acknowledgment
                 websocket_message_t *ack = websocket_message_create(
                     "ack", "system", "{\"message\":\"Subscribed\"}");
@@ -520,10 +576,23 @@ void websocket_manager_handle_message(struct mg_connection *c, const char *data,
                 
                 // Make sure handlers are registered
                 register_websocket_handlers();
+            } else {
+                pthread_mutex_unlock(&s_mutex);
             }
         }
     } else if (strcmp(type, "unsubscribe") == 0) {
         // Unsubscribe from topic
+        pthread_mutex_lock(&s_mutex);
+        client_index = find_client_by_id(client_id);
+        if (client_index < 0) {
+            log_error("Client not found: %s", client_id);
+            pthread_mutex_unlock(&s_mutex);
+            free(payload);
+            cJSON_Delete(json);
+            free(message);
+            return;
+        }
+        
         for (int i = 0; i < s_clients[client_index].topic_count; i++) {
             if (strcmp(s_clients[client_index].topics[i], topic) == 0) {
                 // Remove subscription by shifting remaining topics
@@ -533,6 +602,8 @@ void websocket_manager_handle_message(struct mg_connection *c, const char *data,
                 
                 s_clients[client_index].topic_count--;
                 log_info("Client %s unsubscribed from topic %s", client_id, topic);
+                
+                pthread_mutex_unlock(&s_mutex);
                 
                 // Send acknowledgment
                 websocket_message_t *ack = websocket_message_create(
@@ -546,6 +617,7 @@ void websocket_manager_handle_message(struct mg_connection *c, const char *data,
                 break;
             }
         }
+        pthread_mutex_unlock(&s_mutex);
     } else {
         // Handle message with registered handler
         int handler_index = find_handler_by_topic(topic);
@@ -671,6 +743,10 @@ bool websocket_manager_send_to_client(const char *client_id, const websocket_mes
         pthread_mutex_unlock(&s_mutex);
         return false;
     }
+    
+    // Update last activity timestamp
+    s_clients[client_index].last_activity = time(NULL);
+    
     pthread_mutex_unlock(&s_mutex);
     
     // Log the message details for debugging
@@ -732,6 +808,56 @@ bool websocket_manager_send_to_client(const char *client_id, const websocket_mes
  * @param message Message to send
  * @return int Number of clients the message was sent to
  */
+/**
+ * @brief Clean up inactive clients
+ * 
+ * This function removes clients that have been inactive for too long
+ * or have invalid connections.
+ */
+static void websocket_manager_cleanup_inactive_clients(void) {
+    // This function should be called with the mutex already locked
+    
+    time_t now = time(NULL);
+    const time_t timeout = 3600; // 1 hour timeout
+    
+    int cleaned_count = 0;
+    
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        if (s_clients[i].active) {
+            // Check if connection is valid
+            if (!s_clients[i].conn || s_clients[i].conn->is_closing) {
+                log_info("Cleaning up client %s with invalid connection", s_clients[i].id);
+                s_clients[i].active = false;
+                s_clients[i].conn = NULL;
+                s_clients[i].topic_count = 0;
+                cleaned_count++;
+                continue;
+            }
+            
+            // Check if client has been inactive for too long
+            if (now - s_clients[i].last_activity > timeout) {
+                log_info("Cleaning up inactive client %s (inactive for %ld seconds)",
+                        s_clients[i].id, now - s_clients[i].last_activity);
+                
+                // Send a close frame if possible
+                if (s_clients[i].conn && s_clients[i].conn->is_websocket && !s_clients[i].conn->is_closing) {
+                    mg_ws_send(s_clients[i].conn, "", 0, WEBSOCKET_OP_CLOSE);
+                    s_clients[i].conn->is_closing = 1;
+                }
+                
+                s_clients[i].active = false;
+                s_clients[i].conn = NULL;
+                s_clients[i].topic_count = 0;
+                cleaned_count++;
+            }
+        }
+    }
+    
+    if (cleaned_count > 0) {
+        log_info("Cleaned up %d inactive WebSocket clients", cleaned_count);
+    }
+}
+
 int websocket_manager_broadcast(const char *topic, const websocket_message_t *message) {
     // Check if WebSocket manager is initialized
     if (!websocket_manager_is_initialized()) {
@@ -750,6 +876,9 @@ int websocket_manager_broadcast(const char *topic, const websocket_message_t *me
     }
     
     pthread_mutex_lock(&s_mutex);
+    
+    // Clean up inactive clients before broadcasting
+    websocket_manager_cleanup_inactive_clients();
     
     // Convert message to JSON
     cJSON *json = cJSON_CreateObject();
@@ -786,6 +915,7 @@ int websocket_manager_broadcast(const char *topic, const websocket_message_t *me
     
     // Create a temporary array to store connection pointers
     struct mg_connection *connections[MAX_CLIENTS];
+    char client_ids[MAX_CLIENTS][64];
     int connection_count = 0;
     
     // Find all subscribed clients and store their connection pointers
@@ -794,8 +924,14 @@ int websocket_manager_broadcast(const char *topic, const websocket_message_t *me
             // Check if client is subscribed to topic
             for (int j = 0; j < s_clients[i].topic_count; j++) {
                 if (strcmp(s_clients[i].topics[j], topic) == 0) {
-                    // Store connection pointer
-                    connections[connection_count++] = s_clients[i].conn;
+                    // Store connection pointer and client ID
+                    connections[connection_count] = s_clients[i].conn;
+                    strncpy(client_ids[connection_count], s_clients[i].id, sizeof(client_ids[0]) - 1);
+                    client_ids[connection_count][sizeof(client_ids[0]) - 1] = '\0';
+                    connection_count++;
+                    
+                    // Update last activity timestamp
+                    s_clients[i].last_activity = time(NULL);
                     break;
                 }
             }
@@ -806,15 +942,32 @@ int websocket_manager_broadcast(const char *topic, const websocket_message_t *me
     pthread_mutex_unlock(&s_mutex);
     
     // Send message to all stored connections
+    int success_count = 0;
     for (int i = 0; i < connection_count; i++) {
-        mg_ws_send(connections[i], json_str, strlen(json_str), WEBSOCKET_OP_TEXT);
+        if (connections[i] && !connections[i]->is_closing) {
+            int result = mg_ws_send(connections[i], json_str, strlen(json_str), WEBSOCKET_OP_TEXT);
+            if (result > 0) {
+                success_count++;
+                log_debug("Broadcast message sent to client %s", client_ids[i]);
+            } else {
+                log_error("Failed to send broadcast message to client %s", client_ids[i]);
+                
+                // Mark connection for cleanup on next operation
+                pthread_mutex_lock(&s_mutex);
+                int client_index = find_client_by_id(client_ids[i]);
+                if (client_index >= 0) {
+                    s_clients[client_index].conn->is_closing = 1;
+                }
+                pthread_mutex_unlock(&s_mutex);
+            }
+        }
     }
     
     // Clean up
     free(json_str);
     cJSON_Delete(json);
     
-    return connection_count;
+    return success_count;
 }
 
 /**
@@ -892,6 +1045,9 @@ int websocket_manager_get_subscribed_clients(const char *topic, char ***client_i
     
     pthread_mutex_lock(&s_mutex);
     
+    // Clean up inactive clients first
+    websocket_manager_cleanup_inactive_clients();
+    
     // Count subscribed clients
     int count = 0;
     for (int i = 0; i < MAX_CLIENTS; i++) {
@@ -958,6 +1114,33 @@ bool websocket_manager_is_initialized(void) {
     bool initialized = s_initialized;
     pthread_mutex_unlock(&s_init_mutex);
     return initialized;
+}
+
+/**
+ * @brief Handle WebSocket connection close
+ * 
+ * @param c Mongoose connection
+ */
+void websocket_manager_handle_close(struct mg_connection *c) {
+    // Check if WebSocket manager is initialized
+    if (!websocket_manager_is_initialized()) {
+        log_error("WebSocket manager not initialized during connection close");
+        return;
+    }
+    
+    if (!c) {
+        log_error("Invalid connection pointer in websocket_manager_handle_close");
+        return;
+    }
+    
+    log_info("WebSocket connection closed, cleaning up resources");
+    
+    // Remove client by connection
+    if (remove_client_by_connection(c)) {
+        log_info("WebSocket client removed successfully");
+    } else {
+        log_warn("WebSocket client not found for connection during close");
+    }
 }
 
 /**

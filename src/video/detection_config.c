@@ -35,9 +35,9 @@ detection_config_t default_config = {
 // Configuration for embedded systems (256MB RAM, 2 cores)
 detection_config_t embedded_config = {
     // Memory constraints
-    .buffer_pool_size = 8,           // CRITICAL FIX: Increased from 4 to 8 buffers in the pool
+    .buffer_pool_size = 8,           //  Increased from 4 to 8 buffers in the pool
     .concurrent_detections = 2,      // Increased from 1 to 2 concurrent detections
-    .buffer_allocation_retries = 3,  // CRITICAL FIX: Increased from 3 to 5 retries for buffer allocation
+    .buffer_allocation_retries = 3,  //  Increased from 3 to 5 retries for buffer allocation
     
     // Downscaling factors
     .downscale_factor_default = 1,   // No downscaling by default

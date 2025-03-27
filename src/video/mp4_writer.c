@@ -189,8 +189,10 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         out_audio_stream->time_base = input_ctx->streams[audio_stream_idx]->time_base;
     }
     
-    // Set output options for fast start
-    av_dict_set(&out_opts, "movflags", "+faststart", 0);
+    // CRITICAL FIX: Disable faststart to prevent segmentation faults
+    // The faststart option causes a second pass that moves the moov atom to the beginning of the file
+    // This second pass is causing segmentation faults during shutdown
+    av_dict_set(&out_opts, "movflags", "empty_moov", 0);
     
     // Open output file
     ret = avio_open(&output_ctx->pb, output_file, AVIO_FLAG_WRITE);
@@ -295,6 +297,22 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                     if (pkt.pts < 0) pkt.pts = 0;
                 }
                 
+                // Explicitly set duration for the final key frame to prevent segmentation fault
+                if (pkt.duration == 0 || pkt.duration == AV_NOPTS_VALUE) {
+                    // Use the time base of the video stream to calculate a reasonable duration
+                    if (input_ctx->streams[video_stream_idx]->avg_frame_rate.num > 0 && 
+                        input_ctx->streams[video_stream_idx]->avg_frame_rate.den > 0) {
+                        // Calculate duration based on framerate (time_base units)
+                        pkt.duration = av_rescale_q(1, 
+                                                   av_inv_q(input_ctx->streams[video_stream_idx]->avg_frame_rate),
+                                                   input_ctx->streams[video_stream_idx]->time_base);
+                    } else {
+                        // Default to a reasonable value if framerate is not available
+                        pkt.duration = 1;
+                    }
+                    log_debug("Set final key frame duration to %lld", (long long)pkt.duration);
+                }
+                
                 // Set output stream index
                 pkt.stream_index = out_video_stream->index;
                 
@@ -324,6 +342,24 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
             if (pkt.pts != AV_NOPTS_VALUE && first_video_dts != AV_NOPTS_VALUE) {
                 pkt.pts -= first_video_dts;
                 if (pkt.pts < 0) pkt.pts = 0;
+            }
+            
+            // Explicitly set duration to prevent segmentation fault during fragment writing
+            // This addresses the "Estimating the duration of the last packet in a fragment" error
+            if (pkt.duration == 0 || pkt.duration == AV_NOPTS_VALUE) {
+                // Use the time base of the video stream to calculate a reasonable duration
+                // For most video streams, this will be 1/framerate
+                if (input_ctx->streams[video_stream_idx]->avg_frame_rate.num > 0 && 
+                    input_ctx->streams[video_stream_idx]->avg_frame_rate.den > 0) {
+                    // Calculate duration based on framerate (time_base units)
+                    pkt.duration = av_rescale_q(1, 
+                                               av_inv_q(input_ctx->streams[video_stream_idx]->avg_frame_rate),
+                                               input_ctx->streams[video_stream_idx]->time_base);
+                } else {
+                    // Default to a reasonable value if framerate is not available
+                    pkt.duration = 1;
+                }
+                log_debug("Set video packet duration to %lld", (long long)pkt.duration);
             }
             
             // Set output stream index
@@ -402,6 +438,59 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                 last_audio_pts = pkt.pts;
             }
             
+            // Explicitly set duration to prevent segmentation fault during fragment writing
+            // This addresses the "Estimating the duration of the last packet in a fragment" error
+            if (pkt.duration == 0 || pkt.duration == AV_NOPTS_VALUE) {
+                // For audio, we can calculate duration based on sample rate and frame size
+                AVStream *audio_stream = input_ctx->streams[audio_stream_idx];
+                if (audio_stream->codecpar->sample_rate > 0) {
+                    // If we know the number of samples in this packet, use that
+                    int nb_samples = 0;
+                    
+                    // Try to get the number of samples from the codec parameters
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
+                    // For FFmpeg 5.0 and newer
+                    if (audio_stream->codecpar->ch_layout.nb_channels > 0 && 
+                        audio_stream->codecpar->bits_per_coded_sample > 0) {
+                        int bytes_per_sample = audio_stream->codecpar->bits_per_coded_sample / 8;
+                        // Ensure we don't divide by zero
+                        if (bytes_per_sample > 0) {
+                            nb_samples = pkt.size / (audio_stream->codecpar->ch_layout.nb_channels * bytes_per_sample);
+                        }
+                    }
+#else
+                    // For older FFmpeg versions
+                    if (audio_stream->codecpar->channels > 0 && 
+                        audio_stream->codecpar->bits_per_coded_sample > 0) {
+                        int bytes_per_sample = audio_stream->codecpar->bits_per_coded_sample / 8;
+                        // Ensure we don't divide by zero
+                        if (bytes_per_sample > 0) {
+                            nb_samples = pkt.size / (audio_stream->codecpar->channels * bytes_per_sample);
+                        }
+                    }
+#endif
+                    
+                    if (nb_samples > 0) {
+                        // Calculate duration based on samples and sample rate
+                        pkt.duration = av_rescale_q(nb_samples, 
+                                                  (AVRational){1, audio_stream->codecpar->sample_rate},
+                                                  audio_stream->time_base);
+                    } else {
+                        // Default to a reasonable value based on sample rate
+                        // Typically audio frames are ~20-40ms, so we'll use 1024 samples as a common value
+                        pkt.duration = av_rescale_q(1024, 
+                                                  (AVRational){1, audio_stream->codecpar->sample_rate},
+                                                  audio_stream->time_base);
+                    }
+                    
+                    log_debug("Set audio packet duration to %lld (time_base units)", (long long)pkt.duration);
+                } else {
+                    // If we can't calculate based on sample rate, use a default value
+                    pkt.duration = 1;
+                    log_debug("Set default audio packet duration to 1");
+                }
+            }
+            
             // Set output stream index
             pkt.stream_index = out_audio_stream->index;
             
@@ -420,19 +509,44 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
     
     log_info("Recording segment complete");
     
+    // Flag to track if trailer has been written
+    bool trailer_written = false;
+    
     // Write trailer
-    if (output_ctx) {
+    if (output_ctx && output_ctx->pb) {
         ret = av_write_trailer(output_ctx);
         if (ret < 0) {
             log_error("Failed to write trailer: %d", ret);
+        } else {
+            trailer_written = true;
+            log_debug("Successfully wrote trailer to output file");
         }
     }
     
 cleanup:
+    //  Ensure packet is properly unreferenced before cleanup
+    // This prevents memory leaks if we exit the function with an active packet
+    av_packet_unref(&pkt);
+    
     // Close output
     if (output_ctx) {
+        // Write trailer if header was written successfully and trailer hasn't been written yet
+        if (output_ctx->pb && ret >= 0 && !trailer_written) {
+            int trailer_ret = av_write_trailer(output_ctx);
+            if (trailer_ret < 0) {
+                log_error("Failed to write trailer: %d", trailer_ret);
+            } else {
+                log_debug("Successfully wrote trailer to output file during cleanup");
+            }
+        }
+        
         if (output_ctx->pb) {
-            avio_closep(&output_ctx->pb);
+            // Create a local copy of the pb pointer to avoid double-free issues
+            AVIOContext *pb_to_close = output_ctx->pb;
+            output_ctx->pb = NULL;
+            
+            // Close the AVIO context
+            avio_closep(&pb_to_close);
         }
         avformat_free_context(output_ctx);
     }
@@ -440,6 +554,9 @@ cleanup:
     // Free dictionaries
     av_dict_free(&opts);
     av_dict_free(&out_opts);
+    
+    //  Don't close input_ctx here, as it's managed by the caller
+    // The caller will reuse it for the next segment or close it when done
     
     return ret;
 }
@@ -776,7 +893,7 @@ static void *mp4_writer_rtsp_thread(void *arg) {
         AVPacket *pkt_to_free = pkt;
         pkt = NULL;
         
-        // Now safely free the packet
+        // Now safely free the packet - first unref then free to prevent memory leaks
         av_packet_unref(pkt_to_free);
         av_packet_free(&pkt_to_free);
     }
@@ -884,13 +1001,25 @@ void mp4_writer_stop_recording_thread(mp4_writer_t *writer) {
     if (join_result != 0) {
         log_warn("Failed to join RTSP reading thread for %s within timeout: %s", 
                 stream_name, strerror(join_result));
+        
+        //  Don't free the thread context if join failed
+        // Instead, detach the thread to let it clean up itself when it eventually exits
+        pthread_detach(thread_ctx->thread);
+        
+        // Set the thread context pointer to NULL to prevent further access
+        // but don't free it as the thread might still be using it
+        writer->thread_ctx = NULL;
+        
+        log_info("Detached RTSP reading thread for %s to prevent memory corruption", stream_name);
     } else {
         log_info("Successfully joined RTSP reading thread for %s", stream_name);
+        
+        // Free thread context only after successful join
+        free(thread_ctx);
+        writer->thread_ctx = NULL;
     }
     
-    // Free thread context
-    free(thread_ctx);
-    writer->thread_ctx = NULL;
+    // Ensure we update the component state even if join failed
     
     // Update component state in shutdown coordinator
     if (writer->shutdown_component_id >= 0) {

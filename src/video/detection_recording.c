@@ -508,7 +508,7 @@ int process_frame_for_recording(const char *stream_name, const unsigned char *fr
 
         // If not already recording, start recording
         if (!recording_active) {
-            // CRITICAL FIX: Get the pre-buffer size from the stream config
+            //  Get the pre-buffer size from the stream config
             int pre_buffer = config.pre_detection_buffer;
             
             // Start MP4 recording directly, using the same file rotation settings as regular recordings
