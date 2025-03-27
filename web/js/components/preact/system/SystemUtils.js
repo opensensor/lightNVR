@@ -52,6 +52,12 @@ export function formatUptime(seconds) {
  * @returns {boolean} True if the log level meets the minimum, false otherwise
  */
 export function log_level_meets_minimum(logLevel, minLevel) {
+  // Special case: if minLevel is debug, always return true
+  // This ensures all log levels are shown when debug is selected
+  if (String(minLevel || '').toLowerCase() === 'debug') {
+    return true;
+  }
+  
   // Convert log levels to numeric values for comparison
   let levelValue = 2; // Default to INFO (2)
   let minValue = 2;   // Default to INFO (2)

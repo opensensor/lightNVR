@@ -67,8 +67,8 @@ export function SystemView() {
     }
   });
   const [logs, setLogs] = useState([]);
-  const [logLevel, setLogLevel] = useState('info');
-  const logLevelRef = useRef('info');
+  const [logLevel, setLogLevel] = useState('debug');
+  const logLevelRef = useRef('debug');
   
   // Wrap setLogLevel to add logging
   const handleSetLogLevel = (newLevel) => {
@@ -98,42 +98,7 @@ export function SystemView() {
   // Handler for when logs are received from the LogsPoller
   const handleLogsReceived = (newLogs) => {
     console.log('SystemView received new logs:', newLogs.length);
-    
-    setLogs(prevLogs => {
-      // Create a map of existing logs to avoid duplicates
-      const existingLogs = new Map();
-      prevLogs.forEach(log => {
-        // Create a unique key for each log based on timestamp and message
-        const key = `${log.timestamp}:${log.message}`;
-        existingLogs.set(key, true);
-      });
-      
-      // Filter out logs that already exist
-      const uniqueNewLogs = newLogs.filter(log => {
-        const key = `${log.timestamp}:${log.message}`;
-        return !existingLogs.has(key);
-      });
-      
-      console.log(`Adding ${uniqueNewLogs.length} unique new logs to the display`);
-      
-      // Filter logs based on the current log level from the ref (which is always up-to-date)
-      const currentLogLevel = logLevelRef.current;
-      console.log(`Filtering logs using logLevelRef.current: ${currentLogLevel}`);
-      
-      const filteredNewLogs = uniqueNewLogs.filter(log => {
-        return log_level_meets_minimum(log.level, currentLogLevel);
-      });
-      
-      console.log(`${filteredNewLogs.length} logs meet the current log level (${currentLogLevel})`);
-      
-      // Return the combined logs, limiting to the most recent 500 to prevent memory issues
-      const combinedLogs = [...prevLogs, ...filteredNewLogs];
-      if (combinedLogs.length > 500) {
-        console.log(`Trimming logs from ${combinedLogs.length} to 500`);
-        return combinedLogs.slice(combinedLogs.length - 500);
-      }
-      return combinedLogs;
-    });
+    setLogs(newLogs);
   };
 
   // Load system info and logs on mount
@@ -170,6 +135,7 @@ export function SystemView() {
       console.log(`Filtering existing logs using logLevelRef.current: ${currentLogLevel}`);
       
       setLogs(prevLogs => {
+        // Special case for debug level - include all logs
         return prevLogs.filter(log => {
           return log_level_meets_minimum(log.level, currentLogLevel);
         });
@@ -218,9 +184,9 @@ export function SystemView() {
         // Check if logs are already structured objects or raw strings
         if (data.logs.length > 0 && typeof data.logs[0] === 'object' && data.logs[0].level) {
         // Logs are already structured objects, filter them based on the current log level
-        const filteredLogs = data.logs.filter(log => {
-          return log_level_meets_minimum(log.level, currentLogLevel);
-        });
+        let filteredLogs = data.logs.filter(log => {
+            return log_level_meets_minimum(log.level, currentLogLevel);
+          });
         
         console.log(`Filtered ${data.logs.length} logs to ${filteredLogs.length} based on log level ${currentLogLevel}`);
         setLogs(filteredLogs);
@@ -229,7 +195,7 @@ export function SystemView() {
           const parsedLogs = data.logs.map(logLine => {
             // Parse log line (format: [TIMESTAMP] [LEVEL] MESSAGE)
             let timestamp = 'Unknown';
-            let level = 'info';
+            let level = 'debug';
             let message = logLine;
             
             // Try to extract timestamp and level using regex
@@ -255,9 +221,9 @@ export function SystemView() {
           });
           
           // Filter the parsed logs based on the current log level
-          const filteredLogs = parsedLogs.filter(log => {
-            return log_level_meets_minimum(log.level, currentLogLevel);
-          });
+          let filteredLogs = parsedLogs.filter(log => {
+              return log_level_meets_minimum(log.level, currentLogLevel);
+            });
           
           console.log(`Filtered ${parsedLogs.length} parsed logs to ${filteredLogs.length} based on log level ${currentLogLevel}`);
           setLogs(filteredLogs);
