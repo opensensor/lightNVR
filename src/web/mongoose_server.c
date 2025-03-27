@@ -955,11 +955,12 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
                 mg_printf(c, "\r\n");
                 mg_printf(c, "{\"error\": \"Unauthorized\"}\n");
             } else {
-                // Check if this is already the login page
-                if (strcmp(uri, "/login.html") == 0 || 
+                // Check if this is the root path or login page - both should be accessible without auth
+                if (strcmp(uri, "/") == 0 || 
+                    strcmp(uri, "/login.html") == 0 || 
                     strncmp(uri, "/login.html?", 12) == 0) {
-                    // Already on login page, serve it without authentication
-                    log_info("Serving login page without authentication");
+                    // Root path or login page, serve it without authentication
+                    log_info("Serving %s without authentication", uri);
                     // Continue processing without redirecting
                 } else {
                     // For other requests, redirect to login page

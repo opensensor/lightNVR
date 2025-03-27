@@ -196,34 +196,66 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         }
     }
 
-    // Construct file path
-    char file_path[MAX_PATH_LENGTH * 2];
-    snprintf(file_path, sizeof(file_path), "%s%s", server->config.web_root, uri);
-
-    // Check if file exists
-    struct stat st;
-    if (stat(file_path, &st) == 0) {
-        // Check if it's a directory
-        if (S_ISDIR(st.st_mode)) {
-            // Try to serve index.html as the index
-            strncat(file_path, "index.html", sizeof(file_path) - strlen(file_path) - 1);
-            if (stat(file_path, &st) != 0 || !S_ISREG(st.st_mode)) {
-                mg_http_reply(c, 403, "", "403 Forbidden\n");
-                return;
-            }
+    // Special handling for root path
+    if (strcmp(uri, "/") == 0) {
+        // Directly serve index.html for root path
+        char index_path[MAX_PATH_LENGTH * 2];
+        snprintf(index_path, sizeof(index_path), "%s/index.html", server->config.web_root);
+        
+        // Log the path we're trying to serve
+        log_info("Serving root path with index file: %s", index_path);
+        
+        // Check if index.html exists
+        struct stat st;
+        if (stat(index_path, &st) == 0 && S_ISREG(st.st_mode)) {
+            // Use Mongoose's built-in file serving capabilities
+            struct mg_http_serve_opts opts = {
+                .root_dir = server->config.web_root,
+                .mime_types = "html=text/html,htm=text/html,css=text/css,js=application/javascript,"
+                             "json=application/json,jpg=image/jpeg,jpeg=image/jpeg,png=image/png,"
+                             "gif=image/gif,svg=image/svg+xml,ico=image/x-icon,mp4=video/mp4,"
+                             "webm=video/webm,ogg=video/ogg,mp3=audio/mpeg,wav=audio/wav,"
+                             "txt=text/plain,xml=application/xml,pdf=application/pdf"
+            };
+            
+            log_info("Serving index file for root path using mg_http_serve_file: %s", index_path);
+            mg_http_serve_file(c, hm, index_path, &opts);
+            return;
+        } else {
+            log_error("Index file not found for root path: %s", index_path);
+            mg_http_reply(c, 404, "", "404 Not Found - Index file missing\n");
+            return;
         }
+    } else {
+        // For non-root paths, construct file path
+        char file_path[MAX_PATH_LENGTH * 2];
+        snprintf(file_path, sizeof(file_path), "%s%s", server->config.web_root, uri);
 
-        // Serve the file
-        struct mg_http_serve_opts opts = {
-            .root_dir = server->config.web_root,
-            .mime_types = "html=text/html,htm=text/html,css=text/css,js=application/javascript,"
-                         "json=application/json,jpg=image/jpeg,jpeg=image/jpeg,png=image/png,"
-                         "gif=image/gif,svg=image/svg+xml,ico=image/x-icon,mp4=video/mp4,"
-                         "webm=video/webm,ogg=video/ogg,mp3=audio/mpeg,wav=audio/wav,"
-                         "txt=text/plain,xml=application/xml,pdf=application/pdf"
-        };
-        mg_http_serve_file(c, hm, file_path, &opts);
-        return;
+        // Check if file exists
+        struct stat st;
+        if (stat(file_path, &st) == 0) {
+            // Check if it's a directory
+            if (S_ISDIR(st.st_mode)) {
+                // Try to serve index.html as the index
+                strncat(file_path, "index.html", sizeof(file_path) - strlen(file_path) - 1);
+                if (stat(file_path, &st) != 0 || !S_ISREG(st.st_mode)) {
+                    mg_http_reply(c, 403, "", "403 Forbidden\n");
+                    return;
+                }
+            }
+
+            // Serve the file
+            struct mg_http_serve_opts opts = {
+                .root_dir = server->config.web_root,
+                .mime_types = "html=text/html,htm=text/html,css=text/css,js=application/javascript,"
+                             "json=application/json,jpg=image/jpeg,jpeg=image/jpeg,png=image/png,"
+                             "gif=image/gif,svg=image/svg+xml,ico=image/x-icon,mp4=video/mp4,"
+                             "webm=video/webm,ogg=video/ogg,mp3=audio/mpeg,wav=audio/wav,"
+                             "txt=text/plain,xml=application/xml,pdf=application/pdf"
+            };
+            mg_http_serve_file(c, hm, file_path, &opts);
+            return;
+        }
     }
 
     // File doesn't exist - check SPA routes
@@ -336,6 +368,7 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         log_info("Serving SPA route %s with index file: %s", uri, index_path);
 
         // Check if index.html exists
+        struct stat st;
         if (stat(index_path, &st) == 0 && S_ISREG(st.st_mode)) {
             // Use Mongoose's built-in file serving capabilities
             // This is more stable and handles all the HTTP headers properly
