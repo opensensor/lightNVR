@@ -213,6 +213,12 @@ void *hls_stream_thread(void *arg) {
         log_info("Registered HLS writer %s with shutdown coordinator (ID: %d)", stream_name, component_id);
     }
 
+    // CRITICAL FIX: Use static variables exactly like in rtsp_recorder.c
+    static int64_t first_audio_dts = AV_NOPTS_VALUE;
+    static int64_t last_audio_dts = 0;
+    static int64_t last_audio_pts = 0;
+    static int audio_packet_count = 0;
+
     // Main packet reading loop
     while (atomic_load(&ctx->running)) {
         // Check if shutdown has been initiated
@@ -280,9 +286,38 @@ void *hls_stream_thread(void *arg) {
             }
         }
 
-        // Process video packets
-        if (pkt->stream_index == video_stream_idx) {
-            // Check if this is a key frame
+        // UNIFIED PACKET PROCESSING: Handle all packets (audio and video) in a uniform way
+        // This simplifies the code and avoids timestamp synchronization issues
+        
+        // Get the stream for this packet
+        AVStream *input_stream = NULL;
+        if (pkt->stream_index >= 0 && pkt->stream_index < input_ctx->nb_streams) {
+            input_stream = input_ctx->streams[pkt->stream_index];
+        } else {
+            log_warn("Invalid stream index %d for stream %s", pkt->stream_index, stream_name);
+            av_packet_unref(pkt);
+            continue;
+        }
+        
+        // Validate packet data
+        if (!pkt->data || pkt->size <= 0) {
+            log_warn("Invalid packet (null data or zero size) for stream %s", stream_name);
+            av_packet_unref(pkt);
+            continue;
+        }
+        
+        // Determine if this is a video or audio packet
+        bool is_video = (pkt->stream_index == video_stream_idx);
+        bool is_audio = (audio_stream_idx != -1 && pkt->stream_index == audio_stream_idx);
+        
+        if (!is_video && !is_audio) {
+            // Skip packets that are neither video nor audio
+            av_packet_unref(pkt);
+            continue;
+        }
+        
+        // For video packets, handle keyframes and detection
+        if (is_video) {
             bool is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
             
             // If this is a key frame, update the keyframe time
@@ -293,54 +328,8 @@ void *hls_stream_thread(void *arg) {
                 // Log that we received a keyframe
                 log_debug("Received keyframe for stream %s at time %ld", stream_name, (long)time(NULL));
             }
-
-            // Write packet to HLS writer
-            ret = hls_writer_write_packet(ctx->hls_writer, pkt, input_ctx->streams[video_stream_idx]);
-
-                // Flush directly
-                if (ret >= 0 && is_key_frame && ctx->hls_writer &&
-                    ctx->hls_writer->output_ctx && ctx->hls_writer->output_ctx->pb) {
-                    avio_flush(ctx->hls_writer->output_ctx->pb);
-                    log_debug("Flushed on key frame for stream %s", stream_name);
-                }
-
-            // Pre-buffer handling for MP4 recordings - after HLS processing to avoid delaying the live stream
-            // This ensures HLS packets are processed immediately without waiting for pre-buffer
-            extern void add_packet_to_prebuffer(const char *stream_name, const AVPacket *pkt, const AVStream *stream);
-            add_packet_to_prebuffer(stream_name, pkt, input_ctx->streams[video_stream_idx]);
-
-            // CRITICAL FIX: Use a separate thread-local copy of the packet for MP4 recording
-            // This prevents potential deadlocks and data corruption between HLS and MP4 writers
-            mp4_writer_t *mp4_writer = get_mp4_writer_for_stream(stream_name);
-            if (mp4_writer) {
-                // Create a clean copy of the packet for MP4 recording
-                AVPacket *mp4_pkt = av_packet_alloc();
-                if (mp4_pkt) {
-                    if (av_packet_ref(mp4_pkt, pkt) >= 0) {
-                        // Write the packet to the MP4 writer with proper error handling
-                        ret = mp4_writer_write_packet(mp4_writer, mp4_pkt, input_ctx->streams[video_stream_idx]);
-                        if (ret < 0) {
-                            // Only log errors for key frames to reduce log spam
-                            if (is_key_frame) {
-                                char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
-                                av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-                                log_error("Failed to write packet to MP4 for stream %s: %s", stream_name, error_buf);
-                            }
-                        }
-                    } else {
-                        log_error("Failed to reference packet for MP4 recording for stream %s", stream_name);
-                    }
-                    
-                    // Clean up the packet
-                    av_packet_unref(mp4_pkt);
-                    av_packet_free(&mp4_pkt);
-                } else {
-                    log_error("Failed to allocate packet for MP4 recording for stream %s", stream_name);
-                }
-            }
-
+            
             // Process packet for detection only on key frames to reduce CPU load
-            // Use the thread pool for non-blocking detection
             if (is_key_frame && is_detection_stream_reader_running(stream_name)) {
                 // Check if we're on a memory-constrained device
                 extern config_t g_config;
@@ -360,7 +349,7 @@ void *hls_stream_thread(void *arg) {
                         // On memory-constrained devices, only submit if the thread pool is not busy
                         if (!is_detection_thread_pool_busy()) {
                             log_info("Submitting detection task for stream %s to thread pool", stream_name);
-                            if (submit_detection_task(stream_name, pkt, input_ctx->streams[video_stream_idx]->codecpar) == 0) {
+                            if (submit_detection_task(stream_name, pkt, input_stream->codecpar) == 0) {
                                 update_last_detection_time(stream_name, current_time);
                             }
                         } else {
@@ -369,69 +358,54 @@ void *hls_stream_thread(void *arg) {
                     } else {
                         // On regular devices, always submit the task
                         log_info("Submitting detection task for stream %s to thread pool", stream_name);
-                        if (submit_detection_task(stream_name, pkt, input_ctx->streams[video_stream_idx]->codecpar) == 0) {
+                        if (submit_detection_task(stream_name, pkt, input_stream->codecpar) == 0) {
                             update_last_detection_time(stream_name, current_time);
                         }
                     }
                 }
             }
         }
-        // Process audio packets if audio stream is available
-        else if (audio_stream_idx != -1 && pkt->stream_index == audio_stream_idx) {
-            // Get the stream configuration to check if audio recording is enabled
-            stream_config_t config;
-            bool record_audio = false;
-            if (get_stream_config(stream, &config) == 0) {
-                record_audio = config.record_audio;
-            }
+        
+        // Write packet to HLS writer (video packets only)
+        if (is_video) {
+            ret = hls_writer_write_packet(ctx->hls_writer, pkt, input_stream);
             
-            // Only process audio packets if audio recording is enabled
-            if (record_audio) {
-                // Get the MP4 writer for this stream
-                mp4_writer_t *mp4_writer = get_mp4_writer_for_stream(stream_name);
-                if (mp4_writer && mp4_writer->has_audio) {
-                    // Create a clean copy of the packet for MP4 recording
-                    AVPacket *mp4_pkt = av_packet_alloc();
-                    if (mp4_pkt) {
-                        if (av_packet_ref(mp4_pkt, pkt) >= 0) {
-                            // Write the audio packet to the MP4 writer
-                            ret = mp4_writer_write_packet(mp4_writer, mp4_pkt, input_ctx->streams[audio_stream_idx]);
-                            if (ret < 0) {
-                                // Only log occasional errors to reduce log spam
-                                static time_t last_error_log = 0;
-                                time_t now = time(NULL);
-                                if (now - last_error_log > 10) { // Log at most every 10 seconds
-                                    char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
-                                    av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-                                    log_error("Failed to write audio packet to MP4 for stream %s: %s", 
-                                             stream_name, error_buf);
-                                    last_error_log = now;
-                                }
-                            }
-                        } else {
-                            log_error("Failed to reference audio packet for MP4 recording for stream %s", stream_name);
-                        }
-                        
-                        // Clean up the packet
-                        av_packet_unref(mp4_pkt);
-                        av_packet_free(&mp4_pkt);
-                    } else {
-                        log_error("Failed to allocate packet for audio MP4 recording for stream %s", stream_name);
-                    }
-                }
+            // Flush on key frames for video packets
+            if ((pkt->flags & AV_PKT_FLAG_KEY) && ret >= 0 && ctx->hls_writer &&
+                ctx->hls_writer->output_ctx && ctx->hls_writer->output_ctx->pb) {
+                avio_flush(ctx->hls_writer->output_ctx->pb);
+                log_debug("Flushed on key frame for stream %s", stream_name);
             }
         }
+        
+        // Pre-buffering is no longer used in the new architecture
+        // Each recording thread manages its own RTSP connection directly
+        
+        // MAJOR ARCHITECTURAL CHANGE: MP4 recording is now handled by a standalone thread
+        // No MP4 recording code here - all MP4 recording is done in mp4_recording_core.c
+        // This eliminates the complex thread interactions that were causing the floating point exception
 
         av_packet_unref(pkt);
     }
 
     // Cleanup resources
     if (pkt) {
-        av_packet_free(&pkt);
+        // Make a local copy of the packet pointer and NULL out the original
+        // to prevent double-free if another thread accesses it
+        AVPacket *pkt_to_free = pkt;
+        pkt = NULL;
+        
+        // Now safely free the packet
+        av_packet_free(&pkt_to_free);
     }
 
     if (input_ctx) {
-        avformat_close_input(&input_ctx);
+        // Make a local copy of the context pointer and NULL out the original
+        AVFormatContext *ctx_to_close = input_ctx;
+        input_ctx = NULL;
+        
+        // Now safely close the input context
+        avformat_close_input(&ctx_to_close);
     }
 
     // When done, close writer - use a local copy to avoid double free
@@ -439,7 +413,9 @@ void *hls_stream_thread(void *arg) {
     ctx->hls_writer = NULL;  // Clear the pointer first to prevent double close
     
     if (writer_to_close) {
+        // Safely close the writer
         hls_writer_close(writer_to_close);
+        writer_to_close = NULL;
     }
 
     // Update component state in shutdown coordinator

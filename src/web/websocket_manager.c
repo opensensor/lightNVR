@@ -186,22 +186,44 @@ void websocket_manager_shutdown(void) {
     // CRITICAL FIX: Use a more robust approach to acquire the mutex
     struct timespec timeout;
     clock_gettime(CLOCK_REALTIME, &timeout);
-    timeout.tv_sec += 2; // 2 second timeout
+    timeout.tv_sec += 5; // Increased to 5 second timeout for better reliability
     
     int mutex_result = pthread_mutex_timedlock(&s_mutex, &timeout);
     if (mutex_result != 0) {
         log_warn("Could not acquire WebSocket mutex within timeout, forcing shutdown");
-        // Continue with shutdown anyway
-    } else {
+        // Force mutex reset if we can't acquire it normally
+        pthread_mutex_t new_mutex;
+        if (pthread_mutex_init(&new_mutex, NULL) == 0) {
+            // Replace the potentially locked mutex with a new one
+            pthread_mutex_destroy(&s_mutex);
+            s_mutex = new_mutex;
+            mutex_result = 0; // Consider it acquired now
+            log_info("WebSocket mutex reset successfully");
+        } else {
+            log_error("Failed to reset WebSocket mutex");
+        }
+    }
+    
+    if (mutex_result == 0) {
         // Close all connections
         int closed_count = 0;
         for (int i = 0; i < MAX_CLIENTS; i++) {
             if (s_clients[i].active) {
                 // CRITICAL FIX: Safely handle connection closing
                 if (s_clients[i].conn) {
+                    // Send a proper WebSocket close frame before marking for closing
+                    mg_ws_send(s_clients[i].conn, "", 0, WEBSOCKET_OP_CLOSE);
+                    
                     // Mark connection for closing
                     s_clients[i].conn->is_closing = 1;
-                    s_clients[i].conn = NULL; // Clear the pointer to prevent use-after-free
+                    
+                    // CRITICAL FIX: Explicitly close the socket to ensure it's released
+                    if (s_clients[i].conn->fd != NULL) {
+                        int socket_fd = (int)(size_t)s_clients[i].conn->fd;
+                        log_debug("Closing WebSocket socket: %d", socket_fd);
+                        close(socket_fd);
+                        s_clients[i].conn->fd = NULL;  // Mark as closed
+                    }
                 }
                 
                 // Explicitly set active to false to prevent further operations on this client
@@ -215,7 +237,7 @@ void websocket_manager_shutdown(void) {
             }
         }
         
-        log_info("Marked %d WebSocket connections for closing", closed_count);
+        log_info("Sent close frames to %d WebSocket connections", closed_count);
         
         // CRITICAL FIX: Clear handler state safely
         for (int i = 0; i < MAX_HANDLERS; i++) {
@@ -229,14 +251,36 @@ void websocket_manager_shutdown(void) {
         pthread_mutex_unlock(&s_mutex);
     }
     
-    // CRITICAL FIX: Add a small delay to ensure connections are properly closed
+    // CRITICAL FIX: Add a longer delay to ensure close frames are sent before clearing connection pointers
     // This helps prevent memory corruption during shutdown
-    usleep(100000); // 100ms
+    usleep(500000); // 500ms - increased to ensure frames are sent
+    
+    // Now clear the connection pointers after giving time for close frames to be sent
+    if (pthread_mutex_lock(&s_mutex) == 0) {
+        for (int i = 0; i < MAX_CLIENTS; i++) {
+            if (s_clients[i].conn) {
+                s_clients[i].conn = NULL; // Now safe to clear the pointer
+            }
+        }
+        pthread_mutex_unlock(&s_mutex);
+    } else {
+        log_warn("Could not acquire WebSocket mutex to clear connection pointers");
+    }
     
     // Destroy mutex with proper error handling
     int destroy_result = pthread_mutex_destroy(&s_mutex);
     if (destroy_result != 0) {
         log_warn("Failed to destroy WebSocket mutex: %d", destroy_result);
+        // If EBUSY, try again after a delay
+        if (destroy_result == EBUSY) {
+            usleep(500000); // 500ms delay
+            destroy_result = pthread_mutex_destroy(&s_mutex);
+            if (destroy_result != 0) {
+                log_error("Still failed to destroy WebSocket mutex after retry: %d", destroy_result);
+            } else {
+                log_info("Successfully destroyed WebSocket mutex after retry");
+            }
+        }
     }
     
     log_info("WebSocket manager shutdown complete");

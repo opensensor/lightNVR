@@ -108,11 +108,6 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
     av_dict_set(&input_options, "reconnect_streamed", "1", 0); // Reconnect if streaming
     av_dict_set(&input_options, "reconnect_delay_max", "5", 0); // Max 5 seconds between reconnection attempts
     
-    // Add options to improve audio capture, similar to ffplay flags
-    av_dict_set(&input_options, "fflags", "nobuffer", 0); // Reduce buffering
-    av_dict_set(&input_options, "flags", "low_delay", 0); // Prioritize low delay
-    av_dict_set(&input_options, "framedrop", "1", 0);     // Allow frame dropping
-    
     if (protocol == STREAM_PROTOCOL_UDP) {
         // Check if this is a multicast stream with robust error handling
         is_multicast = is_multicast_url(url);
@@ -168,15 +163,14 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
         // TCP-specific options with improved reliability
         av_dict_set(&input_options, "stimeout", "5000000", 0); // 5 second timeout in microseconds
         av_dict_set(&input_options, "rtsp_transport", "tcp", 0); // Force TCP for RTSP
-        av_dict_set(&input_options, "analyzeduration", "5000000", 0); // 5 seconds analyze duration (increased for better audio detection)
-        av_dict_set(&input_options, "probesize", "5000000", 0); // 5MB probe size (increased for better audio detection)
+        av_dict_set(&input_options, "analyzeduration", "2000000", 0); // 2 seconds analyze duration
+        av_dict_set(&input_options, "probesize", "1000000", 0); // 1MB probe size
         av_dict_set(&input_options, "reconnect", "1", 0); // Enable reconnection
         av_dict_set(&input_options, "reconnect_streamed", "1", 0); // Reconnect if streaming
         av_dict_set(&input_options, "reconnect_delay_max", "2", 0); // Max 2 seconds between reconnection attempts (reduced from 5s)
         
         // Add more tolerant timestamp handling for TCP streams as well
-        // Combine with nobuffer flag to improve audio capture
-        av_dict_set(&input_options, "fflags", "genpts+discardcorrupt+nobuffer", 0);
+        av_dict_set(&input_options, "fflags", "genpts+discardcorrupt", 0);
     }
     
     // Check if this is an ONVIF stream and apply ONVIF-specific options
@@ -186,11 +180,11 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
         
         // ONVIF-specific options for better reliability
         av_dict_set(&input_options, "stimeout", "10000000", 0); // 10 second timeout in microseconds
-        av_dict_set(&input_options, "analyzeduration", "5000000", 0); // 5 seconds analyze duration (increased for better audio detection)
-        av_dict_set(&input_options, "probesize", "5000000", 0); // 5MB probe size (increased for better audio detection)
+        av_dict_set(&input_options, "analyzeduration", "3000000", 0); // 3 seconds analyze duration
+        av_dict_set(&input_options, "probesize", "2000000", 0); // 2MB probe size
         
-        // More tolerant timestamp handling for ONVIF streams with audio support
-        av_dict_set(&input_options, "fflags", "genpts+discardcorrupt+nobuffer", 0);
+        // More tolerant timestamp handling for ONVIF streams
+        av_dict_set(&input_options, "fflags", "genpts+discardcorrupt", 0);
         
         // ONVIF streams may need more time to start
         av_dict_set(&input_options, "rw_timeout", "15000000", 0); // 15 second read/write timeout

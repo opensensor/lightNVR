@@ -578,22 +578,45 @@ void http_server_stop(http_server_handle_t server) {
     server->running = false;
     log_info("Stopping HTTP server");
 
-    // Signal all connections to close
+    // First, properly close all WebSocket connections
+    log_info("Shutting down WebSocket manager to close WebSocket connections");
+    websocket_manager_shutdown();
+    
+    // Give WebSocket connections time to send close frames
+    usleep(500000); // 500ms - increased from 250ms
+
+    // Now signal all remaining connections to close
+    int connection_count = 0;
     for (struct mg_connection *c = server->mgr->conns; c != NULL; c = c->next) {
+        connection_count++;
         c->is_closing = 1;
         
         // Close the socket explicitly to ensure it's released
         if (c->fd != NULL) {
             int socket_fd = (int)(size_t)c->fd;
             log_debug("Closing socket: %d", socket_fd);
+            
+            // CRITICAL FIX: Set SO_LINGER to force immediate socket closure
+            struct linger so_linger;
+            so_linger.l_onoff = 1;
+            so_linger.l_linger = 0;
+            setsockopt(socket_fd, SOL_SOCKET, SO_LINGER, &so_linger, sizeof(so_linger));
+            
+            // CRITICAL FIX: Set socket to non-blocking mode to avoid hang on close
+            int flags = fcntl(socket_fd, F_GETFL, 0);
+            fcntl(socket_fd, F_SETFL, flags | O_NONBLOCK);
+            
+            // Now close the socket
             close(socket_fd);
             c->fd = NULL;  // Mark as closed
         }
     }
+    
+    log_info("Marked %d remaining connections for closing", connection_count);
 
     // Give connections time to close gracefully
     // Use a longer timeout to ensure all connections are closed
-    sleep(2);
+    sleep(3); // Increased from 2 to 3 seconds
 
     // Free Mongoose event manager
     mg_mgr_free(server->mgr);
@@ -969,6 +992,37 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
             server->active_connections--;
         }
         pthread_mutex_unlock(&server->mutex);
+        
+        // If this was a WebSocket connection, update the shutdown coordinator
+        if (c->is_websocket) {
+            log_debug("WebSocket connection closed");
+            
+            // Include the shutdown coordinator header
+            #include "core/shutdown_coordinator.h"
+            
+            // Find the component ID for this connection
+            char conn_name[64];
+            snprintf(conn_name, sizeof(conn_name), "websocket_%p", (void*)c);
+            
+            // Only update if shutdown coordinator is initialized
+            if (get_shutdown_coordinator() != NULL) {
+                // Mark the component as stopped in the shutdown coordinator
+                // We don't have the component ID stored, but we can search for it by name
+                shutdown_coordinator_t *coordinator = get_shutdown_coordinator();
+                
+                pthread_mutex_lock(&coordinator->mutex);
+                for (int i = 0; i < atomic_load(&coordinator->component_count); i++) {
+                    if (strcmp(coordinator->components[i].name, conn_name) == 0) {
+                        // Found the component, update its state
+                        atomic_store(&coordinator->components[i].state, COMPONENT_STOPPED);
+                        log_debug("Updated WebSocket connection %s state to STOPPED in shutdown coordinator", 
+                                 conn_name);
+                        break;
+                    }
+                }
+                pthread_mutex_unlock(&coordinator->mutex);
+            }
+        }
     } else if (ev == MG_EV_ERROR) {
         // Connection error
         log_error("Connection error: %s", (char *)ev_data);

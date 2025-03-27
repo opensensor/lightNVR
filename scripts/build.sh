@@ -43,14 +43,14 @@ while [[ $# -gt 0 ]]; do
         --help)
             echo "Usage: $0 [options]"
             echo "Options:"
-            echo "  --release      Build in release mode (default)"
-            echo "  --debug        Build in debug mode"
-            echo "  --clean        Clean build directory before building"
-            echo "  --with-sod     Build with SOD support (default)"
-            echo "  --without-sod  Build without SOD support"
-            echo "  --with-tests   Build test suite (default)"
-            echo "  --without-tests Build without test suite"
-            echo "  --help         Show this help message"
+            echo "  --release          Build in release mode (default)"
+            echo "  --debug            Build in debug mode"
+            echo "  --clean            Clean build directory before building"
+            echo "  --with-sod         Build with SOD support (default)"
+            echo "  --without-sod      Build without SOD support"
+            echo "  --with-tests       Build test suite (default)"
+            echo "  --without-tests    Build without test suite"
+            echo "  --help             Show this help message"
             exit 0
             ;;
         *)
@@ -101,17 +101,98 @@ else
     echo "Building without test suite"
 fi
 
+# Create a temporary CMake module to find the custom FFmpeg
+mkdir -p cmake/modules
+cat > cmake/modules/FindFFmpeg.cmake << 'EOF'
+# Custom FindFFmpeg.cmake module to locate custom-built FFmpeg
+# This will override any system module with the same name
+
+# Find the include directories
+find_path(FFMPEG_INCLUDE_DIR libavcodec/avcodec.h
+    HINTS
+    ${FFMPEG_DIR}
+    ${FFMPEG_DIR}/include
+    PATH_SUFFIXES ffmpeg
+)
+
+# Find each of the libraries
+find_library(AVCODEC_LIBRARY
+    NAMES avcodec
+    HINTS ${FFMPEG_DIR}/lib
+)
+
+find_library(AVFORMAT_LIBRARY
+    NAMES avformat
+    HINTS ${FFMPEG_DIR}/lib
+)
+
+find_library(AVUTIL_LIBRARY
+    NAMES avutil
+    HINTS ${FFMPEG_DIR}/lib
+)
+
+find_library(SWSCALE_LIBRARY
+    NAMES swscale
+    HINTS ${FFMPEG_DIR}/lib
+)
+
+find_library(AVDEVICE_LIBRARY
+    NAMES avdevice
+    HINTS ${FFMPEG_DIR}/lib
+)
+
+find_library(SWRESAMPLE_LIBRARY
+    NAMES swresample
+    HINTS ${FFMPEG_DIR}/lib
+)
+
+# Set the FFMPEG_LIBRARIES variable
+set(FFMPEG_LIBRARIES
+    ${AVCODEC_LIBRARY}
+    ${AVFORMAT_LIBRARY}
+    ${AVUTIL_LIBRARY}
+    ${SWSCALE_LIBRARY}
+    ${AVDEVICE_LIBRARY}
+    ${SWRESAMPLE_LIBRARY}
+)
+
+# Set the FFMPEG_INCLUDE_DIRS variable
+set(FFMPEG_INCLUDE_DIRS ${FFMPEG_INCLUDE_DIR})
+
+# Handle standard args
+include(FindPackageHandleStandardArgs)
+find_package_handle_standard_args(FFmpeg
+    REQUIRED_VARS
+    FFMPEG_INCLUDE_DIR
+    AVCODEC_LIBRARY
+    AVFORMAT_LIBRARY
+    AVUTIL_LIBRARY
+)
+
+mark_as_advanced(
+    FFMPEG_INCLUDE_DIR
+    AVCODEC_LIBRARY
+    AVFORMAT_LIBRARY
+    AVUTIL_LIBRARY
+    SWSCALE_LIBRARY
+    AVDEVICE_LIBRARY
+    SWRESAMPLE_LIBRARY
+)
+EOF
+
 # Configure the build
-echo "Configuring build..."
 cd "$BUILD_DIR"
 
-cmake -DCMAKE_BUILD_TYPE="$BUILD_TYPE" $SOD_OPTION $TEST_OPTION ../..
+# Use our custom module path
+CMAKE_MODULE_PATH="$(pwd)/../../cmake/modules"
+cmake -DCMAKE_BUILD_TYPE="$BUILD_TYPE" $SOD_OPTION $TEST_OPTION $FFMPEG_CMAKE_OPTIONS \
+      -DCMAKE_MODULE_PATH="$CMAKE_MODULE_PATH" ../..
 
 # Return to project root
 cd ../..
 
 # Build the project
-echo "Building LightNVR..."
+echo "Building LightNVR against custom FFmpeg..."
 cmake --build "$BUILD_DIR" -- -j$(nproc)
 
 # Report success

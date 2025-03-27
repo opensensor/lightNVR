@@ -1,645 +1,923 @@
 /**
- * Improved implementation of MP4 writer for storing camera streams
- * Save this file as src/video/mp4_writer.c
+ * RTSP stream reading implementation for MP4 writer
+ * Simplified version that follows rtsp_recorder example
  */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <dirent.h>
 #include <time.h>
+#include <stdbool.h>
+#include <signal.h>
+#include <pthread.h>
 #include <sys/stat.h>
-#include <limits.h>
+#include <errno.h>
 
-// Define PATH_MAX if not defined
-#ifndef PATH_MAX
-#define PATH_MAX 4096
-#endif
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
-#include <libavutil/opt.h>
 #include <libavutil/time.h>
-#include <pthread.h>
 
-#include "database/database_manager.h"
-#include "core/config.h"
 #include "core/logger.h"
-#include "video/stream_manager.h"
-#include "video/streams.h"
+#include "core/shutdown_coordinator.h"
 #include "video/mp4_writer.h"
+#include "video/mp4_writer_internal.h"
+#include "database/database_manager.h"
+#include "database/db_recordings.h"
 
-extern active_recording_t active_recordings[MAX_STREAMS];
+// Thread-related fields for the MP4 writer
+typedef struct {
+    pthread_t thread;         // Recording thread
+    int running;              // Flag indicating if the thread is running
+    char rtsp_url[MAX_PATH_LENGTH]; // URL of the RTSP stream to record
+    volatile sig_atomic_t shutdown_requested; // Flag indicating if shutdown was requested
+    mp4_writer_t *writer;     // MP4 writer instance
+    int segment_duration;     // Duration of each segment in seconds
+    time_t last_segment_time; // Time when the last segment was created
+} mp4_writer_thread_t;
 
 
-/**
- * Create a new MP4 writer
- */
-mp4_writer_t *mp4_writer_create(const char *output_path, const char *stream_name) {
-    mp4_writer_t *writer = calloc(1, sizeof(mp4_writer_t));
-    if (!writer) {
-        log_error("Failed to allocate memory for MP4 writer");
-        return NULL;
-    }
 
-    // Initialize writer
-    strncpy(writer->output_path, output_path, sizeof(writer->output_path) - 1);
-    strncpy(writer->stream_name, stream_name, sizeof(writer->stream_name) - 1);
-    writer->first_dts = AV_NOPTS_VALUE;
-    writer->last_dts = AV_NOPTS_VALUE;
-    writer->is_initialized = 0;
-    writer->creation_time = time(NULL);
-    writer->last_packet_time = 0;  // Initialize to 0 to indicate no packets written yet
-    writer->audio_stream_idx = -1; // Initialize to -1 to indicate no audio stream
-    writer->has_audio = 0;         // Initialize to 0 to indicate no audio
-
-    log_info("Created MP4 writer for stream %s at %s", stream_name, output_path);
-
-    return writer;
-}
 
 /**
- * Enhanced MP4 writer initialization with better path handling and logging
+ * Record an RTSP stream to an MP4 file for a specified duration
+ * 
+ * @param rtsp_url The URL of the RTSP stream to record
+ * @param output_file The path to the output MP4 file
+ * @param duration The duration to record in seconds
+ * @param input_ctx_ptr Pointer to an existing input context (can be NULL)
+ * @param has_audio Flag indicating whether to include audio in the recording
+ * @return 0 on success, negative value on error
  */
-static int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, const AVStream *input_stream) {
-    int ret;
-
-    // First, ensure the directory exists
-    char *dir_path = malloc(PATH_MAX);
-    if (!dir_path) {
-        log_error("Failed to allocate memory for directory path");
-        return -1;
-    }
-    
-    const char *last_slash = strrchr(writer->output_path, '/');
-    if (last_slash) {
-        size_t dir_len = last_slash - writer->output_path;
-        strncpy(dir_path, writer->output_path, dir_len);
-        dir_path[dir_len] = '\0';
-
-        // Log the directory we're working with
-        log_info("Ensuring MP4 output directory exists: %s", dir_path);
-
-        // Create directory if it doesn't exist
-        char *mkdir_cmd = malloc(PATH_MAX + 10);
-        if (!mkdir_cmd) {
-            log_error("Failed to allocate memory for mkdir command");
-            free(dir_path);
-            return -1;
-        }
-        
-        snprintf(mkdir_cmd, PATH_MAX + 10, "mkdir -p %s", dir_path);
-        if (system(mkdir_cmd) != 0) {
-            log_warn("Failed to create directory: %s", dir_path);
-        }
-
-        // Set permissions to ensure it's writable
-        snprintf(mkdir_cmd, PATH_MAX + 10, "chmod -R 777 %s", dir_path);
-        if (system(mkdir_cmd) != 0) {
-            log_warn("Failed to set permissions: %s", dir_path);
-        }
-        
-        free(mkdir_cmd);
-    }
-
-    // Log the full output path
-    log_info("Initializing MP4 writer to output file: %s", writer->output_path);
-    
-    // Free dir_path as it's no longer needed
-    free(dir_path);
-
-    // Create output format context
-    ret = avformat_alloc_output_context2(&writer->output_ctx, NULL, "mp4", writer->output_path);
-    if (ret < 0 || !writer->output_ctx) {
-        char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
-        av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-        log_error("Failed to create output format context for MP4 writer: %s", error_buf);
-        return -1;
-    }
-
-    // Check if audio recording is enabled for this stream
-    stream_handle_t stream = get_stream_by_name(writer->stream_name);
-    if (stream) {
-        stream_config_t config;
-        if (get_stream_config(stream, &config) == 0) {
-            writer->has_audio = config.record_audio;
-            log_info("Audio recording %s for stream %s", 
-                    writer->has_audio ? "enabled" : "disabled", writer->stream_name);
-        }
-    }
-
-    // Add video stream
-    AVStream *out_stream = avformat_new_stream(writer->output_ctx, NULL);
-    if (!out_stream) {
-        log_error("Failed to create output stream for MP4 writer");
-        avformat_free_context(writer->output_ctx);
-        writer->output_ctx = NULL;
-        return -1;
-    }
-
-    // Copy codec parameters
-    ret = avcodec_parameters_copy(out_stream->codecpar, input_stream->codecpar);
-    if (ret < 0) {
-        char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
-        av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-        log_error("Failed to copy codec parameters for MP4 writer: %s", error_buf);
-        avformat_free_context(writer->output_ctx);
-        writer->output_ctx = NULL;
-        return -1;
-    }
-
-    // Set stream time base
-    out_stream->time_base = input_stream->time_base;
-    writer->time_base = input_stream->time_base;
-
-    // Store video stream index
-    writer->video_stream_idx = 0;  // First stream is video
-    writer->audio_stream_idx = -1; // Initialize to -1 (no audio)
-
-    // If audio recording is enabled, check for audio streams in the input format context
-    if (writer->has_audio) {
-        // We need to get the input format context to find audio streams
-        // This would typically be passed from the stream reader
-        // For now, we'll handle audio streams as they come in mp4_writer_write_packet
-        log_info("Audio recording enabled for stream %s", writer->stream_name);
-        
-        // The audio stream will be added when the first audio packet is received
-        // in mp4_writer_write_packet
-    }
-
-    // Add metadata
-    av_dict_set(&writer->output_ctx->metadata, "title", writer->stream_name, 0);
-    av_dict_set(&writer->output_ctx->metadata, "encoder", "LightNVR", 0);
-
-    // Set options for fast start (moov atom at beginning of file)
+int record_segment(const char *rtsp_url, const char *output_file, int duration, AVFormatContext **input_ctx_ptr, int has_audio) {
+    int ret = 0;
+    AVFormatContext *input_ctx = NULL;
+    AVFormatContext *output_ctx = NULL;
     AVDictionary *opts = NULL;
-    av_dict_set(&opts, "movflags", "+faststart", 0);  // Ensure moov atom is at start of file
-
-    // Open output file
-    ret = avio_open(&writer->output_ctx->pb, writer->output_path, AVIO_FLAG_WRITE);
-    if (ret < 0) {
-        char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
-        av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-        log_error("Failed to open output file for MP4 writer: %s (error: %s)",
-                writer->output_path, error_buf);
-
-        // Try to diagnose the issue
-        struct stat st;
-        if (stat(dir_path, &st) != 0) {
-            log_error("Directory does not exist: %s", dir_path);
-        } else if (!S_ISDIR(st.st_mode)) {
-            log_error("Path exists but is not a directory: %s", dir_path);
-        } else if (access(dir_path, W_OK) != 0) {
-            log_error("Directory is not writable: %s", dir_path);
-        }
-
-        avformat_free_context(writer->output_ctx);
-        writer->output_ctx = NULL;
-        av_dict_free(&opts);
-        return -1;
-    }
-
-    // Write file header
-    ret = avformat_write_header(writer->output_ctx, &opts);
-    if (ret < 0) {
-        char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
-        av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-        log_error("Failed to write header for MP4 writer: %s", error_buf);
-        avio_closep(&writer->output_ctx->pb);
-        avformat_free_context(writer->output_ctx);
-        writer->output_ctx = NULL;
-        av_dict_free(&opts);
-        return -1;
-    }
-
-    av_dict_free(&opts);
-
-    writer->is_initialized = 1;
-    log_info("Successfully initialized MP4 writer for stream %s at %s",
-            writer->stream_name, writer->output_path);
-
-    return 0;
-}
-
-/**
- * Write a packet to the MP4 file with improved timestamp handling
- */
-int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const AVStream *input_stream) {
-    if (!writer) {
-        log_error("Null writer passed to mp4_writer_write_packet");
-        return -1;
-    }
-
-    if (!in_pkt) {
-        // Fix null pointer dereference by not accessing writer->stream_name if writer is NULL
-        log_error("Null packet passed to mp4_writer_write_packet");
-        return -1;
-    }
-
-    if (!input_stream) {
-        log_error("Null input stream passed to mp4_writer_write_packet for %s", writer->stream_name);
-        return -1;
-    }
-
-    // Validate packet data
-    if (!in_pkt->data || in_pkt->size <= 0) {
-        log_warn("Invalid packet (null data or zero size) for stream %s", writer->stream_name);
-        return -1;
-    }
-
-    // Initialize on first packet
-    if (!writer->is_initialized) {
-        int ret = mp4_writer_initialize(writer, in_pkt, input_stream);
-        if (ret < 0) {
-            return ret;
-        }
-    }
-
-    // Create a copy of the packet so we don't modify the original
+    AVDictionary *out_opts = NULL;
     AVPacket pkt;
+    int video_stream_idx = -1;
+    int audio_stream_idx = -1;
+    AVStream *out_video_stream = NULL;
+    AVStream *out_audio_stream = NULL;
+    int64_t first_video_dts = AV_NOPTS_VALUE;
+    int64_t first_audio_dts = AV_NOPTS_VALUE;
+    int64_t last_audio_dts = 0;
+    int64_t last_audio_pts = 0;
+    int audio_packet_count = 0;
+    int64_t start_time;
+    time_t last_progress = 0;
+    
+    log_info("Recording from %s", rtsp_url);
+    log_info("Output file: %s", output_file);
+    log_info("Duration: %d seconds", duration);
+    
+    // Use existing input context if provided
+    if (*input_ctx_ptr) {
+        input_ctx = *input_ctx_ptr;
+        log_debug("Using existing input context");
+    } else {
+        // Set up RTSP options for low latency
+        av_dict_set(&opts, "rtsp_transport", "tcp", 0);  // Use TCP for RTSP (more reliable than UDP)
+        av_dict_set(&opts, "fflags", "nobuffer", 0);     // Reduce buffering
+        av_dict_set(&opts, "flags", "low_delay", 0);     // Low delay mode
+        av_dict_set(&opts, "max_delay", "500000", 0);    // Maximum delay of 500ms
+        av_dict_set(&opts, "stimeout", "5000000", 0);    // Socket timeout in microseconds (5 seconds)
+        
+        // Open input
+        ret = avformat_open_input(&input_ctx, rtsp_url, NULL, &opts);
+        if (ret < 0) {
+            log_error("Failed to open input: %d", ret);
+            goto cleanup;
+        }
+        
+        // Find stream info
+        ret = avformat_find_stream_info(input_ctx, NULL);
+        if (ret < 0) {
+            log_error("Failed to find stream info: %d", ret);
+            goto cleanup;
+        }
+        
+        // Store the input context for reuse
+        *input_ctx_ptr = input_ctx;
+    }
+    
+    // Log input stream info
+    log_debug("Input format: %s", input_ctx->iformat->name);
+    log_debug("Number of streams: %d", input_ctx->nb_streams);
+    
+    // Find video and audio streams
+    for (unsigned int i = 0; i < input_ctx->nb_streams; i++) {
+        AVStream *stream = input_ctx->streams[i];
+        if (stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO && video_stream_idx < 0) {
+            video_stream_idx = i;
+            log_debug("Found video stream: %d", i);
+            log_debug("  Codec: %s", avcodec_get_name(stream->codecpar->codec_id));
+            log_debug("  Resolution: %dx%d", stream->codecpar->width, stream->codecpar->height);
+            if (stream->avg_frame_rate.num && stream->avg_frame_rate.den) {
+                log_debug("  Frame rate: %.2f fps", 
+                       (float)stream->avg_frame_rate.num / stream->avg_frame_rate.den);
+            }
+        } else if (stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO && audio_stream_idx < 0) {
+            audio_stream_idx = i;
+            log_debug("Found audio stream: %d", i);
+            log_debug("  Codec: %s", avcodec_get_name(stream->codecpar->codec_id));
+            log_debug("  Sample rate: %d Hz", stream->codecpar->sample_rate);
+            // Handle channel count for different FFmpeg versions
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
+            // For FFmpeg 5.0 and newer
+            log_debug("  Channels: %d", stream->codecpar->ch_layout.nb_channels);
+#else
+            // For older FFmpeg versions
+            log_debug("  Channels: %d", stream->codecpar->channels);
+#endif
+        }
+    }
+    
+    if (video_stream_idx < 0) {
+        log_error("No video stream found");
+        ret = -1;
+        goto cleanup;
+    }
+    
+    // Create output context
+    ret = avformat_alloc_output_context2(&output_ctx, NULL, "mp4", output_file);
+    if (ret < 0 || !output_ctx) {
+        log_error("Failed to create output context: %d", ret);
+        goto cleanup;
+    }
+    
+    // Add video stream
+    out_video_stream = avformat_new_stream(output_ctx, NULL);
+    if (!out_video_stream) {
+        log_error("Failed to create output video stream");
+        ret = -1;
+        goto cleanup;
+    }
+    
+    // Copy video codec parameters
+    ret = avcodec_parameters_copy(out_video_stream->codecpar, 
+                                 input_ctx->streams[video_stream_idx]->codecpar);
+    if (ret < 0) {
+        log_error("Failed to copy video codec parameters: %d", ret);
+        goto cleanup;
+    }
+    
+    // Set video stream time base
+    out_video_stream->time_base = input_ctx->streams[video_stream_idx]->time_base;
+    
+    // Add audio stream if available and audio is enabled
+    if (audio_stream_idx >= 0 && has_audio) {
+        log_info("Including audio stream in MP4 recording");
+        out_audio_stream = avformat_new_stream(output_ctx, NULL);
+        if (!out_audio_stream) {
+            log_error("Failed to create output audio stream");
+            ret = -1;
+            goto cleanup;
+        }
+        
+        // Copy audio codec parameters
+        ret = avcodec_parameters_copy(out_audio_stream->codecpar, 
+                                     input_ctx->streams[audio_stream_idx]->codecpar);
+        if (ret < 0) {
+            log_error("Failed to copy audio codec parameters: %d", ret);
+            goto cleanup;
+        }
+        
+        // Set audio stream time base
+        out_audio_stream->time_base = input_ctx->streams[audio_stream_idx]->time_base;
+    }
+    
+    // Set output options for fast start
+    av_dict_set(&out_opts, "movflags", "+faststart", 0);
+    
+    // Open output file
+    ret = avio_open(&output_ctx->pb, output_file, AVIO_FLAG_WRITE);
+    if (ret < 0) {
+        log_error("Failed to open output file: %d", ret);
+        goto cleanup;
+    }
+    
+    // Write file header
+    ret = avformat_write_header(output_ctx, &out_opts);
+    if (ret < 0) {
+        log_error("Failed to write header: %d", ret);
+        goto cleanup;
+    }
+    
+    // Initialize packet
     av_init_packet(&pkt);
     pkt.data = NULL;
     pkt.size = 0;
     
-    int ret = av_packet_ref(&pkt, in_pkt);
-    if (ret < 0) {
-        char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
-        av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-        log_error("Failed to reference packet: %s", error_buf);
-        return ret;
-    }
-
-    // Enhanced timestamp handling to fix non-monotonic DTS issues
-    if (writer->first_dts == AV_NOPTS_VALUE) {
-        // For the first packet, set up the timestamp reference
-        // We'll use the first keyframe we encounter, but we'll also accept non-keyframes
-        // if they come first to avoid gaps between recordings
-        if (in_pkt->flags & AV_PKT_FLAG_KEY) {
-            log_debug("Starting MP4 recording with keyframe");
-        } else {
-            log_debug("Starting MP4 recording with non-keyframe (to avoid gaps)");
+    // Start recording
+    start_time = av_gettime();
+    log_info("Recording started...");
+    
+    // Flag to track if we've found the first key frame
+    bool found_first_keyframe = false;
+    // Flag to track if we're waiting for the final key frame
+    bool waiting_for_final_keyframe = false;
+    // Flag to track if shutdown was detected
+    bool shutdown_detected = false;
+    
+    // Main recording loop
+    while (1) {
+        // Check if shutdown has been initiated
+        if (!shutdown_detected && !waiting_for_final_keyframe && is_shutdown_initiated()) {
+            log_info("Shutdown initiated, waiting for next key frame to end recording");
+            waiting_for_final_keyframe = true;
+            shutdown_detected = true;
         }
         
-        // First packet - use its DTS as reference
-        writer->first_dts = pkt.dts != AV_NOPTS_VALUE ? pkt.dts : pkt.pts;
-        writer->first_pts = pkt.pts != AV_NOPTS_VALUE ? pkt.pts : pkt.dts;
-
-        // Initialize last_dts to avoid comparison with AV_NOPTS_VALUE
-        writer->last_dts = writer->first_dts;
-
-        // For the first packet, set timestamps to 0
-        pkt.dts = 0;
-        pkt.pts = pkt.pts != AV_NOPTS_VALUE ? pkt.pts - writer->first_pts : 0;
-        
-        // Ensure PTS is valid (not less than DTS)
-        if (pkt.pts < pkt.dts) {
-            pkt.pts = pkt.dts;
+        // Check if we've reached the duration limit
+        if (duration > 0 && !waiting_for_final_keyframe && !shutdown_detected && 
+            (av_gettime() - start_time) / 1000000 >= duration) {
+            log_info("Reached duration limit of %d seconds, waiting for next key frame to end recording", duration);
+            waiting_for_final_keyframe = true;
         }
         
-        log_debug("MP4 writer initialized with first_dts=%lld, first_pts=%lld", 
-                 (long long)writer->first_dts, (long long)writer->first_pts);
-    } else {
-        // Check for timestamp discontinuities (common in RTSP streams)
-        int64_t expected_dts = writer->last_dts + 
-            av_rescale_q(1, input_stream->time_base, writer->time_base);
-        int64_t dts_diff = 0;
+        // Read packet
+        ret = av_read_frame(input_ctx, &pkt);
+        if (ret < 0) {
+            if (ret == AVERROR_EOF) {
+                log_info("End of stream reached");
+                break;
+            } else if (ret != AVERROR(EAGAIN)) {
+                log_error("Error reading frame: %d", ret);
+                break;
+            }
+            // EAGAIN means try again, so we continue
+            av_usleep(10000);  // Sleep 10ms to avoid busy waiting
+            continue;
+        }
         
-        if (pkt.dts != AV_NOPTS_VALUE) {
-            dts_diff = pkt.dts - writer->first_dts;
+        // Process video packets
+        if (pkt.stream_index == video_stream_idx) {
+            // Check if this is a key frame
+            bool is_keyframe = (pkt.flags & AV_PKT_FLAG_KEY) != 0;
             
-            // If there's a large backward jump in DTS (stream reset or loop)
-            if (dts_diff < 0 || pkt.dts < writer->last_dts) {
-                // This is a discontinuity - log it
-                log_warn("DTS discontinuity detected: last_dts=%lld, current_dts=%lld, diff=%lld",
-                        (long long)writer->last_dts, (long long)pkt.dts, 
-                        (long long)(pkt.dts - writer->last_dts));
-                
-                // Handle the discontinuity by continuing from the last DTS
-                // Add a small increment to ensure monotonic increase
-                pkt.dts = expected_dts;
-                
-                // If PTS is also invalid, adjust it too
-                if (pkt.pts != AV_NOPTS_VALUE && pkt.pts < pkt.dts) {
-                    pkt.pts = pkt.dts + 1; // Ensure PTS > DTS for proper playback
-                }
-            } else {
-                // Normal case - use the relative offset from first_dts
-                pkt.dts = dts_diff;
-                
-                // Ensure monotonic increase
-                if (pkt.dts <= writer->last_dts) {
-                    pkt.dts = writer->last_dts + 1;
+            // If we're waiting for the first key frame, skip non-key frames
+            if (!found_first_keyframe) {
+                if (is_keyframe) {
+                    log_info("Found first key frame, starting recording");
+                    found_first_keyframe = true;
+                    
+                    // Reset start time to when we found the first key frame
+                    start_time = av_gettime();
+                } else {
+                    // Skip this frame as we're waiting for a key frame
+                    av_packet_unref(&pkt);
+                    continue;
                 }
             }
-        } else {
-            // If DTS is not set, use a continuous value
-            pkt.dts = expected_dts;
-        }
-
-        // Handle PTS (presentation timestamp)
-        if (pkt.pts != AV_NOPTS_VALUE) {
-            // Calculate proper offset from the first PTS
-            int64_t pts_diff = pkt.pts - writer->first_pts;
-
-            // If PTS goes backwards or would be less than DTS, adjust it
-            if (pts_diff < 0 || pkt.pts < pkt.dts) {
-                // Set PTS slightly ahead of DTS as a fallback
-                pkt.pts = pkt.dts + 1;
-            } else {
-                pkt.pts = pts_diff;
+            
+            // If we're waiting for the final key frame to end recording
+            if (waiting_for_final_keyframe && is_keyframe) {
+                log_info("Found final key frame, ending recording");
                 
-                // Ensure PTS is at least DTS + 1 for proper playback
-                if (pkt.pts <= pkt.dts) {
-                    pkt.pts = pkt.dts + 1;
+                // Process this final key frame and then break the loop
+                // Initialize first DTS if not set
+                if (first_video_dts == AV_NOPTS_VALUE && pkt.dts != AV_NOPTS_VALUE) {
+                    first_video_dts = pkt.dts;
+                    log_debug("First video DTS: %lld", (long long)first_video_dts);
                 }
-            }
-        } else {
-            // If PTS is not set, use DTS + 1
-            pkt.pts = pkt.dts + 1;
-        }
-    }
-
-    // Update last DTS to maintain monotonic increase
-    writer->last_dts = pkt.dts;
-
-    // Determine if this is a video or audio packet
-    bool is_audio = false;
-    if (input_stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
-        is_audio = true;
-        
-        // Check if we have audio support enabled
-        if (!writer->has_audio) {
-            // Audio recording is disabled, skip this packet
-            av_packet_unref(&pkt);
-            return 0;
-        }
-        
-        // Check if we need to initialize audio stream
-        if (writer->audio_stream_idx == -1) {
-            // Create a new audio stream in the output
-            AVStream *audio_stream = avformat_new_stream(writer->output_ctx, NULL);
-            if (!audio_stream) {
-                log_error("Failed to create audio stream for MP4 writer");
+                
+                // Adjust timestamps
+                if (pkt.dts != AV_NOPTS_VALUE && first_video_dts != AV_NOPTS_VALUE) {
+                    pkt.dts -= first_video_dts;
+                    if (pkt.dts < 0) pkt.dts = 0;
+                }
+                
+                if (pkt.pts != AV_NOPTS_VALUE && first_video_dts != AV_NOPTS_VALUE) {
+                    pkt.pts -= first_video_dts;
+                    if (pkt.pts < 0) pkt.pts = 0;
+                }
+                
+                // Set output stream index
+                pkt.stream_index = out_video_stream->index;
+                
+                // Write packet
+                ret = av_interleaved_write_frame(output_ctx, &pkt);
+                if (ret < 0) {
+                    log_error("Error writing video frame: %d", ret);
+                }
+                
+                // Break the loop after processing the final key frame
                 av_packet_unref(&pkt);
-                return -1;
+                break;
             }
             
-            // Copy codec parameters
-            ret = avcodec_parameters_copy(audio_stream->codecpar, input_stream->codecpar);
+            // Initialize first DTS if not set
+            if (first_video_dts == AV_NOPTS_VALUE && pkt.dts != AV_NOPTS_VALUE) {
+                first_video_dts = pkt.dts;
+                log_debug("First video DTS: %lld", (long long)first_video_dts);
+            }
+            
+            // Adjust timestamps
+            if (pkt.dts != AV_NOPTS_VALUE && first_video_dts != AV_NOPTS_VALUE) {
+                pkt.dts -= first_video_dts;
+                if (pkt.dts < 0) pkt.dts = 0;
+            }
+            
+            if (pkt.pts != AV_NOPTS_VALUE && first_video_dts != AV_NOPTS_VALUE) {
+                pkt.pts -= first_video_dts;
+                if (pkt.pts < 0) pkt.pts = 0;
+            }
+            
+            // Set output stream index
+            pkt.stream_index = out_video_stream->index;
+            
+            // Write packet
+            ret = av_interleaved_write_frame(output_ctx, &pkt);
             if (ret < 0) {
-                char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
-                av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-                log_error("Failed to copy audio codec parameters: %s", error_buf);
-                av_packet_unref(&pkt);
-                return -1;
+                log_error("Error writing video frame: %d", ret);
+            }
+        }
+        // Process audio packets - only if audio is enabled and we have an audio output stream
+        else if (has_audio && audio_stream_idx >= 0 && pkt.stream_index == audio_stream_idx && out_audio_stream) {
+            // Initialize first audio DTS if not set
+            if (first_audio_dts == AV_NOPTS_VALUE && pkt.dts != AV_NOPTS_VALUE) {
+                first_audio_dts = pkt.dts;
+                log_debug("First audio DTS: %lld", (long long)first_audio_dts);
             }
             
-            // Set stream time base
-            audio_stream->time_base = input_stream->time_base;
+            // For the first audio packet, initialize our tracking variables
+            if (audio_packet_count == 0) {
+                if (pkt.dts != AV_NOPTS_VALUE && first_audio_dts != AV_NOPTS_VALUE) {
+                    last_audio_dts = pkt.dts - first_audio_dts;
+                    if (last_audio_dts < 0) last_audio_dts = 0;
+                } else {
+                    last_audio_dts = 0;
+                }
+                
+                if (pkt.pts != AV_NOPTS_VALUE && first_audio_dts != AV_NOPTS_VALUE) {
+                    last_audio_pts = pkt.pts - first_audio_dts;
+                    if (last_audio_pts < 0) last_audio_pts = 0;
+                } else {
+                    last_audio_pts = 0;
+                }
+                
+                audio_packet_count++;
+            }
             
-            // Store audio stream index
-            writer->audio_stream_idx = audio_stream->index;
-            log_info("Added audio stream to MP4 recording for %s", writer->stream_name);
+            // Adjust timestamps to ensure monotonic increase
+            if (pkt.dts != AV_NOPTS_VALUE && first_audio_dts != AV_NOPTS_VALUE) {
+                int64_t new_dts = pkt.dts - first_audio_dts;
+                if (new_dts < 0) new_dts = 0;
+                
+                // Ensure DTS is monotonically increasing
+                if (new_dts <= last_audio_dts) {
+                    new_dts = last_audio_dts + 1;
+                }
+                
+                pkt.dts = new_dts;
+                last_audio_dts = new_dts;
+            } else {
+                // If DTS is not set, use last_audio_dts + 1
+                pkt.dts = last_audio_dts + 1;
+                last_audio_dts = pkt.dts;
+            }
+            
+            if (pkt.pts != AV_NOPTS_VALUE && first_audio_dts != AV_NOPTS_VALUE) {
+                int64_t new_pts = pkt.pts - first_audio_dts;
+                if (new_pts < 0) new_pts = 0;
+                
+                // Ensure PTS is monotonically increasing
+                if (new_pts <= last_audio_pts) {
+                    new_pts = last_audio_pts + 1;
+                }
+                
+                // Ensure PTS >= DTS
+                if (new_pts < pkt.dts) {
+                    new_pts = pkt.dts;
+                }
+                
+                pkt.pts = new_pts;
+                last_audio_pts = new_pts;
+            } else {
+                // If PTS is not set, use DTS
+                pkt.pts = pkt.dts;
+                last_audio_pts = pkt.pts;
+            }
+            
+            // Set output stream index
+            pkt.stream_index = out_audio_stream->index;
+            
+            // Write packet
+            ret = av_interleaved_write_frame(output_ctx, &pkt);
+            if (ret < 0) {
+                log_error("Error writing audio frame: %d", ret);
+            } else {
+                audio_packet_count++;
+            }
         }
         
-        // Set the stream index for the audio packet
-        pkt.stream_index = writer->audio_stream_idx;
-    } else {
-        // This is a video packet
-        pkt.stream_index = writer->video_stream_idx;
-        
-        // Log key frame information for debugging
-        if (pkt.flags & AV_PKT_FLAG_KEY) {
-            log_debug("Writing keyframe to MP4: pts=%lld, dts=%lld",
-                     (long long)pkt.pts, (long long)pkt.dts);
+        // Unref packet
+        av_packet_unref(&pkt);
+    }
+    
+    log_info("Recording segment complete");
+    
+    // Write trailer
+    if (output_ctx) {
+        ret = av_write_trailer(output_ctx);
+        if (ret < 0) {
+            log_error("Failed to write trailer: %d", ret);
         }
     }
-
-    // Write the packet directly
-    ret = av_interleaved_write_frame(writer->output_ctx, &pkt);
     
-    // Flush on key frames to ensure data is written to disk
-    if (pkt.flags & AV_PKT_FLAG_KEY && writer->output_ctx && writer->output_ctx->pb) {
-        avio_flush(writer->output_ctx->pb);
+cleanup:
+    // Close output
+    if (output_ctx) {
+        if (output_ctx->pb) {
+            avio_closep(&output_ctx->pb);
+        }
+        avformat_free_context(output_ctx);
     }
     
-    if (ret < 0) {
-        char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
-        av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-        log_error("Error writing MP4 packet: %s", error_buf);
-    } else {
-        // Update the last packet time when a packet is successfully written
-        writer->last_packet_time = time(NULL);
-    }
-
-    // Free packet resources
-    av_packet_unref(&pkt);
-
+    // Free dictionaries
+    av_dict_free(&opts);
+    av_dict_free(&out_opts);
+    
     return ret;
 }
 
+
 /**
- * Enhanced close function with improved error handling and memory safety
+ * RTSP stream reading thread function
  */
-void mp4_writer_close(mp4_writer_t *writer) {
+static void *mp4_writer_rtsp_thread(void *arg) {
+    // No static variables - we'll use a completely different approach
+    
+    mp4_writer_thread_t *thread_ctx = (mp4_writer_thread_t *)arg;
+    AVFormatContext *input_ctx = NULL;
+    AVPacket *pkt = NULL;
+    int video_stream_idx = -1;
+    int audio_stream_idx = -1;
+    int ret;
+    time_t start_time = time(NULL);  // Record when we started
+    
+    // Make a local copy of the stream name for thread safety
+    char stream_name[MAX_STREAM_NAME];
+    if (thread_ctx->writer && thread_ctx->writer->stream_name[0] != '\0') {
+        strncpy(stream_name, thread_ctx->writer->stream_name, MAX_STREAM_NAME - 1);
+        stream_name[MAX_STREAM_NAME - 1] = '\0';
+    } else {
+        strncpy(stream_name, "unknown", MAX_STREAM_NAME - 1);
+    }
+
+    log_info("Starting RTSP reading thread for stream %s", stream_name);
+    
+    // Add initial recording metadata to the database
+    if (thread_ctx->writer && thread_ctx->writer->output_path[0] != '\0') {
+        recording_metadata_t metadata;
+        memset(&metadata, 0, sizeof(recording_metadata_t));
+        
+        // Fill in the metadata
+        strncpy(metadata.stream_name, stream_name, sizeof(metadata.stream_name) - 1);
+        strncpy(metadata.file_path, thread_ctx->writer->output_path, sizeof(metadata.file_path) - 1);
+        metadata.start_time = start_time;
+        metadata.end_time = 0; // Will be updated when recording ends
+        metadata.size_bytes = 0; // Will be updated as recording grows
+        metadata.is_complete = false;
+        
+        // Add recording to database
+        uint64_t recording_id = add_recording_metadata(&metadata);
+        if (recording_id == 0) {
+            log_error("Failed to add initial recording metadata for stream %s", stream_name);
+        } else {
+            log_info("Added initial recording to database with ID: %llu for file: %s", 
+                    (unsigned long long)recording_id, thread_ctx->writer->output_path);
+            
+            // Store the recording ID in the writer for later update
+            thread_ctx->writer->current_recording_id = recording_id;
+        }
+    }
+
+    // Check if we're still running (might have been stopped during initialization)
+    if (!thread_ctx->running || thread_ctx->shutdown_requested) {
+        log_info("RTSP reading thread for %s exiting early due to shutdown", stream_name);
+        return NULL;
+    }
+
+    // Set up RTSP options for low latency - match rtsp_recorder.c exactly
+    AVDictionary *opts = NULL;
+    av_dict_set(&opts, "rtsp_transport", "tcp", 0);  // Use TCP for RTSP (more reliable than UDP)
+    av_dict_set(&opts, "fflags", "nobuffer", 0);     // Reduce buffering
+    av_dict_set(&opts, "flags", "low_delay", 0);     // Low delay mode
+    av_dict_set(&opts, "max_delay", "500000", 0);    // Maximum delay of 500ms
+    av_dict_set(&opts, "stimeout", "5000000", 0);    // Socket timeout in microseconds (5 seconds)
+    
+    // Open the input stream with options
+    ret = avformat_open_input(&input_ctx, thread_ctx->rtsp_url, NULL, &opts);
+    av_dict_free(&opts);
+    if (ret < 0) {
+        char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+        av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+        log_error("Could not open input stream for %s: %s", stream_name, error_buf);
+        
+        thread_ctx->running = 0;
+        return NULL;
+    }
+    
+    // Find stream info
+    ret = avformat_find_stream_info(input_ctx, NULL);
+    if (ret < 0) {
+        char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+        av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+        log_error("Could not find stream info for %s: %s", stream_name, error_buf);
+        
+        // Clean up
+        avformat_close_input(&input_ctx);
+        
+        thread_ctx->running = 0;
+        return NULL;
+    }
+    
+    // Find video and audio streams
+    video_stream_idx = -1;
+    audio_stream_idx = -1;
+    for (unsigned int i = 0; i < input_ctx->nb_streams; i++) {
+        if (input_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+            video_stream_idx = i;
+            log_info("Found video stream at index %d for %s", video_stream_idx, stream_name);
+        } else if (input_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
+            audio_stream_idx = i;
+            log_info("Found audio stream at index %d for %s (will be used for HLS only)", audio_stream_idx, stream_name);
+        }
+    }
+    
+    // Check if we should enable audio recording based on database configuration
+    stream_config_t db_stream_config;
+    int db_config_result = get_stream_config_by_name(stream_name, &db_stream_config);
+    
+    if (thread_ctx->writer) {
+        // Default to disabled
+        thread_ctx->writer->has_audio = 0;
+        
+        // If we have a valid database config, use the record_audio setting from there
+        if (db_config_result == 0) {
+            thread_ctx->writer->has_audio = db_stream_config.record_audio ? 1 : 0;
+            log_info("Audio for MP4 recording for stream %s is %s (from database configuration)", 
+                    stream_name, 
+                    thread_ctx->writer->has_audio ? "enabled" : "disabled");
+        } else {
+            log_info("Disabled audio for MP4 recording for stream %s (audio will still be available in HLS)", stream_name);
+        }
+    }
+    
+    if (video_stream_idx == -1) {
+        log_error("No video stream found in %s", thread_ctx->rtsp_url);
+        
+        // Clean up
+        avformat_close_input(&input_ctx);
+        
+        thread_ctx->running = 0;
+        return NULL;
+    }
+    
+    // Allocate packet
+    pkt = av_packet_alloc();
+    if (!pkt) {
+        log_error("Failed to allocate packet for %s", stream_name);
+        
+        // Clean up
+        avformat_close_input(&input_ctx);
+        
+        thread_ctx->running = 0;
+        return NULL;
+    }
+    
+    log_info("Successfully set up RTSP reading for stream %s", stream_name);
+    
+    // Variables for activity tracking
+    time_t last_activity_check = time(NULL);
+    time_t last_packet_time = 0;
+    
+    log_info("Running RTSP reading thread for stream %s", stream_name);
+
+    // Main loop to record segments
+    while (thread_ctx->running && !thread_ctx->shutdown_requested) {
+        // Check if shutdown has been initiated
+        if (is_shutdown_initiated()) {
+            log_info("RTSP reading thread for %s stopping due to system shutdown", stream_name);
+            thread_ctx->running = 0;
+            break;
+        }
+        
+        // Get current time
+        time_t current_time = time(NULL);
+        
+        // Fetch the latest stream configuration from the database
+        stream_config_t db_stream_config;
+        int db_config_result = get_stream_config_by_name(stream_name, &db_stream_config);
+        
+        // Define segment_duration variable outside the if block
+        int segment_duration = thread_ctx->writer->segment_duration;
+        
+        // Update configuration from database if available
+        if (db_config_result == 0) {
+            // Update segment duration if available
+            if (db_stream_config.segment_duration > 0) {
+                segment_duration = db_stream_config.segment_duration;
+                
+                // Update the writer's segment duration if it has changed
+                if (thread_ctx->writer->segment_duration != segment_duration) {
+                    log_info("Updating segment duration for stream %s from %d to %d seconds (from database)",
+                            stream_name, thread_ctx->writer->segment_duration, segment_duration);
+                    thread_ctx->writer->segment_duration = segment_duration;
+                }
+            }
+            
+            // Update audio recording setting if it has changed
+            int has_audio = db_stream_config.record_audio ? 1 : 0;
+            if (thread_ctx->writer->has_audio != has_audio) {
+                log_info("Updating audio recording setting for stream %s from %s to %s (from database)",
+                        stream_name, 
+                        thread_ctx->writer->has_audio ? "enabled" : "disabled",
+                        has_audio ? "enabled" : "disabled");
+                thread_ctx->writer->has_audio = has_audio;
+            }
+        }
+        
+        // Check if it's time to create a new segment based on segment duration
+        if (segment_duration > 0 && 
+            current_time - thread_ctx->writer->last_rotation_time >= segment_duration) {
+            log_info("Time to create new segment for stream %s (segment duration: %d seconds)", 
+                     stream_name, thread_ctx->writer->segment_duration);
+            
+            // Create timestamp for new MP4 filename
+            char timestamp_str[32];
+            struct tm *tm_info = localtime(&current_time);
+            strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M%S", tm_info);
+            
+            // Create new output path
+            char new_path[MAX_PATH_LENGTH];
+            snprintf(new_path, MAX_PATH_LENGTH, "%s/recording_%s.mp4",
+                     thread_ctx->writer->output_dir, timestamp_str);
+            
+            // Get the current output path before closing
+            char current_path[MAX_PATH_LENGTH];
+            strncpy(current_path, thread_ctx->writer->output_path, MAX_PATH_LENGTH - 1);
+            current_path[MAX_PATH_LENGTH - 1] = '\0';
+            
+            // Create recording metadata for the new file
+            recording_metadata_t metadata;
+            memset(&metadata, 0, sizeof(recording_metadata_t));
+            
+            // Fill in the metadata
+            strncpy(metadata.stream_name, stream_name, sizeof(metadata.stream_name) - 1);
+            strncpy(metadata.file_path, new_path, sizeof(metadata.file_path) - 1);
+            metadata.start_time = current_time;
+            metadata.end_time = 0; // Will be updated when recording ends
+            metadata.size_bytes = 0; // Will be updated as recording grows
+            metadata.is_complete = false;
+            
+            // Add recording to database for the new file
+            uint64_t new_recording_id = add_recording_metadata(&metadata);
+            if (new_recording_id == 0) {
+                log_error("Failed to add recording metadata for stream %s during rotation", stream_name);
+            } else {
+                log_info("Added new recording to database with ID: %llu for rotated file: %s", 
+                        (unsigned long long)new_recording_id, new_path);
+            }
+            
+            // Mark the previous recording as complete
+            if (thread_ctx->writer->current_recording_id > 0) {
+                // Get the file size before marking as complete
+                struct stat st;
+                uint64_t size_bytes = 0;
+                
+                if (stat(current_path, &st) == 0) {
+                    size_bytes = st.st_size;
+                    log_info("File size for %s: %llu bytes", 
+                            current_path, (unsigned long long)size_bytes);
+                    
+                    // Mark the recording as complete with the correct file size
+                    update_recording_metadata(thread_ctx->writer->current_recording_id, current_time, size_bytes, true);
+                    log_info("Marked previous recording (ID: %llu) as complete for stream %s (size: %llu bytes)", 
+                            (unsigned long long)thread_ctx->writer->current_recording_id, stream_name, (unsigned long long)size_bytes);
+                } else {
+                    log_warn("Failed to get file size for %s: %s", 
+                            current_path, strerror(errno));
+                    
+                    // Still mark the recording as complete, but with size 0
+                    update_recording_metadata(thread_ctx->writer->current_recording_id, current_time, 0, true);
+                    log_info("Marked previous recording (ID: %llu) as complete for stream %s (size unknown)", 
+                            (unsigned long long)thread_ctx->writer->current_recording_id, stream_name);
+                }
+            }
+            
+            // Update the output path
+            strncpy(thread_ctx->writer->output_path, new_path, MAX_PATH_LENGTH - 1);
+            thread_ctx->writer->output_path[MAX_PATH_LENGTH - 1] = '\0';
+            
+            // Store the new recording ID in the writer for later update
+            if (new_recording_id > 0) {
+                thread_ctx->writer->current_recording_id = new_recording_id;
+            }
+            
+            // Update rotation time
+            thread_ctx->writer->last_rotation_time = current_time;
+        }
+        
+        // Record a segment using the record_segment function
+        log_info("Recording segment for stream %s to %s", stream_name, thread_ctx->writer->output_path);
+        
+        // Use the segment duration from the database or writer
+        if (segment_duration > 0) {
+            log_info("Using segment duration: %d seconds (from %s)", 
+                    segment_duration, 
+                    (db_config_result == 0 && db_stream_config.segment_duration > 0) ? "database" : "writer context");
+        } else {
+            segment_duration = 30;
+            log_info("No segment duration configured, using default: %d seconds", segment_duration);
+        }
+        
+        // Record the segment
+        ret = record_segment(thread_ctx->rtsp_url, thread_ctx->writer->output_path, segment_duration, &input_ctx, thread_ctx->writer->has_audio);
+        if (ret < 0) {
+            log_error("Failed to record segment for stream %s, retrying...", stream_name);
+            
+            // Wait a bit before trying again
+            av_usleep(1000000);  // 1 second delay
+            
+            // If input context was closed, set it to NULL so it will be reopened
+            if (!input_ctx) {
+                log_info("Input context was closed, will reopen on next attempt");
+            }
+        }
+        
+        // Update the last packet time for activity tracking
+        thread_ctx->writer->last_packet_time = time(NULL);
+        
+        // Update the recording metadata with the current file size
+        if (thread_ctx->writer->current_recording_id > 0) {
+            struct stat st;
+            if (stat(thread_ctx->writer->output_path, &st) == 0) {
+                uint64_t size_bytes = st.st_size;
+                // Update size but don't mark as complete yet
+                update_recording_metadata(thread_ctx->writer->current_recording_id, 0, size_bytes, false);
+                log_debug("Updated recording metadata for ID: %llu, size: %llu bytes", 
+                        (unsigned long long)thread_ctx->writer->current_recording_id, 
+                        (unsigned long long)size_bytes);
+            }
+        }
+        
+        // No additional processing needed - record_segment handles everything
+    }
+
+    // Clean up resources
+    if (pkt) {
+        // Make a local copy of the packet pointer and NULL out the original
+        // to prevent double-free if another thread accesses it
+        AVPacket *pkt_to_free = pkt;
+        pkt = NULL;
+        
+        // Now safely free the packet
+        av_packet_unref(pkt_to_free);
+        av_packet_free(&pkt_to_free);
+    }
+    
+    if (input_ctx) {
+        // Make a local copy of the context pointer and NULL out the original
+        AVFormatContext *ctx_to_close = input_ctx;
+        input_ctx = NULL;
+        
+        // Now safely close the input context
+        avformat_close_input(&ctx_to_close);
+    }
+
+    log_info("RTSP reading thread for stream %s exited", stream_name);
+    return NULL;
+}
+
+/**
+ * Start a recording thread that reads from the RTSP stream and writes to the MP4 file
+ * This function creates a new thread that handles all the recording logic
+ */
+int mp4_writer_start_recording_thread(mp4_writer_t *writer, const char *rtsp_url) {
+    if (!writer || !rtsp_url || rtsp_url[0] == '\0') {
+        log_error("Invalid parameters passed to mp4_writer_start_recording_thread");
+        return -1;
+    }
+    
+    // Create thread context
+    mp4_writer_thread_t *thread_ctx = calloc(1, sizeof(mp4_writer_thread_t));
+    if (!thread_ctx) {
+        log_error("Failed to allocate memory for thread context");
+        return -1;
+    }
+    
+    // Initialize thread context
+    thread_ctx->running = 1;
+    thread_ctx->shutdown_requested = 0;
+    thread_ctx->writer = writer;
+    strncpy(thread_ctx->rtsp_url, rtsp_url, MAX_PATH_LENGTH - 1);
+    
+    // Create thread
+    if (pthread_create(&thread_ctx->thread, NULL, mp4_writer_rtsp_thread, thread_ctx) != 0) {
+        log_error("Failed to create RTSP reading thread for %s", writer->stream_name);
+        free(thread_ctx);
+        return -1;
+    }
+    
+    // Store thread context in writer
+    writer->thread_ctx = thread_ctx;
+    
+    // Register with shutdown coordinator
+    writer->shutdown_component_id = register_component(
+        writer->stream_name, 
+        COMPONENT_MP4_WRITER, 
+        writer, 
+        10  // Medium priority
+    );
+    
+    if (writer->shutdown_component_id >= 0) {
+        log_info("Registered MP4 writer for %s with shutdown coordinator, component ID: %d", 
+                writer->stream_name, writer->shutdown_component_id);
+    } else {
+        log_warn("Failed to register MP4 writer for %s with shutdown coordinator", writer->stream_name);
+    }
+    
+    log_info("Started RTSP reading thread for %s", writer->stream_name);
+    
+    return 0;
+}
+
+/**
+ * Stop the recording thread
+ * This function signals the recording thread to stop and waits for it to exit
+ */
+void mp4_writer_stop_recording_thread(mp4_writer_t *writer) {
     if (!writer) {
-        log_warn("Attempted to close NULL MP4 writer");
-        return;
-    }
-
-    // Create local copies of all data we need before modifying the writer
-    // This prevents use-after-free and other memory corruption issues
-    char *output_path = malloc(PATH_MAX);
-    char *stream_name = malloc(MAX_STREAM_NAME);
-    time_t creation_time = 0;
-    bool was_initialized = false;
-    int64_t first_dts = AV_NOPTS_VALUE;
-    int64_t last_dts = AV_NOPTS_VALUE;
-    AVRational time_base = {0, 0};
-    AVFormatContext *output_ctx = NULL;
-    
-    if (!output_path || !stream_name) {
-        log_error("Failed to allocate memory for path or stream name");
-        free(output_path);
-        free(stream_name);
+        log_warn("NULL writer passed to mp4_writer_stop_recording_thread");
         return;
     }
     
-    memset(output_path, 0, PATH_MAX);
-    memset(stream_name, 0, MAX_STREAM_NAME);
-
-    // Safely copy all needed data with proper validation
-    bool valid_output_path = writer->output_path && writer->output_path[0] != '\0';
-    bool valid_stream_name = writer->stream_name && writer->stream_name[0] != '\0';
-    
-    // Only copy if the fields are valid
-    if (valid_output_path) {
-        strncpy(output_path, writer->output_path, PATH_MAX - 1);
-        output_path[PATH_MAX - 1] = '\0';
+    mp4_writer_thread_t *thread_ctx = (mp4_writer_thread_t *)writer->thread_ctx;
+    if (!thread_ctx) {
+        log_warn("No thread context found for writer %s", writer->stream_name ? writer->stream_name : "unknown");
+        return;
     }
-
-    if (valid_stream_name) {
+    
+    // Make a local copy of the stream name for logging
+    char stream_name[MAX_STREAM_NAME];
+    if (writer->stream_name && writer->stream_name[0] != '\0') {
         strncpy(stream_name, writer->stream_name, MAX_STREAM_NAME - 1);
         stream_name[MAX_STREAM_NAME - 1] = '\0';
     } else {
         strncpy(stream_name, "unknown", MAX_STREAM_NAME - 1);
     }
     
-    // Safely copy other fields
-    creation_time = writer->creation_time;
-    was_initialized = writer->is_initialized;
-    first_dts = writer->first_dts;
-    last_dts = writer->last_dts;
-    time_base = writer->time_base;
+    log_info("Signaling RTSP reading thread for %s to stop", stream_name);
     
-    // Extract the output context and immediately set it to NULL to prevent double-free
-    output_ctx = writer->output_ctx;
-    writer->output_ctx = NULL;
+    // Signal thread to stop
+    thread_ctx->running = 0;
+    thread_ctx->shutdown_requested = 1;
     
-    // Mark as not initialized to prevent further packet writes
-    writer->is_initialized = 0;
-
-    // Log the operation
-    log_info("Closing MP4 writer for stream %s at %s",
-            stream_name[0] ? stream_name : "unknown", 
-            output_path[0] ? output_path : "(invalid path)");
-
-    // Close the output context if it exists
-    if (output_ctx) {
-        // Write trailer if the writer was initialized
-        if (was_initialized) {
-            int ret = av_write_trailer(output_ctx);
-            if (ret < 0) {
-                char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
-                av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-                log_error("Failed to write trailer for MP4 writer: %s", error_buf);
-            }
-        }
-
-        // Close output
-        if (output_ctx->pb) {
-            avio_closep(&output_ctx->pb);
-        }
-
-        // Free context
-        avformat_free_context(output_ctx);
-        output_ctx = NULL;  // Prevent any accidental use after free
+    // Wait for thread to exit with timeout
+    #include "video/thread_utils.h"
+    int join_result = pthread_join_with_timeout(thread_ctx->thread, NULL, 5);
+    if (join_result != 0) {
+        log_warn("Failed to join RTSP reading thread for %s within timeout: %s", 
+                stream_name, strerror(join_result));
+    } else {
+        log_info("Successfully joined RTSP reading thread for %s", stream_name);
     }
-
-    // Check if file exists and has a reasonable size - only if we have a valid path
-    if (output_path[0] != '\0') {
-        struct stat st;
-        if (stat(output_path, &st) == 0 && st.st_size > 1024) { // File exists and is not empty
-            // Log success with absolute path for easy debugging
-            char *abs_path = malloc(PATH_MAX);
-            if (abs_path) {
-                if (realpath(output_path, abs_path)) {
-                    log_info("Successfully wrote MP4 file at: %s (size: %lld bytes)",
-                            abs_path, (long long)st.st_size);
-                } else {
-                    log_info("Successfully wrote MP4 file at: %s (size: %lld bytes)",
-                            output_path, (long long)st.st_size);
-                }
-                free(abs_path);
-            } else {
-                log_info("Successfully wrote MP4 file at: %s (size: %lld bytes)",
-                        output_path, (long long)st.st_size);
-            }
-
-            // Ensure recording is properly updated in database
-            if (was_initialized) {
-                // Find any active recordings for this stream in our tracking array
-                bool found = false;
-
-                for (int i = 0; i < MAX_STREAMS; i++) {
-                    if (active_recordings[i].recording_id > 0 &&
-                        strcmp(active_recordings[i].stream_name, stream_name) == 0) {
-
-                        // We found an active recording for this stream
-                        found = true;
-
-                        // Mark recording as complete
-                        time_t end_time = time(NULL);
-                        update_recording_metadata(active_recordings[i].recording_id,
-                                                end_time, st.st_size, true);
-
-                        log_info("Updated database record for recording %llu, size: %lld bytes",
-                                (unsigned long long)active_recordings[i].recording_id,
-                                (long long)st.st_size);
-
-                        // Clear the active recording slot
-                        active_recordings[i].recording_id = 0;
-                        active_recordings[i].stream_name[0] = '\0';
-                        active_recordings[i].output_path[0] = '\0';
-
-                        break;
-                    }
-                }
-
-                // If no active recording was found, create one
-                if (!found) {
-                    log_info("No active recording found for stream %s, creating database entry",
-                            stream_name);
-
-                    // Create recording metadata
-                    recording_metadata_t metadata;
-                    memset(&metadata, 0, sizeof(recording_metadata_t));
-
-                    strncpy(metadata.stream_name, stream_name, sizeof(metadata.stream_name) - 1);
-                    strncpy(metadata.file_path, output_path, sizeof(metadata.file_path) - 1);
-
-                    metadata.size_bytes = st.st_size;
-
-                    // Get stream config for additional metadata
-                    stream_handle_t stream = get_stream_by_name(stream_name);
-                    if (stream) {
-                        stream_config_t config;
-                        if (get_stream_config(stream, &config) == 0) {
-                            metadata.width = config.width;
-                            metadata.height = config.height;
-                            metadata.fps = config.fps;
-                            strncpy(metadata.codec, config.codec, sizeof(metadata.codec) - 1);
-                        }
-                    }
-
-                    // Set timestamps
-                    time_t duration_sec = 0;
-                    if (first_dts != AV_NOPTS_VALUE && last_dts != AV_NOPTS_VALUE) {
-                        // Convert from stream timebase to seconds
-                        int64_t duration_tb = last_dts;  // last_dts is already relative to first_dts
-                        if (time_base.den > 0) {
-                            duration_sec = duration_tb * time_base.num / time_base.den;
-                            log_info("MP4 duration calculated: %ld seconds (timebase: %d/%d, ticks: %lld)", 
-                                    duration_sec, time_base.num, time_base.den, 
-                                    (long long)duration_tb);
-                        }
-                    }
-
-                    time_t now = time(NULL);
-                    metadata.start_time = now - duration_sec;
-                    metadata.end_time = now;
-                    metadata.is_complete = true;
-
-                    // Add to database
-                    uint64_t recording_id = add_recording_metadata(&metadata);
-                    if (recording_id > 0) {
-                        log_info("Created database entry for completed recording, ID: %llu",
-                                (unsigned long long)recording_id);
-                    } else {
-                        log_error("Failed to create database entry for completed recording");
-                    }
-                }
-            }
-        } else {
-            log_error("MP4 file missing or too small: %s", output_path);
-        }
-    }
-
-    // Free allocated memory
-    free(output_path);
-    free(stream_name);
     
-    // Free writer at the end, after we're done using all its data
-    free(writer);
+    // Free thread context
+    free(thread_ctx);
+    writer->thread_ctx = NULL;
+    
+    // Update component state in shutdown coordinator
+    if (writer->shutdown_component_id >= 0) {
+        update_component_state(writer->shutdown_component_id, COMPONENT_STOPPED);
+        log_info("Updated MP4 writer component state to STOPPED for %s", stream_name);
+    }
+    
+    log_info("Stopped RTSP reading thread for %s", stream_name);
+}
+
+/**
+ * Check if the recording thread is running
+ */
+int mp4_writer_is_recording(mp4_writer_t *writer) {
+    if (!writer) {
+        return 0;
+    }
+    
+    // If the writer is in the process of rotating, consider it as still recording
+    if (writer->is_rotating) {
+        return 1;
+    }
+    
+    mp4_writer_thread_t *thread_ctx = (mp4_writer_thread_t *)writer->thread_ctx;
+    if (!thread_ctx) {
+        return 0;
+    }
+    
+    return thread_ctx->running;
 }

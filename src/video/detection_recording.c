@@ -517,10 +517,9 @@ int process_frame_for_recording(const char *stream_name, const unsigned char *fr
                 log_info("Started MP4 recording for detection event on stream %s with pre-buffer of %d seconds", 
                          stream_name, pre_buffer);
                 
-                // CRITICAL FIX: Flush the pre-buffered frames to the MP4 writer
-                // This function is defined in mp4_recording.c
-                extern void flush_prebuffer_to_mp4(const char *stream_name);
-                flush_prebuffer_to_mp4(stream_name);
+                // Pre-buffering is no longer used in the new architecture
+                // Each recording thread manages its own RTSP connection directly
+                log_info("Started MP4 recording for detection event on stream %s", stream_name);
                 
                 // Update the recording_active flag in the detection_recordings array
                 pthread_mutex_lock(&detection_recordings_mutex);

@@ -1,3 +1,12 @@
+/**
+ * MP4 Recording Core
+ * 
+ * This module is responsible for managing MP4 recording threads.
+ * Each recording thread is responsible for starting and stopping an MP4 recorder
+ * for a specific stream. The actual RTSP interaction is contained within the
+ * MP4 writer module.
+ */
+
 #define _POSIX_C_SOURCE 200809L
 #define _XOPEN_SOURCE 700
 #define _GNU_SOURCE
@@ -15,11 +24,6 @@
 #include <dirent.h>
 #include <sys/time.h>
 #include <signal.h>
-
-#include <libavformat/avformat.h>
-#include <libavcodec/avcodec.h>
-#include <libavutil/avutil.h>
-#include <libavutil/time.h>
 
 #include "core/logger.h"
 #include "core/config.h"
@@ -48,15 +52,17 @@ static void *mp4_recording_thread(void *arg);
 /**
  * MP4 recording thread function for a single stream
  * 
- * CRITICAL FIX: Simplified to work with the new architecture where the HLS streaming thread
- * also writes to the MP4 file. This thread now just handles file rotation and metadata updates.
+ * This thread is responsible for:
+ * 1. Creating and managing the output directory
+ * 2. Creating the MP4 writer
+ * 3. Starting the RTSP recording thread in the MP4 writer
+ * 4. Monitoring the recording and restarting if necessary
+ * 5. Updating recording metadata
+ * 6. Cleaning up resources when done
  */
 static void *mp4_recording_thread(void *arg) {
     mp4_recording_ctx_t *ctx = (mp4_recording_ctx_t *)arg;
-    int ret;
-    time_t start_time = time(NULL);  // Record when we started
-    config_t *global_config = get_streaming_config();
-
+    
     // Make a local copy of the stream name for thread safety
     char stream_name[MAX_STREAM_NAME];
     strncpy(stream_name, ctx->config.name, MAX_STREAM_NAME - 1);
@@ -143,39 +149,28 @@ static void *mp4_recording_thread(void *arg) {
     
     log_info("Created MP4 writer for %s at %s", stream_name, ctx->output_path);
     
-    // CRITICAL FIX: Register the MP4 writer so the HLS streaming thread can access it
-    // This is the key change - instead of using a dedicated stream reader, we rely on
-    // the HLS streaming thread to write packets to the MP4 file
-    register_mp4_writer_for_stream(stream_name, ctx->mp4_writer);
-    log_info("Registered MP4 writer for stream %s - HLS thread will write packets to it", stream_name);
+    // Set segment duration in the MP4 writer
+    int segment_duration = ctx->config.segment_duration > 0 ? ctx->config.segment_duration : 30;
+    mp4_writer_set_segment_duration(ctx->mp4_writer, segment_duration);
+    log_info("Set segment duration to %d seconds for MP4 writer for stream %s", 
+             segment_duration, stream_name);
     
-    // CRITICAL FIX: Add a timeout check to detect if the HLS thread is not writing packets
-    time_t last_activity_check = time(NULL);
-    time_t last_packet_time = 0;
-    
-    // Register with shutdown coordinator
-    char component_name[128];
-    snprintf(component_name, sizeof(component_name), "mp4_writer_%s", stream_name);
-    int component_id = register_component(component_name, COMPONENT_MP4_WRITER, ctx, 80); // Medium priority (80)
-    if (component_id >= 0) {
-        log_info("Registered MP4 writer %s with shutdown coordinator (ID: %d)", stream_name, component_id);
+    // Start the RTSP recording thread in the MP4 writer
+    int ret = mp4_writer_start_recording_thread(ctx->mp4_writer, ctx->config.url);
+    if (ret < 0) {
+        log_error("Failed to start RTSP recording thread for %s", stream_name);
+        mp4_writer_close(ctx->mp4_writer);
+        ctx->mp4_writer = NULL;
+        ctx->running = 0;
+        return NULL;
     }
-
-    // Reset the timestamp tracker to ensure we have a clean state for keyframe tracking
-    reset_timestamp_tracker(stream_name);
-    log_info("Reset timestamp tracker for stream %s to ensure clean keyframe tracking", stream_name);
-
+    
+    log_info("Started RTSP recording thread for stream %s", stream_name);
+    
     // Variables for periodic updates
     time_t last_update = 0;
-
-    // Variables for tracking key frames and rotation
-    int segment_duration = ctx->config.segment_duration > 0 ? ctx->config.segment_duration : 30;
-    time_t rotation_ready_time = 0;
-    int waiting_for_keyframe = 0;
-    time_t last_rotation_time = time(NULL); // Track when we last rotated
-    int force_rotation_counter = 0; // Counter to force rotation if we're stuck
     
-    // Main loop to handle file rotation and metadata updates
+    // Main loop to handle metadata updates and check if the recording is still running
     while (ctx->running && !shutdown_in_progress) {
         // Check if shutdown has been initiated
         if (is_shutdown_initiated()) {
@@ -183,461 +178,47 @@ static void *mp4_recording_thread(void *arg) {
             ctx->running = 0;
             break;
         }
+        
         // Get current time
-        time_t current_time = time(NULL);
-        
-        // Check if we need to rotate the MP4 file based on segment duration
-        if (ctx->mp4_writer) {
-            // If we haven't set rotation_ready_time yet and we've reached the segment duration
-            if (rotation_ready_time == 0 && 
-                (current_time - ctx->mp4_writer->creation_time) >= segment_duration) {
-                
-                // Mark that we're ready to rotate, but waiting for the next key frame
-                rotation_ready_time = current_time;
-                waiting_for_keyframe = 1;
-                log_info("MP4 file for stream %s has reached duration of %d seconds, waiting for next keyframe to rotate",
-                        stream_name, segment_duration);
-            }
-            
-            // If we're waiting for a key frame to rotate, check if one has been received
-            if (waiting_for_keyframe) {
-                // Get the timestamp of the last key frame from the timestamp manager
-                time_t last_keyframe_time = 0;
-                
-                // BUGFIX: Store rotation_ready_time in a temporary variable to pass to last_keyframe_received
-                // This ensures we're checking if a keyframe was received after rotation_ready_time
-                time_t check_time = rotation_ready_time;
-                int keyframe_received_after_rotation = last_keyframe_received(stream_name, &check_time);
-                last_keyframe_time = check_time; // Get the actual last keyframe time
-                
-                // Log detailed information about keyframe status for debugging
-                log_debug("Keyframe check for stream %s: received=%d, last_time=%ld, rotation_ready_time=%ld, diff=%ld seconds",
-                        stream_name, keyframe_received_after_rotation, (long)last_keyframe_time, 
-                        (long)rotation_ready_time, 
-                        last_keyframe_time > 0 ? (long)(last_keyframe_time - rotation_ready_time) : 0);
-                
-                // If we've received a key frame after marking for rotation, perform the rotation
-                if (keyframe_received_after_rotation && last_keyframe_time > rotation_ready_time) {
-                    log_info("Rotating MP4 file for stream %s after %d seconds (waited for keyframe)",
-                            stream_name, (int)(current_time - ctx->mp4_writer->creation_time));
-                    
-                    // Generate new timestamp for the new MP4 file
-                    char timestamp_str[32];
-                    struct tm *tm_info = localtime(&current_time);
-                    strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M%S", tm_info);
-                    
-                    // Create new MP4 output path with new timestamp
-                    char mp4_path[MAX_PATH_LENGTH];
-                    snprintf(mp4_path, MAX_PATH_LENGTH, "%s/mp4/%s/recording_%s.mp4",
-                            global_config->storage_path, stream_name, timestamp_str);
-                    
-                    // First unregister the current MP4 writer
-                    unregister_mp4_writer_for_stream(stream_name);
-                    
-                    // Store the old writer temporarily
-                    mp4_writer_t *old_writer = ctx->mp4_writer;
-                    
-                    // Update the context's output path
-                    strncpy(ctx->output_path, mp4_path, MAX_PATH_LENGTH - 1);
-                    ctx->output_path[MAX_PATH_LENGTH - 1] = '\0';
-                    
-                    // Create new MP4 writer before closing the old one
-                    mp4_writer_t *new_writer = mp4_writer_create(ctx->output_path, stream_name);
-                    if (!new_writer) {
-                        log_error("Failed to create new MP4 writer for stream %s during rotation", stream_name);
-                        
-                        // Re-register the old writer since we couldn't create a new one
-                        register_mp4_writer_for_stream(stream_name, old_writer);
-                        
-                        // Reset rotation flags to try again later
-                        rotation_ready_time = 0;
-                        waiting_for_keyframe = 0;
-                        
-                        // Wait a bit before trying again
-                        av_usleep(500000);  // 500ms delay
-                        continue; // Try again on next iteration
-                    }
-                    
-                    // Register the new MP4 writer
-                    if (register_mp4_writer_for_stream(stream_name, new_writer) != 0) {
-                        log_error("Failed to register new MP4 writer for stream %s during rotation", stream_name);
-                        
-                        // Close the new writer since we couldn't register it
-                        mp4_writer_close(new_writer);
-                        
-                        // Re-register the old writer
-                        register_mp4_writer_for_stream(stream_name, old_writer);
-                        
-                        // Reset rotation flags to try again later
-                        rotation_ready_time = 0;
-                        waiting_for_keyframe = 0;
-                        
-                        // Wait a bit before trying again
-                        av_usleep(500000);  // 500ms delay
-                        continue; // Try again on next iteration
-                    }
-                    
-                    // Now that the new writer is registered, update the context
-                    ctx->mp4_writer = new_writer;
-                    
-                    // Close the old writer now that everything else is set up
-                    mp4_writer_close(old_writer);
-                    old_writer = NULL; // Prevent any accidental use after free
-                    
-                    log_info("Successfully rotated MP4 writer for stream %s at %s", stream_name, ctx->output_path);
-                    
-                    // Update recording metadata in the database
-                    update_recording(stream_name);
-                    
-                    // Reset rotation flags
-                    rotation_ready_time = 0;
-                    waiting_for_keyframe = 0;
-                    
-                    // Log that we're not resetting the timestamp tracker
-                    log_info("Keeping timestamp tracker state for stream %s after forced rotation to maintain keyframe tracking", stream_name);
-                    
-                    // Don't reset the timestamp tracker after rotation to avoid losing keyframe tracking
-                }
-                // If we've been waiting too long for a keyframe, force rotation
-                // For streams that don't send keyframes frequently, this prevents recordings from becoming too long
-                else if ((current_time - rotation_ready_time) > 5) {  // 5 seconds timeout
-                    log_warn("No keyframe received for over 5 seconds after reaching duration, forcing MP4 rotation for stream %s (total duration: %d seconds)", 
-                            stream_name, (int)(current_time - ctx->mp4_writer->creation_time));
-                    
-                    // Force rotation similar to above, but with a warning
-                    // (Same code as above, but with different log messages)
-                    
-                    // Generate new timestamp for the new MP4 file
-                    char timestamp_str[32];
-                    struct tm *tm_info = localtime(&current_time);
-                    strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M%S", tm_info);
-                    
-                    // Create new MP4 output path with new timestamp
-                    char mp4_path[MAX_PATH_LENGTH];
-                    snprintf(mp4_path, MAX_PATH_LENGTH, "%s/mp4/%s/recording_%s.mp4",
-                            global_config->storage_path, stream_name, timestamp_str);
-                    
-                    // First unregister the current MP4 writer
-                    unregister_mp4_writer_for_stream(stream_name);
-                    
-                    // Store the old writer temporarily
-                    mp4_writer_t *old_writer = ctx->mp4_writer;
-                    
-                    // Update the context's output path
-                    strncpy(ctx->output_path, mp4_path, MAX_PATH_LENGTH - 1);
-                    ctx->output_path[MAX_PATH_LENGTH - 1] = '\0';
-                    
-                    // Create new MP4 writer before closing the old one
-                    mp4_writer_t *new_writer = mp4_writer_create(ctx->output_path, stream_name);
-                    if (!new_writer) {
-                        log_error("Failed to create new MP4 writer for stream %s during forced rotation", stream_name);
-                        
-                        // Re-register the old writer since we couldn't create a new one
-                        register_mp4_writer_for_stream(stream_name, old_writer);
-                        
-                        // Reset rotation flags to try again later
-                        rotation_ready_time = 0;
-                        waiting_for_keyframe = 0;
-                        
-                        // Wait a bit before trying again
-                        av_usleep(500000);  // 500ms delay
-                        continue; // Try again on next iteration
-                    }
-                    
-                    // Register the new MP4 writer
-                    if (register_mp4_writer_for_stream(stream_name, new_writer) != 0) {
-                        log_error("Failed to register new MP4 writer for stream %s during forced rotation", stream_name);
-                        
-                        // Close the new writer since we couldn't register it
-                        mp4_writer_close(new_writer);
-                        
-                        // Re-register the old writer
-                        register_mp4_writer_for_stream(stream_name, old_writer);
-                        
-                        // Reset rotation flags to try again later
-                        rotation_ready_time = 0;
-                        waiting_for_keyframe = 0;
-                        
-                        // Wait a bit before trying again
-                        av_usleep(500000);  // 500ms delay
-                        continue; // Try again on next iteration
-                    }
-                    
-                    // Now that the new writer is registered, update the context
-                    ctx->mp4_writer = new_writer;
-                    
-                    // Close the old writer now that everything else is set up
-                    mp4_writer_close(old_writer);
-                    old_writer = NULL; // Prevent any accidental use after free
-                    
-                    log_info("Successfully forced rotation of MP4 writer for stream %s at %s", 
-                            stream_name, ctx->output_path);
-                    
-                    // Update recording metadata in the database
-                    update_recording(stream_name);
-                    
-                    // Reset rotation flags
-                    rotation_ready_time = 0;
-                    waiting_for_keyframe = 0;
-                }
-            }
-            
-            // Absolute maximum duration check - force rotation if we've gone over the segment duration
-            // This is a failsafe in case the keyframe detection or rotation logic fails
-            if (ctx->mp4_writer && 
-                (current_time - ctx->mp4_writer->creation_time) >= (segment_duration + 2)) {
-                
-                // Increment force rotation counter
-                force_rotation_counter++;
-                
-                // Log more frequently to better track the issue
-                if (force_rotation_counter == 1 || force_rotation_counter % 3 == 0) {
-                    log_warn("MP4 file for stream %s has exceeded target duration (%d seconds), preparing for forced rotation",
-                            stream_name, (int)(current_time - ctx->mp4_writer->creation_time));
-                }
-                
-                // BUGFIX: Reduce the wait time before forcing rotation to prevent segments from becoming too large
-                // If we've been waiting too long, force an immediate rotation regardless of keyframes
-                if (force_rotation_counter >= 2) {
-                    log_warn("MP4 file for stream %s has exceeded maximum allowed duration (%d seconds), forcing immediate rotation",
-                            stream_name, (int)(current_time - ctx->mp4_writer->creation_time));
-                
-                    // Force rotation immediately
-                    rotation_ready_time = current_time;
-                    waiting_for_keyframe = 1;
-                    
-                    // Generate new timestamp for the new MP4 file
-                    char timestamp_str[32];
-                    struct tm *tm_info = localtime(&current_time);
-                    strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M%S", tm_info);
-                    
-                    // Create new MP4 output path with new timestamp
-                    char mp4_path[MAX_PATH_LENGTH];
-                    snprintf(mp4_path, MAX_PATH_LENGTH, "%s/mp4/%s/recording_%s.mp4",
-                            global_config->storage_path, stream_name, timestamp_str);
-                    
-                    // First unregister the current MP4 writer
-                    unregister_mp4_writer_for_stream(stream_name);
-                    
-                    // Store the old writer temporarily
-                    mp4_writer_t *old_writer = ctx->mp4_writer;
-                    
-                    // Update the context's output path
-                    strncpy(ctx->output_path, mp4_path, MAX_PATH_LENGTH - 1);
-                    ctx->output_path[MAX_PATH_LENGTH - 1] = '\0';
-                    
-                    // Create new MP4 writer before closing the old one
-                    mp4_writer_t *new_writer = mp4_writer_create(ctx->output_path, stream_name);
-                    if (!new_writer) {
-                        log_error("Failed to create new MP4 writer for stream %s during emergency rotation", stream_name);
-                        
-                        // Re-register the old writer since we couldn't create a new one
-                        register_mp4_writer_for_stream(stream_name, old_writer);
-                        
-                        // Reset rotation flags to try again later
-                        rotation_ready_time = 0;
-                        waiting_for_keyframe = 0;
-                        
-                        // Wait a bit before trying again
-                        av_usleep(500000);  // 500ms delay
-                        continue; // Try again on next iteration
-                    }
-                    
-                    // Register the new MP4 writer
-                    if (register_mp4_writer_for_stream(stream_name, new_writer) != 0) {
-                        log_error("Failed to register new MP4 writer for stream %s during emergency rotation", stream_name);
-                        
-                        // Close the new writer since we couldn't register it
-                        mp4_writer_close(new_writer);
-                        
-                        // Re-register the old writer
-                        register_mp4_writer_for_stream(stream_name, old_writer);
-                        
-                        // Reset rotation flags to try again later
-                        rotation_ready_time = 0;
-                        waiting_for_keyframe = 0;
-                        
-                        // Wait a bit before trying again
-                        av_usleep(500000);  // 500ms delay
-                        continue; // Try again on next iteration
-                    }
-                    
-                    // Now that the new writer is registered, update the context
-                    ctx->mp4_writer = new_writer;
-                    
-                    // Close the old writer now that everything else is set up
-                    mp4_writer_close(old_writer);
-                    old_writer = NULL; // Prevent any accidental use after free
-                    
-                    log_info("Successfully performed emergency rotation of MP4 writer for stream %s at %s", 
-                            stream_name, ctx->output_path);
-                    
-                    // Update recording metadata in the database
-                    update_recording(stream_name);
-                    
-                    // Reset rotation flags
-                    rotation_ready_time = 0;
-                    waiting_for_keyframe = 0;
-                    force_rotation_counter = 0;
-                    
-                    // Update last rotation time
-                    last_rotation_time = current_time;
-                    
-                    // Log the successful rotation with duration information
-                    log_info("Successfully rotated MP4 file for stream %s. Duration: %d seconds",
-                            stream_name, (int)(current_time - ctx->mp4_writer->creation_time));
-                }
-            }
-            
-            // BUGFIX: Add an absolute maximum duration check to prevent any segment from becoming too large
-            // This is a hard limit that will force rotation regardless of other conditions
-            // Use a lower threshold for streams with higher bitrates (like "face")
-            int max_duration_factor = 2;
-            if (strcmp(stream_name, "face") == 0) {
-                // Use a lower threshold for the face stream which has higher bitrate
-                max_duration_factor = 1;
-                
-                // Check if we're approaching the limit
-                if (ctx->mp4_writer && 
-                    (current_time - ctx->mp4_writer->creation_time) >= (segment_duration + 5)) {
-                    log_warn("High bitrate stream %s approaching segment limit at %d seconds, preparing for rotation",
-                            stream_name, (int)(current_time - ctx->mp4_writer->creation_time));
-                }
-            }
-            
-            if (ctx->mp4_writer && 
-                (current_time - ctx->mp4_writer->creation_time) >= (segment_duration * max_duration_factor)) {
-                
-                log_error("MP4 file for stream %s has reached maximum allowed duration (%d seconds, limit factor: %d), forcing immediate rotation",
-                        stream_name, (int)(current_time - ctx->mp4_writer->creation_time), max_duration_factor);
-                
-                // Force rotation immediately
-                char timestamp_str[32];
-                struct tm *tm_info = localtime(&current_time);
-                strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M%S", tm_info);
-                
-                // Create new MP4 output path with new timestamp
-                char mp4_path[MAX_PATH_LENGTH];
-                snprintf(mp4_path, MAX_PATH_LENGTH, "%s/mp4/%s/recording_%s.mp4",
-                        global_config->storage_path, stream_name, timestamp_str);
-                
-                // First unregister the current MP4 writer
-                unregister_mp4_writer_for_stream(stream_name);
-                
-                // Store the old writer temporarily
-                mp4_writer_t *old_writer = ctx->mp4_writer;
-                
-                // Update the context's output path
-                strncpy(ctx->output_path, mp4_path, MAX_PATH_LENGTH - 1);
-                ctx->output_path[MAX_PATH_LENGTH - 1] = '\0';
-                
-                // Create new MP4 writer before closing the old one
-                mp4_writer_t *new_writer = mp4_writer_create(ctx->output_path, stream_name);
-                if (!new_writer) {
-                    log_error("Failed to create new MP4 writer for stream %s during hard limit rotation", stream_name);
-                    
-                    // Re-register the old writer since we couldn't create a new one
-                    register_mp4_writer_for_stream(stream_name, old_writer);
-                } else {
-                    // Register the new MP4 writer
-                    if (register_mp4_writer_for_stream(stream_name, new_writer) != 0) {
-                        log_error("Failed to register new MP4 writer for stream %s during hard limit rotation", stream_name);
-                        
-                        // Close the new writer since we couldn't register it
-                        mp4_writer_close(new_writer);
-                        
-                        // Re-register the old writer
-                        register_mp4_writer_for_stream(stream_name, old_writer);
-                    } else {
-                        // Now that the new writer is registered, update the context
-                        ctx->mp4_writer = new_writer;
-                        
-                        // Close the old writer now that everything else is set up
-                        mp4_writer_close(old_writer);
-                        old_writer = NULL; // Prevent any accidental use after free
-                        
-                        log_info("Successfully performed hard limit rotation of MP4 writer for stream %s at %s", 
-                                stream_name, ctx->output_path);
-                        
-                        // Update recording metadata in the database
-                        update_recording(stream_name);
-                        
-                        // Reset rotation flags
-                        rotation_ready_time = 0;
-                        waiting_for_keyframe = 0;
-                        force_rotation_counter = 0;
-                        
-                        // Update last rotation time
-                        last_rotation_time = current_time;
-                    }
-                }
-            }
-        }
-
-        // CRITICAL FIX: Check if the HLS thread is writing packets to the MP4 file
-        // If no packets have been written for a while, log a warning and potentially restart
         time_t now = time(NULL);
-        if (now - last_activity_check >= 10) { // Check every 10 seconds
-            last_activity_check = now;
+        
+        // Periodically update recording metadata (using segment duration as a guide)
+        int update_interval = ctx->config.segment_duration > 0 ? 
+                             ctx->config.segment_duration : 30;
+        if (now - last_update >= update_interval) {
+            update_mp4_recording(stream_name);
+            last_update = now;
+            log_debug("Updated recording metadata for %s (interval: %d seconds)", 
+                     stream_name, update_interval);
+        }
+        
+        // Check if the RTSP recording thread is still running
+        // The mp4_writer_is_recording function now checks the is_rotating flag
+        // so we won't try to restart the thread during rotation
+        if (ctx->mp4_writer && !mp4_writer_is_recording(ctx->mp4_writer)) {
+            log_warn("RTSP recording thread for %s has stopped", stream_name);
             
-            // Get the last packet time from the MP4 writer
-            if (ctx->mp4_writer) {
-                time_t current_packet_time = ctx->mp4_writer->last_packet_time;
-                
-                // If this is the first check, initialize last_packet_time
-                if (last_packet_time == 0) {
-                    last_packet_time = current_packet_time;
-                } else if (current_packet_time > 0 && current_packet_time != last_packet_time) {
-                    // Packets are being written, update the last packet time
-                    last_packet_time = current_packet_time;
-                    log_debug("MP4 writer for stream %s is receiving packets", stream_name);
-                } else if (now - start_time > 30) { // Give it 30 seconds to start up
-                    // No new packets have been written for 10 seconds
-                    log_warn("No packets written to MP4 file for stream %s in the last 10 seconds", stream_name);
-                    
-                    // If no packets have been written for 30 seconds, try to restart the HLS stream
-                    if (now - last_packet_time > 30 || last_packet_time == 0) {
-                        log_error("No packets written to MP4 file for stream %s in 30 seconds, restarting HLS stream", stream_name);
-                        
-                        // Restart the HLS stream
-                        extern int restart_hls_stream(const char *stream_name);
-                        int restart_result = restart_hls_stream(stream_name);
-                        if (restart_result != 0) {
-                            log_error("Failed to restart HLS stream for %s", stream_name);
-                        } else {
-                            log_info("Successfully restarted HLS stream for %s", stream_name);
-                            // Reset the last packet time to give it time to start writing packets
-                            last_packet_time = now;
-                        }
-                    }
-                }
+            // Try to restart the recording thread
+            ret = mp4_writer_start_recording_thread(ctx->mp4_writer, ctx->config.url);
+            if (ret < 0) {
+                log_error("Failed to restart RTSP recording thread for %s", stream_name);
+            } else {
+                log_info("Restarted RTSP recording thread for %s", stream_name);
             }
         }
         
-        // Periodically update recording metadata (every 30 seconds)
-        if (now - last_update >= 30) {
-            update_recording(stream_name);
-            last_update = now;
-        }
-        
-        // Sleep to avoid busy waiting
-        av_usleep(50000);  // 50ms
+        // Sleep for a bit to avoid busy waiting
+        sleep(1);
     }
 
-    // When done, close writer
+    // When done, stop the RTSP recording thread and close the writer
     if (ctx->mp4_writer) {
+        log_info("Stopping RTSP recording thread for stream %s", stream_name);
+        mp4_writer_stop_recording_thread(ctx->mp4_writer);
+        
         log_info("Closing MP4 writer for stream %s during thread exit", stream_name);
         mp4_writer_close(ctx->mp4_writer);
         ctx->mp4_writer = NULL;
-        
-        // Unregister the MP4 writer
-        unregister_mp4_writer_for_stream(stream_name);
-    }
-
-    // Update component state in shutdown coordinator
-    if (component_id >= 0) {
-        update_component_state(component_id, COMPONENT_STOPPED);
-        log_info("Updated MP4 writer %s state to STOPPED in shutdown coordinator", stream_name);
     }
 
     log_info("MP4 recording thread for stream %s exited", stream_name);
@@ -646,15 +227,13 @@ static void *mp4_recording_thread(void *arg) {
 
 /**
  * Initialize MP4 recording backend
+ * 
+ * This function initializes the recording contexts array and resets the shutdown flag.
  */
 void init_mp4_recording_backend(void) {
     // Initialize contexts array
     memset(recording_contexts, 0, sizeof(recording_contexts));
     
-    // Initialize MP4 writers array
-    memset(mp4_writers, 0, sizeof(mp4_writers));
-    memset(mp4_writer_stream_names, 0, sizeof(mp4_writer_stream_names));
-
     // Reset shutdown flag
     shutdown_in_progress = 0;
 
@@ -663,6 +242,8 @@ void init_mp4_recording_backend(void) {
 
 /**
  * Cleanup MP4 recording backend
+ * 
+ * This function stops all recording threads and frees all recording contexts.
  */
 void cleanup_mp4_recording_backend(void) {
     log_info("Starting MP4 recording backend cleanup");
@@ -687,10 +268,6 @@ void cleanup_mp4_recording_backend(void) {
         if (recording_contexts[i]) {
             // Mark as not running
             recording_contexts[i]->running = 0;
-            
-            // Safely NULL out the mp4_writer pointer to prevent double free
-            // This is critical since close_all_mp4_writers() was already called
-            recording_contexts[i]->mp4_writer = NULL;
             
             // Store context info for cleanup
             items_to_cleanup[cleanup_count].ctx = recording_contexts[i];
@@ -722,7 +299,7 @@ void cleanup_mp4_recording_backend(void) {
 
         // Double-check that the context is still at the expected index
         if (recording_contexts[items_to_cleanup[i].index] == items_to_cleanup[i].ctx) {
-            // Free context - no need to close mp4_writer as it was already NULLed out
+            // Free context
             free(recording_contexts[items_to_cleanup[i].index]);
             recording_contexts[items_to_cleanup[i].index] = NULL;
             log_info("Freed MP4 recording context for %s", items_to_cleanup[i].stream_name);
@@ -731,10 +308,6 @@ void cleanup_mp4_recording_backend(void) {
                     items_to_cleanup[i].stream_name);
         }
     }
-
-    // Note: We don't call close_all_mp4_writers() here anymore
-    // It's already called earlier in the main cleanup process
-    // Calling it twice could lead to double free issues
 
     log_info("MP4 recording backend cleanup complete");
 }
@@ -769,17 +342,9 @@ int start_mp4_recording(const char *stream_name) {
         }
     }
     
-    // CRITICAL FIX: Ensure HLS streaming is started for this stream
-    // This is necessary because the MP4 recording relies on the HLS streaming thread
-    // to write packets to the MP4 file
-    extern int start_hls_stream(const char *stream_name);
-    int hls_result = start_hls_stream(stream_name);
-    if (hls_result != 0) {
-        log_warn("Failed to start HLS streaming for MP4 recording of stream %s", stream_name);
-        // Continue anyway, as the HLS streaming might already be running
-    } else {
-        log_info("Started HLS streaming for MP4 recording of stream %s", stream_name);
-    }
+    // MAJOR ARCHITECTURAL CHANGE: We no longer need to start the HLS streaming thread
+    // since we're using a standalone recording thread that directly reads from the RTSP stream
+    log_info("Using standalone recording thread for stream %s", stream_name);
 
     // Find empty slot
     int slot = -1;
@@ -933,9 +498,6 @@ int stop_mp4_recording(const char *stream_name) {
             log_info("Closing MP4 writer for stream %s", stream_name);
             mp4_writer_close(ctx->mp4_writer);
             ctx->mp4_writer = NULL;
-            
-            // Unregister the MP4 writer
-            unregister_mp4_writer_for_stream(stream_name);
         }
 
         // Free context and clear slot

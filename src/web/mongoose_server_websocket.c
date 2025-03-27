@@ -95,6 +95,30 @@ void mg_handle_websocket_upgrade(struct mg_connection *c, struct mg_http_message
     // Set a smaller buffer size for WebSocket frames to improve compatibility with older systems
     c->recv.size = 4096;  // Use a smaller receive buffer (default is usually 8192)
     
+    // Register this connection with the shutdown coordinator
+    // This ensures the connection will be properly tracked during shutdown
+    char conn_name[64];
+    snprintf(conn_name, sizeof(conn_name), "websocket_%p", (void*)c);
+    
+    // Include the shutdown coordinator header
+    #include "core/shutdown_coordinator.h"
+    
+    // Only register if shutdown coordinator is initialized
+    if (get_shutdown_coordinator() != NULL) {
+        // Register as a server component with high priority (5)
+        // Higher priority components are stopped first during shutdown
+        int component_id = register_component(conn_name, COMPONENT_SERVER_THREAD, c, 5);
+        if (component_id >= 0) {
+            // Store the component ID in a custom field in the connection's user data
+            // We can't modify the connection struct directly, but we can use the existing fn_data
+            // which is already set to the server instance
+            log_debug("Registered WebSocket connection %s with shutdown coordinator, ID: %d", 
+                     conn_name, component_id);
+        } else {
+            log_warn("Failed to register WebSocket connection with shutdown coordinator");
+        }
+    }
+    
     // Upgrade connection to WebSocket
     // The fn_data is already set in mongoose_server.c when the connection is created
     mg_ws_upgrade(c, hm, NULL);

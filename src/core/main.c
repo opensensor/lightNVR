@@ -479,13 +479,6 @@ int main(int argc, char *argv[]) {
     init_timestamp_trackers();
     log_info("Timestamp trackers initialized");
     
-    // Initialize packet processor
-    if (init_packet_processor() != 0) {
-        log_error("Failed to initialize packet processor");
-    } else {
-        log_info("Packet processor initialized successfully");
-    }
-    
     init_hls_streaming_backend();
     init_mp4_recording_backend();
     

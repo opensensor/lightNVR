@@ -28,6 +28,10 @@ typedef struct {
 static void *join_helper(void *arg) {
     join_helper_data_t *data = (join_helper_data_t *)arg;
     
+    // Setup cancellation state
+    pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+    pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
+    
     // Check if we've been cancelled before even starting
     pthread_mutex_lock(&data->mutex);
     if (data->cancelled) {
@@ -83,13 +87,21 @@ int pthread_join_with_timeout(pthread_t thread, void **retval, int timeout_sec) 
         return EAGAIN;
     }
     
+    // Set up thread cancellation state
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+    
     // Create helper thread to join the target thread
-    if (pthread_create(&timeout_thread, NULL, join_helper, data) != 0) {
+    if (pthread_create(&timeout_thread, &attr, join_helper, data) != 0) {
+        pthread_attr_destroy(&attr);
         pthread_mutex_destroy(&data->mutex);
         pthread_cond_destroy(&data->cond);
         free(data);
         return EAGAIN;
     }
+    
+    pthread_attr_destroy(&attr);
     
     // Wait for the helper thread to complete or timeout
     struct timespec ts;
@@ -104,12 +116,36 @@ int pthread_join_with_timeout(pthread_t thread, void **retval, int timeout_sec) 
             data->cancelled = 1;  // Mark as cancelled before unlocking
             pthread_mutex_unlock(&data->mutex);
             
-            // Cancel the helper thread
-            pthread_cancel(timeout_thread);
+            // Instead of cancelling, try to join with a shorter timeout
+            struct timespec short_wait;
+            clock_gettime(CLOCK_REALTIME, &short_wait);
+            short_wait.tv_sec += 1;  // Wait just 1 more second
             
-            // Wait for the helper thread to actually terminate
-            void *thread_result;
-            pthread_join(timeout_thread, &thread_result);
+            pthread_mutex_lock(&data->mutex);
+            if (!data->done) {
+                ret = pthread_cond_timedwait(&data->cond, &data->mutex, &short_wait);
+            }
+            pthread_mutex_unlock(&data->mutex);
+            
+            // If still not done, we have to cancel
+            if (!data->done) {
+                log_warn("Thread join helper did not complete in time, cancelling");
+                
+                // Set cancel type to deferred to allow cleanup
+                int old_type;
+                pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, &old_type);
+                
+                // Cancel the helper thread
+                pthread_cancel(timeout_thread);
+                
+                // Wait for the helper thread to actually terminate
+                void *thread_result;
+                pthread_join(timeout_thread, &thread_result);
+            } else {
+                // Thread completed during our short wait
+                ret = data->result;
+                pthread_join(timeout_thread, NULL);
+            }
             
             // Clean up resources
             pthread_mutex_destroy(&data->mutex);

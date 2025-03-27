@@ -161,6 +161,27 @@ void connection_pool_shutdown(connection_pool_t *pool) {
     while (current != NULL) {
         if (current->connection) {
             current->connection->is_closing = 1;
+            
+            // CRITICAL FIX: Explicitly close the socket to ensure it's released
+            if (current->connection->fd != NULL) {
+                int socket_fd = (int)(size_t)current->connection->fd;
+                log_debug("Closing connection socket: %d", socket_fd);
+                
+                // Set SO_LINGER to force immediate socket closure
+                struct linger so_linger;
+                so_linger.l_onoff = 1;
+                so_linger.l_linger = 0;
+                setsockopt(socket_fd, SOL_SOCKET, SO_LINGER, &so_linger, sizeof(so_linger));
+                
+                // Set socket to non-blocking mode to avoid hang on close
+                int flags = fcntl(socket_fd, F_GETFL, 0);
+                fcntl(socket_fd, F_SETFL, flags | O_NONBLOCK);
+                
+                // Now close the socket
+                close(socket_fd);
+                current->connection->fd = NULL;  // Mark as closed
+            }
+            
             conn_count++;
         }
         current = current->next;
@@ -178,15 +199,25 @@ void connection_pool_shutdown(connection_pool_t *pool) {
         // Use a timeout to avoid hanging if a thread is stuck
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
-        ts.tv_sec += 5; // 5 second timeout
+        ts.tv_sec += 8; // Increased to 8 second timeout for better reliability
         
         int ret = pthread_timedjoin_np(pool->threads[i], NULL, &ts);
         if (ret != 0) {
             log_warn("Thread %d did not exit within timeout, continuing anyway", i);
+            
+            // CRITICAL FIX: Try to cancel the thread if it didn't exit within timeout
+            pthread_cancel(pool->threads[i]);
+            
+            // Give it a short time to clean up after cancellation
+            usleep(100000); // 100ms
         }
     }
     
     log_debug("All worker threads have exited or timed out");
+    
+    // CRITICAL FIX: Add a delay before destroying resources
+    // This helps ensure all threads have fully exited
+    usleep(500000); // 500ms
     
     // Clean up resources
     connection_pool_destroy(pool);

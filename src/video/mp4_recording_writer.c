@@ -1,3 +1,10 @@
+/**
+ * MP4 Recording Writer Module
+ * 
+ * This module is responsible for managing MP4 writers.
+ * It provides functions to register, unregister, and get MP4 writers for streams.
+ */
+
 #define _POSIX_C_SOURCE 200809L
 #define _XOPEN_SOURCE 700
 #define _GNU_SOURCE
@@ -21,11 +28,17 @@
 #include "database/db_events.h"
 
 // Global array to store MP4 writers
-mp4_writer_t *mp4_writers[MAX_STREAMS] = {0};
-char mp4_writer_stream_names[MAX_STREAMS][64] = {{0}};
+static mp4_writer_t *mp4_writers[MAX_STREAMS] = {0};
+static char mp4_writer_stream_names[MAX_STREAMS][64] = {{0}};
 
 /**
  * Register an MP4 writer for a stream
+ * 
+ * This function registers an MP4 writer for a stream, replacing any existing writer.
+ * 
+ * @param stream_name Name of the stream
+ * @param writer MP4 writer instance
+ * @return 0 on success, non-zero on failure
  */
 int register_mp4_writer_for_stream(const char *stream_name, mp4_writer_t *writer) {
     // Validate parameters
@@ -56,33 +69,7 @@ int register_mp4_writer_for_stream(const char *stream_name, mp4_writer_t *writer
             // Replace with the new writer
             mp4_writers[i] = writer;
             
-            // Get the pre-buffer size from the stream config
-            stream_handle_t stream = get_stream_by_name(local_stream_name);
-            if (stream) {
-                stream_config_t config;
-                if (get_stream_config(stream, &config) == 0 && config.pre_detection_buffer > 0) {
-                    // Calculate buffer capacity based on pre_detection_buffer and fps
-                    int capacity = config.pre_detection_buffer * config.fps;
-                    if (capacity > 0) {
-                        // Flush any existing buffer to the new writer
-                        int buffer_idx = -1;
-                        for (int j = 0; j < MAX_STREAMS; j++) {
-                            if (frame_buffers[j].frames && 
-                                mp4_writer_stream_names[j][0] != '\0' && 
-                                strcmp(mp4_writer_stream_names[j], local_stream_name) == 0) {
-                                buffer_idx = j;
-                                break;
-                            }
-                        }
-                        
-                        if (buffer_idx >= 0) {
-                            flush_frame_buffer(buffer_idx, writer);
-                        }
-                    }
-                }
-            }
-
-            // Close the old writer after releasing the lock
+            // Close the old writer
             if (old_writer) {
                 mp4_writer_close(old_writer);
             }
@@ -101,26 +88,6 @@ int register_mp4_writer_for_stream(const char *stream_name, mp4_writer_t *writer
     strncpy(mp4_writer_stream_names[slot], local_stream_name, sizeof(mp4_writer_stream_names[0]) - 1);
     mp4_writer_stream_names[slot][sizeof(mp4_writer_stream_names[0]) - 1] = '\0';
     
-    // Initialize frame buffer for pre-buffering
-    stream_handle_t stream = get_stream_by_name(local_stream_name);
-    if (stream) {
-        stream_config_t config;
-        if (get_stream_config(stream, &config) == 0 && config.pre_detection_buffer > 0) {
-            // Calculate buffer capacity based on pre_detection_buffer and fps
-            int capacity = config.pre_detection_buffer * config.fps;
-            if (capacity > 0) {
-                capacity = capacity < MAX_PREBUFFER_FRAMES ? capacity : MAX_PREBUFFER_FRAMES;
-                int buffer_idx = init_frame_buffer(local_stream_name, capacity);
-                if (buffer_idx >= 0) {
-                    log_info("Initialized pre-buffer for stream %s with capacity %d frames (%d seconds at %d fps)",
-                            local_stream_name, capacity, config.pre_detection_buffer, config.fps);
-                } else {
-                    log_warn("Failed to initialize pre-buffer for stream %s", local_stream_name);
-                }
-            }
-        }
-    }
-    
     log_info("Registered MP4 writer for stream %s in slot %d", local_stream_name, slot);
 
     return 0;
@@ -129,8 +96,10 @@ int register_mp4_writer_for_stream(const char *stream_name, mp4_writer_t *writer
 /**
  * Get the MP4 writer for a stream
  * 
- * CRITICAL FIX: This function now returns a copy of the writer pointer
- * to prevent deadlocks when the writer is accessed from multiple threads
+ * This function returns the MP4 writer for a stream.
+ * 
+ * @param stream_name Name of the stream
+ * @return MP4 writer instance or NULL if not found
  */
 mp4_writer_t *get_mp4_writer_for_stream(const char *stream_name) {
     // Validate parameters
@@ -143,7 +112,7 @@ mp4_writer_t *get_mp4_writer_for_stream(const char *stream_name) {
     strncpy(local_stream_name, stream_name, MAX_STREAM_NAME - 1);
     local_stream_name[MAX_STREAM_NAME - 1] = '\0';
 
-    // CRITICAL FIX: Use a local variable to store the writer pointer
+    // Use a local variable to store the writer pointer
     mp4_writer_t *writer_copy = NULL;
 
     for (int i = 0; i < MAX_STREAMS; i++) {
@@ -160,6 +129,11 @@ mp4_writer_t *get_mp4_writer_for_stream(const char *stream_name) {
 
 /**
  * Unregister an MP4 writer for a stream
+ * 
+ * This function unregisters an MP4 writer for a stream.
+ * The caller is responsible for closing the writer if needed.
+ * 
+ * @param stream_name Name of the stream
  */
 void unregister_mp4_writer_for_stream(const char *stream_name) {
     // Validate parameters
@@ -193,22 +167,6 @@ void unregister_mp4_writer_for_stream(const char *stream_name) {
         mp4_writers[writer_idx] = NULL;
         mp4_writer_stream_names[writer_idx][0] = '\0';
         
-        // Find and free the frame buffer for this stream
-        int buffer_idx = -1;
-        for (int j = 0; j < MAX_STREAMS; j++) {
-            if (frame_buffers[j].frames && 
-                mp4_writer_stream_names[j][0] != '\0' && 
-                strcmp(mp4_writer_stream_names[j], local_stream_name) == 0) {
-                buffer_idx = j;
-                break;
-            }
-        }
-
-        // Free the frame buffer outside the lock to prevent deadlocks
-        if (buffer_idx >= 0) {
-            free_frame_buffer(buffer_idx);
-        }
-        
         log_info("Unregistered MP4 writer for stream %s", local_stream_name);
     } else {
         log_warn("No MP4 writer found for stream %s", local_stream_name);
@@ -217,6 +175,8 @@ void unregister_mp4_writer_for_stream(const char *stream_name) {
 
 /**
  * Close all MP4 writers during shutdown
+ * 
+ * This function closes all MP4 writers and updates the database.
  */
 void close_all_mp4_writers(void) {
     log_info("Finalizing all MP4 recordings...");
@@ -272,7 +232,7 @@ void close_all_mp4_writers(void) {
         }
     }
 
-    // Now close each writer (outside the lock to prevent deadlocks)
+    // Now close each writer
     for (int i = 0; i < num_writers_to_close; i++) {
         log_info("Finalizing MP4 recording for stream: %s", stream_names_to_close[i]);
         
@@ -282,7 +242,6 @@ void close_all_mp4_writers(void) {
                 file_paths_to_close[i][0] != '\0' ? file_paths_to_close[i] : "(empty path)");
         
         // Update recording contexts to prevent double-free
-        // This is critical to prevent use-after-free in cleanup_mp4_recording_backend
         for (int j = 0; j < MAX_STREAMS; j++) {
             if (recording_contexts[j] && 
                 strcmp(recording_contexts[j]->config.name, stream_names_to_close[i]) == 0) {
@@ -304,9 +263,6 @@ void close_all_mp4_writers(void) {
         
         // Update the database to mark the recording as complete
         if (file_paths_to_close[i][0] != '\0') {
-            // Get the current time for the end timestamp
-            time_t end_time = time(NULL);
-            
             // Add an event to the database
             add_event(EVENT_RECORDING_STOP, stream_names_to_close[i], 
                      "Recording stopped during shutdown", file_paths_to_close[i]);
