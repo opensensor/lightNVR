@@ -7,6 +7,8 @@
 let wsClient = null;
 // Flag to track if we're subscribed to system logs
 let subscribedToSystemLogs = false;
+// Track the timestamp of the last log received
+let lastLogTimestamp = null;
 
 /**
  * Set up event handlers for system page
@@ -187,12 +189,18 @@ function loadSystemLogs() {
                         
                         // Scroll to bottom of logs container
                         logsContainer.scrollTop = logsContainer.scrollHeight;
+                        
+                        // Update the last log timestamp if we have logs
+                        if (payload.logs.length > 0) {
+                            lastLogTimestamp = payload.logs[payload.logs.length - 1].timestamp;
+                            console.log('Updated last log timestamp:', lastLogTimestamp);
+                        }
                     }
                 }
             });
             
-            // Subscribe to system logs topic
-            wsClient.subscribe('system/logs');
+            // Subscribe to system logs topic with last timestamp if available
+            wsClient.subscribe('system/logs', lastLogTimestamp ? { since: lastLogTimestamp } : null);
             subscribedToSystemLogs = true;
         }
     } else {
@@ -264,6 +272,12 @@ function loadSystemLogs() {
                     
                     // Scroll to bottom of logs container
                     logsContainer.scrollTop = logsContainer.scrollHeight;
+                    
+                    // Update the last log timestamp if we have logs
+                    if (data.logs.length > 0) {
+                        lastLogTimestamp = data.logs[data.logs.length - 1].timestamp;
+                        console.log('Updated last log timestamp:', lastLogTimestamp);
+                    }
                 } else {
                     logsContainer.innerHTML = '<div class="text-gray-500 dark:text-gray-400">No logs available</div>';
                 }

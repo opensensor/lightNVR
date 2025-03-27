@@ -224,6 +224,7 @@ void websocket_handle_system_logs(const char *client_id, const char *message) {
         const char *log_level = get_client_log_level(client_id); // Use stored preference
         const char *last_timestamp = NULL;
         
+        // First check if we have a params object
         cJSON *params_obj = cJSON_GetObjectItem(json, "params");
         if (params_obj && cJSON_IsObject(params_obj)) {
             // Check if level is specified in the fetch request
@@ -238,6 +239,19 @@ void websocket_handle_system_logs(const char *client_id, const char *message) {
             cJSON *timestamp_obj = cJSON_GetObjectItem(params_obj, "last_timestamp");
             if (timestamp_obj && cJSON_IsString(timestamp_obj)) {
                 last_timestamp = timestamp_obj->valuestring;
+            }
+        }
+        
+        // If we didn't find params or timestamp in params, check the payload object directly
+        // This handles the case where the frontend sends the timestamp in the payload directly
+        if (!last_timestamp) {
+            // Check if payload_obj is the same as json (for direct payload)
+            if (payload_obj == json) {
+                cJSON *timestamp_obj = cJSON_GetObjectItem(payload_obj, "last_timestamp");
+                if (timestamp_obj && cJSON_IsString(timestamp_obj)) {
+                    last_timestamp = timestamp_obj->valuestring;
+                    log_debug("Found last_timestamp in direct payload: %s", last_timestamp);
+                }
             }
         }
         

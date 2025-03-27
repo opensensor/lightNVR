@@ -19,7 +19,17 @@ import { log_level_meets_minimum } from './SystemUtils.js';
 export function LogsPoller({ logLevel, logCount, onLogsReceived }) {
   const [isPolling, setIsPolling] = useState(false);
   const pollingIntervalRef = useRef(null);
+  // Initialize with null, but will persist between renders
   const lastTimestampRef = useRef(null);
+  
+  // Try to load the last timestamp from localStorage on initial render
+  useEffect(() => {
+    const savedTimestamp = localStorage.getItem('lastLogTimestamp');
+    if (savedTimestamp) {
+      console.log('Loaded last log timestamp from localStorage:', savedTimestamp);
+      lastTimestampRef.current = savedTimestamp;
+    }
+  }, []);
   
   // Function to fetch logs via WebSocket
   const fetchLogs = () => {
@@ -114,6 +124,9 @@ export function LogsPoller({ logLevel, logCount, onLogsReceived }) {
         // Update last timestamp for pagination if available
         if (payload.latest_timestamp) {
           lastTimestampRef.current = payload.latest_timestamp;
+          // Save to localStorage for persistence between page refreshes
+          localStorage.setItem('lastLogTimestamp', payload.latest_timestamp);
+          console.log('Updated and saved last log timestamp:', payload.latest_timestamp);
         }
         
         // Call the callback with all logs - parent will filter
@@ -153,8 +166,13 @@ export function LogsPoller({ logLevel, logCount, onLogsReceived }) {
       // Subscribe to system logs topic
       if (window.wsClient && typeof window.wsClient.subscribe === 'function') {
         console.log('Subscribing to system/logs via WebSocket for polling');
-        window.wsClient.subscribe('system/logs', { level: 'debug' }); // Always request debug level to get all logs
-        console.log(`Subscribed to system/logs with level: debug (to get all logs, will filter on frontend)`);
+        // Include the last timestamp in the subscription if available
+        const subscriptionParams = { 
+          level: 'debug',
+          ...(lastTimestampRef.current ? { since: lastTimestampRef.current } : {})
+        };
+        window.wsClient.subscribe('system/logs', subscriptionParams);
+        console.log(`Subscribed to system/logs with level: debug and last_timestamp: ${lastTimestampRef.current || 'NULL'}`);
       }
       
       // Fetch logs immediately
