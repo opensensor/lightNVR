@@ -61,7 +61,7 @@ jobs:
           context: .
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
-          outputs: type=image,push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,push-by-digest=true,name=${{ env.REGISTRY_IMAGE }},name-canonical=true,push=true
 
       - name: Save digest
         run: |
