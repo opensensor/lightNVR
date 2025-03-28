@@ -726,7 +726,14 @@ cleanup:
     av_dict_free(&opts);
     av_dict_free(&out_opts);
     
-    // Don't close input_ctx here, as it's managed by the caller
+    // MEMORY LEAK FIX: Close input_ctx if it was allocated in this function but not stored in *input_ctx_ptr
+    // This happens when avformat_find_stream_info fails after avformat_open_input succeeds
+    if (input_ctx && input_ctx_ptr && *input_ctx_ptr != input_ctx) {
+        log_info("Closing input context that was not stored in caller's pointer");
+        avformat_close_input(&input_ctx);
+    }
+    
+    // Don't close input_ctx if it's managed by the caller
     // The caller will reuse it for the next segment or close it when done
     
     return ret;
