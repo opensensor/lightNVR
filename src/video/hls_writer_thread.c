@@ -173,33 +173,39 @@ static void *hls_writer_thread_func(void *arg) {
             
             ret = hls_writer_write_packet(ctx->writer, pkt, input_stream);
             
-    // CRITICAL FIX: Completely disable manual flushing on key frames
-    // The FFmpeg HLS muxer already handles flushing internally during segment transitions
-    // Manual flushing can cause segmentation faults when it happens during a segment transition
-    // when the internal state of the output context is not stable
-    
-    // Instead of manual flushing, we'll rely on FFmpeg's internal flushing mechanism
-    // This is safer and more reliable, especially during segment transitions
-    
-    // For debugging purposes only, log key frames
-    bool is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
-    if (is_key_frame && ret >= 0) {
-        log_debug("Processed key frame for stream %s (no manual flush)", stream_name);
-        
-        // CRITICAL FIX: Force a small delay after key frames to help prevent ghosting artifacts
-        // This gives the HLS muxer more time to properly process segment transitions
-        av_usleep(5000); // 5ms delay - small enough not to affect performance but helps with timing
-    }
-    
-    // Ensure we don't leak memory if the packet write fails
-    if (ret < 0) {
-        char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
-        av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-        log_warn("Error writing packet to HLS for stream %s: %s", stream_name, error_buf);
-    }
+            // CRITICAL FIX: Completely disable manual flushing on key frames
+            // The FFmpeg HLS muxer already handles flushing internally during segment transitions
+            // Manual flushing can cause segmentation faults when it happens during a segment transition
+            // when the internal state of the output context is not stable
+            
+            // Instead of manual flushing, we'll rely on FFmpeg's internal flushing mechanism
+            // This is safer and more reliable, especially during segment transitions
+            
+            // For debugging purposes only, log key frames
+            bool is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
+            if (is_key_frame && ret >= 0) {
+                log_debug("Processed key frame for stream %s (no manual flush)", stream_name);
+                
+                // CRITICAL FIX: Force a small delay after key frames to help prevent ghosting artifacts
+                // This gives the HLS muxer more time to properly process segment transitions
+                av_usleep(5000); // 5ms delay - small enough not to affect performance but helps with timing
+            }
+            
+            // Ensure we don't leak memory if the packet write fails
+            if (ret < 0) {
+                char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+                av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+                log_warn("Error writing packet to HLS for stream %s: %s", stream_name, error_buf);
+            }
             
             // Unlock the writer mutex
             pthread_mutex_unlock(&ctx->writer->mutex);
+            
+            // Process packet for detection if the stream has detection enabled
+            // This wires in detection events to the always-on HLS streaming
+            if (input_stream && input_stream->codecpar) {
+                process_packet_for_detection(stream_name, pkt, input_stream->codecpar);
+            }
         }
         
         av_packet_unref(pkt);
