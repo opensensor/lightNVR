@@ -182,8 +182,13 @@ static void *hls_writer_thread_func(void *arg) {
     // This is safer and more reliable, especially during segment transitions
     
     // For debugging purposes only, log key frames
-    if ((pkt->flags & AV_PKT_FLAG_KEY) && ret >= 0) {
+    bool is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
+    if (is_key_frame && ret >= 0) {
         log_debug("Processed key frame for stream %s (no manual flush)", stream_name);
+        
+        // CRITICAL FIX: Force a small delay after key frames to help prevent ghosting artifacts
+        // This gives the HLS muxer more time to properly process segment transitions
+        av_usleep(5000); // 5ms delay - small enough not to affect performance but helps with timing
     }
     
     // Ensure we don't leak memory if the packet write fails

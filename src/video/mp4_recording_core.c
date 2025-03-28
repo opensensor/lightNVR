@@ -198,12 +198,86 @@ static void *mp4_recording_thread(void *arg) {
         if (ctx->mp4_writer && !mp4_writer_is_recording(ctx->mp4_writer)) {
             log_warn("RTSP recording thread for %s has stopped", stream_name);
             
-            // Try to restart the recording thread
-            ret = mp4_writer_start_recording_thread(ctx->mp4_writer, ctx->config.url);
-            if (ret < 0) {
-                log_error("Failed to restart RTSP recording thread for %s", stream_name);
+            // Variables for retry mechanism
+            static int retry_count = 0;
+            static time_t last_retry_time = 0;
+            
+            // Calculate backoff time based on retry count (exponential backoff with max of 60 seconds)
+            int backoff_seconds = 1 << (retry_count > 5 ? 5 : retry_count); // 1, 2, 4, 8, 16, 32, 32, ...
+            if (backoff_seconds > 60) backoff_seconds = 60;
+            
+            // Check if we should retry now
+            time_t current_time = time(NULL);
+            if (last_retry_time == 0 || (current_time - last_retry_time) >= backoff_seconds) {
+                log_info("Attempting to restart RTSP recording thread for %s (retry #%d, backoff: %d seconds)", 
+                        stream_name, retry_count + 1, backoff_seconds);
+                
+                // If we've had too many failures, recreate the MP4 writer
+                if (retry_count >= 3) {
+                    log_warn("Multiple restart failures for %s, recreating MP4 writer", stream_name);
+                    
+                    // Close the existing writer
+                    if (ctx->mp4_writer) {
+                        mp4_writer_stop_recording_thread(ctx->mp4_writer);
+                        mp4_writer_close(ctx->mp4_writer);
+                        ctx->mp4_writer = NULL;
+                    }
+                    
+                    // Create a new timestamp for the MP4 filename
+                    char timestamp_str[32];
+                    time_t now = time(NULL);
+                    struct tm *tm_info = localtime(&now);
+                    strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M%S", tm_info);
+                    
+                    // Extract the directory from the existing output path
+                    char mp4_dir[MAX_PATH_LENGTH];
+                    strncpy(mp4_dir, ctx->output_path, MAX_PATH_LENGTH - 1);
+                    mp4_dir[MAX_PATH_LENGTH - 1] = '\0';
+                    
+                    // Remove filename from path to get directory
+                    char *last_slash = strrchr(mp4_dir, '/');
+                    if (last_slash) {
+                        *last_slash = '\0';
+                    }
+                    
+                    // Create a new output path
+                    snprintf(ctx->output_path, MAX_PATH_LENGTH, "%s/recording_%s.mp4",
+                            mp4_dir, timestamp_str);
+                    
+                    // Create a new MP4 writer
+                    ctx->mp4_writer = mp4_writer_create(ctx->output_path, stream_name);
+                    if (!ctx->mp4_writer) {
+                        log_error("Failed to recreate MP4 writer for %s", stream_name);
+                        last_retry_time = current_time;
+                        retry_count++;
+                        continue;
+                    }
+                    
+                    // Set segment duration in the new MP4 writer
+                    int segment_duration = ctx->config.segment_duration > 0 ? ctx->config.segment_duration : 30;
+                    mp4_writer_set_segment_duration(ctx->mp4_writer, segment_duration);
+                    log_info("Recreated MP4 writer for %s at %s with segment duration %d seconds", 
+                            stream_name, ctx->output_path, segment_duration);
+                }
+                
+                // Try to restart the recording thread
+                ret = mp4_writer_start_recording_thread(ctx->mp4_writer, ctx->config.url);
+                last_retry_time = current_time;
+                
+                if (ret < 0) {
+                    log_error("Failed to restart RTSP recording thread for %s (retry #%d)", 
+                            stream_name, retry_count + 1);
+                    retry_count++;
+                } else {
+                    log_info("Successfully restarted RTSP recording thread for %s after %d retries", 
+                            stream_name, retry_count);
+                    retry_count = 0;  // Reset retry count on success
+                    last_retry_time = 0;  // Reset last retry time
+                }
             } else {
-                log_info("Restarted RTSP recording thread for %s", stream_name);
+                log_debug("Waiting %d more seconds before retrying to restart recording for %s (retry #%d)", 
+                        backoff_seconds - (int)(current_time - last_retry_time), 
+                        stream_name, retry_count + 1);
             }
         }
         

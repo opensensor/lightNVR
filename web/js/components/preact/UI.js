@@ -54,13 +54,13 @@ export function setupModals() {
   videoModal.className = 'fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 hidden';
   
   videoModal.innerHTML = `
-    <div class="modal-content bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl max-h-[90vh] flex flex-col transform transition-all duration-300 ease-out scale-95 opacity-0" style="width: 90%;">
+    <div class="modal-content bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl max-h-[90vh] flex flex-col transform transition-all duration-300 ease-out scale-95 opacity-0 w-full md:w-[90%]">
       <div class="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
         <h3 id="video-preview-title" class="text-lg font-semibold text-gray-900 dark:text-white">Video</h3>
         <button class="close text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">✕</button>
       </div>
-      <div class="p-4 overflow-auto flex-grow">
-        <video id="video-preview-player" class="max-w-full max-h-[70vh] mx-auto" controls autoplay></video>
+      <div class="p-4 flex-grow">
+        <video id="video-preview-player" class="w-full h-auto max-w-full object-contain mx-auto" controls autoplay></video>
       </div>
       <div class="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end space-x-2">
         <a id="video-download-btn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors" href="#" download>Download</a>
@@ -265,10 +265,9 @@ export function showVideoModal(videoUrl, title, downloadUrl) {
   overlay.className = 'fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50';
   overlay.id = 'video-modal-overlay';
   
-  // Create modal container
+  // Create modal container with responsive classes
   const modalContainer = document.createElement('div');
-  modalContainer.className = 'bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl max-h-[90vh] flex flex-col';
-  modalContainer.style.width = '90%';
+  modalContainer.className = 'bg-gray-50 dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl flex flex-col w-full md:w-[90%]';
   
   // Create header
   const header = document.createElement('div');
@@ -288,27 +287,22 @@ export function showVideoModal(videoUrl, title, downloadUrl) {
   header.appendChild(titleElement);
   header.appendChild(closeButton);
   
-  // Create video container
+  // Create video container with responsive classes
   const videoContainer = document.createElement('div');
-  videoContainer.className = 'p-4 overflow-auto flex-grow';
+  videoContainer.className = 'p-4';
   
   const video = document.createElement('video');
   video.src = videoUrl;
-  video.className = 'max-w-full max-h-[70vh] mx-auto';
+  video.className = 'w-full h-auto max-w-full object-contain mx-auto';
   video.controls = true;
   video.autoplay = true;
   
   videoContainer.appendChild(video);
   
-  // Create controls container with Tailwind classes
+  // Create controls container with responsive Tailwind classes
   const controlsContainer = document.createElement('div');
   controlsContainer.id = 'recordings-controls';
-  controlsContainer.className = 'mt-6 mb-8 p-4 border-2 border-green-500 rounded-lg bg-white dark:bg-gray-800 shadow-md mx-4';
-  // Add inline styles to ensure visibility
-  controlsContainer.style.width = 'calc(100% - 2rem)';
-  controlsContainer.style.display = 'block';
-  controlsContainer.style.position = 'relative';
-  controlsContainer.style.zIndex = '100';
+  controlsContainer.className = 'mx-4 mb-4 p-4 border border-green-500 rounded-lg bg-white dark:bg-gray-700 shadow-md relative z-10';
   
   // Create heading
   const heading = document.createElement('h3');
@@ -318,7 +312,7 @@ export function showVideoModal(videoUrl, title, downloadUrl) {
   
   // Create controls grid container
   const controlsGrid = document.createElement('div');
-  controlsGrid.className = 'grid grid-cols-1 md:grid-cols-2 gap-4';
+  controlsGrid.className = 'grid grid-cols-1 md:grid-cols-2 gap-4 mb-2';
   
   // Create speed controls section
   const speedControlsSection = document.createElement('div');
@@ -326,7 +320,7 @@ export function showVideoModal(videoUrl, title, downloadUrl) {
   
   // Create speed section heading
   const speedHeading = document.createElement('h4');
-  speedHeading.className = 'font-bold text-center mb-2 text-gray-700 dark:text-gray-300';
+  speedHeading.className = 'font-bold text-center mb-3 text-gray-700 dark:text-gray-300';
   speedHeading.textContent = 'Playback Speed';
   speedControlsSection.appendChild(speedHeading);
   
@@ -340,8 +334,8 @@ export function showVideoModal(videoUrl, title, downloadUrl) {
     const button = document.createElement('button');
     button.textContent = speed === 1.0 ? '1× (Normal)' : `${speed}×`;
     button.className = speed === 1.0 
-      ? 'speed-btn px-4 py-2 rounded-full bg-green-500 text-white font-bold transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50'
-      : 'speed-btn px-4 py-2 rounded-full bg-gray-200 hover:bg-gray-300 font-bold transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50';
+      ? 'speed-btn px-3 py-2 rounded-full bg-green-500 text-white text-sm font-medium transition-all focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50'
+      : 'speed-btn px-3 py-2 rounded-full bg-gray-200 hover:bg-gray-300 text-sm font-medium transition-all focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50';
     button.setAttribute('data-speed', speed);
     
     // Add click event
@@ -373,7 +367,7 @@ export function showVideoModal(videoUrl, title, downloadUrl) {
   // Add current speed indicator
   const currentSpeedIndicator = document.createElement('div');
   currentSpeedIndicator.id = 'current-speed-indicator';
-  currentSpeedIndicator.className = 'mt-2 text-center font-bold text-green-600 dark:text-green-400';
+  currentSpeedIndicator.className = 'mt-3 text-center font-medium text-green-600 dark:text-green-400 text-sm';
   currentSpeedIndicator.textContent = 'Current Speed: 1× (Normal)';
   speedControlsSection.appendChild(currentSpeedIndicator);
   
@@ -483,19 +477,29 @@ export function showVideoModal(videoUrl, title, downloadUrl) {
   // Add controls grid to container
   controlsContainer.appendChild(controlsGrid);
   
-  // Create footer with actions
-  const footer = document.createElement('div');
-  footer.className = 'p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end space-x-2';
-  
+  // Add download button to controls container
   if (downloadUrl) {
+    const downloadSection = document.createElement('div');
+    downloadSection.className = 'flex justify-center mt-4 pt-2 border-t border-gray-200 dark:border-gray-700';
+    
     const downloadButton = document.createElement('a');
-    downloadButton.className = 'px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors';
-    downloadButton.textContent = 'Download';
+    downloadButton.className = 'px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center text-sm';
+    downloadButton.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+      </svg>
+      Download Video
+    `;
     downloadButton.href = downloadUrl;
     downloadButton.download = `video-${Date.now()}.mp4`;
     
-    footer.appendChild(downloadButton);
+    downloadSection.appendChild(downloadButton);
+    controlsContainer.appendChild(downloadSection);
   }
+  
+  // Create empty footer for spacing
+  const footer = document.createElement('div');
+  footer.className = 'p-2';
   
   // Create detection overlay canvas container
   const canvasContainer = document.createElement('div');

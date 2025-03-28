@@ -12,6 +12,7 @@
 
 #include "web/websocket_manager.h"
 #include "core/logger.h"
+#include "core/shutdown_coordinator.h"
 #include "../external/cjson/cJSON.h"
 #include "video/onvif_discovery_messages.h"
 #include "web/register_websocket_handlers.h"
@@ -214,64 +215,70 @@ void websocket_manager_shutdown(void) {
     // Set initialized to false first to prevent new operations
     s_initialized = false;
     
-    //  Use a more robust approach to acquire the mutex
-    struct timespec timeout;
-    clock_gettime(CLOCK_REALTIME, &timeout);
-    timeout.tv_sec += 5; // Increased to 5 second timeout for better reliability
+    // Register with shutdown coordinator if available
+    shutdown_coordinator_t *coordinator = NULL;
+    int websocket_component_id = -1;
     
-    int mutex_result = pthread_mutex_timedlock(&s_mutex, &timeout);
-    if (mutex_result != 0) {
-        log_warn("Could not acquire WebSocket mutex within timeout, forcing shutdown");
-        // Force mutex reset if we can't acquire it normally
-        pthread_mutex_t new_mutex;
-        if (pthread_mutex_init(&new_mutex, NULL) == 0) {
-            // Replace the potentially locked mutex with a new one
-            pthread_mutex_destroy(&s_mutex);
-            s_mutex = new_mutex;
-            mutex_result = 0; // Consider it acquired now
-            log_info("WebSocket mutex reset successfully");
-        } else {
-            log_error("Failed to reset WebSocket mutex");
+    // Get the shutdown coordinator if it's available
+    coordinator = get_shutdown_coordinator();
+    if (coordinator != NULL) {
+        // Register the websocket manager as a component
+        websocket_component_id = register_component("websocket_manager", COMPONENT_OTHER, NULL, 10);
+        if (websocket_component_id >= 0) {
+            log_info("Registered WebSocket manager with shutdown coordinator, component ID: %d", 
+                     websocket_component_id);
+            // Update state to stopping
+            update_component_state(websocket_component_id, COMPONENT_STOPPING);
         }
     }
     
-    if (mutex_result == 0) {
+    // Use a more robust approach to acquire the mutex with a shorter timeout
+    struct timespec timeout;
+    clock_gettime(CLOCK_REALTIME, &timeout);
+    timeout.tv_sec += 2; // Reduced from 5 to 2 seconds for faster shutdown
+    
+    int mutex_result = pthread_mutex_timedlock(&s_mutex, &timeout);
+    if (mutex_result != 0) {
+        log_warn("Could not acquire WebSocket mutex within timeout, proceeding with shutdown");
+        // Instead of forcing mutex reset, we'll proceed without the lock
+        // This is safer than potentially corrupting the mutex
+    } else {
+        // We successfully acquired the mutex
+        
         // Close all connections
         int closed_count = 0;
         for (int i = 0; i < MAX_CLIENTS; i++) {
             if (s_clients[i].active) {
-                //  Safely handle connection closing
-                if (s_clients[i].conn) {
+                // Make a local copy of the connection pointer
+                struct mg_connection *conn = s_clients[i].conn;
+                
+                // Safely handle connection closing
+                if (conn != NULL) {
                     // Send a proper WebSocket close frame before marking for closing
-                    //  Check if connection is still valid before sending
-                    if (s_clients[i].conn->is_websocket && !s_clients[i].conn->is_closing) {
-                        mg_ws_send(s_clients[i].conn, "", 0, WEBSOCKET_OP_CLOSE);
+                    // Check if connection is still valid before sending
+                    if (conn->is_websocket && !conn->is_closing) {
+                        // Send close frame with normal closure code (1000)
+                        // Use a proper close frame with status code
+                        uint16_t close_code = 1000; // Normal closure
+                        char close_frame[2];
+                        close_frame[0] = (close_code >> 8) & 0xFF;
+                        close_frame[1] = close_code & 0xFF;
+                        mg_ws_send(conn, close_frame, 2, WEBSOCKET_OP_CLOSE);
                         
                         // Mark connection for closing
-                        s_clients[i].conn->is_closing = 1;
+                        conn->is_closing = 1;
                         
-                        //  Explicitly close the socket to ensure it's released
-                        if (s_clients[i].conn->fd != NULL) {
-                            int socket_fd = (int)(size_t)s_clients[i].conn->fd;
-                            log_debug("Closing WebSocket socket: %d", socket_fd);
-                            
-                            //  Set socket to non-blocking mode to avoid hang on close
-                            int flags = fcntl(socket_fd, F_GETFL, 0);
-                            fcntl(socket_fd, F_SETFL, flags | O_NONBLOCK);
-                            
-                            // Now close the socket
-                            close(socket_fd);
-                            s_clients[i].conn->fd = NULL;  // Mark as closed
-                        }
+                        log_debug("Sent WebSocket close frame to client %s", s_clients[i].id);
                     } else {
-                        log_debug("Connection %d is already closing or not a websocket", i);
+                        log_debug("Connection for client %s is already closing or not a websocket", 
+                                 s_clients[i].id);
                     }
                 }
                 
                 // Explicitly set active to false to prevent further operations on this client
                 s_clients[i].active = false;
                 
-                //  Clear topic subscriptions
+                // Clear topic subscriptions
                 s_clients[i].topic_count = 0;
                 memset(s_clients[i].topics, 0, sizeof(s_clients[i].topics));
                 
@@ -281,7 +288,7 @@ void websocket_manager_shutdown(void) {
         
         log_info("Sent close frames to %d WebSocket connections", closed_count);
         
-        //  Clear handler state safely
+        // Clear handler state safely
         for (int i = 0; i < MAX_HANDLERS; i++) {
             if (s_handlers[i].active) {
                 s_handlers[i].active = false;
@@ -290,32 +297,47 @@ void websocket_manager_shutdown(void) {
             }
         }
         
+        // Release the mutex
         pthread_mutex_unlock(&s_mutex);
     }
     
-    //  Add a longer delay to ensure close frames are sent before clearing connection pointers
+    // Add a delay to ensure close frames are sent before clearing connection pointers
     // This helps prevent memory corruption during shutdown
-    usleep(500000); // 500ms - increased to ensure frames are sent
+    usleep(250000); // 250ms - reduced from 500ms for faster shutdown
     
     // Now clear the connection pointers after giving time for close frames to be sent
-    if (pthread_mutex_lock(&s_mutex) == 0) {
+    // Try to acquire the mutex again, but don't force it
+    if (pthread_mutex_trylock(&s_mutex) == 0) {
         for (int i = 0; i < MAX_CLIENTS; i++) {
-            if (s_clients[i].conn) {
-                s_clients[i].conn = NULL; // Now safe to clear the pointer
-            }
+            // Clear connection pointers
+            s_clients[i].conn = NULL;
         }
         pthread_mutex_unlock(&s_mutex);
     } else {
-        log_warn("Could not acquire WebSocket mutex to clear connection pointers");
+        log_warn("Could not acquire WebSocket mutex to clear connection pointers, proceeding anyway");
+        // Even without the lock, we should clear the pointers to prevent use-after-free
+        // This is a calculated risk during shutdown
+        for (int i = 0; i < MAX_CLIENTS; i++) {
+            s_clients[i].conn = NULL;
+        }
     }
     
-    //  Wait a bit longer to ensure all operations on the mutex have completed
-    usleep(100000); // 100ms additional delay
+    // Wait a bit longer to ensure all operations on the mutex have completed
+    usleep(50000); // 50ms - reduced from 100ms for faster shutdown
+    
+    // Update shutdown coordinator if we registered
+    if (coordinator != NULL && websocket_component_id >= 0) {
+        update_component_state(websocket_component_id, COMPONENT_STOPPED);
+        log_info("Updated WebSocket manager state to STOPPED in shutdown coordinator");
+    }
     
     // Destroy mutex with proper error handling
-    int destroy_result = pthread_mutex_destroy(&s_mutex);
-    if (destroy_result != 0) {
-        log_warn("Failed to destroy WebSocket mutex: %d (%s)", destroy_result, strerror(destroy_result));
+    // Only attempt to destroy if we're not in a forced shutdown situation
+    if (mutex_result == 0) {
+        int destroy_result = pthread_mutex_destroy(&s_mutex);
+        if (destroy_result != 0) {
+            log_warn("Failed to destroy WebSocket mutex: %d (%s)", destroy_result, strerror(destroy_result));
+        }
     }
     
     log_info("WebSocket manager shutdown complete");

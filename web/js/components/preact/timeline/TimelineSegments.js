@@ -29,20 +29,26 @@ export function TimelineSegments() {
     console.log('TimelineSegments: Setting up subscription to timelineState');
     
     const unsubscribe = timelineState.subscribe(state => {
-      console.log('TimelineSegments: Received state update:', state);
-      console.log('TimelineSegments: Segments in update:', state.timelineSegments);
+      console.log('TimelineSegments: Received state update');
       
-      setSegments(state.timelineSegments || []);
-      setStartHour(state.timelineStartHour);
-      setEndHour(state.timelineEndHour);
-      setCurrentSegmentIndex(state.currentSegmentIndex);
+      // Update segments
+      if (state.timelineSegments) {
+        console.log(`TimelineSegments: Updating segments (${state.timelineSegments.length})`);
+        setSegments(state.timelineSegments);
+      }
       
-      console.log('TimelineSegments: Local state updated with segments:', state.timelineSegments?.length || 0);
+      // Update other state
+      setStartHour(state.timelineStartHour || 0);
+      setEndHour(state.timelineEndHour || 24);
+      setCurrentSegmentIndex(state.currentSegmentIndex || -1);
     });
     
-    // Log initial state
-    console.log('TimelineSegments: Initial timelineState:', timelineState);
-    console.log('TimelineSegments: Initial segments:', timelineState.timelineSegments);
+    // Check if we already have segments in the timelineState
+    if (timelineState.timelineSegments && timelineState.timelineSegments.length > 0) {
+      console.log(`TimelineSegments: Initial segments available (${timelineState.timelineSegments.length})`);
+      setSegments(timelineState.timelineSegments);
+      setCurrentSegmentIndex(timelineState.currentSegmentIndex || 0);
+    }
     
     return () => unsubscribe();
   }, []);
@@ -86,26 +92,17 @@ export function TimelineSegments() {
 
   // Handle click on timeline for seeking
   const handleTimelineClick = (event) => {
-    console.log('Timeline click event:', event);
-    
     const container = containerRef.current;
-    if (!container) {
-      console.error('Container ref is null');
-      return;
-    }
+    if (!container) return;
     
     // Get click position relative to container
     const rect = container.getBoundingClientRect();
     const clickX = event.clientX - rect.left;
     const containerWidth = rect.width;
     
-    console.log(`Click position: ${clickX}px / ${containerWidth}px`);
-    
     // Calculate time based on click position
     const clickPercent = clickX / containerWidth;
     const clickHour = startHour + (clickPercent * (endHour - startHour));
-    
-    console.log(`Click hour: ${clickHour} (${Math.floor(clickHour)}:${Math.floor((clickHour % 1) * 60)})`);
     
     // Find the segment that contains this time
     const clickDate = new Date(timelineState.selectedDate);
@@ -114,21 +111,18 @@ export function TimelineSegments() {
     clickDate.setSeconds(Math.floor(((clickHour % 1) * 60) % 1 * 60));
     
     const clickTimestamp = clickDate.getTime() / 1000;
-    console.log(`Click timestamp: ${clickTimestamp}, date: ${clickDate.toLocaleString()}`);
     
     // Find segment that contains this timestamp
     let foundSegment = false;
     for (let i = 0; i < segments.length; i++) {
       const segment = segments[i];
       if (clickTimestamp >= segment.start_timestamp && clickTimestamp <= segment.end_timestamp) {
-        console.log(`Found segment ${i} containing timestamp:`, segment);
+        console.log(`TimelineSegments: Found segment ${i} containing timestamp`);
+        
         // Calculate relative time within the segment
         const relativeTime = clickTimestamp - segment.start_timestamp;
-        console.log(`Relative time within segment: ${relativeTime}s`);
         
-        // Always update the segment index, even if it's the same as the current one
-        // This ensures the video player will reload the segment if needed
-        console.log(`Setting currentSegmentIndex to ${i} (was ${currentSegmentIndex})`);
+        // Update current segment index
         setCurrentSegmentIndex(i);
         
         // Play this segment starting at the clicked time
@@ -140,7 +134,7 @@ export function TimelineSegments() {
     
     if (!foundSegment) {
       if (segments.length > 0) {
-        console.log('No segment contains the timestamp, finding closest segment');
+        console.log('TimelineSegments: No segment contains the timestamp, finding closest segment');
         // Find the closest segment
         let closestSegment = -1;
         let minDistance = Infinity;
@@ -158,16 +152,14 @@ export function TimelineSegments() {
         }
         
         if (closestSegment >= 0) {
-          console.log(`Playing closest segment ${closestSegment}:`, segments[closestSegment]);
-          // Always update the segment index, even if it's the same as the current one
-          console.log(`Setting currentSegmentIndex to ${closestSegment} (was ${currentSegmentIndex})`);
+          console.log(`TimelineSegments: Playing closest segment ${closestSegment}`);
           
           // Play the closest segment
           playSegment(closestSegment);
         }
       } else {
         // No segments found, just update the currentTime
-        console.log('No segments found, just updating currentTime to:', clickTimestamp);
+        console.log('TimelineSegments: No segments found, just updating currentTime');
         timelineState.setState({ 
           currentTime: clickTimestamp,
           prevCurrentTime: timelineState.currentTime
@@ -178,10 +170,10 @@ export function TimelineSegments() {
 
   // Play a specific segment
   const playSegment = (index, relativeTime = null) => {
-    console.log(`TimelineSegments.playSegment(${index}, ${relativeTime})`);
+    console.log(`TimelineSegments: playSegment(${index}, ${relativeTime})`);
     
     if (index < 0 || index >= segments.length) {
-      console.warn(`Invalid segment index: ${index}, segments length: ${segments.length}`);
+      console.warn(`TimelineSegments: Invalid segment index: ${index}`);
       return;
     }
     
@@ -192,20 +184,17 @@ export function TimelineSegments() {
       ? segment.start_timestamp + relativeTime 
       : segment.start_timestamp;
     
-    // Force a complete reset of the player state to ensure immediate transition
     // First, pause any current playback and reset the segment index
     timelineState.setState({ 
       isPlaying: false,
       currentSegmentIndex: -1
     });
     
-    // Force a synchronous DOM update by accessing a property that causes a reflow
+    // Force a synchronous DOM update
     document.body.offsetHeight;
     
     // Now set the new segment index and start playing
-    // This two-step process ensures the player detects a complete state change
     setTimeout(() => {
-      console.log(`Setting new segment index to ${index} with time ${absoluteTime}`);
       timelineState.setState({ 
         currentSegmentIndex: index,
         currentTime: absoluteTime,
@@ -213,12 +202,10 @@ export function TimelineSegments() {
         forceReload: true
       });
       
-      // Force the video player to reload by directly accessing the video element
+      // Force the video player to reload
       setTimeout(() => {
         const videoElement = document.querySelector('#video-player video');
         if (videoElement) {
-          console.log('Directly manipulating video element to force reload');
-          
           // Pause any current playback
           videoElement.pause();
           
@@ -226,7 +213,7 @@ export function TimelineSegments() {
           videoElement.removeAttribute('src');
           videoElement.load();
           
-          // Set the new source with a timestamp to prevent caching
+          // Set the new source
           videoElement.src = `/api/recordings/play/${segment.id}?t=${Date.now()}`;
           
           // Set the current time and play
@@ -242,13 +229,9 @@ export function TimelineSegments() {
 
   // Render segments
   const renderSegments = () => {
-    console.log('TimelineSegments.renderSegments() called');
-    console.log('Segments:', segments);
-    console.log('Start hour:', startHour);
-    console.log('End hour:', endHour);
+    console.log(`TimelineSegments: Rendering ${segments.length} segments`);
     
     if (!segments || segments.length === 0) {
-      console.log('No segments to render');
       return null;
     }
     
@@ -257,30 +240,16 @@ export function TimelineSegments() {
     
     // First pass: collect all segments by hour
     segments.forEach((segment, index) => {
-      console.log(`Processing segment ${index}:`, segment);
-      
       // Convert timestamps to Date objects
       const startTime = new Date(segment.start_timestamp * 1000);
       const endTime = new Date(segment.end_timestamp * 1000);
-      
-      console.log(`Segment ${index} times:`, {
-        startTime: startTime.toLocaleTimeString(),
-        endTime: endTime.toLocaleTimeString()
-      });
       
       // Calculate position and width
       const startHourFloat = startTime.getHours() + (startTime.getMinutes() / 60) + (startTime.getSeconds() / 3600);
       const endHourFloat = endTime.getHours() + (endTime.getMinutes() / 60) + (endTime.getSeconds() / 3600);
       
-      console.log(`Segment ${index} hour range:`, {
-        startHourFloat,
-        endHourFloat,
-        visibleRange: `${startHour} - ${endHour}`
-      });
-      
       // Skip segments outside the visible range
       if (endHourFloat < startHour || startHourFloat > endHour) {
-        console.log(`Segment ${index} is outside visible range, skipping`);
         return;
       }
       
@@ -288,26 +257,59 @@ export function TimelineSegments() {
       const startFloorHour = Math.floor(startHourFloat);
       const endCeilHour = Math.min(Math.ceil(endHourFloat), 24);
       
-      console.log(`Segment ${index} spans hours:`, {
-        startFloorHour,
-        endCeilHour
-      });
-      
       for (let h = startFloorHour; h < endCeilHour; h++) {
         if (h >= startHour && h <= endHour) {
           if (!hourMap.has(h)) {
             hourMap.set(h, []);
           }
           hourMap.get(h).push(index);
-          console.log(`Added segment ${index} to hour ${h}`);
         }
       }
     });
     
-    console.log('Hour map after first pass:', Object.fromEntries([...hourMap.entries()]));
+    // Preprocess segments to merge adjacent ones
+    const mergedSegments = [];
+    let currentMergedSegment = null;
+    
+    // Sort segments by start time
+    const sortedSegments = [...segments].sort((a, b) => a.start_timestamp - b.start_timestamp);
+    
+    // Merge adjacent segments (no gap or very small gap)
+    sortedSegments.forEach((segment, index) => {
+      if (!currentMergedSegment) {
+        // First segment
+        currentMergedSegment = { ...segment, originalIndices: [index] };
+      } else {
+        // Check if this segment is adjacent to the current merged segment
+        // Allow a small gap (1 second) to account for rounding errors
+        const gap = segment.start_timestamp - currentMergedSegment.end_timestamp;
+        
+        if (gap <= 1) {
+          // Merge with current segment
+          currentMergedSegment.end_timestamp = segment.end_timestamp;
+          currentMergedSegment.originalIndices.push(index);
+          
+          // If this segment has detection, mark the merged segment as having detection
+          if (segment.has_detection) {
+            currentMergedSegment.has_detection = true;
+          }
+        } else {
+          // Gap is too large, start a new merged segment
+          mergedSegments.push(currentMergedSegment);
+          currentMergedSegment = { ...segment, originalIndices: [index] };
+        }
+      }
+    });
+    
+    // Add the last merged segment
+    if (currentMergedSegment) {
+      mergedSegments.push(currentMergedSegment);
+    }
+    
+    console.log(`TimelineSegments: Merged ${segments.length} segments into ${mergedSegments.length} segments`);
     
     // Second pass: add visible segments
-    segments.forEach((segment, index) => {
+    mergedSegments.forEach((segment, mergedIndex) => {
       // Convert timestamps to Date objects
       const startTime = new Date(segment.start_timestamp * 1000);
       const endTime = new Date(segment.end_timestamp * 1000);
@@ -337,16 +339,15 @@ export function TimelineSegments() {
       const startTimeStr = startTime.toLocaleTimeString();
       const endTimeStr = endTime.toLocaleTimeString();
       
-      // Calculate height based on duration (longer segments are taller)
-      const heightPercent = Math.min(100, Math.max(60, (duration / 60) * 5)); // 5% height per minute, min 60%, max 100%
+      // Use a consistent height for all segments
+      const heightPercent = 80; // 80% height for all segments
       
       visibleSegments.push(html`
         <div 
-          key="segment-${index}"
-          class="timeline-segment absolute rounded-sm cursor-pointer transition-all duration-200 ${segment.has_detection ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-500 hover:bg-blue-600'} ${index === currentSegmentIndex ? 'border-2 border-yellow-400' : ''}"
+          key="segment-${mergedIndex}"
+          class="timeline-segment absolute rounded-sm transition-all duration-200 ${segment.has_detection ? 'bg-red-500' : 'bg-blue-500'}"
           style="left: ${startPercent}%; width: ${widthPercent}%; height: ${heightPercent}%; top: 50%; transform: translateY(-50%);"
           title="${startTimeStr} - ${endTimeStr} (${durationStr})"
-          onClick=${() => playSegment(index)}
         ></div>
       `);
     });

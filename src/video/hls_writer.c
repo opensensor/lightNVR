@@ -762,8 +762,11 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
     av_packet_rescale_ts(&out_pkt, input_stream->time_base,
                         writer->output_ctx->streams[0]->time_base);
 
-    // Ensure PTS >= DTS
+    // CRITICAL FIX: Ensure PTS >= DTS with a small buffer to prevent ghosting artifacts
+    // This is essential for HLS format compliance and prevents visual artifacts
     if (out_pkt.pts < out_pkt.dts) {
+        log_debug("Fixing HLS packet with PTS < DTS: PTS=%lld, DTS=%lld", 
+                 (long long)out_pkt.pts, (long long)out_pkt.dts);
         out_pkt.pts = out_pkt.dts;
     }
 

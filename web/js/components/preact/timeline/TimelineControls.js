@@ -66,28 +66,52 @@ export function TimelineControls() {
       return;
     }
     
-    // Always start playing from the beginning of the first segment when play is clicked
-    console.log('Starting first segment from TimelineControls');
+    // Find the earliest segment in the timeline
+    let earliestSegmentIndex = 0;
+    let earliestTimestamp = Number.MAX_SAFE_INTEGER;
     
-    // Start playing the first segment
-    timelineState.setState({ 
-      currentSegmentIndex: 0,
-      currentTime: timelineState.timelineSegments[0].start_timestamp,
-      isPlaying: true
+    timelineState.timelineSegments.forEach((segment, index) => {
+      if (segment.start_timestamp < earliestTimestamp) {
+        earliestTimestamp = segment.start_timestamp;
+        earliestSegmentIndex = index;
+      }
     });
     
-    // Force load the first segment's video
-    const segment = timelineState.timelineSegments[0];
+    console.log(`Starting from earliest segment (index ${earliestSegmentIndex})`);
+    
+    // Start playing from the earliest segment
+    timelineState.setState({ 
+      currentSegmentIndex: earliestSegmentIndex,
+      currentTime: timelineState.timelineSegments[earliestSegmentIndex].start_timestamp,
+      isPlaying: true,
+      forceReload: true // Force reload to ensure video player updates
+    });
+    
+    // Force load the earliest segment's video
+    const segment = timelineState.timelineSegments[earliestSegmentIndex];
     const videoPlayer = document.querySelector('#video-player video');
     
     if (videoPlayer) {
-      console.log('Loading first segment video:', segment);
-      videoPlayer.src = `/api/recordings/play/${segment.id}`;
-      videoPlayer.currentTime = 0;
-      videoPlayer.play().catch(error => {
-        console.error('Error playing video:', error);
-        showStatusMessage('Error playing video: ' + error.message, 'error');
-      });
+      console.log('Loading earliest segment video:', segment);
+      
+      // Pause any current playback
+      videoPlayer.pause();
+      
+      // Clear the source and reload
+      videoPlayer.removeAttribute('src');
+      videoPlayer.load();
+      
+      // Set the new source with a timestamp to prevent caching
+      videoPlayer.src = `/api/recordings/play/${segment.id}?t=${Date.now()}`;
+      
+      // Set the current time and play
+      videoPlayer.onloadedmetadata = () => {
+        videoPlayer.currentTime = 0;
+        videoPlayer.play().catch(error => {
+          console.error('Error playing video:', error);
+          showStatusMessage('Error playing video: ' + error.message, 'error');
+        });
+      };
     }
   };
 
@@ -121,26 +145,29 @@ export function TimelineControls() {
 
   return html`
     <div class="timeline-controls flex justify-between items-center mb-2">
-      <button 
-        id="play-button" 
-        class="w-10 h-10 rounded-full bg-green-600 hover:bg-green-700 text-white flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-1 transition-colors shadow-sm"
-        onClick=${togglePlayback}
-        title=${isPlaying ? 'Pause' : 'Play'}
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          ${isPlaying 
-            ? html`
-              <!-- Pause icon - two vertical bars -->
-              <rect x="6" y="6" width="4" height="12" rx="1" fill="white" />
-              <rect x="14" y="6" width="4" height="12" rx="1" fill="white" />
-            `
-            : html`
-              <!-- Play icon - triangle -->
-              <path d="M8 5.14v14l11-7-11-7z" fill="white" />
-            `
-          }
-        </svg>
-      </button>
+      <div class="flex items-center">
+        <button 
+          id="play-button" 
+          class="w-10 h-10 rounded-full bg-green-600 hover:bg-green-700 text-white flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-1 transition-colors shadow-sm mr-2"
+          onClick=${togglePlayback}
+          title=${isPlaying ? 'Pause' : 'Play from earliest recording'}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            ${isPlaying 
+              ? html`
+                <!-- Pause icon - two vertical bars -->
+                <rect x="6" y="6" width="4" height="12" rx="1" fill="white" />
+                <rect x="14" y="6" width="4" height="12" rx="1" fill="white" />
+              `
+              : html`
+                <!-- Play icon - triangle -->
+                <path d="M8 5.14v14l11-7-11-7z" fill="white" />
+              `
+            }
+          </svg>
+        </button>
+        <span class="text-xs text-gray-600 dark:text-gray-300">Play from earliest recording</span>
+      </div>
       
       <div class="flex items-center gap-1">
         <span class="text-xs text-gray-600 dark:text-gray-300 mr-1">Zoom:</span>
