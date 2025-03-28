@@ -206,6 +206,8 @@ static void *hls_writer_thread_func(void *arg) {
             // This wires in detection events to the always-on HLS streaming
             if (input_stream && input_stream->codecpar) {
                 // Use the detection thread pool instead of direct processing
+                // Note: submit_detection_task creates its own copies of the packet and codec parameters
+                // so we don't need to worry about memory management here
                 submit_detection_task(stream_name, pkt, input_stream->codecpar);
             }
         }

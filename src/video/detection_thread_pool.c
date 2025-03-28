@@ -286,9 +286,13 @@ static void *detection_thread_func(void *arg) {
             log_info("Detection thread %d processing packet task for stream %s", thread_id, stream_name);
             process_packet_for_detection(stream_name, pkt, codec_params);
             
-            // Free the packet and codec parameters
-            av_packet_free(&pkt);
-            avcodec_parameters_free(&codec_params);
+    // Free the packet and codec parameters
+    if (pkt) {
+        av_packet_free(&pkt);
+    }
+    if (codec_params) {
+        avcodec_parameters_free(&codec_params);
+    }
         }
 
         // Update statistics
@@ -370,9 +374,11 @@ void shutdown_detection_thread_pool(void) {
         if (detection_tasks[i].in_use) {
             if (detection_tasks[i].pkt) {
                 av_packet_free(&detection_tasks[i].pkt);
+                detection_tasks[i].pkt = NULL;
             }
             if (detection_tasks[i].codec_params) {
                 avcodec_parameters_free(&detection_tasks[i].codec_params);
+                detection_tasks[i].codec_params = NULL;
             }
             detection_tasks[i].in_use = false;
         }
