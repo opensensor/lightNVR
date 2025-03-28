@@ -109,10 +109,7 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
-            type=raw,value=latest,enable={{is_default_branch}}
-          flavor: |
-            latest=true
-            latest=false
+            type=raw,value=latest,enable=true
 
       - name: Create and push manifest
         run: |
