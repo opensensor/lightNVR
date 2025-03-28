@@ -75,6 +75,11 @@ void process_packet_for_detection(const char *stream_name, const AVPacket *pkt, 
         goto cleanup;
     }
     
+    // Initialize the packet before referencing
+    av_init_packet(pkt_copy);
+    pkt_copy->data = NULL;
+    pkt_copy->size = 0;
+    
     if (av_packet_ref(pkt_copy, pkt) < 0) {
         log_error("Failed to reference packet for detection");
         goto cleanup;
@@ -588,6 +593,7 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
 
     // Clone the packet
     AVPacket out_pkt;
+    av_init_packet(&out_pkt);
     if (av_packet_ref(&out_pkt, pkt) < 0) {
         log_error("Failed to reference packet for stream %s", writer->stream_name);
         return -1;
