@@ -428,12 +428,32 @@ int process_frame_for_recording(const char *stream_name, const unsigned char *fr
         return 0;
     }
     
-    // Store with the original stream name
-    log_info("STORING DETECTION RESULTS with original stream name: %s (count: %d)", stream_name, result->count);
-
-    // Call store_detection_result but don't try to capture the return value since it's void
-    store_detection_result(stream_name, result);
-    log_info("DETECTION RESULT STORED");
+    // Only store detections that meet the threshold
+    detection_result_t filtered_result;
+    memset(&filtered_result, 0, sizeof(detection_result_t));
+    
+    // Filter detections based on threshold
+    for (int i = 0; i < result->count; i++) {
+        if (result->detections[i].confidence >= threshold) {
+            // Copy this detection to our filtered result
+            memcpy(&filtered_result.detections[filtered_result.count], 
+                   &result->detections[i], 
+                   sizeof(detection_t));
+            filtered_result.count++;
+        }
+    }
+    
+    // Only store if we have detections that meet the threshold
+    if (filtered_result.count > 0) {
+        log_info("STORING FILTERED DETECTION RESULTS with original stream name: %s (count: %d, original count: %d)", 
+                stream_name, filtered_result.count, result->count);
+        
+        // Call store_detection_result but don't try to capture the return value since it's void
+        store_detection_result(stream_name, &filtered_result);
+        log_info("FILTERED DETECTION RESULT STORED");
+    } else {
+        log_info("No detections met the threshold (%.2f), skipping database storage", threshold);
+    }
 
     // Check if any objects were detected above threshold
     bool detection_triggered = false;
