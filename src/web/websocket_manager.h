@@ -4,11 +4,14 @@
 #include <stdbool.h>
 #include "mongoose.h"
 
+// Forward declarations for types defined in other headers
+struct mg_connection;
+
 // WebSocket message structure
 typedef struct {
-    char *type;
-    char *topic;
-    char *payload;
+    char *type;         // Message type (e.g., "progress", "result", "error")
+    char *topic;        // Message topic (e.g., "recordings/batch-delete")
+    char *payload;      // Message payload (JSON string)
 } websocket_message_t;
 
 /**
@@ -45,6 +48,13 @@ void websocket_manager_handle_message(struct mg_connection *c, const char *data,
  * @param c Mongoose connection
  */
 void websocket_manager_handle_close(struct mg_connection *c);
+
+/**
+ * @brief Check if the WebSocket manager is initialized
+ * 
+ * @return bool true if initialized, false otherwise
+ */
+bool websocket_manager_is_initialized(void);
 
 /**
  * @brief Create a WebSocket message
@@ -98,13 +108,6 @@ bool websocket_manager_is_subscribed(const char *client_id, const char *topic);
  * @return int Number of clients subscribed to the topic
  */
 int websocket_manager_get_subscribed_clients(const char *topic, char ***client_ids);
-
-/**
- * @brief Check if the WebSocket manager is initialized
- * 
- * @return bool true if initialized, false otherwise
- */
-bool websocket_manager_is_initialized(void);
 
 /**
  * @brief Register a WebSocket message handler

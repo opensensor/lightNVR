@@ -3,15 +3,9 @@
 
 #include <stdbool.h>
 #include "mongoose.h"
-
-/**
- * @brief WebSocket message structure
- */
-typedef struct {
-    char *type;         // Message type (e.g., "progress", "result", "error")
-    char *topic;        // Message topic (e.g., "recordings/batch-delete")
-    char *payload;      // Message payload (JSON string)
-} websocket_message_t;
+#include "web/websocket_client.h"
+#include "web/websocket_handler.h"
+#include "web/websocket_message.h"
 
 /**
  * @brief Initialize WebSocket manager
@@ -42,57 +36,11 @@ void websocket_manager_handle_open(struct mg_connection *c);
 void websocket_manager_handle_message(struct mg_connection *c, const char *data, size_t data_len);
 
 /**
- * @brief Create a WebSocket message
+ * @brief Handle WebSocket connection close
  * 
- * @param type Message type
- * @param topic Message topic
- * @param payload Message payload
- * @return websocket_message_t* Pointer to the message or NULL on error
+ * @param c Mongoose connection
  */
-websocket_message_t *websocket_message_create(const char *type, const char *topic, const char *payload);
-
-/**
- * @brief Free a WebSocket message
- * 
- * @param message Message to free
- */
-void websocket_message_free(websocket_message_t *message);
-
-/**
- * @brief Send a WebSocket message to a client
- * 
- * @param client_id Client ID
- * @param message Message to send
- * @return bool true on success, false on error
- */
-bool websocket_manager_send_to_client(const char *client_id, const websocket_message_t *message);
-
-/**
- * @brief Send a WebSocket message to all clients subscribed to a topic
- * 
- * @param topic Topic to send to
- * @param message Message to send
- * @return int Number of clients the message was sent to
- */
-int websocket_manager_broadcast(const char *topic, const websocket_message_t *message);
-
-/**
- * @brief Check if a client is subscribed to a topic
- * 
- * @param client_id Client ID
- * @param topic Topic to check
- * @return bool true if subscribed, false otherwise
- */
-bool websocket_manager_is_subscribed(const char *client_id, const char *topic);
-
-/**
- * @brief Get all clients subscribed to a topic
- * 
- * @param topic Topic to check
- * @param client_ids Pointer to array of client IDs (will be allocated)
- * @return int Number of clients subscribed to the topic
- */
-int websocket_manager_get_subscribed_clients(const char *topic, char ***client_ids);
+void websocket_manager_handle_close(struct mg_connection *c);
 
 /**
  * @brief Check if the WebSocket manager is initialized
@@ -101,8 +49,46 @@ int websocket_manager_get_subscribed_clients(const char *topic, char ***client_i
  */
 bool websocket_manager_is_initialized(void);
 
+// Compatibility functions that delegate to the new API
+
 /**
- * @brief Register a WebSocket message handler
+ * @brief Send a WebSocket message to a client (compatibility function)
+ * 
+ * @param client_id Client ID
+ * @param message Message to send
+ * @return bool true on success, false on error
+ */
+bool websocket_manager_send_to_client(const char *client_id, const websocket_message_t *message);
+
+/**
+ * @brief Send a WebSocket message to all clients subscribed to a topic (compatibility function)
+ * 
+ * @param topic Topic to send to
+ * @param message Message to send
+ * @return int Number of clients the message was sent to
+ */
+int websocket_manager_broadcast(const char *topic, const websocket_message_t *message);
+
+/**
+ * @brief Check if a client is subscribed to a topic (compatibility function)
+ * 
+ * @param client_id Client ID
+ * @param topic Topic to check
+ * @return bool true if subscribed, false otherwise
+ */
+bool websocket_manager_is_subscribed(const char *client_id, const char *topic);
+
+/**
+ * @brief Get all clients subscribed to a topic (compatibility function)
+ * 
+ * @param topic Topic to check
+ * @param client_ids Pointer to array of client IDs (will be allocated)
+ * @return int Number of clients subscribed to the topic
+ */
+int websocket_manager_get_subscribed_clients(const char *topic, char ***client_ids);
+
+/**
+ * @brief Register a WebSocket message handler (compatibility function)
  * 
  * @param topic Topic to handle
  * @param handler Handler function

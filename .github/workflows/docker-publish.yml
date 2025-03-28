@@ -67,8 +67,9 @@ jobs:
         run: |
           mkdir -p ${{ runner.temp }}/digests
           platform="${{ matrix.platform }}"
-          echo "PLATFORM_PAIR=${platform/linux\//}" | sed 's/\//-/' >> $GITHUB_ENV
-
+          digest="${{ steps.build.outputs.digest }}"
+          echo "$digest" > "${{ runner.temp }}/digests/${platform//\//-}.digest"
+          echo "Saved digest for $platform: $digest"
 
       - name: Upload digest
         uses: actions/upload-artifact@v4
@@ -109,20 +110,34 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=raw,value=latest,enable={{is_default_branch}}
+          flavor: |
+            latest=true
+            latest=false
 
       - name: Create and push manifest
         run: |
-          DIGEST_DIR="${{ runner.temp }}/digests"
-          cd "$DIGEST_DIR" || { echo "Digest directory not found"; exit 1; }
+          # Print current directory for debugging
+          echo "Current directory: $(pwd)"
+          echo "Listing runner.temp directory: $(ls -la ${{ runner.temp }})"
           
+          DIGEST_DIR="${{ runner.temp }}/digests"
+          echo "Contents of digest directory: $(ls -la $DIGEST_DIR || echo 'Directory not found')"
+          
+          # Don't change directory, just use the full path
           DIGEST_ARGS=""
-          for file in *.digest; do
-            DIGEST=$(cat "$file")
-            DIGEST_ARGS="$DIGEST_ARGS ${{ env.REGISTRY_IMAGE }}@$DIGEST"
+          for file in $DIGEST_DIR/*.digest; do
+            if [ -f "$file" ]; then
+              DIGEST=$(cat "$file")
+              DIGEST_ARGS="$DIGEST_ARGS ${{ env.REGISTRY_IMAGE }}@$DIGEST"
+            else
+              echo "No digest files found in $DIGEST_DIR"
+              exit 1
+            fi
           done
           
           for tag in $(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON"); do
             echo "Creating and pushing manifest: $tag"
+            echo "Using digests: $DIGEST_ARGS"
             docker buildx imagetools create -t "$tag" $DIGEST_ARGS
           done
 

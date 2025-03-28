@@ -9,13 +9,17 @@
 #include <time.h>
 #include <sys/time.h>
 #include <errno.h>
+#include <unistd.h>
 
 #include "web/websocket_manager.h"
+#include "web/websocket_client.h"
+#include "web/websocket_handler.h"
+#include "web/websocket_message.h"
 #include "core/logger.h"
 #include "core/shutdown_coordinator.h"
 #include "../external/cjson/cJSON.h"
-#include "video/onvif_discovery_messages.h"
 #include "web/register_websocket_handlers.h"
+#include "video/onvif_discovery_messages.h"
 
 // Maximum number of clients and handlers
 #define MAX_CLIENTS 100
@@ -160,6 +164,56 @@ static bool remove_client_by_connection(const struct mg_connection *conn) {
     
     pthread_mutex_unlock(&s_mutex);
     return true;
+}
+
+/**
+ * @brief Clean up inactive clients
+ * 
+ * This function removes clients that have been inactive for too long
+ * or have invalid connections.
+ */
+static void websocket_manager_cleanup_inactive_clients(void) {
+    // This function should be called with the mutex already locked
+    
+    time_t now = time(NULL);
+    const time_t timeout = 3600; // 1 hour timeout
+    
+    int cleaned_count = 0;
+    
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        if (s_clients[i].active) {
+            // Check if connection is valid
+            if (!s_clients[i].conn || s_clients[i].conn->is_closing) {
+                log_info("Cleaning up client %s with invalid connection", s_clients[i].id);
+                s_clients[i].active = false;
+                s_clients[i].conn = NULL;
+                s_clients[i].topic_count = 0;
+                cleaned_count++;
+                continue;
+            }
+            
+            // Check if client has been inactive for too long
+            if (now - s_clients[i].last_activity > timeout) {
+                log_info("Cleaning up inactive client %s (inactive for %ld seconds)",
+                        s_clients[i].id, now - s_clients[i].last_activity);
+                
+                // Send a close frame if possible
+                if (s_clients[i].conn && s_clients[i].conn->is_websocket && !s_clients[i].conn->is_closing) {
+                    mg_ws_send(s_clients[i].conn, "", 0, WEBSOCKET_OP_CLOSE);
+                    s_clients[i].conn->is_closing = 1;
+                }
+                
+                s_clients[i].active = false;
+                s_clients[i].conn = NULL;
+                s_clients[i].topic_count = 0;
+                cleaned_count++;
+            }
+        }
+    }
+    
+    if (cleaned_count > 0) {
+        log_info("Cleaned up %d inactive WebSocket clients", cleaned_count);
+    }
 }
 
 /**
@@ -670,475 +724,6 @@ void websocket_manager_handle_message(struct mg_connection *c, const char *data,
 }
 
 /**
- * @brief Create a WebSocket message
- * 
- * @param type Message type
- * @param topic Message topic
- * @param payload Message payload
- * @return websocket_message_t* Pointer to the message or NULL on error
- */
-websocket_message_t *websocket_message_create(const char *type, const char *topic, const char *payload) {
-    if (!type || !topic || !payload) {
-        log_error("Invalid parameters for websocket_message_create");
-        return NULL;
-    }
-    
-    websocket_message_t *message = calloc(1, sizeof(websocket_message_t));
-    if (!message) {
-        log_error("Failed to allocate memory for WebSocket message");
-        return NULL;
-    }
-    
-    message->type = strdup(type);
-    message->topic = strdup(topic);
-    message->payload = strdup(payload);
-    
-    if (!message->type || !message->topic || !message->payload) {
-        log_error("Failed to allocate memory for WebSocket message fields");
-        websocket_message_free(message);
-        return NULL;
-    }
-    
-    return message;
-}
-
-/**
- * @brief Free a WebSocket message
- * 
- * @param message Message to free
- */
-void websocket_message_free(websocket_message_t *message) {
-    if (message) {
-        if (message->type) {
-            free(message->type);
-        }
-        
-        if (message->topic) {
-            free(message->topic);
-        }
-        
-        if (message->payload) {
-            free(message->payload);
-        }
-        
-        free(message);
-    }
-}
-
-/**
- * @brief Send a WebSocket message to a client
- * 
- * @param client_id Client ID
- * @param message Message to send
- * @return bool true on success, false on error
- */
-bool websocket_manager_send_to_client(const char *client_id, const websocket_message_t *message) {
-    // Check if WebSocket manager is initialized
-    if (!websocket_manager_is_initialized()) {
-        log_error("WebSocket manager not initialized");
-        // Try to initialize it
-        if (websocket_manager_init() != 0) {
-            log_error("Failed to initialize WebSocket manager");
-            return false;
-        }
-        log_info("WebSocket manager initialized on demand during send to client");
-    }
-    
-    if (!client_id || !message) {
-        log_error("Invalid parameters for websocket_manager_send_to_client");
-        return false;
-    }
-    
-    // Find client - USING MUTEX LOCK to prevent race condition
-    pthread_mutex_lock(&s_mutex);
-    int client_index = find_client_by_id(client_id);
-    if (client_index < 0) {
-        log_error("Client not found: %s", client_id);
-        pthread_mutex_unlock(&s_mutex);
-        return false;
-    }
-    
-    // Get a copy of the connection pointer while holding the mutex
-    struct mg_connection *conn = s_clients[client_index].conn;
-    if (!conn) {
-        log_error("Client %s has no connection", client_id);
-        pthread_mutex_unlock(&s_mutex);
-        return false;
-    }
-    
-    // Update last activity timestamp
-    s_clients[client_index].last_activity = time(NULL);
-    
-    pthread_mutex_unlock(&s_mutex);
-    
-    // Log the message details for debugging
-    log_info("Sending message to client %s: type=%s, topic=%s",
-             client_id, message->type, message->topic);
-    
-    // Convert message to JSON
-    cJSON *json = cJSON_CreateObject();
-    cJSON_AddStringToObject(json, "type", message->type);
-    cJSON_AddStringToObject(json, "topic", message->topic);
-    
-    // Always parse payload as JSON
-    cJSON *payload_json = cJSON_Parse(message->payload);
-    if (payload_json) {
-        // If payload is valid JSON, add it as an object
-        cJSON_AddItemToObject(json, "payload", payload_json);
-        log_debug("Added payload as JSON object");
-    } else {
-        // If parsing failed, log an error and create a new JSON object
-        log_error("Failed to parse payload as JSON: %s", message->payload);
-        
-        // For progress and result messages, try to add the payload as a string
-        if (strcmp(message->type, "progress") == 0 || strcmp(message->type, "result") == 0) {
-            log_info("Adding %s payload as string for client %s", message->type, client_id);
-            cJSON_AddStringToObject(json, "payload", message->payload);
-        } else {
-            // Create a new JSON object for the payload
-            cJSON *new_payload = cJSON_CreateObject();
-            cJSON_AddStringToObject(new_payload, "error", "Failed to parse payload");
-            cJSON_AddStringToObject(new_payload, "raw_payload", message->payload);
-            
-            // Add the new payload object
-            cJSON_AddItemToObject(json, "payload", new_payload);
-            log_debug("Added error payload object");
-        }
-    }
-    
-    char *json_str = cJSON_PrintUnformatted(json);
-    if (!json_str) {
-        log_error("Failed to convert message to JSON");
-        cJSON_Delete(json);
-        return false;
-    }
-    
-    // Send message using the connection pointer we saved earlier
-    mg_ws_send(conn, json_str, strlen(json_str), WEBSOCKET_OP_TEXT);
-    log_debug("Sent WebSocket message to client %s", client_id);
-    
-    free(json_str);
-    cJSON_Delete(json);
-    
-    return true;
-}
-
-/**
- * @brief Send a WebSocket message to all clients subscribed to a topic
- * 
- * @param topic Topic to send to
- * @param message Message to send
- * @return int Number of clients the message was sent to
- */
-/**
- * @brief Clean up inactive clients
- * 
- * This function removes clients that have been inactive for too long
- * or have invalid connections.
- */
-static void websocket_manager_cleanup_inactive_clients(void) {
-    // This function should be called with the mutex already locked
-    
-    time_t now = time(NULL);
-    const time_t timeout = 3600; // 1 hour timeout
-    
-    int cleaned_count = 0;
-    
-    for (int i = 0; i < MAX_CLIENTS; i++) {
-        if (s_clients[i].active) {
-            // Check if connection is valid
-            if (!s_clients[i].conn || s_clients[i].conn->is_closing) {
-                log_info("Cleaning up client %s with invalid connection", s_clients[i].id);
-                s_clients[i].active = false;
-                s_clients[i].conn = NULL;
-                s_clients[i].topic_count = 0;
-                cleaned_count++;
-                continue;
-            }
-            
-            // Check if client has been inactive for too long
-            if (now - s_clients[i].last_activity > timeout) {
-                log_info("Cleaning up inactive client %s (inactive for %ld seconds)",
-                        s_clients[i].id, now - s_clients[i].last_activity);
-                
-                // Send a close frame if possible
-                if (s_clients[i].conn && s_clients[i].conn->is_websocket && !s_clients[i].conn->is_closing) {
-                    mg_ws_send(s_clients[i].conn, "", 0, WEBSOCKET_OP_CLOSE);
-                    s_clients[i].conn->is_closing = 1;
-                }
-                
-                s_clients[i].active = false;
-                s_clients[i].conn = NULL;
-                s_clients[i].topic_count = 0;
-                cleaned_count++;
-            }
-        }
-    }
-    
-    if (cleaned_count > 0) {
-        log_info("Cleaned up %d inactive WebSocket clients", cleaned_count);
-    }
-}
-
-int websocket_manager_broadcast(const char *topic, const websocket_message_t *message) {
-    // Check if WebSocket manager is initialized
-    if (!websocket_manager_is_initialized()) {
-        log_error("WebSocket manager not initialized");
-        // Try to initialize it
-        if (websocket_manager_init() != 0) {
-            log_error("Failed to initialize WebSocket manager");
-            return 0;
-        }
-        log_info("WebSocket manager initialized on demand during broadcast");
-    }
-    
-    if (!topic || !message) {
-        log_error("Invalid parameters for websocket_manager_broadcast");
-        return 0;
-    }
-    
-    pthread_mutex_lock(&s_mutex);
-    
-    // Clean up inactive clients before broadcasting
-    websocket_manager_cleanup_inactive_clients();
-    
-    // Convert message to JSON
-    cJSON *json = cJSON_CreateObject();
-    cJSON_AddStringToObject(json, "type", message->type);
-    cJSON_AddStringToObject(json, "topic", message->topic);
-    
-    // Always parse payload as JSON
-    cJSON *payload_json = cJSON_Parse(message->payload);
-    if (payload_json) {
-        // If payload is valid JSON, add it as an object
-        cJSON_AddItemToObject(json, "payload", payload_json);
-        log_debug("Added payload as JSON object for broadcast");
-    } else {
-        // If parsing failed, log an error and create a new JSON object
-        log_error("Failed to parse payload as JSON for broadcast: %s", message->payload);
-        
-        // Create a new JSON object for the payload
-        cJSON *new_payload = cJSON_CreateObject();
-        cJSON_AddStringToObject(new_payload, "error", "Failed to parse payload");
-        cJSON_AddStringToObject(new_payload, "raw_payload", message->payload);
-        
-        // Add the new payload object
-        cJSON_AddItemToObject(json, "payload", new_payload);
-        log_debug("Added error payload object for broadcast");
-    }
-    
-    char *json_str = cJSON_PrintUnformatted(json);
-    if (!json_str) {
-        log_error("Failed to convert message to JSON");
-        cJSON_Delete(json);
-        pthread_mutex_unlock(&s_mutex);
-        return 0;
-    }
-    
-    // Create a temporary array to store connection pointers
-    struct mg_connection *connections[MAX_CLIENTS];
-    char client_ids[MAX_CLIENTS][64];
-    int connection_count = 0;
-    
-    // Find all subscribed clients and store their connection pointers
-    for (int i = 0; i < MAX_CLIENTS; i++) {
-        if (s_clients[i].active && s_clients[i].conn) {
-            // Check if client is subscribed to topic
-            for (int j = 0; j < s_clients[i].topic_count; j++) {
-                if (strcmp(s_clients[i].topics[j], topic) == 0) {
-                    // Store connection pointer and client ID
-                    connections[connection_count] = s_clients[i].conn;
-                    strncpy(client_ids[connection_count], s_clients[i].id, sizeof(client_ids[0]) - 1);
-                    client_ids[connection_count][sizeof(client_ids[0]) - 1] = '\0';
-                    connection_count++;
-                    
-                    // Update last activity timestamp
-                    s_clients[i].last_activity = time(NULL);
-                    break;
-                }
-            }
-        }
-    }
-    
-    // Release the mutex before sending messages
-    pthread_mutex_unlock(&s_mutex);
-    
-    // Send message to all stored connections
-    int success_count = 0;
-    for (int i = 0; i < connection_count; i++) {
-        if (connections[i] && !connections[i]->is_closing) {
-            int result = mg_ws_send(connections[i], json_str, strlen(json_str), WEBSOCKET_OP_TEXT);
-            if (result > 0) {
-                success_count++;
-                log_debug("Broadcast message sent to client %s", client_ids[i]);
-            } else {
-                log_error("Failed to send broadcast message to client %s", client_ids[i]);
-                
-                // Mark connection for cleanup on next operation
-                pthread_mutex_lock(&s_mutex);
-                int client_index = find_client_by_id(client_ids[i]);
-                if (client_index >= 0) {
-                    s_clients[client_index].conn->is_closing = 1;
-                }
-                pthread_mutex_unlock(&s_mutex);
-            }
-        }
-    }
-    
-    // Clean up
-    free(json_str);
-    cJSON_Delete(json);
-    
-    return success_count;
-}
-
-/**
- * @brief Check if a client is subscribed to a topic
- * 
- * @param client_id Client ID
- * @param topic Topic to check
- * @return bool true if subscribed, false otherwise
- */
-bool websocket_manager_is_subscribed(const char *client_id, const char *topic) {
-    // Check if WebSocket manager is initialized
-    if (!websocket_manager_is_initialized()) {
-        log_error("WebSocket manager not initialized");
-        // Try to initialize it
-        if (websocket_manager_init() != 0) {
-            log_error("Failed to initialize WebSocket manager");
-            return false;
-        }
-        log_info("WebSocket manager initialized on demand during subscription check");
-    }
-    
-    if (!client_id || !topic) {
-        log_error("Invalid parameters for websocket_manager_is_subscribed");
-        return false;
-    }
-    
-    // Find client - USING MUTEX LOCK to prevent race condition
-    pthread_mutex_lock(&s_mutex);
-    int client_index = find_client_by_id(client_id);
-    if (client_index < 0) {
-        log_error("Client not found: %s", client_id);
-        pthread_mutex_unlock(&s_mutex);
-        return false;
-    }
-    
-    // Check if client is subscribed to topic
-    bool is_subscribed = false;
-    for (int i = 0; i < s_clients[client_index].topic_count; i++) {
-        if (strcmp(s_clients[client_index].topics[i], topic) == 0) {
-            is_subscribed = true;
-            break;
-        }
-    }
-    
-    pthread_mutex_unlock(&s_mutex);
-    return is_subscribed;
-}
-
-/**
- * @brief Get all clients subscribed to a topic
- * 
- * @param topic Topic to check
- * @param client_ids Pointer to array of client IDs (will be allocated)
- * @return int Number of clients subscribed to the topic
- */
-int websocket_manager_get_subscribed_clients(const char *topic, char ***client_ids) {
-    // Check if WebSocket manager is initialized
-    if (!websocket_manager_is_initialized()) {
-        log_error("WebSocket manager not initialized");
-        // Try to initialize it
-        if (websocket_manager_init() != 0) {
-            log_error("Failed to initialize WebSocket manager");
-            return 0;
-        }
-        log_info("WebSocket manager initialized on demand during get subscribed clients");
-    }
-    
-    if (!topic || !client_ids) {
-        log_error("Invalid parameters for websocket_manager_get_subscribed_clients");
-        return 0;
-    }
-    
-    // Initialize client_ids to NULL
-    *client_ids = NULL;
-    
-    pthread_mutex_lock(&s_mutex);
-    
-    // Clean up inactive clients first
-    websocket_manager_cleanup_inactive_clients();
-    
-    // Count subscribed clients
-    int count = 0;
-    for (int i = 0; i < MAX_CLIENTS; i++) {
-        if (s_clients[i].active) {
-            for (int j = 0; j < s_clients[i].topic_count; j++) {
-                if (strcmp(s_clients[i].topics[j], topic) == 0) {
-                    count++;
-                    break;
-                }
-            }
-        }
-    }
-    
-    if (count == 0) {
-        pthread_mutex_unlock(&s_mutex);
-        return 0;
-    }
-    
-    // Allocate memory for client IDs
-    *client_ids = (char **)malloc(count * sizeof(char *));
-    if (!*client_ids) {
-        log_error("Failed to allocate memory for client IDs");
-        pthread_mutex_unlock(&s_mutex);
-        return 0;
-    }
-    
-    // Fill client IDs
-    int index = 0;
-    for (int i = 0; i < MAX_CLIENTS; i++) {
-        if (s_clients[i].active) {
-            for (int j = 0; j < s_clients[i].topic_count; j++) {
-                if (strcmp(s_clients[i].topics[j], topic) == 0) {
-                    (*client_ids)[index] = strdup(s_clients[i].id);
-                    if (!(*client_ids)[index]) {
-                        log_error("Failed to allocate memory for client ID");
-                        // Free already allocated client IDs
-                        for (int k = 0; k < index; k++) {
-                            free((*client_ids)[k]);
-                        }
-                        free(*client_ids);
-                        *client_ids = NULL;
-                        pthread_mutex_unlock(&s_mutex);
-                        return 0;
-                    }
-                    index++;
-                    break;
-                }
-            }
-        }
-    }
-    
-    pthread_mutex_unlock(&s_mutex);
-    return count;
-}
-
-/**
- * @brief Check if the WebSocket manager is initialized
- * 
- * @return bool true if initialized, false otherwise
- */
-bool websocket_manager_is_initialized(void) {
-    // Use the initialization mutex to ensure thread safety
-    pthread_mutex_lock(&s_init_mutex);
-    bool initialized = s_initialized;
-    pthread_mutex_unlock(&s_init_mutex);
-    return initialized;
-}
-
-/**
  * @brief Handle WebSocket connection close
  * 
  * @param c Mongoose connection
@@ -1166,56 +751,71 @@ void websocket_manager_handle_close(struct mg_connection *c) {
 }
 
 /**
- * @brief Register a WebSocket message handler
+ * @brief Check if the WebSocket manager is initialized
+ * 
+ * @return bool true if initialized, false otherwise
+ */
+bool websocket_manager_is_initialized(void) {
+    // Use the initialization mutex to ensure thread safety
+    pthread_mutex_lock(&s_init_mutex);
+    bool initialized = s_initialized;
+    pthread_mutex_unlock(&s_init_mutex);
+    return initialized;
+}
+
+// Compatibility functions that delegate to the new API
+
+/**
+ * @brief Send a WebSocket message to a client (compatibility function)
+ * 
+ * @param client_id Client ID
+ * @param message Message to send
+ * @return bool true on success, false on error
+ */
+bool websocket_manager_send_to_client(const char *client_id, const websocket_message_t *message) {
+    return websocket_message_send_to_client(client_id, message);
+}
+
+/**
+ * @brief Send a WebSocket message to all clients subscribed to a topic (compatibility function)
+ * 
+ * @param topic Topic to send to
+ * @param message Message to send
+ * @return int Number of clients the message was sent to
+ */
+int websocket_manager_broadcast(const char *topic, const websocket_message_t *message) {
+    return websocket_message_broadcast(topic, message);
+}
+
+/**
+ * @brief Check if a client is subscribed to a topic (compatibility function)
+ * 
+ * @param client_id Client ID
+ * @param topic Topic to check
+ * @return bool true if subscribed, false otherwise
+ */
+bool websocket_manager_is_subscribed(const char *client_id, const char *topic) {
+    return websocket_client_is_subscribed(client_id, topic);
+}
+
+/**
+ * @brief Get all clients subscribed to a topic (compatibility function)
+ * 
+ * @param topic Topic to check
+ * @param client_ids Pointer to array of client IDs (will be allocated)
+ * @return int Number of clients subscribed to the topic
+ */
+int websocket_manager_get_subscribed_clients(const char *topic, char ***client_ids) {
+    return websocket_client_get_subscribed(topic, client_ids);
+}
+
+/**
+ * @brief Register a WebSocket message handler (compatibility function)
  * 
  * @param topic Topic to handle
  * @param handler Handler function
  * @return int 0 on success, non-zero on error
  */
 int websocket_manager_register_handler(const char *topic, void (*handler)(const char *client_id, const char *message)) {
-    // Check if WebSocket manager is initialized
-    if (!websocket_manager_is_initialized()) {
-        log_error("WebSocket manager not initialized");
-        // Try to initialize it
-        if (websocket_manager_init() != 0) {
-            log_error("Failed to initialize WebSocket manager");
-            return -1;
-        }
-        log_info("WebSocket manager initialized on demand during handler registration");
-    }
-    
-    if (!topic || !handler) {
-        log_error("Invalid parameters for websocket_manager_register_handler");
-        return -1;
-    }
-    
-    pthread_mutex_lock(&s_mutex);
-    
-    // Check if handler already exists
-    int handler_index = find_handler_by_topic(topic);
-    if (handler_index >= 0) {
-        // Update handler
-        s_handlers[handler_index].handler = handler;
-        pthread_mutex_unlock(&s_mutex);
-        return 0;
-    }
-    
-    // Find a free handler slot
-    int slot = find_free_handler_slot();
-    if (slot < 0) {
-        log_error("No free handler slots");
-        pthread_mutex_unlock(&s_mutex);
-        return -1;
-    }
-    
-    // Register handler
-    strncpy(s_handlers[slot].topic, topic, sizeof(s_handlers[slot].topic) - 1);
-    s_handlers[slot].topic[sizeof(s_handlers[slot].topic) - 1] = '\0';
-    s_handlers[slot].handler = handler;
-    s_handlers[slot].active = true;
-    
-    log_info("Registered WebSocket handler for topic %s", topic);
-    
-    pthread_mutex_unlock(&s_mutex);
-    return 0;
+    return websocket_handler_register(topic, handler);
 }
