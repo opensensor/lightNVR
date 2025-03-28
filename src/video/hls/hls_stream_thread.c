@@ -11,6 +11,7 @@
 #include <stdbool.h>
 #include <sys/time.h>
 #include <stdatomic.h>
+#include <math.h>
 
 #include "core/logger.h"
 #include "core/config.h"
@@ -26,6 +27,11 @@
 #include "video/hls/hls_context.h"
 #include "video/hls/hls_stream_thread.h"
 #include "video/hls/hls_directory.h"
+
+// Define retry parameters
+#define INITIAL_RETRY_DELAY_SEC 1
+#define MAX_RETRY_DELAY_SEC 60
+// No limit on consecutive failures - keep retrying indefinitely
 
 /**
  * HLS streaming thread function for a single stream
@@ -132,25 +138,56 @@ void *hls_stream_thread(void *arg) {
         log_info("Registered HLS manager %s with shutdown coordinator (ID: %d)", stream_name, component_id);
     }
 
-    // Start the HLS writer thread
+    // Start the HLS writer thread with retry mechanism
     log_info("Starting HLS writer thread for stream %s", stream_name);
-    ret = hls_writer_start_recording_thread(ctx->hls_writer, config.url, stream_name, config.protocol);
-    if (ret != 0) {
-        log_error("Failed to start HLS writer thread for stream %s", stream_name);
-        
-        if (ctx->hls_writer) {
-            hls_writer_close(ctx->hls_writer);
-            ctx->hls_writer = NULL;
+    
+    int retry_delay = INITIAL_RETRY_DELAY_SEC;
+    int consecutive_failures = 0;
+    bool connected = false;
+    
+    // Keep trying to connect until successful or thread is stopped
+    while (atomic_load(&ctx->running) && !connected) {
+        ret = hls_writer_start_recording_thread(ctx->hls_writer, config.url, stream_name, config.protocol);
+        if (ret == 0) {
+            // Log success at ERROR level for visibility
+            log_error("Successfully started HLS writer thread for stream %s", stream_name);
+            connected = true;
+        } else {
+            consecutive_failures++;
+            // Log at ERROR level to ensure visibility regardless of log level setting
+            log_error("Failed to start HLS writer thread for stream %s (attempt %d), retrying in %d seconds", 
+                    stream_name, consecutive_failures, retry_delay);
+            
+            // Sleep for the retry delay
+            for (int i = 0; i < retry_delay && atomic_load(&ctx->running); i++) {
+                sleep(1);
+                
+                // Check if shutdown has been initiated during sleep
+                if (is_shutdown_initiated()) {
+                    log_info("HLS streaming thread for %s stopping due to system shutdown during retry", stream_name);
+                    atomic_store(&ctx->running, 0);
+                    
+                    if (ctx->hls_writer) {
+                        hls_writer_close(ctx->hls_writer);
+                        ctx->hls_writer = NULL;
+                    }
+                    
+                    if (component_id >= 0) {
+                        update_component_state(component_id, COMPONENT_STOPPED);
+                    }
+                    
+                    return NULL;
+                }
+            }
+            
+            // Implement exponential backoff with a maximum delay
+            retry_delay = fmin(retry_delay * 2, MAX_RETRY_DELAY_SEC);
         }
-        
-        atomic_store(&ctx->running, 0);
-        
-        if (component_id >= 0) {
-            update_component_state(component_id, COMPONENT_STOPPED);
-        }
-        
-        return NULL;
     }
+    
+    // Reset for reconnection attempts
+    retry_delay = INITIAL_RETRY_DELAY_SEC;
+    consecutive_failures = 0;
 
     // Main monitoring loop - just check if we should stop and monitor the writer thread
     while (atomic_load(&ctx->running)) {
@@ -174,17 +211,63 @@ void *hls_stream_thread(void *arg) {
             break;
         }
 
-        // Check if the writer thread is still running
+        // Check if the writer thread is still running and has a valid connection
         if (!hls_writer_is_recording(ctx->hls_writer)) {
-            log_warn("HLS writer thread for %s has stopped unexpectedly, restarting", stream_name);
+            // Log at ERROR level to ensure visibility regardless of log level setting
+            log_error("HLS writer thread for %s is not recording (stopped, invalid connection, or timed out), restarting", stream_name);
             
-            // Restart the writer thread
-            ret = hls_writer_start_recording_thread(ctx->hls_writer, config.url, stream_name, config.protocol);
-            if (ret != 0) {
-                log_error("Failed to restart HLS writer thread for stream %s", stream_name);
-                atomic_store(&ctx->running, 0);
-                break;
+            // Check if the thread context is NULL, which means the thread has exited
+            if (!ctx->hls_writer->thread_ctx) {
+                log_error("HLS writer thread for %s has exited, recreating thread context", stream_name);
+                
+                // The thread has exited, so we need to recreate it
+                // First, make sure the writer is still valid
+                if (!ctx->hls_writer) {
+                    log_error("HLS writer for %s is NULL, cannot restart", stream_name);
+                    atomic_store(&ctx->running, 0);
+                    break;
+                }
             }
+            
+            // Restart the writer thread with retry mechanism
+            bool reconnected = false;
+            consecutive_failures = 0;
+            retry_delay = INITIAL_RETRY_DELAY_SEC;
+            
+            while (atomic_load(&ctx->running) && !reconnected) {
+                ret = hls_writer_start_recording_thread(ctx->hls_writer, config.url, stream_name, config.protocol);
+                if (ret == 0) {
+                    // Log success at ERROR level for visibility
+                    log_error("Successfully restarted HLS writer thread for stream %s", stream_name);
+                    reconnected = true;
+                    consecutive_failures = 0;
+                    retry_delay = INITIAL_RETRY_DELAY_SEC;
+                } else {
+                    consecutive_failures++;
+                    // Log failure at ERROR level for visibility
+                    log_error("Failed to restart HLS writer thread for stream %s (attempt %d), retrying in %d seconds", 
+                            stream_name, consecutive_failures, retry_delay);
+                    
+                    // Sleep for the retry delay
+                    for (int i = 0; i < retry_delay && atomic_load(&ctx->running); i++) {
+                        sleep(1);
+                        
+                        // Check if shutdown has been initiated during sleep
+                        if (is_shutdown_initiated()) {
+                            log_info("HLS streaming thread for %s stopping due to system shutdown during reconnection", stream_name);
+                            atomic_store(&ctx->running, 0);
+                            break;
+                        }
+                    }
+                    
+                    // Implement exponential backoff with a maximum delay
+                    retry_delay = fmin(retry_delay * 2, MAX_RETRY_DELAY_SEC);
+                }
+            }
+        } else {
+            // Reset consecutive failures counter when the connection is stable
+            consecutive_failures = 0;
+            retry_delay = INITIAL_RETRY_DELAY_SEC;
         }
 
         // Sleep for a short time to avoid busy waiting

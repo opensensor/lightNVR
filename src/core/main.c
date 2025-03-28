@@ -68,6 +68,16 @@ static void signal_handler(int sig) {
     // Log the signal received
     log_info("Received signal %d, shutting down...", sig);
     
+    // Check if we're already shutting down
+    static bool shutdown_in_progress = false;
+    if (shutdown_in_progress) {
+        log_warn("Received another signal %d during shutdown, forcing immediate exit", sig);
+        _exit(EXIT_SUCCESS); // Force immediate exit
+    }
+    
+    // Mark that we're in the process of shutting down
+    shutdown_in_progress = true;
+    
     // Initiate shutdown sequence through the coordinator
     initiate_shutdown();
     
@@ -76,12 +86,37 @@ static void signal_handler(int sig) {
     
     // For Linux 4.4 embedded systems, we need a more robust approach
     // Set an alarm to force exit if normal shutdown doesn't work
-    alarm(15); // Force exit after 15 seconds if normal shutdown fails
+    alarm(10); // Reduced from 15 to 10 seconds for faster forced exit
 }
 
 // Alarm signal handler for forced exit
 static void alarm_handler(int sig) {
     log_warn("Shutdown timeout reached, forcing exit");
+    
+    // Attempt to force cleanup of critical resources before exit
+    log_info("Performing emergency cleanup of critical resources");
+    
+    // Force cleanup of detection resources
+    cleanup_detection_resources();
+    
+    // Force cleanup of websocket connections
+    if (web_server_socket >= 0) {
+        log_info("Closing web server socket %d", web_server_socket);
+        close(web_server_socket);
+        web_server_socket = -1;
+    }
+    
+    // Force all components to be marked as stopped
+    shutdown_coordinator_t *coordinator = get_shutdown_coordinator();
+    if (coordinator) {
+        pthread_mutex_lock(&coordinator->mutex);
+        for (int i = 0; i < atomic_load(&coordinator->component_count); i++) {
+            atomic_store(&coordinator->components[i].state, COMPONENT_STOPPED);
+        }
+        coordinator->all_components_stopped = true;
+        pthread_mutex_unlock(&coordinator->mutex);
+    }
+    
     _exit(EXIT_SUCCESS); // Use _exit instead of exit to avoid calling atexit handlers
 }
 
@@ -772,8 +807,8 @@ cleanup:
     
     if (cleanup_pid == 0) {
         // Child process - watchdog timer
-        sleep(60);  // Wait 60 seconds
-        log_error("Cleanup process timed out after 60 seconds, forcing exit");
+        sleep(30);  // Reduced from 60 to 30 seconds for faster timeout
+        log_error("Cleanup process timed out after 30 seconds, forcing exit");
         kill(getppid(), SIGKILL);  // Force kill the parent process
         exit(EXIT_FAILURE);
     } else if (cleanup_pid > 0) {

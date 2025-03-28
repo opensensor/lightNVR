@@ -286,61 +286,32 @@ void websocket_manager_shutdown(void) {
         }
     }
     
-    // Use a more robust approach to acquire the mutex with a shorter timeout
+    // First, make a copy of all active client connections to ensure we can close them
+    // even if we can't acquire the mutex
+    struct mg_connection *active_connections[MAX_CLIENTS] = {NULL};
+    char client_ids[MAX_CLIENTS][64] = {{0}};
+    int active_count = 0;
+    
+    // Try to acquire the mutex with a short timeout
     struct timespec timeout;
     clock_gettime(CLOCK_REALTIME, &timeout);
-    timeout.tv_sec += 2; // Reduced from 5 to 2 seconds for faster shutdown
+    timeout.tv_sec += 1; // Reduced to 1 second for faster shutdown
     
     int mutex_result = pthread_mutex_timedlock(&s_mutex, &timeout);
-    if (mutex_result != 0) {
-        log_warn("Could not acquire WebSocket mutex within timeout, proceeding with shutdown");
-        // Instead of forcing mutex reset, we'll proceed without the lock
-        // This is safer than potentially corrupting the mutex
-    } else {
+    if (mutex_result == 0) {
         // We successfully acquired the mutex
         
-        // Close all connections
-        int closed_count = 0;
+        // First, make a copy of all active connections
         for (int i = 0; i < MAX_CLIENTS; i++) {
-            if (s_clients[i].active) {
-                // Make a local copy of the connection pointer
-                struct mg_connection *conn = s_clients[i].conn;
+            if (s_clients[i].active && s_clients[i].conn != NULL) {
+                active_connections[active_count] = s_clients[i].conn;
+                strncpy(client_ids[active_count], s_clients[i].id, sizeof(client_ids[0]) - 1);
+                active_count++;
                 
-                // Safely handle connection closing
-                if (conn != NULL) {
-                    // Send a proper WebSocket close frame before marking for closing
-                    // Check if connection is still valid before sending
-                    if (conn->is_websocket && !conn->is_closing) {
-                        // Send close frame with normal closure code (1000)
-                        // Use a proper close frame with status code
-                        uint16_t close_code = 1000; // Normal closure
-                        char close_frame[2];
-                        close_frame[0] = (close_code >> 8) & 0xFF;
-                        close_frame[1] = close_code & 0xFF;
-                        mg_ws_send(conn, close_frame, 2, WEBSOCKET_OP_CLOSE);
-                        
-                        // Mark connection for closing
-                        conn->is_closing = 1;
-                        
-                        log_debug("Sent WebSocket close frame to client %s", s_clients[i].id);
-                    } else {
-                        log_debug("Connection for client %s is already closing or not a websocket", 
-                                 s_clients[i].id);
-                    }
-                }
-                
-                // Explicitly set active to false to prevent further operations on this client
+                // Mark as inactive to prevent further operations
                 s_clients[i].active = false;
-                
-                // Clear topic subscriptions
-                s_clients[i].topic_count = 0;
-                memset(s_clients[i].topics, 0, sizeof(s_clients[i].topics));
-                
-                closed_count++;
             }
         }
-        
-        log_info("Sent close frames to %d WebSocket connections", closed_count);
         
         // Clear handler state safely
         for (int i = 0; i < MAX_HANDLERS; i++) {
@@ -351,33 +322,79 @@ void websocket_manager_shutdown(void) {
             }
         }
         
+        // Clear all client data
+        for (int i = 0; i < MAX_CLIENTS; i++) {
+            s_clients[i].active = false;
+            s_clients[i].conn = NULL;
+            s_clients[i].topic_count = 0;
+            memset(s_clients[i].topics, 0, sizeof(s_clients[i].topics));
+        }
+        
         // Release the mutex
         pthread_mutex_unlock(&s_mutex);
-    }
-    
-    // Add a delay to ensure close frames are sent before clearing connection pointers
-    // This helps prevent memory corruption during shutdown
-    usleep(250000); // 250ms - reduced from 500ms for faster shutdown
-    
-    // Now clear the connection pointers after giving time for close frames to be sent
-    // Try to acquire the mutex again, but don't force it
-    if (pthread_mutex_trylock(&s_mutex) == 0) {
-        for (int i = 0; i < MAX_CLIENTS; i++) {
-            // Clear connection pointers
-            s_clients[i].conn = NULL;
-        }
-        pthread_mutex_unlock(&s_mutex);
     } else {
-        log_warn("Could not acquire WebSocket mutex to clear connection pointers, proceeding anyway");
-        // Even without the lock, we should clear the pointers to prevent use-after-free
-        // This is a calculated risk during shutdown
+        log_warn("Could not acquire WebSocket mutex within timeout, proceeding with shutdown");
+        
+        // Even without the mutex, try to find active connections by scanning the client array
+        // This is a best-effort approach when the mutex is unavailable
         for (int i = 0; i < MAX_CLIENTS; i++) {
-            s_clients[i].conn = NULL;
+            if (s_clients[i].conn != NULL) {
+                active_connections[active_count] = s_clients[i].conn;
+                strncpy(client_ids[active_count], s_clients[i].id, sizeof(client_ids[0]) - 1);
+                active_count++;
+                
+                // Mark as inactive to prevent further operations
+                s_clients[i].active = false;
+                s_clients[i].conn = NULL;
+            }
         }
     }
     
-    // Wait a bit longer to ensure all operations on the mutex have completed
-    usleep(50000); // 50ms - reduced from 100ms for faster shutdown
+    // Now close all the connections we found
+    log_info("Closing %d active WebSocket connections", active_count);
+    int closed_count = 0;
+    
+    for (int i = 0; i < active_count; i++) {
+        struct mg_connection *conn = active_connections[i];
+        if (conn != NULL) {
+            // Send a proper WebSocket close frame before marking for closing
+            if (conn->is_websocket && !conn->is_closing) {
+                // Send close frame with normal closure code (1000)
+                uint16_t close_code = 1000; // Normal closure
+                char close_frame[2];
+                close_frame[0] = (close_code >> 8) & 0xFF;
+                close_frame[1] = close_code & 0xFF;
+                mg_ws_send(conn, close_frame, 2, WEBSOCKET_OP_CLOSE);
+                
+                // Mark connection for closing
+                conn->is_closing = 1;
+                
+                // Explicitly close the socket to ensure it's released
+                if (conn->fd != NULL) {
+                    int socket_fd = (int)(size_t)conn->fd;
+                    log_debug("Closing WebSocket socket: %d for client %s", socket_fd, client_ids[i]);
+                    
+                    // Set SO_LINGER to force immediate socket closure
+                    struct linger so_linger;
+                    so_linger.l_onoff = 1;
+                    so_linger.l_linger = 0;
+                    setsockopt(socket_fd, SOL_SOCKET, SO_LINGER, &so_linger, sizeof(so_linger));
+                    
+                    // Set socket to non-blocking mode to avoid hang on close
+                    int flags = fcntl(socket_fd, F_GETFL, 0);
+                    fcntl(socket_fd, F_SETFL, flags | O_NONBLOCK);
+                    
+                    // Now close the socket
+                    close(socket_fd);
+                    conn->fd = NULL;  // Mark as closed
+                }
+                
+                closed_count++;
+            }
+        }
+    }
+    
+    log_info("Closed %d WebSocket connections", closed_count);
     
     // Update shutdown coordinator if we registered
     if (coordinator != NULL && websocket_component_id >= 0) {

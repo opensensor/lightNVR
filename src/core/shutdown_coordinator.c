@@ -205,21 +205,40 @@ bool wait_for_all_components_stopped(int timeout_seconds) {
     
     bool all_stopped = g_coordinator.all_components_stopped;
     
+    // If we timed out, force all components to be marked as stopped
+    if (result != 0 || !all_stopped) {
+        log_warn("Timeout waiting for all components to stop, forcing all components to stopped state");
+        
+        // Force all components to be marked as stopped
+        for (int i = 0; i < atomic_load(&g_coordinator.component_count); i++) {
+            component_state_t state = atomic_load(&g_coordinator.components[i].state);
+            if (state != COMPONENT_STOPPED) {
+                log_warn("Forcing component %s (ID: %d) from state %d to STOPPED", 
+                         g_coordinator.components[i].name, i, state);
+                atomic_store(&g_coordinator.components[i].state, COMPONENT_STOPPED);
+            }
+        }
+        
+        // Mark all components as stopped
+        g_coordinator.all_components_stopped = true;
+        all_stopped = true;
+    }
+    
     pthread_mutex_unlock(&g_coordinator.mutex);
     
-    if (result == 0 && all_stopped) {
-        log_info("All components stopped successfully");
+    if (all_stopped) {
+        log_info("All components are now in stopped state");
         return true;
     } else {
-        // Timeout or error
-        log_warn("Timeout waiting for all components to stop");
+        // This should never happen now, but keep as a fallback
+        log_error("Failed to mark all components as stopped, this is unexpected");
         
         // Log which components are still not stopped
         pthread_mutex_lock(&g_coordinator.mutex);
         for (int i = 0; i < atomic_load(&g_coordinator.component_count); i++) {
             component_state_t state = atomic_load(&g_coordinator.components[i].state);
             if (state != COMPONENT_STOPPED) {
-                log_warn("Component %s (ID: %d) is still in state %d", 
+                log_error("Component %s (ID: %d) is still in state %d", 
                          g_coordinator.components[i].name, i, state);
             }
         }

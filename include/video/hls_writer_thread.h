@@ -23,6 +23,15 @@ struct hls_writer_thread_ctx {
     atomic_int running;
     int shutdown_component_id;
     int protocol; // STREAM_PROTOCOL_TCP or STREAM_PROTOCOL_UDP
+    
+    // Track the last successful packet processing time
+    atomic_int_fast64_t last_packet_time;
+    
+    // Track if the connection is valid
+    atomic_int connection_valid;
+    
+    // Track consecutive reconnection failures
+    atomic_int consecutive_failures;
 };
 
 /**

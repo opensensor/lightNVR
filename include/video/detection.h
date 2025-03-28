@@ -2,6 +2,7 @@
 #define DETECTION_H
 
 #include <stdbool.h>
+#include <time.h>
 #include "video/detection_result.h"
 
 // Opaque handle for detection models
@@ -50,6 +51,13 @@ detection_model_t load_detection_model(const char *model_path, float threshold);
  * @param model Detection model handle
  */
 void unload_detection_model(detection_model_t model);
+
+/**
+ * Clean up old models in the global cache
+ * 
+ * @param max_age Maximum age in seconds for a model to be considered active
+ */
+void cleanup_old_detection_models(time_t max_age);
 
 /**
  * Run detection on a frame

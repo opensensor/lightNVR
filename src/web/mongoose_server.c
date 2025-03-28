@@ -536,6 +536,14 @@ int http_server_start(http_server_handle_t server) {
         int socket_fd = (int)(size_t)c->fd;
         set_web_server_socket(socket_fd);
         log_debug("Stored web server socket: %d", socket_fd);
+        
+        // Set SO_REUSEADDR to allow immediate reuse of the port after shutdown
+        int reuse = 1;
+        if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) != 0) {
+            log_warn("Failed to set SO_REUSEADDR on listening socket: %s", strerror(errno));
+        } else {
+            log_info("Set SO_REUSEADDR on listening socket to allow immediate port reuse");
+        }
     }
 
     // Configure SSL if enabled
@@ -584,58 +592,106 @@ void http_server_stop(http_server_handle_t server) {
     websocket_manager_shutdown();
     
     // Give WebSocket connections time to send close frames
-    usleep(500000); // 500ms - increased from 250ms
+    usleep(250000); // Reduced to 250ms for faster shutdown
+
+    // Store the listening socket FD before closing connections
+    int listening_socket_fd = -1;
+    for (struct mg_connection *c = server->mgr->conns; c != NULL; c = c->next) {
+        if (c->is_listening && c->fd != NULL) {
+            listening_socket_fd = (int)(size_t)c->fd;
+            log_info("Found listening socket: %d", listening_socket_fd);
+            break;
+        }
+    }
 
     // Now signal all remaining connections to close
     int connection_count = 0;
     for (struct mg_connection *c = server->mgr->conns; c != NULL; c = c->next) {
         connection_count++;
         
-        //  Check if connection is already closing
-        if (!c->is_closing) {
-            c->is_closing = 1;
+        // Mark all connections for closing
+        c->is_closing = 1;
+        
+        // Send proper close frame for WebSocket connections
+        if (c->is_websocket) {
+            mg_ws_send(c, "", 0, WEBSOCKET_OP_CLOSE);
+            log_debug("Sent WebSocket close frame to connection");
+        }
+        
+        // Close the socket explicitly to ensure it's released
+        if (c->fd != NULL && !c->is_listening) { // Don't close listening socket yet
+            int socket_fd = (int)(size_t)c->fd;
+            log_debug("Closing socket: %d", socket_fd);
             
-            //  Send proper close frame for WebSocket connections
-            if (c->is_websocket) {
-                mg_ws_send(c, "", 0, WEBSOCKET_OP_CLOSE);
-                log_debug("Sent WebSocket close frame to connection");
-            }
+            // Set SO_LINGER to force immediate socket closure
+            struct linger so_linger;
+            so_linger.l_onoff = 1;
+            so_linger.l_linger = 0;
+            setsockopt(socket_fd, SOL_SOCKET, SO_LINGER, &so_linger, sizeof(so_linger));
             
-            // Close the socket explicitly to ensure it's released
-            if (c->fd != NULL) {
-                int socket_fd = (int)(size_t)c->fd;
-                log_debug("Closing socket: %d", socket_fd);
-                
-                //  Set SO_LINGER to force immediate socket closure
-                struct linger so_linger;
-                so_linger.l_onoff = 1;
-                so_linger.l_linger = 0;
-                setsockopt(socket_fd, SOL_SOCKET, SO_LINGER, &so_linger, sizeof(so_linger));
-                
-                //  Set socket to non-blocking mode to avoid hang on close
-                int flags = fcntl(socket_fd, F_GETFL, 0);
-                fcntl(socket_fd, F_SETFL, flags | O_NONBLOCK);
-                
-                // Now close the socket
-                close(socket_fd);
-                c->fd = NULL;  // Mark as closed
-            }
-        } else {
-            log_debug("Connection already marked for closing");
+            // Set socket to non-blocking mode to avoid hang on close
+            int flags = fcntl(socket_fd, F_GETFL, 0);
+            fcntl(socket_fd, F_SETFL, flags | O_NONBLOCK);
+            
+            // Now close the socket
+            close(socket_fd);
+            c->fd = NULL;  // Mark as closed
         }
     }
     
     log_info("Marked %d remaining connections for closing", connection_count);
 
-    // Give connections time to close gracefully
-    // Use a longer timeout to ensure all connections are closed
-    sleep(3); // Increased from 2 to 3 seconds
+    // Give connections time to close gracefully - reduced for faster shutdown
+    sleep(1); // Reduced from 3 to 1 second
 
     // Free Mongoose event manager
     mg_mgr_free(server->mgr);
 
     // Reset the web server socket
     set_web_server_socket(-1);
+
+    // Now explicitly close the listening socket if we found it
+    if (listening_socket_fd >= 0) {
+        log_info("Explicitly closing listening socket: %d", listening_socket_fd);
+        
+        // Force immediate closure with SO_LINGER
+        struct linger so_linger;
+        so_linger.l_onoff = 1;
+        so_linger.l_linger = 0;
+        setsockopt(listening_socket_fd, SOL_SOCKET, SO_LINGER, &so_linger, sizeof(so_linger));
+        
+        // Also set SO_REUSEADDR to allow immediate reuse of the port
+        int reuse = 1;
+        setsockopt(listening_socket_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+        
+        // Close the socket
+        close(listening_socket_fd);
+        
+        // Double-check that the port is released by trying to bind to it
+        int test_socket = socket(AF_INET, SOCK_STREAM, 0);
+        if (test_socket >= 0) {
+            struct sockaddr_in addr;
+            memset(&addr, 0, sizeof(addr));
+            addr.sin_family = AF_INET;
+            addr.sin_addr.s_addr = htonl(INADDR_ANY);
+            addr.sin_port = htons(server->config.port);
+            
+            // Set SO_REUSEADDR on test socket
+            int reuse = 1;
+            setsockopt(test_socket, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+            
+            if (bind(test_socket, (struct sockaddr*)&addr, sizeof(addr)) == 0) {
+                log_info("Successfully verified port %d is released", server->config.port);
+                close(test_socket);
+            } else {
+                log_warn("Port %d still in use after closing listening socket: %s", 
+                        server->config.port, strerror(errno));
+                close(test_socket);
+            }
+        }
+    } else {
+        log_warn("Could not find listening socket to close explicitly");
+    }
 
     log_info("HTTP server stopped");
 }

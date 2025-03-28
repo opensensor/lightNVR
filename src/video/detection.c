@@ -93,6 +93,16 @@ typedef struct {
     };
 } model_t;
 
+// Global model cache to share across all detection functions
+static struct {
+    char path[MAX_PATH_LENGTH];
+    detection_model_t model;
+    time_t last_used;
+    bool is_large_model;
+} global_model_cache[MAX_STREAMS] = {{{0}}};
+static pthread_mutex_t global_model_cache_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+
 // Global variables
 static bool initialized = false;
 
@@ -173,6 +183,17 @@ int init_detection_system(void) {
     return 0;
 }
 
+// Forward declaration of internal function
+static void cleanup_old_models_internal(time_t max_age);
+
+/**
+ * Clean up old models in the global cache
+ * @param max_age Maximum age in seconds for a model to be considered active
+ */
+void cleanup_old_detection_models(time_t max_age) {
+    cleanup_old_models_internal(max_age);
+}
+
 /**
  * Shutdown the detection system
  */
@@ -180,6 +201,19 @@ void shutdown_detection_system(void) {
     if (!initialized) {
         return;
     }
+
+    // Clean up all models in the global cache
+    pthread_mutex_lock(&global_model_cache_mutex);
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (global_model_cache[i].path[0] != '\0' && global_model_cache[i].model) {
+            log_info("Unloading model from global cache during shutdown: %s", global_model_cache[i].path);
+            unload_detection_model(global_model_cache[i].model);
+            global_model_cache[i].path[0] = '\0';
+            global_model_cache[i].model = NULL;
+            global_model_cache[i].is_large_model = false;
+        }
+    }
+    pthread_mutex_unlock(&global_model_cache_mutex);
 
     // Close dynamically loaded SOD library if needed
     #ifndef SOD_ENABLED
@@ -462,14 +496,34 @@ static detection_model_t load_tflite_model(const char *model_path, float thresho
 static int large_models_loaded = 0;
 static pthread_mutex_t large_models_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-// Global model cache to share across all detection functions
-static struct {
-    char path[MAX_PATH_LENGTH];
-    detection_model_t model;
-    time_t last_used;
-    bool is_large_model;
-} global_model_cache[MAX_STREAMS] = {{{0}}};
-static pthread_mutex_t global_model_cache_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+/**
+ * Internal function to clean up old models in the global cache
+ * @param max_age Maximum age in seconds for a model to be considered active
+ */
+static void cleanup_old_models_internal(time_t max_age) {
+    time_t current_time = time(NULL);
+    
+    pthread_mutex_lock(&global_model_cache_mutex);
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (global_model_cache[i].path[0] != '\0') {
+            // Check if model hasn't been used for a while
+            if (current_time - global_model_cache[i].last_used > max_age) {
+                log_info("Cleaning up unused model from global cache: %s (unused for %ld seconds)",
+                         global_model_cache[i].path, current_time - global_model_cache[i].last_used);
+                
+                // Unload the model
+                unload_detection_model(global_model_cache[i].model);
+                
+                // Clear the cache entry
+                global_model_cache[i].path[0] = '\0';
+                global_model_cache[i].model = NULL;
+                global_model_cache[i].is_large_model = false;
+            }
+        }
+    }
+    pthread_mutex_unlock(&global_model_cache_mutex);
+}
 
 /**
  * Load a detection model

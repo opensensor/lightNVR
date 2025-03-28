@@ -20,6 +20,12 @@
 #include "video/streams.h"
 #include "video/thread_utils.h"
 
+// Maximum number of consecutive reconnection failures before giving up
+#define MAX_RECONNECTION_FAILURES 20
+
+// Maximum time (in seconds) without receiving a packet before considering the connection dead
+#define MAX_PACKET_TIMEOUT 30
+
 /**
  * HLS writer thread function
  */
@@ -60,16 +66,26 @@ static void *hls_writer_thread_func(void *arg) {
     ret = open_input_stream(&input_ctx, ctx->rtsp_url, ctx->protocol);
     if (ret < 0) {
         log_error("Could not open input stream for %s", stream_name);
-        atomic_store(&ctx->running, 0);
+        // Don't set running to 0, just mark connection as invalid and increment failures
+        // This allows the hls_stream_thread to retry
+        atomic_store(&ctx->connection_valid, 0);
+        atomic_store(&ctx->consecutive_failures, atomic_load(&ctx->consecutive_failures) + 1);
         return NULL;
     }
+    
+    // Connection is now valid
+    atomic_store(&ctx->connection_valid, 1);
+    atomic_store(&ctx->consecutive_failures, 0);
     
     // Find video stream
     video_stream_idx = find_video_stream_index(input_ctx);
     if (video_stream_idx == -1) {
         log_error("No video stream found in %s", ctx->rtsp_url);
         avformat_close_input(&input_ctx);
-        atomic_store(&ctx->running, 0);
+        // Don't set running to 0, just mark connection as invalid and increment failures
+        // This allows the hls_stream_thread to retry
+        atomic_store(&ctx->connection_valid, 0);
+        atomic_store(&ctx->consecutive_failures, atomic_load(&ctx->consecutive_failures) + 1);
         return NULL;
     }
     
@@ -79,6 +95,7 @@ static void *hls_writer_thread_func(void *arg) {
         log_error("Failed to allocate packet");
         avformat_close_input(&input_ctx);
         atomic_store(&ctx->running, 0);
+        atomic_store(&ctx->connection_valid, 0);
         return NULL;
     }
     
@@ -90,12 +107,16 @@ static void *hls_writer_thread_func(void *arg) {
         log_info("Registered HLS writer thread %s with shutdown coordinator (ID: %d)", stream_name, ctx->shutdown_component_id);
     }
     
+    // Update last packet time
+    atomic_store(&ctx->last_packet_time, (int_fast64_t)time(NULL));
+    
     // Main packet reading loop
     while (atomic_load(&ctx->running)) {
         // Check if shutdown has been initiated
         if (is_shutdown_initiated()) {
             log_info("HLS writer thread for %s stopping due to system shutdown", stream_name);
             atomic_store(&ctx->running, 0);
+            atomic_store(&ctx->connection_valid, 0);
             break;
         }
         
@@ -103,12 +124,14 @@ static void *hls_writer_thread_func(void *arg) {
         if (is_stream_state_stopping(state)) {
             log_info("HLS writer thread for %s stopping due to stream state STOPPING", stream_name);
             atomic_store(&ctx->running, 0);
+            atomic_store(&ctx->connection_valid, 0);
             break;
         }
         
         // Check if we should exit before potentially blocking on av_read_frame
         if (!atomic_load(&ctx->running)) {
             log_info("HLS writer thread for %s detected shutdown before read", stream_name);
+            atomic_store(&ctx->connection_valid, 0);
             break;
         }
         
@@ -116,13 +139,44 @@ static void *hls_writer_thread_func(void *arg) {
         ret = av_read_frame(input_ctx, pkt);
         
         if (ret < 0) {
-            if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN)) {
-                // End of stream or resource temporarily unavailable
+            if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN) || ret == AVERROR(ETIMEDOUT) || 
+                ret == AVERROR(EIO) || ret == AVERROR(ECONNRESET) || ret == AVERROR(ECONNREFUSED)) {
+                // End of stream, resource temporarily unavailable, timeout, I/O error, or connection reset
                 // Try to reconnect after a short delay
                 av_packet_unref(pkt);
-                log_warn("Stream %s disconnected, attempting to reconnect...", stream_name);
                 
-                av_usleep(1000000);  // 1 second delay for more reliable reconnection
+                // Mark connection as invalid
+                atomic_store(&ctx->connection_valid, 0);
+                
+                // Increment consecutive failures
+                int failures = atomic_fetch_add(&ctx->consecutive_failures, 1) + 1;
+                
+                // Log at ERROR level to ensure visibility regardless of log level setting
+                log_error("Stream %s disconnected (error code: %d), attempting to reconnect (failures: %d)...", 
+                         stream_name, ret, failures);
+                
+                // Check if we've exceeded the maximum number of consecutive failures
+                if (failures > MAX_RECONNECTION_FAILURES) {
+                    log_error("Exceeded maximum number of consecutive reconnection failures (%d) for stream %s, giving up", 
+                             MAX_RECONNECTION_FAILURES, stream_name);
+                    atomic_store(&ctx->running, 0);
+                    break;
+                }
+                
+                // Implement exponential backoff for reconnection attempts
+                static int reconnect_delay_ms = 1000; // Start with 1 second
+                
+                // Log the reconnection attempt at ERROR level
+                log_error("Reconnection attempt %d for stream %s, waiting %d ms", 
+                         failures, stream_name, reconnect_delay_ms);
+                
+                av_usleep(reconnect_delay_ms * 1000);  // Convert ms to microseconds
+                
+                // Increase delay for next attempt (exponential backoff with max of 60 seconds)
+                reconnect_delay_ms = reconnect_delay_ms * 2;
+                if (reconnect_delay_ms > 60000) {
+                    reconnect_delay_ms = 60000;
+                }
                 
                 // Close and reopen input
                 avformat_close_input(&input_ctx);
@@ -130,23 +184,77 @@ static void *hls_writer_thread_func(void *arg) {
                 // Use the stream_protocol.h function to reopen the input stream
                 ret = open_input_stream(&input_ctx, ctx->rtsp_url, ctx->protocol);
                 if (ret < 0) {
-                    log_error("Could not reconnect to input stream for %s", stream_name);
+                    log_error("Could not reconnect to input stream for %s (attempt %d), will retry", 
+                             stream_name, failures);
                     continue;  // Keep trying
                 }
                 
                 // Find video stream again
                 video_stream_idx = find_video_stream_index(input_ctx);
                 if (video_stream_idx == -1) {
-                    log_error("No video stream found after reconnect for %s", stream_name);
+                    log_error("No video stream found after reconnect for %s (attempt %d), will retry", 
+                             stream_name, failures);
                     continue;  // Keep trying
                 }
+                
+                // Reset reconnection parameters on successful reconnection
+                log_error("Successfully reconnected to stream %s after %d attempts", 
+                         stream_name, failures);
+                atomic_store(&ctx->consecutive_failures, 0);
+                atomic_store(&ctx->connection_valid, 1);
+                atomic_store(&ctx->last_packet_time, (int_fast64_t)time(NULL));
+                reconnect_delay_ms = 1000;
                 
                 continue;
             } else {
                 char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
                 av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-                log_error("Error reading frame: %s", error_buf);
-                break;
+                log_error("Error reading frame: %s (error code: %d)", error_buf, ret);
+                
+                // Mark connection as invalid
+                atomic_store(&ctx->connection_valid, 0);
+                
+                // Increment consecutive failures
+                int failures = atomic_fetch_add(&ctx->consecutive_failures, 1) + 1;
+                
+                // Check if we've exceeded the maximum number of consecutive failures
+                if (failures > MAX_RECONNECTION_FAILURES) {
+                    log_error("Exceeded maximum number of consecutive reconnection failures (%d) for stream %s, giving up", 
+                             MAX_RECONNECTION_FAILURES, stream_name);
+                    atomic_store(&ctx->running, 0);
+                    break;
+                }
+                
+                // Don't break on other errors, try to reconnect instead
+                av_packet_unref(pkt);
+                log_error("Unexpected error for stream %s (failures: %d), attempting to reconnect...", 
+                         stream_name, failures);
+                
+                av_usleep(1000000);  // 1 second delay
+                
+                // Close and reopen input
+                avformat_close_input(&input_ctx);
+                
+                // Use the stream_protocol.h function to reopen the input stream
+                ret = open_input_stream(&input_ctx, ctx->rtsp_url, ctx->protocol);
+                if (ret < 0) {
+                    log_error("Could not reconnect to input stream for %s after unexpected error", stream_name);
+                    continue;  // Keep trying
+                }
+                
+                // Find video stream again
+                video_stream_idx = find_video_stream_index(input_ctx);
+                if (video_stream_idx == -1) {
+                    log_error("No video stream found after reconnect for %s after unexpected error", stream_name);
+                    continue;  // Keep trying
+                }
+                
+                // Reset consecutive failures on successful reconnection
+                atomic_store(&ctx->consecutive_failures, 0);
+                atomic_store(&ctx->connection_valid, 1);
+                atomic_store(&ctx->last_packet_time, (int_fast64_t)time(NULL));
+                
+                continue;
             }
         }
         
@@ -197,6 +305,11 @@ static void *hls_writer_thread_func(void *arg) {
                 char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
                 av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
                 log_warn("Error writing packet to HLS for stream %s: %s", stream_name, error_buf);
+            } else {
+                // Successfully processed a packet, update the last packet time and reset consecutive failures
+                atomic_store(&ctx->last_packet_time, (int_fast64_t)time(NULL));
+                atomic_store(&ctx->consecutive_failures, 0);
+                atomic_store(&ctx->connection_valid, 1);
             }
             
             // Unlock the writer mutex
@@ -237,6 +350,9 @@ static void *hls_writer_thread_func(void *arg) {
         avformat_close_input(&ctx_to_close);
         // No need to set ctx_to_close to NULL as avformat_close_input already does this
     }
+    
+    // Mark connection as invalid
+    atomic_store(&ctx->connection_valid, 0);
     
     // Update component state in shutdown coordinator
     if (ctx->shutdown_component_id >= 0) {
@@ -288,6 +404,11 @@ int hls_writer_start_recording_thread(hls_writer_t *writer, const char *rtsp_url
     atomic_store(&ctx->running, 1);
     ctx->shutdown_component_id = -1;
     
+    // Initialize new fields
+    atomic_store(&ctx->last_packet_time, (int_fast64_t)time(NULL));
+    atomic_store(&ctx->connection_valid, 0); // Start with connection invalid
+    atomic_store(&ctx->consecutive_failures, 0);
+    
     // Store thread context in writer
     writer->thread_ctx = ctx;
     
@@ -330,6 +451,7 @@ void hls_writer_stop_recording_thread(hls_writer_t *writer) {
     
     // Signal thread to stop
     atomic_store(&ctx->running, 0);
+    atomic_store(&ctx->connection_valid, 0);
     
     // Join thread with timeout
     int join_result = pthread_join_with_timeout(ctx->thread, NULL, 5);
@@ -356,7 +478,7 @@ void hls_writer_stop_recording_thread(hls_writer_t *writer) {
 }
 
 /**
- * Check if the recording thread is running
+ * Check if the recording thread is running and has a valid connection
  */
 int hls_writer_is_recording(hls_writer_t *writer) {
     if (!writer) {
@@ -368,5 +490,25 @@ int hls_writer_is_recording(hls_writer_t *writer) {
     }
     
     hls_writer_thread_ctx_t *ctx = (hls_writer_thread_ctx_t *)writer->thread_ctx;
-    return atomic_load(&ctx->running);
+    
+    // Check if the thread is running
+    if (!atomic_load(&ctx->running)) {
+        return 0;
+    }
+    
+    // Check if the connection is valid
+    if (!atomic_load(&ctx->connection_valid)) {
+        return 0;
+    }
+    
+    // Check if we've received a packet recently
+    time_t now = time(NULL);
+    time_t last_packet_time = (time_t)atomic_load(&ctx->last_packet_time);
+    if (now - last_packet_time > MAX_PACKET_TIMEOUT) {
+        log_error("HLS writer thread for %s has not received a packet in %ld seconds, considering it dead",
+                 ctx->stream_name, now - last_packet_time);
+        return 0;
+    }
+    
+    return 1;
 }

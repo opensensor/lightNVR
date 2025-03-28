@@ -167,6 +167,14 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
         }
     }
     
+    // Periodically clean up old models (every 5 minutes)
+    static time_t last_cleanup_time = 0;
+    if (current_time - last_cleanup_time > 300) { // 300 seconds = 5 minutes
+        log_info("Performing periodic cleanup of unused detection models");
+        cleanup_old_detection_models(600); // Clean up models unused for 10 minutes
+        last_cleanup_time = current_time;
+    }
+    
     // We're going to process this frame, update the last detection time
     last_detection_times[stream_idx] = current_time;
     
@@ -817,16 +825,28 @@ cleanup:
  * Cleanup detection resources when shutting down
  */
 void cleanup_detection_resources(void) {
+    log_info("Starting detection resources cleanup...");
+    
     // Free active detection streams array
     if (active_detection_streams) {
         free(active_detection_streams);
         active_detection_streams = NULL;
+        active_detections = 0;
     }
     
     // Cleanup buffer pool
     cleanup_buffer_pool();
     
-    log_info("Detection resources cleaned up");
+    // Ensure all detection models are unloaded
+    shutdown_detection_system();
+    
+    // Ensure motion detection is cleaned up
+    shutdown_motion_detection_system();
+    
+    // Explicitly call memory cleanup for any remaining buffers
+    emergency_buffer_pool_cleanup();
+    
+    log_info("Detection resources cleaned up successfully");
 }
 
 /**
