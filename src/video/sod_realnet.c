@@ -271,6 +271,7 @@ int detect_with_sod_realnet(void *model, const unsigned char *frame_data,
     if (rc != 0) { // SOD_OK is 0
         log_error("SOD RealNet detection failed: %d", rc);
         free(blob);
+        blob = NULL;  // Set to NULL after freeing to prevent use-after-free
         return -1;
     }
     
@@ -328,6 +329,7 @@ int detect_with_sod_realnet(void *model, const unsigned char *frame_data,
     
     // Free the blob
     free(blob);
+    blob = NULL;  // Set to NULL after freeing to prevent use-after-free
     
     return 0;
 }

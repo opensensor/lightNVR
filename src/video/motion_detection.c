@@ -132,6 +132,7 @@ void free_motion_stream(motion_stream_t* stream) {
         for (int j = 0; j < stream->history_size; j++) {
             if (stream->frame_history[j].frame) {
                 free(stream->frame_history[j].frame);
+                stream->frame_history[j].frame = NULL;  // Set to NULL after freeing to prevent double-free
             }
         }
         free(stream->frame_history);
@@ -349,6 +350,7 @@ int configure_advanced_motion_detection(const char *stream_name, int blur_radius
         for (int i = 0; i < old_history_size; i++) {
             if (stream->frame_history[i].frame) {
                 free(stream->frame_history[i].frame);
+                stream->frame_history[i].frame = NULL;  // Set to NULL after freeing to prevent double-free
             }
         }
         free(stream->frame_history);
@@ -449,6 +451,7 @@ int set_motion_detection_enabled(const char *stream_name, bool enabled) {
             for (int i = 0; i < stream->history_size; i++) {
                 if (stream->frame_history[i].frame) {
                     free(stream->frame_history[i].frame);
+                    stream->frame_history[i].frame = NULL;  // Set to NULL after freeing to prevent double-free
                 }
             }
             free(stream->frame_history);
@@ -692,6 +695,7 @@ static void apply_box_blur(unsigned char *src, unsigned char *dst, int width, in
     }
     
     free(temp);
+    temp = NULL;  // Set to NULL after freeing to prevent use-after-free
     #else
     // Original implementation for non-embedded devices
     for (int y = 0; y < height; y++) {

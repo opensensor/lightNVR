@@ -535,7 +535,7 @@ void websocket_manager_handle_message(struct mg_connection *c, const char *data,
     cJSON *json = cJSON_Parse(message);
     if (!json) {
         log_error("Failed to parse WebSocket message as JSON");
-        free(message);
+        free(message);  // Free message buffer on error path
         return;
     }
     
@@ -548,7 +548,7 @@ void websocket_manager_handle_message(struct mg_connection *c, const char *data,
         !topic_json || !cJSON_IsString(topic_json)) {
         log_error("Invalid WebSocket message format - missing type or topic");
         cJSON_Delete(json);
-        free(message);
+        free(message);  // Free message buffer on error path
         return;
     }
     
@@ -560,7 +560,7 @@ void websocket_manager_handle_message(struct mg_connection *c, const char *data,
     } else if (!cJSON_IsObject(payload_json)) {
         log_error("Invalid payload format - not an object");
         cJSON_Delete(json);
-        free(message);
+        free(message);  // Free message buffer on error path
         return;
     }
     
@@ -572,7 +572,7 @@ void websocket_manager_handle_message(struct mg_connection *c, const char *data,
     if (!payload) {
         log_error("Failed to convert payload to string");
         cJSON_Delete(json);
-        free(message);
+        free(message);  // Fix: Free message buffer on error path
         return;
     }
     
@@ -614,6 +614,10 @@ void websocket_manager_handle_message(struct mg_connection *c, const char *data,
         if (s_clients[client_index].topic_count >= MAX_TOPICS) {
             log_error("Client %s has too many subscriptions", client_id);
             pthread_mutex_unlock(&s_mutex);
+            free(payload);  // Free payload on error path
+            cJSON_Delete(json);
+            free(message);
+            return;  // Return to prevent memory leak
         } else {
             // Check if already subscribed
             bool already_subscribed = false;
@@ -669,6 +673,7 @@ void websocket_manager_handle_message(struct mg_connection *c, const char *data,
             return;
         }
         
+        bool found = false;
         for (int i = 0; i < s_clients[client_index].topic_count; i++) {
             if (strcmp(s_clients[client_index].topics[i], topic) == 0) {
                 // Remove subscription by shifting remaining topics
@@ -690,10 +695,14 @@ void websocket_manager_handle_message(struct mg_connection *c, const char *data,
                     websocket_message_free(ack);
                 }
                 
+                found = true;
                 break;
             }
         }
-        pthread_mutex_unlock(&s_mutex);
+        
+        if (!found) {
+            pthread_mutex_unlock(&s_mutex);
+        }
     } else {
         // Handle message with registered handler
         int handler_index = find_handler_by_topic(topic);

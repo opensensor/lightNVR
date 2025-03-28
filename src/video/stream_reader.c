@@ -453,6 +453,7 @@ static void *stream_reader_thread(void *arg) {
                 continue;
             } else {
                 log_ffmpeg_error(ret, "Error reading frame");
+                pthread_mutex_unlock(&packet_mutex);
                 break;
             }
         }
@@ -478,6 +479,8 @@ static void *stream_reader_thread(void *arg) {
             // This prevents use-after-free issues during shutdown
             if (!ctx->running || !ctx->packet_callback) {
                 // Skip processing if we're shutting down or callback was cleared
+                av_packet_unref(pkt);
+                pthread_mutex_unlock(&packet_mutex);
                 continue;
             }
             
@@ -502,6 +505,7 @@ static void *stream_reader_thread(void *arg) {
         }
         
         av_packet_unref(pkt);
+        pthread_mutex_unlock(&packet_mutex);
     }
     
     // Cleanup resources
@@ -512,6 +516,9 @@ static void *stream_reader_thread(void *arg) {
     if (ctx->input_ctx) {
         avformat_close_input(&ctx->input_ctx);
     }
+    
+    // Destroy the packet mutex
+    pthread_mutex_destroy(&packet_mutex);
     
     log_info("Stream reader thread for stream %s exited", ctx->config.name);
     return NULL;

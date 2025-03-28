@@ -542,7 +542,9 @@ detection_model_t load_detection_model(const char *model_path, float threshold) 
     // If loading failed and this was a large model, decrement the counter
     if (!model && is_large_model) {
         pthread_mutex_lock(&large_models_mutex);
-        large_models_loaded--;
+        if (large_models_loaded > 0) {  // Ensure we don't decrement below zero
+            large_models_loaded--;
+        }
         pthread_mutex_unlock(&large_models_mutex);
     }
     
@@ -565,17 +567,41 @@ detection_model_t load_detection_model(const char *model_path, float threshold) 
         
         // If we found a slot, add the model to the cache
         if (oldest_idx >= 0) {
-            // If slot was used and it was a large model, decrement the counter
-            if (global_model_cache[oldest_idx].path[0] != '\0' && 
-                global_model_cache[oldest_idx].is_large_model) {
-                pthread_mutex_lock(&large_models_mutex);
-                if (large_models_loaded > 0) {
-                    large_models_loaded--;
+            // If slot was used, unload the old model first to prevent memory leaks
+            if (global_model_cache[oldest_idx].path[0] != '\0') {
+                // Check if this model is still in use by any other cache
+                bool still_in_use = false;
+                for (int j = 0; j < MAX_STREAMS; j++) {
+                    if (j != oldest_idx && 
+                        global_model_cache[j].path[0] != '\0' && 
+                        global_model_cache[j].model == global_model_cache[oldest_idx].model) {
+                        still_in_use = true;
+                        break;
+                    }
                 }
-                pthread_mutex_unlock(&large_models_mutex);
+                
+                // Only unload if not still in use
+                if (!still_in_use) {
+                    log_info("Unloading model from global cache: %s", global_model_cache[oldest_idx].path);
+                    unload_detection_model(global_model_cache[oldest_idx].model);
+                    
+                    // If it was a large model, decrement the counter
+                    if (global_model_cache[oldest_idx].is_large_model) {
+                        pthread_mutex_lock(&large_models_mutex);
+                        if (large_models_loaded > 0) {
+                            large_models_loaded--;
+                        }
+                        pthread_mutex_unlock(&large_models_mutex);
+                    }
+                } else {
+                    log_info("Model %s is still in use by another cache entry, not unloading", 
+                             global_model_cache[oldest_idx].path);
+                }
             }
             
+            // Add the new model to the cache
             strncpy(global_model_cache[oldest_idx].path, model_path, MAX_PATH_LENGTH - 1);
+            global_model_cache[oldest_idx].path[MAX_PATH_LENGTH - 1] = '\0';  // Ensure null termination
             global_model_cache[oldest_idx].model = model;
             global_model_cache[oldest_idx].last_used = time(NULL);
             global_model_cache[oldest_idx].is_large_model = is_large_model;

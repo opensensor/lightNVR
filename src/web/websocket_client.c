@@ -223,6 +223,11 @@ int websocket_client_get_subscribed(const char *topic, char ***client_ids) {
         return 0;
     }
     
+    // Initialize all pointers to NULL to handle errors safely
+    for (int i = 0; i < count; i++) {
+        (*client_ids)[i] = NULL;
+    }
+    
     // Fill client IDs
     int index = 0;
     for (int i = 0; i < MAX_CLIENTS; i++) {
@@ -234,10 +239,13 @@ int websocket_client_get_subscribed(const char *topic, char ***client_ids) {
                         log_error("Failed to allocate memory for client ID");
                         // Free already allocated client IDs
                         for (int k = 0; k < index; k++) {
-                            free((*client_ids)[k]);
+                            if ((*client_ids)[k]) {
+                                free((*client_ids)[k]);
+                                (*client_ids)[k] = NULL;  // Set to NULL after freeing
+                            }
                         }
                         free(*client_ids);
-                        *client_ids = NULL;
+                        *client_ids = NULL;  // Set to NULL after freeing
                         pthread_mutex_unlock(&s_mutex);
                         return 0;
                     }

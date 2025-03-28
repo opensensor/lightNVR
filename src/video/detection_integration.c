@@ -598,49 +598,49 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
             }
         }
         
-        // If not found in any cache, load it
-        if (!model) {
-            // Find an empty slot or the oldest used model
-            time_t oldest_time = time(NULL);
-            int oldest_idx = -1;
-            
-            for (int i = 0; i < MAX_STREAMS; i++) {
-                if (model_cache[i].path[0] == '\0') {
-                    oldest_idx = i;
-                    break;
-                } else if (model_cache[i].last_used < oldest_time) {
-                    oldest_time = model_cache[i].last_used;
-                    oldest_idx = i;
-                }
+    // If not found in any cache, load it
+    if (!model) {
+        // Find an empty slot or the oldest used model
+        time_t oldest_time = time(NULL);
+        int oldest_idx = -1;
+        
+        for (int i = 0; i < MAX_STREAMS; i++) {
+            if (model_cache[i].path[0] == '\0') {
+                oldest_idx = i;
+                break;
+            } else if (model_cache[i].last_used < oldest_time) {
+                oldest_time = model_cache[i].last_used;
+                oldest_idx = i;
             }
-            
-            // If we found a slot, load the model
-            if (oldest_idx >= 0) {
-                // If slot was used, unload the old model
-                if (model_cache[oldest_idx].path[0] != '\0') {
-                    log_info("Unloading cached model %s to make room for %s", 
-                            model_cache[oldest_idx].path, full_model_path);
-                    
-                    // Check if this model is in the global cache before unloading
-                    bool in_global_cache = false;
-                    for (int i = 0; i < MAX_STREAMS; i++) {
-                        if (global_model_cache[i].path[0] != '\0' && 
-                            strcmp(global_model_cache[i].path, model_cache[oldest_idx].path) == 0) {
-                            in_global_cache = true;
-                            break;
-                        }
+        }
+        
+        // If we found a slot, load the model
+        if (oldest_idx >= 0) {
+            // If slot was used, unload the old model
+            if (model_cache[oldest_idx].path[0] != '\0') {
+                log_info("Unloading cached model %s to make room for %s", 
+                        model_cache[oldest_idx].path, full_model_path);
+                
+                // Check if this model is in the global cache before unloading
+                bool in_global_cache = false;
+                for (int i = 0; i < MAX_STREAMS; i++) {
+                    if (global_model_cache[i].path[0] != '\0' && 
+                        strcmp(global_model_cache[i].path, model_cache[oldest_idx].path) == 0) {
+                        in_global_cache = true;
+                        break;
                     }
-                    
-                    // Only unload if not in global cache
-                    if (!in_global_cache) {
-                        unload_detection_model(model_cache[oldest_idx].model);
-                    } else {
-                        log_info("Model %s is in global cache, not unloading", model_cache[oldest_idx].path);
-                    }
-                    
-                    model_cache[oldest_idx].path[0] = '\0';
-                    model_cache[oldest_idx].model = NULL;
                 }
+                
+                // Only unload if not in global cache
+                if (!in_global_cache) {
+                    unload_detection_model(model_cache[oldest_idx].model);
+                    model_cache[oldest_idx].model = NULL;  // Set to NULL after unloading to prevent use-after-free
+                } else {
+                    log_info("Model %s is in global cache, not unloading", model_cache[oldest_idx].path);
+                }
+                
+                model_cache[oldest_idx].path[0] = '\0';
+            }
                 
                 // Check if model is already loaded in global cache
                 for (int i = 0; i < MAX_STREAMS; i++) {
@@ -776,18 +776,22 @@ cleanup:
     // Free resources
     if (sws_ctx) {
         sws_freeContext(sws_ctx);
+        sws_ctx = NULL;  // Set to NULL after freeing to prevent use-after-free
     }
     
     if (converted_frame) {
         av_frame_free(&converted_frame);
+        converted_frame = NULL;  // Set to NULL after freeing to prevent use-after-free
     }
     
     if (buffer) {
         av_free(buffer);
+        buffer = NULL;  // Set to NULL after freeing to prevent use-after-free
     }
     
     if (packed_buffer) {
         return_buffer_to_pool(packed_buffer);
+        packed_buffer = NULL;  // Set to NULL after returning to prevent double-return
     }
     
     //  Remove this stream from the active list in case of error
