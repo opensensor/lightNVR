@@ -74,7 +74,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: digests-${{ env.PLATFORM_PAIR }}
-          path: ${{ runner.temp }}/digests
+          path: ${{ runner.temp }}/digests/*.digest
           retention-days: 1
 
   manifest:
@@ -111,14 +111,16 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Create and push manifest
-        working-directory: ${{ runner.temp }}/digests
         run: |
+          DIGEST_DIR="${{ runner.temp }}/digests"
+          cd "$DIGEST_DIR" || { echo "Digest directory not found"; exit 1; }
+          
           DIGEST_ARGS=""
           for file in *.digest; do
             DIGEST=$(cat "$file")
             DIGEST_ARGS="$DIGEST_ARGS ${{ env.REGISTRY_IMAGE }}@$DIGEST"
           done
-
+          
           for tag in $(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON"); do
             echo "Creating and pushing manifest: $tag"
             docker buildx imagetools create -t "$tag" $DIGEST_ARGS
