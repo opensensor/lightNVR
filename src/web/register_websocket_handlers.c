@@ -26,14 +26,14 @@ int register_websocket_handlers(void) {
     
     // Register WebSocket handler for batch delete recordings
     log_info("Registering handler for recordings/batch-delete");
-    if (websocket_manager_register_handler("recordings/batch-delete", websocket_handle_batch_delete_recordings) != 0) {
+    if (websocket_handler_register("recordings/batch-delete", websocket_handle_batch_delete_recordings) != 0) {
         log_error("Failed to register handler for recordings/batch-delete");
         return -1;
     }
     
     // Register WebSocket handler for system logs
     log_info("Registering handler for system/logs");
-    if (websocket_manager_register_handler("system/logs", websocket_handle_system_logs) != 0) {
+    if (websocket_handler_register("system/logs", websocket_handle_system_logs) != 0) {
         log_error("Failed to register handler for system/logs");
         return -1;
     }

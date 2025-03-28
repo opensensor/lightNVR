@@ -646,7 +646,7 @@ void websocket_manager_handle_message(struct mg_connection *c, const char *data,
                     "ack", "system", "{\"message\":\"Subscribed\"}");
                 
                 if (ack) {
-                    websocket_manager_send_to_client(client_id, ack);
+                    websocket_message_send_to_client(client_id, ack);
                     websocket_message_free(ack);
                 }
                 
@@ -686,7 +686,7 @@ void websocket_manager_handle_message(struct mg_connection *c, const char *data,
                     "ack", "system", "{\"message\":\"Unsubscribed\"}");
                 
                 if (ack) {
-                    websocket_manager_send_to_client(client_id, ack);
+                    websocket_message_send_to_client(client_id, ack);
                     websocket_message_free(ack);
                 }
                 
@@ -761,61 +761,4 @@ bool websocket_manager_is_initialized(void) {
     bool initialized = s_initialized;
     pthread_mutex_unlock(&s_init_mutex);
     return initialized;
-}
-
-// Compatibility functions that delegate to the new API
-
-/**
- * @brief Send a WebSocket message to a client (compatibility function)
- * 
- * @param client_id Client ID
- * @param message Message to send
- * @return bool true on success, false on error
- */
-bool websocket_manager_send_to_client(const char *client_id, const websocket_message_t *message) {
-    return websocket_message_send_to_client(client_id, message);
-}
-
-/**
- * @brief Send a WebSocket message to all clients subscribed to a topic (compatibility function)
- * 
- * @param topic Topic to send to
- * @param message Message to send
- * @return int Number of clients the message was sent to
- */
-int websocket_manager_broadcast(const char *topic, const websocket_message_t *message) {
-    return websocket_message_broadcast(topic, message);
-}
-
-/**
- * @brief Check if a client is subscribed to a topic (compatibility function)
- * 
- * @param client_id Client ID
- * @param topic Topic to check
- * @return bool true if subscribed, false otherwise
- */
-bool websocket_manager_is_subscribed(const char *client_id, const char *topic) {
-    return websocket_client_is_subscribed(client_id, topic);
-}
-
-/**
- * @brief Get all clients subscribed to a topic (compatibility function)
- * 
- * @param topic Topic to check
- * @param client_ids Pointer to array of client IDs (will be allocated)
- * @return int Number of clients subscribed to the topic
- */
-int websocket_manager_get_subscribed_clients(const char *topic, char ***client_ids) {
-    return websocket_client_get_subscribed(topic, client_ids);
-}
-
-/**
- * @brief Register a WebSocket message handler (compatibility function)
- * 
- * @param topic Topic to handle
- * @param handler Handler function
- * @return int 0 on success, non-zero on error
- */
-int websocket_manager_register_handler(const char *topic, void (*handler)(const char *client_id, const char *message)) {
-    return websocket_handler_register(topic, handler);
 }

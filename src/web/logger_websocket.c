@@ -11,7 +11,6 @@
 #include "web/websocket_manager.h"
 
 // Forward declarations with weak symbols
-extern __attribute__((weak)) int websocket_manager_get_subscribed_clients(const char *topic, char ***client_ids);
 extern __attribute__((weak)) websocket_message_t *websocket_message_create(const char *type, const char *topic, const char *payload);
 extern __attribute__((weak)) bool websocket_manager_send_to_client(const char *client_id, const websocket_message_t *message);
 extern __attribute__((weak)) void websocket_message_free(websocket_message_t *message);

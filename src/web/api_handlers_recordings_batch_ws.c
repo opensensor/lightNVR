@@ -116,7 +116,7 @@ void send_progress_update(const char *client_id, int current, int total,
     log_info("Sending progress update to client %s: %s", client_id, payload);
     
     // Verify client is subscribed to the topic
-    if (!websocket_manager_is_subscribed(client_id, "recordings/batch-delete")) {
+    if (!websocket_client_is_subscribed(client_id, "recordings/batch-delete")) {
         log_error("Client %s is not subscribed to recordings/batch-delete topic", client_id);
         return;
     }
@@ -130,7 +130,7 @@ void send_progress_update(const char *client_id, int current, int total,
     
     if (message) {
         // Send message to client
-        if (websocket_manager_send_to_client(client_id, message)) {
+        if (websocket_message_send_to_client(client_id, message)) {
             log_debug("Progress update sent successfully to client %s", client_id);
         } else {
             log_error("Failed to send progress update to client %s", client_id);
@@ -191,7 +191,7 @@ void send_final_result(const char *client_id, bool success, int total,
     
     if (message) {
         // Send message to client
-        if (websocket_manager_send_to_client(client_id, message)) {
+        if (websocket_message_send_to_client(client_id, message)) {
             log_info("Final result sent successfully to client %s", client_id);
         } else {
             log_error("Failed to send final result to client %s", client_id);
@@ -816,7 +816,7 @@ void websocket_handle_batch_delete_recordings(const char *client_id, const char 
             "{\"error\":\"Invalid JSON message\"}");
         
         if (response) {
-            if (websocket_manager_send_to_client(client_id, response)) {
+            if (websocket_message_send_to_client(client_id, response)) {
                 log_info("Error response sent successfully to client %s", client_id);
             } else {
                 log_error("Failed to send error response to client %s", client_id);
@@ -879,7 +879,7 @@ void websocket_handle_batch_delete_recordings(const char *client_id, const char 
                     "{\"error\":\"Missing ids or filter in request\"}");
                 
                 if (response) {
-                    if (websocket_manager_send_to_client(client_id, response)) {
+                    if (websocket_message_send_to_client(client_id, response)) {
                         log_info("Error response sent successfully to client %s", client_id);
                     } else {
                         log_error("Failed to send error response to client %s", client_id);
@@ -918,7 +918,7 @@ void websocket_handle_batch_delete_recordings(const char *client_id, const char 
                 "{\"error\":\"Unexpected message type or topic\"}");
             
             if (response) {
-                if (websocket_manager_send_to_client(client_id, response)) {
+                if (websocket_message_send_to_client(client_id, response)) {
                     log_info("Error response sent successfully to client %s", client_id);
                 } else {
                     log_error("Failed to send error response to client %s", client_id);
@@ -935,7 +935,7 @@ void websocket_handle_batch_delete_recordings(const char *client_id, const char 
     
     // Check if client is subscribed to the topic
     // But don't fail if not subscribed - the client might be in the process of subscribing
-    if (!websocket_manager_is_subscribed(client_id, "recordings/batch-delete")) {
+    if (!websocket_client_is_subscribed(client_id, "recordings/batch-delete")) {
         log_warn("Client %s is not yet subscribed to recordings/batch-delete topic, but continuing anyway", client_id);
         
         // If this is a subscribe message, we'll handle it normally
@@ -948,12 +948,12 @@ void websocket_handle_batch_delete_recordings(const char *client_id, const char 
                 "{\"message\":\"Subscribed to recordings/batch-delete\"}");
             
             if (ack) {
-                websocket_manager_send_to_client(client_id, ack);
+                websocket_message_send_to_client(client_id, ack);
                 websocket_message_free(ack);
             }
             
             // Add subscription
-            websocket_manager_register_handler("recordings/batch-delete", websocket_handle_batch_delete_recordings);
+            websocket_handler_register("recordings/batch-delete", websocket_handle_batch_delete_recordings);
             
             // Free resources
             cJSON_Delete(json);
@@ -980,7 +980,7 @@ void websocket_handle_batch_delete_recordings(const char *client_id, const char 
             "{\"error\":\"Failed to process request\"}");
         
         if (response) {
-            if (websocket_manager_send_to_client(client_id, response)) {
+            if (websocket_message_send_to_client(client_id, response)) {
                 log_info("Error response sent successfully to client %s", client_id);
             } else {
                 log_error("Failed to send error response to client %s", client_id);
@@ -1000,7 +1000,7 @@ void websocket_handle_batch_delete_recordings(const char *client_id, const char 
         "{\"message\":\"Batch delete operation started\"}");
     
     if (ack_response) {
-        if (websocket_manager_send_to_client(client_id, ack_response)) {
+                if (websocket_message_send_to_client(client_id, ack_response)) {
             log_info("Acknowledgment sent successfully to client %s", client_id);
         } else {
             log_error("Failed to send acknowledgment to client %s", client_id);
@@ -1022,7 +1022,7 @@ void websocket_handle_batch_delete_recordings(const char *client_id, const char 
             "{\"error\":\"Failed to create task\"}");
         
         if (response) {
-            if (websocket_manager_send_to_client(client_id, response)) {
+            if (websocket_message_send_to_client(client_id, response)) {
                 log_info("Error response sent successfully to client %s", client_id);
             } else {
                 log_error("Failed to send error response to client %s", client_id);
@@ -1045,7 +1045,7 @@ void websocket_handle_batch_delete_recordings(const char *client_id, const char 
             "{\"error\":\"Failed to create thread for task\"}");
         
         if (response) {
-            if (websocket_manager_send_to_client(client_id, response)) {
+            if (websocket_message_send_to_client(client_id, response)) {
                 log_info("Error response sent successfully to client %s", client_id);
             } else {
                 log_error("Failed to send error response to client %s", client_id);
@@ -1111,7 +1111,7 @@ void mg_handle_batch_delete_recordings_ws(struct mg_connection *c, struct mg_htt
     const char *client_id = client_id_json->valuestring;
     
     // Check if client is connected
-    if (!websocket_manager_is_subscribed(client_id, "recordings/batch-delete")) {
+    if (!websocket_client_is_subscribed(client_id, "recordings/batch-delete")) {
         log_error("WebSocket client not subscribed: %s", client_id);
         cJSON_Delete(json);
         free(body);

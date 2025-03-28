@@ -122,7 +122,7 @@ void websocket_handle_system_logs(const char *client_id, const char *message) {
         );
         
         if (error_message != NULL) {
-            websocket_manager_send_to_client(client_id, error_message);
+            websocket_message_send_to_client(client_id, error_message);
             websocket_message_free(error_message);
         }
         
@@ -181,7 +181,7 @@ void websocket_handle_system_logs(const char *client_id, const char *message) {
         );
         
         if (error_message != NULL) {
-            websocket_manager_send_to_client(client_id, error_message);
+            websocket_message_send_to_client(client_id, error_message);
             websocket_message_free(error_message);
         }
         
@@ -273,7 +273,7 @@ void websocket_handle_system_logs(const char *client_id, const char *message) {
         );
         
         if (error_message != NULL) {
-            websocket_manager_send_to_client(client_id, error_message);
+            websocket_message_send_to_client(client_id, error_message);
             websocket_message_free(error_message);
         }
     }
@@ -493,7 +493,7 @@ static int send_filtered_logs_to_client(const char *client_id, const char *min_l
     
     if (logs_message != NULL) {
         // Send logs to the client
-        result = websocket_manager_send_to_client(client_id, logs_message);
+        result = websocket_message_send_to_client(client_id, logs_message);
         websocket_message_free(logs_message);
     }
     
@@ -558,7 +558,7 @@ int fetch_system_logs(const char *client_id, const char *min_level, const char *
         
         if (logs_message != NULL) {
             // Send logs to the client
-            websocket_manager_send_to_client(client_id, logs_message);
+            websocket_message_send_to_client(client_id, logs_message);
             websocket_message_free(logs_message);
         }
         
@@ -619,7 +619,7 @@ int fetch_system_logs(const char *client_id, const char *min_level, const char *
     
     if (logs_message != NULL) {
         // Send logs to the client
-        sent = websocket_manager_send_to_client(client_id, logs_message);
+        sent = websocket_message_send_to_client(client_id, logs_message);
         websocket_message_free(logs_message);
     }
     
@@ -633,272 +633,4 @@ int fetch_system_logs(const char *client_id, const char *min_level, const char *
     free(logs);
     
     return sent ? count : 0;
-}
-
-/**
- * @brief Send system logs to all subscribed clients
- * 
- * This function is now only called when explicitly requested by clients
- * who are on the system page, similar to the batch delete functionality.
- * This reduces memory and CPU overhead, especially on embedded devices.
- * 
- * @return int Number of clients the message was sent to
- */
-int websocket_broadcast_system_logs(void) {
-    log_info("websocket_broadcast_system_logs called");
-    
-    // Limit the number of threads used for processing logs
-    // This helps reduce memory overhead on embedded devices
-    static pthread_mutex_t thread_limit_mutex = PTHREAD_MUTEX_INITIALIZER;
-    static int active_threads = 0;
-    const int max_threads = 2; // Maximum of 2 threads as requested
-    
-    // Try to acquire thread slot
-    pthread_mutex_lock(&thread_limit_mutex);
-    if (active_threads >= max_threads) {
-        log_info("Too many active log processing threads (%d), skipping this request", active_threads);
-        pthread_mutex_unlock(&thread_limit_mutex);
-        return 0;
-    }
-    active_threads++;
-    pthread_mutex_unlock(&thread_limit_mutex);
-    
-    // Get logs
-    char **logs = NULL;
-    int count = 0;
-    
-    get_system_logs(&logs, &count);
-    
-    if (logs == NULL || count == 0) {
-        // Release thread slot
-        pthread_mutex_lock(&thread_limit_mutex);
-        active_threads--;
-        pthread_mutex_unlock(&thread_limit_mutex);
-        return 0;
-    }
-    
-    // Limit the number of logs to process at once to prevent memory issues on A1 platform
-    const int max_logs = 50;
-    if (count > max_logs) {
-        log_info("Limiting logs from %d to %d to prevent memory issues", count, max_logs);
-        count = max_logs;
-    }
-    
-    // First, parse all logs to extract log levels
-    typedef struct {
-        char timestamp[24]; // Reduced from 32 to save stack space
-        char level[12];     // Reduced from 16 to save stack space
-        char *message;
-        int original_index;
-    } parsed_log_t;
-    
-    parsed_log_t *parsed_logs = malloc(count * sizeof(parsed_log_t));
-    if (!parsed_logs) {
-        log_error("Failed to allocate memory for parsed logs");
-        
-        // Free logs
-        for (int i = 0; i < count; i++) {
-            free(logs[i]);
-        }
-        free(logs);
-        
-        // Release thread slot
-        pthread_mutex_lock(&thread_limit_mutex);
-        active_threads--;
-        pthread_mutex_unlock(&thread_limit_mutex);
-        
-        return 0;
-    }
-    
-    // Parse all logs
-    for (int i = 0; i < count; i++) {
-        if (logs[i] != NULL) {
-            // Parse log line (format: [TIMESTAMP] [LEVEL] MESSAGE)
-            parsed_logs[i].timestamp[0] = '\0';
-            parsed_logs[i].level[0] = '\0';
-            parsed_logs[i].message = NULL;
-            parsed_logs[i].original_index = i;
-            
-            // First, check if this is a standard format log
-            if (logs[i][0] == '[') {
-                char *timestamp_end = strchr(logs[i] + 1, ']');
-                if (timestamp_end) {
-                    size_t timestamp_len = timestamp_end - (logs[i] + 1);
-                    if (timestamp_len < sizeof(parsed_logs[i].timestamp)) {
-                        memcpy(parsed_logs[i].timestamp, logs[i] + 1, timestamp_len);
-                        parsed_logs[i].timestamp[timestamp_len] = '\0';
-                        
-                        // Look for level
-                        char *level_start = strchr(timestamp_end + 1, '[');
-                        if (level_start) {
-                            char *level_end = strchr(level_start + 1, ']');
-                            if (level_end) {
-                                size_t level_len = level_end - (level_start + 1);
-                                if (level_len < sizeof(parsed_logs[i].level)) {
-                                    memcpy(parsed_logs[i].level, level_start + 1, level_len);
-                                    parsed_logs[i].level[level_len] = '\0';
-                                    
-                                    // Convert to lowercase for consistency
-                                    for (int j = 0; parsed_logs[i].level[j]; j++) {
-                                        parsed_logs[i].level[j] = tolower(parsed_logs[i].level[j]);
-                                    }
-                                    
-                                    // Message starts after level
-                                    parsed_logs[i].message = level_end + 1;
-                                    if (parsed_logs[i].message && *parsed_logs[i].message) {
-                                        while (*parsed_logs[i].message == ' ') parsed_logs[i].message++; // Skip leading spaces
-                                    } else {
-                                        parsed_logs[i].message = ""; // Set to empty string if NULL or empty
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            } 
-            // Check for alternative format: TIMESTAMP LEVEL MESSAGE
-            else if (isdigit(logs[i][0])) {
-                // Try to parse YYYY-MM-DD HH:MM:SS format
-                if (strlen(logs[i]) > 19 && logs[i][4] == '-' && logs[i][7] == '-' && logs[i][10] == ' ' && logs[i][13] == ':' && logs[i][16] == ':') {
-                    strncpy(parsed_logs[i].timestamp, logs[i], 19);
-                    parsed_logs[i].timestamp[19] = '\0';
-                    
-                    // Extract level - assume it follows timestamp immediately
-                    char *level_start = logs[i] + 19;
-                    while (*level_start == ' ') level_start++; // Skip spaces
-                    
-                    // Find end of level (next space)
-                    char *level_end = strchr(level_start, ' ');
-                    if (level_end) {
-                        size_t level_len = level_end - level_start;
-                        if (level_len < sizeof(parsed_logs[i].level)) {
-                            memcpy(parsed_logs[i].level, level_start, level_len);
-                            parsed_logs[i].level[level_len] = '\0';
-                            
-                            // Convert to lowercase for consistency
-                            for (int j = 0; parsed_logs[i].level[j]; j++) {
-                                parsed_logs[i].level[j] = tolower(parsed_logs[i].level[j]);
-                            }
-                            
-                            // Message starts after level
-                            parsed_logs[i].message = level_end + 1;
-                            if (parsed_logs[i].message && *parsed_logs[i].message) {
-                                while (*parsed_logs[i].message == ' ') parsed_logs[i].message++; // Skip leading spaces
-                            } else {
-                                parsed_logs[i].message = ""; // Set to empty string if NULL or empty
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // If parsing failed, use defaults
-            if (!parsed_logs[i].message) {
-                parsed_logs[i].message = logs[i];
-                
-                // Check if the message starts with "Unknown"
-                if (strncmp(parsed_logs[i].message, "Unknown", 7) == 0) {
-                    strcpy(parsed_logs[i].level, "info");
-                    
-                    // Skip "Unknown" prefix in the message
-                    if (strlen(parsed_logs[i].message) > 7) {
-                        parsed_logs[i].message += 7;
-                        while (*parsed_logs[i].message == ' ') parsed_logs[i].message++; // Skip spaces
-                    }
-                } else {
-                    strcpy(parsed_logs[i].level, "info");
-                }
-            }
-            
-            // Normalize log level
-            if (strcmp(parsed_logs[i].level, "warn") == 0) {
-                strcpy(parsed_logs[i].level, "warning");
-            }
-        }
-    }
-    
-    int clients_sent = 0;
-    
-    // Get all clients subscribed to system/logs
-    char **client_ids = NULL;
-    int client_count = websocket_manager_get_subscribed_clients("system/logs", &client_ids);
-    
-    log_info("Found %d clients subscribed to system/logs", client_count);
-    
-    // For each client, create a filtered message based on their log level preference
-    for (int client_idx = 0; client_idx < client_count; client_idx++) {
-        const char *client_id = client_ids[client_idx];
-        const char *min_level = get_client_log_level(client_id);
-        
-        // Create JSON array of logs filtered by level
-        cJSON *logs_array = cJSON_CreateArray();
-        
-        for (int i = 0; i < count; i++) {
-            // Only include logs that meet the minimum level
-            if (log_level_meets_minimum(parsed_logs[i].level, min_level)) {
-                // Create log entry object
-                cJSON *log_entry = cJSON_CreateObject();
-                if (log_entry) {
-                    cJSON_AddStringToObject(log_entry, "timestamp", parsed_logs[i].timestamp[0] ? parsed_logs[i].timestamp : "Unknown");
-                    cJSON_AddStringToObject(log_entry, "level", parsed_logs[i].level);
-                    cJSON_AddStringToObject(log_entry, "message", parsed_logs[i].message);
-                    
-                    cJSON_AddItemToArray(logs_array, log_entry);
-                }
-            }
-        }
-        
-        // Create JSON payload
-        cJSON *payload = cJSON_CreateObject();
-        cJSON_AddItemToObject(payload, "logs", logs_array);
-        // Include level at the top level for frontend filtering purposes
-        cJSON_AddStringToObject(payload, "level", min_level);
-        
-        // Convert payload to string
-        char *payload_str = cJSON_PrintUnformatted(payload);
-        
-        // Create WebSocket message
-        websocket_message_t *logs_message = websocket_message_create(
-            "update",
-            "system/logs",
-            payload_str
-        );
-        
-        if (logs_message != NULL) {
-            // Send logs to this specific client
-            int sent = websocket_manager_send_to_client(client_id, logs_message);
-            if (sent) {
-                clients_sent++;
-            }
-            
-            websocket_message_free(logs_message);
-        }
-        
-        cJSON_Delete(payload);
-        free(payload_str);
-    }
-    
-    // Free client IDs
-    if (client_ids) {
-        for (int i = 0; i < client_count; i++) {
-            free(client_ids[i]);
-        }
-        free(client_ids);
-    }
-    
-    // Free parsed logs
-    free(parsed_logs);
-    
-    // Free logs
-    for (int i = 0; i < count; i++) {
-        free(logs[i]);
-    }
-    free(logs);
-    
-    // Release thread slot
-    pthread_mutex_lock(&thread_limit_mutex);
-    active_threads--;
-    pthread_mutex_unlock(&thread_limit_mutex);
-    
-    return clients_sent;
 }
