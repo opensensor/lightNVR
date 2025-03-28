@@ -223,6 +223,7 @@ static void *hls_writer_thread_func(void *arg) {
         // Now safely free the packet - first unref then free to prevent memory leaks
         av_packet_unref(pkt_to_free);
         av_packet_free(&pkt_to_free);
+        pkt_to_free = NULL;  // Set to NULL after freeing to prevent double-free
     }
     
     if (input_ctx) {
@@ -232,6 +233,7 @@ static void *hls_writer_thread_func(void *arg) {
         
         // Now safely close the input context
         avformat_close_input(&ctx_to_close);
+        // No need to set ctx_to_close to NULL as avformat_close_input already does this
     }
     
     // Update component state in shutdown coordinator

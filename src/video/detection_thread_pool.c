@@ -425,6 +425,7 @@ int submit_detection_task(const char *stream_name, const AVPacket *pkt, const AV
         return -1;
     }
 
+    // Only allocate resources after we know a thread is available
     // Create a copy of the packet
     AVPacket *pkt_copy = av_packet_alloc();
     if (!pkt_copy) {

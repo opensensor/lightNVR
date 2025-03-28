@@ -2,167 +2,128 @@ name: Docker
 
 on:
   push:
-    # Only build Docker images when a tag is pushed
     tags: [ '*.*.*' ]
-  # Also allow manual triggering for testing
   workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
+  IMAGE_NAME: opensensor/lightnvr
+  REGISTRY_IMAGE: ghcr.io/opensensor/lightnvr
 
 jobs:
-  setup:
+  build:
     runs-on: ubuntu-latest
-    outputs:
-      lowercase_image_name: ${{ steps.image-name.outputs.lowercase_image_name }}
-      tags: ${{ steps.meta.outputs.tags }}
-      labels: ${{ steps.meta.outputs.labels }}
-      platforms: ${{ steps.set-platforms.outputs.platforms }}
-      version: ${{ steps.version.outputs.version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - linux/amd64
+          - linux/arm64
+          - linux/arm/v7
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Set lowercase image name
-        id: image-name
-        run: echo "lowercase_image_name=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
-
-      - name: Get version
-        id: version
+      - name: Set platform pair
         run: |
-          if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            echo "version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
-          else
-            echo "version=latest" >> $GITHUB_OUTPUT
-          fi
+          platform="${{ matrix.platform }}"
+          echo "PLATFORM_PAIR=${platform/linux\//}" | sed 's/\//-/' >> $GITHUB_ENV
 
-      # Extract metadata (tags, labels) for Docker
-      - name: Extract Docker metadata
+      - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ steps.image-name.outputs.lowercase_image_name }}
+          images: ${{ env.REGISTRY_IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Set platforms
-        id: set-platforms
-        run: |
-          echo "platforms=[\"linux/amd64\", \"linux/arm64\", \"linux/arm/v7\"]" >> $GITHUB_OUTPUT
-
-  build:
-    needs: setup
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-      id-token: write
-    strategy:
-      fail-fast: false  # Allow other platforms to continue building if one fails
-      matrix:
-        platform: ${{ fromJson(needs.setup.outputs.platforms) }}
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Setup Docker buildx
-        uses: docker/setup-buildx-action@v3
-
-      # Login against a Docker registry except on PR
-      - name: Log into registry ${{ env.REGISTRY }}
-        if: github.event_name != 'pull_request'
+      - name: Login to GHCR
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Get platform short name
-        id: platform-name
-        run: |
-          PLATFORM="${{ matrix.platform }}"
-          SHORT_NAME=$(echo $PLATFORM | sed -e 's/linux\///' -e 's/\//-/')
-          echo "short_name=${SHORT_NAME}" >> $GITHUB_OUTPUT
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
-      # Debug - print outputs
-      - name: Debug information
-        run: |
-          echo "Building for platform: ${{ matrix.platform }}"
-          echo "Short name: ${{ steps.platform-name.outputs.short_name }}"
-          echo "Image tag: ${{ env.REGISTRY }}/${{ needs.setup.outputs.lowercase_image_name }}-${{ steps.platform-name.outputs.short_name }}:${{ needs.setup.outputs.version }}"
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Build and push Docker image
-        id: build-and-push
-        uses: docker/build-push-action@v5
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
         with:
           context: .
           platforms: ${{ matrix.platform }}
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ env.REGISTRY }}/${{ needs.setup.outputs.lowercase_image_name }}-${{ steps.platform-name.outputs.short_name }}:${{ needs.setup.outputs.version }}
-          labels: ${{ needs.setup.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          outputs: type=image,name=${{ env.REGISTRY }}/${{ needs.setup.outputs.lowercase_image_name }}-${{ steps.platform-name.outputs.short_name }}:${{ needs.setup.outputs.version }},push=true
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,push-by-digest=true,name-canonical=true,push=true
+
+      - name: Save digest
+        run: |
+          mkdir -p ${{ runner.temp }}/digests
+          platform="${{ matrix.platform }}"
+          echo "PLATFORM_PAIR=${platform/linux\//}" | sed 's/\//-/' >> $GITHUB_ENV
+
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ env.PLATFORM_PAIR }}
+          path: ${{ runner.temp }}/digests
+          retention-days: 1
 
   manifest:
-    needs: [setup, build]
+    needs: build
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-      id-token: write
 
     steps:
-      - name: Log into registry ${{ env.REGISTRY }}
+      - name: Download all digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Login to GHCR
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup Docker buildx
+      - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Debug step to check available images
-      - name: Debug - Check available images
-        run: |
-          # Extract platform short names and construct tags
-          PLATFORMS=$(echo '${{ needs.setup.outputs.platforms }}' | jq -r '.[]')
-          echo "Available platforms: $PLATFORMS"
-          
-          for PLATFORM in $PLATFORMS; do
-            SHORT_NAME=$(echo $PLATFORM | sed -e 's/linux\///' -e 's/\//-/')
-            IMAGE_TAG="${{ env.REGISTRY }}/${{ needs.setup.outputs.lowercase_image_name }}-$SHORT_NAME:${{ needs.setup.outputs.version }}"
-            echo "Checking for image: $IMAGE_TAG"
-            # Try to inspect the image
-            docker buildx imagetools inspect "$IMAGE_TAG" || echo "Image not found"
-          done
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY_IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Create and push manifest
+        working-directory: ${{ runner.temp }}/digests
         run: |
-          # Extract platform short names
-          PLATFORMS=$(echo '${{ needs.setup.outputs.platforms }}' | jq -r '.[]')
-          SOURCE_TAGS=""
-          
-          for PLATFORM in $PLATFORMS; do
-            SHORT_NAME=$(echo $PLATFORM | sed -e 's/linux\///' -e 's/\//-/')
-            SOURCE_TAGS="$SOURCE_TAGS ${{ env.REGISTRY }}/${{ needs.setup.outputs.lowercase_image_name }}-$SHORT_NAME:${{ needs.setup.outputs.version }}"
+          DIGEST_ARGS=""
+          for file in *.digest; do
+            DIGEST=$(cat "$file")
+            DIGEST_ARGS="$DIGEST_ARGS ${{ env.REGISTRY_IMAGE }}@$DIGEST"
           done
-          
-          echo "Creating manifest with tags: $SOURCE_TAGS"
-          
-          # Create and push the manifest
-          docker manifest create \
-            ${{ env.REGISTRY }}/${{ needs.setup.outputs.lowercase_image_name }}:${{ needs.setup.outputs.version }} \
-            $SOURCE_TAGS
-          
-          docker manifest push ${{ env.REGISTRY }}/${{ needs.setup.outputs.lowercase_image_name }}:${{ needs.setup.outputs.version }}
-          
-          # If this is a tagged release, also tag as latest
-          if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            docker manifest create \
-              ${{ env.REGISTRY }}/${{ needs.setup.outputs.lowercase_image_name }}:latest \
-              $SOURCE_TAGS
-          
-            docker manifest push ${{ env.REGISTRY }}/${{ needs.setup.outputs.lowercase_image_name }}:latest
-          fi
+
+          for tag in $(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON"); do
+            echo "Creating and pushing manifest: $tag"
+            docker buildx imagetools create -t "$tag" $DIGEST_ARGS
+          done
+
+      - name: Inspect final image
+        run: |
+          docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}:${{ steps.meta.outputs.version }}

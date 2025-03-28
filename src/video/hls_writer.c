@@ -142,15 +142,18 @@ cleanup:
     // Cleanup resources in reverse order of allocation
     if (frame) {
         av_frame_free(&frame);
+        frame = NULL;  // Set to NULL after freeing to prevent double-free
     }
     
     if (codec_ctx) {
         avcodec_free_context(&codec_ctx);
+        codec_ctx = NULL;  // Set to NULL after freeing to prevent double-free
     }
     
     if (pkt_copy) {
         av_packet_unref(pkt_copy);
         av_packet_free(&pkt_copy);
+        pkt_copy = NULL;  // Set to NULL after freeing to prevent double-free
     }
     
     detection_in_progress = 0;
@@ -173,6 +176,7 @@ static void cleanup_old_segments(const char *output_dir, int max_segments) {
 
     segment_info_t *segments = NULL;
     int segment_count = 0;
+    int actual_count = 0;
 
     // Open directory
     dir = opendir(output_dir);
@@ -223,13 +227,16 @@ static void cleanup_old_segments(const char *output_dir, int max_segments) {
             i++;
         }
     }
+    
+    // Store the actual number of segments we found
+    actual_count = i;
 
     closedir(dir);
 
     // Sort segments by modification time (oldest first)
     // Simple bubble sort for now
-    for (int j = 0; j < i - 1; j++) {
-        for (int k = 0; k < i - j - 1; k++) {
+    for (int j = 0; j < actual_count - 1; j++) {
+        for (int k = 0; k < actual_count - j - 1; k++) {
             if (segments[k].mtime > segments[k + 1].mtime) {
                 segment_info_t temp = segments[k];
                 segments[k] = segments[k + 1];
@@ -239,17 +246,21 @@ static void cleanup_old_segments(const char *output_dir, int max_segments) {
     }
 
     // Delete oldest segments beyond our limit
-    int to_delete = i - max_segments;
-    for (int j = 0; j < to_delete; j++) {
-        snprintf(filepath, sizeof(filepath), "%s/%s", output_dir, segments[j].filename);
-        if (unlink(filepath) == 0) {
-            log_debug("Deleted old HLS segment: %s", segments[j].filename);
-        } else {
-            log_warn("Failed to delete old HLS segment: %s", segments[j].filename);
+    int to_delete = actual_count - max_segments;
+    if (to_delete > 0) {
+        for (int j = 0; j < to_delete; j++) {
+            snprintf(filepath, sizeof(filepath), "%s/%s", output_dir, segments[j].filename);
+            if (unlink(filepath) == 0) {
+                log_debug("Deleted old HLS segment: %s", segments[j].filename);
+            } else {
+                log_warn("Failed to delete old HLS segment: %s", segments[j].filename);
+            }
         }
     }
 
+    // Always free the allocated memory
     free(segments);
+    segments = NULL;
 }
 
 hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name, int segment_duration) {
