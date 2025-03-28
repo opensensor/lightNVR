@@ -17,6 +17,7 @@
 #include "video/detection.h"
 #include "video/detection_result.h"
 #include "video/detection_stream.h"
+#include "video/detection_thread_pool.h"
 #include "database/database_manager.h"
 #include "web/api_handlers_detection_results.h"
 
@@ -553,6 +554,151 @@ int process_frame_for_recording(const char *stream_name, const unsigned char *fr
 }
 
 /**
+ * Monitor HLS segments for a stream and submit them to the detection thread pool
+ * This function is called periodically to check for new HLS segments
+ * 
+ * @param stream_name The name of the stream
+ * @return 0 on success, -1 on error
+ */
+int monitor_hls_segments_for_detection(const char *stream_name) {
+    if (!stream_name) {
+        log_error("Invalid stream name for monitor_hls_segments_for_detection");
+        return -1;
+    }
+    
+    // Get the stream configuration
+    stream_handle_t stream = get_stream_by_name(stream_name);
+    if (!stream) {
+        log_error("Failed to get stream handle for %s", stream_name);
+        return -1;
+    }
+    
+    stream_config_t config;
+    if (get_stream_config(stream, &config) != 0) {
+        log_error("Failed to get stream config for %s", stream_name);
+        return -1;
+    }
+    
+    // Check if detection is enabled for this stream
+    if (!config.detection_based_recording || config.detection_model[0] == '\0') {
+        log_debug("Detection-based recording not enabled for stream %s", stream_name);
+        return 0;
+    }
+    
+    // Get the HLS directory for this stream
+    extern config_t g_config;
+    char hls_dir[MAX_PATH_LENGTH];
+    snprintf(hls_dir, MAX_PATH_LENGTH, "%s/hls/%s", g_config.storage_path, stream_name);
+    
+    // Check if directory exists
+    struct stat st;
+    if (stat(hls_dir, &st) != 0 || !S_ISDIR(st.st_mode)) {
+        log_warn("HLS directory does not exist for stream %s: %s", stream_name, hls_dir);
+        return -1;
+    }
+    
+    // Open the directory
+    DIR *dir = opendir(hls_dir);
+    if (!dir) {
+        log_error("Failed to open HLS directory for stream %s: %s", stream_name, hls_dir);
+        return -1;
+    }
+    
+    // Keep track of the newest segment file
+    char newest_segment[MAX_PATH_LENGTH] = {0};
+    time_t newest_time = 0;
+    
+    // Read directory entries
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        // Skip non-segment files (look for .ts or .m4s files)
+        if (strstr(entry->d_name, ".ts") == NULL && strstr(entry->d_name, ".m4s") == NULL) {
+            continue;
+        }
+        
+        // Get file stats
+        char segment_path[MAX_PATH_LENGTH];
+        snprintf(segment_path, MAX_PATH_LENGTH, "%s/%s", hls_dir, entry->d_name);
+        
+        struct stat segment_stat;
+        if (stat(segment_path, &segment_stat) != 0) {
+            log_warn("Failed to stat segment file: %s", segment_path);
+            continue;
+        }
+        
+        // Check if this is the newest segment
+        if (segment_stat.st_mtime > newest_time) {
+            newest_time = segment_stat.st_mtime;
+            strncpy(newest_segment, segment_path, MAX_PATH_LENGTH - 1);
+            newest_segment[MAX_PATH_LENGTH - 1] = '\0';
+        }
+    }
+    
+    // Close the directory
+    closedir(dir);
+    
+    // If we found a segment file, submit it to the detection thread pool
+    if (newest_segment[0] != '\0') {
+        // Check if this segment has already been processed
+        static char last_processed_segment[MAX_STREAMS][MAX_PATH_LENGTH] = {{0}};
+        static pthread_mutex_t last_processed_mutex = PTHREAD_MUTEX_INITIALIZER;
+        
+        pthread_mutex_lock(&last_processed_mutex);
+        
+        // Find the stream's entry
+        int stream_idx = -1;
+        for (int i = 0; i < MAX_STREAMS; i++) {
+            if (last_processed_segment[i][0] == '\0') {
+                // Empty slot, use it
+                if (stream_idx == -1) {
+                    stream_idx = i;
+                }
+            } else if (strstr(last_processed_segment[i], stream_name) != NULL) {
+                // Found existing entry for this stream
+                stream_idx = i;
+                break;
+            }
+        }
+        
+        if (stream_idx == -1) {
+            // No available slot, use the first one
+            stream_idx = 0;
+            log_warn("No available slot for last processed segment, using slot 0");
+        }
+        
+        // Check if this segment has already been processed
+        if (strcmp(newest_segment, last_processed_segment[stream_idx]) == 0) {
+            // Already processed this segment
+            pthread_mutex_unlock(&last_processed_mutex);
+            return 0;
+        }
+        
+        // Update the last processed segment
+        strncpy(last_processed_segment[stream_idx], newest_segment, MAX_PATH_LENGTH - 1);
+        last_processed_segment[stream_idx][MAX_PATH_LENGTH - 1] = '\0';
+        
+        pthread_mutex_unlock(&last_processed_mutex);
+        
+        // Use a default segment duration
+        float segment_duration = 2.0; // Default to 2 seconds
+        
+        // Submit the segment to the detection thread pool
+        log_info("Submitting HLS segment for detection: %s (stream: %s, duration: %.1f)",
+                newest_segment, stream_name, segment_duration);
+        
+        int ret = submit_segment_detection_task(stream_name, newest_segment, segment_duration, newest_time);
+        if (ret != 0) {
+            log_warn("Failed to submit segment detection task for stream %s (error code: %d)",
+                    stream_name, ret);
+        } else {
+            log_info("Successfully submitted segment detection task for stream %s", stream_name);
+        }
+    }
+    
+    return 0;
+}
+
+/**
  * Get detection recording state for a stream
  * Returns 1 if detection recording is active, 0 if not, -1 on error
  */
@@ -588,4 +734,30 @@ int get_detection_recording_state(const char *stream_name, bool *recording_activ
     *recording_active = (recording_state > 0);
     
     return 1;
+}
+
+/**
+ * Start monitoring HLS segments for all streams with detection enabled
+ * This function should be called periodically to check for new segments
+ */
+void monitor_all_hls_segments_for_detection(void) {
+    pthread_mutex_lock(&detection_recordings_mutex);
+    
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (detection_recordings[i].stream_name[0] != '\0') {
+            // Found a stream with detection enabled
+            char stream_name[MAX_STREAM_NAME];
+            strncpy(stream_name, detection_recordings[i].stream_name, MAX_STREAM_NAME - 1);
+            stream_name[MAX_STREAM_NAME - 1] = '\0';
+            
+            pthread_mutex_unlock(&detection_recordings_mutex);
+            
+            // Monitor HLS segments for this stream
+            monitor_hls_segments_for_detection(stream_name);
+            
+            pthread_mutex_lock(&detection_recordings_mutex);
+        }
+    }
+    
+    pthread_mutex_unlock(&detection_recordings_mutex);
 }

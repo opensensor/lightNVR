@@ -63,4 +63,19 @@ int process_frame_for_recording(const char *stream_name, const unsigned char *fr
  */
 int get_detection_recording_state(const char *stream_name, bool *recording_active);
 
+/**
+ * Monitor HLS segments for a stream and submit them to the detection thread pool
+ * This function is called periodically to check for new HLS segments
+ * 
+ * @param stream_name The name of the stream
+ * @return 0 on success, -1 on error
+ */
+int monitor_hls_segments_for_detection(const char *stream_name);
+
+/**
+ * Start monitoring HLS segments for all streams with detection enabled
+ * This function should be called periodically to check for new segments
+ */
+void monitor_all_hls_segments_for_detection(void);
+
 #endif /* DETECTION_RECORDING_H */

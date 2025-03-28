@@ -29,6 +29,7 @@
 #include "video/detection.h"
 #include "video/detection_integration.h"
 #include "video/detection_thread_pool.h"
+#include "video/detection_recording.h"
 #include "video/stream_packet_processor.h"
 #include "video/timestamp_manager.h"
 #include "video/onvif_discovery.h"
@@ -744,6 +745,10 @@ int main(int argc, char *argv[]) {
         // Check and ensure recording is active every minute
         if (now - last_recording_check_time > 60) {
             check_and_ensure_recording();
+            
+            // Also monitor HLS segments for detection
+            monitor_all_hls_segments_for_detection();
+            
             last_recording_check_time = now;
         }
 

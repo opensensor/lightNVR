@@ -16,6 +16,7 @@
 #include "core/logger.h"
 #include "video/hls_writer.h"
 #include "video/detection_integration.h"
+#include "video/detection_thread_pool.h"
 #include "video/streams.h"
 
 // Forward declarations from detection_stream.c
@@ -38,6 +39,14 @@ void process_packet_for_detection(const char *stream_name, const AVPacket *pkt, 
     //  Check if detection is enabled for this stream
     if (!is_detection_stream_reader_running(stream_name)) {
         // Detection is not enabled for this stream, skip processing
+        return;
+    }
+    
+    // Check if a detection is already in progress for this stream
+    // This prevents multiple detections from running simultaneously for the same stream
+    // and avoids buffer pool exhaustion
+    if (is_detection_in_progress(stream_name)) {
+        // Skip this packet if detection is already in progress for this stream
         return;
     }
     

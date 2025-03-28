@@ -12,6 +12,7 @@
 
 #include "core/logger.h"
 #include "core/shutdown_coordinator.h"
+#include "video/detection_thread_pool.h"
 #include "video/hls_writer.h"
 #include "video/hls_writer_thread.h"
 #include "video/stream_protocol.h"
@@ -201,10 +202,11 @@ static void *hls_writer_thread_func(void *arg) {
             // Unlock the writer mutex
             pthread_mutex_unlock(&ctx->writer->mutex);
             
-            // Process packet for detection if the stream has detection enabled
+            // Submit packet to detection thread pool if the stream has detection enabled
             // This wires in detection events to the always-on HLS streaming
             if (input_stream && input_stream->codecpar) {
-                process_packet_for_detection(stream_name, pkt, input_stream->codecpar);
+                // Use the detection thread pool instead of direct processing
+                submit_detection_task(stream_name, pkt, input_stream->codecpar);
             }
         }
         
