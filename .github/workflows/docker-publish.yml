@@ -102,8 +102,7 @@ jobs:
           labels: ${{ needs.setup.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          # Make sure we don't fail due to no output
-          outputs: type=registry,push=true
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ needs.setup.outputs.lowercase_image_name }}-${{ steps.platform-name.outputs.short_name }}:${{ needs.setup.outputs.version }},push=true
 
   manifest:
     needs: [setup, build]
