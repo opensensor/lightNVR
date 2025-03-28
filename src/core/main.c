@@ -134,24 +134,59 @@ static int check_and_kill_existing_instance(const char *pid_file) {
         log_warn("Another instance with PID %d appears to be running", existing_pid);
 
         // In a non-interactive environment, we can automatically kill it
-        log_info("Attempting to terminate previous instance (PID: %d)", existing_pid);
+        log_info("Attempting to terminate previous instance (PID: %d) with SIGTERM", existing_pid);
 
         // Send SIGTERM to let it clean up
         if (kill(existing_pid, SIGTERM) == 0) {
-            // Wait a bit for it to terminate
-            int timeout = 5;  // 5 seconds
+            // Wait longer for it to terminate properly (increased from 5 to 15 seconds)
+            int timeout = 15;  // 15 seconds
             while (timeout-- > 0 && kill(existing_pid, 0) == 0) {
                 sleep(1);
             }
 
             // If still running, force kill
             if (timeout <= 0 && kill(existing_pid, 0) == 0) {
-                log_warn("Process didn't terminate gracefully, using SIGKILL");
+                log_warn("Process didn't terminate gracefully within timeout, using SIGKILL");
                 kill(existing_pid, SIGKILL);
                 sleep(1);  // Give it a moment
             }
 
-            log_info("Previous instance terminated");
+            // Wait for PID file to be released
+            timeout = 5;  // 5 seconds
+            while (timeout-- > 0) {
+                // Check if PID file still exists and is locked
+                int test_fd = open(pid_file, O_RDWR);
+                if (test_fd < 0) {
+                    if (errno == ENOENT) {
+                        // PID file doesn't exist anymore, we're good
+                        log_info("Previous instance terminated and PID file released");
+                        return 0;
+                    }
+                    // Some other error, continue waiting
+                } else {
+                    // Try to lock the file
+                    if (lockf(test_fd, F_TLOCK, 0) == 0) {
+                        // We got the lock, which means the previous process released it
+                        close(test_fd);
+                        log_info("Previous instance terminated and PID file lock released");
+                        unlink(pid_file);  // Remove the old PID file
+                        return 0;
+                    }
+                    close(test_fd);
+                }
+                sleep(1);
+            }
+
+            // If we get here, the PID file still exists and is locked, or some other issue
+            log_warn("Previous instance may have terminated but PID file is still locked or inaccessible");
+            // Try to remove it anyway
+            if (unlink(pid_file) == 0) {
+                log_info("Removed potentially stale PID file");
+                return 0;
+            } else {
+                log_error("Failed to remove PID file: %s", strerror(errno));
+                return -1;
+            }
         } else {
             log_error("Failed to terminate previous instance: %s", strerror(errno));
             return -1;
@@ -170,7 +205,31 @@ static int create_pid_file(const char *pid_file) {
     char pid_str[16];
     int fd;
     
-    fd = open(pid_file, O_RDWR | O_CREAT, 0644);
+    // Make sure the directory exists
+    char dir_path[MAX_PATH_LENGTH] = {0};
+    char *last_slash = strrchr(pid_file, '/');
+    if (last_slash) {
+        size_t dir_len = last_slash - pid_file;
+        strncpy(dir_path, pid_file, dir_len);
+        dir_path[dir_len] = '\0';
+        
+        // Create directory if it doesn't exist
+        struct stat st;
+        if (stat(dir_path, &st) != 0) {
+            if (mkdir(dir_path, 0755) != 0 && errno != EEXIST) {
+                log_error("Could not create directory for PID file: %s", strerror(errno));
+                return -1;
+            }
+        }
+    }
+    
+    // Try to open the PID file with exclusive creation first
+    fd = open(pid_file, O_RDWR | O_CREAT | O_EXCL, 0644);
+    if (fd < 0 && errno == EEXIST) {
+        // File exists, try to open it normally
+        fd = open(pid_file, O_RDWR | O_CREAT, 0644);
+    }
+    
     if (fd < 0) {
         log_error("Could not open PID file %s: %s", pid_file, strerror(errno));
         return -1;
@@ -183,13 +242,23 @@ static int create_pid_file(const char *pid_file) {
         return -1;
     }
     
+    // Truncate the file to ensure we overwrite any existing content
+    if (ftruncate(fd, 0) < 0) {
+        log_warn("Could not truncate PID file: %s", strerror(errno));
+        // Continue anyway
+    }
+    
     // Write PID to file
     sprintf(pid_str, "%d\n", getpid());
     if (write(fd, pid_str, strlen(pid_str)) != strlen(pid_str)) {
         log_error("Could not write to PID file %s: %s", pid_file, strerror(errno));
         close(fd);
+        unlink(pid_file);  // Try to remove the file
         return -1;
     }
+    
+    // Sync to ensure the PID is written to disk
+    fsync(fd);
     
     // Keep file open to maintain lock
     return fd;
@@ -198,9 +267,16 @@ static int create_pid_file(const char *pid_file) {
 // Function to remove PID file
 static void remove_pid_file(int fd, const char *pid_file) {
     if (fd >= 0) {
+        // Release the lock by closing the file
         close(fd);
     }
-    unlink(pid_file);
+    
+    // Try to remove the file
+    if (unlink(pid_file) != 0) {
+        log_warn("Failed to remove PID file %s: %s", pid_file, strerror(errno));
+    } else {
+        log_info("Successfully removed PID file %s", pid_file);
+    }
 }
 
 // Function to daemonize the process
@@ -270,7 +346,7 @@ int main(int argc, char *argv[]) {
     int pid_fd = -1;
 
     // Print banner
-    printf("LightNVR v%s - Lightweight NVR\n");
+    printf("LightNVR v%s - Lightweight NVR\n", LIGHTNVR_VERSION_STRING);
     printf("Build date: %s\n", LIGHTNVR_BUILD_DATE);
 
     // Initialize logging
@@ -531,7 +607,7 @@ int main(int argc, char *argv[]) {
             if (config.streams[i].detection_model[0] != '/') {
                 // Relative path, use configured models path from INI if it exists
                 if (config.models_path && strlen(config.models_path) > 0) {
-                    snprintf(model_path, MAX_PATH_LENGTH, "%s/%s", config.models_path, config.streams[i].detection_model);
+                    snprintf(model_path, sizeof(model_path), "%s/%s", config.models_path, config.streams[i].detection_model);
                 } else {
                     // Fall back to default path if INI config doesn't exist
                     snprintf(model_path, MAX_PATH_LENGTH, "/etc/lightnvr/models/%s", config.streams[i].detection_model);
