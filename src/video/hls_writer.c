@@ -16,6 +16,7 @@
 #include "core/logger.h"
 #include "video/hls_writer.h"
 #include "video/detection_integration.h"
+#include "video/detection_frame_processing.h"
 #include "video/detection_thread_pool.h"
 #include "video/streams.h"
 

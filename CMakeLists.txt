@@ -180,6 +180,8 @@ file(GLOB_RECURSE STORAGE_SOURCES "src/storage/*.c")
 file(GLOB_RECURSE UTILS_SOURCES "src/utils/*.c")
 file(GLOB_RECURSE WEB_SOURCES "src/web/*.c")
 file(GLOB_RECURSE ROOT_SOURCES "src/*.c")
+# Exclude sod.c from ROOT_SOURCES to avoid static linking
+list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*sod/sod\\.c$")
 
 # Explicitly list video sources to exclude motion_detection_optimized.c
 file(GLOB VIDEO_SOURCES "src/video/*.c")
