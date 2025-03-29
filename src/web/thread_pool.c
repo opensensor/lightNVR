@@ -1,9 +1,12 @@
+#define _GNU_SOURCE  // For pthread_timedjoin_np
 #include "web/thread_pool.h"
 #include "core/logger.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
 #include <stdbool.h>
+#include <time.h>
+#include <unistd.h>
 
 /**
  * @brief Initialize a thread pool
@@ -162,19 +165,40 @@ void thread_pool_shutdown(thread_pool_t *pool) {
         return;
     }
     
+    log_info("Starting thread pool shutdown");
+    
     // Set shutdown flag
     pthread_mutex_lock(&pool->mutex);
     pool->shutdown = true;
     pthread_cond_broadcast(&pool->not_empty);
     pthread_mutex_unlock(&pool->mutex);
     
-    // Wait for all threads to exit
+    // Wait for all threads to exit with a timeout
     for (int i = 0; i < pool->thread_count; i++) {
-        pthread_join(pool->threads[i], NULL);
+        // Use a timeout to avoid hanging if a thread is stuck
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_sec += 5; // 5 second timeout
+        
+        int ret = pthread_timedjoin_np(pool->threads[i], NULL, &ts);
+        if (ret != 0) {
+            log_warn("Thread pool worker %d did not exit within timeout, continuing anyway", i);
+            
+            // Try to cancel the thread if it didn't exit within timeout
+            pthread_cancel(pool->threads[i]);
+            
+            // Give it a short time to clean up after cancellation
+            usleep(100000); // 100ms
+        }
     }
+    
+    // Add a small delay to ensure all threads have fully exited
+    usleep(250000); // 250ms
     
     // Clean up resources
     thread_pool_destroy(pool);
+    
+    log_info("Thread pool shutdown complete");
 }
 
 /**

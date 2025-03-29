@@ -118,17 +118,36 @@ void api_thread_pool_release(void) {
  * This forces shutdown regardless of reference count
  */
 void api_thread_pool_shutdown(void) {
-    pthread_mutex_lock(&g_api_thread_pool_mutex);
+    log_info("Starting API thread pool shutdown");
     
+    // Make a local copy of the thread pool pointer
+    thread_pool_t *pool = NULL;
+    
+    pthread_mutex_lock(&g_api_thread_pool_mutex);
     if (g_api_thread_pool != NULL) {
         log_info("Forcing shutdown of API thread pool, reference count was: %d", 
                  g_api_thread_pool_ref_count);
-        thread_pool_shutdown(g_api_thread_pool);
+        
+        // Get a local copy of the pool pointer
+        pool = g_api_thread_pool;
+        
+        // Clear the global pointer and reference count BEFORE shutting down
+        // This prevents any other threads from accessing it during shutdown
         g_api_thread_pool = NULL;
         g_api_thread_pool_ref_count = 0;
+    } else {
+        log_info("API thread pool is already NULL, nothing to shut down");
+    }
+    pthread_mutex_unlock(&g_api_thread_pool_mutex);
+    
+    // Now shut down the pool if we have a valid pointer
+    if (pool != NULL) {
+        // Call thread_pool_shutdown which now has its own error handling
+        thread_pool_shutdown(pool);
+        log_info("API thread pool shutdown completed successfully");
     }
     
-    pthread_mutex_unlock(&g_api_thread_pool_mutex);
+    log_info("API thread pool shutdown process complete");
 }
 
 /**
