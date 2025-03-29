@@ -672,7 +672,10 @@ int get_active_stream_count(void) {
 
     int count = 0;
     for (int i = 0; i < MAX_STREAMS; i++) {
-        if (streams[i].config.name[0] != '\0' && streams[i].status == STREAM_STATUS_RUNNING) {
+        if (streams[i].config.name[0] != '\0' && 
+            (streams[i].status == STREAM_STATUS_RUNNING || 
+             streams[i].status == STREAM_STATUS_RECONNECTING || 
+             streams[i].status == STREAM_STATUS_STARTING)) {
             count++;
         }
     }

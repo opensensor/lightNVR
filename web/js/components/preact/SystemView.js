@@ -98,7 +98,28 @@ export function SystemView() {
   // Handler for when logs are received from the LogsPoller
   const handleLogsReceived = (newLogs) => {
     console.log('SystemView received new logs:', newLogs.length);
-    setLogs(newLogs);
+    
+    // Filter logs based on the current log level
+    const currentLogLevel = logLevelRef.current;
+    console.log(`Filtering ${newLogs.length} logs based on log level: ${currentLogLevel}`);
+    
+    const filteredLogs = newLogs.filter(log => {
+      return log_level_meets_minimum(log.level, currentLogLevel);
+    });
+    
+    console.log(`After filtering: ${filteredLogs.length} logs match the current log level`);
+    
+    // Update the logs state with the filtered logs
+    setLogs(filteredLogs);
+    
+    // Force a re-render to ensure the UI updates
+    setTimeout(() => {
+      const logsContainer = document.querySelector('.logs-container');
+      if (logsContainer) {
+        // Scroll to the bottom of the logs container
+        logsContainer.scrollTop = logsContainer.scrollHeight;
+      }
+    }, 100);
   };
 
   // Load system info and logs on mount

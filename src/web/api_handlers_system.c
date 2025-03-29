@@ -406,40 +406,9 @@ void mg_handle_get_system_info(struct mg_connection *c, struct mg_http_message *
     // Create streams object
     cJSON *streams_obj = cJSON_CreateObject();
     if (streams_obj) {
-        // Get stream statistics
-        int active_streams = 0;
-        
-        // Get all stream configurations
-        stream_config_t streams[MAX_STREAMS];
-        int stream_count = get_all_stream_configs(streams, MAX_STREAMS);
-        
-        if (stream_count > 0) {
-            log_debug("Found %d stream configurations", stream_count);
-            
-            for (int i = 0; i < stream_count; i++) {
-                // Check if the stream is enabled in the configuration
-                if (streams[i].enabled) {
-                    log_debug("Stream %s is enabled in config", streams[i].name);
-                    
-                    // Get the stream handle
-                    stream_handle_t stream = get_stream_by_name(streams[i].name);
-                    if (stream) {
-                        // Get the stream status
-                        stream_status_t status = get_stream_status(stream);
-                        log_debug("Stream %s status: %d", streams[i].name, status);
-                        
-                        // Count as active if it's running or reconnecting
-                        // This ensures we count streams that are supposed to be active
-                        if (status == STREAM_STATUS_RUNNING || status == STREAM_STATUS_RECONNECTING || status == STREAM_STATUS_STARTING) {
-                            active_streams++;
-                            log_debug("Stream %s is active", streams[i].name);
-                        }
-                    } else {
-                        log_debug("Could not get handle for stream %s", streams[i].name);
-                    }
-                }
-            }
-        }
+        // Get stream statistics using the stream manager functions
+        int active_streams = get_active_stream_count();
+        log_debug("Active streams count from stream manager: %d", active_streams);
         
         cJSON_AddNumberToObject(streams_obj, "active", active_streams);
         cJSON_AddNumberToObject(streams_obj, "total", g_config.max_streams);

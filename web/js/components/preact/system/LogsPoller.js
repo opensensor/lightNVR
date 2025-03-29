@@ -132,7 +132,62 @@ export function LogsPoller({ logLevel, logCount, onLogsReceived }) {
         // Call the callback with all logs - parent will filter
         if (cleanedLogs.length > 0) {
           console.log(`Received ${cleanedLogs.length} logs via WebSocket`);
-          onLogsReceived(cleanedLogs);
+          
+          // Get existing logs from the parent component
+          fetch('/api/system/logs?level=debug&count=100')
+            .then(response => response.json())
+            .then(data => {
+              if (data.logs && Array.isArray(data.logs)) {
+                // Combine existing logs with new logs
+                const existingLogs = data.logs.map(log => {
+                  // Normalize existing logs
+                  const normalizedLog = {
+                    timestamp: log.timestamp || 'Unknown',
+                    level: (log.level || 'info').toLowerCase(),
+                    message: log.message || ''
+                  };
+                  
+                  // Normalize 'warn' to 'warning'
+                  if (normalizedLog.level === 'warn') {
+                    normalizedLog.level = 'warning';
+                  }
+                  
+                  return normalizedLog;
+                });
+                
+                // Combine existing logs with new logs, avoiding duplicates
+                const combinedLogs = [...existingLogs];
+                
+                // Add new logs that don't already exist
+                cleanedLogs.forEach(newLog => {
+                  // Check if this log already exists
+                  const exists = combinedLogs.some(existingLog => 
+                    existingLog.timestamp === newLog.timestamp && 
+                    existingLog.message === newLog.message
+                  );
+                  
+                  if (!exists) {
+                    combinedLogs.push(newLog);
+                  }
+                });
+                
+                // Sort logs by timestamp (newest first)
+                combinedLogs.sort((a, b) => {
+                  return new Date(b.timestamp) - new Date(a.timestamp);
+                });
+                
+                // Call the callback with combined logs
+                onLogsReceived(combinedLogs);
+              } else {
+                // If no existing logs, just use the new logs
+                onLogsReceived(cleanedLogs);
+              }
+            })
+            .catch(error => {
+              console.error('Error fetching existing logs:', error);
+              // If error fetching existing logs, just use the new logs
+              onLogsReceived(cleanedLogs);
+            });
         } else {
           console.log('No logs received via WebSocket');
         }
