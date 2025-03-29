@@ -85,8 +85,8 @@ fi
 # Configure SOD and Tests options
 SOD_OPTION=""
 if [ "$ENABLE_SOD" -eq 1 ]; then
-    SOD_OPTION="-DENABLE_SOD=ON"
-    echo "Building with SOD support"
+    SOD_OPTION="-DENABLE_SOD=ON -DSOD_DYNAMIC_LINK=OFF"
+    echo "Building with SOD support (static linking)"
 else
     SOD_OPTION="-DENABLE_SOD=OFF"
     echo "Building without SOD support"

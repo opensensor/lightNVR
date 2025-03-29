@@ -9,10 +9,6 @@
 #include <time.h>
 #include <dirent.h>
 
-// Include SOD header if SOD is enabled at compile time
-#ifdef SOD_ENABLED
-#include "sod/sod.h"
-#endif
 
 #include "../../include/core/logger.h"
 #include "../../include/core/config.h"

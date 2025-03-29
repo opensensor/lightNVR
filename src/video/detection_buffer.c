@@ -94,7 +94,7 @@ uint8_t* get_buffer_from_pool(size_t required_size) {
     
     // Try multiple times to get a buffer
     for (int retry = 0; retry < config->buffer_allocation_retries; retry++) {
-        // First try to find an existing buffer in the pool
+        // First try to find an existing buffer in the pool that's not in use and is large enough
         for (int i = 0; i < max_buffers; i++) {
             if (!buffer_pool[i].in_use && buffer_pool[i].buffer && buffer_pool[i].size >= required_size) {
                 buffer_pool[i].in_use = true;
@@ -106,8 +106,9 @@ uint8_t* get_buffer_from_pool(size_t required_size) {
             }
         }
         
-        // If no suitable buffer found, try to allocate a new one
-        // Find an empty slot in the pool
+        // If no suitable buffer found, try to find an empty slot or reuse an existing one
+        
+        // First, look for an empty slot (no buffer allocated yet)
         int empty_slot = -1;
         for (int i = 0; i < max_buffers; i++) {
             if (!buffer_pool[i].buffer) {
@@ -119,24 +120,46 @@ uint8_t* get_buffer_from_pool(size_t required_size) {
         // If no empty slot, try to find the oldest unused buffer
         if (empty_slot == -1) {
             time_t oldest_time = time(NULL);
+            int oldest_idx = -1;
+            
             for (int i = 0; i < max_buffers; i++) {
                 if (!buffer_pool[i].in_use && buffer_pool[i].last_used < oldest_time) {
                     oldest_time = buffer_pool[i].last_used;
+                    oldest_idx = i;
+                }
+            }
+            
+            // If we found an unused buffer, use it
+            if (oldest_idx >= 0) {
+                empty_slot = oldest_idx;
+            }
+        }
+        
+        // If still no slot, try emergency cleanup to free leaked buffers
+        if (empty_slot == -1) {
+            log_warn("No available slots in buffer pool, attempting emergency cleanup (retry %d)", retry);
+            emergency_buffer_pool_cleanup();
+            
+            // Try again to find an unused buffer after cleanup
+            for (int i = 0; i < max_buffers; i++) {
+                if (!buffer_pool[i].in_use) {
                     empty_slot = i;
+                    break;
                 }
             }
         }
         
         // If still no slot, we can't allocate a new buffer
         if (empty_slot == -1) {
-            log_error("No available slots in buffer pool (retry %d)", retry);                
+            log_error("No available slots in buffer pool after cleanup (retry %d)", retry);
+            
             // If this is the last retry, give up
             if (retry == config->buffer_allocation_retries - 1) {
                 return NULL;
             }
             
             // Wait a bit before retrying
-            usleep(100000); // 100ms
+            usleep(200000); // 200ms - increased from 100ms
             continue;
         }
         
@@ -150,10 +173,13 @@ uint8_t* get_buffer_from_pool(size_t required_size) {
         
         // Allocate a new buffer if needed
         if (!buffer_pool[empty_slot].buffer) {
-            buffer_pool[empty_slot].buffer = (uint8_t *)safe_malloc(required_size);
+            // Add a small buffer margin to reduce reallocations
+            size_t allocation_size = required_size + 1024;
+            buffer_pool[empty_slot].buffer = (uint8_t *)safe_malloc(allocation_size);
+            
             if (!buffer_pool[empty_slot].buffer) {
                 log_error("Failed to allocate buffer for pool (size: %zu, retry %d)", 
-                         required_size, retry);
+                         allocation_size, retry);
                 
                 // If this is the last retry, give up
                 if (retry == config->buffer_allocation_retries - 1) {
@@ -161,24 +187,24 @@ uint8_t* get_buffer_from_pool(size_t required_size) {
                 }
                 
                 // Wait a bit before retrying
-                usleep(100000); // 100ms
+                usleep(200000); // 200ms - increased from 100ms
                 continue;
             }
             
             // Track memory allocation
-            track_memory_allocation(required_size, true);
-            buffer_pool[empty_slot].size = required_size;
+            track_memory_allocation(allocation_size, true);
+            buffer_pool[empty_slot].size = allocation_size;
         }
         
         buffer_pool[empty_slot].in_use = true;
         buffer_pool[empty_slot].last_used = time(NULL);
         active_buffers++;
         log_info("Allocated buffer for pool (index %d, size %zu, retry %d)", 
-                empty_slot, required_size, retry);
+                empty_slot, buffer_pool[empty_slot].size, retry);
         return buffer_pool[empty_slot].buffer;
     }
     
-    log_error("Failed to allocate buffer from pool");
+    log_error("Failed to allocate buffer from pool after %d retries", config->buffer_allocation_retries);
     return NULL;
 }
 
@@ -241,10 +267,11 @@ void emergency_buffer_pool_cleanup(void) {
     
     log_warn("Performing emergency buffer pool cleanup");
     
+    // First pass: free buffers that have been in use for too long
     for (int i = 0; i < max_buffers; i++) {
         if (buffer_pool[i].in_use && buffer_pool[i].buffer) {
-            // If buffer has been in use for more than 30 seconds, assume it's leaked
-            if (current_time - buffer_pool[i].last_used > 30) {
+            // If buffer has been in use for more than 15 seconds (reduced from 30), assume it's leaked
+            if (current_time - buffer_pool[i].last_used > 15) {
                 log_warn("Freeing leaked buffer (index %d, in use for %ld seconds)",
                         i, current_time - buffer_pool[i].last_used);
                 
@@ -259,6 +286,38 @@ void emergency_buffer_pool_cleanup(void) {
                 if (active_buffers > 0) {
                     active_buffers--;
                 }
+            }
+        }
+    }
+    
+    // Second pass: if we didn't free any buffers, force free the oldest buffer
+    if (freed_count == 0 && active_buffers >= max_buffers) {
+        time_t oldest_time = current_time;
+        int oldest_idx = -1;
+        
+        // Find the oldest buffer
+        for (int i = 0; i < max_buffers; i++) {
+            if (buffer_pool[i].buffer && buffer_pool[i].last_used < oldest_time) {
+                oldest_time = buffer_pool[i].last_used;
+                oldest_idx = i;
+            }
+        }
+        
+        // Free the oldest buffer if found
+        if (oldest_idx >= 0) {
+            log_warn("Force freeing oldest buffer (index %d, last used %ld seconds ago)",
+                    oldest_idx, current_time - buffer_pool[oldest_idx].last_used);
+            
+            // Track memory before freeing
+            track_memory_allocation(buffer_pool[oldest_idx].size, false);
+            free(buffer_pool[oldest_idx].buffer);
+            buffer_pool[oldest_idx].buffer = NULL;
+            buffer_pool[oldest_idx].size = 0;
+            buffer_pool[oldest_idx].in_use = false;
+            freed_count++;
+            
+            if (active_buffers > 0) {
+                active_buffers--;
             }
         }
     }

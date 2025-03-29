@@ -13,7 +13,7 @@ include_directories(
 
 # Find required packages
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(FFMPEG REQUIRED libavcodec libavformat libavutil)
+pkg_check_modules(FFMPEG REQUIRED libavcodec libavformat libavutil libswscale)
 pkg_check_modules(SQLITE REQUIRED sqlite3)
 
 # Add include directories for dependencies
@@ -28,6 +28,8 @@ include_directories(
 # Define source files needed for tests
 set(DETECTION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/detection.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/detection_model.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/sod_detection.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/sod_realnet.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/motion_detection.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/logger.c

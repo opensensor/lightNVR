@@ -8,6 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Option to enable/disable SOD
 option(ENABLE_SOD "Enable SOD library for object detection" ON)
+option(SOD_DYNAMIC_LINK "Dynamically link SOD library instead of static linking" OFF)
 
 # SSL/TLS options
 option(ENABLE_SSL "Enable SSL/TLS support" OFF)
@@ -97,9 +98,41 @@ endif()
 
 # Set up SOD library if enabled
 if(ENABLE_SOD)
-    add_subdirectory(src/sod)
+    # Only add the SOD subdirectory if we're doing static linking
+    if(NOT SOD_DYNAMIC_LINK)
+        add_subdirectory(src/sod)
+    endif()
+
+    # Add the SOD_ENABLED define regardless of linking method
     add_definitions(-DSOD_ENABLED)
+
+    # Always set the include directory
     set(SOD_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/sod")
+
+    # For dynamic linking, we need to find the SOD library in the system
+    if(SOD_DYNAMIC_LINK)
+        # First try pkg-config
+        pkg_check_modules(SOD sod)
+
+        # If not found via pkg-config, try find_library
+        if(NOT SOD_FOUND)
+            find_library(SOD_LIBRARY NAMES sod)
+            if(SOD_LIBRARY)
+                set(SOD_LIBRARIES ${SOD_LIBRARY})
+                set(SOD_FOUND TRUE)
+                message(STATUS "Found SOD library: ${SOD_LIBRARY}")
+            endif()
+        endif()
+
+        # If still not found, warn but continue as the code will fall back to dynamic loading
+        if(NOT SOD_FOUND)
+            message(WARNING "SOD library not found for dynamic linking. "
+                    "The application will attempt to load it at runtime.")
+        endif()
+
+        # Add a define to indicate dynamic linking should be used
+        add_definitions(-DSOD_DYNAMIC_LINK)
+    endif()
 endif()
 
 # Set up Mongoose (required component)
@@ -235,7 +268,18 @@ endif()
 
 # Link SOD library if enabled
 if(ENABLE_SOD)
-    target_link_libraries(lightnvr sod)
+    if(SOD_DYNAMIC_LINK AND SOD_FOUND)
+        # For dynamic linking, link against the found SOD library
+        target_link_libraries(lightnvr ${SOD_LIBRARIES})
+        message(STATUS "Using dynamic linking for SOD library")
+    elseif(NOT SOD_DYNAMIC_LINK)
+        # For static linking, link against our built SOD library
+        target_link_libraries(lightnvr sod)
+        message(STATUS "Using static linking for SOD library")
+    else()
+        # SOD will be loaded at runtime
+        message(STATUS "SOD will be loaded at runtime via dlopen()")
+    endif()
 endif()
 
 # Install targets
@@ -261,6 +305,13 @@ configure_file(
 # Print build information
 message(STATUS "Building LightNVR ${PROJECT_VERSION} with the following configuration:")
 message(STATUS "- SOD object detection: ${ENABLE_SOD}")
+if(ENABLE_SOD)
+    if(SOD_DYNAMIC_LINK)
+        message(STATUS "  - SOD linking method: Dynamic")
+    else()
+        message(STATUS "  - SOD linking method: Static")
+    endif()
+endif()
 message(STATUS "- Embedded A1 device optimizations: ${EMBEDDED_A1_DEVICE}")
 message(STATUS "- Include directories:")
 foreach(dir ${LIGHTNVR_INCLUDE_DIRS})

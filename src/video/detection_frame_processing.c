@@ -53,7 +53,7 @@ extern int active_detections;
  * Process a decoded frame for detection
  */
 int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame, int detection_interval) {
-    //  Add extra validation for all parameters
+    // CRITICAL FIX: Add extra validation for all parameters
     if (!stream_name) {
         log_error("process_decoded_frame_for_detection: NULL stream name");
         return -1;
@@ -64,7 +64,7 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
         return -1;
     }
     
-    //  Validate frame data
+    // CRITICAL FIX: Validate frame data
     if (frame->width <= 0 || frame->height <= 0 || !frame->data[0]) {
         log_error("process_decoded_frame_for_detection: Invalid frame dimensions or data for stream %s: width=%d, height=%d, data=%p", 
                  stream_name, frame->width, frame->height, (void*)frame->data[0]);
@@ -72,7 +72,7 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     }
     
     // Initialize if not already done
-    if (get_active_detection_count() == 0 && get_max_detection_count() == 0) {
+    if (!active_detection_streams) {
         if (init_detection_integration() != 0) {
             log_error("Failed to initialize detection integration");
             return -1;
@@ -135,14 +135,6 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                      stream_name, time_since_last, detection_interval);
             return 0; // Skip this frame
         }
-    }
-    
-    // Periodically clean up old models (every 5 minutes)
-    static time_t last_cleanup_time = 0;
-    if (current_time - last_cleanup_time > 300) { // 300 seconds = 5 minutes
-        log_info("Performing periodic cleanup of unused detection models");
-        cleanup_old_detection_models(600); // Clean up models unused for 10 minutes
-        last_cleanup_time = current_time;
     }
     
     // We're going to process this frame, update the last detection time
@@ -256,8 +248,16 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     log_info("Converted frame to %s format for stream %s (dimensions: %dx%d)",
              (channels == 1) ? "grayscale" : "RGB", stream_name, target_width, target_height);
 
-    //  Check if this stream is already being processed
-    bool stream_already_active = is_detection_in_progress(stream_name);
+    // CRITICAL FIX: Check if this stream is already being processed
+    bool stream_already_active = false;
+    
+    for (int i = 0; i < get_max_detection_count(); i++) {
+        char *active_stream = active_detection_streams + i * MAX_STREAM_NAME;
+        if (active_stream[0] != '\0' && strcmp(active_stream, stream_name) == 0) {
+            stream_already_active = true;
+            break;
+        }
+    }
     
     // If this stream is already being processed, skip this detection request
     // This prevents multiple detections from running simultaneously for the same stream
@@ -265,13 +265,13 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
         log_warn("Detection already in progress for stream %s, skipping this request", stream_name);
         // Update the last detection time to prevent immediate retry
         last_detection_times[stream_idx] = current_time;
-        goto cleanup; // Skip this frame but make sure to clean up resources
+        return 0; // Skip this frame
     }
     
     // Check if we have room for another detection
-    if (get_active_detection_count() >= get_max_detection_count()) {
+    if (active_detections >= get_max_detection_count()) {
         log_warn("High detection load: %d concurrent detections (limit: %d), stream %s may experience delays", 
-                get_active_detection_count(), get_max_detection_count(), stream_name);
+                active_detections, get_max_detection_count(), stream_name);
     }
 
     // Get a buffer from the pool
@@ -281,7 +281,7 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     if (!packed_buffer) {
         log_error("Failed to allocate packed buffer for frame");
         
-        //  Try emergency cleanup to recover from potential buffer leaks
+        // CRITICAL FIX: Try emergency cleanup to recover from potential buffer leaks
         log_warn("Attempting emergency buffer pool cleanup to recover from potential leaks");
         emergency_buffer_pool_cleanup();
         
@@ -306,24 +306,25 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     
     // Add this stream to the active list if it's not already there
     if (!stream_already_active) {
-        // Add this stream to the active list
+        bool added = false;
         for (int i = 0; i < get_max_detection_count(); i++) {
             char *active_stream = active_detection_streams + i * MAX_STREAM_NAME;
             if (active_stream[0] == '\0') {
                 strncpy(active_stream, stream_name, MAX_STREAM_NAME - 1);
                 active_stream[MAX_STREAM_NAME - 1] = '\0';
+                added = true;
                 active_detection_added = true;
-                active_detections++;
-                log_info("Active detections: %d/%d for stream %s", 
-                        active_detections, get_max_detection_count(), stream_name);
                 break;
             }
         }
         
         // If we couldn't add it to the list (list is full), still process it
         // but don't track it (it will be treated as a one-off detection)
-        if (!active_detection_added) {
+        if (!added) {
             log_warn("Detection tracking list full, processing stream %s as one-off detection", stream_name);
+        } else {
+            active_detections++;
+            log_info("Active detections: %d/%d for stream %s", active_detections, get_max_detection_count(), stream_name);
         }
     }
 
@@ -331,7 +332,7 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     float threshold = get_detection_threshold(model_type, stream_config.detection_threshold);
     log_info("Using threshold %.2f for model %s", threshold, model_type);
     
-    //  Log more details about the detection configuration
+    // CRITICAL FIX: Log more details about the detection configuration
     log_info("DETECTION DEBUG: Stream=%s, Model=%s, Type=%s, Threshold=%.2f, Dimensions=%dx%d, Channels=%d",
              stream_name, stream_config.detection_model, model_type, threshold, 
              target_width, target_height, channels);
@@ -537,7 +538,7 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                 model = global_model_cache[i].model;
                 cache_idx = i;
                 global_model_cache[i].last_used = time(NULL);
-                log_info("Using globally cached detection model for %s", full_model_path);
+                log_info("Using globally cached model: %s", full_model_path);
                 break;
             }
         }        
@@ -553,21 +554,14 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                     log_info("Using locally cached detection model for %s", full_model_path);
                     
                     // Also add to global cache for other streams to use
-                    bool added_to_global = false;
                     for (int j = 0; j < MAX_STREAMS; j++) {
                         if (global_model_cache[j].path[0] == '\0') {
                             strncpy(global_model_cache[j].path, full_model_path, MAX_PATH_LENGTH - 1);
-                            global_model_cache[j].path[MAX_PATH_LENGTH - 1] = '\0';
                             global_model_cache[j].model = model;
                             global_model_cache[j].last_used = time(NULL);
                             log_info("Added model to global cache: %s", full_model_path);
-                            added_to_global = true;
                             break;
                         }
-                    }
-                    
-                    if (!added_to_global) {
-                        log_warn("Global model cache is full, could not add model %s", full_model_path);
                     }
                     break;
                 }
@@ -610,14 +604,14 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                     // Only unload if not in global cache
                     if (!in_global_cache) {
                         unload_detection_model(model_cache[oldest_idx].model);
-                        model_cache[oldest_idx].model = NULL;  // Set to NULL after unloading to prevent use-after-free
                     } else {
                         log_info("Model %s is in global cache, not unloading", model_cache[oldest_idx].path);
                     }
                     
                     model_cache[oldest_idx].path[0] = '\0';
+                    model_cache[oldest_idx].model = NULL;
                 }
-                    
+                
                 // Check if model is already loaded in global cache
                 for (int i = 0; i < MAX_STREAMS; i++) {
                     if (global_model_cache[i].path[0] != '\0' && 
@@ -640,7 +634,7 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                     // Load the new model using the SOD integration module
                     log_info("LOADING DETECTION MODEL: %s with threshold: %.2f", full_model_path, threshold);
                     
-                    //  Check if SOD is enabled at compile time
+                    // CRITICAL FIX: Check if SOD is enabled at compile time
                     #ifdef SOD_ENABLED
                     log_info("SOD is enabled at compile time");
                     #else
@@ -675,21 +669,14 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
                         log_info("Cached detection model for %s in local slot %d", full_model_path, oldest_idx);
                         
                         // Also add to global cache
-                        bool added_to_global = false;
                         for (int i = 0; i < MAX_STREAMS; i++) {
                             if (global_model_cache[i].path[0] == '\0') {
                                 strncpy(global_model_cache[i].path, full_model_path, MAX_PATH_LENGTH - 1);
-                                global_model_cache[i].path[MAX_PATH_LENGTH - 1] = '\0';
                                 global_model_cache[i].model = model;
                                 global_model_cache[i].last_used = time(NULL);
                                 log_info("Added model to global cache: %s", full_model_path);
-                                added_to_global = true;
                                 break;
                             }
-                        }
-                        
-                        if (!added_to_global) {
-                            log_warn("Global model cache is full, could not add model %s to global cache", full_model_path);
                         }
                     }
                 }
@@ -736,7 +723,7 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
         }
     }
 
-    // Remove this stream from the active list
+    // CRITICAL FIX: Remove this stream from the active list
     if (active_detection_added) {
         for (int i = 0; i < get_max_detection_count(); i++) {
             char *active_stream = active_detection_streams + i * MAX_STREAM_NAME;
@@ -756,21 +743,6 @@ int process_decoded_frame_for_detection(const char *stream_name, AVFrame *frame,
     return detect_ret;
 
 cleanup:
-    // Remove this stream from the active list in case of error
-    if (active_detection_added) {
-        for (int i = 0; i < get_max_detection_count(); i++) {
-            char *active_stream = active_detection_streams + i * MAX_STREAM_NAME;
-            if (active_stream[0] != '\0' && strcmp(active_stream, stream_name) == 0) {
-                log_info("Removing stream %s from active detection list on error (slot %d)", stream_name, i);
-                active_stream[0] = '\0'; // Clear the slot
-                
-                // Decrement active detections counter
-                active_detections--;
-                log_info("Decremented active detections to %d after error", active_detections);
-                break;
-            }
-        }
-    }
     // Free resources
     if (sws_ctx) {
         sws_freeContext(sws_ctx);
@@ -790,6 +762,22 @@ cleanup:
     if (packed_buffer) {
         return_buffer_to_pool(packed_buffer);
         packed_buffer = NULL;  // Set to NULL after returning to prevent double-return
+    }
+    
+    // CRITICAL FIX: Remove this stream from the active list in case of error
+    if (active_detection_added) {
+        for (int i = 0; i < get_max_detection_count(); i++) {
+            char *active_stream = active_detection_streams + i * MAX_STREAM_NAME;
+            if (active_stream[0] != '\0' && strcmp(active_stream, stream_name) == 0) {
+                log_info("Removing stream %s from active detection list on error (slot %d)", stream_name, i);
+                active_stream[0] = '\0'; // Clear the slot
+                
+                // Decrement active detections counter
+                active_detections--;
+                log_info("Decremented active detections to %d after error", active_detections);
+                break;
+            }
+        }
     }
     
     return -1;

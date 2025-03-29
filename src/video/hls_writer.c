@@ -19,6 +19,7 @@
 #include "video/detection_frame_processing.h"
 #include "video/detection_thread_pool.h"
 #include "video/streams.h"
+#include "video/stream_manager.h"
 
 // Forward declarations from detection_stream.c
 extern int is_detection_stream_reader_running(const char *stream_name);
@@ -134,11 +135,32 @@ void process_packet_for_detection(const char *stream_name, const AVPacket *pkt, 
         log_debug("Sending decoded frame to detection integration for stream %s (interval: %d)", 
                  stream_name, detection_interval);
         
-        //  Check if process_decoded_frame_for_detection is available
-        if (process_decoded_frame_for_detection) {
-            process_decoded_frame_for_detection(stream_name, frame, detection_interval);
+        // Get stream configuration to check if detection is enabled
+        stream_handle_t stream_handle = get_stream_by_name(stream_name);
+        if (stream_handle) {
+            stream_config_t stream_config;
+            if (get_stream_config(stream_handle, &stream_config) == 0) {
+                // Check if detection is enabled and a model is specified
+                if (stream_config.detection_based_recording && 
+                    stream_config.detection_model[0] != '\0') {
+                    
+                    log_info("Processing detection for stream %s with model %s", 
+                             stream_name, stream_config.detection_model);
+                    
+                    // Call the detection function
+                    if (process_decoded_frame_for_detection) {
+                        process_decoded_frame_for_detection(stream_name, frame, detection_interval);
+                    } else {
+                        log_error("process_decoded_frame_for_detection function is not available");
+                    }
+                } else {
+                    log_debug("Detection not enabled for stream %s in configuration", stream_name);
+                }
+            } else {
+                log_error("Failed to get stream config for %s", stream_name);
+            }
         } else {
-            log_error("process_decoded_frame_for_detection function is not available");
+            log_error("Failed to get stream handle for %s", stream_name);
         }
     } else if (ret != AVERROR(EAGAIN) && ret != AVERROR_EOF) {
         log_error("Failed to receive frame from decoder for stream %s: %d", stream_name, ret);

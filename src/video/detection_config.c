@@ -14,9 +14,9 @@
 // Default configuration for standard systems
 detection_config_t default_config = {
     // Memory constraints
-    .buffer_pool_size = 8,          // 8 buffers in the pool
-    .concurrent_detections = 16,      // 3 concurrent detections
-    .buffer_allocation_retries = 3,  // 3 retries for buffer allocation
+    .buffer_pool_size = 32,         // Increased from 8 to 32 buffers in the pool
+    .concurrent_detections = 16,    // 16 concurrent detections
+    .buffer_allocation_retries = 5, // Increased from 3 to 5 retries for buffer allocation
     
     // Downscaling factors
     .downscale_factor_default = 1,   // No downscaling by default
@@ -35,9 +35,9 @@ detection_config_t default_config = {
 // Configuration for embedded systems (256MB RAM, 2 cores)
 detection_config_t embedded_config = {
     // Memory constraints
-    .buffer_pool_size = 8,           //  Increased from 4 to 8 buffers in the pool
-    .concurrent_detections = 2,      // Increased from 1 to 2 concurrent detections
-    .buffer_allocation_retries = 3,  //  Increased from 3 to 5 retries for buffer allocation
+    .buffer_pool_size = 16,          // Increased from 8 to 16 buffers in the pool
+    .concurrent_detections = 2,      // 2 concurrent detections
+    .buffer_allocation_retries = 5,  // Increased from 3 to 5 retries for buffer allocation
     
     // Downscaling factors
     .downscale_factor_default = 1,   // No downscaling by default

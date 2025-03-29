@@ -7,14 +7,6 @@
 #include "video/detection.h"
 #include "core/logger.h"
 
-// Include SOD header if SOD is enabled at compile time
-#ifdef SOD_ENABLED
-#include "sod/sod.h"
-#else
-// Define SOD constants for when SOD is not available
-#define SOD_OK 0
-#endif
-
 // SOD RealNet function pointers for dynamic loading
 typedef struct {
     void *handle;
@@ -40,13 +32,12 @@ typedef struct {
     void *pUserData;
 } sod_box_dynamic;
 
+// SOD RealNet structure (for dynamic loading)
+typedef struct sod_realnet_struct sod_realnet;
+
 // SOD RealNet model structure
 typedef struct {
-    #ifdef SOD_ENABLED
-    sod_realnet *net;            // SOD RealNet handle
-    #else
     void *net;                   // SOD RealNet handle (void* for dynamic loading)
-    #endif
     float threshold;             // Detection threshold
 } sod_realnet_model_t;
 
@@ -54,10 +45,6 @@ typedef struct {
  * Initialize SOD RealNet functions
  */
 static bool init_sod_realnet_functions(void) {
-    #ifdef SOD_ENABLED
-    // SOD is directly linked
-    return true;
-    #else
     // Try to dynamically load SOD library
     if (sod_realnet_funcs.handle) {
         // Already initialized
@@ -90,7 +77,6 @@ static bool init_sod_realnet_functions(void) {
         sod_realnet_funcs.handle = NULL;
         return false;
     }
-    #endif
 }
 
 /**
@@ -107,11 +93,7 @@ void* load_sod_realnet_model(const char *model_path, float threshold) {
     void *net = NULL;
     int rc;
     
-    #ifdef SOD_ENABLED
-    rc = sod_realnet_create((sod_realnet**)&net);
-    #else
     rc = sod_realnet_funcs.sod_realnet_create(&net);
-    #endif
     
     if (rc != 0) { // SOD_OK is 0
         log_error("Failed to create SOD RealNet handle: %d", rc);
@@ -126,11 +108,7 @@ void* load_sod_realnet_model(const char *model_path, float threshold) {
     FILE *fp = fopen(model_path, "rb");
     if (!fp) {
         log_error("Failed to open SOD RealNet model file: %s", model_path);
-        #ifdef SOD_ENABLED
-        sod_realnet_destroy(net);
-        #else
-        sod_realnet_funcs.sod_realnet_destroy(net);
-        #endif
+    sod_realnet_funcs.sod_realnet_destroy(net);
         return NULL;
     }
     
@@ -144,11 +122,7 @@ void* load_sod_realnet_model(const char *model_path, float threshold) {
     if (!model_data) {
         log_error("Failed to allocate memory for SOD RealNet model data");
         fclose(fp);
-        #ifdef SOD_ENABLED
-        sod_realnet_destroy(net);
-        #else
         sod_realnet_funcs.sod_realnet_destroy(net);
-        #endif
         return NULL;
     }
     
@@ -157,32 +131,20 @@ void* load_sod_realnet_model(const char *model_path, float threshold) {
         log_error("Failed to read SOD RealNet model data");
         free(model_data);
         fclose(fp);
-        #ifdef SOD_ENABLED
-        sod_realnet_destroy(net);
-        #else
         sod_realnet_funcs.sod_realnet_destroy(net);
-        #endif
         return NULL;
     }
     
     fclose(fp);
     
     // Load model from memory
-    #ifdef SOD_ENABLED
-    rc = sod_realnet_load_model_from_mem(net, model_data, file_size, &handle);
-    #else
     rc = sod_realnet_funcs.sod_realnet_load_model_from_mem(net, model_data, file_size, &handle);
-    #endif
     
     // Free model data
     free(model_data);
     if (rc != 0) { // SOD_OK is 0
         log_error("Failed to load SOD RealNet model: %s (error: %d)", model_path, rc);
-        #ifdef SOD_ENABLED
-        sod_realnet_destroy(net);
-        #else
         sod_realnet_funcs.sod_realnet_destroy(net);
-        #endif
         return NULL;
     }
     
@@ -190,11 +152,7 @@ void* load_sod_realnet_model(const char *model_path, float threshold) {
     sod_realnet_model_t *model = (sod_realnet_model_t *)malloc(sizeof(sod_realnet_model_t));
     if (!model) {
         log_error("Failed to allocate memory for SOD RealNet model structure");
-        #ifdef SOD_ENABLED
-        sod_realnet_destroy(net);
-        #else
         sod_realnet_funcs.sod_realnet_destroy(net);
-        #endif
         return NULL;
     }
     
@@ -217,13 +175,9 @@ void free_sod_realnet_model(void *model) {
     sod_realnet_model_t *m = (sod_realnet_model_t *)model;
     
     // Destroy RealNet handle
-    #ifdef SOD_ENABLED
-    sod_realnet_destroy(m->net);
-    #else
     if (sod_realnet_funcs.sod_realnet_destroy) {
         sod_realnet_funcs.sod_realnet_destroy(m->net);
     }
-    #endif
     
     // Free model structure
     free(m);
@@ -262,11 +216,7 @@ int detect_with_sod_realnet(void *model, const unsigned char *frame_data,
     int box_count = 0;
     int rc;
     
-    #ifdef SOD_ENABLED
-    rc = sod_realnet_detect(m->net, blob, width, height, (sod_box**)&boxes, &box_count);
-    #else
     rc = sod_realnet_funcs.sod_realnet_detect(m->net, blob, width, height, (void***)&boxes, &box_count);
-    #endif
     
     if (rc != 0) { // SOD_OK is 0
         log_error("SOD RealNet detection failed: %d", rc);
@@ -279,17 +229,8 @@ int detect_with_sod_realnet(void *model, const unsigned char *frame_data,
     int valid_count = 0;
     for (int i = 0; i < box_count && valid_count < MAX_DETECTIONS; i++) {
         // Get box data
-        #ifdef SOD_ENABLED
-        sod_box *box_array = (sod_box*)boxes;
-        float score = box_array[i].score;
-        const char *name = box_array[i].zName;
-        int x = box_array[i].x;
-        int y = box_array[i].y;
-        int w = box_array[i].w;
-        int h = box_array[i].h;
-        #else
         // For dynamic loading, we need to access the box array differently
-        // FIXED: boxes is an array of sod_box structures, not pointers to structures
+        // boxes is an array of sod_box_dynamic structures, not pointers to structures
         sod_box_dynamic *box_array = (sod_box_dynamic*)boxes;
         float score = box_array[i].score;
         const char *name = box_array[i].zName;
@@ -297,7 +238,6 @@ int detect_with_sod_realnet(void *model, const unsigned char *frame_data,
         int y = box_array[i].y;
         int w = box_array[i].w;
         int h = box_array[i].h;
-        #endif
         
         // Apply threshold
         if (score < m->threshold) {
