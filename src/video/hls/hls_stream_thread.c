@@ -245,8 +245,10 @@ void *hls_stream_thread(void *arg) {
                     }
                 }
                 
-                // Track how long the connection has been invalid
-                static time_t connection_invalid_start = 0;
+                // Track how long the connection has been invalid - use per-stream tracking
+                // Store the timestamp in a local variable instead of a static one to avoid
+                // interference between different streams
+                static __thread time_t connection_invalid_start = 0;
                 if (connection_invalid_start == 0) {
                     connection_invalid_start = time(NULL);
                     log_info("Stream %s connection marked as invalid, monitoring for %d seconds before reconnecting", 
