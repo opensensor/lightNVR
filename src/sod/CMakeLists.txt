@@ -19,8 +19,6 @@ include_directories(
 
 # Build as a shared library
 add_library(sod SHARED ${SOD_SOURCES})
-
-# Link with math library
 target_link_libraries(sod m)
 
 # Set library version
@@ -35,7 +33,7 @@ install(TARGETS sod
 )
 
 # Install headers
-install(FILES 
+install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/../../include/sod/sod.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../../include/sod/sod_img_reader.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../../include/sod/sod_img_writer.h

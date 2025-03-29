@@ -94,36 +94,103 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
-# Debug: List all SOD libraries and binaries
-echo "DEBUG: Searching for SOD libraries and binaries..."
-find build -name "lightnvr" -o -name "libsod.so*" | sort
+# Search for the lightnvr binary first
+echo "Searching for LightNVR binary..."
+BINARY_PATH=""
+POSSIBLE_BINARY_PATHS=(
+    "lightnvr"
+    "build/Release/bin/lightnvr"
+    "build/Debug/bin/lightnvr"
+    "build/Release/lightnvr"
+    "build/Debug/lightnvr"
+    "build/bin/lightnvr"
+    "build/lightnvr"
+)
 
-# Directly set paths based on the known locations
-if [ -f "build/src/sod/libsod.so.1.1.9" ]; then
-    LIB_PATH="build/src/sod"
-    SOD_LIB_NAME="libsod.so.1.1.9"
-elif [ -f "build/src/sod/libsod.so" ]; then
-    LIB_PATH="build/src/sod"
-    SOD_LIB_NAME="libsod.so"
-fi
+for path in "${POSSIBLE_BINARY_PATHS[@]}"; do
+    if [ -f "$path" ]; then
+        BINARY_PATH="$path"
+        echo "Found binary at: $BINARY_PATH"
+        break
+    fi
+done
 
-if [ -f "build/Release/lightnvr" ]; then
-    BINARY_PATH="build/Release/lightnvr"
-elif [ -f "build/lightnvr" ]; then
-    BINARY_PATH="build/lightnvr"
-fi
-
-# Check if we found the SOD library
-if [ "$INSTALL_SOD" -eq 1 ] && [ -z "$LIB_PATH" ]; then
-    echo "SOD library not found. Did you build with SOD support?"
-    echo "Try running: ./scripts/build.sh --release --with-sod"
-    exit 1
-fi
-
-# Check if we found the binary
 if [ -z "$BINARY_PATH" ]; then
     echo "Binary not found. Please build the project first:"
     echo "./scripts/build.sh --release"
+    exit 1
+fi
+
+# Search for the SOD library
+echo "Searching for SOD library..."
+LIB_PATH=""
+SOD_LIB_NAME=""
+POSSIBLE_LIB_PATHS=(
+    "build/Release/src/sod"
+    "build/Debug/src/sod"
+    "build/Release/lib"
+    "build/Debug/lib"
+    "build/src/sod"
+    "build/lib"
+    "src/sod"
+)
+
+for path in "${POSSIBLE_LIB_PATHS[@]}"; do
+    if [ -f "$path/libsod.so.1.1.9" ]; then
+        LIB_PATH="$path"
+        SOD_LIB_NAME="libsod.so.1.1.9"
+        echo "Found SOD library at: $LIB_PATH/$SOD_LIB_NAME"
+        break
+    elif [ -f "$path/libsod.so.1" ]; then
+        LIB_PATH="$path"
+        SOD_LIB_NAME="libsod.so.1"
+        echo "Found SOD library at: $LIB_PATH/$SOD_LIB_NAME"
+        break
+    elif [ -f "$path/libsod.so" ]; then
+        LIB_PATH="$path"
+        SOD_LIB_NAME="libsod.so"
+        echo "Found SOD library at: $LIB_PATH/$SOD_LIB_NAME"
+        break
+    fi
+done
+
+# Print detailed file information for better debugging
+if [ -n "$LIB_PATH" ]; then
+    echo "SOD library details:"
+    ls -la "$LIB_PATH"/libsod.so*
+
+    # Check if it's a symlink and where it points
+    if [ -L "$LIB_PATH/$SOD_LIB_NAME" ]; then
+        echo "SOD library is a symlink pointing to: $(readlink -f "$LIB_PATH/$SOD_LIB_NAME")"
+    else
+        echo "SOD library is a regular file"
+
+        # Check file type
+        file "$LIB_PATH/$SOD_LIB_NAME"
+    fi
+else
+    echo "No SOD library found in standard locations."
+    echo "Performing deep search for libsod.so files..."
+
+    # Do a more exhaustive search
+    SOD_FILES=$(find . -name "libsod.so*" -type f -o -type l | sort)
+
+    if [ -n "$SOD_FILES" ]; then
+        echo "Found SOD library files:"
+        echo "$SOD_FILES"
+
+        # Use the first one found
+        FIRST_SOD=$(echo "$SOD_FILES" | head -n 1)
+        LIB_PATH=$(dirname "$FIRST_SOD")
+        SOD_LIB_NAME=$(basename "$FIRST_SOD")
+        echo "Using SOD library: $LIB_PATH/$SOD_LIB_NAME"
+    fi
+fi
+
+# Check if we found the SOD library when it's required
+if [ "$INSTALL_SOD" -eq 1 ] && [ -z "$LIB_PATH" ]; then
+    echo "SOD library not found. Did you build with SOD support?"
+    echo "Try running: ./scripts/build.sh --release --with-sod"
     exit 1
 fi
 
@@ -150,32 +217,42 @@ install -m 755 "$BINARY_PATH" "$PREFIX/bin/lightnvr"
 # Install SOD library if enabled
 if [ "$INSTALL_SOD" -eq 1 ]; then
     echo "Installing SOD library..."
-    if [ -f "$LIB_PATH/$SOD_LIB_NAME" ]; then
-        # Install the library
-        install -m 755 "$LIB_PATH/$SOD_LIB_NAME" "$PREFIX/lib/$SOD_LIB_NAME"
-        
-        # Create symlinks if needed
-        if [ "$SOD_LIB_NAME" = "libsod.so.1.1.9" ]; then
-            ln -sf "$PREFIX/lib/libsod.so.1.1.9" "$PREFIX/lib/libsod.so.1"
-            ln -sf "$PREFIX/lib/libsod.so.1" "$PREFIX/lib/libsod.so"
-        elif [ "$SOD_LIB_NAME" = "libsod.so" ]; then
-            # If we only have libsod.so, create the versioned symlinks
-            ln -sf "$PREFIX/lib/libsod.so" "$PREFIX/lib/libsod.so.1"
-            ln -sf "$PREFIX/lib/libsod.so.1" "$PREFIX/lib/libsod.so.1.1.9"
-        fi
 
-        # Run ldconfig to update the shared library cache
-        # we can skip with --without-ldconfig
-        if [ "$DO_LDCONFIG" -eq 1 ]; then
-            ldconfig
+    # Install all libsod.so files found in the directory
+    for sod_file in "$LIB_PATH"/libsod.so*; do
+        if [ -f "$sod_file" ]; then
+            sod_filename=$(basename "$sod_file")
+            echo "Installing $sod_filename..."
+            install -m 755 "$sod_file" "$PREFIX/lib/$sod_filename"
         fi
+    done
 
-        echo "SOD library installed to $PREFIX/lib/$SOD_LIB_NAME"
-    else
-        echo "SOD library not found. Did you build with SOD support?"
-        echo "Try running: ./scripts/build.sh --release --with-sod"
-        exit 1
+    # Create symlinks if needed (if we installed a versioned library but not the unversioned one)
+    if [ -f "$PREFIX/lib/libsod.so.1.1.9" ] && [ ! -f "$PREFIX/lib/libsod.so" ]; then
+        echo "Creating symlinks for libsod.so..."
+        ln -sf "$PREFIX/lib/libsod.so.1.1.9" "$PREFIX/lib/libsod.so.1"
+        ln -sf "$PREFIX/lib/libsod.so.1" "$PREFIX/lib/libsod.so"
+    elif [ -f "$PREFIX/lib/libsod.so.1" ] && [ ! -f "$PREFIX/lib/libsod.so" ]; then
+        echo "Creating symlink for libsod.so..."
+        ln -sf "$PREFIX/lib/libsod.so.1" "$PREFIX/lib/libsod.so"
+    elif [ -f "$PREFIX/lib/libsod.so" ] && [ ! -f "$PREFIX/lib/libsod.so.1.1.9" ]; then
+        # If we only have libsod.so, create the versioned symlinks
+        echo "Creating versioned symlinks for libsod.so..."
+        ln -sf "$PREFIX/lib/libsod.so" "$PREFIX/lib/libsod.so.1"
+        ln -sf "$PREFIX/lib/libsod.so.1" "$PREFIX/lib/libsod.so.1.1.9"
     fi
+
+    # Run ldconfig to update the shared library cache
+    # we can skip with --without-ldconfig
+    if [ "$DO_LDCONFIG" -eq 1 ]; then
+        echo "Running ldconfig..."
+        ldconfig
+    else
+        echo "Skipping ldconfig (--without-ldconfig)"
+    fi
+
+    echo "SOD library installed to $PREFIX/lib"
+    ls -la "$PREFIX/lib"/libsod.so*
 else
     echo "Skipping SOD library installation (SOD support disabled)"
 fi
@@ -190,9 +267,14 @@ else
     install -m 644 config/lightnvr.ini "$CONFIG_DIR/lightnvr.ini.default"
 fi
 
-# Install web interface files
-echo "Installing web interface files..."
-cp -r web/* "$DATA_DIR/www/"
+# Check if web directory exists
+if [ -d "web" ]; then
+    # Install web interface files
+    echo "Installing web interface files..."
+    cp -r web/* "$DATA_DIR/www/"
+else
+    echo "Web interface directory not found, skipping web installation"
+fi
 
 # Set permissions
 echo "Setting permissions..."
@@ -210,25 +292,25 @@ else
     # Create systemd service file
     echo "Creating systemd service file..."
     cat > /etc/systemd/system/lightnvr.service << EOF
-    [Unit]
-    Description=LightNVR - Lightweight Network Video Recorder
-    After=network.target
+[Unit]
+Description=LightNVR - Lightweight Network Video Recorder
+After=network.target
 
-    [Service]
-    Type=forking
-    PIDFile=/var/run/lightnvr.pid
-    Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-    Environment="HOME=/root"
-    Environment="PWD=/var/lib/lightnvr"
-    WorkingDirectory=/var/lib/lightnvr
-    ExecStart=$PREFIX/bin/lightnvr -c $CONFIG_DIR/lightnvr.ini -d
-    Restart=on-failure
-    RestartSec=5
-    StandardOutput=journal
-    StandardError=journal
+[Service]
+Type=forking
+PIDFile=/var/run/lightnvr.pid
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="HOME=/root"
+Environment="PWD=/var/lib/lightnvr"
+WorkingDirectory=/var/lib/lightnvr
+ExecStart=$PREFIX/bin/lightnvr -c $CONFIG_DIR/lightnvr.ini -d
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
 
-    [Install]
-    WantedBy=multi-user.target
+[Install]
+WantedBy=multi-user.target
 EOF
 
     # Reload systemd
@@ -255,6 +337,17 @@ if [ "$INSTALL_SOD" -eq 1 ]; then
     echo ""
     echo "SOD library installed: $PREFIX/lib/libsod.so"
     echo "Object detection is enabled"
+
+    # Verify if the library is properly linked to the binary
+    echo ""
+    echo "Checking if lightnvr is linked to libsod.so..."
+    if ldd "$PREFIX/bin/lightnvr" | grep -q "libsod.so"; then
+        echo "SUCCESS: lightnvr is correctly linked to libsod.so"
+    else
+        echo "WARNING: lightnvr is not linked to libsod.so"
+        echo "This may indicate a problem with dynamic linking."
+        echo "LightNVR will attempt to load the library at runtime."
+    fi
 else
     echo ""
     echo "SOD library not installed"

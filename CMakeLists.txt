@@ -98,10 +98,10 @@ endif()
 
 # Set up SOD library if enabled
 if(ENABLE_SOD)
-    # Only add the SOD subdirectory if we're doing static linking
-    if(NOT SOD_DYNAMIC_LINK)
-        add_subdirectory(src/sod)
-    endif()
+    # Add the SOD subdirectory regardless of linking method
+    # The CMakeLists.txt in the SOD directory will handle
+    # building as static or shared based on SOD_DYNAMIC_LINK
+    add_subdirectory(src/sod)
 
     # Add the SOD_ENABLED define regardless of linking method
     add_definitions(-DSOD_ENABLED)
@@ -109,28 +109,8 @@ if(ENABLE_SOD)
     # Always set the include directory
     set(SOD_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/sod")
 
-    # For dynamic linking, we need to find the SOD library in the system
+    # If dynamic linking is enabled, add the define
     if(SOD_DYNAMIC_LINK)
-        # First try pkg-config
-        pkg_check_modules(SOD sod)
-
-        # If not found via pkg-config, try find_library
-        if(NOT SOD_FOUND)
-            find_library(SOD_LIBRARY NAMES sod)
-            if(SOD_LIBRARY)
-                set(SOD_LIBRARIES ${SOD_LIBRARY})
-                set(SOD_FOUND TRUE)
-                message(STATUS "Found SOD library: ${SOD_LIBRARY}")
-            endif()
-        endif()
-
-        # If still not found, warn but continue as the code will fall back to dynamic loading
-        if(NOT SOD_FOUND)
-            message(WARNING "SOD library not found for dynamic linking. "
-                    "The application will attempt to load it at runtime.")
-        endif()
-
-        # Add a define to indicate dynamic linking should be used
         add_definitions(-DSOD_DYNAMIC_LINK)
     endif()
 endif()
@@ -250,6 +230,11 @@ endif()
 # Define the executable
 add_executable(lightnvr ${SOURCES})
 
+# Set the output directory for the binary
+set_target_properties(lightnvr PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+)
+
 # Link libraries
 target_link_libraries(lightnvr
         ${FFMPEG_LIBRARIES}
@@ -268,17 +253,42 @@ endif()
 
 # Link SOD library if enabled
 if(ENABLE_SOD)
-    if(SOD_DYNAMIC_LINK AND SOD_FOUND)
-        # For dynamic linking, link against the found SOD library
-        target_link_libraries(lightnvr ${SOD_LIBRARIES})
-        message(STATUS "Using dynamic linking for SOD library")
-    elseif(NOT SOD_DYNAMIC_LINK)
-        # For static linking, link against our built SOD library
-        target_link_libraries(lightnvr sod)
-        message(STATUS "Using static linking for SOD library")
+    # Always link to the sod target, whether it's built as static or shared
+    target_link_libraries(lightnvr sod)
+
+    # Log the linking method for clarity
+    if(SOD_DYNAMIC_LINK)
+        message(STATUS "Using dynamic linking for SOD library (built from source)")
+
+        # Set proper RPATH settings for the main executable when using dynamic SOD
+        set_target_properties(lightnvr PROPERTIES
+                BUILD_WITH_INSTALL_RPATH TRUE
+                INSTALL_RPATH "$ORIGIN/../src/sod:$ORIGIN/../lib"
+        )
+
+        # Make sure the shared library gets installed to lib directory
+        install(TARGETS sod
+                LIBRARY DESTINATION lib
+                RUNTIME DESTINATION bin
+        )
+
+        # Copy the SOD shared library to a directory next to the executable
+        add_custom_command(TARGET lightnvr POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/lib"
+                COMMAND ${CMAKE_COMMAND} -E copy
+                "$<TARGET_FILE:sod>"
+                "${CMAKE_BINARY_DIR}/lib/"
+                COMMENT "Copying SOD shared library to lib directory"
+        )
+
+        # Additional direct RPATH via linker flags for older systems
+        if(UNIX AND NOT APPLE)
+            set_target_properties(lightnvr PROPERTIES
+                    LINK_FLAGS "-Wl,-rpath,\$ORIGIN/../src/sod:\$ORIGIN/../lib"
+            )
+        endif()
     else()
-        # SOD will be loaded at runtime
-        message(STATUS "SOD will be loaded at runtime via dlopen()")
+        message(STATUS "Using static linking for SOD library")
     endif()
 endif()
 
@@ -292,9 +302,6 @@ if(BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
-
-# Output binary to a 'bin' directory
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # Create a version.h file
 configure_file(

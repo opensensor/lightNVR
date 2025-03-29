@@ -59,7 +59,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --clean            Clean build directory before building"
             echo "  --with-sod         Build with SOD support (default)"
             echo "  --without-sod      Build without SOD support"
-            echo "  --sod-dynamic      Use dynamic linking for SOD"
+            echo "  --sod-dynamic      Use dynamic linking for SOD (builds libsod.so)"
             echo "  --sod-static       Use static linking for SOD (default)"
             echo "  --with-tests       Build test suite (default)"
             echo "  --without-tests    Build without test suite"
@@ -73,6 +73,10 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+
+# Add this to your build script before building
+export LD_LIBRARY_PATH="$PWD/build/Release/src/sod:$LD_LIBRARY_PATH"
 
 # Set build directory
 BUILD_DIR="build/$BUILD_TYPE"
@@ -100,10 +104,10 @@ SOD_OPTION=""
 if [ "$ENABLE_SOD" -eq 1 ]; then
     if [ "$SOD_DYNAMIC" -eq 1 ]; then
         SOD_OPTION="-DENABLE_SOD=ON -DSOD_DYNAMIC_LINK=ON"
-        echo "Building with SOD support (dynamic linking)"
+        echo "Building with SOD support as a shared library (dynamic linking)"
     else
         SOD_OPTION="-DENABLE_SOD=ON -DSOD_DYNAMIC_LINK=OFF"
-        echo "Building with SOD support (static linking)"
+        echo "Building with SOD support as a static library (static linking)"
     fi
 else
     SOD_OPTION="-DENABLE_SOD=OFF"
@@ -216,6 +220,31 @@ cmake --build "$BUILD_DIR" -- -j$(nproc)
 # Report success
 echo "Build completed successfully!"
 echo "Binary location: $BUILD_DIR/bin/lightnvr"
+
+# Check if the binary is linked to libsod.so when dynamic linking is enabled
+if [ "$ENABLE_SOD" -eq 1 ] && [ "$SOD_DYNAMIC" -eq 1 ]; then
+    echo "Checking if lightnvr is linked to libsod.so..."
+    if ldd "$BUILD_DIR/bin/lightnvr" | grep -q "libsod.so"; then
+        echo "SUCCESS: lightnvr is correctly linked to libsod.so"
+    else
+        echo "WARNING: lightnvr is not linked to libsod.so"
+        echo "This might indicate a problem with the dynamic linking setup."
+
+        # Check if libsod.so exists in the build output
+        echo "Checking for libsod.so in the build directory..."
+        if find "$BUILD_DIR" -name "libsod.so" | grep -q .; then
+            echo "Found libsod.so in the build directory. It might not be in the library path."
+            LIBSOD_PATH=$(find "$BUILD_DIR" -name "libsod.so" | head -1)
+
+            # Try to load the library directly
+            echo "You can run the application with:"
+            echo "LD_LIBRARY_PATH=\"$(dirname \"$LIBSOD_PATH\"):$LD_LIBRARY_PATH\" $BUILD_DIR/bin/lightnvr"
+        else
+            echo "Could not find libsod.so in the build directory."
+            echo "This suggests a problem with building the shared library."
+        fi
+    fi
+fi
 
 # Look for test binaries
 if [ "$ENABLE_TESTS" -eq 1 ] && [ "$ENABLE_SOD" -eq 1 ]; then
