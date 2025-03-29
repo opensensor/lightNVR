@@ -58,6 +58,7 @@ typedef struct {
     
     // Storage settings
     char storage_path[MAX_PATH_LENGTH];
+    char storage_path_hls[MAX_PATH_LENGTH]; // Path for HLS segments, overrides storage_path/hls when specified
     uint64_t max_storage_size; // in bytes
     int retention_days;
     bool auto_delete_oldest;

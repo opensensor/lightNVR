@@ -30,6 +30,7 @@ void load_default_config(config_t *config) {
     
     // Storage settings
     snprintf(config->storage_path, MAX_PATH_LENGTH, "/var/lib/lightnvr/recordings");
+    config->storage_path_hls[0] = '\0'; // Empty by default, will use storage_path if not specified
     config->max_storage_size = 0; // 0 means unlimited
     config->retention_days = 30;
     config->auto_delete_oldest = true;
@@ -122,6 +123,15 @@ static int ensure_directories(const config_t *config) {
     if (create_directory(config->storage_path) != 0) {
         log_error("Failed to create storage directory: %s", config->storage_path);
         return -1;
+    }
+    
+    // HLS storage directory if specified
+    if (config->storage_path_hls[0] != '\0') {
+        if (create_directory(config->storage_path_hls) != 0) {
+            log_error("Failed to create HLS storage directory: %s", config->storage_path_hls);
+            return -1;
+        }
+        log_info("Created HLS storage directory: %s", config->storage_path_hls);
     }
     
     // Models directory
@@ -239,6 +249,8 @@ static int config_ini_handler(void* user, const char* section, const char* name,
     else if (strcmp(section, "storage") == 0) {
         if (strcmp(name, "path") == 0) {
             strncpy(config->storage_path, value, MAX_PATH_LENGTH - 1);
+        } else if (strcmp(name, "path_hls") == 0) {
+            strncpy(config->storage_path_hls, value, MAX_PATH_LENGTH - 1);
         } else if (strcmp(name, "max_size") == 0) {
             config->max_storage_size = strtoull(value, NULL, 10);
         } else if (strcmp(name, "retention_days") == 0) {
@@ -691,6 +703,16 @@ int reload_config(config_t *config) {
         log_info("Storage path changed: %s -> %s", old_config.storage_path, config->storage_path);
     }
     
+    // Log changes to storage_path_hls
+    if (old_config.storage_path_hls[0] == '\0' && config->storage_path_hls[0] != '\0') {
+        log_info("HLS storage path set: %s", config->storage_path_hls);
+    } else if (old_config.storage_path_hls[0] != '\0' && config->storage_path_hls[0] == '\0') {
+        log_info("HLS storage path cleared, will use storage_path");
+    } else if (old_config.storage_path_hls[0] != '\0' && config->storage_path_hls[0] != '\0' && 
+               strcmp(old_config.storage_path_hls, config->storage_path_hls) != 0) {
+        log_info("HLS storage path changed: %s -> %s", old_config.storage_path_hls, config->storage_path_hls);
+    }
+    
     if (strcmp(old_config.models_path, config->models_path) != 0) {
         log_info("Models path changed: %s -> %s", old_config.models_path, config->models_path);
     }
@@ -780,6 +802,12 @@ int save_config(const config_t *config, const char *path) {
     // Write storage settings
     fprintf(file, "[storage]\n");
     fprintf(file, "path = %s\n", config->storage_path);
+    
+    // Write storage_path_hls if it's specified
+    if (config->storage_path_hls[0] != '\0') {
+        fprintf(file, "path_hls = %s  ; Dedicated path for HLS segments\n", config->storage_path_hls);
+    }
+    
     fprintf(file, "max_size = %llu  ; 0 means unlimited, otherwise bytes\n", (unsigned long long)config->max_storage_size);
     fprintf(file, "retention_days = %d\n", config->retention_days);
     fprintf(file, "auto_delete_oldest = %s\n\n", config->auto_delete_oldest ? "true" : "false");
@@ -867,6 +895,9 @@ void print_config(const config_t *config) {
     
     printf("  Storage Settings:\n");
     printf("    Storage Path: %s\n", config->storage_path);
+    if (config->storage_path_hls[0] != '\0') {
+        printf("    HLS Storage Path: %s\n", config->storage_path_hls);
+    }
     printf("    Max Storage Size: %llu bytes\n", (unsigned long long)config->max_storage_size);
     printf("    Retention Days: %d\n", config->retention_days);
     printf("    Auto Delete Oldest: %s\n", config->auto_delete_oldest ? "true" : "false");

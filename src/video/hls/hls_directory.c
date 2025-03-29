@@ -25,10 +25,18 @@ int ensure_hls_directory(const char *output_dir, const char *stream_name) {
     }
 
     //  Always use the consistent path structure for HLS
-    // Always use the storage path from the config
+    // Use storage_path_hls if specified, otherwise fall back to storage_path
     char safe_output_dir[MAX_PATH_LENGTH];
+    const char *base_storage_path = global_config->storage_path;
+    
+    // Check if storage_path_hls is specified and not empty
+    if (global_config->storage_path_hls[0] != '\0') {
+        base_storage_path = global_config->storage_path_hls;
+        log_info("Using dedicated HLS storage path: %s", base_storage_path);
+    }
+    
     snprintf(safe_output_dir, sizeof(safe_output_dir), "%s/hls/%s", 
-            global_config->storage_path, stream_name);
+            base_storage_path, stream_name);
     
     // Log if we're redirecting from a different path
     if (strcmp(output_dir, safe_output_dir) != 0) {
@@ -143,9 +151,16 @@ int clear_stream_hls_segments(const char *stream_name) {
         return -1;
     }
     
+    // Use storage_path_hls if specified, otherwise fall back to storage_path
+    const char *base_storage_path = global_config->storage_path;
+    if (global_config->storage_path_hls[0] != '\0') {
+        base_storage_path = global_config->storage_path_hls;
+        log_info("Using dedicated HLS storage path for clearing segments: %s", base_storage_path);
+    }
+    
     char stream_hls_dir[MAX_PATH_LENGTH];
     snprintf(stream_hls_dir, MAX_PATH_LENGTH, "%s/hls/%s", 
-             global_config->storage_path, stream_name);
+             base_storage_path, stream_name);
     
     // Check if the directory exists
     struct stat st;
@@ -220,8 +235,15 @@ void cleanup_hls_directories(void) {
         return;
     }
     
+    // Use storage_path_hls if specified, otherwise fall back to storage_path
+    const char *base_storage_path = global_config->storage_path;
+    if (global_config->storage_path_hls[0] != '\0') {
+        base_storage_path = global_config->storage_path_hls;
+        log_info("Using dedicated HLS storage path for cleanup: %s", base_storage_path);
+    }
+    
     char hls_base_dir[MAX_PATH_LENGTH];
-    snprintf(hls_base_dir, MAX_PATH_LENGTH, "%s/hls", global_config->storage_path);
+    snprintf(hls_base_dir, MAX_PATH_LENGTH, "%s/hls", base_storage_path);
     
     // Check if HLS base directory exists
     struct stat st;

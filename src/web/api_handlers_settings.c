@@ -42,6 +42,7 @@ void mg_handle_get_settings(struct mg_connection *c, struct mg_http_message *hm)
     cJSON_AddStringToObject(settings, "web_password", "********");
     
     cJSON_AddStringToObject(settings, "storage_path", g_config.storage_path);
+    cJSON_AddStringToObject(settings, "storage_path_hls", g_config.storage_path_hls);
     cJSON_AddNumberToObject(settings, "max_storage_size", g_config.max_storage_size);
     cJSON_AddNumberToObject(settings, "retention_days", g_config.retention_days);
     cJSON_AddBoolToObject(settings, "auto_delete_oldest", g_config.auto_delete_oldest);
@@ -141,6 +142,15 @@ void mg_handle_post_settings(struct mg_connection *c, struct mg_http_message *hm
         g_config.storage_path[sizeof(g_config.storage_path) - 1] = '\0';
         settings_changed = true;
         log_info("Updated storage_path: %s", g_config.storage_path);
+    }
+    
+    // Storage path for HLS segments
+    cJSON *storage_path_hls = cJSON_GetObjectItem(settings, "storage_path_hls");
+    if (storage_path_hls && cJSON_IsString(storage_path_hls)) {
+        strncpy(g_config.storage_path_hls, storage_path_hls->valuestring, sizeof(g_config.storage_path_hls) - 1);
+        g_config.storage_path_hls[sizeof(g_config.storage_path_hls) - 1] = '\0';
+        settings_changed = true;
+        log_info("Updated storage_path_hls: %s", g_config.storage_path_hls);
     }
     
     // Max storage size

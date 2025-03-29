@@ -500,9 +500,16 @@ static int ensure_output_directory(hls_writer_t *writer) {
     const char *last_slash = strrchr(dir_path, '/');
     const char *stream_name = last_slash ? last_slash + 1 : dir_path;
 
+    // Use storage_path_hls if specified, otherwise fall back to storage_path
+    const char *base_storage_path = global_config->storage_path;
+    if (global_config->storage_path_hls[0] != '\0') {
+        base_storage_path = global_config->storage_path_hls;
+        log_info("Using dedicated HLS storage path in writer: %s", base_storage_path);
+    }
+
     // Create a path within our storage directory
     snprintf(safe_dir_path, sizeof(safe_dir_path), "%s/hls/%s",
-            global_config->storage_path, stream_name);
+            base_storage_path, stream_name);
 
     // Log if we're redirecting from a different path
     if (strcmp(dir_path, safe_dir_path) != 0) {

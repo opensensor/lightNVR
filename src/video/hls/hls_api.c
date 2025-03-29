@@ -99,12 +99,18 @@ int start_hls_stream(const char *stream_name) {
     // Create output paths
     config_t *global_config = get_streaming_config();
 
-    // Log the storage path for debugging
-    log_info("Using storage path for HLS: %s", global_config->storage_path);
+    // Use storage_path_hls if specified, otherwise fall back to storage_path
+    const char *base_storage_path = global_config->storage_path;
+    if (global_config->storage_path_hls[0] != '\0') {
+        base_storage_path = global_config->storage_path_hls;
+        log_info("Using dedicated HLS storage path: %s", base_storage_path);
+    } else {
+        log_info("Using default storage path for HLS: %s", base_storage_path);
+    }
 
     // Create HLS output path
     snprintf(ctx->output_path, MAX_PATH_LENGTH, "%s/hls/%s",
-             global_config->storage_path, stream_name);
+             base_storage_path, stream_name);
 
     // Create HLS directory if it doesn't exist
     char dir_cmd[MAX_PATH_LENGTH * 2];
@@ -184,9 +190,16 @@ int restart_hls_stream(const char *stream_name) {
     // Verify that the HLS directory exists and is writable
     config_t *global_config = get_streaming_config();
     if (global_config) {
+        // Use storage_path_hls if specified, otherwise fall back to storage_path
+        const char *base_storage_path = global_config->storage_path;
+        if (global_config->storage_path_hls[0] != '\0') {
+            base_storage_path = global_config->storage_path_hls;
+            log_info("Using dedicated HLS storage path for restart: %s", base_storage_path);
+        }
+        
         char hls_dir[MAX_PATH_LENGTH];
         snprintf(hls_dir, MAX_PATH_LENGTH, "%s/hls/%s", 
-                global_config->storage_path, stream_name);
+                base_storage_path, stream_name);
         
         // Ensure the directory exists and has proper permissions
         log_info("Ensuring HLS directory exists and is writable: %s", hls_dir);
