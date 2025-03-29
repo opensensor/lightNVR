@@ -2,6 +2,18 @@
 #define WEBSOCKET_HANDLER_H
 
 #include <stdbool.h>
+#include <stddef.h>
+#include "mongoose.h"
+
+/**
+ * @brief WebSocket handler function type
+ * 
+ * @param c Mongoose connection
+ * @param data Message data
+ * @param data_len Message data length
+ * @param user_data User data (optional)
+ */
+typedef void (*websocket_handler_t)(struct mg_connection *c, const char *data, size_t data_len, void *user_data);
 
 /**
  * @brief Register a WebSocket message handler

@@ -72,8 +72,9 @@ static void signal_handler(int sig) {
     // Check if we're already shutting down
     static bool shutdown_in_progress = false;
     if (shutdown_in_progress) {
-        log_warn("Received another signal %d during shutdown, forcing immediate exit", sig);
-        _exit(EXIT_SUCCESS); // Force immediate exit
+        log_warn("Received another signal %d during shutdown, continuing with clean shutdown", sig);
+        // Do not force immediate exit, continue with clean shutdown
+        return;
     }
     
     // Mark that we're in the process of shutting down

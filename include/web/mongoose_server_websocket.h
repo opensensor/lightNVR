@@ -9,6 +9,7 @@
 // Forward declarations for Mongoose structures
 struct mg_connection;
 struct mg_http_message;
+struct mg_ws_message;
 
 /**
  * @brief Handle WebSocket upgrade request
@@ -17,6 +18,21 @@ struct mg_http_message;
  * @param hm Mongoose HTTP message
  */
 void mg_handle_websocket_upgrade(struct mg_connection *c, struct mg_http_message *hm);
+
+/**
+ * @brief Handle WebSocket message
+ * 
+ * @param c Mongoose connection
+ * @param wm Mongoose WebSocket message
+ */
+void mg_handle_websocket_message(struct mg_connection *c, struct mg_ws_message *wm);
+
+/**
+ * @brief Handle WebSocket close
+ * 
+ * @param c Mongoose connection
+ */
+void mg_handle_websocket_close(struct mg_connection *c);
 
 /**
  * @brief Register WebSocket handlers

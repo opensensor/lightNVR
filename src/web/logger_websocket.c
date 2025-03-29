@@ -8,12 +8,12 @@
 #include "core/logger.h"
 #include "web/api_handlers_system_ws.h"
 #include "web/logger_websocket.h"
-#include "web/websocket_manager.h"
+#include "web/websocket_bridge.h"
 
 // Forward declarations with weak symbols
-extern __attribute__((weak)) websocket_message_t *websocket_message_create(const char *type, const char *topic, const char *payload);
-extern __attribute__((weak)) bool websocket_manager_send_to_client(const char *client_id, const websocket_message_t *message);
-extern __attribute__((weak)) void websocket_message_free(websocket_message_t *message);
+extern __attribute__((weak)) char *mg_websocket_message_create(const char *type, const char *topic, const char *payload);
+extern __attribute__((weak)) bool mg_websocket_message_send_to_client(const char *client_id, const char *message);
+extern __attribute__((weak)) void mg_websocket_message_free(char *message);
 extern __attribute__((weak)) int fetch_system_logs(const char *client_id, const char *min_level, const char *last_timestamp);
 
 // Mutex to protect log broadcasting

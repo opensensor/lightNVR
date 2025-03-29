@@ -5,7 +5,8 @@
 #include <pthread.h>
 
 #include "web/api_handlers_system_ws.h"
-#include "web/websocket_manager.h"
+#include "web/websocket_bridge.h"
+#include "web/mongoose_server_websocket_utils.h"
 #include "core/logger.h"
 #include "../external/cjson/cJSON.h"
 
@@ -114,16 +115,18 @@ void websocket_handle_system_logs(const char *client_id, const char *message) {
     if (json == NULL) {
         log_error("Failed to parse WebSocket message JSON: %s", message);
         
-        // Send error message
-        websocket_message_t *error_message = websocket_message_create(
-            "error",
-            "system/logs",
-            "{\"error\":\"Invalid JSON message\"}"
-        );
+        // Create error message
+        char error_message[256];
+        snprintf(error_message, sizeof(error_message), 
+                "{\"type\":\"error\",\"topic\":\"system/logs\",\"payload\":{\"error\":\"Invalid JSON message\"}}");
         
-        if (error_message != NULL) {
-            websocket_message_send_to_client(client_id, error_message);
-            websocket_message_free(error_message);
+        // Get client connection directly from pointer value stored in client_id string
+        struct mg_connection *conn = NULL;
+        if (sscanf(client_id, "%p", &conn) == 1 && conn) {
+            // Send message directly using mongoose
+            mg_ws_send(conn, error_message, strlen(error_message), WEBSOCKET_OP_TEXT);
+        } else {
+            log_error("Invalid client ID or connection not found: %s", client_id);
         }
         
         return;
@@ -173,16 +176,18 @@ void websocket_handle_system_logs(const char *client_id, const char *message) {
     if (!type) {
         log_error("WebSocket message missing type field and could not be determined: %s", message);
         
-        // Send error message
-        websocket_message_t *error_message = websocket_message_create(
-            "error",
-            "system/logs",
-            "{\"error\":\"Message missing type field\"}"
-        );
+        // Create error message
+        char error_message[256];
+        snprintf(error_message, sizeof(error_message), 
+                "{\"type\":\"error\",\"topic\":\"system/logs\",\"payload\":{\"error\":\"Message missing type field\"}}");
         
-        if (error_message != NULL) {
-            websocket_message_send_to_client(client_id, error_message);
-            websocket_message_free(error_message);
+        // Get client connection directly from pointer value stored in client_id string
+        struct mg_connection *conn = NULL;
+        if (sscanf(client_id, "%p", &conn) == 1 && conn) {
+            // Send message directly using mongoose
+            mg_ws_send(conn, error_message, strlen(error_message), WEBSOCKET_OP_TEXT);
+        } else {
+            log_error("Invalid client ID or connection not found: %s", client_id);
         }
         
         cJSON_Delete(json);
@@ -265,16 +270,18 @@ void websocket_handle_system_logs(const char *client_id, const char *message) {
     else {
         log_error("Unknown WebSocket message type: %s", type);
         
-        // Send error message
-        websocket_message_t *error_message = websocket_message_create(
-            "error",
-            "system/logs",
-            "{\"error\":\"Unknown message type\"}"
-        );
+        // Create error message
+        char error_message[256];
+        snprintf(error_message, sizeof(error_message), 
+                "{\"type\":\"error\",\"topic\":\"system/logs\",\"payload\":{\"error\":\"Unknown message type\"}}");
         
-        if (error_message != NULL) {
-            websocket_message_send_to_client(client_id, error_message);
-            websocket_message_free(error_message);
+        // Get client connection directly from pointer value stored in client_id string
+        struct mg_connection *conn = NULL;
+        if (sscanf(client_id, "%p", &conn) == 1 && conn) {
+            // Send message directly using mongoose
+            mg_ws_send(conn, error_message, strlen(error_message), WEBSOCKET_OP_TEXT);
+        } else {
+            log_error("Invalid client ID or connection not found: %s", client_id);
         }
     }
     
@@ -483,18 +490,24 @@ static int send_filtered_logs_to_client(const char *client_id, const char *min_l
     char *payload_str = cJSON_PrintUnformatted(payload);
     
     // Create WebSocket message
-    websocket_message_t *logs_message = websocket_message_create(
-        "update",
-        "system/logs",
-        payload_str
-    );
+    char *logs_message = NULL;
+    int len = asprintf(&logs_message, "{\"type\":\"update\",\"topic\":\"system/logs\",\"payload\":%s}", payload_str);
     
     int result = 0;
     
-    if (logs_message != NULL) {
-        // Send logs to the client
-        result = websocket_message_send_to_client(client_id, logs_message);
-        websocket_message_free(logs_message);
+    if (len > 0 && logs_message != NULL) {
+        // Get client connection directly from pointer value stored in client_id string
+        struct mg_connection *conn = NULL;
+        if (sscanf(client_id, "%p", &conn) == 1 && conn) {
+            // Send message directly using mongoose
+            mg_ws_send(conn, logs_message, strlen(logs_message), WEBSOCKET_OP_TEXT);
+            result = 1;
+        } else {
+            log_error("Invalid client ID or connection not found: %s", client_id);
+        }
+        
+        // Free the message
+        free(logs_message);
     }
     
     cJSON_Delete(payload);
@@ -550,16 +563,21 @@ int fetch_system_logs(const char *client_id, const char *min_level, const char *
         char *payload_str = cJSON_PrintUnformatted(payload);
         
         // Create WebSocket message
-        websocket_message_t *logs_message = websocket_message_create(
-            "update",
-            "system/logs",
-            payload_str
-        );
+        char *logs_message = NULL;
+        int len = asprintf(&logs_message, "{\"type\":\"update\",\"topic\":\"system/logs\",\"payload\":%s}", payload_str);
         
-        if (logs_message != NULL) {
-            // Send logs to the client
-            websocket_message_send_to_client(client_id, logs_message);
-            websocket_message_free(logs_message);
+        if (len > 0 && logs_message != NULL) {
+            // Get client connection directly from pointer value stored in client_id string
+            struct mg_connection *conn = NULL;
+            if (sscanf(client_id, "%p", &conn) == 1 && conn) {
+                // Send message directly using mongoose
+                mg_ws_send(conn, logs_message, strlen(logs_message), WEBSOCKET_OP_TEXT);
+            } else {
+                log_error("Invalid client ID or connection not found: %s", client_id);
+            }
+            
+            // Free the message
+            free(logs_message);
         }
         
         cJSON_Delete(payload);
@@ -609,18 +627,24 @@ int fetch_system_logs(const char *client_id, const char *min_level, const char *
     char *payload_str = cJSON_PrintUnformatted(payload);
     
     // Create WebSocket message
-    websocket_message_t *logs_message = websocket_message_create(
-        "update",
-        "system/logs",
-        payload_str
-    );
+    char *logs_message = NULL;
+    int len = asprintf(&logs_message, "{\"type\":\"update\",\"topic\":\"system/logs\",\"payload\":%s}", payload_str);
     
     int sent = 0;
     
-    if (logs_message != NULL) {
-        // Send logs to the client
-        sent = websocket_message_send_to_client(client_id, logs_message);
-        websocket_message_free(logs_message);
+    if (len > 0 && logs_message != NULL) {
+        // Get client connection directly from pointer value stored in client_id string
+        struct mg_connection *conn = NULL;
+        if (sscanf(client_id, "%p", &conn) == 1 && conn) {
+            // Send message directly using mongoose
+            mg_ws_send(conn, logs_message, strlen(logs_message), WEBSOCKET_OP_TEXT);
+            sent = count;
+        } else {
+            log_error("Invalid client ID or connection not found: %s", client_id);
+        }
+        
+        // Free the message
+        free(logs_message);
     }
     
     cJSON_Delete(payload);

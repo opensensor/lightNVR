@@ -14,8 +14,8 @@
 #include "utils/memory.h"
 #include "web/connection_pool.h"
 #include "web/api_thread_pool.h"
-#include "web/websocket_manager.h"
 #include "web/mongoose_server_websocket.h"
+#include "web/websocket_manager.h"
 
 // Include Mongoose
 #include "mongoose.h"
@@ -62,10 +62,9 @@ static int match_route(const char *method, const char *uri, struct mg_http_messa
 #include "web/http_router.h"
 
 // Forward declarations for WebSocket handlers
-void mg_handle_websocket_upgrade(struct mg_connection *c, struct mg_http_message *hm);
 void mg_handle_batch_delete_recordings_ws(struct mg_connection *c, struct mg_http_message *hm);
-void websocket_register_handlers(void);
-void websocket_manager_handle_close(struct mg_connection *c);
+void mg_handle_websocket_message(struct mg_connection *c, struct mg_ws_message *wm);
+void mg_handle_websocket_close(struct mg_connection *c);
 
 // API handler function type
 typedef void (*mg_api_handler_t)(struct mg_connection *c, struct mg_http_message *hm);
@@ -385,13 +384,6 @@ http_server_handle_t http_server_init(const http_server_config_t *config) {
     // Initialize route table
     init_route_table();
     
-    // Initialize WebSocket manager
-    log_info("Initializing WebSocket manager");
-    if (websocket_manager_init() != 0) {
-        log_error("Failed to initialize WebSocket manager");
-        return NULL;
-    }
-    
     // Register WebSocket handlers
     log_info("Registering WebSocket handlers");
     websocket_register_handlers();
@@ -404,21 +396,6 @@ http_server_handle_t http_server_init(const http_server_config_t *config) {
     if (!server) {
         log_error("Failed to initialize Mongoose server");
         return NULL;
-    }
-    
-    // Verify WebSocket manager is initialized
-    if (!websocket_manager_is_initialized()) {
-        log_error("WebSocket manager not initialized after server initialization");
-        // Try to initialize it again
-        if (websocket_manager_init() != 0) {
-            log_error("Failed to initialize WebSocket manager on second attempt");
-        } else {
-            log_info("WebSocket manager initialized on second attempt");
-            // Register WebSocket handlers again
-            websocket_register_handlers();
-        }
-    } else {
-        log_info("WebSocket manager is properly initialized");
     }
     
     return server;
@@ -588,12 +565,8 @@ void http_server_stop(http_server_handle_t server) {
     server->running = false;
     log_info("Stopping HTTP server");
 
-    // First, properly close all WebSocket connections
-    log_info("Shutting down WebSocket manager to close WebSocket connections");
-    websocket_manager_shutdown();
-    
     // Give WebSocket connections time to send close frames
-    usleep(250000); // Reduced to 250ms for faster shutdown
+    usleep(250000); // 250ms for WebSocket connections to close
 
     // Store the listening socket FD before closing connections
     int listening_socket_fd = -1;
@@ -901,43 +874,20 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
     // WebSocket connection opened
     log_info("WebSocket connection opened");
     
-    // Check if WebSocket manager is initialized
-    if (!websocket_manager_is_initialized()) {
-        log_error("WebSocket manager not initialized during WS_OPEN event");
-        // Try to initialize it
-        if (websocket_manager_init() != 0) {
-            log_error("Failed to initialize WebSocket manager");
-            return;
-        }
-        log_info("WebSocket manager initialized on demand during WS_OPEN event");
-        
-        // Register WebSocket handlers
-        websocket_register_handlers();
-    }
+    // Mark the connection as a WebSocket client
+    c->data[0] = 'W';  // Mark as WebSocket client
     
-    // Handle WebSocket connection open
-    websocket_manager_handle_open(c);
+    // Note: The WebSocket connection is now handled directly in mg_handle_websocket_upgrade
     
 } else if (ev == MG_EV_WS_MSG) {
     // WebSocket message received
     struct mg_ws_message *wm = (struct mg_ws_message *)ev_data;
     
-    // Check if WebSocket manager is initialized
-    if (!websocket_manager_is_initialized()) {
-        log_error("WebSocket manager not initialized during WS_MSG event");
-        // Try to initialize it
-        if (websocket_manager_init() != 0) {
-            log_error("Failed to initialize WebSocket manager");
-            return;
-        }
-        log_info("WebSocket manager initialized on demand during WS_MSG event");
-        
-        // Register WebSocket handlers
-        websocket_register_handlers();
-    }
+    // Log the message for debugging
+    log_debug("WebSocket message received: %.*s", (int)wm->data.len, wm->data.buf);
     
-    // Handle WebSocket message
-    websocket_manager_handle_message(c, wm->data.buf, wm->data.len);
+    // Call the WebSocket message handler directly
+    mg_handle_websocket_message(c, wm);
         
     } else if (ev == MG_EV_HTTP_MSG) {
         // HTTP request received
@@ -1093,14 +1043,10 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
         
         // If this was a WebSocket connection, handle cleanup
         if (c->is_websocket) {
-            log_debug("WebSocket connection closed");
+            log_info("WebSocket connection closed");
             
-            // Check if WebSocket manager is initialized
-            if (websocket_manager_is_initialized()) {
-                // Handle WebSocket connection close
-                websocket_manager_handle_close(c);
-                log_info("WebSocket resources cleaned up");
-            }
+            // Call the WebSocket close handler directly
+            mg_handle_websocket_close(c);
             
             // Find the component ID for this connection
             char conn_name[64];

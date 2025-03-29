@@ -14,8 +14,11 @@
 #include "web/api_handlers.h"
 #include "web/mongoose_adapter.h"
 #include "web/api_thread_pool.h"
-#include "web/websocket_manager.h"
+#include "web/websocket_bridge.h"
+#include "web/websocket_client.h"
+#include "web/websocket_handler.h"
 #include "web/api_handlers_recordings_batch_ws.h"
+#include "web/mongoose_server_websocket_utils.h"
 #include "core/logger.h"
 #include "core/config.h"
 #include "core/shutdown_coordinator.h"
@@ -30,6 +33,7 @@ typedef struct {
     char client_id[64];                // WebSocket client ID
     char *json_str;                    // JSON request string (for parsing parameters)
     bool use_websocket;                // Whether to use WebSocket for progress updates
+    struct mg_connection *conn;        // Mongoose connection for WebSocket updates
 } batch_delete_recordings_ws_task_t;
 
 /**
@@ -38,10 +42,11 @@ typedef struct {
  * @param client_id WebSocket client ID
  * @param json_str JSON request string (for parsing parameters)
  * @param use_websocket Whether to use WebSocket for progress updates
+ * @param conn Mongoose connection for WebSocket updates
  * @return batch_delete_recordings_ws_task_t* Pointer to the task or NULL on error
  */
 batch_delete_recordings_ws_task_t *batch_delete_recordings_ws_task_create(
-    const char *client_id, const char *json_str, bool use_websocket) {
+    const char *client_id, const char *json_str, bool use_websocket, struct mg_connection *conn) {
     
     batch_delete_recordings_ws_task_t *task = calloc(1, sizeof(batch_delete_recordings_ws_task_t));
     if (!task) {
@@ -57,6 +62,7 @@ batch_delete_recordings_ws_task_t *batch_delete_recordings_ws_task_create(
     }
     
     task->use_websocket = use_websocket;
+    task->conn = conn;
     
     if (json_str) {
         task->json_str = strdup(json_str);
@@ -89,7 +95,7 @@ void batch_delete_recordings_ws_task_free(batch_delete_recordings_ws_task_t *tas
 /**
  * @brief Send a progress update via WebSocket
  * 
- * @param client_id WebSocket client ID
+ * @param conn Mongoose connection
  * @param current Current progress
  * @param total Total items
  * @param success_count Number of successful deletions
@@ -97,56 +103,37 @@ void batch_delete_recordings_ws_task_free(batch_delete_recordings_ws_task_t *tas
  * @param status Status message
  * @param is_complete Whether the operation is complete
  */
-void send_progress_update(const char *client_id, int current, int total, 
+void send_progress_update(struct mg_connection *conn, int current, int total, 
                          int success_count, int error_count, 
                          const char *status, bool is_complete) {
     
-    if (!client_id || client_id[0] == '\0') {
-        log_error("Invalid client_id in send_progress_update");
+    if (!conn) {
+        log_error("Invalid connection in send_progress_update");
         return;
     }
     
     // Create progress update message
-    char payload[512];
-    snprintf(payload, sizeof(payload), 
-            "{\"current\":%d,\"total\":%d,\"succeeded\":%d,\"failed\":%d,\"status\":\"%s\",\"complete\":%s}",
+    char message[1024];
+    int len = snprintf(message, sizeof(message), 
+            "{\"type\":\"progress\",\"topic\":\"recordings/batch-delete\",\"payload\":{\"current\":%d,\"total\":%d,\"succeeded\":%d,\"failed\":%d,\"status\":\"%s\",\"complete\":%s}}",
             current, total, success_count, error_count, status ? status : "", 
             is_complete ? "true" : "false");
     
-    log_info("Sending progress update to client %s: %s", client_id, payload);
-    
-    // Verify client is subscribed to the topic
-    if (!websocket_client_is_subscribed(client_id, "recordings/batch-delete")) {
-        log_error("Client %s is not subscribed to recordings/batch-delete topic", client_id);
+    if (len < 0 || len >= (int)sizeof(message)) {
+        log_error("Failed to format progress update message (buffer too small)");
         return;
     }
     
-    // Log the message type and topic for debugging
-    log_info("Creating WebSocket message with type 'progress' and topic 'recordings/batch-delete'");
+    log_info("Sending progress update: %s", message);
     
-    // Create WebSocket message
-    websocket_message_t *message = websocket_message_create(
-        "progress", "recordings/batch-delete", payload);
-    
-    if (message) {
-        // Send message to client
-        if (websocket_message_send_to_client(client_id, message)) {
-            log_debug("Progress update sent successfully to client %s", client_id);
-        } else {
-            log_error("Failed to send progress update to client %s", client_id);
-        }
-        
-        // Free message
-        websocket_message_free(message);
-    } else {
-        log_error("Failed to create WebSocket message for progress update");
-    }
+    // Send message directly using mongoose
+    mg_ws_send(conn, message, len, WEBSOCKET_OP_TEXT);
 }
 
 /**
  * @brief Send a final result via WebSocket
  * 
- * @param client_id WebSocket client ID
+ * @param client_id Client ID
  * @param success Whether the operation was successful
  * @param total Total items
  * @param success_count Number of successful deletions
@@ -156,55 +143,44 @@ void send_progress_update(const char *client_id, int current, int total,
 void send_final_result(const char *client_id, bool success, int total, 
                       int success_count, int error_count, const char *results_json) {
     
-    if (!client_id || client_id[0] == '\0') {
+    if (!client_id) {
+        log_error("Invalid client_id in send_final_result");
         return;
     }
     
-    // Create result message
-    char *payload;
+    // Create message
+    char *message = NULL;
+    int len = 0;
+    
     if (results_json) {
-        // Use asprintf to allocate memory for the payload
-        if (asprintf(&payload, 
-                   "{\"success\":%s,\"total\":%d,\"succeeded\":%d,\"failed\":%d,\"results\":%s}",
-                   success ? "true" : "false", total, success_count, error_count, results_json) < 0) {
-            log_error("Failed to allocate memory for WebSocket payload");
-            return;
-        }
+        // Use asprintf to allocate memory for the complete message
+        len = asprintf(&message, 
+                   "{\"type\":\"result\",\"topic\":\"recordings/batch-delete\",\"payload\":{\"success\":%s,\"total\":%d,\"succeeded\":%d,\"failed\":%d,\"results\":%s}}",
+                   success ? "true" : "false", total, success_count, error_count, results_json);
     } else {
-        // Use asprintf to allocate memory for the payload without results
-        if (asprintf(&payload, 
-                   "{\"success\":%s,\"total\":%d,\"succeeded\":%d,\"failed\":%d,\"results\":[]}",
-                   success ? "true" : "false", total, success_count, error_count) < 0) {
-            log_error("Failed to allocate memory for WebSocket payload");
-            return;
-        }
+        // Use asprintf to allocate memory for the complete message without results
+        len = asprintf(&message, 
+                   "{\"type\":\"result\",\"topic\":\"recordings/batch-delete\",\"payload\":{\"success\":%s,\"total\":%d,\"succeeded\":%d,\"failed\":%d,\"results\":[]}}",
+                   success ? "true" : "false", total, success_count, error_count);
     }
     
-    log_info("Sending final result to client %s: %s", client_id, payload);
-    
-    // Log the message type and topic for debugging
-    log_info("Creating WebSocket message with type 'result' and topic 'recordings/batch-delete'");
-    
-    // Create WebSocket message
-    websocket_message_t *message = websocket_message_create(
-        "result", "recordings/batch-delete", payload);
-    
-    if (message) {
-        // Send message to client
-        if (websocket_message_send_to_client(client_id, message)) {
-            log_info("Final result sent successfully to client %s", client_id);
-        } else {
-            log_error("Failed to send final result to client %s", client_id);
-        }
-        
-        // Free message
-        websocket_message_free(message);
-    } else {
-        log_error("Failed to create WebSocket message for final result");
+    if (len < 0 || !message) {
+        log_error("Failed to allocate memory for WebSocket message");
+        return;
     }
     
-    // Free payload
-    free(payload);
+    // Get client connection directly from pointer value stored in client_id string
+    struct mg_connection *conn = NULL;
+    if (sscanf(client_id, "%p", &conn) == 1 && conn) {
+        // Send message directly using mongoose
+        log_info("Sending final result to client %s", client_id);
+        mg_ws_send(conn, message, strlen(message), WEBSOCKET_OP_TEXT);
+    } else {
+        log_error("Invalid client ID or connection not found: %s", client_id);
+    }
+    
+    // Free message
+    free(message);
 }
 
 /**
@@ -235,8 +211,11 @@ void batch_delete_recordings_ws_task_function(void *arg) {
     if (!json) {
         log_error("Failed to parse JSON body");
         
-        if (task->use_websocket) {
-            send_final_result(task->client_id, false, 0, 0, 0, NULL);
+        if (task->use_websocket && task->conn) {
+            // Convert connection pointer to client_id string
+            char client_id[32];
+            snprintf(client_id, sizeof(client_id), "%p", (void*)task->conn);
+            send_final_result(client_id, false, 0, 0, 0, NULL);
         }
         
         batch_delete_recordings_ws_task_free(task);
@@ -257,8 +236,11 @@ void batch_delete_recordings_ws_task_function(void *arg) {
             log_warn("Empty 'ids' array in batch delete request");
             cJSON_Delete(json);
             
-            if (task->use_websocket) {
-                send_final_result(task->client_id, false, 0, 0, 0, NULL);
+            if (task->use_websocket && task->conn) {
+                // Convert connection pointer to client_id string
+                char client_id[32];
+                snprintf(client_id, sizeof(client_id), "%p", (void*)task->conn);
+                send_final_result(client_id, false, 0, 0, 0, NULL);
             }
             
             batch_delete_recordings_ws_task_free(task);
@@ -274,8 +256,8 @@ void batch_delete_recordings_ws_task_function(void *arg) {
         cJSON *results_array = cJSON_CreateArray();
         
         // Send initial progress update
-        if (task->use_websocket) {
-            send_progress_update(task->client_id, 0, array_size, 0, 0, 
+        if (task->use_websocket && task->conn) {
+            send_progress_update(task->conn, 0, array_size, 0, 0, 
                                "Starting batch delete operation", false);
         }
         
@@ -286,10 +268,10 @@ void batch_delete_recordings_ws_task_function(void *arg) {
                 error_count++;
                 
                 // Send progress update
-                if (task->use_websocket) {
+                if (task->use_websocket && task->conn) {
                     char status[128];
                     snprintf(status, sizeof(status), "Invalid ID at index %d", i);
-                    send_progress_update(task->client_id, i + 1, array_size, 
+                    send_progress_update(task->conn, i + 1, array_size, 
                                        success_count, error_count, status, false);
                 }
                 
@@ -313,10 +295,10 @@ void batch_delete_recordings_ws_task_function(void *arg) {
                 error_count++;
                 
                 // Send progress update
-                if (task->use_websocket) {
+                if (task->use_websocket && task->conn) {
                     char status[128];
                     snprintf(status, sizeof(status), "Recording not found: %llu", (unsigned long long)id);
-                    send_progress_update(task->client_id, i + 1, array_size, 
+                    send_progress_update(task->conn, i + 1, array_size, 
                                        success_count, error_count, status, false);
                 }
                 
@@ -346,11 +328,11 @@ void batch_delete_recordings_ws_task_function(void *arg) {
                 error_count++;
                 
                 // Send progress update
-                if (task->use_websocket) {
+                if (task->use_websocket && task->conn) {
                     char status[128];
                     snprintf(status, sizeof(status), "Failed to delete recording %llu from database", 
                            (unsigned long long)id);
-                    send_progress_update(task->client_id, i + 1, array_size, 
+                    send_progress_update(task->conn, i + 1, array_size, 
                                        success_count, error_count, status, false);
                 }
             } else {
@@ -367,10 +349,10 @@ void batch_delete_recordings_ws_task_function(void *arg) {
                 log_info("Successfully deleted recording: %llu", (unsigned long long)id);
                 
             // Send progress update
-            if (task->use_websocket) {
+            if (task->use_websocket && task->conn) {
                 char status[128];
                 snprintf(status, sizeof(status), "Deleted recording %llu", (unsigned long long)id);
-                send_progress_update(task->client_id, i + 1, array_size, 
+                send_progress_update(task->conn, i + 1, array_size, 
                                    success_count, error_count, status, false);
                 
                 // Add a small delay to ensure the WebSocket message is sent
@@ -379,7 +361,7 @@ void batch_delete_recordings_ws_task_function(void *arg) {
             }
             
             // Add a small delay to avoid overwhelming the WebSocket connection
-            if (task->use_websocket) {
+            if (task->use_websocket && task->conn) {
                 usleep(10000);  // 10ms delay
             }
         }
@@ -399,8 +381,11 @@ void batch_delete_recordings_ws_task_function(void *arg) {
             cJSON_Delete(json);
             cJSON_Delete(response);
             
-            if (task->use_websocket) {
-                send_final_result(task->client_id, false, array_size, success_count, error_count, NULL);
+            if (task->use_websocket && task->conn) {
+                // Convert connection pointer to client_id string
+                char client_id[32];
+                snprintf(client_id, sizeof(client_id), "%p", (void*)task->conn);
+                send_final_result(client_id, false, array_size, success_count, error_count, NULL);
             }
             
             batch_delete_recordings_ws_task_free(task);
@@ -411,16 +396,19 @@ void batch_delete_recordings_ws_task_function(void *arg) {
         }
         
     // Send final result via WebSocket
-    if (task->use_websocket && !is_shutdown_initiated()) {
+    if (task->use_websocket && task->conn && !is_shutdown_initiated()) {
         //  Check for shutdown before sending final result
         // Extract results array as string
         char *results_str = cJSON_PrintUnformatted(results_array);
+        // Convert connection pointer to client_id string
+        char client_id[32];
+        snprintf(client_id, sizeof(client_id), "%p", (void*)task->conn);
         if (results_str) {
-            send_final_result(task->client_id, error_count == 0, array_size, 
+            send_final_result(client_id, error_count == 0, array_size, 
                             success_count, error_count, results_str);
             free(results_str);
         } else {
-            send_final_result(task->client_id, error_count == 0, array_size, 
+            send_final_result(client_id, error_count == 0, array_size, 
                             success_count, error_count, "[]");
         }
     }
@@ -538,8 +526,11 @@ void batch_delete_recordings_ws_task_function(void *arg) {
                 cJSON_Delete(json);
                 cJSON_Delete(response);
                 
-                if (task->use_websocket) {
-                    send_final_result(task->client_id, true, 0, 0, 0, "[]");
+                if (task->use_websocket && task->conn) {
+                    // Convert connection pointer to client_id string
+                    char client_id[32];
+                    snprintf(client_id, sizeof(client_id), "%p", (void*)task->conn);
+                    send_final_result(client_id, true, 0, 0, 0, "[]");
                 }
                 
                 batch_delete_recordings_ws_task_free(task);
@@ -550,8 +541,11 @@ void batch_delete_recordings_ws_task_function(void *arg) {
             }
             
             // Send final result via WebSocket
-            if (task->use_websocket) {
-                send_final_result(task->client_id, true, 0, 0, 0, "[]");
+            if (task->use_websocket && task->conn) {
+                // Convert connection pointer to client_id string
+                char client_id[32];
+                snprintf(client_id, sizeof(client_id), "%p", (void*)task->conn);
+                send_final_result(client_id, true, 0, 0, 0, "[]");
             }
             
             free(json_str);
@@ -565,10 +559,10 @@ void batch_delete_recordings_ws_task_function(void *arg) {
         }
         
         // Send initial progress update
-        if (task->use_websocket) {
+        if (task->use_websocket && task->conn) {
             char status[128];
             snprintf(status, sizeof(status), "Found %d recordings matching filter", total_count);
-            send_progress_update(task->client_id, 0, total_count, 0, 0, status, false);
+            send_progress_update(task->conn, 0, total_count, 0, 0, status, false);
         }
         
         // Allocate memory for recordings
@@ -577,8 +571,11 @@ void batch_delete_recordings_ws_task_function(void *arg) {
             log_error("Failed to allocate memory for recordings");
             cJSON_Delete(json);
             
-            if (task->use_websocket) {
-                send_final_result(task->client_id, false, total_count, 0, 0, NULL);
+            if (task->use_websocket && task->conn) {
+                // Convert connection pointer to client_id string
+                char client_id[32];
+                snprintf(client_id, sizeof(client_id), "%p", (void*)task->conn);
+                send_final_result(client_id, false, total_count, 0, 0, NULL);
             }
             
             batch_delete_recordings_ws_task_free(task);
@@ -610,8 +607,11 @@ void batch_delete_recordings_ws_task_function(void *arg) {
                 cJSON_Delete(json);
                 cJSON_Delete(response);
                 
-                if (task->use_websocket) {
-                    send_final_result(task->client_id, true, 0, 0, 0, "[]");
+                if (task->use_websocket && task->conn) {
+                    // Convert connection pointer to client_id string
+                    char client_id[32];
+                    snprintf(client_id, sizeof(client_id), "%p", (void*)task->conn);
+                    send_final_result(client_id, true, 0, 0, 0, "[]");
                 }
                 
                 batch_delete_recordings_ws_task_free(task);
@@ -622,8 +622,11 @@ void batch_delete_recordings_ws_task_function(void *arg) {
             }
             
             // Send final result via WebSocket
-            if (task->use_websocket) {
-                send_final_result(task->client_id, true, 0, 0, 0, "[]");
+            if (task->use_websocket && task->conn) {
+                // Convert connection pointer to client_id string
+                char client_id[32];
+                snprintf(client_id, sizeof(client_id), "%p", (void*)task->conn);
+                send_final_result(client_id, true, 0, 0, 0, "[]");
             }
             
             free(json_str);
@@ -667,11 +670,11 @@ void batch_delete_recordings_ws_task_function(void *arg) {
                 error_count++;
                 
                 // Send progress update
-                if (task->use_websocket) {
+                if (task->use_websocket && task->conn) {
                     char status[128];
                     snprintf(status, sizeof(status), "Failed to delete recording %llu from database", 
                            (unsigned long long)id);
-                    send_progress_update(task->client_id, i + 1, count, 
+                    send_progress_update(task->conn, i + 1, count, 
                                        success_count, error_count, status, false);
                 }
             } else {
@@ -688,16 +691,16 @@ void batch_delete_recordings_ws_task_function(void *arg) {
                 log_info("Successfully deleted recording: %llu", (unsigned long long)id);
                 
                 // Send progress update
-                if (task->use_websocket) {
+                if (task->use_websocket && task->conn) {
                     char status[128];
                     snprintf(status, sizeof(status), "Deleted recording %llu", (unsigned long long)id);
-                    send_progress_update(task->client_id, i + 1, count, 
+                    send_progress_update(task->conn, i + 1, count, 
                                        success_count, error_count, status, false);
                 }
             }
             
             // Add a small delay to avoid overwhelming the WebSocket connection
-            if (task->use_websocket) {
+            if (task->use_websocket && task->conn) {
                 usleep(10000);  // 10ms delay
             }
         }
@@ -720,8 +723,11 @@ void batch_delete_recordings_ws_task_function(void *arg) {
             cJSON_Delete(json);
             cJSON_Delete(response);
             
-            if (task->use_websocket) {
-                send_final_result(task->client_id, error_count == 0, count, 
+            if (task->use_websocket && task->conn) {
+                // Convert connection pointer to client_id string
+                char client_id[32];
+                snprintf(client_id, sizeof(client_id), "%p", (void*)task->conn);
+                send_final_result(client_id, error_count == 0, count, 
                                 success_count, error_count, NULL);
             }
             
@@ -733,15 +739,18 @@ void batch_delete_recordings_ws_task_function(void *arg) {
         }
         
         // Send final result via WebSocket
-        if (task->use_websocket) {
+        if (task->use_websocket && task->conn) {
             // Extract results array as string
             char *results_str = cJSON_PrintUnformatted(results_array);
+            // Convert connection pointer to client_id string
+            char client_id[32];
+            snprintf(client_id, sizeof(client_id), "%p", (void*)task->conn);
             if (results_str) {
-                send_final_result(task->client_id, error_count == 0, count, 
+                send_final_result(client_id, error_count == 0, count, 
                                 success_count, error_count, results_str);
                 free(results_str);
             } else {
-                send_final_result(task->client_id, error_count == 0, count, 
+                send_final_result(client_id, error_count == 0, count, 
                                 success_count, error_count, "[]");
             }
         }
@@ -757,8 +766,11 @@ void batch_delete_recordings_ws_task_function(void *arg) {
         log_error("Request must contain either 'ids' array or 'filter' object");
         cJSON_Delete(json);
         
-        if (task->use_websocket) {
-            send_final_result(task->client_id, false, 0, 0, 0, NULL);
+        if (task->use_websocket && task->conn) {
+            // Convert connection pointer to client_id string
+            char client_id[32];
+            snprintf(client_id, sizeof(client_id), "%p", (void*)task->conn);
+            send_final_result(client_id, false, 0, 0, 0, NULL);
         }
         
         batch_delete_recordings_ws_task_free(task);
@@ -769,19 +781,16 @@ void batch_delete_recordings_ws_task_function(void *arg) {
     }
     
     // Send completion update
-    if (task->use_websocket && !is_shutdown_initiated()) {
+    if (task->use_websocket && task->conn && !is_shutdown_initiated()) {
         //  Check for shutdown before sending completion update
         // Send a final progress update with the complete flag set to true
-        send_progress_update(task->client_id, 0, 0, 0, 0, "Operation complete", true);
+        send_progress_update(task->conn, 0, 0, 0, 0, "Operation complete", true);
         
         // Add a small delay to ensure the final message is sent
         usleep(10000);  // 10ms delay
         
-        // Send a duplicate final result message to ensure it's received
-        log_info("Sending duplicate final result message to ensure delivery");
-        
-        // Create a simple final result message
-        send_final_result(task->client_id, true, 0, 0, 0, "[]");
+        // Note: We no longer send a duplicate final result message as it can confuse the frontend
+        // The frontend should have already received the actual result message with the full results
     }
     
     batch_delete_recordings_ws_task_free(task);
@@ -811,17 +820,17 @@ void websocket_handle_batch_delete_recordings(const char *client_id, const char 
         log_error("Failed to parse WebSocket message as JSON");
         
         // Send error response
-        websocket_message_t *response = websocket_message_create(
+        char *response = mg_websocket_message_create(
             "error", "recordings/batch-delete", 
             "{\"error\":\"Invalid JSON message\"}");
         
         if (response) {
-            if (websocket_message_send_to_client(client_id, response)) {
+            if (mg_websocket_message_send_to_client(client_id, response)) {
                 log_info("Error response sent successfully to client %s", client_id);
             } else {
                 log_error("Failed to send error response to client %s", client_id);
             }
-            websocket_message_free(response);
+            mg_websocket_message_free(response);
         }
         
         return;
@@ -855,12 +864,12 @@ void websocket_handle_batch_delete_recordings(const char *client_id, const char 
                 cJSON_AddItemToObject(json, "payload", payload);
             }
             
-            // Extract client_id from payload if present (for client-generated IDs)
-            cJSON *payload_client_id = cJSON_GetObjectItem(payload, "client_id");
-            if (payload_client_id && cJSON_IsString(payload_client_id)) {
-                log_info("Using client ID from payload: %s", payload_client_id->valuestring);
-                client_id = payload_client_id->valuestring;
-            }
+        // Log client_id from payload if present (for debugging)
+        cJSON *payload_client_id = cJSON_GetObjectItem(payload, "client_id");
+        if (payload_client_id && cJSON_IsString(payload_client_id)) {
+            log_info("Client ID in payload: %s (using connection ID: %s for responses)", 
+                    payload_client_id->valuestring, client_id);
+        }
             
             // Check for ids or filter in the payload
             cJSON *ids = cJSON_GetObjectItem(payload, "ids");
@@ -874,17 +883,17 @@ void websocket_handle_batch_delete_recordings(const char *client_id, const char 
                 log_error("No ids or filter found in payload");
                 
                 // Send error response
-                websocket_message_t *response = websocket_message_create(
+                char *response = mg_websocket_message_create(
                     "error", "recordings/batch-delete", 
                     "{\"error\":\"Missing ids or filter in request\"}");
                 
                 if (response) {
-                    if (websocket_message_send_to_client(client_id, response)) {
+                    if (mg_websocket_message_send_to_client(client_id, response)) {
                         log_info("Error response sent successfully to client %s", client_id);
                     } else {
                         log_error("Failed to send error response to client %s", client_id);
                     }
-                    websocket_message_free(response);
+                    mg_websocket_message_free(response);
                 }
                 
                 cJSON_Delete(json);
@@ -909,22 +918,37 @@ void websocket_handle_batch_delete_recordings(const char *client_id, const char 
                 log_info("Batch delete parameters: %s", params_str);
                 free(params_str);
             }
-        } else {
-            log_error("Unexpected WebSocket message type or topic");
+        } else if (strcmp(type->valuestring, "subscribe") == 0 && 
+                  strcmp(topic->valuestring, "recordings/batch-delete") == 0) {
+            // Handle subscribe message
+            log_info("Received subscribe message for recordings/batch-delete");
             
-            // Send error response
-            websocket_message_t *response = websocket_message_create(
-                "error", "recordings/batch-delete", 
-                "{\"error\":\"Unexpected message type or topic\"}");
+            // Send acknowledgment for subscribe message
+            char *ack = mg_websocket_message_create(
+                "ack", "recordings/batch-delete", 
+                "{\"message\":\"Subscribed to recordings/batch-delete\"}");
             
-            if (response) {
-                if (websocket_message_send_to_client(client_id, response)) {
-                    log_info("Error response sent successfully to client %s", client_id);
+            if (ack) {
+                if (mg_websocket_message_send_to_client(client_id, ack)) {
+                    log_info("Acknowledgment sent successfully to client %s", client_id);
                 } else {
-                    log_error("Failed to send error response to client %s", client_id);
+                    log_error("Failed to send acknowledgment to client %s", client_id);
                 }
-                websocket_message_free(response);
+                mg_websocket_message_free(ack);
             }
+            
+            // Add subscription
+            websocket_client_subscribe(client_id, "recordings/batch-delete");
+            
+            // Free resources
+            cJSON_Delete(json);
+            return;
+        } else {
+            log_warn("Unexpected WebSocket message type or topic: %s/%s - ignoring", 
+                    type->valuestring, topic->valuestring);
+            
+            // Don't send error response for unexpected message types
+            // This avoids confusing the client with error messages for messages it might not expect a response to
             
             cJSON_Delete(json);
             return;
@@ -943,13 +967,13 @@ void websocket_handle_batch_delete_recordings(const char *client_id, const char 
             log_info("This is a subscribe message, so we'll process it normally");
             
             // Send acknowledgment for subscribe message
-            websocket_message_t *ack = websocket_message_create(
+            char *ack = mg_websocket_message_create(
                 "ack", "recordings/batch-delete", 
                 "{\"message\":\"Subscribed to recordings/batch-delete\"}");
             
             if (ack) {
-                websocket_message_send_to_client(client_id, ack);
-                websocket_message_free(ack);
+                mg_websocket_message_send_to_client(client_id, ack);
+                mg_websocket_message_free(ack);
             }
             
             // Add subscription
@@ -966,6 +990,10 @@ void websocket_handle_batch_delete_recordings(const char *client_id, const char 
             cJSON_Delete(json);
             return;
         }
+        
+        // Auto-subscribe the client to the topic
+        log_info("Auto-subscribing client %s to recordings/batch-delete topic", client_id);
+        websocket_client_subscribe(client_id, "recordings/batch-delete");
     }
     
     // Create a copy of the JSON string for the task
@@ -975,17 +1003,17 @@ void websocket_handle_batch_delete_recordings(const char *client_id, const char 
         cJSON_Delete(json);
         
         // Send error response
-        websocket_message_t *response = websocket_message_create(
+        char *response = mg_websocket_message_create(
             "error", "recordings/batch-delete", 
             "{\"error\":\"Failed to process request\"}");
         
         if (response) {
-            if (websocket_message_send_to_client(client_id, response)) {
+            if (mg_websocket_message_send_to_client(client_id, response)) {
                 log_info("Error response sent successfully to client %s", client_id);
             } else {
                 log_error("Failed to send error response to client %s", client_id);
             }
-            websocket_message_free(response);
+            mg_websocket_message_free(response);
         }
         
         return;
@@ -995,39 +1023,62 @@ void websocket_handle_batch_delete_recordings(const char *client_id, const char 
     cJSON_Delete(json);
     
     // Send acknowledgment before starting the task
-    websocket_message_t *ack_response = websocket_message_create(
+    char *ack_response = mg_websocket_message_create(
         "ack", "recordings/batch-delete", 
         "{\"message\":\"Batch delete operation started\"}");
     
     if (ack_response) {
-                if (websocket_message_send_to_client(client_id, ack_response)) {
+                if (mg_websocket_message_send_to_client(client_id, ack_response)) {
             log_info("Acknowledgment sent successfully to client %s", client_id);
         } else {
             log_error("Failed to send acknowledgment to client %s", client_id);
         }
-        websocket_message_free(ack_response);
+        mg_websocket_message_free(ack_response);
+    }
+    
+    // Get connection from client_id
+    struct mg_connection *conn = NULL;
+    if (sscanf(client_id, "%p", &conn) != 1 || !conn) {
+        log_error("Invalid client ID or connection not found: %s", client_id);
+        free(json_str);
+        
+        // Send error response
+        char *response = mg_websocket_message_create(
+            "error", "recordings/batch-delete", 
+            "{\"error\":\"Invalid client ID or connection not found\"}");
+        
+        if (response) {
+            if (mg_websocket_message_send_to_client(client_id, response)) {
+                log_info("Error response sent successfully to client %s", client_id);
+            } else {
+                log_error("Failed to send error response to client %s", client_id);
+            }
+            mg_websocket_message_free(response);
+        }
+        
+        return;
     }
     
     // Create a task for the batch delete operation
     batch_delete_recordings_ws_task_t *task = batch_delete_recordings_ws_task_create(
-        client_id, json_str, true);
+        client_id, json_str, true, conn);
     
     if (!task) {
         log_error("Failed to create batch delete recordings task");
         free(json_str);
         
         // Send error response
-        websocket_message_t *response = websocket_message_create(
+        char *response = mg_websocket_message_create(
             "error", "recordings/batch-delete", 
             "{\"error\":\"Failed to create task\"}");
         
         if (response) {
-            if (websocket_message_send_to_client(client_id, response)) {
+            if (mg_websocket_message_send_to_client(client_id, response)) {
                 log_info("Error response sent successfully to client %s", client_id);
             } else {
                 log_error("Failed to send error response to client %s", client_id);
             }
-            websocket_message_free(response);
+            mg_websocket_message_free(response);
         }
         
         return;
@@ -1040,17 +1091,17 @@ void websocket_handle_batch_delete_recordings(const char *client_id, const char 
         batch_delete_recordings_ws_task_free(task);
         
         // Send error response
-        websocket_message_t *response = websocket_message_create(
+        char *response = mg_websocket_message_create(
             "error", "recordings/batch-delete", 
             "{\"error\":\"Failed to create thread for task\"}");
         
         if (response) {
-            if (websocket_message_send_to_client(client_id, response)) {
+            if (mg_websocket_message_send_to_client(client_id, response)) {
                 log_info("Error response sent successfully to client %s", client_id);
             } else {
                 log_error("Failed to send error response to client %s", client_id);
             }
-            websocket_message_free(response);
+            mg_websocket_message_free(response);
         }
         
         return;
@@ -1129,9 +1180,20 @@ void mg_handle_batch_delete_recordings_ws(struct mg_connection *c, struct mg_htt
         return;
     }
     
+    // Get connection from client_id
+    struct mg_connection *conn = websocket_client_get_connection(client_id);
+    if (!conn) {
+        log_error("WebSocket connection not found for client: %s", client_id);
+        cJSON_Delete(json);
+        free(body);
+        api_thread_pool_release();
+        mg_send_json_error(c, 400, "WebSocket connection not found for client");
+        return;
+    }
+    
     // Create task
     batch_delete_recordings_ws_task_t *task = batch_delete_recordings_ws_task_create(
-        client_id, body, true);
+        client_id, body, true, conn);
     
     if (!task) {
         log_error("Failed to create batch delete recordings task");

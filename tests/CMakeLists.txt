@@ -37,7 +37,6 @@ set(DETECTION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/shutdown_coordinator.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/web/logger_websocket.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/web/api_handlers_system_ws.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/web/websocket_manager.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/onvif_discovery_messages.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/web/api_handlers_system.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/web/mongoose_server.c
@@ -57,7 +56,6 @@ set(MOTION_DETECTION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/config.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/web/logger_websocket.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/web/api_handlers_system_ws.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/web/websocket_manager.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/onvif_discovery_messages.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/web/api_handlers_system.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/web/mongoose_server.c
@@ -124,5 +122,3 @@ endif()
 
 message(STATUS "Building motion detection optimization tests")
 
-# Output binary to a 'bin' directory
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)

@@ -2,10 +2,9 @@
 #define WEBSOCKET_MANAGER_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include "mongoose.h"
-#include "web/websocket_client.h"
 #include "web/websocket_handler.h"
-#include "web/websocket_message.h"
 
 /**
  * @brief Initialize WebSocket manager
@@ -49,5 +48,24 @@ void websocket_manager_handle_close(struct mg_connection *c);
  */
 bool websocket_manager_is_initialized(void);
 
+/**
+ * @brief Register a WebSocket handler for a specific topic
+ * 
+ * @param topic Topic name
+ * @param handler Handler function
+ * @param user_data User data (optional)
+ * @return int 0 on success, non-zero on error
+ */
+int websocket_manager_register_handler(const char *topic, websocket_handler_t handler, void *user_data);
+
+/**
+ * @brief Broadcast a message to all WebSocket clients
+ * 
+ * @param mgr Mongoose manager
+ * @param data Message data
+ * @param data_len Message data length
+ * @return int Number of clients the message was sent to
+ */
+int websocket_manager_broadcast(struct mg_mgr *mgr, const char *data, size_t data_len);
 
 #endif // WEBSOCKET_MANAGER_H

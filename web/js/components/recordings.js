@@ -674,9 +674,6 @@ function setPlaybackSpeed(speed) {
     }
 }
 
-/**
- * Play recording in modal - Generic implementation without Alpine.js
- */
 function playRecording(recordingId) {
     // Get the modal elements
     const modal = document.getElementById('video-modal');

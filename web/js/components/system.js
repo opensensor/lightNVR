@@ -37,9 +37,7 @@ function setupSystemHandlers() {
     if (shutdownBtn) {
         shutdownBtn.addEventListener('click', shutdownService);
     }
-    
-    // Clear logs button is now handled by Alpine.js in system.html
-    
+
     // Set up backup config button
     const backupConfigBtn = document.getElementById('backup-config-btn');
     if (backupConfigBtn) {
@@ -383,8 +381,6 @@ function shutdownService() {
             }
         });
 }
-
-// The clearLogs function has been removed as it's now handled by the Alpine.js component in system.html
 
 /**
  * Backup configuration
