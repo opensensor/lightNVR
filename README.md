@@ -81,6 +81,7 @@ LightNVR provides a lightweight yet powerful solution for recording and managing
 docker pull ghcr.io/opensensor/lightnvr:latest
 docker run -d \
   --name lightnvr \
+  --net=host \
   -p 8080:8080 \
   -v /path/to/config:/etc/lightnvr \
   -v /path/to/recordings:/var/lib/lightnvr/recordings \
