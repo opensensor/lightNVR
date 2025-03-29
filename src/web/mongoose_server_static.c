@@ -178,15 +178,32 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
                 content_type_header = "Content-Type: video/mp4\r\n";
             }
             
-            // Use more mobile-friendly cache headers
+            // Use more mobile-friendly cache headers with longer cache times
             char headers[512];
+            
+            // Different cache settings for different file types
+            const char* cache_control;
+            if (strstr(file_name, ".m3u8")) {
+                // For playlist files, use a shorter cache time to ensure updates are seen
+                cache_control = "Cache-Control: max-age=2\r\n";
+            } else if (strstr(file_name, ".ts") || strstr(file_name, ".m4s")) {
+                // For media segments, use a longer cache time to improve mobile performance
+                cache_control = "Cache-Control: max-age=60\r\n";
+            } else if (strstr(file_name, "init.mp4")) {
+                // For initialization segments, use a longer cache time
+                cache_control = "Cache-Control: max-age=3600\r\n";
+            } else {
+                // Default cache time
+                cache_control = "Cache-Control: max-age=5\r\n";
+            }
+            
             snprintf(headers, sizeof(headers),
                 "%s"
-                "Cache-Control: max-age=1\r\n"  // Allow short caching for better mobile performance
+                "%s"  // Dynamic cache control based on file type
                 "Access-Control-Allow-Origin: *\r\n"
                 "Access-Control-Allow-Methods: GET, OPTIONS\r\n"
                 "Access-Control-Allow-Headers: Origin, Content-Type, Accept, Authorization\r\n",
-                content_type_header);
+                content_type_header, cache_control);
             
             mg_http_serve_file(c, hm, hls_file_path, &(struct mg_http_serve_opts){
                 .mime_types = "",

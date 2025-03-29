@@ -81,9 +81,10 @@ void *hls_stream_thread(void *arg) {
     }
 
     // Create HLS writer - adding the segment_duration parameter
-    // Use a smaller segment duration for lower latency
+    // Use a more balanced segment duration that works better on mobile
+    // Longer segments (1-2 seconds) are more stable on mobile networks
     int segment_duration = ctx->config.segment_duration > 0 ?
-                          ctx->config.segment_duration : 0.5;
+                          ctx->config.segment_duration : 2;
 
     ctx->hls_writer = hls_writer_create(ctx->output_path, stream_name, segment_duration);
     if (!ctx->hls_writer) {

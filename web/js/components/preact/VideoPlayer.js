@@ -94,63 +94,93 @@ export function initializeVideoPlayer(stream, videoPlayers, detectionIntervals) 
       addPlayButtonOverlay(videoCell, videoElement);
     });
   }
-  // Use HLS.js for browsers that don't support HLS natively
-  else if (window.Hls && window.Hls.isSupported()) {
-    // Get auth from localStorage
-    const auth = localStorage.getItem('auth');
-    
-    // Configure HLS.js with universal settings that work well on all devices
-    const hls = new window.Hls({
-      // Balanced buffer settings
-      maxBufferLength: 20,
-      maxMaxBufferLength: 30,
-      // Balanced sync settings
-      liveSyncDurationCount: 3,
-      liveMaxLatencyDurationCount: 6,
-      liveDurationInfinity: false,
-      // Disable low latency mode as it can cause issues on some devices
-      lowLatencyMode: false,
-      // Enable worker for better performance
-      enableWorker: true,
-      // Reasonable timeouts that work across networks
-      fragLoadingTimeOut: 30000,
-      manifestLoadingTimeOut: 30000,
-      levelLoadingTimeOut: 30000,
-      // Moderate back buffer length
-      backBufferLength: 30,
-      // Use automatic level selection
-      startLevel: -1,
-      // Balanced ABR settings
-      abrEwmaDefaultEstimate: 500000,
-      abrBandWidthFactor: 0.7,
-      abrBandWidthUpFactor: 0.5,
-      // Add custom headers to all HLS requests
-      xhrSetup: function(xhr, url) {
-        // Add Authorization header if we have auth in localStorage
-        if (auth) {
-          xhr.setRequestHeader('Authorization', 'Basic ' + auth);
-        }
-        // Always include credentials (cookies)
-        xhr.withCredentials = true;
-      }
-    });
+    // Use HLS.js for browsers that don't support HLS natively
+    else if (window.Hls && window.Hls.isSupported()) {
+        // Get auth from localStorage
+        const auth = localStorage.getItem('auth');
+        
+        // Check if this is a mobile device
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        
+        // Configure HLS.js with settings optimized for the device type
+        const hls = new window.Hls({
+            // Increase buffer settings for mobile devices to improve stability
+            maxBufferLength: isMobile ? 30 : 20,
+            maxMaxBufferLength: isMobile ? 60 : 30,
+            // Increase sync settings for mobile to handle network fluctuations
+            liveSyncDurationCount: isMobile ? 4 : 3,
+            liveMaxLatencyDurationCount: isMobile ? 10 : 6,
+            liveDurationInfinity: false,
+            // Disable low latency mode as it can cause issues on mobile devices
+            lowLatencyMode: false,
+            // Enable worker for better performance
+            enableWorker: true,
+            // Increase timeouts for mobile devices to handle slower networks
+            fragLoadingTimeOut: isMobile ? 60000 : 30000,
+            manifestLoadingTimeOut: isMobile ? 60000 : 30000,
+            levelLoadingTimeOut: isMobile ? 60000 : 30000,
+            // Increase back buffer length for mobile
+            backBufferLength: isMobile ? 60 : 30,
+            // Start with lower quality on mobile for faster initial load
+            startLevel: isMobile ? 0 : -1,
+            // More conservative ABR settings for mobile
+            abrEwmaDefaultEstimate: isMobile ? 1000000 : 500000,
+            abrBandWidthFactor: isMobile ? 0.5 : 0.7,
+            abrBandWidthUpFactor: isMobile ? 0.3 : 0.5,
+            // Add custom headers to all HLS requests
+            xhrSetup: function(xhr, url) {
+                // Add Authorization header if we have auth in localStorage
+                if (auth) {
+                    xhr.setRequestHeader('Authorization', 'Basic ' + auth);
+                }
+                // Always include credentials (cookies)
+                xhr.withCredentials = true;
+            }
+        });
     
     hls.loadSource(hlsStreamUrl);
     hls.attachMedia(videoElement);
     
-    hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
-      if (loadingIndicator) {
-        loadingIndicator.style.display = 'none';
-      }
-      
-      // Try to play automatically on all devices
-      // If autoplay is prevented, the error handler will show the play button
-      videoElement.play().catch(error => {
-        console.warn('Auto-play prevented:', error);
-        // Add play button overlay for user interaction
-        addPlayButtonOverlay(videoCell, videoElement);
-      });
-    });
+            hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
+                console.log(`Manifest parsed for stream ${stream.name}`);
+                
+                // On mobile, we need to be more careful with autoplay
+                const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+                
+                if (isMobile) {
+                    console.log(`Mobile device detected for stream ${stream.name}, using muted autoplay`);
+                    // For mobile, always mute the video first to allow autoplay
+                    videoElement.muted = true;
+                    
+                    // Hide loading indicator after a short delay to ensure UI is ready
+                    setTimeout(() => {
+                        if (loadingIndicator) {
+                            loadingIndicator.style.display = 'none';
+                        }
+                        
+                        // Try to play with muted audio first (more likely to succeed on mobile)
+                        videoElement.play().then(() => {
+                            console.log(`Autoplay succeeded for stream ${stream.name} on mobile`);
+                        }).catch(error => {
+                            console.warn(`Autoplay failed for stream ${stream.name} on mobile:`, error);
+                            // Show play button if autoplay fails even with muted audio
+                            addPlayButtonOverlay(videoCell, videoElement);
+                        });
+                    }, 500);
+                } else {
+                    // For desktop, proceed as before
+                    if (loadingIndicator) {
+                        loadingIndicator.style.display = 'none';
+                    }
+                    
+                    // Try to play automatically
+                    videoElement.play().catch(error => {
+                        console.warn('Auto-play prevented:', error);
+                        // Add play button overlay for user interaction
+                        addPlayButtonOverlay(videoCell, videoElement);
+                    });
+                }
+            });
     
     hls.on(window.Hls.Events.ERROR, (event, data) => {
       console.warn('HLS error:', data);
