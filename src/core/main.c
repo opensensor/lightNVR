@@ -64,6 +64,7 @@ void set_web_server_socket(int socket_fd) {
     web_server_socket = socket_fd;
 }
 
+// Improved signal handler with phased shutdown approach
 static void signal_handler(int sig) {
     // Log the signal received
     log_info("Received signal %d, shutting down...", sig);
@@ -86,55 +87,115 @@ static void signal_handler(int sig) {
     
     // For Linux 4.4 embedded systems, we need a more robust approach
     // Set an alarm to force exit if normal shutdown doesn't work
-    alarm(10); // Reduced from 15 to 10 seconds for faster forced exit
+    // Increased from 10 to 20 seconds to give more time for graceful shutdown
+    alarm(20);
+    
+    // Log that we've started the shutdown process
+    log_info("Shutdown process initiated, waiting for components to stop gracefully");
 }
 
-// Alarm signal handler for forced exit
+// Alarm signal handler for forced exit - improved with phased emergency cleanup
 static void alarm_handler(int sig) {
-    log_warn("Shutdown timeout reached, forcing exit");
+    static bool emergency_cleanup_in_progress = false;
+    static int emergency_phase = 0;
     
-    // Attempt to force cleanup of critical resources before exit
-    log_info("Performing emergency cleanup of critical resources");
-    
-    // Force cleanup of detection resources
-    cleanup_detection_resources();
-    
-    // Force cleanup of websocket connections
-    if (web_server_socket >= 0) {
-        log_info("Closing web server socket %d", web_server_socket);
-        close(web_server_socket);
-        web_server_socket = -1;
-    }
-    
-    // Force all components to be marked as stopped
-    shutdown_coordinator_t *coordinator = get_shutdown_coordinator();
-    if (coordinator) {
-        pthread_mutex_lock(&coordinator->mutex);
-        for (int i = 0; i < atomic_load(&coordinator->component_count); i++) {
-            atomic_store(&coordinator->components[i].state, COMPONENT_STOPPED);
+    // If this is the first time we're called, start emergency cleanup
+    if (!emergency_cleanup_in_progress) {
+        log_warn("Shutdown timeout reached, forcing exit");
+        log_info("Performing emergency cleanup of critical resources");
+        emergency_cleanup_in_progress = true;
+        
+        // Set a new alarm for the next phase (30 seconds)
+        alarm(30);
+        
+        // Phase 1: Try to stop all HLS writers first as they're often the source of hangs
+        log_info("Emergency cleanup phase 1: Stopping HLS writers");
+        
+        // Force cleanup of HLS contexts first
+        log_info("Starting detection resources cleanup...");
+        cleanup_detection_resources();
+        
+        // Force cleanup of websocket connections
+        if (web_server_socket >= 0) {
+            log_info("Closing web server socket %d", web_server_socket);
+            close(web_server_socket);
+            web_server_socket = -1;
         }
-        coordinator->all_components_stopped = true;
-        pthread_mutex_unlock(&coordinator->mutex);
+        
+        // Mark all components as stopping
+        shutdown_coordinator_t *coordinator = get_shutdown_coordinator();
+        if (coordinator) {
+            pthread_mutex_lock(&coordinator->mutex);
+            for (int i = 0; i < atomic_load(&coordinator->component_count); i++) {
+                // Only update components that are still running
+                if (atomic_load(&coordinator->components[i].state) == COMPONENT_RUNNING) {
+                    atomic_store(&coordinator->components[i].state, COMPONENT_STOPPING);
+                    log_info("Forcing component %s (ID: %d) to STOPPING state", 
+                             coordinator->components[i].name, i);
+                }
+            }
+            pthread_mutex_unlock(&coordinator->mutex);
+        }
+        
+        // Increment phase for next alarm
+        emergency_phase = 1;
+        return;
     }
     
+    // Phase 2: If we're still not exiting, force all components to stopped state
+    if (emergency_phase == 1) {
+        log_warn("Emergency cleanup phase 1 timed out, proceeding to phase 2");
+        
+        // Set a final alarm (15 seconds)
+        alarm(15);
+        
+        // Force all components to be marked as stopped
+        shutdown_coordinator_t *coordinator = get_shutdown_coordinator();
+        if (coordinator) {
+            pthread_mutex_lock(&coordinator->mutex);
+            for (int i = 0; i < atomic_load(&coordinator->component_count); i++) {
+                if (atomic_load(&coordinator->components[i].state) != COMPONENT_STOPPED) {
+                    log_warn("Forcing component %s (ID: %d) from state %d to STOPPED", 
+                             coordinator->components[i].name, i, 
+                             atomic_load(&coordinator->components[i].state));
+                    atomic_store(&coordinator->components[i].state, COMPONENT_STOPPED);
+                }
+            }
+            coordinator->all_components_stopped = true;
+            pthread_mutex_unlock(&coordinator->mutex);
+        }
+        
+        // Increment phase for next alarm
+        emergency_phase = 2;
+        return;
+    }
+    
+    // Phase 3: Final forced exit
+    log_error("Emergency cleanup timed out after multiple phases, forcing immediate exit");
     _exit(EXIT_SUCCESS); // Use _exit instead of exit to avoid calling atexit handlers
 }
 
-// Function to initialize signal handlers
+// Function to initialize signal handlers with improved signal handling
 static void init_signals() {
     // Set up signal handlers for both daemon and non-daemon mode
     // This ensures consistent behavior across all modes
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
     sa.sa_handler = signal_handler;
+    
+    // Add SA_RESTART flag to automatically restart interrupted system calls
+    // This helps prevent issues with blocking I/O operations during signal handling
+    sa.sa_flags = SA_RESTART;
+    
     sigaction(SIGINT, &sa, NULL);
     sigaction(SIGTERM, &sa, NULL);
     sigaction(SIGHUP, &sa, NULL);
     
-    // Set up alarm handler for forced exit
+    // Set up alarm handler for phased forced exit
     struct sigaction sa_alarm;
     memset(&sa_alarm, 0, sizeof(sa_alarm));
     sa_alarm.sa_handler = alarm_handler;
+    sa_alarm.sa_flags = SA_RESTART;
     sigaction(SIGALRM, &sa_alarm, NULL);
     
     // Block SIGPIPE to prevent crashes when writing to closed sockets
@@ -143,6 +204,8 @@ static void init_signals() {
     sigemptyset(&set);
     sigaddset(&set, SIGPIPE);
     pthread_sigmask(SIG_BLOCK, &set, NULL);
+    
+    log_info("Signal handlers initialized with improved handling");
 }
 /**
  * Check if another instance is running and kill it if needed

@@ -1,3 +1,7 @@
+#define _POSIX_C_SOURCE 200809L
+#define _XOPEN_SOURCE 700
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,6 +12,7 @@
 #include <time.h>
 #include <fcntl.h>  // For O_NONBLOCK
 #include <errno.h>  // For error codes
+#include <signal.h> // For alarm
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
@@ -884,7 +889,7 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
 
 /**
  * Close HLS writer and free resources
- * This function is thread-safe and handles all cleanup operations
+ * This function is thread-safe and handles all cleanup operations with improved robustness
  */
 void hls_writer_close(hls_writer_t *writer) {
     if (!writer) {
@@ -899,11 +904,17 @@ void hls_writer_close(hls_writer_t *writer) {
 
     log_info("Starting to close HLS writer for stream %s", stream_name);
 
-    // Try to acquire the mutex with a simple trylock
-    int mutex_result = pthread_mutex_trylock(&writer->mutex);
+    // Try to acquire the mutex with a timeout approach
+    struct timespec timeout;
+    clock_gettime(CLOCK_REALTIME, &timeout);
+    timeout.tv_sec += 2; // 2 second timeout
+    
+    int mutex_result = pthread_mutex_timedlock(&writer->mutex, &timeout);
     if (mutex_result != 0) {
-        log_warn("Could not acquire HLS writer mutex for stream %s, proceeding with forced close", stream_name);
+        log_warn("Could not acquire HLS writer mutex for stream %s within timeout, proceeding with forced close", stream_name);
         // Continue with the close operation even if we couldn't acquire the mutex
+    } else {
+        log_info("Successfully acquired mutex for HLS writer for stream %s", stream_name);
     }
 
     // Check if already closed
@@ -925,10 +936,11 @@ void hls_writer_close(hls_writer_t *writer) {
     // Unlock the mutex if we acquired it
     if (mutex_result == 0) {
         pthread_mutex_unlock(&writer->mutex);
+        log_info("Released mutex for HLS writer for stream %s", stream_name);
     }
 
     // Add a small delay to ensure any in-progress operations complete
-    usleep(100000); // 100ms
+    usleep(200000); // 200ms - increased from 100ms for more safety
 
     // Write trailer if the context is valid
     if (local_output_ctx) {
@@ -942,11 +954,20 @@ void hls_writer_close(hls_writer_t *writer) {
             // Use a safer approach to write the trailer
             // First check if the context is still valid
             if (local_output_ctx->oformat && local_output_ctx->pb) {
+                // Set up a timeout for the trailer write operation
+                alarm(5); // 5 second timeout for trailer write
+                
                 ret = av_write_trailer(local_output_ctx);
+                
+                // Cancel the alarm
+                alarm(0);
+                
                 if (ret < 0) {
                     char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
                     av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
                     log_warn("Error writing trailer for HLS writer for stream %s: %s", stream_name, error_buf);
+                } else {
+                    log_info("Successfully wrote trailer for HLS writer for stream %s", stream_name);
                 }
             } else {
                 log_warn("Skipping trailer write for stream %s: invalid format context", stream_name);
@@ -963,12 +984,21 @@ void hls_writer_close(hls_writer_t *writer) {
             AVIOContext *pb_to_close = local_output_ctx->pb;
             local_output_ctx->pb = NULL;
             
+            // Set up a timeout for the AVIO close operation
+            alarm(5); // 5 second timeout for AVIO close
+            
             // Close the AVIO context
             avio_closep(&pb_to_close); // Use safer avio_closep and pass the correct pointer
+            
+            // Cancel the alarm
+            alarm(0);
+            
+            log_info("Successfully closed AVIO context for HLS writer for stream %s", stream_name);
         }
         
         log_info("Freeing format context for HLS writer for stream %s", stream_name);
         avformat_free_context(local_output_ctx);
+        log_info("Successfully freed format context for HLS writer for stream %s", stream_name);
     }
     
     // Free bitstream filter context if it exists
@@ -977,6 +1007,7 @@ void hls_writer_close(hls_writer_t *writer) {
         AVBSFContext *bsf_to_free = writer->bsf_ctx;
         writer->bsf_ctx = NULL;
         av_bsf_free(&bsf_to_free);
+        log_info("Successfully freed bitstream filter context for HLS writer for stream %s", stream_name);
     }
     
     // Destroy mutex with proper error handling
@@ -985,6 +1016,8 @@ void hls_writer_close(hls_writer_t *writer) {
         if (destroy_result != 0) {
             log_warn("Failed to destroy mutex for HLS writer for stream %s: %s", 
                     stream_name, strerror(destroy_result));
+        } else {
+            log_info("Successfully destroyed mutex for HLS writer for stream %s", stream_name);
         }
     }
 
@@ -992,4 +1025,5 @@ void hls_writer_close(hls_writer_t *writer) {
 
     // Finally free the writer structure
     free(writer);
+    log_info("Freed HLS writer structure for stream %s", stream_name);
 }

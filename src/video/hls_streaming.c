@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdbool.h>
 
 #include "core/logger.h"
 #include "video/hls_streaming.h"
@@ -20,6 +21,7 @@
 #include "video/hls/hls_stream_thread.h"
 #include "video/hls/hls_directory.h"
 #include "video/hls/hls_api.h"
+#include "video/stream_state.h"
 
 /**
  * Initialize HLS streaming backend
@@ -31,7 +33,7 @@ void init_hls_streaming_backend(void) {
 }
 
 /**
- * Cleanup HLS streaming backend
+ * Cleanup HLS streaming backend with improved robustness
  */
 void cleanup_hls_streaming_backend(void) {
     log_info("Cleaning up HLS streaming backend...");
@@ -49,17 +51,75 @@ void cleanup_hls_streaming_backend(void) {
         }
     }
 
-    // Now stop each stream one by one
+    // Log how many streams we need to stop
+    log_info("Found %d active HLS streams to stop during shutdown", stream_count);
+
+    // First, mark all streams as stopping to prevent new packet processing
     for (int i = 0; i < stream_count; i++) {
-        log_info("Stopping HLS stream: %s", stream_names[i]);
-        stop_hls_stream(stream_names[i]);
+        log_info("Marking HLS stream as stopping: %s", stream_names[i]);
         
-        // Add a small delay between stopping streams to avoid resource contention
-        usleep(100000); // 100ms
+        // Get the stream state manager
+        stream_state_manager_t *state = get_stream_state_by_name(stream_names[i]);
+        if (state) {
+            // Disable callbacks to prevent new packets from being processed
+            set_stream_callbacks_enabled(state, false);
+            log_info("Disabled callbacks for stream %s during HLS shutdown", stream_names[i]);
+        }
+        
+        // Mark the stream as stopping
+        mark_stream_stopping(stream_names[i]);
     }
     
-    // Clean up the HLS contexts
+    // Add a small delay to allow in-progress operations to complete
+    usleep(500000); // 500ms
+    
+    // Now stop each stream one by one with increased delays between stops
+    for (int i = 0; i < stream_count; i++) {
+        log_info("Stopping HLS stream: %s (%d of %d)", stream_names[i], i+1, stream_count);
+        
+        // Try to stop the stream with multiple attempts if needed
+        int max_attempts = 3;
+        bool success = false;
+        
+        for (int attempt = 1; attempt <= max_attempts && !success; attempt++) {
+            int result = stop_hls_stream(stream_names[i]);
+            if (result == 0) {
+                log_info("Successfully stopped HLS stream %s on attempt %d", stream_names[i], attempt);
+                success = true;
+            } else if (attempt < max_attempts) {
+                log_warn("Failed to stop HLS stream %s on attempt %d, retrying...", stream_names[i], attempt);
+                usleep(500000); // 500ms delay before retry
+            } else {
+                log_error("Failed to stop HLS stream %s after %d attempts", stream_names[i], max_attempts);
+            }
+        }
+        
+        // Add a longer delay between stopping streams to avoid resource contention
+        usleep(500000); // 500ms
+    }
+    
+    // Clean up the HLS contexts with additional logging
+    log_info("All HLS streams stopped, cleaning up contexts...");
     cleanup_hls_contexts();
+    
+    // Final verification that all contexts are cleaned up
+    bool any_remaining = false;
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (streaming_contexts[i] != NULL) {
+            any_remaining = true;
+            log_warn("HLS context for stream %s still exists after cleanup", 
+                    streaming_contexts[i]->config.name);
+            
+            // Force cleanup of this context
+            log_info("Forcing cleanup of remaining HLS context");
+            free(streaming_contexts[i]);
+            streaming_contexts[i] = NULL;
+        }
+    }
+    
+    if (!any_remaining) {
+        log_info("All HLS contexts successfully cleaned up");
+    }
     
     log_info("HLS streaming backend cleaned up");
 }
