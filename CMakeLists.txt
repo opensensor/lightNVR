@@ -241,6 +241,7 @@ target_link_libraries(lightnvr
         ${SQLITE_LIBRARIES}
         ${CURL_LIBRARIES}
         ${SSL_LIBRARIES}
+	atomic
         pthread
         dl
         m
