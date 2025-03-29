@@ -406,11 +406,11 @@ void mg_handle_get_system_info(struct mg_connection *c, struct mg_http_message *
     // Create streams object
     cJSON *streams_obj = cJSON_CreateObject();
     if (streams_obj) {
-        // Get stream statistics using the stream manager functions
-        int active_streams = get_active_stream_count();
-        log_debug("Active streams count from stream manager: %d", active_streams);
+        // Get count of enabled streams from the database
+        int enabled_streams = get_enabled_stream_count();
+        log_debug("Enabled streams count from database: %d", enabled_streams);
         
-        cJSON_AddNumberToObject(streams_obj, "active", active_streams);
+        cJSON_AddNumberToObject(streams_obj, "active", enabled_streams);
         cJSON_AddNumberToObject(streams_obj, "total", g_config.max_streams);
         
         // Add streams object to info

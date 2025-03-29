@@ -54,4 +54,11 @@ int get_all_stream_configs(stream_config_t *streams, int max_count);
  */
 int count_stream_configs(void);
 
+/**
+ * Count the number of enabled stream configurations in the database
+ * 
+ * @return Number of enabled streams, or -1 on error
+ */
+int get_enabled_stream_count(void);
+
 #endif // LIGHTNVR_DB_STREAMS_H

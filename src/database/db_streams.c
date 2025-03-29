@@ -585,6 +585,45 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
 }
 
 /**
+ * Count the number of enabled stream configurations in the database
+ * 
+ * @return Number of enabled streams, or -1 on error
+ */
+int get_enabled_stream_count(void) {
+    int rc;
+    sqlite3_stmt *stmt;
+    int count = -1;
+    
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *db_mutex = get_db_mutex();
+    
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+    
+    pthread_mutex_lock(db_mutex);
+    
+    const char *sql = "SELECT COUNT(*) FROM streams WHERE enabled = 1;";
+    
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(db_mutex);
+        return -1;
+    }
+    
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        count = sqlite3_column_int(stmt, 0);
+    }
+    
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(db_mutex);
+    
+    return count;
+}
+
+/**
  * Count the number of stream configurations in the database
  * 
  * @return Number of streams, or -1 on error
