@@ -17,6 +17,7 @@ export function SettingsView() {
   const [settings, setSettings] = useState({
     logLevel: '2',
     storagePath: '/var/lib/lightnvr/recordings',
+    storagePathHls: '', // New field for HLS storage path
     maxStorage: '0',
     retention: '30',
     autoDelete: true,
@@ -60,6 +61,7 @@ export function SettingsView() {
       const mappedData = {
         logLevel: data.log_level?.toString() || '',
         storagePath: data.storage_path || '',
+        storagePathHls: data.storage_path_hls || '', // Map the HLS storage path
         maxStorage: data.max_storage_size?.toString() || '',
         retention: data.retention_days?.toString() || '',
         autoDelete: data.auto_delete_oldest || false,
@@ -100,6 +102,7 @@ export function SettingsView() {
       const mappedSettings = {
         log_level: parseInt(settings.logLevel, 10),
         storage_path: settings.storagePath,
+        storage_path_hls: settings.storagePathHls, // Include the HLS storage path
         max_storage_size: parseInt(settings.maxStorage, 10),
         retention_days: parseInt(settings.retention, 10),
         auto_delete_oldest: settings.autoDelete,
@@ -207,6 +210,20 @@ export function SettingsView() {
               value=${settings.storagePath}
               onChange=${handleInputChange}
             />
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-storage-path-hls" class="font-medium">HLS Storage Path</label>
+            <div class="col-span-2">
+              <input 
+                type="text" 
+                id="setting-storage-path-hls" 
+                name="storagePathHls"
+                class="w-full p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                value=${settings.storagePathHls}
+                onChange=${handleInputChange}
+              />
+              <span class="hint text-sm text-gray-500 dark:text-gray-400">Optional path for HLS segments. If not specified, Storage Path will be used.</span>
+            </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-max-storage" class="font-medium">Maximum Storage Size (GB)</label>
