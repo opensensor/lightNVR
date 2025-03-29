@@ -230,20 +230,20 @@ void mg_handle_get_timeline_segments(struct mg_connection *c, struct mg_http_mes
     // Add metadata
     cJSON_AddStringToObject(response, "stream", stream_name);
     
-    // Format timestamps for display
-    char start_time_display[32] = {0};
-    char end_time_display[32] = {0};
-    struct tm *tm_info;
-    
-    tm_info = localtime(&start_time);
-    if (tm_info) {
-        strftime(start_time_display, sizeof(start_time_display), "%Y-%m-%d %H:%M:%S", tm_info);
-    }
-    
-    tm_info = localtime(&end_time);
-    if (tm_info) {
-        strftime(end_time_display, sizeof(end_time_display), "%Y-%m-%d %H:%M:%S", tm_info);
-    }
+            // Format timestamps for display in UTC
+            char start_time_display[32] = {0};
+            char end_time_display[32] = {0};
+            struct tm *tm_info;
+            
+            tm_info = gmtime(&start_time);
+            if (tm_info) {
+                strftime(start_time_display, sizeof(start_time_display), "%Y-%m-%d %H:%M:%S UTC", tm_info);
+            }
+            
+            tm_info = gmtime(&end_time);
+            if (tm_info) {
+                strftime(end_time_display, sizeof(end_time_display), "%Y-%m-%d %H:%M:%S UTC", tm_info);
+            }
     
     cJSON_AddStringToObject(response, "start_time", start_time_display);
     cJSON_AddStringToObject(response, "end_time", end_time_display);
@@ -257,19 +257,19 @@ void mg_handle_get_timeline_segments(struct mg_connection *c, struct mg_http_mes
             continue;
         }
         
-        // Format timestamps
-        char segment_start_time[32] = {0};
-        char segment_end_time[32] = {0};
-        
-        tm_info = localtime(&segments[i].start_time);
-        if (tm_info) {
-            strftime(segment_start_time, sizeof(segment_start_time), "%Y-%m-%d %H:%M:%S", tm_info);
-        }
-        
-        tm_info = localtime(&segments[i].end_time);
-        if (tm_info) {
-            strftime(segment_end_time, sizeof(segment_end_time), "%Y-%m-%d %H:%M:%S", tm_info);
-        }
+            // Format timestamps in UTC
+            char segment_start_time[32] = {0};
+            char segment_end_time[32] = {0};
+            
+            tm_info = gmtime(&segments[i].start_time);
+            if (tm_info) {
+                strftime(segment_start_time, sizeof(segment_start_time), "%Y-%m-%d %H:%M:%S UTC", tm_info);
+            }
+            
+            tm_info = gmtime(&segments[i].end_time);
+            if (tm_info) {
+                strftime(segment_end_time, sizeof(segment_end_time), "%Y-%m-%d %H:%M:%S UTC", tm_info);
+            }
         
         // Calculate duration in seconds
         int duration = (int)difftime(segments[i].end_time, segments[i].start_time);
@@ -494,9 +494,9 @@ void mg_handle_timeline_manifest(struct mg_connection *c, struct mg_http_message
             strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%S.000", &tm) != NULL ||
             strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%SZ", &tm) != NULL) {
             
-            // Set tm_isdst to -1 to let mktime determine if DST is in effect
-            tm.tm_isdst = -1;
-            start_time = mktime(&tm);
+            // Convert to UTC timestamp - assume input is already in UTC
+            tm.tm_isdst = 0; // No DST for UTC
+            start_time = timegm(&tm);
             log_info("Parsed start time: %ld", (long)start_time);
         } else {
             log_error("Failed to parse start time string: %s", decoded_start_time);
@@ -527,9 +527,9 @@ void mg_handle_timeline_manifest(struct mg_connection *c, struct mg_http_message
             strptime(decoded_end_time, "%Y-%m-%dT%H:%M:%S.000", &tm) != NULL ||
             strptime(decoded_end_time, "%Y-%m-%dT%H:%M:%SZ", &tm) != NULL) {
             
-            // Set tm_isdst to -1 to let mktime determine if DST is in effect
-            tm.tm_isdst = -1;
-            end_time = mktime(&tm);
+            // Convert to UTC timestamp - assume input is already in UTC
+            tm.tm_isdst = 0; // No DST for UTC
+            end_time = timegm(&tm);
             log_info("Parsed end time: %ld", (long)end_time);
         } else {
             log_error("Failed to parse end time string: %s", decoded_end_time);

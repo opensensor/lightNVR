@@ -111,9 +111,9 @@ function loadRecordings(page = 1, updateUrl = true) {
                 endDateTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
         }
         
-        // Format dates for API
+        // Format dates for API in UTC
         const formatDate = (date) => {
-            return date.toISOString().split('.')[0]; // Remove milliseconds
+            return date.toISOString().split('.')[0] + 'Z'; // Ensure UTC timezone is explicit
         };
         
         queryParams.append('start', formatDate(startDateTime));

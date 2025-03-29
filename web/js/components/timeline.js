@@ -136,9 +136,9 @@ function loadTimelineData() {
     const endDate = new Date(selectedDate);
     endDate.setHours(23, 59, 59, 999);
     
-    // Format dates for API
-    const startTime = startDate.toISOString();
-    const endTime = endDate.toISOString();
+    // Format dates for API in UTC
+    const startTime = startDate.toISOString().split('.')[0] + 'Z'; // Ensure UTC timezone is explicit
+    const endTime = endDate.toISOString().split('.')[0] + 'Z'; // Ensure UTC timezone is explicit
     
     // Fetch timeline segments
     fetch(`/api/timeline/segments?stream=${encodeURIComponent(selectedStream)}&start=${encodeURIComponent(startTime)}&end=${encodeURIComponent(endTime)}`)

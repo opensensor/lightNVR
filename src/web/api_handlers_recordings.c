@@ -140,9 +140,9 @@ void serve_download_file(struct mg_connection *c, const char *file_path, const c
         return;
     }
     
-    // Format timestamp for filename
+    // Format timestamp for filename in UTC
     char timestamp_str[32] = {0};
-    struct tm *tm_info = localtime(&timestamp);
+    struct tm *tm_info = gmtime(&timestamp);
     if (tm_info) {
         strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M%S", tm_info);
     }

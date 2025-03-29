@@ -112,9 +112,9 @@ void mg_handle_get_recordings(struct mg_connection *c, struct mg_http_message *h
             strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%S.000", &tm) != NULL ||
             strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%SZ", &tm) != NULL) {
             
-            // Set tm_isdst to -1 to let mktime determine if DST is in effect
-            tm.tm_isdst = -1;
-            start_time = mktime(&tm);
+            // Convert to UTC timestamp - assume input is already in UTC
+            tm.tm_isdst = 0; // No DST for UTC
+            start_time = timegm(&tm);
             log_info("Parsed start time: %ld", (long)start_time);
         } else {
             log_error("Failed to parse start time string: %s", decoded_start_time);
@@ -142,9 +142,9 @@ void mg_handle_get_recordings(struct mg_connection *c, struct mg_http_message *h
             strptime(decoded_end_time, "%Y-%m-%dT%H:%M:%S.000", &tm) != NULL ||
             strptime(decoded_end_time, "%Y-%m-%dT%H:%M:%SZ", &tm) != NULL) {
             
-            // Set tm_isdst to -1 to let mktime determine if DST is in effect
-            tm.tm_isdst = -1;
-            end_time = mktime(&tm);
+            // Convert to UTC timestamp - assume input is already in UTC
+            tm.tm_isdst = 0; // No DST for UTC
+            end_time = timegm(&tm);
             log_info("Parsed end time: %ld", (long)end_time);
         } else {
             log_error("Failed to parse end time string: %s", decoded_end_time);
@@ -226,19 +226,19 @@ void mg_handle_get_recordings(struct mg_connection *c, struct mg_http_message *h
             continue;
         }
         
-        // Format timestamps
+        // Format timestamps in UTC
         char start_time_str[32] = {0};
         char end_time_str[32] = {0};
         struct tm *tm_info;
         
-        tm_info = localtime(&recordings[i].start_time);
+        tm_info = gmtime(&recordings[i].start_time);
         if (tm_info) {
-            strftime(start_time_str, sizeof(start_time_str), "%Y-%m-%d %H:%M:%S", tm_info);
+            strftime(start_time_str, sizeof(start_time_str), "%Y-%m-%d %H:%M:%S UTC", tm_info);
         }
         
-        tm_info = localtime(&recordings[i].end_time);
+        tm_info = gmtime(&recordings[i].end_time);
         if (tm_info) {
-            strftime(end_time_str, sizeof(end_time_str), "%Y-%m-%d %H:%M:%S", tm_info);
+            strftime(end_time_str, sizeof(end_time_str), "%Y-%m-%d %H:%M:%S UTC", tm_info);
         }
         
         // Calculate duration in seconds
@@ -328,19 +328,19 @@ void mg_handle_get_recording(struct mg_connection *c, struct mg_http_message *hm
         return;
     }
     
-    // Format timestamps
+    // Format timestamps in UTC
     char start_time_str[32] = {0};
     char end_time_str[32] = {0};
     struct tm *tm_info;
     
-    tm_info = localtime(&recording.start_time);
+    tm_info = gmtime(&recording.start_time);
     if (tm_info) {
-        strftime(start_time_str, sizeof(start_time_str), "%Y-%m-%d %H:%M:%S", tm_info);
+        strftime(start_time_str, sizeof(start_time_str), "%Y-%m-%d %H:%M:%S UTC", tm_info);
     }
     
-    tm_info = localtime(&recording.end_time);
+    tm_info = gmtime(&recording.end_time);
     if (tm_info) {
-        strftime(end_time_str, sizeof(end_time_str), "%Y-%m-%d %H:%M:%S", tm_info);
+        strftime(end_time_str, sizeof(end_time_str), "%Y-%m-%d %H:%M:%S UTC", tm_info);
     }
     
     // Calculate duration in seconds
