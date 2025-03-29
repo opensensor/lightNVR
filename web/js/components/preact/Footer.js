@@ -27,8 +27,7 @@ export function Footer({ version = '' }) {
         <div class="flex flex-col sm:flex-row items-center">
           <span class="text-sm mb-2 sm:mb-0 sm:mr-4">Version ${version}</span>
           <div class="flex space-x-4">
-            <a href="https://github.com/lightnvr/lightnvr" class="text-blue-300 hover:text-blue-100 text-sm" target="_blank" rel="noopener noreferrer">GitHub</a>
-            <a href="docs/TROUBLESHOOTING.md" class="text-blue-300 hover:text-blue-100 text-sm" target="_blank">Help</a>
+            <a href="https://github.com/opensensor/lightnvr" class="text-blue-300 hover:text-blue-100 text-sm" target="_blank" rel="noopener noreferrer">GitHub</a>
           </div>
         </div>
       </div>
