@@ -33,26 +33,22 @@ void mg_handle_timeline_playback(struct mg_connection *c, struct mg_http_message
 // Default initial handler capacity
 #define INITIAL_HANDLER_CAPACITY 32
 
-// Route entry structure
-typedef struct {
-    const char *method;     // HTTP method (GET, POST, etc.) or NULL for any method
-    const char *pattern;    // URL pattern (regex pattern)
-    regex_t regex;          // Compiled regex
-    void (*handler)(struct mg_connection *c, struct mg_http_message *hm); // Handler function
-} route_entry_t;
+// API handler function type
+typedef void (*mg_api_handler_t)(struct mg_connection *c, struct mg_http_message *hm);
 
-// Route table
-static route_entry_t *s_routes = NULL;
-static int s_route_count = 0;
-static int s_route_capacity = 0;
+// API route entry structure
+typedef struct {
+    const char *method;     // HTTP method (GET, POST, etc.)
+    const char *uri;        // URI pattern
+    mg_api_handler_t handler; // Handler function
+} mg_api_route_t;
 
 // Forward declarations
 static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_data);
 static void *mongoose_server_event_loop(void *arg);
 static void init_route_table(void);
 static void free_route_table(void);
-static void add_route(const char *method, const char *pattern, void (*handler)(struct mg_connection *c, struct mg_http_message *hm));
-static int match_route(const char *method, const char *uri, struct mg_http_message *hm);
+static int match_route(struct mg_http_message *hm);
 
 // Include other mongoose server components
 #include "web/mongoose_server_utils.h"
@@ -66,15 +62,6 @@ void mg_handle_batch_delete_recordings_ws(struct mg_connection *c, struct mg_htt
 void mg_handle_websocket_message(struct mg_connection *c, struct mg_ws_message *wm);
 void mg_handle_websocket_close(struct mg_connection *c);
 
-// API handler function type
-typedef void (*mg_api_handler_t)(struct mg_connection *c, struct mg_http_message *hm);
-
-// API route entry structure
-typedef struct {
-    const char *method;     // HTTP method (GET, POST, etc.)
-    const char *uri;        // URI pattern
-    mg_api_handler_t handler; // Handler function
-} mg_api_route_t;
 
 // API routes table
 static const mg_api_route_t s_api_routes[] = {
@@ -158,35 +145,21 @@ static const mg_api_route_t s_api_routes[] = {
  * @return true if request was handled, false otherwise
  */
 static bool handle_api_request(struct mg_connection *c, struct mg_http_message *hm) {
-    // Extract URI and method
-    char uri[MAX_PATH_LENGTH];
-    size_t uri_len = hm->uri.len < sizeof(uri) - 1 ? hm->uri.len : sizeof(uri) - 1;
-    memcpy(uri, hm->uri.buf, uri_len);
-    uri[uri_len] = '\0';
-    
-    char method[16];
-    size_t method_len = hm->method.len < sizeof(method) - 1 ? hm->method.len : sizeof(method) - 1;
-    memcpy(method, hm->method.buf, method_len);
-    method[method_len] = '\0';
-    
-    // Try to match each route
-    for (const mg_api_route_t *route = s_api_routes; route->method != NULL; route++) {
-        // Check method
-        if (strcasecmp(route->method, method) != 0) {
-            continue;
-        }
-        
-        // Check if URI matches the pattern
-        if (mg_match(mg_str(uri), mg_str(route->uri), NULL)) {
-            // Route matched, call handler
-            log_info("API route matched: %s %s", method, uri);
-            route->handler(c, hm);
-            return true;
-        }
+    // Find matching route
+    int route_index = match_route(hm);
+    if (route_index >= 0) {
+        // Route matched, call handler
+        log_info("API route matched: %.*s %.*s", 
+                (int)hm->method.len, hm->method.buf, 
+                (int)hm->uri.len, hm->uri.buf);
+        s_api_routes[route_index].handler(c, hm);
+        return true;
     }
     
     // No route matched
-    log_debug("No API route matched for: %s %s", method, uri);
+    log_debug("No API route matched for: %.*s %.*s", 
+             (int)hm->method.len, hm->method.buf, 
+             (int)hm->uri.len, hm->uri.buf);
     return false;
 }
 
@@ -194,180 +167,51 @@ static bool handle_api_request(struct mg_connection *c, struct mg_http_message *
  * @brief Initialize the route table
  */
 static void init_route_table(void) {
-    // Allocate initial route table
-    s_route_capacity = 32;
-    s_routes = calloc(s_route_capacity, sizeof(route_entry_t));
-    if (!s_routes) {
-        log_error("Failed to allocate memory for route table");
-        return;
-    }
-    s_route_count = 0;
-    
-    // Add routes for API endpoints
-    
-    // Auth API
-    add_route("POST", "^/api/auth/login$", mg_handle_auth_login);
-    add_route("POST", "^/api/auth/logout$", mg_handle_auth_logout);
-    
-    // Streams API
-    add_route("GET", "^/api/streams$", mg_handle_get_streams);
-    add_route("POST", "^/api/streams$", mg_handle_post_stream);
-    add_route("POST", "^/api/streams/test$", mg_handle_test_stream);
-    add_route("GET", "^/api/streams/([^/]+)$", mg_handle_get_stream);
-    add_route("PUT", "^/api/streams/([^/]+)$", mg_handle_put_stream);
-    add_route("DELETE", "^/api/streams/([^/]+)$", mg_handle_delete_stream);
-    
-    // Settings API
-    add_route("GET", "^/api/settings$", mg_handle_get_settings);
-    add_route("POST", "^/api/settings$", mg_handle_post_settings);
-    
-    // System API
-    add_route("GET", "^/api/system$", mg_handle_get_system_info);
-    add_route("GET", "^/api/system/info$", mg_handle_get_system_info); // Keep for backward compatibility
-    add_route("GET", "^/api/system/logs$", mg_handle_get_system_logs);
-    add_route("POST", "^/api/system/restart$", mg_handle_post_system_restart);
-    add_route("POST", "^/api/system/shutdown$", mg_handle_post_system_shutdown);
-    add_route("POST", "^/api/system/logs/clear$", mg_handle_post_system_logs_clear);
-    add_route("POST", "^/api/system/backup$", mg_handle_post_system_backup);
-    add_route("GET", "^/api/system/status$", mg_handle_get_system_status);
-    
-    // Recordings API
-    add_route("GET", "^/api/recordings$", mg_handle_get_recordings);
-    add_route("GET", "^/api/recordings/([^/]+)$", mg_handle_get_recording);
-    add_route("DELETE", "^/api/recordings/([^/]+)$", mg_handle_delete_recording);
-    add_route("POST", "^/api/recordings/delete/([^/]+)$", mg_handle_delete_recording);
-    add_route("POST", "^/api/recordings/batch-delete$", mg_handle_batch_delete_recordings);
-    add_route("GET", "^/api/recordings/download/([^/]+)$", mg_handle_download_recording);
-    add_route("GET", "^/api/recordings/play/([^/]+)$", mg_handle_play_recording);
-    add_route("GET", "^/api/recordings/files/check$", mg_handle_check_recording_file);
-    add_route("DELETE", "^/api/recordings/files$", mg_handle_delete_recording_file);
-    
-    // Streaming API - HLS
-    add_route("GET", "^/api/streaming/([^/]+)/hls/index\\.m3u8$", mg_handle_hls_master_playlist);
-    add_route("GET", "^/api/streaming/([^/]+)/hls/stream\\.m3u8$", mg_handle_hls_media_playlist);
-    add_route("GET", "^/api/streaming/([^/]+)/hls/segment_([^/]+)\\.ts$", mg_handle_hls_segment);
-    add_route("GET", "^/api/streaming/([^/]+)/hls/segment_([^/]+)\\.m4s$", mg_handle_hls_segment);
-    add_route("GET", "^/api/streaming/([^/]+)/hls/init\\.mp4$", mg_handle_hls_segment);
-    
-    // Streaming API - WebRTC
-    add_route("POST", "^/api/streaming/([^/]+)/webrtc/offer$", mg_handle_webrtc_offer);
-    add_route("POST", "^/api/streaming/([^/]+)/webrtc/ice$", mg_handle_webrtc_ice);
-    
-    // Detection API
-    add_route("GET", "^/api/detection/results/([^/]+)$", mg_handle_get_detection_results);
-    add_route("GET", "^/api/detection/models$", mg_handle_get_detection_models);
-    
-    // ONVIF API
-    add_route("GET", "^/api/onvif/discovery/status$", mg_handle_get_onvif_discovery_status);
-    add_route("GET", "^/api/onvif/devices$", mg_handle_get_discovered_onvif_devices);
-    add_route("GET", "^/api/onvif/device/profiles$", mg_handle_get_onvif_device_profiles);
-    add_route("POST", "^/api/onvif/discovery/start$", mg_handle_post_start_onvif_discovery);
-    add_route("POST", "^/api/onvif/discovery/stop$", mg_handle_post_stop_onvif_discovery);
-    add_route("POST", "^/api/onvif/discovery/discover$", mg_handle_post_discover_onvif_devices);
-    add_route("POST", "^/api/onvif/device/add$", mg_handle_post_add_onvif_device_as_stream);
-    add_route("POST", "^/api/onvif/device/test$", mg_handle_post_test_onvif_connection);
-    
-    // Timeline API
-    add_route("GET", "^/api/timeline/segments$", mg_handle_get_timeline_segments);
-    add_route("GET", "^/api/timeline/manifest$", mg_handle_timeline_manifest);
-    add_route("GET", "^/api/timeline/play$", mg_handle_timeline_playback);
-    
-    log_info("Route table initialized with %d routes", s_route_count);
+    // Nothing to initialize since we're using the static s_api_routes table
+    log_info("Route table initialized using API routes table");
 }
 
 /**
  * @brief Free the route table
  */
 static void free_route_table(void) {
-    if (s_routes) {
-        // Free compiled regexes
-        for (int i = 0; i < s_route_count; i++) {
-            regfree(&s_routes[i].regex);
-        }
-        
-        free(s_routes);
-        s_routes = NULL;
-        s_route_count = 0;
-        s_route_capacity = 0;
-    }
-}
-
-/**
- * @brief Add a route to the route table
- * 
- * @param method HTTP method (GET, POST, etc.) or NULL for any method
- * @param pattern URL pattern (regex pattern)
- * @param handler Handler function
- */
-static void add_route(const char *method, const char *pattern, void (*handler)(struct mg_connection *c, struct mg_http_message *hm)) {
-    if (!pattern || !handler) {
-        log_error("Invalid parameters for add_route");
-        return;
-    }
-    
-    // Check if we need to resize the route table
-    if (s_route_count >= s_route_capacity) {
-        int new_capacity = s_route_capacity * 2;
-        route_entry_t *new_routes = realloc(s_routes, new_capacity * sizeof(route_entry_t));
-        if (!new_routes) {
-            log_error("Failed to resize route table");
-            return;
-        }
-        
-        s_routes = new_routes;
-        s_route_capacity = new_capacity;
-    }
-    
-    // Add route
-    s_routes[s_route_count].method = method;
-    s_routes[s_route_count].pattern = pattern;
-    s_routes[s_route_count].handler = handler;
-    
-    // Compile regex
-    int result = regcomp(&s_routes[s_route_count].regex, pattern, REG_EXTENDED | REG_ICASE);
-    if (result != 0) {
-        char error_buffer[256];
-        regerror(result, &s_routes[s_route_count].regex, error_buffer, sizeof(error_buffer));
-        log_error("Failed to compile regex for pattern %s: %s", pattern, error_buffer);
-        return;
-    }
-    
-    s_route_count++;
-    log_debug("Added route: method=%s, pattern=%s", method ? method : "ANY", pattern);
+    // Nothing to free since we're using a static table
+    log_info("Route table reference cleared");
 }
 
 /**
  * @brief Match a route in the route table
  * 
- * @param method HTTP method
- * @param uri URI to match
- * @param hm HTTP message (for extracting parameters)
+ * @param hm HTTP message
  * @return int Index of matching route or -1 if no match
  */
-static int match_route(const char *method, const char *uri, struct mg_http_message *hm) {
-    if (!method || !uri) {
+static int match_route(struct mg_http_message *hm) {
+    if (!hm) {
         return -1;
     }
     
     // Try to match each route
-    for (int i = 0; i < s_route_count; i++) {
+    for (int i = 0; s_api_routes[i].method != NULL; i++) {
         // Check method
-        if (s_routes[i].method && strcasecmp(s_routes[i].method, method) != 0) {
+        if (!mg_match(hm->method, mg_str(s_api_routes[i].method), NULL)) {
             continue;
         }
         
-        // Try to match regex
-        regmatch_t matches[10];
-        int result = regexec(&s_routes[i].regex, uri, 10, matches, 0);
-        if (result == 0) {
+        // Check if URI matches the pattern
+        if (mg_match(hm->uri, mg_str(s_api_routes[i].uri), NULL)) {
             // Route matched
-            log_debug("Route matched: method=%s, pattern=%s, uri=%s", 
-                     s_routes[i].method ? s_routes[i].method : "ANY", s_routes[i].pattern, uri);
+            log_debug("Route matched: method=%.*s, pattern=%s, uri=%.*s", 
+                     (int)hm->method.len, hm->method.buf,
+                     s_api_routes[i].uri, 
+                     (int)hm->uri.len, hm->uri.buf);
             return i;
         }
     }
     
     // No route matched
+    log_debug("No route matched for: %.*s %.*s", 
+             (int)hm->method.len, hm->method.buf,
+             (int)hm->uri.len, hm->uri.buf);
     return -1;
 }
 
