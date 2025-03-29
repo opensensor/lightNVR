@@ -24,7 +24,8 @@
 #define MAX_RECONNECTION_FAILURES 20
 
 // Maximum time (in seconds) without receiving a packet before considering the connection dead
-#define MAX_PACKET_TIMEOUT 30
+// Reduced from 30 to 10 seconds to detect stalled connections faster
+#define MAX_PACKET_TIMEOUT 10
 
 /**
  * HLS writer thread function
@@ -108,7 +109,8 @@ static void *hls_writer_thread_func(void *arg) {
     }
     
     // Update last packet time
-    atomic_store(&ctx->last_packet_time, (int_fast64_t)time(NULL));
+    time_t current_time = time(NULL);
+    atomic_store(&ctx->last_packet_time, (int_fast64_t)current_time);
     
     // Main packet reading loop
     while (atomic_load(&ctx->running)) {
@@ -306,8 +308,9 @@ static void *hls_writer_thread_func(void *arg) {
                 av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
                 log_warn("Error writing packet to HLS for stream %s: %s", stream_name, error_buf);
             } else {
-                // Successfully processed a packet, update the last packet time and reset consecutive failures
-                atomic_store(&ctx->last_packet_time, (int_fast64_t)time(NULL));
+                // Successfully processed a packet
+                time_t current_time = time(NULL);
+                atomic_store(&ctx->last_packet_time, (int_fast64_t)current_time);
                 atomic_store(&ctx->consecutive_failures, 0);
                 atomic_store(&ctx->connection_valid, 1);
             }

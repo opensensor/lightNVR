@@ -24,7 +24,7 @@
 #include "video/hls/hls_api.h"
 
 /**
- * Start HLS streaming for a stream
+ * Start HLS streaming for a stream with improved reliability
  */
 int start_hls_stream(const char *stream_name) {
     stream_handle_t stream = get_stream_by_name(stream_name);
@@ -59,6 +59,8 @@ int start_hls_stream(const char *stream_name) {
     log_info("Added HLS reference to stream %s", stream_name);
 
     // Check if already running
+    bool already_running = false;
+    int existing_slot = -1;
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (streaming_contexts[i] && strcmp(streaming_contexts[i]->config.name, stream_name) == 0) {
             log_info("HLS stream %s already running", stream_name);
