@@ -135,8 +135,17 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         
         // Construct the full path to the HLS file
         char hls_file_path[MAX_PATH_LENGTH * 2]; // Double the buffer size to avoid truncation
-        snprintf(hls_file_path, sizeof(hls_file_path), "%s/hls/%s/%s", 
-                global_config->storage_path, stream_name, file_name);
+        
+        // Use storage_path_hls if specified, otherwise fall back to storage_path
+        if (global_config->storage_path_hls[0] != '\0') {
+            snprintf(hls_file_path, sizeof(hls_file_path), "%s/hls/%s/%s", 
+                    global_config->storage_path_hls, stream_name, file_name);
+            log_info("Using HLS-specific storage path: %s", global_config->storage_path_hls);
+        } else {
+            snprintf(hls_file_path, sizeof(hls_file_path), "%s/hls/%s/%s", 
+                    global_config->storage_path, stream_name, file_name);
+            log_info("Using default storage path for HLS: %s", global_config->storage_path);
+        }
         
         log_info("Serving HLS file directly: %s", hls_file_path);
         
