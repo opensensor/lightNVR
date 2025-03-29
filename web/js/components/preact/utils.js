@@ -1,38 +1,23 @@
 /**
- * Utility functions for the LiveView component
+ * LightNVR Web Interface Utility Functions
+ * Shared utility functions for Preact components
  */
 
 /**
- * Show loading state
- * @param {HTMLElement} element - Element to show loading state on
+ * Fetch system version from API
+ * @returns {Promise<string>} Promise that resolves to the system version
  */
-export function showLoading(element) {
-  if (!element) return;
-  console.log('Showing loading for element:', element);
-  
-  // Add loading class to element
-  element.classList.add('loading');
-  
-  // Optionally add a loading spinner
-  const spinner = document.createElement('div');
-  spinner.className = 'spinner';
-  element.appendChild(spinner);
-}
-
-/**
- * Hide loading state
- * @param {HTMLElement} element - Element to hide loading state from
- */
-export function hideLoading(element) {
-  if (!element) return;
-  console.log('Hiding loading for element:', element);
-  
-  // Remove loading class from element
-  element.classList.remove('loading');
-  
-  // Remove loading spinner if exists
-  const spinner = element.querySelector('.spinner');
-  if (spinner) {
-    spinner.remove();
+export async function fetchSystemVersion() {
+  try {
+    const response = await fetch('/api/system');
+    if (!response.ok) {
+      throw new Error('Failed to load system information');
+    }
+    
+    const data = await response.json();
+    return data.version || '';
+  } catch (error) {
+    console.error('Error loading system version:', error);
+    return '';
   }
 }

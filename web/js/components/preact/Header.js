@@ -4,23 +4,20 @@
  */
 
 import { h } from '../../preact.min.js';
-import { useState, useEffect } from '../../preact.hooks.module.js';
+import { useState } from '../../preact.hooks.module.js';
 import { html } from '../../html-helper.js';
+import { fetchSystemVersion } from './utils.js';
 
 /**
  * Header component
  * @param {Object} props - Component props
  * @param {string} props.activeNav - ID of the active navigation item
+ * @param {string} props.version - System version
  * @returns {JSX.Element} Header component
  */
-export function Header({ activeNav = '' }) {
-  const [version, setVersion] = useState('');
+export function Header({ activeNav = '', version = '' }) {
   const [username, setUsername] = useState('Admin');
-  
-  // Fetch system version on mount
-  useEffect(() => {
-    fetchSystemVersion();
-  }, []);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   
   // Handle logout
   const handleLogout = (e) => {
@@ -41,82 +38,89 @@ export function Header({ activeNav = '' }) {
     });
   };
   
-  // Fetch system version from API
-  async function fetchSystemVersion() {
-    try {
-      const response = await fetch('/api/system');
-      if (!response.ok) {
-        throw new Error('Failed to load system information');
-      }
-      
-      const data = await response.json();
-      if (data.version) {
-        setVersion(data.version);
-      }
-    } catch (error) {
-      console.error('Error loading system version:', error);
-    }
-  }
+  // Toggle mobile menu
+  const toggleMobileMenu = () => {
+    setMobileMenuOpen(!mobileMenuOpen);
+  };
+  
+  // Navigation items
+  const navItems = [
+    { id: 'nav-live', href: 'index.html', label: 'Live View' },
+    { id: 'nav-recordings', href: 'recordings.html', label: 'Recordings' },
+    { id: 'nav-streams', href: 'streams.html', label: 'Streams' },
+    { id: 'nav-settings', href: 'settings.html', label: 'Settings' },
+    { id: 'nav-system', href: 'system.html', label: 'System' }
+  ];
+  
+  // Render navigation item
+  const renderNavItem = (item) => {
+    const isActive = activeNav === item.id;
+    const baseClasses = "text-white no-underline rounded transition-colors";
+    const desktopClasses = "px-3 py-2";
+    const mobileClasses = "block w-full px-4 py-3 text-left";
+    const activeClass = isActive ? 'bg-blue-600' : 'hover:bg-blue-700';
+    
+    return html`
+      <li class=${mobileMenuOpen ? "w-full" : "mx-1"}>
+        <a 
+          href="${item.href}?t=${new Date().getTime()}" 
+          id=${item.id} 
+          class=${`${baseClasses} ${mobileMenuOpen ? mobileClasses : desktopClasses} ${activeClass}`}
+          onClick=${mobileMenuOpen ? toggleMobileMenu : null}
+        >
+          ${item.label}
+        </a>
+      </li>
+    `;
+  };
   
   return html`
-    <header class="bg-gray-800 text-white py-2 px-4 flex justify-between items-center shadow-md mb-4">
-      <div class="logo">
-        <h1 class="text-xl font-bold m-0">LightNVR</h1>
-        <span class="version text-blue-200 text-xs ml-2">v${version}</span>
+    <header class="bg-gray-800 text-white py-2 px-4 shadow-md mb-4">
+      <div class="flex justify-between items-center">
+        <div class="logo flex items-center">
+          <h1 class="text-xl font-bold m-0">LightNVR</h1>
+          <span class="version text-blue-200 text-xs ml-2">v${version}</span>
+        </div>
+        
+        <!-- Desktop Navigation -->
+        <nav class="hidden md:block">
+          <ul class="flex list-none m-0 p-0">
+            ${navItems.map(renderNavItem)}
+          </ul>
+        </nav>
+        
+        <!-- User Menu (Desktop) -->
+        <div class="user-menu hidden md:flex items-center">
+          <span class="mr-4">${username}</span>
+          <a href="#" onClick=${handleLogout} class="text-white no-underline hover:underline">Logout</a>
+        </div>
+        
+        <!-- Mobile Menu Button -->
+        <button 
+          class="md:hidden text-white p-2 focus:outline-none" 
+          onClick=${toggleMobileMenu}
+          aria-label="Toggle menu"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d=${mobileMenuOpen ? "M6 18L18 6M6 6l12 12" : "M4 6h16M4 12h16M4 18h16"} />
+          </svg>
+        </button>
       </div>
-      <nav>
-        <ul class="flex list-none m-0 p-0">
-          <li class="mx-1">
-            <a 
-              href="index.html?t=${new Date().getTime()}" 
-              id="nav-live" 
-              class=${`text-white no-underline px-3 py-2 rounded transition-colors ${activeNav === 'nav-live' ? 'bg-blue-600' : 'hover:bg-blue-700'}`}
-            >
-              Live View
-            </a>
-          </li>
-          <li class="mx-1">
-            <a 
-              href="recordings.html?t=${new Date().getTime()}" 
-              id="nav-recordings" 
-              class=${`text-white no-underline px-3 py-2 rounded transition-colors ${activeNav === 'nav-recordings' ? 'bg-blue-600' : 'hover:bg-blue-700'}`}
-            >
-              Recordings
-            </a>
-          </li>
-          <li class="mx-1">
-            <a 
-              href="streams.html?t=${new Date().getTime()}" 
-              id="nav-streams" 
-              class=${`text-white no-underline px-3 py-2 rounded transition-colors ${activeNav === 'nav-streams' ? 'bg-blue-600' : 'hover:bg-blue-700'}`}
-            >
-              Streams
-            </a>
-          </li>
-          <li class="mx-1">
-            <a 
-              href="settings.html?t=${new Date().getTime()}" 
-              id="nav-settings" 
-              class=${`text-white no-underline px-3 py-2 rounded transition-colors ${activeNav === 'nav-settings' ? 'bg-blue-600' : 'hover:bg-blue-700'}`}
-            >
-              Settings
-            </a>
-          </li>
-          <li class="mx-1">
-            <a 
-              href="system.html?t=${new Date().getTime()}" 
-              id="nav-system" 
-              class=${`text-white no-underline px-3 py-2 rounded transition-colors ${activeNav === 'nav-system' ? 'bg-blue-600' : 'hover:bg-blue-700'}`}
-            >
-              System
-            </a>
-          </li>
-        </ul>
-      </nav>
-      <div class="user-menu">
-        <span class="mr-4">${username}</span>
-        <a href="#" onClick=${handleLogout} class="text-white no-underline hover:underline">Logout</a>
-      </div>
+      
+      <!-- Mobile Navigation -->
+      ${mobileMenuOpen ? html`
+        <div class="md:hidden mt-2 border-t border-gray-700 pt-2">
+          <ul class="list-none m-0 p-0 flex flex-col">
+            ${navItems.map(renderNavItem)}
+            <li class="w-full mt-2 pt-2 border-t border-gray-700">
+              <div class="flex justify-between items-center px-4 py-2">
+                <span>${username}</span>
+                <a href="#" onClick=${handleLogout} class="text-white no-underline hover:underline">Logout</a>
+              </div>
+            </li>
+          </ul>
+        </div>
+      ` : null}
     </header>
   `;
 }
@@ -129,8 +133,10 @@ export function loadHeader(activeNav = '') {
   const headerContainer = document.getElementById('header-container');
   if (!headerContainer) return;
   
-  // Render the Header component to the container
-  import('../../preact.min.js').then(({ render }) => {
-    render(html`<${Header} activeNav=${activeNav} />`, headerContainer);
+  // Fetch system version and render the Header component
+  fetchSystemVersion().then(version => {
+    import('../../preact.min.js').then(({ render }) => {
+      render(html`<${Header} activeNav=${activeNav} version=${version} />`, headerContainer);
+    });
   });
 }
