@@ -176,7 +176,8 @@ export function LogsPoller({ logLevel, logCount, onLogsReceived }) {
                   return new Date(b.timestamp) - new Date(a.timestamp);
                 });
                 
-                // Call the callback with combined logs
+                // Call the callback with combined logs - don't filter here
+                // This ensures WebSocket debug logs are included when debug is selected in UI
                 onLogsReceived(combinedLogs);
               } else {
                 // If no existing logs, just use the new logs

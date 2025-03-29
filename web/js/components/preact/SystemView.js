@@ -104,7 +104,15 @@ export function SystemView() {
     console.log(`Filtering ${newLogs.length} logs based on log level: ${currentLogLevel}`);
     
     const filteredLogs = newLogs.filter(log => {
-      return log_level_meets_minimum(log.level, currentLogLevel);
+      // Ensure debug logs from WebSocket are included when debug is selected
+      const result = log_level_meets_minimum(log.level, currentLogLevel);
+      
+      // Add debug logging to help diagnose filtering issues
+      if (log.level === 'debug' && currentLogLevel === 'debug' && !result) {
+        console.warn('Debug log filtered out despite debug level selected:', log);
+      }
+      
+      return result;
     });
     
     console.log(`After filtering: ${filteredLogs.length} logs match the current log level`);
