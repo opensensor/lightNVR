@@ -199,6 +199,16 @@ bool wait_for_all_components_stopped(int timeout_seconds) {
         return true;
     }
     
+    // First, log which components are still not stopped
+    log_info("Waiting for components to stop (timeout: %d seconds):", timeout_seconds);
+    for (int i = 0; i < atomic_load(&g_coordinator.component_count); i++) {
+        component_state_t state = atomic_load(&g_coordinator.components[i].state);
+        if (state != COMPONENT_STOPPED) {
+            log_info("Component %s (ID: %d) is in state %d", 
+                     g_coordinator.components[i].name, i, state);
+        }
+    }
+    
     // Wait for the condition with timeout
     int result = pthread_cond_timedwait(&g_coordinator.all_stopped_cond, 
                                         &g_coordinator.mutex, &timeout);
@@ -216,12 +226,29 @@ bool wait_for_all_components_stopped(int timeout_seconds) {
                 log_warn("Forcing component %s (ID: %d) from state %d to STOPPED", 
                          g_coordinator.components[i].name, i, state);
                 atomic_store(&g_coordinator.components[i].state, COMPONENT_STOPPED);
+                
+                // If this is a WebSocket component, try to force close it
+                if (strstr(g_coordinator.components[i].name, "websocket") != NULL) {
+                    log_warn("Forcing close of WebSocket component: %s", g_coordinator.components[i].name);
+                    // The context pointer might be a mg_connection, but we can't safely use it
+                    // Just mark it as stopped and let the cleanup continue
+                }
+                
+                // If this is an HLS writer component, try to force close it
+                if (strstr(g_coordinator.components[i].name, "hls_writer") != NULL ||
+                    strstr(g_coordinator.components[i].name, "hls_manager") != NULL) {
+                    log_warn("Forcing close of HLS component: %s", g_coordinator.components[i].name);
+                    // We can't safely access the context here, just mark it as stopped
+                }
             }
         }
         
         // Mark all components as stopped
         g_coordinator.all_components_stopped = true;
         all_stopped = true;
+        
+        // Signal the condition in case any other threads are waiting
+        pthread_cond_broadcast(&g_coordinator.all_stopped_cond);
     }
     
     pthread_mutex_unlock(&g_coordinator.mutex);

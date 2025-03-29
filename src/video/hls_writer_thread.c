@@ -456,14 +456,20 @@ void hls_writer_stop_recording_thread(hls_writer_t *writer) {
     atomic_store(&ctx->running, 0);
     atomic_store(&ctx->connection_valid, 0);
     
-    // Join thread with timeout
-    int join_result = pthread_join_with_timeout(ctx->thread, NULL, 5);
+    // Join thread with timeout - increased from 5 to 10 seconds for more reliable shutdown
+    int join_result = pthread_join_with_timeout(ctx->thread, NULL, 10);
     if (join_result != 0) {
         log_error("Failed to join HLS writer thread for %s (error: %d), detaching thread", 
                  stream_name, join_result);
         
         // Detach thread to avoid resource leaks
         pthread_detach(ctx->thread);
+        
+        // Force the thread to be considered stopped in the shutdown coordinator
+        if (ctx->shutdown_component_id >= 0) {
+            update_component_state(ctx->shutdown_component_id, COMPONENT_STOPPED);
+            log_info("Forced HLS writer thread %s state to STOPPED in shutdown coordinator after join failure", stream_name);
+        }
     } else {
         log_info("Successfully joined HLS writer thread for %s", stream_name);
     }
@@ -510,6 +516,9 @@ int hls_writer_is_recording(hls_writer_t *writer) {
     if (now - last_packet_time > MAX_PACKET_TIMEOUT) {
         log_error("HLS writer thread for %s has not received a packet in %ld seconds, considering it dead",
                  ctx->stream_name, now - last_packet_time);
+        
+        // Mark connection as invalid to trigger reconnection
+        atomic_store(&ctx->connection_valid, 0);
         return 0;
     }
     

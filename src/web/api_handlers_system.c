@@ -24,6 +24,7 @@
 #include "core/logger.h"
 #include "core/config.h"
 #include "core/version.h"
+#include "core/shutdown_coordinator.h"
 #include "video/stream_manager.h"
 #include "database/database_manager.h"
 #include "database/db_streams.h"
@@ -628,6 +629,13 @@ void mg_handle_post_system_shutdown(struct mg_connection *c, struct mg_http_mess
     // Log shutdown
     log_info("System shutdown requested via API");
     
+    // Include shutdown coordinator header
+    #include "core/shutdown_coordinator.h"
+    
+    // Initiate shutdown through the coordinator first
+    log_info("Initiating shutdown through coordinator");
+    initiate_shutdown();
+    
     // Schedule shutdown with a more robust approach for MIPS systems
     extern volatile bool running;
     running = false;
@@ -635,7 +643,7 @@ void mg_handle_post_system_shutdown(struct mg_connection *c, struct mg_http_mess
     // Set an alarm to force exit if normal shutdown doesn't work
     // This is especially important for Linux 4.4 embedded MIPS systems
     log_info("Setting up fallback exit timer for Linux 4.4 compatibility");
-    alarm(10); // Force exit after 10 seconds if normal shutdown fails
+    alarm(15); // Force exit after 15 seconds if normal shutdown fails
     
     // For MIPS systems, we need to ensure the signal is processed immediately
     // Send SIGTERM to self to trigger immediate shutdown

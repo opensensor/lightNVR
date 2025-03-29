@@ -306,6 +306,7 @@ void websocket_manager_shutdown(void) {
             if (s_clients[i].active && s_clients[i].conn != NULL) {
                 active_connections[active_count] = s_clients[i].conn;
                 strncpy(client_ids[active_count], s_clients[i].id, sizeof(client_ids[0]) - 1);
+                client_ids[active_count][sizeof(client_ids[0]) - 1] = '\0';
                 active_count++;
                 
                 // Mark as inactive to prevent further operations
@@ -341,6 +342,7 @@ void websocket_manager_shutdown(void) {
             if (s_clients[i].conn != NULL) {
                 active_connections[active_count] = s_clients[i].conn;
                 strncpy(client_ids[active_count], s_clients[i].id, sizeof(client_ids[0]) - 1);
+                client_ids[active_count][sizeof(client_ids[0]) - 1] = '\0';
                 active_count++;
                 
                 // Mark as inactive to prevent further operations
@@ -359,12 +361,22 @@ void websocket_manager_shutdown(void) {
         if (conn != NULL) {
             // Send a proper WebSocket close frame before marking for closing
             if (conn->is_websocket && !conn->is_closing) {
+                // Log the connection details
+                log_info("Closing WebSocket connection for client %s", client_ids[i]);
+                
                 // Send close frame with normal closure code (1000)
                 uint16_t close_code = 1000; // Normal closure
                 char close_frame[2];
                 close_frame[0] = (close_code >> 8) & 0xFF;
                 close_frame[1] = close_code & 0xFF;
-                mg_ws_send(conn, close_frame, 2, WEBSOCKET_OP_CLOSE);
+                
+                // Try to send the close frame, but don't rely on it succeeding
+                int send_result = mg_ws_send(conn, close_frame, 2, WEBSOCKET_OP_CLOSE);
+                if (send_result > 0) {
+                    log_debug("Sent WebSocket close frame to client %s", client_ids[i]);
+                } else {
+                    log_warn("Failed to send WebSocket close frame to client %s", client_ids[i]);
+                }
                 
                 // Mark connection for closing
                 conn->is_closing = 1;
@@ -372,29 +384,52 @@ void websocket_manager_shutdown(void) {
                 // Explicitly close the socket to ensure it's released
                 if (conn->fd != NULL) {
                     int socket_fd = (int)(size_t)conn->fd;
-                    log_debug("Closing WebSocket socket: %d for client %s", socket_fd, client_ids[i]);
+                    log_info("Closing WebSocket socket: %d for client %s", socket_fd, client_ids[i]);
                     
                     // Set SO_LINGER to force immediate socket closure
                     struct linger so_linger;
                     so_linger.l_onoff = 1;
                     so_linger.l_linger = 0;
-                    setsockopt(socket_fd, SOL_SOCKET, SO_LINGER, &so_linger, sizeof(so_linger));
+                    if (setsockopt(socket_fd, SOL_SOCKET, SO_LINGER, &so_linger, sizeof(so_linger)) != 0) {
+                        log_warn("Failed to set SO_LINGER on socket %d: %s", socket_fd, strerror(errno));
+                    }
                     
                     // Set socket to non-blocking mode to avoid hang on close
                     int flags = fcntl(socket_fd, F_GETFL, 0);
-                    fcntl(socket_fd, F_SETFL, flags | O_NONBLOCK);
+                    if (flags == -1) {
+                        log_warn("Failed to get socket flags for %d: %s", socket_fd, strerror(errno));
+                    } else if (fcntl(socket_fd, F_SETFL, flags | O_NONBLOCK) == -1) {
+                        log_warn("Failed to set socket to non-blocking for %d: %s", socket_fd, strerror(errno));
+                    }
                     
                     // Now close the socket
-                    close(socket_fd);
+                    if (close(socket_fd) != 0) {
+                        log_warn("Failed to close socket %d: %s", socket_fd, strerror(errno));
+                    } else {
+                        log_info("Successfully closed socket %d for client %s", socket_fd, client_ids[i]);
+                    }
+                    
                     conn->fd = NULL;  // Mark as closed
+                } else {
+                    log_warn("WebSocket connection for client %s has no valid file descriptor", client_ids[i]);
                 }
                 
                 closed_count++;
+            } else if (conn->is_closing) {
+                log_info("WebSocket connection for client %s is already closing", client_ids[i]);
+                closed_count++;
+            } else {
+                log_warn("Connection for client %s is not a valid WebSocket", client_ids[i]);
             }
+        } else {
+            log_warn("NULL connection found for client %s", client_ids[i]);
         }
     }
     
     log_info("Closed %d WebSocket connections", closed_count);
+    
+    // Add a small delay to allow sockets to fully close
+    usleep(100000); // 100ms
     
     // Update shutdown coordinator if we registered
     if (coordinator != NULL && websocket_component_id >= 0) {

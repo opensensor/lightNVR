@@ -83,7 +83,13 @@ int init_sod_detection_system(void) {
  * Shutdown the SOD detection system
  */
 void shutdown_sod_detection_system(void) {
+    // Set a flag to indicate that the system is shutting down
+    // This will be checked by any ongoing operations to abort early
     sod_available = false;
+    
+    // Add a small delay to allow any in-progress operations to detect the flag change
+    usleep(100000); // 100ms
+    
     log_info("SOD detection system shutdown");
 }
 

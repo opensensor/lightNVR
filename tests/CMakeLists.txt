@@ -34,6 +34,7 @@ set(DETECTION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/motion_detection.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/logger.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/config.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/shutdown_coordinator.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/web/logger_websocket.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/web/api_handlers_system_ws.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/web/websocket_manager.c

@@ -10,6 +10,7 @@
 #include "web/mongoose_server.h"
 #include "web/http_server.h"
 #include "core/logger.h"
+#include "core/shutdown_coordinator.h"
 #include "utils/memory.h"
 #include "web/connection_pool.h"
 #include "web/api_thread_pool.h"
@@ -606,6 +607,9 @@ void http_server_stop(http_server_handle_t server) {
 
     // Now signal all remaining connections to close
     int connection_count = 0;
+    struct mg_connection *next = NULL;
+    
+    // First pass: Mark all connections for closing and send close frames
     for (struct mg_connection *c = server->mgr->conns; c != NULL; c = c->next) {
         connection_count++;
         
@@ -617,11 +621,22 @@ void http_server_stop(http_server_handle_t server) {
             mg_ws_send(c, "", 0, WEBSOCKET_OP_CLOSE);
             log_debug("Sent WebSocket close frame to connection");
         }
+    }
+    
+    log_info("Marked %d remaining connections for closing", connection_count);
+    
+    // Give WebSocket connections a moment to send close frames
+    usleep(100000); // 100ms
+    
+    // Second pass: Forcibly close all sockets
+    for (struct mg_connection *c = server->mgr->conns; c != NULL; c = next) {
+        // Save next pointer before potentially invalidating the current connection
+        next = c->next;
         
         // Close the socket explicitly to ensure it's released
         if (c->fd != NULL && !c->is_listening) { // Don't close listening socket yet
             int socket_fd = (int)(size_t)c->fd;
-            log_debug("Closing socket: %d", socket_fd);
+            log_debug("Forcibly closing socket: %d", socket_fd);
             
             // Set SO_LINGER to force immediate socket closure
             struct linger so_linger;
@@ -633,22 +648,35 @@ void http_server_stop(http_server_handle_t server) {
             int flags = fcntl(socket_fd, F_GETFL, 0);
             fcntl(socket_fd, F_SETFL, flags | O_NONBLOCK);
             
+            // Shutdown both directions of the socket
+            shutdown(socket_fd, SHUT_RDWR);
+            
             // Now close the socket
             close(socket_fd);
             c->fd = NULL;  // Mark as closed
+            
+            // Force Mongoose to drop this connection
+            c->is_draining = 1;
+            c->is_closing = 1;
+            c->is_readable = 0;
+            c->is_writable = 0;
         }
     }
     
-    log_info("Marked %d remaining connections for closing", connection_count);
+    // Give a short time for the manager to process the closed connections
+    usleep(250000); // 250ms
 
-    // Give connections time to close gracefully - reduced for faster shutdown
-    sleep(1); // Reduced from 3 to 1 second
-
+    // Explicitly poll the manager one more time to process closed connections
+    mg_mgr_poll(server->mgr, 0);
+    
     // Free Mongoose event manager
     mg_mgr_free(server->mgr);
 
     // Reset the web server socket
     set_web_server_socket(-1);
+    
+    // Log the final state
+    log_info("All Mongoose connections closed and manager freed");
 
     // Now explicitly close the listening socket if we found it
     if (listening_socket_fd >= 0) {
@@ -1074,9 +1102,6 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
                 log_info("WebSocket resources cleaned up");
             }
             
-            // Include the shutdown coordinator header
-            #include "core/shutdown_coordinator.h"
-            
             // Find the component ID for this connection
             char conn_name[64];
             snprintf(conn_name, sizeof(conn_name), "websocket_%p", (void*)c);
@@ -1135,7 +1160,14 @@ static void *mongoose_server_event_loop(void *arg) {
     // Run event loop until server is stopped
     int poll_count = 0;
     while (server->running) {
-        //  Poll for events with a shorter timeout to be more responsive
+        // Check if shutdown has been initiated
+        if (is_shutdown_initiated()) {
+            log_info("Shutdown initiated, stopping Mongoose event loop");
+            server->running = false;
+            break;
+        }
+        
+        // Poll for events with a shorter timeout to be more responsive
         // Reduced from 100ms to 10ms for better responsiveness
         mg_mgr_poll(server->mgr, 10);
         
@@ -1155,5 +1187,31 @@ static void *mongoose_server_event_loop(void *arg) {
     }
     
     log_info("Mongoose event loop stopped");
+    
+    // Immediately close all connections when the event loop stops
+    log_info("Forcibly closing all remaining connections");
+    for (struct mg_connection *c = server->mgr->conns; c != NULL; c = c->next) {
+        // Mark all connections for closing
+        c->is_closing = 1;
+        
+        // Close the socket explicitly
+        if (c->fd != NULL) {
+            int socket_fd = (int)(size_t)c->fd;
+            
+            // Set SO_LINGER to force immediate socket closure
+            struct linger so_linger;
+            so_linger.l_onoff = 1;
+            so_linger.l_linger = 0;
+            setsockopt(socket_fd, SOL_SOCKET, SO_LINGER, &so_linger, sizeof(so_linger));
+            
+            // Close the socket
+            close(socket_fd);
+            c->fd = NULL;  // Mark as closed
+        }
+    }
+    
+    // Poll one more time to process closed connections
+    mg_mgr_poll(server->mgr, 0);
+    
     return NULL;
 }

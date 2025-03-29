@@ -20,6 +20,7 @@
 
 #include "core/logger.h"
 #include "video/hls_writer.h"
+#include "video/hls_writer_thread.h"
 #include "video/detection_integration.h"
 #include "video/detection_frame_processing.h"
 #include "video/detection_thread_pool.h"
@@ -82,8 +83,7 @@ void process_packet_for_detection(const char *stream_name, const AVPacket *pkt, 
         goto cleanup;
     }
     
-    // Initialize the packet before referencing
-    av_init_packet(pkt_copy);
+    // Initialize the packet - using av_packet_alloc already initializes it
     pkt_copy->data = NULL;
     pkt_copy->size = 0;
     
@@ -628,7 +628,8 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
 
     // Clone the packet
     AVPacket out_pkt;
-    av_init_packet(&out_pkt);
+    // Initialize the packet without using deprecated av_init_packet
+    memset(&out_pkt, 0, sizeof(out_pkt));
     if (av_packet_ref(&out_pkt, pkt) < 0) {
         log_error("Failed to reference packet for stream %s", writer->stream_name);
         return -1;
@@ -653,7 +654,8 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
         if (!has_start_code) {
     // Create a new packet with space for the start code
     AVPacket new_pkt;
-    av_init_packet(&new_pkt);
+    // Initialize the packet without using deprecated av_init_packet
+    memset(&new_pkt, 0, sizeof(new_pkt));
     new_pkt.data = NULL;
     new_pkt.size = 0;
     
@@ -904,10 +906,18 @@ void hls_writer_close(hls_writer_t *writer) {
 
     log_info("Starting to close HLS writer for stream %s", stream_name);
 
+    // First, stop any running writer thread to ensure clean shutdown
+    if (writer->thread_ctx) {
+        log_info("Stopping HLS writer thread for stream %s during writer close", stream_name);
+        // Call the function from hls_writer_thread.h
+        hls_writer_stop_recording_thread(writer);
+        // thread_ctx should now be NULL
+    }
+
     // Try to acquire the mutex with a timeout approach
     struct timespec timeout;
     clock_gettime(CLOCK_REALTIME, &timeout);
-    timeout.tv_sec += 2; // 2 second timeout
+    timeout.tv_sec += 3; // Increased from 2 to 3 second timeout
     
     int mutex_result = pthread_mutex_timedlock(&writer->mutex, &timeout);
     if (mutex_result != 0) {
@@ -940,7 +950,7 @@ void hls_writer_close(hls_writer_t *writer) {
     }
 
     // Add a small delay to ensure any in-progress operations complete
-    usleep(200000); // 200ms - increased from 100ms for more safety
+    usleep(300000); // 300ms - increased from 200ms for more safety
 
     // Write trailer if the context is valid
     if (local_output_ctx) {

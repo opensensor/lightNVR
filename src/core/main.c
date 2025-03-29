@@ -198,6 +198,14 @@ static void init_signals() {
     sa_alarm.sa_flags = SA_RESTART;
     sigaction(SIGALRM, &sa_alarm, NULL);
     
+    // Set up SIGPIPE handler to ignore broken pipe errors
+    // This is important for socket operations to prevent crashes
+    struct sigaction sa_pipe;
+    memset(&sa_pipe, 0, sizeof(sa_pipe));
+    sa_pipe.sa_handler = SIG_IGN;  // Ignore SIGPIPE
+    sa_pipe.sa_flags = SA_RESTART;
+    sigaction(SIGPIPE, &sa_pipe, NULL);
+    
     // Block SIGPIPE to prevent crashes when writing to closed sockets
     // This is especially important for older Linux kernels
     sigset_t set;
@@ -870,12 +878,23 @@ cleanup:
     
     if (cleanup_pid == 0) {
         // Child process - watchdog timer
-        sleep(30);  // Reduced from 60 to 30 seconds for faster timeout
-        log_error("Cleanup process timed out after 30 seconds, forcing exit");
+        sleep(30);  // 30 seconds for first phase timeout
+        log_error("Cleanup process phase 1 timed out after 30 seconds");
+        kill(getppid(), SIGUSR1);  // Send USR1 to parent to trigger emergency cleanup
+        
+        // Wait another 30 seconds for emergency cleanup
+        sleep(30);
+        log_error("Cleanup process phase 2 timed out after 30 seconds, forcing exit");
         kill(getppid(), SIGKILL);  // Force kill the parent process
         exit(EXIT_FAILURE);
     } else if (cleanup_pid > 0) {
         // Parent process - continue with cleanup
+        
+        // Set up a handler for USR1 to perform emergency cleanup
+        struct sigaction sa_usr1;
+        memset(&sa_usr1, 0, sizeof(sa_usr1));
+        sa_usr1.sa_handler = alarm_handler;  // Reuse the alarm handler for USR1
+        sigaction(SIGUSR1, &sa_usr1, NULL);
         
         // Components should already be registered during initialization
         // No need to register them again during shutdown
@@ -888,11 +907,13 @@ cleanup:
             if (reader) {
                 // Safely clear the callback
                 set_packet_callback(reader, NULL, NULL);
+                log_info("Cleared packet callback for stream reader %d", i);
             }
         }
         
         // Wait a moment for callbacks to clear and any in-progress operations to complete
-        usleep(500000);  // 500ms
+        log_info("Waiting for callbacks to clear...");
+        usleep(1000000);  // 1000ms (increased from 500ms)
         
         // Stop all detection stream readers first
         log_info("Stopping all detection stream readers...");
@@ -982,14 +1003,27 @@ cleanup:
         }
         
         // Now clean up the backends in the correct order
+        // First stop all detection streams
         log_info("Cleaning up detection stream system...");
         shutdown_detection_stream_system();
         
-        log_info("Cleaning up MP4 recording backend...");
-        cleanup_mp4_recording_backend();  // Cleanup MP4 recording
+        // Wait for detection streams to stop
+        usleep(1000000);  // 1000ms
         
+        // Clean up HLS streaming before MP4 recording
+        // This is important because HLS streaming is used by MP4 recording
         log_info("Cleaning up HLS streaming backend...");
-        cleanup_hls_streaming_backend();  // Cleanup HLS streaming
+        cleanup_hls_streaming_backend();
+        
+        // Wait for HLS streaming to clean up
+        usleep(1000000);  // 1000ms
+        
+        // Now clean up MP4 recording
+        log_info("Cleaning up MP4 recording backend...");
+        cleanup_mp4_recording_backend();
+        
+        // Wait for MP4 recording to clean up
+        usleep(1000000);  // 1000ms
         
         // Clean up stream reader backend last to ensure all consumers are stopped
         log_info("Cleaning up stream reader backend...");
@@ -999,9 +1033,13 @@ cleanup:
         log_info("Cleaning up transcoding backend...");
         cleanup_transcoding_backend();
         
-        // Shutdown detection resources
+        // Shutdown detection resources with timeout protection
         log_info("Cleaning up detection resources...");
+        
+        // Set an alarm to prevent hanging during detection resource cleanup
+        alarm(5); // 5 second timeout for detection resource cleanup
         cleanup_detection_resources();
+        alarm(0); // Cancel the alarm if cleanup completed successfully
         
         // Shutdown detection thread pool
         log_info("Shutting down detection thread pool...");

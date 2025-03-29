@@ -15,6 +15,7 @@
 #include "video/stream_state.h"
 #include "video/streams.h"
 #include "video/hls_writer.h"
+#include "video/hls_writer_thread.h"
 #include "video/hls_streaming.h"
 #include "video/thread_utils.h"
 #include "video/timestamp_manager.h"
@@ -126,14 +127,18 @@ int start_hls_stream(const char *stream_name) {
 
     // Set full permissions to ensure FFmpeg can write files
     snprintf(dir_cmd, sizeof(dir_cmd), "chmod -R 777 %s", ctx->output_path);
-    system(dir_cmd);
+    if (system(dir_cmd) != 0) {
+        log_warn("Failed to set permissions on HLS directory: %s", ctx->output_path);
+    }
 
     // Also ensure the parent directory of the HLS directory exists and is writable
     char parent_dir[MAX_PATH_LENGTH];
     snprintf(parent_dir, sizeof(parent_dir), "%s/hls", global_config->storage_path);
     snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s && chmod -R 777 %s", 
              parent_dir, parent_dir);
-    system(dir_cmd);
+    if (system(dir_cmd) != 0) {
+        log_warn("Failed to create or set permissions on parent HLS directory: %s", parent_dir);
+    }
 
     log_info("Created HLS directory with full permissions: %s", ctx->output_path);
 
@@ -250,7 +255,9 @@ int stop_hls_stream(const char *stream_name) {
         }
     }
 
-    // Find the stream context
+    // Find the stream context with mutex protection
+    pthread_mutex_lock(&hls_contexts_mutex);
+    
     hls_stream_ctx_t *ctx = NULL;
     int index = -1;
 
@@ -262,36 +269,43 @@ int stop_hls_stream(const char *stream_name) {
             break;
         }
     }
-
+    
+    // If not found, unlock and return
     if (!found) {
+        pthread_mutex_unlock(&hls_contexts_mutex);
         log_warn("HLS stream %s not found for stopping", stream_name);
         // Don't re-enable callbacks here - the stream wasn't found so we never disabled them
         return -1;
     }
     
-    //  Check if the stream is already stopped
-    if (!ctx->running) {
+    // Check if the stream is already stopped
+    if (!atomic_load(&ctx->running)) {
+        pthread_mutex_unlock(&hls_contexts_mutex);
         log_warn("HLS stream %s is already stopped", stream_name);
         // Don't re-enable callbacks here - the stream is already stopped
         return 0;
     }
-
-    // No need to clear packet callbacks since we're using a single thread approach
+    
+    // Mark as stopping in the global stopping list to prevent race conditions
+    mark_stream_stopping(stream_name);
     
     // Now mark as not running using atomic store for thread safety
     atomic_store(&ctx->running, 0);
     log_info("Marked HLS stream %s as stopping (index: %d)", stream_name, index);
+    
+    // Store a local copy of the thread to join
+    pthread_t thread_to_join = ctx->thread;
     
     // Reset the timestamp tracker for this stream to ensure clean state when restarted
     // This is especially important for UDP streams
     reset_timestamp_tracker(stream_name);
     log_info("Reset timestamp tracker for stream %s", stream_name);
     
-    // Store a local copy of the thread to join
-    pthread_t thread_to_join = ctx->thread;
-
-    // Join thread with a longer timeout (10 seconds instead of 5)
-    int join_result = pthread_join_with_timeout(thread_to_join, NULL, 10);
+    // Unlock the mutex before joining the thread to prevent deadlocks
+    pthread_mutex_unlock(&hls_contexts_mutex);
+    
+    // Join thread with a longer timeout (15 seconds instead of 10)
+    int join_result = pthread_join_with_timeout(thread_to_join, NULL, 15);
     if (join_result != 0) {
         log_error("Failed to join thread for stream %s (error: %d), will continue cleanup",
                  stream_name, join_result);
@@ -301,7 +315,10 @@ int stop_hls_stream(const char *stream_name) {
     } else {
         log_info("Successfully joined thread for stream %s", stream_name);
     }
-
+    
+    // Re-acquire the mutex for cleanup
+    pthread_mutex_lock(&hls_contexts_mutex);
+    
     // Verify context is still valid
     if (index >= 0 && index < MAX_STREAMS && streaming_contexts[index] == ctx) {
         // Cleanup resources - make a local copy of the writer pointer
@@ -311,18 +328,36 @@ int stop_hls_stream(const char *stream_name) {
         // Free context and clear slot before closing the writer
         // This ensures no other thread can access the context while we're closing the writer
         streaming_contexts[index] = NULL;
+        
+        // Unlock the mutex before closing the writer to prevent deadlocks
+        pthread_mutex_unlock(&hls_contexts_mutex);
+        
+        // Free the context structure
         free(ctx);
         
         // Now close the writer after the context has been freed
         if (writer_to_close) {
             log_info("Closing HLS writer for stream %s", stream_name);
+            
+            // First stop any running recording thread
+            hls_writer_stop_recording_thread(writer_to_close);
+            
+            // Add a small delay to ensure the thread has fully stopped
+            usleep(100000); // 100ms
+            
+            // Now safely close the writer
             hls_writer_close(writer_to_close);
+            writer_to_close = NULL;
         }
 
         log_info("Successfully cleaned up resources for stream %s", stream_name);
     } else {
+        pthread_mutex_unlock(&hls_contexts_mutex);
         log_warn("Context for stream %s was modified during cleanup", stream_name);
     }
+    
+    // Remove from the stopping list
+    unmark_stream_stopping(stream_name);
 
     log_info("Stopped HLS stream %s", stream_name);
     

@@ -92,13 +92,29 @@ void *hls_stream_thread(void *arg) {
         return NULL;
     }
 
+    // Register with shutdown coordinator
+    char component_name[128];
+    snprintf(component_name, sizeof(component_name), "hls_manager_%s", stream_name);
+    int component_id = register_component(component_name, COMPONENT_HLS_WRITER, ctx, 60); // Lowest priority (60)
+    if (component_id >= 0) {
+        log_info("Registered HLS manager %s with shutdown coordinator (ID: %d)", stream_name, component_id);
+    }
+
     // Check if we're still running after HLS writer creation
-    if (!atomic_load(&ctx->running)) {
+    if (!atomic_load(&ctx->running) || is_shutdown_initiated()) {
         log_info("HLS streaming thread for %s stopping after HLS writer creation", stream_name);
         if (ctx->hls_writer) {
+            log_info("Closing HLS writer during early shutdown for %s", stream_name);
             hls_writer_close(ctx->hls_writer);
             ctx->hls_writer = NULL;
         }
+        
+        // Update component state if registered
+        if (component_id >= 0) {
+            update_component_state(component_id, COMPONENT_STOPPED);
+            log_info("Updated HLS manager %s state to STOPPED during early shutdown", stream_name);
+        }
+        
         return NULL;
     }
 
@@ -127,14 +143,6 @@ void *hls_stream_thread(void *arg) {
 
         atomic_store(&ctx->running, 0);
         return NULL;
-    }
-
-    // Register with shutdown coordinator
-    char component_name[128];
-    snprintf(component_name, sizeof(component_name), "hls_manager_%s", stream_name);
-    int component_id = register_component(component_name, COMPONENT_HLS_WRITER, ctx, 60); // Lowest priority (60)
-    if (component_id >= 0) {
-        log_info("Registered HLS manager %s with shutdown coordinator (ID: %d)", stream_name, component_id);
     }
 
     // Start the HLS writer thread with retry mechanism
@@ -293,24 +301,37 @@ void *hls_stream_thread(void *arg) {
         usleep(500000); // 500 milliseconds
     }
 
-    // Stop the HLS writer thread
+    // Stop the HLS writer thread with proper error handling
     log_info("Stopping HLS writer thread for stream %s", stream_name);
-    hls_writer_stop_recording_thread(ctx->hls_writer);
-
-    // When done, close writer - use a local copy to avoid double free
+    
+    // Make a local copy of the writer pointer
     hls_writer_t *writer_to_close = ctx->hls_writer;
-    ctx->hls_writer = NULL;  // Clear the pointer first to prevent double close
+    
+    // Clear the pointer first to prevent double close from other threads
+    ctx->hls_writer = NULL;
     
     if (writer_to_close) {
-        // Safely close the writer
+        // First stop any running recording thread
+        hls_writer_stop_recording_thread(writer_to_close);
+        
+        // Add a small delay to ensure the thread has fully stopped
+        usleep(100000); // 100ms
+        
+        // Now safely close the writer
+        log_info("Closing HLS writer for stream %s at %s", 
+                stream_name, writer_to_close->output_dir);
         hls_writer_close(writer_to_close);
         writer_to_close = NULL;
+    } else {
+        log_warn("HLS writer for stream %s was already NULL during shutdown", stream_name);
     }
 
-    // Update component state in shutdown coordinator
+    // Update component state in shutdown coordinator - always do this regardless of writer status
     if (component_id >= 0) {
         update_component_state(component_id, COMPONENT_STOPPED);
         log_info("Updated HLS manager %s state to STOPPED in shutdown coordinator", stream_name);
+    } else {
+        log_warn("No component ID for HLS manager %s during shutdown", stream_name);
     }
 
     log_info("HLS streaming manager thread for stream %s exited", stream_name);

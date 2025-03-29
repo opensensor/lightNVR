@@ -8,8 +8,10 @@
 
 // Hash map for tracking running HLS streaming contexts
 hls_stream_ctx_t *streaming_contexts[MAX_STREAMS];
+pthread_mutex_t hls_contexts_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // State to track streams in the process of being stopped
+pthread_mutex_t stopping_mutex = PTHREAD_MUTEX_INITIALIZER;
 char stopping_streams[MAX_STREAMS][MAX_STREAM_NAME];
 int stopping_stream_count = 0;
 
@@ -26,6 +28,7 @@ bool is_stream_stopping(const char *stream_name) {
     }
     
     // Fall back to the old system if the state manager is not available
+    pthread_mutex_lock(&stopping_mutex);
     bool stopping = false;
     for (int i = 0; i < stopping_stream_count; i++) {
         if (strcmp(stopping_streams[i], stream_name) == 0) {
@@ -33,6 +36,7 @@ bool is_stream_stopping(const char *stream_name) {
             break;
         }
     }
+    pthread_mutex_unlock(&stopping_mutex);
     return stopping;
 }
 
@@ -59,9 +63,12 @@ void mark_stream_stopping(const char *stream_name) {
     }
     
     // Fall back to the old system if the state manager is not available
+    pthread_mutex_lock(&stopping_mutex);
+    
     // Check if already in the list
     for (int i = 0; i < stopping_stream_count; i++) {
         if (strcmp(stopping_streams[i], stream_name) == 0) {
+            pthread_mutex_unlock(&stopping_mutex);
             return;
         }
     }
@@ -73,6 +80,8 @@ void mark_stream_stopping(const char *stream_name) {
         stopping_stream_count++;
         log_info("Marked stream %s as stopping (legacy method)", stream_name);
     }
+    
+    pthread_mutex_unlock(&stopping_mutex);
 }
 
 /**
@@ -96,6 +105,8 @@ void unmark_stream_stopping(const char *stream_name) {
     }
     
     // Fall back to the old system if the state manager is not available
+    pthread_mutex_lock(&stopping_mutex);
+    
     for (int i = 0; i < stopping_stream_count; i++) {
         if (strcmp(stopping_streams[i], stream_name) == 0) {
             // Remove by shifting remaining entries
@@ -107,6 +118,8 @@ void unmark_stream_stopping(const char *stream_name) {
             break;
         }
     }
+    
+    pthread_mutex_unlock(&stopping_mutex);
 }
 
 /**
@@ -129,6 +142,9 @@ void init_hls_contexts(void) {
 void cleanup_hls_contexts(void) {
     log_info("Cleaning up HLS contexts...");
 
+    // Lock the contexts mutex to prevent race conditions
+    pthread_mutex_lock(&hls_contexts_mutex);
+    
     // Check if there are any contexts left
     bool contexts_remaining = false;
     for (int i = 0; i < MAX_STREAMS; i++) {
@@ -146,7 +162,7 @@ void cleanup_hls_contexts(void) {
         for (int i = 0; i < MAX_STREAMS; i++) {
             if (streaming_contexts[i]) {
                 // Mark as not running to ensure threads exit
-                streaming_contexts[i]->running = 0;
+                atomic_store(&streaming_contexts[i]->running, 0);
                 
                 // Log that we're cleaning up this context
                 log_info("Cleaning up remaining HLS context for stream %s", 
@@ -159,9 +175,16 @@ void cleanup_hls_contexts(void) {
         }
     }
     
-    // Reset the stopping streams array
+    pthread_mutex_unlock(&hls_contexts_mutex);
+    
+    // Lock the stopping mutex to reset the stopping streams array
+    pthread_mutex_lock(&stopping_mutex);
     memset(stopping_streams, 0, sizeof(stopping_streams));
     stopping_stream_count = 0;
+    pthread_mutex_unlock(&stopping_mutex);
 
     log_info("HLS contexts cleaned up");
+    
+    // Note: We don't destroy the mutexes here because they are statically initialized
+    // and may be used again if the system is restarted
 }
