@@ -26,7 +26,7 @@ typedef struct {
     void *handle;
     int (*sod_cnn_create)(void **ppOut, const char *zArch, const char *zModelPath, const char **pzErr);
     int (*sod_cnn_config)(void *pNet, int conf, ...);
-    int (*sod_cnn_predict)(void *pNet, float *pInput, void ***paBox, int *pnBox);
+    int (*sod_cnn_predict)(void *pNet, float *pInput, sod_box **paBox, int *pnBox);
     void (*sod_cnn_destroy)(void *pNet);
     float * (*sod_cnn_prepare_image)(void *pNet, void *in);
     int (*sod_cnn_get_network_size)(void *pNet, int *pWidth, int *pHeight, int *pChannels);
@@ -226,7 +226,7 @@ detection_model_t load_sod_model(const char *model_path, float threshold) {
         }
 
         // Use dynamic loading
-        sod_funcs.sod_cnn_config(sod_model, SOD_CNN_DETECTION_THRESHOLD, threshold);
+        sod_funcs.sod_cnn_config((sod_cnn*)sod_model, SOD_CNN_DETECTION_THRESHOLD, threshold);
     #else
         // Use static linking
         sod_cnn *cnn_model = NULL;
@@ -304,24 +304,20 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
         log_info("Step 1: Creating SOD image from frame data (dimensions: %dx%d, channels: %d)", 
                 width, height, channels);
 
-        void *img_ptr = sod_funcs.sod_make_image(width, height, channels);
-        if (!img_ptr) {
+        // In dynamic linking, sod_make_image returns a sod_img, not a pointer to sod_img
+        sod_img img;
+        memset(&img, 0, sizeof(sod_img));
+        
+        // Call sod_make_image and store the result directly
+        img = *(sod_img*)sod_funcs.sod_make_image(width, height, channels);
+        
+        if (!img.data) {
             log_error("Failed to create SOD image");
             return -1;
         }
 
         // Step 2: Copy the frame data to the SOD image
         log_info("Step 2: Copying frame data to SOD image");
-
-        // Cast the void* to sod_img*
-        sod_img *sod_img_ptr = (sod_img *)img_ptr;
-
-        // Check if the data field is valid
-        if (!sod_img_ptr->data) {
-            log_error("SOD image data field is NULL");
-            sod_funcs.sod_free_image(img_ptr);
-            return -1;
-        }
 
         // Calculate the total size of the image data
         size_t total_size = width * height * channels;
@@ -330,7 +326,7 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
         float *temp_buffer = (float *)malloc(total_size * sizeof(float));
         if (!temp_buffer) {
             log_error("Failed to allocate temporary buffer for image data conversion");
-            sod_funcs.sod_free_image(img_ptr);
+            sod_funcs.sod_free_image(&img);
             return -1;
         }
 
@@ -354,7 +350,7 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
         }
 
         // Copy the converted data to the SOD image
-        memcpy(sod_img_ptr->data, temp_buffer, total_size * sizeof(float));
+        memcpy(img.data, temp_buffer, total_size * sizeof(float));
 
         // Free the temporary buffer
         free(temp_buffer);
@@ -363,10 +359,10 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
 
         // Step 3: Prepare the image for CNN detection
         log_info("Step 4: Preparing image for CNN detection with model=%p", (void*)m->sod.model);
-        float *prepared_data = sod_funcs.sod_cnn_prepare_image(m->sod.model, img_ptr);
+        float *prepared_data = sod_funcs.sod_cnn_prepare_image((sod_cnn*)m->sod.model, &img);
         if (!prepared_data) {
             log_error("Failed to prepare image for CNN detection");
-            sod_funcs.sod_free_image(img_ptr);
+            sod_funcs.sod_free_image(&img);
             return -1;
         }
 
@@ -375,22 +371,22 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
         // Step 4: Run detection
         log_info("Step 6: Running CNN detection");
         int count = 0;
-        void **boxes_ptr = NULL;
 
         // Add extra safety check
         if (!m->sod.model) {
             log_error("Model pointer is NULL before prediction");
-            sod_funcs.sod_free_image(img_ptr);
+            sod_funcs.sod_free_image(&img);
             return -1;
         }
 
         // Step 5: Call predict
-        int rc = sod_funcs.sod_cnn_predict(m->sod.model, prepared_data, &boxes_ptr, &count);
+        sod_box *boxes = NULL;
+        int rc = sod_funcs.sod_cnn_predict((sod_cnn*)m->sod.model, prepared_data, &boxes, &count);
         log_info("Step 7: sod_cnn_predict returned with rc=%d, count=%d", rc, count);
 
         if (rc != 0) { // SOD_OK is 0
             log_error("CNN detection failed with error code: %d", rc);
-            sod_funcs.sod_free_image(img_ptr);
+            sod_funcs.sod_free_image(&img);
             return -1;
         }
 
@@ -403,21 +399,19 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
         // Process detection results
         int valid_count = 0;
 
-        // Skip processing boxes if count is 0 or boxes_ptr is NULL
-        if (count <= 0 || !boxes_ptr) {
-            log_warn("No detection boxes returned (count=%d, boxes_ptr=%p)", count, (void*)boxes_ptr);
-            sod_funcs.sod_free_image(img_ptr);
+        // Skip processing boxes if count is 0 or boxes is NULL
+        if (count <= 0 || !boxes) {
+            log_warn("No detection boxes returned (count=%d, boxes=%p)", count, (void*)boxes);
+            sod_funcs.sod_free_image(&img);
             return 0;
         }
 
         log_info("Processing %d detection boxes", count);
 
-        // In SOD, boxes_ptr is an array of pointers to sod_box structures
-        sod_box_dynamic **boxes_array = (sod_box_dynamic**)boxes_ptr;
-
+        // For dynamic linking, boxes is already an array of sod_box structures
         for (int i = 0; i < count && valid_count < MAX_DETECTIONS; i++) {
             // Get the current box
-            sod_box_dynamic *box = boxes_array[i];
+            sod_box *box = &boxes[i];
 
             if (!box) {
                 log_warn("Box %d is NULL, skipping", i);
@@ -475,7 +469,7 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
 
         // Step 7: Free the image data
         log_info("Step 9: Freeing SOD image");
-        sod_funcs.sod_free_image(img_ptr);
+        sod_funcs.sod_free_image(&img);
     #else
         // When SOD is statically linked, use direct function calls
         log_info("Using statically linked SOD functions");

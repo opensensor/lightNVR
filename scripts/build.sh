@@ -8,6 +8,9 @@ BUILD_TYPE="Release"
 ENABLE_SOD=1
 ENABLE_TESTS=1
 
+# Default SOD linking mode
+SOD_DYNAMIC=0
+
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
     key="$1"
@@ -32,6 +35,14 @@ while [[ $# -gt 0 ]]; do
             ENABLE_SOD=0
             shift
             ;;
+        --sod-dynamic)
+            SOD_DYNAMIC=1
+            shift
+            ;;
+        --sod-static)
+            SOD_DYNAMIC=0
+            shift
+            ;;
         --with-tests)
             ENABLE_TESTS=1
             shift
@@ -48,6 +59,8 @@ while [[ $# -gt 0 ]]; do
             echo "  --clean            Clean build directory before building"
             echo "  --with-sod         Build with SOD support (default)"
             echo "  --without-sod      Build without SOD support"
+            echo "  --sod-dynamic      Use dynamic linking for SOD"
+            echo "  --sod-static       Use static linking for SOD (default)"
             echo "  --with-tests       Build test suite (default)"
             echo "  --without-tests    Build without test suite"
             echo "  --help             Show this help message"
@@ -85,8 +98,13 @@ fi
 # Configure SOD and Tests options
 SOD_OPTION=""
 if [ "$ENABLE_SOD" -eq 1 ]; then
-    SOD_OPTION="-DENABLE_SOD=ON -DSOD_DYNAMIC_LINK=OFF"
-    echo "Building with SOD support (static linking)"
+    if [ "$SOD_DYNAMIC" -eq 1 ]; then
+        SOD_OPTION="-DENABLE_SOD=ON -DSOD_DYNAMIC_LINK=ON"
+        echo "Building with SOD support (dynamic linking)"
+    else
+        SOD_OPTION="-DENABLE_SOD=ON -DSOD_DYNAMIC_LINK=OFF"
+        echo "Building with SOD support (static linking)"
+    fi
 else
     SOD_OPTION="-DENABLE_SOD=OFF"
     echo "Building without SOD support"

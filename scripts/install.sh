@@ -94,36 +94,23 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
-# Find the lightnvr binary and SOD library
+# Debug: List all SOD libraries and binaries
+echo "DEBUG: Searching for SOD libraries and binaries..."
+find build -name "lightnvr" -o -name "libsod.so*" | sort
+
+# Directly set paths based on the known locations
+if [ -f "build/src/sod/libsod.so.1.1.9" ]; then
+    LIB_PATH="build/src/sod"
+    SOD_LIB_NAME="libsod.so.1.1.9"
+elif [ -f "build/src/sod/libsod.so" ]; then
+    LIB_PATH="build/src/sod"
+    SOD_LIB_NAME="libsod.so"
+fi
+
 if [ -f "build/Release/lightnvr" ]; then
     BINARY_PATH="build/Release/lightnvr"
-    if [ -f "build/Release/src/sod/libsod.so.1.1.9" ]; then
-        LIB_PATH="build/Release/src/sod"
-    fi
-elif [ -f "build/Debug/lightnvr" ]; then
-    BINARY_PATH="build/Debug/lightnvr"
-    if [ -f "build/Debug/src/sod/libsod.so.1.1.9" ]; then
-        LIB_PATH="build/Debug/src/sod"
-    fi
-# Also check the original expected paths
-elif [ -f "build/Release/bin/lightnvr" ]; then
-    BINARY_PATH="build/Release/bin/lightnvr"
-    if [ -f "build/Release/lib/libsod.so.1.1.9" ]; then
-        LIB_PATH="build/Release/lib"
-    elif [ -f "build/Release/src/sod/libsod.so.1.1.9" ]; then
-        LIB_PATH="build/Release/src/sod"
-    fi
-elif [ -f "build/Debug/bin/lightnvr" ]; then
-    BINARY_PATH="build/Debug/bin/lightnvr"
-    if [ -f "build/Debug/lib/libsod.so.1.1.9" ]; then
-        LIB_PATH="build/Debug/lib"
-    elif [ -f "build/Debug/src/sod/libsod.so.1.1.9" ]; then
-        LIB_PATH="build/Debug/src/sod"
-    fi
-else
-    echo "Binary not found. Please build the project first:"
-    echo "./scripts/build.sh --release"
-    exit 1
+elif [ -f "build/lightnvr" ]; then
+    BINARY_PATH="build/lightnvr"
 fi
 
 # Check if we found the SOD library
@@ -133,10 +120,17 @@ if [ "$INSTALL_SOD" -eq 1 ] && [ -z "$LIB_PATH" ]; then
     exit 1
 fi
 
+# Check if we found the binary
+if [ -z "$BINARY_PATH" ]; then
+    echo "Binary not found. Please build the project first:"
+    echo "./scripts/build.sh --release"
+    exit 1
+fi
+
 # Print paths for debugging
 echo "Using binary: $BINARY_PATH"
 if [ "$INSTALL_SOD" -eq 1 ]; then
-    echo "Using SOD library: $LIB_PATH/libsod.so.1.1.9"
+    echo "Using SOD library: $LIB_PATH/$SOD_LIB_NAME"
 fi
 
 # Create directories
@@ -156,10 +150,19 @@ install -m 755 "$BINARY_PATH" "$PREFIX/bin/lightnvr"
 # Install SOD library if enabled
 if [ "$INSTALL_SOD" -eq 1 ]; then
     echo "Installing SOD library..."
-    if [ -f "$LIB_PATH/libsod.so.1.1.9" ]; then
-        install -m 755 "$LIB_PATH/libsod.so.1.1.9" "$PREFIX/lib/libsod.so.1.1.9"
-        ln -sf "$PREFIX/lib/libsod.so.1.1.9" "$PREFIX/lib/libsod.so.1"
-        ln -sf "$PREFIX/lib/libsod.so.1" "$PREFIX/lib/libsod.so"
+    if [ -f "$LIB_PATH/$SOD_LIB_NAME" ]; then
+        # Install the library
+        install -m 755 "$LIB_PATH/$SOD_LIB_NAME" "$PREFIX/lib/$SOD_LIB_NAME"
+        
+        # Create symlinks if needed
+        if [ "$SOD_LIB_NAME" = "libsod.so.1.1.9" ]; then
+            ln -sf "$PREFIX/lib/libsod.so.1.1.9" "$PREFIX/lib/libsod.so.1"
+            ln -sf "$PREFIX/lib/libsod.so.1" "$PREFIX/lib/libsod.so"
+        elif [ "$SOD_LIB_NAME" = "libsod.so" ]; then
+            # If we only have libsod.so, create the versioned symlinks
+            ln -sf "$PREFIX/lib/libsod.so" "$PREFIX/lib/libsod.so.1"
+            ln -sf "$PREFIX/lib/libsod.so.1" "$PREFIX/lib/libsod.so.1.1.9"
+        fi
 
         # Run ldconfig to update the shared library cache
         # we can skip with --without-ldconfig
@@ -167,7 +170,7 @@ if [ "$INSTALL_SOD" -eq 1 ]; then
             ldconfig
         fi
 
-        echo "SOD library installed to $PREFIX/lib/libsod.so.1.1.9"
+        echo "SOD library installed to $PREFIX/lib/$SOD_LIB_NAME"
     else
         echo "SOD library not found. Did you build with SOD support?"
         echo "Try running: ./scripts/build.sh --release --with-sod"
