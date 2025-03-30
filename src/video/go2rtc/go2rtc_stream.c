@@ -39,7 +39,7 @@ bool go2rtc_stream_init(const char *binary_path, const char *config_dir, int api
         return false;
     }
     
-    if (!binary_path || !config_dir || api_port <= 0) {
+    if (!config_dir || api_port <= 0) {
         log_error("Invalid parameters for go2rtc_stream_init");
         return false;
     }
@@ -51,7 +51,8 @@ bool go2rtc_stream_init(const char *binary_path, const char *config_dir, int api
         return false;
     }
     
-    // Initialize process manager
+    // Initialize process manager - binary_path can be NULL, in which case
+    // go2rtc_process_init will try to find the binary or use an existing service
     if (!go2rtc_process_init(binary_path, config_dir)) {
         log_error("Failed to initialize go2rtc process manager");
         free(g_config_dir);
@@ -71,8 +72,8 @@ bool go2rtc_stream_init(const char *binary_path, const char *config_dir, int api
     g_api_port = api_port;
     g_initialized = true;
     
-    log_info("go2rtc stream integration initialized with binary: %s, config dir: %s, API port: %d", 
-             binary_path, config_dir, api_port);
+    log_info("go2rtc stream integration initialized with config dir: %s, API port: %d", 
+             config_dir, api_port);
     
     return true;
 }

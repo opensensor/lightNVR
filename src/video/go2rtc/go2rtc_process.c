@@ -18,6 +18,11 @@
 #include <errno.h>
 #include <limits.h>
 
+// Define PATH_MAX if not defined
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
+
 // Process management variables
 static char *g_binary_path = NULL;
 static char *g_config_dir = NULL;
@@ -25,20 +30,119 @@ static char *g_config_path = NULL;
 static pid_t g_process_pid = -1;
 static bool g_initialized = false;
 
+/**
+ * @brief Check if go2rtc is already running as a system service
+ * 
+ * @param api_port The port to check for go2rtc service
+ * @return true if go2rtc is running as a service, false otherwise
+ */
+static bool is_go2rtc_running_as_service(int api_port) {
+    // Check if the API port is in use by any process
+    char cmd[128];
+    snprintf(cmd, sizeof(cmd), "netstat -tlpn 2>/dev/null | grep ':%d' | grep -v grep", api_port);
+    FILE *fp = popen(cmd, "r");
+    if (!fp) {
+        log_warn("Failed to execute netstat command");
+        return false;
+    }
+    
+    char netstat_line[256];
+    bool port_in_use = false;
+    
+    if (fgets(netstat_line, sizeof(netstat_line), fp)) {
+        port_in_use = true;
+        
+        // Check if the process using the port is go2rtc
+        if (strstr(netstat_line, "go2rtc") != NULL) {
+            log_info("go2rtc is already running as a service on port %d", api_port);
+            pclose(fp);
+            return true;
+        }
+        
+        // If we can't identify the process, check if it responds like go2rtc
+        log_info("Port %d is in use, checking if it's go2rtc: %s", api_port, netstat_line);
+    }
+    
+    pclose(fp);
+    
+    if (port_in_use) {
+        // Try to make a simple HTTP request to the API endpoint
+        char curl_cmd[256];
+        snprintf(curl_cmd, sizeof(curl_cmd), 
+                "curl -s -o /dev/null -w \"%%{http_code}\" http://localhost:%d/api/streams 2>/dev/null", 
+                api_port);
+        
+        fp = popen(curl_cmd, "r");
+        if (!fp) {
+            log_warn("Failed to execute curl command");
+            return false;
+        }
+        
+        char response[16] = {0};
+        if (fgets(response, sizeof(response), fp)) {
+            int status_code = atoi(response);
+            pclose(fp);
+            
+            if (status_code == 200 || status_code == 401) {
+                log_info("Port %d is responding like go2rtc (HTTP %d)", api_port, status_code);
+                return true;
+            }
+            
+            log_info("Port %d returned HTTP %d, not a go2rtc service", api_port, status_code);
+            return false;
+        }
+        
+        pclose(fp);
+    }
+    
+    return false;
+}
+
+/**
+ * @brief Check if go2rtc is available in PATH
+ * 
+ * @param binary_path Buffer to store the found binary path
+ * @param buffer_size Size of the buffer
+ * @return true if binary was found, false otherwise
+ */
+static bool check_go2rtc_in_path(char *binary_path, size_t buffer_size) {
+    // Try to find go2rtc in PATH
+    FILE *fp = popen("which go2rtc 2>/dev/null", "r");
+    if (fp) {
+        char path[PATH_MAX] = {0};
+        if (fgets(path, sizeof(path), fp)) {
+            // Remove trailing newline
+            size_t len = strlen(path);
+            if (len > 0 && path[len-1] == '\n') {
+                path[len-1] = '\0';
+            }
+            
+            if (access(path, X_OK) == 0) {
+                log_info("Found go2rtc binary in PATH: %s", path);
+                strncpy(binary_path, path, buffer_size - 1);
+                binary_path[buffer_size - 1] = '\0';
+                pclose(fp);
+                return true;
+            }
+        }
+        pclose(fp);
+    }
+    
+    // If not found in PATH, just use "go2rtc" and let the system resolve it
+    strncpy(binary_path, "go2rtc", buffer_size - 1);
+    binary_path[buffer_size - 1] = '\0';
+    log_info("Using 'go2rtc' from PATH");
+    return true;
+}
+
 bool go2rtc_process_init(const char *binary_path, const char *config_dir) {
     if (g_initialized) {
         log_warn("go2rtc process manager already initialized");
         return false;
     }
 
-    if (!binary_path || !config_dir) {
-        log_error("Invalid parameters for go2rtc_process_init");
-        return false;
-    }
-
-    // Check if binary exists
-    if (access(binary_path, X_OK) != 0) {
-        log_error("go2rtc binary not found or not executable: %s", binary_path);
+    if (!config_dir) {
+        log_error("Invalid config_dir parameter for go2rtc_process_init");
         return false;
     }
 
@@ -50,9 +154,8 @@ bool go2rtc_process_init(const char *binary_path, const char *config_dir) {
             return false;
         }
     }
-
-    // Store paths
-    g_binary_path = strdup(binary_path);
+    
+    // Store config directory
     g_config_dir = strdup(config_dir);
     
     // Create config path
@@ -60,16 +163,52 @@ bool go2rtc_process_init(const char *binary_path, const char *config_dir) {
     g_config_path = malloc(config_path_len);
     if (!g_config_path) {
         log_error("Memory allocation failed for config path");
-        free(g_binary_path);
         free(g_config_dir);
         return false;
     }
     
     snprintf(g_config_path, config_path_len, "%s/go2rtc.yaml", config_dir);
     
+    // Check if go2rtc is already running as a service
+    if (is_go2rtc_running_as_service(1984)) {
+        log_info("go2rtc is already running as a service, will use the existing service");
+        // Set an empty binary path to indicate we're using an existing service
+        g_binary_path = strdup("");
+    } else {
+        // Check if binary exists at the specified path
+        char final_binary_path[PATH_MAX] = {0};
+        
+        if (binary_path && access(binary_path, X_OK) == 0) {
+            // Use the provided binary path
+            strncpy(final_binary_path, binary_path, sizeof(final_binary_path) - 1);
+            log_info("Using provided go2rtc binary: %s", final_binary_path);
+        } else {
+            if (binary_path) {
+                log_warn("go2rtc binary not found or not executable at specified path: %s", binary_path);
+            }
+            
+            // Use go2rtc from PATH
+            if (!check_go2rtc_in_path(final_binary_path, sizeof(final_binary_path))) {
+                log_error("go2rtc binary not found in PATH and no running service detected");
+                free(g_config_dir);
+                free(g_config_path);
+                return false;
+            }
+        }
+        
+        // Store binary path
+        g_binary_path = strdup(final_binary_path);
+    }
+    
     g_initialized = true;
-    log_info("go2rtc process manager initialized with binary: %s, config dir: %s", 
-             g_binary_path, g_config_dir);
+    
+    if (g_binary_path[0] != '\0') {
+        log_info("go2rtc process manager initialized with binary: %s, config dir: %s", 
+                g_binary_path, g_config_dir);
+    } else {
+        log_info("go2rtc process manager initialized to use existing service, config dir: %s", 
+                g_config_dir);
+    }
     
     return true;
 }
@@ -417,6 +556,11 @@ bool go2rtc_process_is_running(void) {
         return false;
     }
 
+    // If we're using an existing service, check if the service is running
+    if (g_binary_path && g_binary_path[0] == '\0') {
+        return is_go2rtc_running_as_service(1984); // Default API port
+    }
+
     // Check if our tracked process is running
     if (g_process_pid > 0) {
         // First check if process exists
@@ -473,6 +617,12 @@ bool go2rtc_process_is_running(void) {
             char netstat_line[256];
             if (fgets(netstat_line, sizeof(netstat_line), fp)) {
                 log_warn("Port 1984 is in use but no go2rtc process found: %s", netstat_line);
+                
+                // Check if it responds like go2rtc
+                if (is_go2rtc_running_as_service(1984)) {
+                    log_info("Port 1984 is responding like go2rtc, assuming it's running as a service");
+                    found = true;
+                }
             }
             pclose(fp);
         }
@@ -487,7 +637,13 @@ bool go2rtc_process_start(int api_port) {
         return false;
     }
 
-    // Check if go2rtc is already running
+    // Check if go2rtc is already running as a service
+    if (is_go2rtc_running_as_service(api_port)) {
+        log_info("go2rtc is already running as a service on port %d, using existing service", api_port);
+        return true;
+    }
+
+    // Check if go2rtc is already running as a process we started
     if (go2rtc_process_is_running()) {
         // Check if the port is actually in use by go2rtc
         char cmd[128];
@@ -516,6 +672,13 @@ bool go2rtc_process_start(int api_port) {
             log_info("go2rtc is already running, using existing process");
             return true;
         }
+    }
+    
+    // If we don't have a binary path (using existing service), but no service was detected,
+    // we can't start go2rtc
+    if (g_binary_path == NULL || g_binary_path[0] == '\0') {
+        log_error("No go2rtc binary available and no running service detected");
+        return false;
     }
     
     // Check if the port is already in use by another process
