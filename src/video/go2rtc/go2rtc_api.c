@@ -240,8 +240,27 @@ bool go2rtc_api_add_stream(const char *stream_id, const char *stream_url, const 
     
     // Format the URL for the API endpoint with query parameters (simple method)
     // This is the method that works according to user feedback
+    // URL encode the stream_url to handle special characters
+    char encoded_url[URL_BUFFER_SIZE * 3] = {0}; // Extra space for URL encoding
+    
+    // Simple URL encoding for special characters
+    const char *p = stream_url;
+    char *q = encoded_url;
+    while (*p && (q - encoded_url < URL_BUFFER_SIZE * 3 - 4)) {
+        if (isalnum(*p) || *p == '-' || *p == '_' || *p == '.' || *p == '~') {
+            *q++ = *p;
+        } else if (*p == ' ') {
+            *q++ = '+';
+        } else {
+            sprintf(q, "%%%02X", (unsigned char)*p);
+            q += 3;
+        }
+        p++;
+    }
+    *q = '\0';
+    
     snprintf(url, sizeof(url), "http://%s:%d/api/streams?src=%s&name=%s", 
-            g_api_host, g_api_port, stream_url, stream_id);
+            g_api_host, g_api_port, encoded_url, stream_id);
     
     log_info("Adding stream with URL: %s", url);
     

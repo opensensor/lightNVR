@@ -275,9 +275,8 @@ static bool kill_all_go2rtc_processes(void) {
         }
     }
     
-    // Use a more specific pgrep to find only actual go2rtc processes
-    // This will help avoid false positives from processes that just have go2rtc in their arguments
-    fp = popen("ps -eo pid,comm,args | grep go2rtc | grep -v grep | awk '{print $1}'", "r");
+    // Use a more compatible command for BusyBox systems
+    fp = popen("ps | grep go2rtc | grep -v grep | awk '{print $1}'", "r");
     if (!fp) {
         log_error("Failed to execute ps command for go2rtc");
         success = false;
@@ -309,7 +308,7 @@ static bool kill_all_go2rtc_processes(void) {
             sleep(3); // Increased wait time
             
             // Check if any processes are still running and force kill them
-            fp = popen("ps -eo pid,comm,args | grep go2rtc | grep -v grep | awk '{print $1}'", "r");
+            fp = popen("ps | grep go2rtc | grep -v grep | awk '{print $1}'", "r");
             if (!fp) {
                 log_error("Failed to execute second ps command");
                 success = false;
@@ -329,7 +328,7 @@ static bool kill_all_go2rtc_processes(void) {
                 
                 // Wait again and check one more time
                 sleep(1);
-                fp = popen("ps -eo pid,comm,args | grep go2rtc | grep -v grep | awk '{print $1}'", "r");
+                fp = popen("ps | grep go2rtc | grep -v grep | awk '{print $1}'", "r");
                 if (fp) {
                     bool still_running = false;
                     while (fgets(line, sizeof(line), fp)) {
@@ -349,7 +348,7 @@ static bool kill_all_go2rtc_processes(void) {
                     if (still_running) {
                         // Check one final time after kill -9
                         sleep(1);
-                        fp = popen("ps -eo pid,comm,args | grep go2rtc | grep -v grep | awk '{print $1}'", "r");
+                        fp = popen("ps | grep go2rtc | grep -v grep | awk '{print $1}'", "r");
                         if (fp) {
                             still_running = false;
                             while (fgets(line, sizeof(line), fp)) {
@@ -435,8 +434,8 @@ bool go2rtc_process_is_running(void) {
         }
     }
     
-    // Use a more specific command to find only actual go2rtc processes
-    FILE *fp = popen("ps -eo pid,comm,args | grep go2rtc | grep -v grep | awk '{print $1}'", "r");
+    // Use a more compatible command for BusyBox systems
+    FILE *fp = popen("ps | grep go2rtc | grep -v grep | awk '{print $1}'", "r");
     if (!fp) {
         log_error("Failed to execute ps command");
         return false;
