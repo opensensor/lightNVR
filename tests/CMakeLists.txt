@@ -120,5 +120,39 @@ else()
     message(STATUS "Skipping SOD tests (SOD disabled)")
 endif()
 
-message(STATUS "Building motion detection optimization tests")
+# Define database backup test sources
+set(DB_BACKUP_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/logger.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/web/logger_websocket.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/database/db_core.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/database/db_backup.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/database/db_schema.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/database/db_transaction.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../external/inih/ini.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../external/mongoose/mongoose.c
+)
 
+# Add database backup test
+add_executable(test_db_backup
+    database/db_backup_test.c
+    ${DB_BACKUP_SOURCES}
+)
+
+# Link libraries for database backup test
+target_link_libraries(test_db_backup
+    ${SQLITE_LIBRARIES}
+    pthread
+    dl
+)
+
+# Set output directory for database backup test
+set_target_properties(test_db_backup
+    PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+)
+
+# Add database backup test to CTest
+add_test(NAME test_db_backup COMMAND test_db_backup)
+
+message(STATUS "Building motion detection optimization tests")
+message(STATUS "Building database backup tests")
