@@ -121,6 +121,8 @@ void playback_recording_task_function(void *arg) {
 
     // Get recording from database
     recording_metadata_t recording;
+    memset(&recording, 0, sizeof(recording_metadata_t));
+    
     if (get_recording_metadata_by_id(id, &recording) != 0) {
         log_error("Recording not found: %llu", (unsigned long long)id);
         mg_http_reply(c, 404, "Content-Type: application/json\r\n", "{\"error\":\"Recording not found\"}");
@@ -129,10 +131,19 @@ void playback_recording_task_function(void *arg) {
         return;
     }
 
+    // Validate file path
+    if (recording.file_path[0] == '\0') {
+        log_error("Recording has empty file path: %llu", (unsigned long long)id);
+        mg_http_reply(c, 500, "Content-Type: application/json\r\n", "{\"error\":\"Recording has invalid file path\"}");
+        mark_request_inactive(id);  // Mark request as inactive
+        playback_recording_task_free(task);
+        return;
+    }
+
     // Check if file exists
     struct stat st;
     if (stat(recording.file_path, &st) != 0) {
-        log_error("Recording file not found: %s", recording.file_path);
+        log_error("Recording file not found: %s (error: %s)", recording.file_path, strerror(errno));
         mg_http_reply(c, 404, "Content-Type: application/json\r\n", "{\"error\":\"Recording file not found\"}");
         mark_request_inactive(id);  // Mark request as inactive
         playback_recording_task_free(task);
