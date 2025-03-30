@@ -203,20 +203,47 @@ bool go2rtc_stream_get_webrtc_url(const char *stream_id, char *buffer, size_t bu
         log_error("go2rtc stream integration not initialized");
         return false;
     }
-    
+
     if (!stream_id || !buffer || buffer_size == 0) {
         log_error("Invalid parameters for go2rtc_stream_get_webrtc_url");
         return false;
     }
-    
+
     // Check if go2rtc is running
     if (!go2rtc_stream_is_ready()) {
         log_warn("go2rtc service not running, cannot get WebRTC URL");
         return false;
     }
-    
+
     // Get WebRTC URL from API client
     return go2rtc_api_get_webrtc_url(stream_id, buffer, buffer_size);
+}
+
+bool go2rtc_stream_get_rtsp_url(const char *stream_id, char *buffer, size_t buffer_size) {
+    if (!g_initialized) {
+        log_error("go2rtc stream integration not initialized");
+        return false;
+    }
+
+    if (!stream_id || !buffer || buffer_size == 0) {
+        log_error("Invalid parameters for go2rtc_stream_get_rtsp_url");
+        return false;
+    }
+
+    // Check if go2rtc is running
+    if (!go2rtc_stream_is_ready()) {
+        log_warn("go2rtc service not running, cannot get RTSP URL");
+        return false;
+    }
+
+    // Get the RTSP port from the process manager
+    int rtsp_port = go2rtc_process_get_rtsp_port();
+    
+    // Format the RTSP URL
+    snprintf(buffer, buffer_size, "rtsp://localhost:%d/%s", rtsp_port, stream_id);
+    log_info("Generated RTSP URL for stream %s: %s", stream_id, buffer);
+    
+    return true;
 }
 
 // Callback function for libcurl to discard response data

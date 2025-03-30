@@ -50,6 +50,16 @@ bool go2rtc_stream_unregister(const char *stream_id);
 bool go2rtc_stream_get_webrtc_url(const char *stream_id, char *buffer, size_t buffer_size);
 
 /**
+ * @brief Get the RTSP URL for a stream
+ * 
+ * @param stream_id Identifier of the stream
+ * @param buffer Buffer to store the URL
+ * @param buffer_size Size of the buffer
+ * @return true if URL was retrieved successfully, false otherwise
+ */
+bool go2rtc_stream_get_rtsp_url(const char *stream_id, char *buffer, size_t buffer_size);
+
+/**
  * @brief Check if go2rtc is running and ready
  * 
  * @return true if go2rtc is running and ready, false otherwise

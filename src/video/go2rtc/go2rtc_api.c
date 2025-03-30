@@ -17,6 +17,7 @@
 #include <errno.h>
 #include <curl/curl.h>
 #include <ctype.h>
+#include "../../external/cjson/cJSON.h"
 
 // API client configuration
 static char *g_api_host = NULL;
@@ -502,15 +503,101 @@ bool go2rtc_api_get_streams(char *buffer, size_t buffer_size) {
     return false;
 }
 
+bool go2rtc_api_get_server_info(int *rtsp_port) {
+    if (!g_initialized) {
+        log_error("go2rtc API client not initialized");
+        return false;
+    }
+
+    CURL *curl;
+    CURLcode res;
+    char url[URL_BUFFER_SIZE];
+    bool success = false;
+
+    // Initialize CURL
+    curl = curl_easy_init();
+    if (!curl) {
+        log_error("Failed to initialize CURL");
+        return false;
+    }
+
+    // Reset response buffer
+    g_response_size = 0;
+    g_response_buffer[0] = '\0';
+
+    // Format the URL for the API endpoint
+    snprintf(url, sizeof(url), "http://%s:%d/api", g_api_host, g_api_port);
+
+    // Set CURL options for GET request
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, StaticWriteCallback);
+
+    // Perform the request
+    res = curl_easy_perform(curl);
+
+    // Check for errors
+    if (res != CURLE_OK) {
+        log_error("CURL request failed: %s", curl_easy_strerror(res));
+    } else {
+        long http_code = 0;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+
+        if (http_code == 200) {
+            log_info("Got go2rtc server info: %s", g_response_buffer);
+            
+            // Parse JSON response
+            cJSON *json = cJSON_Parse(g_response_buffer);
+            if (json) {
+                // Extract RTSP port if requested
+                if (rtsp_port) {
+                    cJSON *rtsp = cJSON_GetObjectItem(json, "rtsp");
+                    if (rtsp && cJSON_IsObject(rtsp)) {
+                        cJSON *listen = cJSON_GetObjectItem(rtsp, "listen");
+                        if (listen && cJSON_IsString(listen)) {
+                            const char *listen_str = cJSON_GetStringValue(listen);
+                            if (listen_str && listen_str[0] == ':') {
+                                // Parse port number from ":8554"
+                                *rtsp_port = atoi(listen_str + 1);
+                                log_info("Extracted RTSP port: %d", *rtsp_port);
+                            } else {
+                                log_warn("Invalid RTSP listen format: %s", listen_str ? listen_str : "NULL");
+                                *rtsp_port = 8554; // Default RTSP port
+                            }
+                        } else {
+                            log_warn("RTSP listen not found in server info");
+                            *rtsp_port = 8554; // Default RTSP port
+                        }
+                    } else {
+                        log_warn("RTSP section not found in server info");
+                        *rtsp_port = 8554; // Default RTSP port
+                    }
+                }
+                
+                cJSON_Delete(json);
+                success = true;
+            } else {
+                log_error("Failed to parse server info JSON: %s", g_response_buffer);
+            }
+        } else {
+            log_error("Failed to get go2rtc server info (status %ld): %s", http_code, g_response_buffer);
+        }
+    }
+
+    // Clean up
+    curl_easy_cleanup(curl);
+
+    return success;
+}
+
 void go2rtc_api_cleanup(void) {
     if (!g_initialized) {
         return;
     }
-    
+
     free(g_api_host);
     g_api_host = NULL;
     g_api_port = 0;
     g_initialized = false;
-    
+
     log_info("go2rtc API client cleaned up");
 }

@@ -53,4 +53,11 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port);
  */
 void go2rtc_process_cleanup(void);
 
+/**
+ * @brief Get the RTSP port used by go2rtc
+ * 
+ * @return int The RTSP port
+ */
+int go2rtc_process_get_rtsp_port(void);
+
 #endif /* GO2RTC_PROCESS_H */

@@ -4,6 +4,7 @@
  */
 
 #include "video/go2rtc/go2rtc_process.h"
+#include "video/go2rtc/go2rtc_api.h"
 #include "core/logger.h"
 #include "core/config.h"
 
@@ -29,6 +30,7 @@ static char *g_config_dir = NULL;
 static char *g_config_path = NULL;
 static pid_t g_process_pid = -1;
 static bool g_initialized = false;
+static int g_rtsp_port = 8554; // Default RTSP port
 
 /**
  * @brief Check if go2rtc is already running as a system service
@@ -640,6 +642,14 @@ bool go2rtc_process_start(int api_port) {
     // Check if go2rtc is already running as a service
     if (is_go2rtc_running_as_service(api_port)) {
         log_info("go2rtc is already running as a service on port %d, using existing service", api_port);
+        
+        // Try to get the RTSP port from the API
+        if (go2rtc_api_get_server_info(&g_rtsp_port)) {
+            log_info("Retrieved RTSP port from go2rtc API: %d", g_rtsp_port);
+        } else {
+            log_warn("Could not retrieve RTSP port from go2rtc API, using default: %d", g_rtsp_port);
+        }
+        
         return true;
     }
 
@@ -707,6 +717,10 @@ bool go2rtc_process_start(int api_port) {
         log_error("Failed to generate go2rtc configuration");
         return false;
     }
+    
+    // Set the RTSP port to the default value (8554) for now
+    // We'll try to get the actual value from the API after the process starts
+    g_rtsp_port = 8554;
 
     // Create a symbolic link from /dev/shm/go2rtc.yaml to our config file
     // This ensures that even if something tries to use the /dev/shm path, it will use our config
@@ -765,8 +779,27 @@ bool go2rtc_process_start(int api_port) {
             return false;
         }
         
+        // Wait a bit more for the API to be ready
+        sleep(2);
+        
+        // Try to get the RTSP port from the API
+        if (go2rtc_api_get_server_info(&g_rtsp_port)) {
+            log_info("Retrieved RTSP port from go2rtc API: %d", g_rtsp_port);
+        } else {
+            log_warn("Could not retrieve RTSP port from go2rtc API, using default: %d", g_rtsp_port);
+        }
+        
         return true;
     }
+}
+
+/**
+ * @brief Get the RTSP port used by go2rtc
+ * 
+ * @return int The RTSP port
+ */
+int go2rtc_process_get_rtsp_port(void) {
+    return g_rtsp_port;
 }
 
 bool go2rtc_process_stop(void) {

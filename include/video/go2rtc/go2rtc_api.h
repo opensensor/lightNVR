@@ -56,10 +56,18 @@ bool go2rtc_api_get_webrtc_url(const char *stream_id, char *buffer, size_t buffe
 
 /**
  * @brief Update go2rtc configuration with current streams
- * 
- * @return true if configuration was updated successfully, false otherwise
+ *
+ * @return true if configuration was updated successfully false otherwise
  */
 bool go2rtc_api_update_config(void);
+
+/**
+ * @brief Get go2rtc server information including RTSP port
+ * 
+ * @param rtsp_port Pointer to store the RTSP port (can be NULL)
+ * @return true if information was retrieved successfully, false otherwise
+ */
+bool go2rtc_api_get_server_info(int *rtsp_port);
 
 /**
  * @brief Clean up resources used by the go2rtc API client
