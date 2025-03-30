@@ -469,17 +469,17 @@ bool go2rtc_stream_start_service(void) {
         if (go2rtc_stream_is_ready()) {
             log_info("Existing go2rtc service is responsive and ready to use");
             
-        // Register all existing streams with go2rtc if integration module is initialized
-        if (go2rtc_integration_is_initialized()) {
-            log_info("Registering all existing streams with go2rtc");
-            if (!go2rtc_integration_register_all_streams()) {
-                log_warn("Failed to register all streams with go2rtc");
-                // Continue anyway
+            // Register all existing streams with go2rtc if integration module is initialized
+            if (go2rtc_integration_is_initialized()) {
+                log_info("Registering all existing streams with go2rtc");
+                if (!go2rtc_integration_register_all_streams()) {
+                    log_warn("Failed to register all streams with go2rtc");
+                    // Continue anyway
+                }
+            } else {
+                log_info("go2rtc integration module not initialized, skipping stream registration");
             }
-        } else {
-            log_info("go2rtc integration module not initialized, skipping stream registration");
-        }
-            
+                
             return true;
         }
         
@@ -487,7 +487,7 @@ bool go2rtc_stream_start_service(void) {
         log_warn("Existing go2rtc service is not responding, will try to wait for it");
         
         // Wait for the service to be ready
-        int retries = 5; // Reduced retries since we already know it's not immediately responsive
+        int retries = 10; // Increased retries to give more time for the service to become responsive
         while (retries > 0) {
             sleep(1);
             if (go2rtc_stream_is_ready()) {
@@ -510,12 +510,10 @@ bool go2rtc_stream_start_service(void) {
             retries--;
         }
         
-        // If still not responsive, stop it and start a new one
-        log_warn("Existing go2rtc service is not responding to API requests, will restart it");
-        go2rtc_process_stop();
-        
-        // Sleep a bit to ensure all processes are fully stopped
-        sleep(2);
+        // If still not responsive, log a warning but don't stop it
+        log_warn("Existing go2rtc service is not responding to API requests");
+        log_warn("Will continue using the existing service, but it may not work properly");
+        return false;
     }
     
     // Start go2rtc process with our configuration

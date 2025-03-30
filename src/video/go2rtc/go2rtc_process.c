@@ -508,23 +508,16 @@ bool go2rtc_process_start(int api_port) {
             if (port_in_use) {
                 return true;
             } else {
-                log_warn("go2rtc is running but not listening on port %d, will restart", api_port);
-                // Kill existing processes and start a new one
-                go2rtc_process_stop();
-                // Sleep to ensure all processes are fully stopped
-                sleep(2);
+                log_warn("go2rtc is running but not listening on port %d", api_port);
+                // Instead of killing and restarting, just return false to indicate we couldn't start
+                // on the requested port
+                return false;
             }
         } else {
             log_info("go2rtc is already running, using existing process");
             return true;
         }
     }
-    
-    // Kill any existing go2rtc processes and s6 supervision
-    kill_all_go2rtc_processes();
-    
-    // Sleep to ensure all processes are fully stopped
-    sleep(2);
     
     // Check if the port is already in use by another process
     char cmd[128];
