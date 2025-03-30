@@ -12,6 +12,8 @@ DATA_DIR="/var/lib/lightnvr"
 LOG_DIR="/var/log/lightnvr"
 RUN_DIR="/var/run/lightnvr"
 INSTALL_SOD=1
+INSTALL_GO2RTC=1
+GO2RTC_CONFIG_DIR="/etc/lightnvr/go2rtc"
 DO_LDCONFIG=1
 INSTALL_SYSTEMD_SERVICE=1
 
@@ -63,6 +65,18 @@ while [[ $# -gt 0 ]]; do
             INSTALL_SYSTEMD_SERVICE=0
             shift
             ;;
+        --with-go2rtc)
+            INSTALL_GO2RTC=1
+            shift
+            ;;
+        --without-go2rtc)
+            INSTALL_GO2RTC=0
+            shift
+            ;;
+        --go2rtc-config-dir=*)
+            GO2RTC_CONFIG_DIR="${key#*=}"
+            shift
+            ;;
         --help)
             echo "Usage: $0 [options]"
             echo "Options:"
@@ -77,6 +91,9 @@ while [[ $# -gt 0 ]]; do
             echo "  --without-ldconfig Skip running ldconfig after installing SOD library"
             echo "  --with-systemd     Install systemd service (default)"
             echo "  --without-systemd  Skip installing systemd service"
+            echo "  --with-go2rtc      Install with go2rtc support (default)"
+            echo "  --without-go2rtc   Install without go2rtc support"
+            echo "  --go2rtc-config-dir=DIR  Set go2rtc config directory (default: /etc/lightnvr/go2rtc)"
             echo "  --help             Show this help message"
             exit 0
             ;;
@@ -267,6 +284,46 @@ else
     install -m 644 config/lightnvr.ini "$CONFIG_DIR/lightnvr.ini.default"
 fi
 
+# Install go2rtc configuration if enabled
+if [ "$INSTALL_GO2RTC" -eq 1 ]; then
+    echo "Setting up go2rtc configuration..."
+    mkdir -p "$GO2RTC_CONFIG_DIR"
+    
+    # Create default go2rtc configuration if it doesn't exist
+    if [ ! -f "$GO2RTC_CONFIG_DIR/go2rtc.yaml" ]; then
+        cat > "$GO2RTC_CONFIG_DIR/go2rtc.yaml" << EOF
+# go2rtc configuration file
+# See https://github.com/AlexxIT/go2rtc for documentation
+
+api:
+  listen: :1984
+  base_path: /go2rtc/
+
+webrtc:
+  ice_servers:
+    - urls: [stun:stun.l.google.com:19302]
+
+log:
+  level: info
+
+streams:
+  # Streams will be added dynamically by LightNVR
+EOF
+        echo "Created default go2rtc configuration at $GO2RTC_CONFIG_DIR/go2rtc.yaml"
+    else
+        echo "go2rtc configuration already exists, not overwriting"
+    fi
+    
+    # Set permissions for go2rtc configuration
+    chown -R root:root "$GO2RTC_CONFIG_DIR"
+    chmod -R 755 "$GO2RTC_CONFIG_DIR"
+    
+    echo "go2rtc configuration directory: $GO2RTC_CONFIG_DIR"
+    echo "Note: You need to install the go2rtc binary separately using scripts/install_go2rtc.sh"
+else
+    echo "Skipping go2rtc configuration (go2rtc support disabled)"
+fi
+
 # Check if web directory exists
 if [ -d "web" ]; then
     # Install web interface files
@@ -353,4 +410,20 @@ else
     echo "SOD library not installed"
     echo "Object detection will be disabled unless SOD is installed separately"
     echo "See docs/SOD_INTEGRATION.md for more information"
+fi
+
+if [ "$INSTALL_GO2RTC" -eq 1 ]; then
+    echo ""
+    echo "go2rtc integration is enabled"
+    echo "Configuration directory: $GO2RTC_CONFIG_DIR"
+    echo ""
+    echo "To install the go2rtc binary:"
+    echo "  sudo ./scripts/install_go2rtc.sh"
+    echo ""
+    echo "For more information about go2rtc integration:"
+    echo "  See docs/GO2RTC_INTEGRATION.md"
+else
+    echo ""
+    echo "go2rtc integration is disabled"
+    echo "WebRTC streaming will not be available"
 fi

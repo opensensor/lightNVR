@@ -155,14 +155,57 @@ static void *mp4_recording_thread(void *arg) {
     log_info("Set segment duration to %d seconds for MP4 writer for stream %s", 
              segment_duration, stream_name);
     
+    // Check if this stream is using go2rtc for recording
+    char actual_url[MAX_PATH_LENGTH];
+    bool using_go2rtc = false;
+    
+    // Forward declarations for go2rtc integration
+    extern bool go2rtc_integration_is_using_go2rtc_for_recording(const char *stream_name);
+    extern bool go2rtc_get_rtsp_url(const char *stream_name, char *url, size_t url_size);
+    
+    // Try to get the go2rtc RTSP URL for this stream
+    if (go2rtc_integration_is_using_go2rtc_for_recording(stream_name)) {
+        // Retry a few times to get the go2rtc RTSP URL
+        int retries = 5;
+        bool success = false;
+        
+        while (retries > 0 && !success) {
+            if (go2rtc_get_rtsp_url(stream_name, actual_url, sizeof(actual_url))) {
+                log_info("Using go2rtc RTSP URL for MP4 recording: %s", actual_url);
+                using_go2rtc = true;
+                success = true;
+            } else {
+                log_warn("Failed to get go2rtc RTSP URL for stream %s, retrying in 2 seconds (%d retries left)", 
+                        stream_name, retries);
+                sleep(2);
+                retries--;
+            }
+        }
+        
+        if (!success) {
+            log_error("Failed to get go2rtc RTSP URL for stream %s after multiple retries, falling back to original URL", 
+                     stream_name);
+            strncpy(actual_url, ctx->config.url, sizeof(actual_url) - 1);
+            actual_url[sizeof(actual_url) - 1] = '\0';
+        }
+    } else {
+        // Use the original URL
+        strncpy(actual_url, ctx->config.url, sizeof(actual_url) - 1);
+        actual_url[sizeof(actual_url) - 1] = '\0';
+    }
+    
     // Start the RTSP recording thread in the MP4 writer
-    int ret = mp4_writer_start_recording_thread(ctx->mp4_writer, ctx->config.url);
+    int ret = mp4_writer_start_recording_thread(ctx->mp4_writer, actual_url);
     if (ret < 0) {
         log_error("Failed to start RTSP recording thread for %s", stream_name);
         mp4_writer_close(ctx->mp4_writer);
         ctx->mp4_writer = NULL;
         ctx->running = 0;
         return NULL;
+    }
+    
+    if (using_go2rtc) {
+        log_info("Started MP4 recording for stream %s using go2rtc's RTSP output", stream_name);
     }
     
     log_info("Started RTSP recording thread for stream %s", stream_name);
@@ -260,8 +303,44 @@ static void *mp4_recording_thread(void *arg) {
                             stream_name, ctx->output_path, segment_duration);
                 }
                 
+                // Check if this stream is using go2rtc for recording
+                char retry_url[MAX_PATH_LENGTH];
+                bool using_go2rtc = false;
+                
+                // Try to get the go2rtc RTSP URL for this stream
+                if (go2rtc_integration_is_using_go2rtc_for_recording(stream_name)) {
+                    // Retry a few times to get the go2rtc RTSP URL
+                    int go2rtc_retries = 5;
+                    bool success = false;
+                    
+                    while (go2rtc_retries > 0 && !success) {
+                        if (go2rtc_get_rtsp_url(stream_name, retry_url, sizeof(retry_url))) {
+                            log_info("Using go2rtc RTSP URL for MP4 recording retry: %s", retry_url);
+                            using_go2rtc = true;
+                            success = true;
+                        } else {
+                            log_warn("Failed to get go2rtc RTSP URL for stream %s, retrying in 2 seconds (%d retries left)", 
+                                    stream_name, go2rtc_retries);
+                            sleep(2);
+                            go2rtc_retries--;
+                        }
+                    }
+                    
+                    if (!success) {
+                        log_error("Failed to get go2rtc RTSP URL for stream %s after multiple retries, falling back to original URL", 
+                                 stream_name);
+                        strncpy(retry_url, ctx->config.url, sizeof(retry_url) - 1);
+                        retry_url[sizeof(retry_url) - 1] = '\0';
+                    }
+                } else {
+                    // Use the original URL
+                    strncpy(retry_url, ctx->config.url, sizeof(retry_url) - 1);
+                    retry_url[sizeof(retry_url) - 1] = '\0';
+                }
+                
                 // Try to restart the recording thread
-                ret = mp4_writer_start_recording_thread(ctx->mp4_writer, ctx->config.url);
+                log_info("Attempting to restart MP4 recording thread for %s with URL: %s", stream_name, retry_url);
+                ret = mp4_writer_start_recording_thread(ctx->mp4_writer, retry_url);
                 last_retry_time = current_time;
                 
                 if (ret < 0) {
@@ -521,6 +600,148 @@ int start_mp4_recording(const char *stream_name) {
     recording_contexts[slot] = ctx;
 
     log_info("Started MP4 recording for %s in slot %d", stream_name, slot);
+
+    return 0;
+}
+
+/**
+ * Start MP4 recording for a stream with a specific URL
+ */
+int start_mp4_recording_with_url(const char *stream_name, const char *url) {
+    // Check if shutdown is in progress
+    if (shutdown_in_progress) {
+        log_warn("Cannot start MP4 recording for %s during shutdown", stream_name);
+        return -1;
+    }
+
+    stream_handle_t stream = get_stream_by_name(stream_name);
+    if (!stream) {
+        log_error("Stream %s not found for MP4 recording", stream_name);
+        return -1;
+    }
+
+    stream_config_t config;
+    if (get_stream_config(stream, &config) != 0) {
+        log_error("Failed to get config for stream %s for MP4 recording", stream_name);
+        return -1;
+    }
+
+    // Check if already running
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (recording_contexts[i] && strcmp(recording_contexts[i]->config.name, stream_name) == 0) {
+            log_info("MP4 recording for stream %s already running", stream_name);
+            return 0;  // Already running
+        }
+    }
+    
+    log_info("Using standalone recording thread for stream %s with custom URL: %s", stream_name, url);
+
+    // Find empty slot
+    int slot = -1;
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (!recording_contexts[i]) {
+            slot = i;
+            break;
+        }
+    }
+
+    if (slot == -1) {
+        log_error("No slot available for new MP4 recording");
+        return -1;
+    }
+
+    // Create context
+    mp4_recording_ctx_t *ctx = malloc(sizeof(mp4_recording_ctx_t));
+    if (!ctx) {
+        log_error("Memory allocation failed for MP4 recording context");
+        return -1;
+    }
+
+    memset(ctx, 0, sizeof(mp4_recording_ctx_t));
+    memcpy(&ctx->config, &config, sizeof(stream_config_t));
+    
+    // Override the URL in the config with the provided URL
+    strncpy(ctx->config.url, url, MAX_PATH_LENGTH - 1);
+    ctx->config.url[MAX_PATH_LENGTH - 1] = '\0';
+    
+    ctx->running = 1;
+
+    // Create output paths
+    config_t *global_config = get_streaming_config();
+
+    // Create timestamp for MP4 filename
+    char timestamp_str[32];
+    time_t now = time(NULL);
+    struct tm *tm_info = localtime(&now);
+    strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M%S", tm_info);
+
+    // Create MP4 directory path
+    char mp4_dir[MAX_PATH_LENGTH];
+    if (global_config->record_mp4_directly && global_config->mp4_storage_path[0] != '\0') {
+        // Use configured MP4 storage path if available
+        snprintf(mp4_dir, MAX_PATH_LENGTH, "%s/%s",
+                global_config->mp4_storage_path, stream_name);
+    } else {
+        // Use mp4 directory parallel to hls, NOT inside it
+        snprintf(mp4_dir, MAX_PATH_LENGTH, "%s/mp4/%s",
+                global_config->storage_path, stream_name);
+    }
+
+    // Create MP4 directory if it doesn't exist
+    char dir_cmd[MAX_PATH_LENGTH * 2];
+    snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s", mp4_dir);
+    int ret = system(dir_cmd);
+    if (ret != 0) {
+        log_error("Failed to create MP4 directory: %s (return code: %d)", mp4_dir, ret);
+        
+        // Try to create the parent directory first
+        char parent_dir[MAX_PATH_LENGTH];
+        if (global_config->record_mp4_directly && global_config->mp4_storage_path[0] != '\0') {
+            strncpy(parent_dir, global_config->mp4_storage_path, MAX_PATH_LENGTH - 1);
+        } else {
+            snprintf(parent_dir, MAX_PATH_LENGTH, "%s/mp4", global_config->storage_path);
+        }
+        
+        snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s", parent_dir);
+        ret = system(dir_cmd);
+        if (ret != 0) {
+            log_error("Failed to create parent MP4 directory: %s (return code: %d)", parent_dir, ret);
+            free(ctx);
+            return -1;
+        }
+        
+        // Try again to create the stream-specific directory
+        snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s", mp4_dir);
+        ret = system(dir_cmd);
+        if (ret != 0) {
+            log_error("Still failed to create MP4 directory: %s (return code: %d)", mp4_dir, ret);
+            free(ctx);
+            return -1;
+        }
+    }
+
+    // Set full permissions for MP4 directory
+    snprintf(dir_cmd, sizeof(dir_cmd), "chmod -R 777 %s", mp4_dir);
+    int ret_chmod = system(dir_cmd);
+    if (ret_chmod != 0) {
+        log_warn("Failed to set permissions on MP4 directory: %s (return code: %d)", mp4_dir, ret_chmod);
+    }
+    
+    // Full path for the MP4 file
+    snprintf(ctx->output_path, MAX_PATH_LENGTH, "%s/recording_%s.mp4",
+             mp4_dir, timestamp_str);
+
+    // Start recording thread
+    if (pthread_create(&ctx->thread, NULL, mp4_recording_thread, ctx) != 0) {
+        free(ctx);
+        log_error("Failed to create MP4 recording thread for %s", stream_name);
+        return -1;
+    }
+
+    // Store context
+    recording_contexts[slot] = ctx;
+
+    log_info("Started MP4 recording for %s in slot %d using URL: %s", stream_name, slot, url);
 
     return 0;
 }

@@ -55,6 +55,19 @@ void cleanup_mp4_recording_backend(void);
 int start_mp4_recording(const char *stream_name);
 
 /**
+ * Start MP4 recording for a stream with a specific URL
+ * 
+ * This function creates a new recording thread for the specified stream
+ * using the provided URL instead of the stream's configured URL.
+ * This is useful for using go2rtc's RTSP URL as the input for MP4 recording.
+ * 
+ * @param stream_name Name of the stream to record
+ * @param url URL to use for recording
+ * @return 0 on success, non-zero on failure
+ */
+int start_mp4_recording_with_url(const char *stream_name, const char *url);
+
+/**
  * Stop MP4 recording for a stream
  * 
  * This function stops the recording thread for the specified stream.

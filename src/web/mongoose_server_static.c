@@ -12,6 +12,13 @@
 #include "core/config.h"
 #include "video/streams.h"
 
+#ifdef USE_GO2RTC
+#include "video/go2rtc/go2rtc_integration.h"
+#endif
+
+// Buffer size for URLs
+#define URL_BUFFER_SIZE 2048
+
 // Include Mongoose
 #include "mongoose.h"
 
@@ -111,11 +118,11 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
             return;
         }
     
-    // Extract stream name from URI
-    // URI format: /hls/{stream_name}/{file}
-    char stream_name[MAX_STREAM_NAME];
-    const char *stream_start = uri + 5; // Skip "/hls/"
-    const char *file_part = strchr(stream_start, '/');
+        // Extract stream name from URI
+        // URI format: /hls/{stream_name}/{file}
+        char stream_name[MAX_STREAM_NAME];
+        const char *stream_start = uri + 5; // Skip "/hls/"
+        const char *file_part = strchr(stream_start, '/');
         
         if (!file_part) {
             mg_http_reply(c, 404, "", "{\"error\": \"Invalid HLS path\"}\n");
@@ -129,6 +136,17 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         }
         strncpy(stream_name, stream_start, name_len);
         stream_name[name_len] = '\0';
+        
+        // Even if the stream is using go2rtc for HLS, we'll serve the files directly from our filesystem
+        // since we've configured go2rtc to write its HLS segments to our HLS directory
+        #ifdef USE_GO2RTC
+        char go2rtc_hls_url[URL_BUFFER_SIZE];
+        if (go2rtc_integration_get_hls_url(stream_name, go2rtc_hls_url, sizeof(go2rtc_hls_url))) {
+            // Stream is using go2rtc for HLS, but we'll serve the files directly
+            log_info("Stream %s is using go2rtc for HLS, but serving files directly from filesystem", stream_name);
+            // No redirection needed as go2rtc writes HLS segments to our HLS directory
+        }
+        #endif
         
         // Extract file name (everything after the stream name)
         const char *file_name = file_part + 1; // Skip "/"

@@ -241,26 +241,38 @@ export function initializeVideoPlayer(stream, videoPlayers, detectionIntervals) 
               const newTimestamp = Date.now();
               const newUrl = `/hls/${encodeURIComponent(stream.name)}/index.m3u8?_t=${newTimestamp}`;
               
-              // Create a new HLS instance with standard settings
+              // Create a new HLS instance with the same settings as the main instance
               const newHls = new window.Hls({
-                maxBufferLength: 20,
-                maxMaxBufferLength: 30,
-                liveSyncDurationCount: 3,
-                liveMaxLatencyDurationCount: 6,
+                // Increase buffer settings for mobile devices to improve stability
+                maxBufferLength: isMobile ? 30 : 20,
+                maxMaxBufferLength: isMobile ? 60 : 30,
+                // Increase sync settings for mobile to handle network fluctuations
+                liveSyncDurationCount: isMobile ? 4 : 3,
+                liveMaxLatencyDurationCount: isMobile ? 10 : 6,
+                liveDurationInfinity: false,
+                // Disable low latency mode as it can cause issues on mobile devices
                 lowLatencyMode: false,
+                // Enable worker for better performance
                 enableWorker: true,
-                fragLoadingTimeOut: 30000,
-                manifestLoadingTimeOut: 30000,
-                levelLoadingTimeOut: 30000,
-                backBufferLength: 30,
-                startLevel: -1,
-                abrEwmaDefaultEstimate: 500000,
-                abrBandWidthFactor: 0.7,
-                abrBandWidthUpFactor: 0.5,
+                // Increase timeouts for mobile devices to handle slower networks
+                fragLoadingTimeOut: isMobile ? 60000 : 30000,
+                manifestLoadingTimeOut: isMobile ? 60000 : 30000,
+                levelLoadingTimeOut: isMobile ? 60000 : 30000,
+                // Increase back buffer length for mobile
+                backBufferLength: isMobile ? 60 : 30,
+                // Start with lower quality on mobile for faster initial load
+                startLevel: isMobile ? 0 : -1,
+                // More conservative ABR settings for mobile
+                abrEwmaDefaultEstimate: isMobile ? 1000000 : 500000,
+                abrBandWidthFactor: isMobile ? 0.5 : 0.7,
+                abrBandWidthUpFactor: isMobile ? 0.3 : 0.5,
+                // Add custom headers to all HLS requests
                 xhrSetup: function(xhr, url) {
+                  // Add Authorization header if we have auth in localStorage
                   if (auth) {
                     xhr.setRequestHeader('Authorization', 'Basic ' + auth);
                   }
+                  // Always include credentials (cookies)
                   xhr.withCredentials = true;
                 }
               });

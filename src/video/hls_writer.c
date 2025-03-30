@@ -586,12 +586,12 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
     }
 
     if (!pkt) {
-        log_error("hls_writer_write_packet: NULL packet for stream %s", writer->stream_name);
+        log_error("hls_writer_write_packet: NULL packet for stream %s", writer ? writer->stream_name : "unknown");
         return -1;
     }
 
     if (!input_stream) {
-        log_error("hls_writer_write_packet: NULL input stream for stream %s", writer->stream_name);
+        log_error("hls_writer_write_packet: NULL input stream for stream %s", writer ? writer->stream_name : "unknown");
         return -1;
     }
 
@@ -602,17 +602,18 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
     }
 
     // Periodically ensure output directory exists (every 10 seconds)
-    static time_t last_dir_check = 0;
+    // Use thread-safe approach with per-writer timestamp instead of static variable
     time_t now = time(NULL);
-    if (now - last_dir_check >= 10) {
+    if (now - writer->last_cleanup_time >= 10) {
         if (ensure_output_directory(writer) != 0) {
             log_error("Failed to ensure HLS output directory exists: %s", writer->output_dir);
             return -1;
         }
-        last_dir_check = now;
+        // Update the last cleanup time which is also used for directory checks
+        writer->last_cleanup_time = now;
     }
 
-    // Lazy initialization of output stream
+    // Lazy initialization of output stream with additional safety checks
     if (!writer->initialized) {
         int ret = hls_writer_initialize(writer, input_stream);
         if (ret < 0) {
@@ -620,16 +621,24 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
         }
     }
 
-    // Check if writer has been closed after initialization
+    // Double-check if writer has been closed after initialization
     if (!writer->output_ctx) {
         log_warn("hls_writer_write_packet: Writer for stream %s has been closed after initialization", writer->stream_name);
         return -1;
     }
 
-    // Clone the packet
+    // Clone the packet with additional safety checks
     AVPacket out_pkt;
     // Initialize the packet without using deprecated av_init_packet
     memset(&out_pkt, 0, sizeof(out_pkt));
+    
+    // Verify packet data is valid before referencing
+    if (!pkt->data || pkt->size <= 0) {
+        log_warn("Invalid packet data for stream %s (data=%p, size=%d)", 
+                writer->stream_name, pkt->data, pkt->size);
+        return -1;
+    }
+    
     if (av_packet_ref(&out_pkt, pkt) < 0) {
         log_error("Failed to reference packet for stream %s", writer->stream_name);
         return -1;
@@ -879,6 +888,7 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
     }
 
     // Periodically clean up old segments (every 60 seconds)
+    // Note: now is already set above, and writer->last_cleanup_time is updated there too
     if (now - writer->last_cleanup_time >= 60) {
         // Keep more segments than in the playlist for smooth playback
         int max_segments_to_keep = 15; // More than hls_list_size
@@ -892,6 +902,7 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
 /**
  * Close HLS writer and free resources
  * This function is thread-safe and handles all cleanup operations with improved robustness
+ * to ensure safe operation with go2rtc integration
  */
 void hls_writer_close(hls_writer_t *writer) {
     if (!writer) {
@@ -899,10 +910,14 @@ void hls_writer_close(hls_writer_t *writer) {
         return;
     }
 
-    // Store stream name for logging
-    char stream_name[MAX_STREAM_NAME];
-    strncpy(stream_name, writer->stream_name, MAX_STREAM_NAME - 1);
-    stream_name[MAX_STREAM_NAME - 1] = '\0';
+    // Store stream name for logging - use a local copy to avoid potential race conditions
+    char stream_name[MAX_STREAM_NAME] = {0};
+    if (writer->stream_name[0] != '\0') {
+        strncpy(stream_name, writer->stream_name, MAX_STREAM_NAME - 1);
+        stream_name[MAX_STREAM_NAME - 1] = '\0';
+    } else {
+        strcpy(stream_name, "unknown");
+    }
 
     log_info("Starting to close HLS writer for stream %s", stream_name);
 
@@ -917,17 +932,18 @@ void hls_writer_close(hls_writer_t *writer) {
     // Try to acquire the mutex with a timeout approach
     struct timespec timeout;
     clock_gettime(CLOCK_REALTIME, &timeout);
-    timeout.tv_sec += 3; // Increased from 2 to 3 second timeout
+    timeout.tv_sec += 5; // Increased to 5 second timeout for better reliability with go2rtc
     
     int mutex_result = pthread_mutex_timedlock(&writer->mutex, &timeout);
     if (mutex_result != 0) {
-        log_warn("Could not acquire HLS writer mutex for stream %s within timeout, proceeding with forced close", stream_name);
+        log_warn("Could not acquire HLS writer mutex for stream %s within timeout, proceeding with forced close (error: %s)", 
+                stream_name, strerror(mutex_result));
         // Continue with the close operation even if we couldn't acquire the mutex
     } else {
         log_info("Successfully acquired mutex for HLS writer for stream %s", stream_name);
     }
 
-    // Check if already closed
+    // Check if already closed - with additional safety check
     if (!writer->output_ctx) {
         log_warn("Attempted to close already closed HLS writer for stream %s", stream_name);
         if (mutex_result == 0) {
@@ -936,12 +952,17 @@ void hls_writer_close(hls_writer_t *writer) {
         return;
     }
 
-    // Create a local copy of the output context
-    AVFormatContext *local_output_ctx = writer->output_ctx;
-
-    // Mark as closed immediately to prevent other threads from using it
-    writer->output_ctx = NULL;
-    writer->initialized = 0;
+    // Create a local copy of the output context with additional safety checks
+    AVFormatContext *local_output_ctx = NULL;
+    if (writer->output_ctx) {
+        local_output_ctx = writer->output_ctx;
+        
+        // Mark as closed immediately to prevent other threads from using it
+        writer->output_ctx = NULL;
+        writer->initialized = 0;
+    } else {
+        log_warn("Output context became NULL during close for stream %s", stream_name);
+    }
 
     // Unlock the mutex if we acquired it
     if (mutex_result == 0) {
@@ -949,8 +970,9 @@ void hls_writer_close(hls_writer_t *writer) {
         log_info("Released mutex for HLS writer for stream %s", stream_name);
     }
 
-    // Add a small delay to ensure any in-progress operations complete
-    usleep(300000); // 300ms - increased from 200ms for more safety
+    // Add a delay to ensure any in-progress operations complete
+    // Increased for better reliability with go2rtc integration
+    usleep(500000); // 500ms - increased for more safety with go2rtc
 
     // Write trailer if the context is valid
     if (local_output_ctx) {
@@ -965,12 +987,22 @@ void hls_writer_close(hls_writer_t *writer) {
             // First check if the context is still valid
             if (local_output_ctx->oformat && local_output_ctx->pb) {
                 // Set up a timeout for the trailer write operation
+                // Use sigaction for more reliable signal handling
+                struct sigaction sa_old, sa_new;
+                sigaction(SIGALRM, NULL, &sa_old);
+                sa_new = sa_old;
+                sa_new.sa_handler = SIG_IGN; // Ignore alarm signal
+                sigaction(SIGALRM, &sa_new, NULL);
+                
+                // Set alarm
                 alarm(5); // 5 second timeout for trailer write
                 
+                // Use a safer approach to write the trailer
                 ret = av_write_trailer(local_output_ctx);
                 
-                // Cancel the alarm
+                // Cancel the alarm and restore signal handler
                 alarm(0);
+                sigaction(SIGALRM, &sa_old, NULL);
                 
                 if (ret < 0) {
                     char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
@@ -994,20 +1026,32 @@ void hls_writer_close(hls_writer_t *writer) {
             AVIOContext *pb_to_close = local_output_ctx->pb;
             local_output_ctx->pb = NULL;
             
-            // Set up a timeout for the AVIO close operation
+            // Set up a timeout for the AVIO close operation with proper signal handling
+            struct sigaction sa_old, sa_new;
+            sigaction(SIGALRM, NULL, &sa_old);
+            sa_new = sa_old;
+            sa_new.sa_handler = SIG_IGN; // Ignore alarm signal
+            sigaction(SIGALRM, &sa_new, NULL);
+            
+            // Set alarm
             alarm(5); // 5 second timeout for AVIO close
             
             // Close the AVIO context
             avio_closep(&pb_to_close); // Use safer avio_closep and pass the correct pointer
             
-            // Cancel the alarm
+            // Cancel the alarm and restore signal handler
             alarm(0);
+            sigaction(SIGALRM, &sa_old, NULL);
             
             log_info("Successfully closed AVIO context for HLS writer for stream %s", stream_name);
         }
         
+        // Add a small delay before freeing the context to ensure all operations are complete
+        usleep(100000); // 100ms
+        
         log_info("Freeing format context for HLS writer for stream %s", stream_name);
         avformat_free_context(local_output_ctx);
+        local_output_ctx = NULL; // Set to NULL after freeing to prevent double-free
         log_info("Successfully freed format context for HLS writer for stream %s", stream_name);
     }
     
