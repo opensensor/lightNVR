@@ -236,8 +236,15 @@ bool go2rtc_stream_get_rtsp_url(const char *stream_id, char *buffer, size_t buff
         return false;
     }
 
-    // Get the RTSP port from the process manager
-    int rtsp_port = go2rtc_process_get_rtsp_port();
+    // Get the RTSP port from the API
+    int rtsp_port = 0;
+    if (!go2rtc_api_get_server_info(&rtsp_port)) {
+        log_warn("Failed to get RTSP port from go2rtc API, falling back to process manager");
+        // Fall back to the process manager's stored port
+        rtsp_port = go2rtc_process_get_rtsp_port();
+    } else {
+        log_info("Retrieved RTSP port from go2rtc API: %d", rtsp_port);
+    }
     
     // Format the RTSP URL
     snprintf(buffer, buffer_size, "rtsp://localhost:%d/%s", rtsp_port, stream_id);

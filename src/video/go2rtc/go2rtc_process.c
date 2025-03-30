@@ -18,6 +18,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <limits.h>
+#include <curl/curl.h>
 
 // Define PATH_MAX if not defined
 #ifndef PATH_MAX
@@ -32,8 +33,14 @@ static pid_t g_process_pid = -1;
 static bool g_initialized = false;
 static int g_rtsp_port = 8554; // Default RTSP port
 
+// Callback function for libcurl to discard response data
+static size_t discard_response_data(void *ptr, size_t size, size_t nmemb, void *userdata) {
+    // Just return the size of the data to indicate we handled it
+    return size * nmemb;
+}
+
 /**
- * @brief Check if go2rtc is already running as a system service
+ * @brief Check if go2rtc is already running as a system service using libcurl
  * 
  * @param api_port The port to check for go2rtc service
  * @return true if go2rtc is running as a service, false otherwise
@@ -68,33 +75,51 @@ static bool is_go2rtc_running_as_service(int api_port) {
     pclose(fp);
     
     if (port_in_use) {
-        // Try to make a simple HTTP request to the API endpoint
-        char curl_cmd[256];
-        snprintf(curl_cmd, sizeof(curl_cmd), 
-                "curl -s -o /dev/null -w \"%%{http_code}\" http://localhost:%d/api/streams 2>/dev/null", 
-                api_port);
+        // Use libcurl to make a simple HTTP request to the API endpoint
+        CURL *curl;
+        CURLcode res;
+        char url[256];
+        long http_code = 0;
         
-        fp = popen(curl_cmd, "r");
-        if (!fp) {
-            log_warn("Failed to execute curl command");
+        // Initialize curl
+        curl = curl_easy_init();
+        if (!curl) {
+            log_warn("Failed to initialize curl");
             return false;
         }
         
-        char response[16] = {0};
-        if (fgets(response, sizeof(response), fp)) {
-            int status_code = atoi(response);
-            pclose(fp);
-            
-            if (status_code == 200 || status_code == 401) {
-                log_info("Port %d is responding like go2rtc (HTTP %d)", api_port, status_code);
-                return true;
-            }
-            
-            log_info("Port %d returned HTTP %d, not a go2rtc service", api_port, status_code);
+        // Format the URL for the API endpoint
+        snprintf(url, sizeof(url), "http://localhost:%d/api/streams", api_port);
+        
+        // Set curl options
+        curl_easy_setopt(curl, CURLOPT_URL, url);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, discard_response_data);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 2L); // 2 second timeout
+        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 2L); // 2 second connect timeout
+        curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L); // Prevent curl from using signals
+        
+        // Perform the request
+        res = curl_easy_perform(curl);
+        
+        // Check for errors
+        if (res != CURLE_OK) {
+            log_warn("Curl request failed: %s", curl_easy_strerror(res));
+            curl_easy_cleanup(curl);
             return false;
         }
         
-        pclose(fp);
+        // Get the HTTP response code
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+        
+        // Clean up
+        curl_easy_cleanup(curl);
+        
+        if (http_code == 200 || http_code == 401) {
+            log_info("Port %d is responding like go2rtc (HTTP %ld)", api_port, http_code);
+            return true;
+        }
+        
+        log_info("Port %d returned HTTP %ld, not a go2rtc service", api_port, http_code);
     }
     
     return false;
@@ -643,11 +668,23 @@ bool go2rtc_process_start(int api_port) {
     if (is_go2rtc_running_as_service(api_port)) {
         log_info("go2rtc is already running as a service on port %d, using existing service", api_port);
         
-        // Try to get the RTSP port from the API
-        if (go2rtc_api_get_server_info(&g_rtsp_port)) {
-            log_info("Retrieved RTSP port from go2rtc API: %d", g_rtsp_port);
-        } else {
-            log_warn("Could not retrieve RTSP port from go2rtc API, using default: %d", g_rtsp_port);
+        // Try to get the RTSP port from the API with multiple retries
+        int retries = 5;
+        bool got_rtsp_port = false;
+        
+        while (retries > 0 && !got_rtsp_port) {
+            if (go2rtc_api_get_server_info(&g_rtsp_port)) {
+                log_info("Retrieved RTSP port from go2rtc API: %d", g_rtsp_port);
+                got_rtsp_port = true;
+            } else {
+                log_warn("Could not retrieve RTSP port from go2rtc API, retrying... (%d retries left)", retries);
+                sleep(1);
+                retries--;
+            }
+        }
+        
+        if (!got_rtsp_port) {
+            log_warn("Could not retrieve RTSP port from go2rtc API after multiple attempts, using default: %d", g_rtsp_port);
         }
         
         return true;
@@ -671,6 +708,25 @@ bool go2rtc_process_start(int api_port) {
             pclose(fp);
             
             if (port_in_use) {
+                // Try to get the RTSP port from the API with multiple retries
+                int retries = 5;
+                bool got_rtsp_port = false;
+                
+                while (retries > 0 && !got_rtsp_port) {
+                    if (go2rtc_api_get_server_info(&g_rtsp_port)) {
+                        log_info("Retrieved RTSP port from go2rtc API: %d", g_rtsp_port);
+                        got_rtsp_port = true;
+                    } else {
+                        log_warn("Could not retrieve RTSP port from go2rtc API, retrying... (%d retries left)", retries);
+                        sleep(1);
+                        retries--;
+                    }
+                }
+                
+                if (!got_rtsp_port) {
+                    log_warn("Could not retrieve RTSP port from go2rtc API after multiple attempts, using default: %d", g_rtsp_port);
+                }
+                
                 return true;
             } else {
                 log_warn("go2rtc is running but not listening on port %d", api_port);
@@ -680,6 +736,26 @@ bool go2rtc_process_start(int api_port) {
             }
         } else {
             log_info("go2rtc is already running, using existing process");
+            
+            // Try to get the RTSP port from the API with multiple retries
+            int retries = 5;
+            bool got_rtsp_port = false;
+            
+            while (retries > 0 && !got_rtsp_port) {
+                if (go2rtc_api_get_server_info(&g_rtsp_port)) {
+                    log_info("Retrieved RTSP port from go2rtc API: %d", g_rtsp_port);
+                    got_rtsp_port = true;
+                } else {
+                    log_warn("Could not retrieve RTSP port from go2rtc API, retrying... (%d retries left)", retries);
+                    sleep(1);
+                    retries--;
+                }
+            }
+            
+            if (!got_rtsp_port) {
+                log_warn("Could not retrieve RTSP port from go2rtc API after multiple attempts, using default: %d", g_rtsp_port);
+            }
+            
             return true;
         }
     }
@@ -779,14 +855,89 @@ bool go2rtc_process_start(int api_port) {
             return false;
         }
         
-        // Wait a bit more for the API to be ready
-        sleep(2);
+        // Wait for the API to be ready with increased retries
+        log_info("Waiting for go2rtc API to be ready...");
+        int api_retries = 10;
+        bool api_ready = false;
         
-        // Try to get the RTSP port from the API
-        if (go2rtc_api_get_server_info(&g_rtsp_port)) {
-            log_info("Retrieved RTSP port from go2rtc API: %d", g_rtsp_port);
-        } else {
-            log_warn("Could not retrieve RTSP port from go2rtc API, using default: %d", g_rtsp_port);
+        while (api_retries > 0 && !api_ready) {
+            // Use libcurl to check if the API is ready
+            CURL *curl;
+            CURLcode res;
+            char url[256];
+            long http_code = 0;
+            
+            // Initialize curl
+            curl = curl_easy_init();
+            if (!curl) {
+                log_warn("Failed to initialize curl");
+                sleep(1);
+                api_retries--;
+                continue;
+            }
+            
+            // Format the URL for the API endpoint
+            snprintf(url, sizeof(url), "http://localhost:%d/api", api_port);
+            
+            // Set curl options
+            curl_easy_setopt(curl, CURLOPT_URL, url);
+            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, discard_response_data);
+            curl_easy_setopt(curl, CURLOPT_TIMEOUT, 2L); // 2 second timeout
+            curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 2L); // 2 second connect timeout
+            curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L); // Prevent curl from using signals
+            
+            // Perform the request
+            res = curl_easy_perform(curl);
+            
+            // Check for errors
+            if (res != CURLE_OK) {
+                log_warn("Curl request failed: %s", curl_easy_strerror(res));
+                curl_easy_cleanup(curl);
+                sleep(1);
+                api_retries--;
+                continue;
+            }
+            
+            // Get the HTTP response code
+            curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+            
+            // Clean up
+            curl_easy_cleanup(curl);
+            
+            if (http_code == 200 || http_code == 401) {
+                log_info("go2rtc API is ready (HTTP %ld)", http_code);
+                api_ready = true;
+                break;
+            }
+            
+            log_info("Waiting for go2rtc API to be ready... (%d retries left)", api_retries);
+            sleep(1);
+            api_retries--;
+        }
+        
+        if (!api_ready) {
+            log_warn("go2rtc API did not become ready within timeout, but process is running");
+            // Continue anyway, as the process might still be starting up
+        }
+        
+        // Try to get the RTSP port from the API with multiple retries
+        log_info("Attempting to retrieve RTSP port from go2rtc API...");
+        int retries = 10;  // Increased retries
+        bool got_rtsp_port = false;
+        
+        while (retries > 0 && !got_rtsp_port) {
+            if (go2rtc_api_get_server_info(&g_rtsp_port)) {
+                log_info("Retrieved RTSP port from go2rtc API: %d", g_rtsp_port);
+                got_rtsp_port = true;
+            } else {
+                log_warn("Could not retrieve RTSP port from go2rtc API, retrying... (%d retries left)", retries);
+                sleep(1);
+                retries--;
+            }
+        }
+        
+        if (!got_rtsp_port) {
+            log_warn("Could not retrieve RTSP port from go2rtc API after multiple attempts, using default: %d", g_rtsp_port);
         }
         
         return true;
