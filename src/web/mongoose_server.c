@@ -294,7 +294,8 @@ http_server_handle_t mongoose_server_init(const http_server_config_t *config) {
     
     // Initialize connection pool for connection handling
     // Use the number of threads specified in the configuration, or a default value
-    int num_threads = config->web_thread_pool_size > 0 ? config->web_thread_pool_size : 3;
+    // For embedded devices, this will be limited to 4 threads
+    int num_threads = api_thread_pool_get_size();
     
     server->conn_pool = connection_pool_init(num_threads);
     if (!server->conn_pool) {

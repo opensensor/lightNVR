@@ -1,6 +1,8 @@
 #define _GNU_SOURCE  // For clock_gettime
 #include "web/api_thread_pool.h"
 #include "core/logger.h"
+#include "core/config.h"
+#include "video/detection_embedded.h"
 #include "video/onvif_discovery.h"
 #include "web/api_handlers.h"
 #include <stdio.h>
@@ -190,6 +192,15 @@ int api_thread_pool_get_size(void) {
     // If the size is not set or invalid, use a default value
     if (size <= 0) {
         size = 4; // Default to 4 threads
+    }
+    
+    // Check if we're running on an embedded device
+    if (is_embedded_device()) {
+        // Limit thread pool size to 4 for embedded devices
+        if (size > 4) {
+            log_info("Limiting thread pool size to 4 for embedded device (was %d)", size);
+            size = 4;
+        }
     }
     
     return size;

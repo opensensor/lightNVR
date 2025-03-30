@@ -48,6 +48,7 @@ void init_recordings_system(void);
 #include "web/http_server.h"
 #include "web/mongoose_server.h"
 #include "web/api_handlers.h"
+#include "web/api_thread_pool.h"
 #include "mongoose.h"
 
 // Include necessary headers for signal handling
@@ -917,7 +918,7 @@ int main(int argc, char *argv[]) {
         .max_connections = 100,
         .connection_timeout = 30,
         .daemon_mode = daemon_mode,
-        .web_thread_pool_size = config.web_thread_pool_size  // Use the value from the configuration
+        .web_thread_pool_size = api_thread_pool_get_size()  // Use the value from api_thread_pool_get_size()
     };
     
     // Set CORS allowed origins, methods, and headers

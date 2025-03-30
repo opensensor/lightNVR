@@ -47,7 +47,7 @@ void load_default_config(config_t *config) {
     config->web_auth_enabled = true;
     snprintf(config->web_username, 32, "admin");
     snprintf(config->web_password, 32, "admin"); // Default password, should be changed
-    config->web_thread_pool_size = 8; // Default to 8 threads for the web thread pool
+    config->web_thread_pool_size = 4; // Default to 4 threads for the web thread pool (will be limited to 4 for embedded devices)
     
     // Stream settings
     config->max_streams = 16;

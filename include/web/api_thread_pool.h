@@ -46,6 +46,8 @@ thread_pool_t *api_thread_pool_get(void);
 
 /**
  * @brief Get the recommended thread pool size from the global config
+ * On embedded devices (detected by checking available memory and CPU cores),
+ * the thread pool size is limited to 4 regardless of the configured value.
  * 
  * @return int The recommended thread pool size
  */
