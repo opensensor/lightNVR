@@ -664,5 +664,4 @@ export function loadWebRTCView() {
   });
 }
 
-// Initialize the component when the DOM is loaded
-document.addEventListener('DOMContentLoaded', loadWebRTCView);
+// The component is initialized by preact-app.js when needed
