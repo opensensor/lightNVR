@@ -917,7 +917,7 @@ int main(int argc, char *argv[]) {
         .max_connections = 100,
         .connection_timeout = 30,
         .daemon_mode = daemon_mode,
-        .connection_pool_threads = config.web_thread_pool_size  // Use the value from the configuration
+        .web_thread_pool_size = config.web_thread_pool_size  // Use the value from the configuration
     };
     
     // Set CORS allowed origins, methods, and headers

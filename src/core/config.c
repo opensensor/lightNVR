@@ -288,7 +288,7 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             strncpy(config->web_username, value, 31);
         } else if (strcmp(name, "password") == 0) {
             strncpy(config->web_password, value, 31);
-        } else if (strcmp(name, "connection_pool_threads") == 0 || strcmp(name, "web_thread_pool_size") == 0) {
+        } else if (strcmp(name, "web_thread_pool_size") == 0) {
             config->web_thread_pool_size = atoi(value);
         }
     }
