@@ -102,6 +102,11 @@ typedef struct {
     // Hardware acceleration
     bool hw_accel_enabled;
     char hw_accel_device[32];
+    
+    // go2rtc settings
+    char go2rtc_binary_path[MAX_PATH_LENGTH];
+    char go2rtc_config_dir[MAX_PATH_LENGTH];
+    int go2rtc_api_port;
 } config_t;
 
 /**

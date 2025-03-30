@@ -62,6 +62,11 @@ void load_default_config(config_t *config) {
     config->hw_accel_enabled = false;
     memset(config->hw_accel_device, 0, 32);
     
+    // go2rtc settings
+    snprintf(config->go2rtc_binary_path, MAX_PATH_LENGTH, "/usr/local/bin/go2rtc");
+    snprintf(config->go2rtc_config_dir, MAX_PATH_LENGTH, "/etc/lightnvr/go2rtc");
+    config->go2rtc_api_port = 1984;
+    
     // Initialize default values for detection-based recording in streams
     for (int i = 0; i < MAX_STREAMS; i++) {
         config->streams[i].detection_based_recording = false;
@@ -350,6 +355,16 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             config->hw_accel_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         } else if (strcmp(name, "hw_accel_device") == 0) {
             strncpy(config->hw_accel_device, value, 31);
+        }
+    }
+    // go2rtc settings
+    else if (strcmp(section, "go2rtc") == 0) {
+        if (strcmp(name, "binary_path") == 0) {
+            strncpy(config->go2rtc_binary_path, value, MAX_PATH_LENGTH - 1);
+        } else if (strcmp(name, "config_dir") == 0) {
+            strncpy(config->go2rtc_config_dir, value, MAX_PATH_LENGTH - 1);
+        } else if (strcmp(name, "api_port") == 0) {
+            config->go2rtc_api_port = atoi(value);
         }
     }
     
@@ -843,7 +858,13 @@ int save_config(const config_t *config, const char *path) {
     // Write hardware acceleration settings
     fprintf(file, "[hardware]\n");
     fprintf(file, "hw_accel_enabled = %s\n", config->hw_accel_enabled ? "true" : "false");
-    fprintf(file, "hw_accel_device = %s\n", config->hw_accel_device);
+    fprintf(file, "hw_accel_device = %s\n\n", config->hw_accel_device);
+    
+    // Write go2rtc settings
+    fprintf(file, "[go2rtc]\n");
+    fprintf(file, "binary_path = %s\n", config->go2rtc_binary_path);
+    fprintf(file, "config_dir = %s\n", config->go2rtc_config_dir);
+    fprintf(file, "api_port = %d\n", config->go2rtc_api_port);
     
     // Write stream-specific settings
     for (int i = 0; i < config->max_streams; i++) {

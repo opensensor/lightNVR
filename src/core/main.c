@@ -680,7 +680,35 @@ int main(int argc, char *argv[]) {
         // Initialize go2rtc integration if enabled
     #ifdef USE_GO2RTC
     log_info("Initializing go2rtc integration...");
-    if (go2rtc_stream_init("/usr/local/bin/go2rtc", "/etc/lightnvr/go2rtc", 1984)) {
+    
+    // Use configuration values if provided, otherwise use defaults
+    const char *binary_path = "/usr/local/bin/go2rtc";  // Default binary path
+    const char *config_dir = "/etc/lightnvr/go2rtc";    // Default config directory
+    int api_port = 1984;                               // Default API port
+    
+    // Check if custom values are provided in the configuration
+    if (config.go2rtc_binary_path[0] != '\0') {
+        binary_path = config.go2rtc_binary_path;
+        log_info("Using custom go2rtc binary path: %s", binary_path);
+    } else {
+        log_info("Using default go2rtc binary path: %s", binary_path);
+    }
+    
+    if (config.go2rtc_config_dir[0] != '\0') {
+        config_dir = config.go2rtc_config_dir;
+        log_info("Using custom go2rtc config directory: %s", config_dir);
+    } else {
+        log_info("Using default go2rtc config directory: %s", config_dir);
+    }
+    
+    if (config.go2rtc_api_port > 0) {
+        api_port = config.go2rtc_api_port;
+        log_info("Using custom go2rtc API port: %d", api_port);
+    } else {
+        log_info("Using default go2rtc API port: %d", api_port);
+    }
+    
+    if (go2rtc_stream_init(binary_path, config_dir, api_port)) {
         log_info("go2rtc integration initialized successfully");
 
         // Start go2rtc service
