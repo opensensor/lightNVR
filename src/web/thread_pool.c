@@ -173,23 +173,76 @@ void thread_pool_shutdown(thread_pool_t *pool) {
     pthread_cond_broadcast(&pool->not_empty);
     pthread_mutex_unlock(&pool->mutex);
     
-    // Wait for all threads to exit with a timeout
+    // Log the number of threads we're waiting for
+    log_debug("Waiting for %d worker threads to exit", pool->thread_count);
+    
+    // Track which threads have been successfully joined
+    bool *thread_joined = calloc(pool->thread_count, sizeof(bool));
+    if (!thread_joined) {
+        log_error("Failed to allocate memory for thread tracking, continuing with shutdown");
+    } else {
+        // Initialize all to false
+        for (int i = 0; i < pool->thread_count; i++) {
+            thread_joined[i] = false;
+        }
+    }
+    
+    // First attempt: Try to join threads with a timeout
     for (int i = 0; i < pool->thread_count; i++) {
         // Use a timeout to avoid hanging if a thread is stuck
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
-        ts.tv_sec += 5; // 5 second timeout
+        ts.tv_sec += 3; // 3 second timeout (reduced from 5)
         
+        log_info("Waiting for thread pool worker %d to exit...", i);
         int ret = pthread_timedjoin_np(pool->threads[i], NULL, &ts);
-        if (ret != 0) {
-            log_warn("Thread pool worker %d did not exit within timeout, continuing anyway", i);
-            
-            // Try to cancel the thread if it didn't exit within timeout
-            pthread_cancel(pool->threads[i]);
-            
-            // Give it a short time to clean up after cancellation
-            usleep(100000); // 100ms
+        
+        if (ret == 0) {
+            log_info("Thread pool worker %d exited normally", i);
+            if (thread_joined) thread_joined[i] = true;
+        } else {
+            log_warn("Thread pool worker %d did not exit within timeout, will try to cancel", i);
         }
+    }
+    
+    // Second attempt: Cancel any threads that didn't exit normally
+    int stuck_threads = 0;
+    for (int i = 0; i < pool->thread_count; i++) {
+        if (!thread_joined || !thread_joined[i]) {
+            log_warn("Cancelling thread pool worker %d", i);
+            
+            // Try to cancel the thread
+            int cancel_ret = pthread_cancel(pool->threads[i]);
+            if (cancel_ret != 0) {
+                log_error("Failed to cancel thread pool worker %d: %d", i, cancel_ret);
+            }
+            
+            // Try to join with a shorter timeout after cancellation
+            struct timespec ts;
+            clock_gettime(CLOCK_REALTIME, &ts);
+            ts.tv_sec += 1; // 1 second timeout
+            
+            int join_ret = pthread_timedjoin_np(pool->threads[i], NULL, &ts);
+            if (join_ret == 0) {
+                log_info("Thread pool worker %d exited after cancellation", i);
+                if (thread_joined) thread_joined[i] = true;
+            } else {
+                log_error("Thread pool worker %d still did not exit after cancellation", i);
+                stuck_threads++;
+            }
+        }
+    }
+    
+    // Log summary of thread status
+    if (stuck_threads > 0) {
+        log_error("%d thread pool workers could not be terminated properly", stuck_threads);
+    } else {
+        log_info("All thread pool workers have been terminated");
+    }
+    
+    // Free the tracking array
+    if (thread_joined) {
+        free(thread_joined);
     }
     
     // Add a small delay to ensure all threads have fully exited
@@ -237,19 +290,53 @@ static void *worker_thread(void *arg) {
     thread_pool_t *pool = (thread_pool_t *)arg;
     task_t task;
     
+    // Set up cancellation state
+    pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+    pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
+    
+    // Get thread ID for logging
+    pthread_t tid = pthread_self();
+    int thread_idx = -1;
+    
+    // Find our index in the thread array
+    for (int i = 0; i < pool->thread_count; i++) {
+        if (pthread_equal(pool->threads[i], tid)) {
+            thread_idx = i;
+            break;
+        }
+    }
+    
     while (true) {
         // Wait for task
         pthread_mutex_lock(&pool->mutex);
         
         // Wait until queue is not empty or shutdown
         while (pool->count == 0 && !pool->shutdown) {
+            // This is a cancellation point
             pthread_cond_wait(&pool->not_empty, &pool->mutex);
         }
         
         // Check if pool is shutting down
-        if (pool->shutdown && pool->count == 0) {
-            pthread_mutex_unlock(&pool->mutex);
-            pthread_exit(NULL);
+        if (pool->shutdown) {
+            if (pool->count == 0) {
+                // No more tasks and shutdown requested, exit thread
+                pthread_mutex_unlock(&pool->mutex);
+                if (thread_idx >= 0) {
+                    log_info("Connection worker thread %d exiting due to shutdown", thread_idx);
+                } else {
+                    log_info("Connection worker thread exiting due to shutdown");
+                }
+                pthread_exit(NULL);
+            } else {
+                // There are still tasks in the queue
+                if (thread_idx >= 0) {
+                    log_info("Connection worker thread %d exiting after wait due to shutdown", thread_idx);
+                } else {
+                    log_info("Connection worker thread exiting after wait due to shutdown");
+                }
+                pthread_mutex_unlock(&pool->mutex);
+                pthread_exit(NULL);
+            }
         }
         
         // Get task from queue
@@ -260,9 +347,26 @@ static void *worker_thread(void *arg) {
         
         pthread_mutex_unlock(&pool->mutex);
         
-        // Execute task
+        // Execute task (this is a cancellation point if the task calls a cancellable function)
         if (result) {
+            // Check for shutdown again before executing task
+            if (pool->shutdown) {
+                if (thread_idx >= 0) {
+                    log_info("Connection worker thread %d skipping task due to shutdown", thread_idx);
+                } else {
+                    log_info("Connection worker thread skipping task due to shutdown");
+                }
+                continue;
+            }
+            
+            // Add a cancellation point before executing the task
+            pthread_testcancel();
+            
+            // Execute the task
             task.function(task.argument);
+            
+            // Add a cancellation point after executing the task
+            pthread_testcancel();
         }
     }
     

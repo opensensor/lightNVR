@@ -1,3 +1,4 @@
+#define _GNU_SOURCE  // For clock_gettime
 #include "web/api_thread_pool.h"
 #include "core/logger.h"
 #include "video/onvif_discovery.h"
@@ -5,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include "cJSON.h"
 
 // Global API thread pool
@@ -142,9 +144,23 @@ void api_thread_pool_shutdown(void) {
     
     // Now shut down the pool if we have a valid pointer
     if (pool != NULL) {
+        // Set a timeout for the entire shutdown process
+        struct timespec shutdown_start, shutdown_current;
+        clock_gettime(CLOCK_REALTIME, &shutdown_start);
+        
         // Call thread_pool_shutdown which now has its own error handling
         thread_pool_shutdown(pool);
-        log_info("API thread pool shutdown completed successfully");
+        
+        // Check how long the shutdown took
+        clock_gettime(CLOCK_REALTIME, &shutdown_current);
+        double elapsed = (shutdown_current.tv_sec - shutdown_start.tv_sec) + 
+                         (shutdown_current.tv_nsec - shutdown_start.tv_nsec) / 1000000000.0;
+        
+        if (elapsed > 5.0) {
+            log_warn("API thread pool shutdown took %.2f seconds, which is longer than expected", elapsed);
+        } else {
+            log_info("API thread pool shutdown completed successfully in %.2f seconds", elapsed);
+        }
     }
     
     log_info("API thread pool shutdown process complete");
