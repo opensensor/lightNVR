@@ -32,6 +32,7 @@ static bool detection_thread_pool_running = false;
 static int active_threads = 0;
 static int pending_tasks = 0;
 static int completed_tasks = 0;
+static int actual_max_threads = MAX_DETECTION_THREADS; // Will be adjusted at runtime
 
 // Forward declaration of the detection function from hls_writer.c
 extern void process_packet_for_detection(const char *stream_name, const AVPacket *pkt, const AVCodecParameters *codec_params);
@@ -326,8 +327,33 @@ int init_detection_thread_pool(void) {
     // Set running flag
     detection_thread_pool_running = true;
 
+    // Determine the number of threads to use based on CPU cores
+    int num_cores = sysconf(_SC_NPROCESSORS_ONLN);
+    if (num_cores <= 0) {
+        num_cores = 2; // Default to 2 cores if we can't determine
+    }
+
+    // For embedded devices (2 cores or less), use fewer threads
+    if (num_cores <= 2) {
+        actual_max_threads = 2; // Use 2 threads for embedded devices
+        log_info("Detected embedded device with %d CPU cores, using %d detection threads", 
+                num_cores, actual_max_threads);
+    } else {
+        // For non-embedded devices, use more threads but don't exceed MAX_DETECTION_THREADS
+        // Use 75% of available cores, but at least 4 threads
+        actual_max_threads = (num_cores * 3) / 4;
+        if (actual_max_threads < 4) {
+            actual_max_threads = 4;
+        }
+        if (actual_max_threads > MAX_DETECTION_THREADS) {
+            actual_max_threads = MAX_DETECTION_THREADS;
+        }
+        log_info("Detected %d CPU cores, using %d detection threads", 
+                num_cores, actual_max_threads);
+    }
+
     // Create threads
-    for (int i = 0; i < MAX_DETECTION_THREADS; i++) {
+    for (int i = 0; i < actual_max_threads; i++) {
         int *thread_id = malloc(sizeof(int));
         if (!thread_id) {
             log_error("Failed to allocate memory for thread ID");
@@ -345,7 +371,7 @@ int init_detection_thread_pool(void) {
     }
 
     pthread_mutex_unlock(&detection_tasks_mutex);
-    log_info("Detection thread pool initialized with %d threads", MAX_DETECTION_THREADS);
+    log_info("Detection thread pool initialized with %d threads", actual_max_threads);
     return 0;
 }
 
@@ -364,14 +390,14 @@ void shutdown_detection_thread_pool(void) {
     pthread_mutex_unlock(&detection_tasks_mutex);
 
     // Wait for threads to exit
-    for (int i = 0; i < MAX_DETECTION_THREADS; i++) {
+    for (int i = 0; i < actual_max_threads; i++) {
         pthread_join(detection_threads[i], NULL);
         log_info("Detection thread %d joined", i);
     }
 
     // Clean up any remaining tasks
     pthread_mutex_lock(&detection_tasks_mutex);
-    for (int i = 0; i < MAX_DETECTION_THREADS; i++) {
+    for (int i = 0; i < actual_max_threads; i++) {
         if (detection_tasks[i].in_use) {
             if (detection_tasks[i].pkt) {
                 av_packet_free(&detection_tasks[i].pkt);
@@ -417,7 +443,7 @@ int submit_detection_task(const char *stream_name, const AVPacket *pkt, const AV
 
     // Find an available thread
     int thread_id = -1;
-    for (int i = 0; i < MAX_DETECTION_THREADS; i++) {
+    for (int i = 0; i < actual_max_threads; i++) {
         if (!detection_tasks[i].in_use) {
             thread_id = i;
             break;
@@ -514,7 +540,7 @@ int submit_segment_detection_task(const char *stream_name, const char *segment_p
 
     // Find an available thread
     int thread_id = -1;
-    for (int i = 0; i < MAX_DETECTION_THREADS; i++) {
+    for (int i = 0; i < actual_max_threads; i++) {
         if (!detection_tasks[i].in_use) {
             thread_id = i;
             break;
@@ -566,7 +592,7 @@ int get_active_detection_threads(void) {
  * Get the maximum number of detection threads
  */
 int get_max_detection_threads(void) {
-    return MAX_DETECTION_THREADS;
+    return actual_max_threads;
 }
 
 /**
@@ -586,7 +612,7 @@ bool is_detection_thread_pool_busy(void) {
     pthread_mutex_lock(&detection_tasks_mutex);
     
     bool busy = true;
-    for (int i = 0; i < MAX_DETECTION_THREADS; i++) {
+    for (int i = 0; i < actual_max_threads; i++) {
         if (!detection_tasks[i].in_use) {
             busy = false;
             break;
@@ -609,7 +635,7 @@ void get_detection_thread_pool_stats(int *active_threads_out, int *max_threads_o
     }
     
     if (max_threads_out) {
-        *max_threads_out = MAX_DETECTION_THREADS;
+        *max_threads_out = actual_max_threads;
     }
     
     if (pending_tasks_out) {

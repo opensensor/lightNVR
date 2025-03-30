@@ -18,7 +18,8 @@
 #include "video/streams.h"
 
 // Maximum number of detection threads
-#define MAX_DETECTION_THREADS 4
+// This will be adjusted at runtime based on the number of CPU cores
+#define MAX_DETECTION_THREADS 8
 
 // Detection task structure
 typedef struct {

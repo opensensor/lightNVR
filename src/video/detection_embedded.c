@@ -75,9 +75,15 @@ int get_downscale_factor(const char *model_type) {
     // Check if we're running on an embedded device
     bool embedded = is_embedded_device();
     
-    // For non-embedded devices, use default factors
+    // For non-embedded devices, use appropriate factors based on model type
     if (!embedded) {
-        return config->downscale_factor_default;
+        if (strcmp(model_type, MODEL_TYPE_SOD) == 0) {
+            return config->downscale_factor_cnn;
+        } else if (strcmp(model_type, MODEL_TYPE_SOD_REALNET) == 0) {
+            return config->downscale_factor_realnet;
+        } else {
+            return config->downscale_factor_default;
+        }
     }
     
     //  For embedded devices, use more aggressive downscaling for CNN models

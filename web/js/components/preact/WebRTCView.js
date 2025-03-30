@@ -7,7 +7,7 @@ import { h } from '../../preact.min.js';
 import { html } from '../../html-helper.js';
 import { useState, useEffect, useRef } from '../../preact.hooks.module.js';
 import { LoadingIndicator } from './LoadingIndicator.js';
-import { showStatusMessage } from './UI.js';
+import { showStatusMessage, showSnapshotPreview, setupModals, addStatusMessageStyles, addModalStyles } from './UI.js';
 import { toggleFullscreen, exitFullscreenMode } from './FullscreenManager.js';
 import { startDetectionPolling, cleanupDetectionPolling } from './DetectionOverlay.js';
 
@@ -25,8 +25,13 @@ export function WebRTCView() {
   const webrtcConnections = useRef({});
   const detectionIntervals = useRef({});
   
-  // Set up event listeners
+  // Set up event listeners and UI components
   useEffect(() => {
+    // Set up modals for snapshot preview
+    setupModals();
+    addStatusMessageStyles();
+    addModalStyles();
+    
     // Set up Escape key to exit fullscreen mode
     const handleEscape = (e) => {
       if (e.key === 'Escape') {
@@ -488,14 +493,68 @@ export function WebRTCView() {
     });
   };
   
-  /**
-   * Take snapshot of a stream
-   * @param {string} streamId - Stream ID
-   */
-  const takeSnapshot = (streamId) => {
-    // Implement snapshot functionality
-    showStatusMessage('Snapshot feature not implemented for WebRTC view');
-  };
+/**
+ * Take snapshot of a stream
+ * @param {string} streamId - Stream ID
+ */
+const takeSnapshot = (streamId) => {
+  // Find the stream by ID or name
+  const streamElement = document.querySelector(`.snapshot-btn[data-id="${streamId}"]`);
+  if (!streamElement) {
+    console.error('Stream element not found for ID:', streamId);
+    return;
+  }
+
+  // Get the stream name from the data attribute
+  const streamName = streamElement.getAttribute('data-name');
+  if (!streamName) {
+    console.error('Stream name not found for ID:', streamId);
+    return;
+  }
+
+  // Find the video element
+  const videoElementId = `video-${streamName.replace(/\s+/g, '-')}`;
+  const videoElement = document.getElementById(videoElementId);
+  if (!videoElement) {
+    console.error('Video element not found for stream:', streamName);
+    return;
+  }
+
+  // Create a canvas element to capture the frame
+  const canvas = document.createElement('canvas');
+  canvas.width = videoElement.videoWidth;
+  canvas.height = videoElement.videoHeight;
+
+  // Check if we have valid dimensions
+  if (canvas.width === 0 || canvas.height === 0) {
+    console.error('Invalid video dimensions:', canvas.width, canvas.height);
+    showStatusMessage('Cannot take snapshot: Video not loaded or has invalid dimensions');
+    return;
+  }
+
+  // Draw the current frame to the canvas
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+
+  try {
+    // Save the canvas to global scope for direct access in the overlay
+    window.__snapshotCanvas = canvas;
+    
+    // Generate a filename
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const fileName = `snapshot-${streamName.replace(/\s+/g, '-')}-${timestamp}.jpg`;
+    window.__snapshotFileName = fileName;
+    
+    // Show the standard preview
+    showSnapshotPreview(canvas.toDataURL('image/jpeg', 0.95), `Snapshot: ${streamName}`);
+    
+    // Show success message
+    showStatusMessage('Snapshot taken successfully');
+  } catch (error) {
+    console.error('Error creating snapshot:', error);
+    showStatusMessage('Failed to create snapshot: ' + error.message);
+  }
+};
   
   /**
    * Toggle fullscreen mode for a specific stream

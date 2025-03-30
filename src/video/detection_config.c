@@ -20,7 +20,7 @@ detection_config_t default_config = {
     
     // Downscaling factors
     .downscale_factor_default = 1,   // No downscaling by default
-    .downscale_factor_cnn = 1,       // No downscaling for CNN models
+    .downscale_factor_cnn = 2,       // Moderate downscaling for CNN models on non-embedded devices
     .downscale_factor_realnet = 1,   // No downscaling for RealNet models
     
     // Thresholds
