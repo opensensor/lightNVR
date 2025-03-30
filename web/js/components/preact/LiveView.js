@@ -95,13 +95,22 @@ export function LiveView() {
       <div class="page-header flex justify-between items-center mb-4 p-4 bg-white dark:bg-gray-800 rounded-lg shadow">
         <div class="flex items-center space-x-2">
           <h2 class="text-xl font-bold mr-4">Live View</h2>
-          <button 
-            id="fullscreen-btn" 
-            class="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
-            onClick=${() => toggleFullscreen(isFullscreen, setIsFullscreen)}
-          >
-            Fullscreen
-          </button>
+          <div class="flex space-x-2">
+            <button 
+              id="webrtc-toggle-btn" 
+              class="px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+              onClick=${() => window.location.href = '/index.html'}
+            >
+              Live View (WebRTC)
+            </button>
+            <button 
+              id="fullscreen-btn" 
+              class="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+              onClick=${() => toggleFullscreen(isFullscreen, setIsFullscreen)}
+            >
+              Fullscreen
+            </button>
+          </div>
         </div>
         <div class="controls flex items-center space-x-2">
           <select 

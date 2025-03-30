@@ -15,6 +15,7 @@ import { loadSystemView } from './components/preact/SystemView.js';
 import { loadLoginView } from './components/preact/LoginView.js';
 import { loadIndexView } from './components/preact/IndexView.js';
 import { loadTimelineView } from './components/preact/timeline/TimelineView.js';
+import { loadWebRTCView } from './components/preact/WebRTCView.js';
 import { setupModals, addStatusMessageStyles, addModalStyles } from './components/preact/UI.js';
 import './components/auth.js';  // Import authentication module
 
@@ -207,6 +208,8 @@ function initApp() {
   
   // Load page-specific content
   if (currentPage === 'index.html') {
+    loadWebRTCView();
+  } else if (currentPage === 'hls.html') {
     loadLiveView();
   } else if (currentPage === 'recordings.html') {
     loadRecordingsView();
@@ -220,8 +223,8 @@ function initApp() {
     loadSystemView();
   } else if (currentPage === 'login.html') {
     loadLoginView();
-  } else if (currentPage === '' || currentPage === 'index.html') {
-    loadLiveView();
+  } else if (currentPage === '') {
+    loadWebRTCView();
   }
   
   // Setup UI components

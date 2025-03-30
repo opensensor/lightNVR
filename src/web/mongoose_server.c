@@ -24,6 +24,7 @@
 #include "web/api_handlers_onvif.h"
 #include "web/api_handlers_timeline.h"
 #include "web/api_handlers_recordings.h"
+#include "web/api_handlers_go2rtc_proxy.h"
 
 // Forward declarations for timeline API handlers
 void mg_handle_get_timeline_segments(struct mg_connection *c, struct mg_http_message *hm);
@@ -113,6 +114,12 @@ static const mg_api_route_t s_api_routes[] = {
     // Streaming API - WebRTC
     {"POST", "/api/streaming/#/webrtc/offer", mg_handle_webrtc_offer},
     {"POST", "/api/streaming/#/webrtc/ice", mg_handle_webrtc_ice},
+    
+    // go2rtc WebRTC API
+    {"POST", "/api/webrtc", mg_handle_go2rtc_webrtc_offer},
+    {"POST", "/api/webrtc/ice", mg_handle_go2rtc_webrtc_ice},
+    {"OPTIONS", "/api/webrtc", mg_handle_go2rtc_webrtc_options},
+    {"OPTIONS", "/api/webrtc/ice", mg_handle_go2rtc_webrtc_ice_options},
     
     // Detection API
     {"GET", "/api/detection/results/#", mg_handle_get_detection_results},
