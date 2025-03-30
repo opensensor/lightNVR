@@ -6,16 +6,13 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <string.h>
-#include <syslog.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <stdbool.h>
 #include <sys/wait.h>
-#include <sys/time.h>
-
 #include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
+#include <sys/utsname.h>
+#include <pthread.h>
 
 #include "web/web_server.h"
 #include "core/logger.h"
@@ -24,25 +21,28 @@
 extern volatile bool running; // Reference to the global variable defined in main.c
 
 // Global variable to store PID file path
-static char pid_file_path[256] = "/var/run/lightnvr.pid";
+static char pid_file_path[256] = "/run/lightnvr.pid";
 
 // Forward declarations
 static void daemon_signal_handler(int sig);
 static int write_pid_file(const char *pid_file);
 static int check_running_daemon(const char *pid_file);
 
-// Initialize daemon
+// Initialize daemon - simplified version that works on all platforms including Linux 4.4
 int init_daemon(const char *pid_file) {
-    // Check if we're already running
+    // Store PID file path
     if (pid_file) {
         strncpy(pid_file_path, pid_file, sizeof(pid_file_path) - 1);
         pid_file_path[sizeof(pid_file_path) - 1] = '\0';
     }
 
+    // Check if daemon is already running
     if (check_running_daemon(pid_file_path) != 0) {
         log_error("Daemon is already running");
         return -1;
     }
+
+    log_info("Starting daemon mode");
 
     // Fork the process
     pid_t pid = fork();
@@ -67,57 +67,34 @@ int init_daemon(const char *pid_file) {
         return -1;
     }
 
-    // Change working directory to a safe location
-    if (chdir("/var/lib/lightnvr") < 0) {
-        // If that fails, try /tmp as a fallback
-        if (chdir("/tmp") < 0) {
-            log_error("Failed to change working directory: %s", strerror(errno));
-            return -1;
-        }
-    }
+    // DO NOT change working directory - this causes SQLite locking issues on Linux 4.4
+    log_info("Keeping current working directory for SQLite compatibility");
 
     // Reset file creation mask
     umask(0);
 
-    // Close all open file descriptors except for logging
-    int max_fd = sysconf(_SC_OPEN_MAX);
-    for (int i = 3; i < max_fd; i++) {
-        // Skip the server socket if it's already set up
-        extern int web_server_socket;  // From main.c
-        if (i != web_server_socket || web_server_socket < 0) {
-            close(i);
-        }
-    }
+    // DO NOT close file descriptors in daemon mode
+    // This was causing issues with the web server socket
+    log_info("Keeping all file descriptors open for web server compatibility");
 
-    // Redirect standard input to /dev/null but keep stdout/stderr for logging
-    int dev_null = open("/dev/null", O_RDWR);
-    if (dev_null == -1) {
-        log_error("Failed to open /dev/null: %s", strerror(errno));
-        return -1;
-    }
-
-    // Only redirect stdin to /dev/null, keep stdout and stderr for logging
-    if (dup2(dev_null, STDIN_FILENO) == -1) {
-        log_error("Failed to redirect stdin: %s", strerror(errno));
-        close(dev_null);
-        return -1;
-    }
-
-    if (dev_null > STDERR_FILENO) {
-        close(dev_null);
-    }
-
-    // Setup signal handlers in the child process
+    // Setup signal handlers with SA_RESTART for better compatibility
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
     sa.sa_handler = daemon_signal_handler;
     sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
 
     // Handle termination signals
     sigaction(SIGTERM, &sa, NULL);
     sigaction(SIGINT, &sa, NULL);
     sigaction(SIGHUP, &sa, NULL);
-    sigaction(SIGALRM, &sa, NULL); // Add alarm signal handler for Linux 4.4 compatibility
+    sigaction(SIGALRM, &sa, NULL);
+    
+    // Block SIGPIPE to prevent crashes when writing to closed sockets
+    sigset_t set;
+    sigemptyset(&set);
+    sigaddset(&set, SIGPIPE);
+    pthread_sigmask(SIG_BLOCK, &set, NULL);
 
     // Write PID file
     if (write_pid_file(pid_file_path) != 0) {
@@ -154,7 +131,6 @@ static void daemon_signal_handler(int sig) {
         // Also signal the web server to shut down
         extern int web_server_socket;
         if (web_server_socket >= 0) {
-            // Use a more robust approach for Linux 4.4 embedded systems
             // First try to shutdown the socket
             if (shutdown(web_server_socket, SHUT_RDWR) != 0) {
                 log_warn("Failed to shutdown server socket: %s", strerror(errno));
@@ -168,10 +144,8 @@ static void daemon_signal_handler(int sig) {
             web_server_socket = -1; // Update the global reference
         }
         
-        // On Linux 4.4 embedded, we might need to force exit if signals aren't handled well
-        // This is a fallback mechanism to ensure the daemon actually stops
-        log_info("Setting up fallback exit timer for Linux 4.4 compatibility");
-        alarm(10); // Set an alarm to force exit after 10 seconds if normal shutdown fails
+        // Set an alarm to force exit after 30 seconds if normal shutdown fails
+        alarm(30);
         break;
 
     case SIGHUP:
@@ -181,8 +155,8 @@ static void daemon_signal_handler(int sig) {
         break;
         
     case SIGALRM:
-        // Handle the alarm signal (fallback for Linux 4.4)
-        log_warn("Alarm triggered - forcing daemon exit for Linux 4.4 compatibility");
+        // Handle the alarm signal (fallback for forced exit)
+        log_warn("Alarm triggered - forcing daemon exit");
         
         // Force kill any child processes before exiting
         log_warn("Sending SIGKILL to all child processes");

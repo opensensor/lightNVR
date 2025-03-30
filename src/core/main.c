@@ -11,6 +11,7 @@
 #include <errno.h>
 #include <sys/wait.h>
 #include <sys/time.h>
+#include <sys/utsname.h>
 
 #include "core/version.h"
 #include "core/config.h"
@@ -184,26 +185,44 @@ static void alarm_handler(int sig) {
 
 // Function to initialize signal handlers with improved signal handling
 static void init_signals() {
-    // Set up signal handlers for both daemon and non-daemon mode
-    // This ensures consistent behavior across all modes
-    struct sigaction sa;
-    memset(&sa, 0, sizeof(sa));
-    sa.sa_handler = signal_handler;
+    // Check if we're running on Linux 4.4 or similar embedded system
+    struct utsname uts_info;
+    bool is_linux_4_4 = false;
     
-    // Add SA_RESTART flag to automatically restart interrupted system calls
-    // This helps prevent issues with blocking I/O operations during signal handling
-    sa.sa_flags = SA_RESTART;
+    if (uname(&uts_info) == 0) {
+        // Check if kernel version starts with 4.4
+        if (strncmp(uts_info.release, "4.4", 3) == 0) {
+            log_info("Detected Linux 4.4 kernel, using compatible signal handling");
+            is_linux_4_4 = true;
+        }
+    }
     
-    sigaction(SIGINT, &sa, NULL);
-    sigaction(SIGTERM, &sa, NULL);
-    sigaction(SIGHUP, &sa, NULL);
-    
-    // Set up alarm handler for phased forced exit
-    struct sigaction sa_alarm;
-    memset(&sa_alarm, 0, sizeof(sa_alarm));
-    sa_alarm.sa_handler = alarm_handler;
-    sa_alarm.sa_flags = SA_RESTART;
-    sigaction(SIGALRM, &sa_alarm, NULL);
+    // Only set up signal handlers if we're not in daemon mode
+    // In daemon mode, the signal handlers are set up in daemon.c
+    if (!daemon_mode || !is_linux_4_4) {
+        // Set up signal handlers for both daemon and non-daemon mode
+        // This ensures consistent behavior across all modes
+        struct sigaction sa;
+        memset(&sa, 0, sizeof(sa));
+        sa.sa_handler = signal_handler;
+        
+        // Add SA_RESTART flag to automatically restart interrupted system calls
+        // This helps prevent issues with blocking I/O operations during signal handling
+        sa.sa_flags = SA_RESTART;
+        
+        sigaction(SIGINT, &sa, NULL);
+        sigaction(SIGTERM, &sa, NULL);
+        sigaction(SIGHUP, &sa, NULL);
+        
+        // Set up alarm handler for phased forced exit
+        struct sigaction sa_alarm;
+        memset(&sa_alarm, 0, sizeof(sa_alarm));
+        sa_alarm.sa_handler = alarm_handler;
+        sa_alarm.sa_flags = SA_RESTART;
+        sigaction(SIGALRM, &sa_alarm, NULL);
+    } else {
+        log_info("Running in daemon mode on Linux 4.4, signal handlers will be set up by daemon.c");
+    }
     
     // Set up SIGPIPE handler to ignore broken pipe errors
     // This is important for socket operations to prevent crashes
