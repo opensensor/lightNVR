@@ -10,6 +10,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(ENABLE_SOD "Enable SOD library for object detection" ON)
 option(SOD_DYNAMIC_LINK "Dynamically link SOD library instead of static linking" OFF)
 
+# go2rtc integration options
+option(ENABLE_GO2RTC "Enable go2rtc integration for WebRTC streaming" ON)
+option(GO2RTC_BINARY_PATH "Path to go2rtc binary" "/usr/local/bin/go2rtc")
+option(GO2RTC_CONFIG_DIR "Directory for go2rtc configuration files" "/etc/lightnvr/go2rtc")
+option(GO2RTC_API_PORT "Port for go2rtc HTTP API" 1984)
+
 # SSL/TLS options
 option(ENABLE_SSL "Enable SSL/TLS support" OFF)
 option(USE_MBEDTLS "Use mbedTLS instead of OpenSSL (if SSL is enabled)" OFF)
@@ -203,6 +209,19 @@ list(FILTER VIDEO_SOURCES EXCLUDE REGEX ".*motion_detection_optimized\\.c$")
 # Add HLS sources
 file(GLOB HLS_SOURCES "src/video/hls/*.c")
 
+# Set up go2rtc integration if enabled
+set(GO2RTC_SOURCES "")
+if(ENABLE_GO2RTC)
+    add_subdirectory(src/video/go2rtc)
+    add_definitions(-DUSE_GO2RTC)
+    add_definitions(-DGO2RTC_BINARY_PATH="${GO2RTC_BINARY_PATH}")
+    add_definitions(-DGO2RTC_CONFIG_DIR="${GO2RTC_CONFIG_DIR}")
+    add_definitions(-DGO2RTC_API_PORT=${GO2RTC_API_PORT})
+    message(STATUS "go2rtc integration enabled with binary path: ${GO2RTC_BINARY_PATH}")
+    message(STATUS "go2rtc config directory: ${GO2RTC_CONFIG_DIR}")
+    message(STATUS "go2rtc API port: ${GO2RTC_API_PORT}")
+endif()
+
 # Combine all sources
 set(SOURCES
         ${CORE_SOURCES}
@@ -215,6 +234,11 @@ set(SOURCES
         ${ROOT_SOURCES}
         "${INIH_INCLUDE_DIR}/ini.c"
 )
+
+# Add go2rtc sources if enabled
+if(ENABLE_GO2RTC)
+    list(APPEND SOURCES ${GO2RTC_SOURCES})
+endif()
 
 # Add Mongoose source (required component)
 list(APPEND SOURCES ${MONGOOSE_SOURCES})
@@ -319,6 +343,12 @@ if(ENABLE_SOD)
     else()
         message(STATUS "  - SOD linking method: Static")
     endif()
+endif()
+message(STATUS "- go2rtc WebRTC integration: ${ENABLE_GO2RTC}")
+if(ENABLE_GO2RTC)
+    message(STATUS "  - go2rtc binary path: ${GO2RTC_BINARY_PATH}")
+    message(STATUS "  - go2rtc config directory: ${GO2RTC_CONFIG_DIR}")
+    message(STATUS "  - go2rtc API port: ${GO2RTC_API_PORT}")
 endif()
 message(STATUS "- Embedded A1 device optimizations: ${EMBEDDED_A1_DEVICE}")
 message(STATUS "- Include directories:")

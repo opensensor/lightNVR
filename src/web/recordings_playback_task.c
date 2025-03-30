@@ -362,7 +362,7 @@ void mg_handle_play_recording(struct mg_connection *c, struct mg_http_message *h
         log_error("Failed to add playback recording task to thread pool");
         playback_recording_task_free(task);
         mark_request_inactive(id);
-        free(hm_copy);
+        // Don't free hm_copy here as it's already freed in playback_recording_task_free
         mg_send_json_error(c, 500, "Failed to add playback recording task to thread pool");
         return;
     }

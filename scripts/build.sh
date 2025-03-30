@@ -7,9 +7,15 @@ set -e
 BUILD_TYPE="Release"
 ENABLE_SOD=1
 ENABLE_TESTS=1
+ENABLE_GO2RTC=1
 
 # Default SOD linking mode
 SOD_DYNAMIC=0
+
+# Default go2rtc settings
+GO2RTC_BINARY_PATH="/usr/local/bin/go2rtc"
+GO2RTC_CONFIG_DIR="/etc/lightnvr/go2rtc"
+GO2RTC_API_PORT=1984
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -51,6 +57,26 @@ while [[ $# -gt 0 ]]; do
             ENABLE_TESTS=0
             shift
             ;;
+        --with-go2rtc)
+            ENABLE_GO2RTC=1
+            shift
+            ;;
+        --without-go2rtc)
+            ENABLE_GO2RTC=0
+            shift
+            ;;
+        --go2rtc-binary=*)
+            GO2RTC_BINARY_PATH="${key#*=}"
+            shift
+            ;;
+        --go2rtc-config-dir=*)
+            GO2RTC_CONFIG_DIR="${key#*=}"
+            shift
+            ;;
+        --go2rtc-api-port=*)
+            GO2RTC_API_PORT="${key#*=}"
+            shift
+            ;;
         --help)
             echo "Usage: $0 [options]"
             echo "Options:"
@@ -63,6 +89,11 @@ while [[ $# -gt 0 ]]; do
             echo "  --sod-static       Use static linking for SOD (default)"
             echo "  --with-tests       Build test suite (default)"
             echo "  --without-tests    Build without test suite"
+            echo "  --with-go2rtc      Build with go2rtc integration (default)"
+            echo "  --without-go2rtc   Build without go2rtc integration"
+            echo "  --go2rtc-binary=PATH  Set go2rtc binary path (default: /usr/local/bin/go2rtc)"
+            echo "  --go2rtc-config-dir=DIR  Set go2rtc config directory (default: /etc/lightnvr/go2rtc)"
+            echo "  --go2rtc-api-port=PORT  Set go2rtc API port (default: 1984)"
             echo "  --help             Show this help message"
             exit 0
             ;;
@@ -121,6 +152,19 @@ if [ "$ENABLE_TESTS" -eq 1 ]; then
 else
     TEST_OPTION="-DBUILD_TESTS=OFF"
     echo "Building without test suite"
+fi
+
+# Configure go2rtc options
+GO2RTC_OPTION=""
+if [ "$ENABLE_GO2RTC" -eq 1 ]; then
+    GO2RTC_OPTION="-DENABLE_GO2RTC=ON -DGO2RTC_BINARY_PATH=\"$GO2RTC_BINARY_PATH\" -DGO2RTC_CONFIG_DIR=\"$GO2RTC_CONFIG_DIR\" -DGO2RTC_API_PORT=$GO2RTC_API_PORT"
+    echo "Building with go2rtc integration"
+    echo "  go2rtc binary path: $GO2RTC_BINARY_PATH"
+    echo "  go2rtc config directory: $GO2RTC_CONFIG_DIR"
+    echo "  go2rtc API port: $GO2RTC_API_PORT"
+else
+    GO2RTC_OPTION="-DENABLE_GO2RTC=OFF"
+    echo "Building without go2rtc integration"
 fi
 
 # Create a temporary CMake module to find the custom FFmpeg
@@ -207,7 +251,7 @@ cd "$BUILD_DIR"
 
 # Use our custom module path
 CMAKE_MODULE_PATH="$(pwd)/../../cmake/modules"
-cmake -DCMAKE_BUILD_TYPE="$BUILD_TYPE" $SOD_OPTION $TEST_OPTION $FFMPEG_CMAKE_OPTIONS \
+cmake -DCMAKE_BUILD_TYPE="$BUILD_TYPE" $SOD_OPTION $TEST_OPTION $GO2RTC_OPTION $FFMPEG_CMAKE_OPTIONS \
       -DCMAKE_MODULE_PATH="$CMAKE_MODULE_PATH" ../..
 
 # Return to project root

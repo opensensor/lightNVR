@@ -34,6 +34,12 @@
 #include "video/timestamp_manager.h"
 #include "video/onvif_discovery.h"
 
+// Include go2rtc headers if USE_GO2RTC is defined
+#ifdef USE_GO2RTC
+#include "video/go2rtc/go2rtc_stream.h"
+#include "video/go2rtc/go2rtc_integration.h"
+#endif
+
 // External function declarations
 void init_recordings_system(void);
 #include "database/database_manager.h"
@@ -426,6 +432,21 @@ static void load_streams_from_config(const config_t *config) {
                         // Start recording if record flag is set
                         if (config->streams[i].record) {
                             // Start HLS streaming for the stream
+                            #ifdef USE_GO2RTC
+                            if (go2rtc_integration_start_hls(config->streams[i].name) == 0) {
+                                log_info("HLS streaming started for stream: %s (using go2rtc if available)", config->streams[i].name);
+                            } else {
+                                log_warn("Failed to start HLS streaming for stream: %s", config->streams[i].name);
+                            }
+                            
+                            // Also start MP4 recording for the stream, regardless of HLS streaming status
+                            if (go2rtc_integration_start_recording(config->streams[i].name) == 0) {
+                                log_info("MP4 recording started for stream: %s (using go2rtc if available)", config->streams[i].name);
+                            } else {
+                                log_warn("Failed to start MP4 recording for stream: %s", config->streams[i].name);
+                            }
+                            #else
+                            // Fall back to default implementation if go2rtc is not enabled
                             if (start_hls_stream(config->streams[i].name) == 0) {
                                 log_info("HLS streaming started for stream: %s", config->streams[i].name);
                             } else {
@@ -438,6 +459,7 @@ static void load_streams_from_config(const config_t *config) {
                             } else {
                                 log_warn("Failed to start MP4 recording for stream: %s", config->streams[i].name);
                             }
+                            #endif
                         }
                     } else {
                         log_warn("Failed to start stream: %s", config->streams[i].name);
@@ -654,7 +676,57 @@ int main(int argc, char *argv[]) {
         log_error("Failed to initialize stream manager");
         goto cleanup;
     }
-    load_streams_from_config(&config);
+
+        // Initialize go2rtc integration if enabled
+    #ifdef USE_GO2RTC
+    log_info("Initializing go2rtc integration...");
+    if (go2rtc_stream_init("/usr/local/bin/go2rtc", "/etc/lightnvr/go2rtc", 1984)) {
+        log_info("go2rtc integration initialized successfully");
+
+        // Start go2rtc service
+        if (go2rtc_stream_start_service()) {
+            log_info("go2rtc service started successfully");
+
+            // Wait for go2rtc service to be fully ready
+            log_info("Waiting for go2rtc service to be fully ready...");
+            int retries = 10;
+            while (retries > 0 && !go2rtc_stream_is_ready()) {
+                log_info("Waiting for go2rtc service to be ready... (%d retries left)", retries);
+                sleep(1);
+                retries--;
+            }
+
+            if (!go2rtc_stream_is_ready()) {
+                log_error("go2rtc service failed to be ready in time");
+            } else {
+                log_info("go2rtc service is now fully ready");
+            }
+
+            // Initialize go2rtc consumer integration
+            if (go2rtc_integration_init()) {
+                log_info("go2rtc consumer integration initialized successfully");
+
+                // Register all existing streams with go2rtc
+                log_info("Registering all existing streams with go2rtc");
+                if (!go2rtc_integration_register_all_streams()) {
+                    log_warn("Failed to register all streams with go2rtc");
+                    // Continue anyway
+                } else {
+                    // Wait a bit for streams to be fully registered
+                    log_info("Waiting for streams to be fully registered with go2rtc...");
+                    sleep(3);
+                    log_info("Streams should now be fully registered with go2rtc");
+                }
+            } else {
+                log_error("Failed to initialize go2rtc consumer integration");
+            }
+        } else {
+            log_error("Failed to start go2rtc service");
+        }
+    } else {
+        log_error("Failed to initialize go2rtc integration");
+    }
+    #endif
 
     // Initialize FFmpeg streaming backend
     init_transcoding_backend();
@@ -704,6 +776,10 @@ int main(int argc, char *argv[]) {
             }
         }
     }
+    
+    // Now that go2rtc is initialized (if enabled), load streams from config
+    log_info("Loading streams from configuration...");
+    load_streams_from_config(&config);
     
     // Check if detection models exist and start detection-based recording
     for (int i = 0; i < config.max_streams; i++) {
@@ -868,6 +944,13 @@ int main(int argc, char *argv[]) {
     // Cleanup
 cleanup:
     log_info("Starting cleanup process...");
+    
+    // Clean up go2rtc integration if enabled
+    #ifdef USE_GO2RTC
+    log_info("Cleaning up go2rtc integration...");
+    go2rtc_integration_cleanup();
+    go2rtc_stream_cleanup();
+    #endif
     
     // Block signals during cleanup to prevent interruptions
     sigset_t block_mask, old_mask;
@@ -1186,6 +1269,20 @@ static void check_and_ensure_recording(void) {
                 // Recording is not active, start it
                 log_info("Ensuring MP4 recording is active for stream: %s", config.streams[i].name);
                 
+                #ifdef USE_GO2RTC
+                // First ensure HLS streaming is active (required for MP4 recording)
+                if (go2rtc_integration_start_hls(config.streams[i].name) != 0) {
+                    log_warn("Failed to start HLS streaming for stream: %s", config.streams[i].name);
+                    // Continue anyway, as the HLS streaming might already be running
+                }
+                
+                // Start MP4 recording
+                if (go2rtc_integration_start_recording(config.streams[i].name) != 0) {
+                    log_warn("Failed to start MP4 recording for stream: %s", config.streams[i].name);
+                } else {
+                    log_info("Successfully started MP4 recording for stream: %s (using go2rtc if available)", config.streams[i].name);
+                }
+                #else
                 // First ensure HLS streaming is active (required for MP4 recording)
                 if (start_hls_stream(config.streams[i].name) != 0) {
                     log_warn("Failed to start HLS streaming for stream: %s", config.streams[i].name);
@@ -1198,6 +1295,7 @@ static void check_and_ensure_recording(void) {
                 } else {
                     log_info("Successfully started MP4 recording for stream: %s", config.streams[i].name);
                 }
+                #endif
             }
         }
     }

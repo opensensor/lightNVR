@@ -16,6 +16,10 @@
 #include "video/streams.h"
 #include "database/database_manager.h"
 
+#ifdef USE_GO2RTC
+#include "video/go2rtc/go2rtc_integration.h"
+#endif
+
 /**
  * Get current streaming configuration from database
  * 
@@ -64,8 +68,24 @@ int stop_transcode_stream(const char *stream_name) {
         return -1;
     }
 
+    int result = 0;
+
+    #ifdef USE_GO2RTC
+    // First stop the HLS stream using go2rtc integration if available
+    result = go2rtc_integration_stop_hls(stream_name);
+    if (result != 0) {
+        log_warn("Failed to stop HLS stream using go2rtc integration: %s", stream_name);
+        // Continue anyway
+    }
+
+    // Also stop any separate MP4 recording for this stream using go2rtc integration if available
+    if (go2rtc_integration_stop_recording(stream_name) != 0) {
+        log_warn("Failed to stop MP4 recording using go2rtc integration: %s", stream_name);
+        // Continue anyway
+    }
+    #else
     // First stop the HLS stream
-    int result = stop_hls_stream(stream_name);
+    result = stop_hls_stream(stream_name);
     if (result != 0) {
         log_warn("Failed to stop HLS stream: %s", stream_name);
         // Continue anyway
@@ -73,6 +93,7 @@ int stop_transcode_stream(const char *stream_name) {
 
     // Also stop any separate MP4 recording for this stream
     unregister_mp4_writer_for_stream(stream_name);
+    #endif
 
     return result;
 }

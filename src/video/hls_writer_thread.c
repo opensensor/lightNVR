@@ -367,10 +367,16 @@ static void *hls_writer_thread_func(void *arg) {
     return NULL;
 }
 
+// Forward declaration for go2rtc integration
+extern bool go2rtc_integration_is_using_go2rtc_for_hls(const char *stream_name);
+extern bool go2rtc_get_rtsp_url(const char *stream_name, char *url, size_t url_size);
+
 /**
  * Start a recording thread that reads from the RTSP stream and writes to the HLS files
+ * Enhanced with robust error handling for go2rtc integration
  */
 int hls_writer_start_recording_thread(hls_writer_t *writer, const char *rtsp_url, const char *stream_name, int protocol) {
+    // Validate input parameters with detailed error messages
     if (!writer) {
         log_error("NULL writer passed to hls_writer_start_recording_thread");
         return -1;
@@ -386,22 +392,65 @@ int hls_writer_start_recording_thread(hls_writer_t *writer, const char *rtsp_url
         return -1;
     }
     
+    // Check if this stream is using go2rtc for HLS
+    char actual_url[MAX_PATH_LENGTH];
+    
+    // Use the original URL by default
+    strncpy(actual_url, rtsp_url, sizeof(actual_url) - 1);
+    actual_url[sizeof(actual_url) - 1] = '\0';
+    
+    // If the stream is using go2rtc for HLS, get the go2rtc RTSP URL
+    // The go2rtc_integration_is_using_go2rtc_for_hls function will only return true
+    // if go2rtc is fully ready and the stream is registered
+    if (go2rtc_integration_is_using_go2rtc_for_hls(stream_name)) {
+        // Get the go2rtc RTSP URL
+        if (go2rtc_get_rtsp_url(stream_name, actual_url, sizeof(actual_url))) {
+            log_info("Using go2rtc RTSP URL for HLS streaming: %s", actual_url);
+        } else {
+            log_warn("Failed to get go2rtc RTSP URL for stream %s, falling back to original URL", stream_name);
+        }
+    }
+    
     // Check if thread is already running
     if (writer->thread_ctx) {
         log_warn("HLS writer thread for %s is already running", stream_name);
         return 0;
     }
     
-    // Create thread context
-    hls_writer_thread_ctx_t *ctx = (hls_writer_thread_ctx_t *)calloc(1, sizeof(hls_writer_thread_ctx_t));
+    // Create thread context with additional error handling
+    hls_writer_thread_ctx_t *ctx = NULL;
+    
+    // Use a try/catch style approach with goto for cleanup
+    int result = -1;
+    
+    // Allocate thread context
+    ctx = (hls_writer_thread_ctx_t *)calloc(1, sizeof(hls_writer_thread_ctx_t));
     if (!ctx) {
         log_error("Failed to allocate HLS writer thread context");
         return -1;
     }
     
-    // Initialize context
-    strncpy(ctx->rtsp_url, rtsp_url, MAX_PATH_LENGTH - 1);
+    // Initialize context with safe string operations
+    if (strlen(actual_url) >= MAX_PATH_LENGTH) {
+        log_error("RTSP URL too long for HLS writer thread context");
+        goto cleanup;
+    }
+    
+    if (strlen(stream_name) >= MAX_STREAM_NAME) {
+        log_error("Stream name too long for HLS writer thread context");
+        goto cleanup;
+    }
+    
+    // Use the go2rtc URL if available, otherwise use the original URL
+    strncpy(ctx->rtsp_url, actual_url, MAX_PATH_LENGTH - 1);
+    ctx->rtsp_url[MAX_PATH_LENGTH - 1] = '\0';
+    
+    // Log the URL being used
+    log_info("Using URL for HLS streaming of stream %s: %s", stream_name, actual_url);
+    
     strncpy(ctx->stream_name, stream_name, MAX_STREAM_NAME - 1);
+    ctx->stream_name[MAX_STREAM_NAME - 1] = '\0';
+    
     ctx->writer = writer;
     ctx->protocol = protocol;
     atomic_store(&ctx->running, 1);
@@ -412,23 +461,35 @@ int hls_writer_start_recording_thread(hls_writer_t *writer, const char *rtsp_url
     atomic_store(&ctx->connection_valid, 0); // Start with connection invalid
     atomic_store(&ctx->consecutive_failures, 0);
     
-    // Store thread context in writer
+    // Store thread context in writer BEFORE creating the thread
+    // This ensures the thread context is available to other threads
     writer->thread_ctx = ctx;
     
-    // Start thread
-    if (pthread_create(&ctx->thread, NULL, hls_writer_thread_func, ctx) != 0) {
-        log_error("Failed to create HLS writer thread for %s", stream_name);
-        free(ctx);
-        writer->thread_ctx = NULL;
-        return -1;
+    // Start thread with error handling
+    int thread_result = pthread_create(&ctx->thread, NULL, hls_writer_thread_func, ctx);
+    if (thread_result != 0) {
+        log_error("Failed to create HLS writer thread for %s (error: %s)", 
+                 stream_name, strerror(thread_result));
+        writer->thread_ctx = NULL; // Reset the thread context pointer
+        goto cleanup;
     }
     
     log_info("Started HLS writer thread for %s", stream_name);
     return 0;
+    
+cleanup:
+    // Clean up resources if thread creation failed
+    if (ctx) {
+        free(ctx);
+        ctx = NULL;
+    }
+    
+    return result;
 }
 
 /**
  * Stop the recording thread
+ * This function is now safer with go2rtc integration
  */
 void hls_writer_stop_recording_thread(hls_writer_t *writer) {
     if (!writer) {
@@ -436,19 +497,24 @@ void hls_writer_stop_recording_thread(hls_writer_t *writer) {
         return;
     }
     
-    // Check if thread is running
-    if (!writer->thread_ctx) {
+    // Safely check if thread is running
+    void *thread_ctx_ptr = writer->thread_ctx;
+    if (!thread_ctx_ptr) {
         log_warn("HLS writer thread is not running");
         return;
     }
     
-    // Get thread context
-    hls_writer_thread_ctx_t *ctx = (hls_writer_thread_ctx_t *)writer->thread_ctx;
+    // Make a safe local copy of the thread context pointer
+    hls_writer_thread_ctx_t *ctx = (hls_writer_thread_ctx_t *)thread_ctx_ptr;
     
     // Create a local copy of the stream name for logging
-    char stream_name[MAX_STREAM_NAME];
-    strncpy(stream_name, ctx->stream_name, MAX_STREAM_NAME - 1);
-    stream_name[MAX_STREAM_NAME - 1] = '\0';
+    char stream_name[MAX_STREAM_NAME] = {0};
+    if (ctx->stream_name[0] != '\0') {
+        strncpy(stream_name, ctx->stream_name, MAX_STREAM_NAME - 1);
+        stream_name[MAX_STREAM_NAME - 1] = '\0';
+    } else {
+        strcpy(stream_name, "unknown");
+    }
     
     log_info("Stopping HLS writer thread for %s", stream_name);
     
@@ -456,14 +522,26 @@ void hls_writer_stop_recording_thread(hls_writer_t *writer) {
     atomic_store(&ctx->running, 0);
     atomic_store(&ctx->connection_valid, 0);
     
-    // Join thread with timeout - increased from 5 to 10 seconds for more reliable shutdown
-    int join_result = pthread_join_with_timeout(ctx->thread, NULL, 10);
+    // Store a local copy of the thread ID
+    pthread_t thread_id = ctx->thread;
+    
+    // Mark the thread context as NULL in the writer BEFORE joining
+    // This prevents other threads from trying to access it while we're shutting down
+    writer->thread_ctx = NULL;
+    
+    // Update component state in shutdown coordinator
+    if (ctx->shutdown_component_id >= 0) {
+        update_component_state(ctx->shutdown_component_id, COMPONENT_STOPPING);
+    }
+    
+    // Join thread with timeout - increased to 15 seconds for more reliable shutdown with go2rtc
+    int join_result = pthread_join_with_timeout(thread_id, NULL, 15);
     if (join_result != 0) {
-        log_error("Failed to join HLS writer thread for %s (error: %d), detaching thread", 
-                 stream_name, join_result);
+        log_error("Failed to join HLS writer thread for %s (error: %s), detaching thread", 
+                 stream_name, strerror(join_result));
         
         // Detach thread to avoid resource leaks
-        pthread_detach(ctx->thread);
+        pthread_detach(thread_id);
         
         // Force the thread to be considered stopped in the shutdown coordinator
         if (ctx->shutdown_component_id >= 0) {
@@ -472,33 +550,50 @@ void hls_writer_stop_recording_thread(hls_writer_t *writer) {
         }
     } else {
         log_info("Successfully joined HLS writer thread for %s", stream_name);
+        
+        // Update component state in shutdown coordinator
+        if (ctx->shutdown_component_id >= 0) {
+            update_component_state(ctx->shutdown_component_id, COMPONENT_STOPPED);
+        }
     }
     
-    // Ensure we update the component state even if join failed
-    if (ctx->shutdown_component_id >= 0) {
-        update_component_state(ctx->shutdown_component_id, COMPONENT_STOPPED);
-    }
+    // Add a small delay to ensure any in-progress operations complete
+    usleep(100000); // 100ms
     
     // Free thread context
     free(ctx);
-    writer->thread_ctx = NULL;
+    ctx = NULL; // Set to NULL after freeing to prevent double-free
     
     log_info("Stopped HLS writer thread for %s", stream_name);
 }
 
 /**
  * Check if the recording thread is running and has a valid connection
+ * This function is now safer with go2rtc integration
  */
 int hls_writer_is_recording(hls_writer_t *writer) {
+    // Basic validation
     if (!writer) {
         return 0;
     }
     
-    if (!writer->thread_ctx) {
+    // Safely check thread context
+    void *thread_ctx_ptr = writer->thread_ctx;
+    if (!thread_ctx_ptr) {
         return 0;
     }
     
-    hls_writer_thread_ctx_t *ctx = (hls_writer_thread_ctx_t *)writer->thread_ctx;
+    // Make a safe local copy of the thread context pointer
+    hls_writer_thread_ctx_t *ctx = (hls_writer_thread_ctx_t *)thread_ctx_ptr;
+    
+    // Create a local copy of the stream name for logging
+    char stream_name[MAX_STREAM_NAME] = {0};
+    if (ctx->stream_name[0] != '\0') {
+        strncpy(stream_name, ctx->stream_name, MAX_STREAM_NAME - 1);
+        stream_name[MAX_STREAM_NAME - 1] = '\0';
+    } else {
+        strcpy(stream_name, "unknown");
+    }
     
     // Check if the thread is running
     if (!atomic_load(&ctx->running)) {
@@ -515,7 +610,7 @@ int hls_writer_is_recording(hls_writer_t *writer) {
     time_t last_packet_time = (time_t)atomic_load(&ctx->last_packet_time);
     if (now - last_packet_time > MAX_PACKET_TIMEOUT) {
         log_error("HLS writer thread for %s has not received a packet in %ld seconds, considering it dead",
-                 ctx->stream_name, now - last_packet_time);
+                 stream_name, now - last_packet_time);
         
         // Mark connection as invalid to trigger reconnection
         atomic_store(&ctx->connection_valid, 0);
