@@ -45,22 +45,20 @@ RUN ARCH=$(uname -m) && \
     curl -L -o /bin/go2rtc $RELEASE_URL && \
     chmod +x /bin/go2rtc && \
     # Create basic configuration file
-    cat > /etc/lightnvr/go2rtc/go2rtc.yaml << EOF
-# go2rtc configuration file
-api:
-  listen: :1984
-  base_path: /go2rtc/
-
-webrtc:
-  ice_servers:
-    - urls: [stun:stun.l.google.com:19302]
-
-log:
-  level: info
-
-streams:
-  # Streams will be added dynamically by LightNVR
-EOF
+    echo "# go2rtc configuration file" > /etc/lightnvr/go2rtc/go2rtc.yaml && \
+    echo "api:" >> /etc/lightnvr/go2rtc/go2rtc.yaml && \
+    echo "  listen: :1984" >> /etc/lightnvr/go2rtc/go2rtc.yaml && \
+    echo "  base_path: /go2rtc/" >> /etc/lightnvr/go2rtc/go2rtc.yaml && \
+    echo "" >> /etc/lightnvr/go2rtc/go2rtc.yaml && \
+    echo "webrtc:" >> /etc/lightnvr/go2rtc/go2rtc.yaml && \
+    echo "  ice_servers:" >> /etc/lightnvr/go2rtc/go2rtc.yaml && \
+    echo "    - urls: [stun:stun.l.google.com:19302]" >> /etc/lightnvr/go2rtc/go2rtc.yaml && \
+    echo "" >> /etc/lightnvr/go2rtc/go2rtc.yaml && \
+    echo "log:" >> /etc/lightnvr/go2rtc/go2rtc.yaml && \
+    echo "  level: info" >> /etc/lightnvr/go2rtc/go2rtc.yaml && \
+    echo "" >> /etc/lightnvr/go2rtc/go2rtc.yaml && \
+    echo "streams:" >> /etc/lightnvr/go2rtc/go2rtc.yaml && \
+    echo "  # Streams will be added dynamically by LightNVR" >> /etc/lightnvr/go2rtc/go2rtc.yaml
 
 # Make a slight modification to the install script to skip systemd
 RUN if grep -q "systemctl" scripts/install.sh; then \
@@ -104,17 +102,17 @@ COPY --from=builder /lib/libsod.so.1 /lib/libsod.so.1
 COPY --from=builder /lib/libsod.so /lib/libsod.so
 
 # Create a startup script to launch both services
-RUN echo '#!/bin/bash\n\
-# Start go2rtc in the background\n\
-/bin/go2rtc &\n\
-GO2RTC_PID=$!\n\
-\n\
-# Start lightnvr in the foreground\n\
-exec /bin/lightnvr -c /etc/lightnvr/lightnvr.ini\n\
-\n\
-# If lightnvr exits, kill go2rtc\n\
-kill $GO2RTC_PID\n\
-' > /bin/start.sh && chmod +x /bin/start.sh
+RUN echo '#!/bin/bash' > /bin/start.sh && \
+    echo '# Start go2rtc in the background' >> /bin/start.sh && \
+    echo '/bin/go2rtc &' >> /bin/start.sh && \
+    echo 'GO2RTC_PID=$!' >> /bin/start.sh && \
+    echo '' >> /bin/start.sh && \
+    echo '# Start lightnvr in the foreground' >> /bin/start.sh && \
+    echo 'exec /bin/lightnvr -c /etc/lightnvr/lightnvr.ini' >> /bin/start.sh && \
+    echo '' >> /bin/start.sh && \
+    echo '# If lightnvr exits, kill go2rtc' >> /bin/start.sh && \
+    echo 'kill $GO2RTC_PID' >> /bin/start.sh && \
+    chmod +x /bin/start.sh
 
 # Expose required ports
 EXPOSE 8080 1984
