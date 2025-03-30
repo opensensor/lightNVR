@@ -16,6 +16,7 @@
 #include <netdb.h>
 #include <errno.h>
 #include <curl/curl.h>
+#include <ctype.h>
 
 // API client configuration
 static char *g_api_host = NULL;
