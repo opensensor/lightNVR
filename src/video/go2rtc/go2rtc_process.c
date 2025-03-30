@@ -959,19 +959,27 @@ bool go2rtc_process_stop(void) {
         return false;
     }
 
-    // Kill all go2rtc processes, not just the one we started
-    bool result = kill_all_go2rtc_processes();
-    
-    // Reset our tracked PID
-    g_process_pid = -1;
-    
-    if (result) {
-        log_info("Stopped all go2rtc processes");
+    // Only stop go2rtc if we started it (g_binary_path is not empty)
+    if (g_binary_path && g_binary_path[0] != '\0') {
+        log_info("Stopping go2rtc process that we started");
+        
+        // Kill all go2rtc processes, not just the one we started
+        bool result = kill_all_go2rtc_processes();
+        
+        // Reset our tracked PID
+        g_process_pid = -1;
+        
+        if (result) {
+            log_info("Stopped all go2rtc processes");
+        } else {
+            log_warn("Some go2rtc processes may still be running");
+        }
+        
+        return result;
     } else {
-        log_warn("Some go2rtc processes may still be running");
+        log_info("Not stopping go2rtc as we're using an existing service");
+        return true; // Return success as we're intentionally not stopping it
     }
-    
-    return result;
 }
 
 void go2rtc_process_cleanup(void) {
@@ -979,8 +987,13 @@ void go2rtc_process_cleanup(void) {
         return;
     }
 
-    // Stop all go2rtc processes
-    kill_all_go2rtc_processes();
+    // Only stop go2rtc if we started it (g_binary_path is not empty)
+    if (g_binary_path && g_binary_path[0] != '\0') {
+        log_info("Stopping go2rtc process that we started during cleanup");
+        kill_all_go2rtc_processes();
+    } else {
+        log_info("Not stopping go2rtc during cleanup as we're using an existing service");
+    }
 
     // Free allocated memory
     free(g_binary_path);

@@ -973,11 +973,12 @@ int main(int argc, char *argv[]) {
 cleanup:
     log_info("Starting cleanup process...");
     
-    // Clean up go2rtc integration if enabled
+    // We'll clean up go2rtc later in the shutdown sequence
+    // First clean up go2rtc integration (but not the process yet)
     #ifdef USE_GO2RTC
     log_info("Cleaning up go2rtc integration...");
     go2rtc_integration_cleanup();
-    go2rtc_stream_cleanup();
+    // Note: go2rtc_stream_cleanup() will be called later
     #endif
     
     // Block signals during cleanup to prevent interruptions
@@ -1208,6 +1209,12 @@ cleanup:
         
         // Add a small delay after database shutdown to ensure all resources are properly released
         usleep(100000);  // 100ms
+        
+        // Now clean up go2rtc as one of the last steps
+        #ifdef USE_GO2RTC
+        log_info("Cleaning up go2rtc stream...");
+        go2rtc_stream_cleanup();
+        #endif
         
         // Kill the watchdog timer since we completed successfully
         kill(cleanup_pid, SIGKILL);
