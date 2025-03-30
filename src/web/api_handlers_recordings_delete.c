@@ -191,7 +191,7 @@ void mg_handle_delete_recording(struct mg_connection *c, struct mg_http_message 
     log_info("Handling DELETE /api/recordings/%llu request", (unsigned long long)id);
     
     // Acquire thread pool
-    thread_pool_t *pool = api_thread_pool_acquire(4, 10);
+    thread_pool_t *pool = api_thread_pool_acquire(api_thread_pool_get_size(), 10);
     if (!pool) {
         log_error("Failed to acquire thread pool");
         mg_send_json_error(c, 500, "Failed to acquire thread pool");

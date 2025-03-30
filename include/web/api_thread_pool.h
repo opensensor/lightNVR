@@ -45,6 +45,13 @@ void api_thread_pool_shutdown(void);
 thread_pool_t *api_thread_pool_get(void);
 
 /**
+ * @brief Get the recommended thread pool size from the global config
+ * 
+ * @return int The recommended thread pool size
+ */
+int api_thread_pool_get_size(void);
+
+/**
  * @brief Structure for ONVIF discovery task
  */
 typedef struct {

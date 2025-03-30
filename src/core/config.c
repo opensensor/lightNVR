@@ -47,7 +47,7 @@ void load_default_config(config_t *config) {
     config->web_auth_enabled = true;
     snprintf(config->web_username, 32, "admin");
     snprintf(config->web_password, 32, "admin"); // Default password, should be changed
-    config->connection_pool_threads = 8; // Default to 8 threads for the connection pool
+    config->web_thread_pool_size = 8; // Default to 8 threads for the web thread pool
     
     // Stream settings
     config->max_streams = 16;
@@ -288,8 +288,8 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             strncpy(config->web_username, value, 31);
         } else if (strcmp(name, "password") == 0) {
             strncpy(config->web_password, value, 31);
-        } else if (strcmp(name, "connection_pool_threads") == 0) {
-            config->connection_pool_threads = atoi(value);
+        } else if (strcmp(name, "connection_pool_threads") == 0 || strcmp(name, "web_thread_pool_size") == 0) {
+            config->web_thread_pool_size = atoi(value);
         }
     }
     // Stream settings
@@ -842,7 +842,7 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "auth_enabled = %s\n", config->web_auth_enabled ? "true" : "false");
     fprintf(file, "username = %s\n", config->web_username);
     fprintf(file, "password = %s  ; IMPORTANT: Change this default password!\n", config->web_password);
-    fprintf(file, "connection_pool_threads = %d  ; Number of threads for handling concurrent connections\n\n", config->connection_pool_threads);
+    fprintf(file, "web_thread_pool_size = %d  ; Number of threads for handling both connections and API operations\n\n", config->web_thread_pool_size);
     
     // Write stream settings
     fprintf(file, "[streams]\n");
@@ -935,7 +935,7 @@ void print_config(const config_t *config) {
     printf("    Web Auth Enabled: %s\n", config->web_auth_enabled ? "true" : "false");
     printf("    Web Username: %s\n", config->web_username);
     printf("    Web Password: %s\n", "********");
-    printf("    Connection Pool Threads: %d\n", config->connection_pool_threads);
+    printf("    Web Thread Pool Size: %d\n", config->web_thread_pool_size);
     
     printf("  Stream Settings:\n");
     printf("    Max Streams: %d\n", config->max_streams);

@@ -520,7 +520,7 @@ void mg_handle_batch_delete_recordings(struct mg_connection *c, struct mg_http_m
     }
     
     // Acquire thread pool
-    thread_pool_t *pool = api_thread_pool_acquire(4, 10);
+    thread_pool_t *pool = api_thread_pool_acquire(api_thread_pool_get_size(), 10);
     if (!pool) {
         log_error("Failed to acquire thread pool");
         free(body);

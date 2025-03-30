@@ -348,7 +348,7 @@ void mg_handle_play_recording(struct mg_connection *c, struct mg_http_message *h
     thread_pool_t *pool = api_thread_pool_get();
     if (!pool) {
         // If the pool doesn't exist, acquire it (this will initialize it)
-        pool = api_thread_pool_acquire(4, 10);
+        pool = api_thread_pool_acquire(api_thread_pool_get_size(), 10);
         if (!pool) {
             log_error("Failed to acquire thread pool");
             mg_send_json_error(c, 500, "Failed to acquire thread pool");

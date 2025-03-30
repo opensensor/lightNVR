@@ -215,7 +215,7 @@ void mg_handle_post_discover_onvif_devices(struct mg_connection *c, struct mg_ht
     
     // Acquire the API thread pool on demand
     // This will initialize the pool if it doesn't exist and increment the reference count
-    thread_pool_t *pool = api_thread_pool_acquire(2, 10);
+    thread_pool_t *pool = api_thread_pool_acquire(api_thread_pool_get_size(), 10);
     if (!pool) {
         log_error("Failed to acquire API thread pool");
         mg_send_json_error(c, 500, "Failed to acquire API thread pool");

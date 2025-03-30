@@ -176,6 +176,26 @@ thread_pool_t *api_thread_pool_get(void) {
 }
 
 /**
+ * @brief Get the recommended thread pool size from the global config
+ * 
+ * @return int The recommended thread pool size
+ */
+int api_thread_pool_get_size(void) {
+    // Get the thread pool size from the global config
+    extern config_t g_config;
+    
+    // Use the web_thread_pool_size from the global config
+    int size = g_config.web_thread_pool_size;
+    
+    // If the size is not set or invalid, use a default value
+    if (size <= 0) {
+        size = 4; // Default to 4 threads
+    }
+    
+    return size;
+}
+
+/**
  * @brief Create an ONVIF discovery task
  * 
  * @param c Mongoose connection
