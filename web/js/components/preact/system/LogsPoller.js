@@ -7,6 +7,7 @@ import { h } from '../../../preact.min.js';
 import { html } from '../../../html-helper.js';
 import { useState, useEffect, useRef } from '../../../preact.hooks.module.js';
 import { log_level_meets_minimum } from './SystemUtils.js';
+import { fetchJSON } from '../../../fetch-utils.js';
 
 /**
  * LogsPoller component
@@ -133,9 +134,12 @@ export function LogsPoller({ logLevel, logCount, onLogsReceived }) {
         if (cleanedLogs.length > 0) {
           console.log(`Received ${cleanedLogs.length} logs via WebSocket`);
           
-          // Get existing logs from the parent component
-          fetch('/api/system/logs?level=debug&count=100')
-            .then(response => response.json())
+          // Get existing logs from the parent component using enhanced fetch
+          fetchJSON('/api/system/logs?level=debug&count=100', {
+            timeout: 15000, // 15 second timeout
+            retries: 1,     // Retry once
+            retryDelay: 1000 // 1 second between retries
+          })
             .then(data => {
               if (data.logs && Array.isArray(data.logs)) {
                 // Combine existing logs with new logs

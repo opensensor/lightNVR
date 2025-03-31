@@ -229,10 +229,22 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
         av_dict_set(&input_options, "loglevel", "debug", 0);
     }
     
-    // Open input with protocol-specific options
+    // Open input with protocol-specific options and better error handling
     ret = avformat_open_input(input_ctx, url, NULL, &input_options);
     if (ret < 0) {
-        log_ffmpeg_error(ret, "Could not open input stream");
+        char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+        av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+        log_error("Could not open input stream: %s (error code: %d, message: %s)", 
+                 url, ret, error_buf);
+        
+        // Check for specific RTSP errors
+        if (strstr(url, "rtsp://") != NULL && 
+            (ret == AVERROR(ECONNREFUSED) || ret == AVERROR(ETIMEDOUT) || 
+             strstr(error_buf, "404") || strstr(error_buf, "401") || 
+             strstr(error_buf, "403"))) {
+            log_error("RTSP connection failed - server may be down or URL may be incorrect: %s", url);
+        }
+        
         av_dict_free(&input_options);
         return ret;
     }
@@ -240,9 +252,9 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
     // Free options
     av_dict_free(&input_options);
     
-    // Verify that the context was created
+    // Verify that the context was created with additional safety checks
     if (!*input_ctx) {
-        log_error("Input context is NULL after successful open");
+        log_error("Input context is NULL after successful open for URL: %s", url);
         return AVERROR(EINVAL);
     }
 

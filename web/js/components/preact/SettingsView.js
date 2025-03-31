@@ -8,6 +8,7 @@ import { html } from '../../html-helper.js';
 import { useState, useEffect, useRef } from '../../preact.hooks.module.js';
 import { showStatusMessage } from './UI.js';
 import { ContentLoader } from './LoadingIndicator.js';
+import { fetchJSON, enhancedFetch, createRequestController } from '../../fetch-utils.js';
 
 /**
  * SettingsView component
@@ -39,9 +40,22 @@ export function SettingsView() {
   const [isLoading, setIsLoading] = useState(true);
   const [hasData, setHasData] = useState(false);
 
+  // Request controller for cancelling requests on unmount
+  const requestControllerRef = useRef(null);
+
   // Load settings on mount
   useEffect(() => {
+    // Create a new request controller
+    requestControllerRef.current = createRequestController();
+    
     loadSettings();
+    
+    // Clean up and cancel pending requests on unmount
+    return () => {
+      if (requestControllerRef.current) {
+        requestControllerRef.current.abort();
+      }
+    };
   }, []);
   
   // Load settings from API
@@ -49,12 +63,12 @@ export function SettingsView() {
     try {
       setIsLoading(true);
       
-      const response = await fetch('/api/settings');
-      if (!response.ok) {
-        throw new Error('Failed to load settings');
-      }
-      
-      const data = await response.json();
+      const data = await fetchJSON('/api/settings', {
+        signal: requestControllerRef.current?.signal,
+        timeout: 15000, // 15 second timeout
+        retries: 2,     // Retry twice
+        retryDelay: 1000 // 1 second between retries
+      });
       console.log('Settings loaded:', data);
       
       // Map backend property names to frontend property names
@@ -120,17 +134,17 @@ export function SettingsView() {
         post_detection_buffer: parseInt(settings.defaultPostBuffer, 10)
       };
       
-      const response = await fetch('/api/settings', {
+      await enhancedFetch('/api/settings', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(mappedSettings)
+        body: JSON.stringify(mappedSettings),
+        signal: requestControllerRef.current?.signal,
+        timeout: 20000, // 20 second timeout for saving settings
+        retries: 1,     // Retry once
+        retryDelay: 2000 // 2 seconds between retries
       });
-      
-      if (!response.ok) {
-        throw new Error('Failed to save settings');
-      }
       
       showStatusMessage('Settings saved successfully');
     } catch (error) {

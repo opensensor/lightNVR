@@ -4,9 +4,10 @@
  */
 
 import { h } from '../../preact.min.js';
-import { useState, useEffect } from '../../preact.hooks.module.js';
+import { useState, useEffect, useRef, useCallback } from '../../preact.hooks.module.js';
 import { html } from '../../html-helper.js';
 import { showStatusMessage } from './UI.js';
+import { fetchJSON, enhancedFetch, createRequestController } from '../../fetch-utils.js';
 
 // Import user components
 import { USER_ROLES } from './users/UserRoles.js';
@@ -21,16 +22,18 @@ import { ApiKeyModal } from './users/ApiKeyModal.js';
  * @returns {JSX.Element} UsersView component
  */
 export function UsersView() {
+  // State for users data and loading status
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
-  const [currentUser, setCurrentUser] = useState(null);
-  const [newApiKey, setNewApiKey] = useState('');
-
+  
+  // State for modal visibility
+  const [activeModal, setActiveModal] = useState(null); // 'add', 'edit', 'delete', 'apiKey', or null
+  
+  // State for selected user and API key
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [apiKey, setApiKey] = useState('');
+  
   // Form state for adding/editing users
   const [formData, setFormData] = useState({
     username: '',
@@ -40,16 +43,67 @@ export function UsersView() {
     is_active: true
   });
 
+  // Request controller for cancelling requests on unmount
+  const requestControllerRef = useRef(null);
+
+  /**
+   * Get auth headers for requests
+   * @returns {Object} Headers object with Authorization if available
+   */
+  const getAuthHeaders = useCallback(() => {
+    const auth = localStorage.getItem('auth');
+    return auth ? { 'Authorization': 'Basic ' + auth } : {};
+  }, []);
+
+  /**
+   * Fetch users from the API
+   */
+  const fetchUsers = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await fetchJSON('/api/auth/users', {
+        headers: getAuthHeaders(),
+        cache: 'no-store',
+        signal: requestControllerRef.current?.signal,
+        timeout: 15000, // 15 second timeout
+        retries: 2,     // Retry twice
+        retryDelay: 1000 // 1 second between retries
+      });
+      
+      setUsers(data.users || []); // Extract users array from response
+      setError(null);
+    } catch (error) {
+      // Only show error if the request wasn't cancelled
+      if (error.message !== 'Request was cancelled') {
+        console.error('Error fetching users:', error);
+        setError('Failed to load users. Please try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [getAuthHeaders]);
+
   // Fetch users on component mount
   useEffect(() => {
+    // Create a new request controller
+    requestControllerRef.current = createRequestController();
+    
     fetchUsers();
-  }, []);
+    
+    // Clean up and cancel pending requests on unmount
+    return () => {
+      if (requestControllerRef.current) {
+        requestControllerRef.current.abort();
+      }
+    };
+  }, [fetchUsers]);
 
   // Add event listener for the add user button
   useEffect(() => {
     const addUserBtn = document.getElementById('add-user-btn');
     if (addUserBtn) {
       const handleAddUserClick = () => {
+        // Reset form data for new user
         setFormData({
           username: '',
           password: '',
@@ -57,7 +111,7 @@ export function UsersView() {
           role: 1,
           is_active: true
         });
-        setShowAddModal(true);
+        setActiveModal('add');
       };
       
       addUserBtn.addEventListener('click', handleAddUserClick);
@@ -71,202 +125,152 @@ export function UsersView() {
   }, []);
 
   /**
-   * Fetch users from the API
-   */
-  const fetchUsers = async () => {
-    setLoading(true);
-    try {
-      // Get auth from localStorage
-      const auth = localStorage.getItem('auth');
-      
-      const response = await fetch('/api/auth/users', {
-        headers: {
-          ...(auth ? { 'Authorization': 'Basic ' + auth } : {})
-        },
-        // Add cache-busting parameter
-        cache: 'no-store'
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch users: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      setUsers(data.users || []); // Extract users array from response
-    } catch (error) {
-      console.error('Error fetching users:', error);
-      setError('Failed to load users. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  /**
    * Handle form input changes
    * @param {Event} e - Input change event
    */
-  const handleInputChange = (e) => {
+  const handleInputChange = useCallback((e) => {
     const { name, value, type, checked } = e.target;
     
-    setFormData({
-      ...formData,
+    setFormData(prevData => ({
+      ...prevData,
       [name]: type === 'checkbox' ? checked : (name === 'role' ? parseInt(value, 10) : value)
-    });
-  };
+    }));
+  }, []);
 
   /**
    * Handle form submission for adding a user
    * @param {Event} e - Form submit event
    */
-  const handleAddUser = async (e) => {
+  const handleAddUser = useCallback(async (e) => {
     if (e) e.preventDefault();
     
     try {
       console.log('Adding user:', formData.username);
-      const response = await fetch('/api/auth/users', {
+      
+      await fetchJSON('/api/auth/users', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(formData),
+        signal: requestControllerRef.current?.signal,
+        timeout: 15000, // 15 second timeout
+        retries: 1,     // Retry once
+        retryDelay: 1000 // 1 second between retries
       });
       
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Failed to add user: ${response.status} ${response.statusText}`);
-      }
-      
-      const result = await response.json();
-      console.log('User added successfully:', result);
-      
-      // Close modal first
-      setShowAddModal(false);
-      
-      // Show success message
+      // Close modal and show success message
+      setActiveModal(null);
       showStatusMessage('User added successfully', 'success', 5000);
       
-      // Refresh users immediately
-      fetchUsers();
+      // Refresh users list
+      await fetchUsers();
     } catch (err) {
       console.error('Error adding user:', err);
       showStatusMessage(`Error adding user: ${err.message}`, 'error', 8000);
     }
-  };
+  }, [formData, getAuthHeaders, fetchUsers]);
 
   /**
    * Handle form submission for editing a user
    * @param {Event} e - Form submit event
    */
-  const handleEditUser = async (e) => {
+  const handleEditUser = useCallback(async (e) => {
     if (e) e.preventDefault();
     
     try {
-      console.log('Editing user:', currentUser.id, currentUser.username);
-      const response = await fetch(`/api/auth/users/${currentUser.id}`, {
+      console.log('Editing user:', selectedUser.id, selectedUser.username);
+      
+      await fetchJSON(`/api/auth/users/${selectedUser.id}`, {
         method: 'PUT',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(formData),
+        signal: requestControllerRef.current?.signal,
+        timeout: 15000, // 15 second timeout
+        retries: 1,     // Retry once
+        retryDelay: 1000 // 1 second between retries
       });
       
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Failed to update user: ${response.status} ${response.statusText}`);
-      }
-      
-      const result = await response.json();
-      console.log('User updated successfully:', result);
-      
-      // Close modal first
-      setShowEditModal(false);
-      
-      // Show success message
+      // Close modal and show success message
+      setActiveModal(null);
       showStatusMessage('User updated successfully', 'success', 5000);
       
-      // Refresh users immediately
-      fetchUsers();
+      // Refresh users list
+      await fetchUsers();
     } catch (err) {
       console.error('Error updating user:', err);
       showStatusMessage(`Error updating user: ${err.message}`, 'error', 8000);
     }
-  };
+  }, [selectedUser, formData, getAuthHeaders, fetchUsers]);
 
   /**
    * Handle user deletion
    */
-  const handleDeleteUser = async () => {
+  const handleDeleteUser = useCallback(async () => {
     try {
-      console.log('Deleting user:', currentUser.id, currentUser.username);
-      const response = await fetch(`/api/auth/users/${currentUser.id}`, {
-        method: 'DELETE'
+      console.log('Deleting user:', selectedUser.id, selectedUser.username);
+      
+      await enhancedFetch(`/api/auth/users/${selectedUser.id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+        signal: requestControllerRef.current?.signal,
+        timeout: 15000, // 15 second timeout
+        retries: 1,     // Retry once
+        retryDelay: 1000 // 1 second between retries
       });
       
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Failed to delete user: ${response.status} ${response.statusText}`);
-      }
-      
-      console.log('User deleted successfully');
-      
-      // Close modal first
-      setShowDeleteModal(false);
-      
-      // Show success message
+      // Close modal and show success message
+      setActiveModal(null);
       showStatusMessage('User deleted successfully', 'success', 5000);
       
-      // Refresh users immediately
-      fetchUsers();
+      // Refresh users list
+      await fetchUsers();
     } catch (err) {
       console.error('Error deleting user:', err);
       showStatusMessage(`Error deleting user: ${err.message}`, 'error', 8000);
     }
-  };
+  }, [selectedUser, getAuthHeaders, fetchUsers]);
 
   /**
    * Handle generating a new API key for a user
    */
-  const handleGenerateApiKey = async () => {
+  const handleGenerateApiKey = useCallback(async () => {
     // Show loading state
-    setNewApiKey('Generating...');
+    setApiKey('Generating...');
     
     try {
-      console.log('Generating API key for user:', currentUser.id, currentUser.username);
-      const response = await fetch(`/api/auth/users/${currentUser.id}/api-key`, {
+      console.log('Generating API key for user:', selectedUser.id, selectedUser.username);
+      
+      const data = await fetchJSON(`/api/auth/users/${selectedUser.id}/api-key`, {
         method: 'POST',
-        headers: getAuthHeaders()
+        headers: getAuthHeaders(),
+        signal: requestControllerRef.current?.signal,
+        timeout: 20000, // 20 second timeout for key generation
+        retries: 1,     // Retry once
+        retryDelay: 2000 // 2 seconds between retries
       });
       
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Failed to generate API key: ${response.status} ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      console.log('API key generated successfully');
-      setNewApiKey(data.api_key);
-      
-      // Show success message
+      setApiKey(data.api_key);
       showStatusMessage('API key generated successfully', 'success');
       
-      // Refresh users immediately
+      // Refresh users list
       await fetchUsers();
     } catch (err) {
       console.error('Error generating API key:', err);
-      
-      // Reset the API key state
-      setNewApiKey('');
-      
-      // Show error message
+      setApiKey('');
       showStatusMessage(`Error generating API key: ${err.message}`, 'error');
     }
-  };
+  }, [selectedUser, getAuthHeaders, fetchUsers]);
 
   /**
    * Copy API key to clipboard
    */
-  const copyApiKey = () => {
-    navigator.clipboard.writeText(newApiKey)
+  const copyApiKey = useCallback(() => {
+    navigator.clipboard.writeText(apiKey)
       .then(() => {
         // Use global toast function if available
         if (window.showSuccessToast) {
@@ -287,14 +291,14 @@ export function UsersView() {
           showStatusMessage('Failed to copy API key', 'error');
         }
       });
-  };
+  }, [apiKey]);
 
   /**
    * Open the edit modal for a user
    * @param {Object} user - User to edit
    */
-  const openEditModal = (user) => {
-    setCurrentUser(user);
+  const openEditModal = useCallback((user) => {
+    setSelectedUser(user);
     setFormData({
       username: user.username,
       password: '', // Don't include the password in the form
@@ -302,63 +306,34 @@ export function UsersView() {
       role: user.role,
       is_active: user.is_active
     });
-    setShowEditModal(true);
-  };
+    setActiveModal('edit');
+  }, []);
 
   /**
    * Open the delete modal for a user
    * @param {Object} user - User to delete
    */
-  const openDeleteModal = (user) => {
-    setCurrentUser(user);
-    setShowDeleteModal(true);
-  };
+  const openDeleteModal = useCallback((user) => {
+    setSelectedUser(user);
+    setActiveModal('delete');
+  }, []);
 
   /**
    * Open the API key modal for a user
    * @param {Object} user - User to generate API key for
    */
-  const openApiKeyModal = (user) => {
-    setCurrentUser(user);
-    setNewApiKey('');
-    setShowApiKeyModal(true);
-  };
+  const openApiKeyModal = useCallback((user) => {
+    setSelectedUser(user);
+    setApiKey('');
+    setActiveModal('apiKey');
+  }, []);
 
   /**
-   * Close the add user modal
+   * Close any open modal
    */
-  const closeAddModal = () => {
-    setShowAddModal(false);
-  };
-
-  /**
-   * Close the edit user modal
-   */
-  const closeEditModal = () => {
-    setShowEditModal(false);
-  };
-
-  /**
-   * Close the delete user modal
-   */
-  const closeDeleteModal = () => {
-    setShowDeleteModal(false);
-  };
-
-  /**
-   * Close the API key modal
-   */
-  const closeApiKeyModal = () => {
-    setShowApiKeyModal(false);
-  };
-
-  /**
-   * Refresh users after successful operations
-   */
-  const refreshUsers = () => {
-    console.log('Refreshing users after operation');
-    fetchUsers();
-  };
+  const closeModal = useCallback(() => {
+    setActiveModal(null);
+  }, []);
 
   // Render loading state
   if (loading && users.length === 0) {
@@ -371,17 +346,17 @@ export function UsersView() {
   }
 
   // Render empty state
-  if (users.length === 0) {
+  if (users.length === 0 && !loading) {
     return html`
       <div class="bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded relative mb-4">
         <h4 class="font-bold mb-2">No Users Found</h4>
         <p>Click the "Add User" button to create your first user.</p>
       </div>
-      ${showAddModal && html`<${AddUserModal} 
+      ${activeModal === 'add' && html`<${AddUserModal} 
         formData=${formData} 
         handleInputChange=${handleInputChange} 
-        handleSubmit=${handleAddUser} 
-        onClose=${closeAddModal} 
+        handleAddUser=${handleAddUser} 
+        onClose=${closeModal} 
       />`}
     `;
   }
@@ -396,33 +371,33 @@ export function UsersView() {
         onApiKey=${openApiKeyModal} 
       />
       
-      ${showAddModal && html`<${AddUserModal} 
+      ${activeModal === 'add' && html`<${AddUserModal} 
         formData=${formData} 
         handleInputChange=${handleInputChange} 
-        handleSubmit=${handleAddUser} 
-        onClose=${closeAddModal} 
+        handleAddUser=${handleAddUser} 
+        onClose=${closeModal} 
       />`}
       
-      ${showEditModal && html`<${EditUserModal} 
-        currentUser=${currentUser} 
+      ${activeModal === 'edit' && html`<${EditUserModal} 
+        currentUser=${selectedUser} 
         formData=${formData} 
         handleInputChange=${handleInputChange} 
-        handleSubmit=${handleEditUser} 
-        onClose=${closeEditModal} 
+        handleEditUser=${handleEditUser} 
+        onClose=${closeModal} 
       />`}
       
-      ${showDeleteModal && html`<${DeleteUserModal} 
-        currentUser=${currentUser} 
+      ${activeModal === 'delete' && html`<${DeleteUserModal} 
+        currentUser=${selectedUser} 
         handleDeleteUser=${handleDeleteUser} 
-        onClose=${closeDeleteModal} 
+        onClose=${closeModal} 
       />`}
       
-      ${showApiKeyModal && html`<${ApiKeyModal} 
-        currentUser=${currentUser} 
-        newApiKey=${newApiKey} 
+      ${activeModal === 'apiKey' && html`<${ApiKeyModal} 
+        currentUser=${selectedUser} 
+        newApiKey=${apiKey} 
         handleGenerateApiKey=${handleGenerateApiKey} 
         copyApiKey=${copyApiKey} 
-        onClose=${closeApiKeyModal} 
+        onClose=${closeModal} 
       />`}
     </div>
   `;

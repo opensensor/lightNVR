@@ -275,7 +275,7 @@ bool go2rtc_integration_init(void) {
  * @return true if go2rtc is ready and the stream is registered, false otherwise
  */
 static bool ensure_go2rtc_ready_for_stream(const char *stream_name) {
-    // Check if go2rtc is ready
+    // Check if go2rtc is ready with more retries and longer timeout
     if (!go2rtc_stream_is_ready()) {
         log_info("go2rtc service is not ready, starting it...");
         if (!go2rtc_stream_start_service()) {
@@ -283,11 +283,11 @@ static bool ensure_go2rtc_ready_for_stream(const char *stream_name) {
             return false;
         }
         
-        // Wait for service to start
-        int retries = 10;
+        // Wait for service to start with increased retries and timeout
+        int retries = 20; // Increased from 10 to 20
         while (retries > 0 && !go2rtc_stream_is_ready()) {
             log_info("Waiting for go2rtc service to start... (%d retries left)", retries);
-            sleep(1);
+            sleep(2); // Increased from 1 to 2 seconds
             retries--;
         }
         
@@ -307,9 +307,9 @@ static bool ensure_go2rtc_ready_for_stream(const char *stream_name) {
             return false;
         }
         
-        // Wait a bit for the stream to be fully registered
+        // Wait longer for the stream to be fully registered
         log_info("Waiting for stream %s to be fully registered with go2rtc", stream_name);
-        sleep(3);
+        sleep(5); // Increased from 3 to 5 seconds
         
         // Check again if the stream is registered
         if (!is_stream_registered_with_go2rtc(stream_name)) {
@@ -615,7 +615,7 @@ bool go2rtc_integration_is_initialized(void) {
 }
 
 /**
- * @brief Get the RTSP URL for a stream from go2rtc
+ * @brief Get the RTSP URL for a stream from go2rtc with enhanced error handling
  *
  * @param stream_name Name of the stream
  * @param url Buffer to store the URL
@@ -624,36 +624,90 @@ bool go2rtc_integration_is_initialized(void) {
  */
 bool go2rtc_get_rtsp_url(const char *stream_name, char *url, size_t url_size) {
     if (!stream_name || !url || url_size == 0) {
+        log_error("Invalid parameters for go2rtc_get_rtsp_url");
         return false;
     }
 
-    // Check if go2rtc is ready
+    // Check if go2rtc is ready with retry logic
+    int ready_retries = 3;
+    while (!go2rtc_stream_is_ready() && ready_retries > 0) {
+        log_warn("go2rtc service is not ready, retrying... (%d attempts left)", ready_retries);
+        
+        // Try to start the service if it's not ready
+        if (!go2rtc_stream_start_service()) {
+            log_error("Failed to start go2rtc service");
+            ready_retries--;
+            sleep(2);
+            continue;
+        }
+        
+        // Wait for service to start
+        int wait_retries = 5;
+        while (wait_retries > 0 && !go2rtc_stream_is_ready()) {
+            log_info("Waiting for go2rtc service to start... (%d retries left)", wait_retries);
+            sleep(2);
+            wait_retries--;
+        }
+        
+        if (go2rtc_stream_is_ready()) {
+            log_info("go2rtc service is now ready");
+            break;
+        }
+        
+        ready_retries--;
+    }
+    
     if (!go2rtc_stream_is_ready()) {
-        log_warn("go2rtc service is not ready, cannot get RTSP URL");
+        log_error("go2rtc service is not ready after multiple attempts, cannot get RTSP URL");
         return false;
     }
 
     // Check if the stream is registered with go2rtc
     if (!is_stream_registered_with_go2rtc(stream_name)) {
-        // Try to register the stream with go2rtc
-        if (!ensure_stream_registered_with_go2rtc(stream_name)) {
-            log_error("Failed to register stream %s with go2rtc", stream_name);
+        log_info("Stream %s is not registered with go2rtc, attempting to register...", stream_name);
+        
+        // Try to register the stream with go2rtc with retry logic
+        int register_retries = 3;
+        bool registered = false;
+        
+        while (!registered && register_retries > 0) {
+            if (ensure_stream_registered_with_go2rtc(stream_name)) {
+                registered = true;
+                break;
+            }
+            
+            log_warn("Failed to register stream %s with go2rtc, retrying... (%d attempts left)", 
+                    stream_name, register_retries - 1);
+            register_retries--;
+            sleep(2);
+        }
+        
+        if (!registered) {
+            log_error("Failed to register stream %s with go2rtc after multiple attempts", stream_name);
             return false;
         }
 
-        // Wait a bit for the stream to be fully registered
+        // Wait longer for the stream to be fully registered
         log_info("Waiting for stream %s to be fully registered with go2rtc", stream_name);
-        sleep(2);
+        sleep(5);
 
         // Check again if the stream is registered
         if (!is_stream_registered_with_go2rtc(stream_name)) {
             log_error("Stream %s still not registered with go2rtc after registration attempt", stream_name);
             return false;
         }
+        
+        log_info("Stream %s successfully registered with go2rtc", stream_name);
     }
 
     // Use the stream module to get the RTSP URL with the correct port
-    return go2rtc_stream_get_rtsp_url(stream_name, url, url_size);
+    if (!go2rtc_stream_get_rtsp_url(stream_name, url, url_size)) {
+        log_error("Failed to get RTSP URL for stream %s", stream_name);
+        return false;
+    }
+    
+    log_info("Successfully got RTSP URL for stream %s: %s", stream_name, url);
+    return true;
 }
 
 bool go2rtc_integration_get_hls_url(const char *stream_name, char *buffer, size_t buffer_size) {

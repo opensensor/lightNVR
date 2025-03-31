@@ -5,8 +5,9 @@
 
 import { h } from '../../preact.min.js';
 import { html } from '../../html-helper.js';
-import { useState, useEffect } from '../../preact.hooks.module.js';
+import { useState, useEffect, useRef } from '../../preact.hooks.module.js';
 import { showStatusMessage } from './UI.js';
+import { fetchJSON, createRequestController } from '../../fetch-utils.js';
 
 /**
  * IndexView component
@@ -23,8 +24,14 @@ export function IndexView() {
   });
   const [isLoading, setIsLoading] = useState(true);
   
+  // Request controller for cancelling requests on unmount
+  const requestControllerRef = useRef(null);
+  
   // Load streams and system info on mount
   useEffect(() => {
+    // Create a new request controller
+    requestControllerRef.current = createRequestController();
+    
     Promise.all([
       loadStreams(),
       loadSystemInfo()
@@ -35,39 +42,55 @@ export function IndexView() {
     // Set up interval to refresh system info
     const interval = setInterval(loadSystemInfo, 10000);
     
-    // Clean up interval on unmount
-    return () => clearInterval(interval);
+    // Clean up interval and cancel pending requests on unmount
+    return () => {
+      clearInterval(interval);
+      if (requestControllerRef.current) {
+        requestControllerRef.current.abort();
+      }
+    };
   }, []);
   
   // Load streams from API
   const loadStreams = async () => {
     try {
-      const response = await fetch('/api/streams');
-      if (!response.ok) {
-        throw new Error('Failed to load streams');
-      }
+      // Create a new controller for this specific request
+      const controller = createRequestController();
       
-      const data = await response.json();
+      const data = await fetchJSON('/api/streams', {
+        signal: requestControllerRef.current?.signal,
+        timeout: 15000, // 15 second timeout
+        retries: 2,     // Retry twice
+        retryDelay: 1000 // 1 second between retries
+      });
+      
       setStreams(data || []);
     } catch (error) {
-      console.error('Error loading streams:', error);
-      showStatusMessage('Error loading streams: ' + error.message);
+      // Only show error if the request wasn't cancelled
+      if (error.message !== 'Request was cancelled') {
+        console.error('Error loading streams:', error);
+        showStatusMessage('Error loading streams: ' + error.message);
+      }
     }
   };
   
   // Load system info from API
   const loadSystemInfo = async () => {
     try {
-      const response = await fetch('/api/system/info');
-      if (!response.ok) {
-        throw new Error('Failed to load system info');
-      }
+      const data = await fetchJSON('/api/system/info', {
+        signal: requestControllerRef.current?.signal,
+        timeout: 10000, // 10 second timeout
+        retries: 1,     // Retry once
+        retryDelay: 500 // 0.5 second between retries
+      });
       
-      const data = await response.json();
       setSystemInfo(data);
     } catch (error) {
-      console.error('Error loading system info:', error);
-      // Don't show error message for this, just log it
+      // Only log error if the request wasn't cancelled
+      if (error.message !== 'Request was cancelled') {
+        console.error('Error loading system info:', error);
+        // Don't show error message for this, just log it
+      }
     }
   };
   
@@ -84,7 +107,7 @@ export function IndexView() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
   };
   
-  // Get stream thumbnail URL
+  // Get stream thumbnail URL with cache busting
   const getStreamThumbnail = (streamName) => {
     return `/api/streams/${encodeURIComponent(streamName)}/thumbnail?t=${Date.now()}`;
   };

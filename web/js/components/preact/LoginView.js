@@ -5,8 +5,9 @@
 
 import { h } from '../../preact.min.js';
 import { html } from '../../html-helper.js';
-import { useState } from '../../preact.hooks.module.js';
+import { useState, useRef } from '../../preact.hooks.module.js';
 import { showStatusMessage } from './UI.js';
+import { enhancedFetch, createRequestController } from '../../fetch-utils.js';
 
 /**
  * LoginView component
@@ -28,8 +29,11 @@ export function LoginView() {
     }
   }, []);
   
+  // Request controller for cancelling requests
+  const requestControllerRef = useRef(null);
+
   // Handle login form submission
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     
     if (!username || !password) {
@@ -39,33 +43,32 @@ export function LoginView() {
     
     setIsLoggingIn(true);
     
+    // Create a new request controller
+    requestControllerRef.current = createRequestController();
+    
     // Store credentials in localStorage for future requests
     const auth = btoa(`${username}:${password}`);
     localStorage.setItem('auth', auth);
     
-    // Create a timeout to handle potential stalls
-    const timeoutId = setTimeout(() => {
-      console.log('Login request timed out, proceeding anyway');
-      // Even if the request stalls, try to proceed to index.html
-      window.location.href = '/index.html?t=' + new Date().getTime();
-    }, 3000); // 3 second timeout
-    
-    // Make a fetch request to the login API
-    fetch('/api/auth/login', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Basic ' + auth,
-        // Add additional headers for Firefox compatibility
-        'X-Requested-With': 'XMLHttpRequest',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify({ username, password }),
-      credentials: 'include',
-      mode: 'same-origin' // Explicitly set mode for Firefox
-    })
-    .then(response => {
-      clearTimeout(timeoutId); // Clear the timeout
+    try {
+      // Make a fetch request to the login API using enhanced fetch
+      const response = await enhancedFetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Basic ' + auth,
+          // Add additional headers for Firefox compatibility
+          'X-Requested-With': 'XMLHttpRequest',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ username, password }),
+        credentials: 'include',
+        mode: 'same-origin', // Explicitly set mode for Firefox
+        signal: requestControllerRef.current?.signal,
+        timeout: 5000,     // 5 second timeout
+        retries: 1,        // Retry once
+        retryDelay: 1000   // 1 second between retries
+      });
       
       if (response.ok || response.status === 302) {
         // Successful login - redirect to live page
@@ -76,20 +79,23 @@ export function LoginView() {
         setErrorMessage('Invalid username or password');
         localStorage.removeItem('auth');
       }
-    })
-    .catch(error => {
-      clearTimeout(timeoutId); // Clear the timeout
-      
+    } catch (error) {
       console.error('Login error:', error);
-      // Even if there's an error, try to proceed if we have credentials
-      if (localStorage.getItem('auth')) {
+      
+      // If it's a timeout error, proceed anyway with stored credentials
+      if (error.message === 'Request timed out' && localStorage.getItem('auth')) {
+        console.log('Login request timed out, proceeding with stored credentials');
+        window.location.href = '/index.html?t=' + new Date().getTime();
+      } 
+      // For other errors, also try to proceed if we have credentials
+      else if (localStorage.getItem('auth')) {
         console.log('Login API error, but proceeding with stored credentials');
         window.location.href = '/index.html?t=' + new Date().getTime();
       } else {
         setIsLoggingIn(false);
         setErrorMessage('Login failed. Please try again.');
       }
-    });
+    }
   };
   
   return html`

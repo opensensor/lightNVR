@@ -1,9 +1,10 @@
-  /**
+/**
  * API functions for RecordingsView
  */
 
 import { showStatusMessage } from '../UI.js';
 import { formatUtils } from './formatUtils.js';
+import { fetchJSON, enhancedFetch } from '../../../fetch-utils.js';
 
 /**
  * RecordingsAPI - Handles all API calls related to recordings
@@ -15,12 +16,12 @@ export const recordingsAPI = {
    */
   loadStreams: async () => {
     try {
-      const response = await fetch('/api/streams');
-      if (!response.ok) {
-        throw new Error('Failed to load streams');
-      }
+      const data = await fetchJSON('/api/streams', {
+        timeout: 15000, // 15 second timeout
+        retries: 2,     // Retry twice
+        retryDelay: 1000 // 1 second between retries
+      });
       
-      const data = await response.json();
       return data || [];
     } catch (error) {
       console.error('Error loading streams for filter:', error);
@@ -118,13 +119,13 @@ export const recordingsAPI = {
       // Log the API request
       console.log('API Request:', `/api/recordings?${params.toString()}`);
       
-      // Fetch recordings
-      const response = await fetch(`/api/recordings?${params.toString()}`);
-      if (!response.ok) {
-        throw new Error('Failed to load recordings');
-      }
+      // Fetch recordings with enhanced fetch
+      const data = await fetchJSON(`/api/recordings?${params.toString()}`, {
+        timeout: 30000, // 30 second timeout for potentially large data
+        retries: 2,     // Retry twice
+        retryDelay: 1000 // 1 second between retries
+      });
       
-      const data = await response.json();
       console.log('Recordings data received:', data);
       
       // Check for detections for each recording
@@ -159,13 +160,12 @@ export const recordingsAPI = {
    */
   deleteRecording: async (recording) => {
     try {
-      const response = await fetch(`/api/recordings/${recording.id}`, {
-        method: 'DELETE'
+      await enhancedFetch(`/api/recordings/${recording.id}`, {
+        method: 'DELETE',
+        timeout: 15000, // 15 second timeout
+        retries: 1,     // Retry once
+        retryDelay: 1000 // 1 second between retries
       });
-      
-      if (!response.ok) {
-        throw new Error('Failed to delete recording');
-      }
       
       showStatusMessage('Recording deleted successfully');
       return true;
@@ -231,20 +231,19 @@ export const recordingsAPI = {
    */
   deleteSelectedRecordingsHttp: async (selectedIds) => {
     try {
-      // Use the batch delete endpoint
-      const response = await fetch('/api/recordings/batch-delete', {
+      // Use the batch delete endpoint with enhanced fetch
+      const response = await enhancedFetch('/api/recordings/batch-delete', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           ids: selectedIds
-        })
+        }),
+        timeout: 60000, // 60 second timeout for batch operations
+        retries: 1,     // Retry once
+        retryDelay: 2000 // 2 seconds between retries
       });
-      
-      if (!response.ok) {
-        throw new Error('Failed to delete recordings');
-      }
       
       const result = await response.json();
       const successCount = result.succeeded;
@@ -458,20 +457,19 @@ export const recordingsAPI = {
    */
   deleteAllFilteredRecordingsHttp: async (filter) => {
     try {
-      // Use the batch delete endpoint with filter
-      const deleteResponse = await fetch('/api/recordings/batch-delete', {
+      // Use the batch delete endpoint with filter and enhanced fetch
+      const deleteResponse = await enhancedFetch('/api/recordings/batch-delete', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           filter: filter
-        })
+        }),
+        timeout: 120000, // 120 second timeout for potentially large batch operations
+        retries: 1,      // Retry once
+        retryDelay: 3000 // 3 seconds between retries
       });
-      
-      if (!deleteResponse.ok) {
-        throw new Error('Failed to delete recordings');
-      }
       
       const result = await deleteResponse.json();
       const successCount = result.succeeded;
@@ -515,12 +513,12 @@ export const recordingsAPI = {
         end: endTime
       });
       
-      const response = await fetch(`/api/detection/results/${recording.stream}?${params.toString()}`);
-      if (!response.ok) {
-        throw new Error('Failed to check detections');
-      }
+      const data = await fetchJSON(`/api/detection/results/${recording.stream}?${params.toString()}`, {
+        timeout: 10000, // 10 second timeout
+        retries: 1,     // Retry once
+        retryDelay: 500 // 0.5 second between retries
+      });
       
-      const data = await response.json();
       return data.detections && data.detections.length > 0;
     } catch (error) {
       console.error('Error checking detections:', error);
@@ -549,12 +547,12 @@ export const recordingsAPI = {
         end: endTime
       });
       
-      const response = await fetch(`/api/detection/results/${recording.stream}?${params.toString()}`);
-      if (!response.ok) {
-        throw new Error('Failed to get detections');
-      }
+      const data = await fetchJSON(`/api/detection/results/${recording.stream}?${params.toString()}`, {
+        timeout: 15000, // 15 second timeout
+        retries: 1,     // Retry once
+        retryDelay: 1000 // 1 second between retries
+      });
       
-      const data = await response.json();
       return data.detections || [];
     } catch (error) {
       console.error('Error getting detections:', error);

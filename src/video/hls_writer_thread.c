@@ -341,17 +341,22 @@ static void *hls_writer_thread_func(void *arg) {
         av_packet_unref(pkt);
     }
     
-    // Cleanup resources
+    // Cleanup resources with additional safety checks
     if (pkt) {
         // Make a local copy of the packet pointer and NULL out the original
         // to prevent double-free if another thread accesses it
         AVPacket *pkt_to_free = pkt;
         pkt = NULL;
         
-        // Now safely free the packet - first unref then free to prevent memory leaks
-        av_packet_unref(pkt_to_free);
-        av_packet_free(&pkt_to_free);
-        pkt_to_free = NULL;  // Set to NULL after freeing to prevent double-free
+        // Now safely free the packet with additional validation
+        if (pkt_to_free) {
+            // Check if the packet has valid data before unreferencing
+            if (pkt_to_free->data && pkt_to_free->size > 0) {
+                av_packet_unref(pkt_to_free);
+            }
+            av_packet_free(&pkt_to_free);
+            pkt_to_free = NULL;  // Set to NULL after freeing to prevent double-free
+        }
     }
     
     if (input_ctx) {
@@ -359,9 +364,13 @@ static void *hls_writer_thread_func(void *arg) {
         AVFormatContext *ctx_to_close = input_ctx;
         input_ctx = NULL;
         
-        // Now safely close the input context
-        avformat_close_input(&ctx_to_close);
-        // No need to set ctx_to_close to NULL as avformat_close_input already does this
+        // Now safely close the input context with additional validation
+        if (ctx_to_close) {
+            // Add a small delay before closing to ensure no ongoing operations
+            usleep(10000); // 10ms delay
+            avformat_close_input(&ctx_to_close);
+            // No need to set ctx_to_close to NULL as avformat_close_input already does this
+        }
     }
     
     // Mark connection as invalid
@@ -409,15 +418,32 @@ int hls_writer_start_recording_thread(hls_writer_t *writer, const char *rtsp_url
     strncpy(actual_url, rtsp_url, sizeof(actual_url) - 1);
     actual_url[sizeof(actual_url) - 1] = '\0';
     
-    // If the stream is using go2rtc for HLS, get the go2rtc RTSP URL
+    // If the stream is using go2rtc for HLS, get the go2rtc RTSP URL with enhanced error handling
     // The go2rtc_integration_is_using_go2rtc_for_hls function will only return true
     // if go2rtc is fully ready and the stream is registered
     if (go2rtc_integration_is_using_go2rtc_for_hls(stream_name)) {
-        // Get the go2rtc RTSP URL
-        if (go2rtc_get_rtsp_url(stream_name, actual_url, sizeof(actual_url))) {
-            log_info("Using go2rtc RTSP URL for HLS streaming: %s", actual_url);
-        } else {
-            log_warn("Failed to get go2rtc RTSP URL for stream %s, falling back to original URL", stream_name);
+        // Get the go2rtc RTSP URL with retry logic
+        int rtsp_retries = 3;
+        bool rtsp_url_success = false;
+        
+        while (rtsp_retries > 0 && !rtsp_url_success) {
+            if (go2rtc_get_rtsp_url(stream_name, actual_url, sizeof(actual_url))) {
+                log_info("Using go2rtc RTSP URL for HLS streaming: %s", actual_url);
+                rtsp_url_success = true;
+            } else {
+                log_warn("Failed to get go2rtc RTSP URL for stream %s (retries left: %d)", 
+                        stream_name, rtsp_retries - 1);
+                rtsp_retries--;
+                
+                if (rtsp_retries > 0) {
+                    log_info("Waiting before retrying to get RTSP URL for stream %s...", stream_name);
+                    sleep(3); // Wait 3 seconds before retrying
+                }
+            }
+        }
+        
+        if (!rtsp_url_success) {
+            log_warn("Failed to get go2rtc RTSP URL for stream %s after multiple attempts, falling back to original URL", stream_name);
         }
     }
     

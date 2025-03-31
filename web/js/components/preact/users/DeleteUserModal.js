@@ -11,23 +11,23 @@ import { html } from '../../../html-helper.js';
  * @param {Object} props.currentUser - Current user being deleted
  * @param {Function} props.handleDeleteUser - Function to handle user deletion
  * @param {Function} props.onClose - Function to close the modal
- * @param {Function} props.onSuccess - Function called after successful user deletion
  * @returns {JSX.Element} Delete user modal
  */
-export function DeleteUserModal({ currentUser, handleDeleteUser, onClose, onSuccess }) {
-  // Add this function to prevent event propagation and handle success callback
+export function DeleteUserModal({ currentUser, handleDeleteUser, onClose }) {
+  // Direct delete handler
   const handleDeleteClick = (e) => {
     e.stopPropagation(); // Stop event from bubbling up
-    handleDeleteUser().then(() => {
-      if (onSuccess) {
-        setTimeout(onSuccess, 500); // Add a small delay to ensure API call completes
-      }
-    });
+    handleDeleteUser();
+  };
+
+  // Stop click propagation on modal content
+  const stopPropagation = (e) => {
+    e.stopPropagation();
   };
 
   return html`
     <div class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" onClick=${onClose}>
-      <div class="bg-white rounded-lg p-6 max-w-md w-full" onClick=${e => e.stopPropagation()}>
+      <div class="bg-white rounded-lg p-6 max-w-md w-full dark:bg-gray-800 dark:text-white" onClick=${stopPropagation}>
         <h2 class="text-xl font-bold mb-4">Delete User</h2>
         
         <p class="mb-6">
@@ -36,7 +36,7 @@ export function DeleteUserModal({ currentUser, handleDeleteUser, onClose, onSucc
         
         <div class="flex justify-end">
           <button
-            class="px-4 py-2 bg-gray-300 text-gray-800 rounded hover:bg-gray-400 mr-2"
+            class="px-4 py-2 bg-gray-300 text-gray-800 dark:bg-gray-600 dark:text-white rounded hover:bg-gray-400 dark:hover:bg-gray-500 mr-2"
             onClick=${onClose}
           >
             Cancel

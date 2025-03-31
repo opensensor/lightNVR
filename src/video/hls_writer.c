@@ -50,10 +50,22 @@ void process_packet_for_detection(const char *stream_name, const AVPacket *pkt, 
         return;
     }
     
-    // Validate packet data
+    // Validate packet data with more thorough checks
+    if (!pkt) {
+        log_error("NULL packet in process_packet_for_detection");
+        return;
+    }
+    
+    // Check packet data and size
     if (!pkt->data || pkt->size <= 0) {
         log_warn("Invalid packet data in process_packet_for_detection: data=%p, size=%d", 
                 pkt->data, pkt->size);
+        return;
+    }
+    
+    // Validate packet stream index
+    if (pkt->stream_index < 0) {
+        log_warn("Invalid stream index in process_packet_for_detection: %d", pkt->stream_index);
         return;
     }
     
@@ -1015,48 +1027,65 @@ void hls_writer_close(hls_writer_t *writer) {
     // Increased for better reliability with go2rtc integration
     usleep(500000); // 500ms - increased for more safety with go2rtc
 
-    // Write trailer if the context is valid
+    // Write trailer if the context is valid with enhanced safety checks
     if (local_output_ctx) {
         log_info("Writing trailer for HLS writer for stream %s", stream_name);
         
         // Use a try/catch-like approach with signal handling to prevent crashes
         int ret = 0;
         
-        // Only write trailer if the context is valid and has streams
+        // Validate the output context more thoroughly before writing trailer
+        bool context_valid = false;
+        
+        // Check if the context is valid and has streams
         if (local_output_ctx->nb_streams > 0) {
-            // Use a safer approach to write the trailer
-            // First check if the context is still valid
+            // Verify all critical pointers are valid
             if (local_output_ctx->oformat && local_output_ctx->pb) {
-                // Set up a timeout for the trailer write operation
-                // Use sigaction for more reliable signal handling
-                struct sigaction sa_old, sa_new;
-                sigaction(SIGALRM, NULL, &sa_old);
-                sa_new = sa_old;
-                sa_new.sa_handler = SIG_IGN; // Ignore alarm signal
-                sigaction(SIGALRM, &sa_new, NULL);
-                
-                // Set alarm
-                alarm(5); // 5 second timeout for trailer write
-                
-                // Use a safer approach to write the trailer
-                ret = av_write_trailer(local_output_ctx);
-                
-                // Cancel the alarm and restore signal handler
-                alarm(0);
-                sigaction(SIGALRM, &sa_old, NULL);
-                
-                if (ret < 0) {
-                    char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
-                    av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-                    log_warn("Error writing trailer for HLS writer for stream %s: %s", stream_name, error_buf);
-                } else {
-                    log_info("Successfully wrote trailer for HLS writer for stream %s", stream_name);
+                // Additional validation of each stream
+                bool all_streams_valid = true;
+                for (unsigned int i = 0; i < local_output_ctx->nb_streams; i++) {
+                    if (!local_output_ctx->streams[i] || !local_output_ctx->streams[i]->codecpar) {
+                        log_warn("Invalid stream %d in context for stream %s", i, stream_name);
+                        all_streams_valid = false;
+                        break;
+                    }
                 }
+                
+                if (all_streams_valid) {
+                    context_valid = true;
+                }
+            }
+        }
+        
+        // Only proceed with trailer write if context is fully validated
+        if (context_valid) {
+            // Set up a timeout for the trailer write operation
+            // Use sigaction for more reliable signal handling
+            struct sigaction sa_old, sa_new;
+            sigaction(SIGALRM, NULL, &sa_old);
+            sa_new = sa_old;
+            sa_new.sa_handler = SIG_IGN; // Ignore alarm signal
+            sigaction(SIGALRM, &sa_new, NULL);
+            
+            // Set alarm
+            alarm(5); // 5 second timeout for trailer write
+            
+            // Use a safer approach to write the trailer
+            ret = av_write_trailer(local_output_ctx);
+            
+            // Cancel the alarm and restore signal handler
+            alarm(0);
+            sigaction(SIGALRM, &sa_old, NULL);
+            
+            if (ret < 0) {
+                char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+                av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+                log_warn("Error writing trailer for HLS writer for stream %s: %s", stream_name, error_buf);
             } else {
-                log_warn("Skipping trailer write for stream %s: invalid format context", stream_name);
+                log_info("Successfully wrote trailer for HLS writer for stream %s", stream_name);
             }
         } else {
-            log_warn("Skipping trailer write for stream %s: no streams in context", stream_name);
+            log_warn("Skipping trailer write for stream %s: invalid context state", stream_name);
         }
         
         // Close AVIO context if it exists

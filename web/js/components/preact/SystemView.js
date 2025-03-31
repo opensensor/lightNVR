@@ -8,6 +8,7 @@ import { html } from '../../html-helper.js';
 import { useState, useEffect, useRef } from '../../preact.hooks.module.js';
 import { showStatusMessage } from './UI.js';
 import { ContentLoader } from './LoadingIndicator.js';
+import { fetchJSON, enhancedFetch, createRequestController } from '../../fetch-utils.js';
 
 // Import system components
 import { SystemControls } from './system/SystemControls.js';
@@ -130,8 +131,14 @@ export function SystemView() {
     }, 100);
   };
 
+  // Request controller for cancelling requests on unmount
+  const requestControllerRef = useRef(null);
+
   // Load system info and logs on mount
   useEffect(() => {
+    // Create a new request controller
+    requestControllerRef.current = createRequestController();
+    
     loadSystemInfo();
     loadLogs();
     
@@ -139,11 +146,15 @@ export function SystemView() {
     // This prevents unnecessary network traffic and processing
     console.log('System page loaded - no automatic polling for system info');
     
-    // Clean up any existing WebSocket subscriptions on unmount
+    // Clean up any existing WebSocket subscriptions and cancel pending requests on unmount
     return () => {
       if (window.wsClient && typeof window.wsClient.unsubscribe === 'function') {
         console.log('Cleaning up any WebSocket subscriptions on unmount');
         window.wsClient.unsubscribe('system/logs');
+      }
+      
+      if (requestControllerRef.current) {
+        requestControllerRef.current.abort();
       }
     };
   }, []);
@@ -177,18 +188,22 @@ export function SystemView() {
     try {
       setIsLoading(true);
       
-      const response = await fetch('/api/system/info');
-      if (!response.ok) {
-        throw new Error('Failed to load system info');
-      }
+      const data = await fetchJSON('/api/system/info', {
+        signal: requestControllerRef.current?.signal,
+        timeout: 15000, // 15 second timeout
+        retries: 2,     // Retry twice
+        retryDelay: 1000 // 1 second between retries
+      });
       
-      const data = await response.json();
       setSystemInfo(data);
       setHasData(true);
     } catch (error) {
-      console.error('Error loading system info:', error);
-      // Don't show error message for this, just log it
-      setHasData(false);
+      // Only show error if the request wasn't cancelled
+      if (error.message !== 'Request was cancelled') {
+        console.error('Error loading system info:', error);
+        // Don't show error message for this, just log it
+        setHasData(false);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -201,12 +216,12 @@ export function SystemView() {
       const currentLogLevel = logLevelRef.current;
       console.log(`Loading logs from API with level: debug (to get all logs, will filter on frontend)`);
       
-      const response = await fetch(`/api/system/logs?level=debug&count=${logCount}`);
-      if (!response.ok) {
-        throw new Error('Failed to load logs');
-      }
-      
-      const data = await response.json();
+      const data = await fetchJSON(`/api/system/logs?level=debug&count=${logCount}`, {
+        signal: requestControllerRef.current?.signal,
+        timeout: 20000, // 20 second timeout for potentially large log data
+        retries: 1,     // Retry once
+        retryDelay: 1000 // 1 second between retries
+      });
       
       // Check if we have logs
       if (data.logs && Array.isArray(data.logs)) {
@@ -275,13 +290,13 @@ export function SystemView() {
     try {
       showStatusMessage('Clearing logs...');
       
-      const response = await fetch('/api/system/logs/clear', {
-        method: 'POST'
+      await enhancedFetch('/api/system/logs/clear', {
+        method: 'POST',
+        signal: requestControllerRef.current?.signal,
+        timeout: 15000, // 15 second timeout
+        retries: 1,     // Retry once
+        retryDelay: 1000 // 1 second between retries
       });
-      
-      if (!response.ok) {
-        throw new Error('Failed to clear logs');
-      }
       
       showStatusMessage('Logs cleared successfully');
       loadLogs(); // Reload logs after clearing
@@ -301,13 +316,12 @@ export function SystemView() {
       setIsRestarting(true);
       showStatusMessage('Restarting system...');
       
-      const response = await fetch('/api/system/restart', {
-        method: 'POST'
+      await enhancedFetch('/api/system/restart', {
+        method: 'POST',
+        signal: requestControllerRef.current?.signal,
+        timeout: 30000, // 30 second timeout for system restart
+        retries: 0      // No retries for system restart
       });
-      
-      if (!response.ok) {
-        throw new Error('Failed to restart system');
-      }
       
       showStatusMessage('System is restarting. Please wait...');
       
@@ -332,13 +346,12 @@ export function SystemView() {
       setIsShuttingDown(true);
       showStatusMessage('Shutting down system...');
       
-      const response = await fetch('/api/system/shutdown', {
-        method: 'POST'
+      await enhancedFetch('/api/system/shutdown', {
+        method: 'POST',
+        signal: requestControllerRef.current?.signal,
+        timeout: 30000, // 30 second timeout for system shutdown
+        retries: 0      // No retries for system shutdown
       });
-      
-      if (!response.ok) {
-        throw new Error('Failed to shut down system');
-      }
       
       showStatusMessage('System is shutting down. You will need to manually restart it.');
     } catch (error) {
@@ -424,7 +437,12 @@ export function loadSystemView() {
 window.addEventListener('load', () => {
   window.addEventListener('refresh-system-info', async () => {
     try {
-      const response = await fetch('/api/system/info');
+      const response = await enhancedFetch('/api/system/info', {
+        timeout: 15000, // 15 second timeout
+        retries: 1,     // Retry once
+        retryDelay: 1000 // 1 second between retries
+      });
+      
       if (response.ok) {
         console.log('System info refreshed');
       }

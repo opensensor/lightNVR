@@ -8,6 +8,7 @@ import { html } from '../../html-helper.js';
 import { useState, useEffect, useRef } from '../../preact.hooks.module.js';
 import { showStatusMessage } from './UI.js';
 import { ContentLoader } from './LoadingIndicator.js';
+import { fetchJSON, enhancedFetch, createRequestController } from '../../fetch-utils.js';
 
 /**
  * StreamsView component
@@ -53,10 +54,23 @@ export function StreamsView() {
   const [isLoading, setIsLoading] = useState(false);
   const [hasData, setHasData] = useState(false);
 
+  // Request controller for cancelling requests on unmount
+  const requestControllerRef = useRef(null);
+
   // Load streams on mount
   useEffect(() => {
+    // Create a new request controller
+    requestControllerRef.current = createRequestController();
+    
     loadStreams();
     loadDetectionModels();
+    
+    // Clean up and cancel pending requests on unmount
+    return () => {
+      if (requestControllerRef.current) {
+        requestControllerRef.current.abort();
+      }
+    };
   }, []);
   
   // Load streams from API
@@ -65,19 +79,23 @@ export function StreamsView() {
       setIsLoading(true);
       setHasData(false);
       
-      const response = await fetch('/api/streams');
-      if (!response.ok) {
-        throw new Error('Failed to load streams');
-      }
+      const data = await fetchJSON('/api/streams', {
+        signal: requestControllerRef.current?.signal,
+        timeout: 15000, // 15 second timeout
+        retries: 2,     // Retry twice
+        retryDelay: 1000 // 1 second between retries
+      });
       
-      const data = await response.json();
       const streamsData = data || [];
       setStreams(streamsData);
       setHasData(streamsData.length > 0);
     } catch (error) {
-      console.error('Error loading streams:', error);
-      showStatusMessage('Error loading streams: ' + error.message);
-      setHasData(false);
+      // Only show error if the request wasn't cancelled
+      if (error.message !== 'Request was cancelled') {
+        console.error('Error loading streams:', error);
+        showStatusMessage('Error loading streams: ' + error.message);
+        setHasData(false);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -86,16 +104,20 @@ export function StreamsView() {
   // Load detection models from API
   const loadDetectionModels = async () => {
     try {
-      const response = await fetch('/api/detection/models');
-      if (!response.ok) {
-        throw new Error('Failed to load detection models');
-      }
+      const data = await fetchJSON('/api/detection/models', {
+        signal: requestControllerRef.current?.signal,
+        timeout: 10000, // 10 second timeout
+        retries: 1,     // Retry once
+        retryDelay: 500 // 0.5 second between retries
+      });
       
-      const data = await response.json();
       setDetectionModels(data.models || []);
     } catch (error) {
-      console.error('Error loading detection models:', error);
-      // Don't show error message for this, just log it
+      // Only log error if the request wasn't cancelled
+      if (error.message !== 'Request was cancelled') {
+        console.error('Error loading detection models:', error);
+        // Don't show error message for this, just log it
+      }
     }
   };
   
@@ -129,12 +151,12 @@ export function StreamsView() {
   // Open edit stream modal
   const openEditStreamModal = async (streamId) => {
     try {
-      const response = await fetch(`/api/streams/${encodeURIComponent(streamId)}`);
-      if (!response.ok) {
-        throw new Error('Failed to load stream details');
-      }
-      
-    const stream = await response.json();
+      const stream = await fetchJSON(`/api/streams/${encodeURIComponent(streamId)}`, {
+        signal: requestControllerRef.current?.signal,
+        timeout: 10000, // 10 second timeout
+        retries: 2,     // Retry twice
+        retryDelay: 1000 // 1 second between retries
+      });
     setCurrentStream({
       ...stream,
       // Convert numeric values to strings for form inputs
@@ -218,17 +240,17 @@ export function StreamsView() {
       
       const method = isEditing ? 'PUT' : 'POST';
       
-      const response = await fetch(url, {
+      await enhancedFetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(streamData)
+        body: JSON.stringify(streamData),
+        signal: requestControllerRef.current?.signal,
+        timeout: 15000, // 15 second timeout
+        retries: 1,     // Retry once
+        retryDelay: 1000 // 1 second between retries
       });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to ${isEditing ? 'update' : 'add'} stream`);
-      }
       
       // The streaming flag is already handled by the main update endpoint
       // The ONVIF flag is now properly handled by the backend
@@ -247,7 +269,7 @@ export function StreamsView() {
     try {
       showStatusMessage('Testing stream connection...');
       
-      const response = await fetch('/api/streams/test', {
+      const data = await fetchJSON('/api/streams/test', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -255,14 +277,12 @@ export function StreamsView() {
         body: JSON.stringify({
           url: currentStream.url,
           protocol: parseInt(currentStream.protocol, 10)
-        })
+        }),
+        signal: requestControllerRef.current?.signal,
+        timeout: 20000, // 20 second timeout for stream testing
+        retries: 1,     // Retry once
+        retryDelay: 2000 // 2 seconds between retries
       });
-      
-      if (!response.ok) {
-        throw new Error('Stream test failed');
-      }
-      
-      const data = await response.json();
       
       if (data.success) {
         showStatusMessage('Stream connection successful!');
@@ -293,13 +313,13 @@ export function StreamsView() {
     }
     
     try {
-      const response = await fetch(`/api/streams/${encodeURIComponent(streamId)}`, {
-        method: 'DELETE'
+      await enhancedFetch(`/api/streams/${encodeURIComponent(streamId)}`, {
+        method: 'DELETE',
+        signal: requestControllerRef.current?.signal,
+        timeout: 15000, // 15 second timeout
+        retries: 1,     // Retry once
+        retryDelay: 1000 // 1 second between retries
       });
-      
-      if (!response.ok) {
-        throw new Error('Failed to delete stream');
-      }
       
       showStatusMessage('Stream deleted successfully');
       loadStreams();
@@ -312,17 +332,17 @@ export function StreamsView() {
   // Enable/disable stream
   const toggleStreamEnabled = async (streamId, enabled) => {
     try {
-      const response = await fetch(`/api/streams/${encodeURIComponent(streamId)}/enable`, {
+      await enhancedFetch(`/api/streams/${encodeURIComponent(streamId)}/enable`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ enabled: !enabled })
+        body: JSON.stringify({ enabled: !enabled }),
+        signal: requestControllerRef.current?.signal,
+        timeout: 10000, // 10 second timeout
+        retries: 1,     // Retry once
+        retryDelay: 1000 // 1 second between retries
       });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to ${enabled ? 'disable' : 'enable'} stream`);
-      }
       
       showStatusMessage(`Stream ${enabled ? 'disabled' : 'enabled'} successfully`);
       loadStreams();
@@ -349,20 +369,16 @@ export function StreamsView() {
       // and to preserve any credentials entered
       showStatusMessage('Starting ONVIF discovery...');
       
-      const response = await fetch('/api/onvif/discovery/discover', {
+      const data = await fetchJSON('/api/onvif/discovery/discover', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-        })
+        body: JSON.stringify({}),
+        signal: requestControllerRef.current?.signal,
+        timeout: 120000, // 120 second timeout for discovery (ONVIF discovery can take up to 90 seconds)
+        retries: 0       // No retries for discovery
       });
-      
-      if (!response.ok) {
-        throw new Error('Failed to start ONVIF discovery');
-      }
-      
-      const data = await response.json();
       // Update discovered devices without clearing credentials
       setDiscoveredDevices(data.devices || []);
       
@@ -390,19 +406,17 @@ export function StreamsView() {
       setIsLoadingProfiles(true);
       showStatusMessage('Getting device profiles...');
       
-      const response = await fetch(`/api/onvif/device/profiles`, {
+      const data = await fetchJSON(`/api/onvif/device/profiles`, {
         headers: {
           'X-Device-URL': device.device_service,
           'X-Username': onvifCredentials.username,
           'X-Password': onvifCredentials.password
-        }
+        },
+        signal: requestControllerRef.current?.signal,
+        timeout: 20000, // 20 second timeout for getting profiles
+        retries: 1,     // Retry once
+        retryDelay: 2000 // 2 seconds between retries
       });
-      
-      if (!response.ok) {
-        throw new Error('Failed to get device profiles');
-      }
-      
-      const data = await response.json();
       setDeviceProfiles(data.profiles || []);
       
       if (data.profiles && data.profiles.length > 0) {
@@ -448,7 +462,7 @@ export function StreamsView() {
       setIsAddingStream(true);
       showStatusMessage('Adding ONVIF device as stream...');
       
-      const response = await fetch('/api/onvif/device/add', {
+      await enhancedFetch('/api/onvif/device/add', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -459,12 +473,12 @@ export function StreamsView() {
           stream_name: customStreamName,
           username: onvifCredentials.username,
           password: onvifCredentials.password
-        })
+        }),
+        signal: requestControllerRef.current?.signal,
+        timeout: 30000, // 30 second timeout for adding ONVIF device
+        retries: 1,     // Retry once
+        retryDelay: 3000 // 3 seconds between retries
       });
-      
-      if (!response.ok) {
-        throw new Error('Failed to add ONVIF device as stream');
-      }
       
       showStatusMessage('ONVIF device added as stream successfully');
       setOnvifModalVisible(false);
@@ -489,7 +503,7 @@ export function StreamsView() {
       
       showStatusMessage('Testing ONVIF connection...');
       
-      const response = await fetch('/api/onvif/device/test', {
+      await enhancedFetch('/api/onvif/device/test', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -498,12 +512,12 @@ export function StreamsView() {
           url: device.device_service,
           username: currentCredentials.username,
           password: currentCredentials.password
-        })
+        }),
+        signal: requestControllerRef.current?.signal,
+        timeout: 15000, // 15 second timeout for testing connection
+        retries: 1,     // Retry once
+        retryDelay: 2000 // 2 seconds between retries
       });
-      
-      if (!response.ok) {
-        throw new Error('ONVIF connection test failed');
-      }
       
       showStatusMessage('ONVIF connection successful!');
       
