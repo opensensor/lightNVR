@@ -395,13 +395,40 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration,
                         }
                     }
                     
-                    // CRITICAL FIX: Ensure PTS >= DTS for video packets to prevent "pts < dts" errors
-                    // This is essential for MP4 format compliance and prevents ghosting artifacts
-                    if (pkt.pts != AV_NOPTS_VALUE && pkt.dts != AV_NOPTS_VALUE && pkt.pts < pkt.dts) {
-                        log_debug("Fixing video packet with PTS < DTS: PTS=%lld, DTS=%lld", 
-                                (long long)pkt.pts, (long long)pkt.dts);
-                        pkt.pts = pkt.dts;
-                    }
+    // CRITICAL FIX: Ensure PTS >= DTS for video packets to prevent "pts < dts" errors
+    // This is essential for MP4 format compliance and prevents ghosting artifacts
+    if (pkt.pts != AV_NOPTS_VALUE && pkt.dts != AV_NOPTS_VALUE && pkt.pts < pkt.dts) {
+        log_debug("Fixing video packet with PTS < DTS: PTS=%lld, DTS=%lld", 
+                 (long long)pkt.pts, (long long)pkt.dts);
+        pkt.pts = pkt.dts;
+    }
+    
+    // CRITICAL FIX: Ensure DTS values don't exceed MP4 format limits (0x7fffffff)
+    // This prevents the "Assertion next_dts <= 0x7fffffff failed" error
+    if (pkt.dts != AV_NOPTS_VALUE && pkt.dts > 0x7fffffff) {
+        log_warn("DTS value exceeds MP4 format limit: %lld, resetting to safe value", (long long)pkt.dts);
+        // Reset to a small value that maintains continuity
+        pkt.dts = 1000;
+        if (pkt.pts != AV_NOPTS_VALUE) {
+            // Maintain PTS-DTS relationship if possible
+            int64_t pts_dts_diff = pkt.pts - pkt.dts;
+            if (pts_dts_diff >= 0) {
+                pkt.pts = pkt.dts + pts_dts_diff;
+            } else {
+                pkt.pts = pkt.dts;
+            }
+        } else {
+            pkt.pts = pkt.dts;
+        }
+    }
+    
+    // CRITICAL FIX: Ensure packet duration is within reasonable limits
+    // This prevents the "Packet duration is out of range" error
+    if (pkt.duration > 10000000) {
+        log_warn("Packet duration too large: %lld, capping at reasonable value", (long long)pkt.duration);
+        // Cap at a reasonable value (e.g., 1 second in timebase units)
+        pkt.duration = 90000;
+    }
                     
                     // Update last timestamps
                     if (pkt.dts != AV_NOPTS_VALUE) {

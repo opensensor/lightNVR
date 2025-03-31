@@ -286,17 +286,23 @@ static void *detection_thread_func(void *arg) {
             
             // Process the packet-based detection task
             log_info("Detection thread %d processing packet task for stream %s", thread_id, stream_name);
-            process_packet_for_detection(stream_name, pkt, codec_params);
             
-    // Free the packet and codec parameters
-    if (pkt) {
-        av_packet_free(&pkt);
-        detection_tasks[thread_id].pkt = NULL;  // Prevent double-free
-    }
-    if (codec_params) {
-        avcodec_parameters_free(&codec_params);
-        detection_tasks[thread_id].codec_params = NULL;  // Prevent double-free
-    }
+            // CRITICAL FIX: Add null pointer checks before calling process_packet_for_detection
+            if (pkt && codec_params) {
+                process_packet_for_detection(stream_name, pkt, codec_params);
+            } else {
+                log_error("Null packet or codec parameters for stream %s in thread %d", stream_name, thread_id);
+            }
+            
+            // Free the packet and codec parameters
+            if (pkt) {
+                av_packet_free(&pkt);
+                detection_tasks[thread_id].pkt = NULL;  // Prevent double-free
+            }
+            if (codec_params) {
+                avcodec_parameters_free(&codec_params);
+                detection_tasks[thread_id].codec_params = NULL;  // Prevent double-free
+            }
         }
 
         // Update statistics

@@ -63,6 +63,7 @@ mp4_writer_t *mp4_writer_create(const char *output_path, const char *stream_name
     writer->audio.initialized = 0;
     writer->audio.time_base.num = 1;
     writer->audio.time_base.den = 48000; // Default to 48kHz
+    writer->audio.frame_size = 1024;    // Default audio frame size for Opus
     
     // Initialize segment-related fields
     writer->segment_duration = 0;  // Default to 0 (no rotation)

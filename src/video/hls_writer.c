@@ -44,6 +44,12 @@ void process_packet_for_detection(const char *stream_name, const AVPacket *pkt, 
         return;
     }
     
+    // CRITICAL FIX: Additional safety checks for stream_name
+    if (stream_name && (stream_name[0] == '\0' || (uintptr_t)stream_name < 1000)) {
+        log_error("Invalid stream name pointer in process_packet_for_detection: %p", (void*)stream_name);
+        return;
+    }
+    
     // Validate packet data
     if (!pkt->data || pkt->size <= 0) {
         log_warn("Invalid packet data in process_packet_for_detection: data=%p, size=%d", 
@@ -823,13 +829,40 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
                 out_pkt.pts = out_pkt.dts;
             }
         }
-        // Log large jumps but accept them
+        // Handle large DTS jumps by normalizing the timestamps
         else if (out_pkt.dts > dts_tracker->last_dts + 90000) {
             log_warn("HLS large DTS jump in stream %s: last=%lld, current=%lld, diff=%lld",
                     writer->stream_name,
                     (long long)dts_tracker->last_dts,
                     (long long)out_pkt.dts,
                     (long long)(out_pkt.dts - dts_tracker->last_dts));
+            
+            // CRITICAL FIX: Normalize timestamps to prevent exceeding MP4 format limits
+            // The MP4 format has a limit of 0x7fffffff (2,147,483,647) for DTS values
+            // We'll reset the DTS to a small value after the last DTS to maintain continuity
+            int64_t fixed_dts = dts_tracker->last_dts + 3000; // Add 3000 ticks (about 1/10 second at 90kHz)
+            int64_t pts_dts_diff = out_pkt.pts - out_pkt.dts;
+            
+            log_info("Normalizing timestamps for stream %s: old_dts=%lld, new_dts=%lld",
+                    writer->stream_name, (long long)out_pkt.dts, (long long)fixed_dts);
+            
+            out_pkt.dts = fixed_dts;
+            out_pkt.pts = fixed_dts + (pts_dts_diff > 0 ? pts_dts_diff : 0);
+            
+            // Ensure PTS >= DTS after correction
+            if (out_pkt.pts < out_pkt.dts) {
+                out_pkt.pts = out_pkt.dts;
+            }
+            
+            // Ensure timestamps don't exceed MP4 format limits
+            if (out_pkt.dts > 0x7fffffff || out_pkt.pts > 0x7fffffff) {
+                // Reset timestamps to small values if they're getting too large
+                log_warn("Timestamps exceeding MP4 format limits for stream %s, resetting", writer->stream_name);
+                out_pkt.dts = 1000;
+                out_pkt.pts = 1000;
+                dts_tracker->first_dts = 1000;
+                dts_tracker->last_dts = 1000;
+            }
         }
     }
 

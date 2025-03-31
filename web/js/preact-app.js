@@ -246,6 +246,28 @@ function initApp() {
   setupModals();
   addStatusMessageStyles();
   addModalStyles();
+  
+  // Initialize toast container
+  import('./components/preact/toast.js').then(({ initToastContainer }) => {
+    // Initialize the toast container without showing a test message
+    initToastContainer(false);
+    
+    // Log success
+    console.log('Toast container initialized from preact-app.js');
+    
+    // Add a global function to test toasts
+    window.testToastFromApp = (type = 'info') => {
+      const message = `App test ${type} toast at ${new Date().toLocaleTimeString()}`;
+      
+      if (window.showToast) {
+        window.showToast(message, type);
+      }
+      
+      return 'App toast triggered';
+    };
+  }).catch(error => {
+    console.error('Error initializing toast container:', error);
+  });
 }
 
 // Initialize the app when the DOM is loaded

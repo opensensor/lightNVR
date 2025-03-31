@@ -509,6 +509,22 @@ int mp4_writer_add_audio_stream(mp4_writer_t *writer, const AVCodecParameters *c
     writer->audio.initialized = 0;  // Don't mark as initialized until we receive the first packet
     writer->audio.time_base = safe_time_base;  // Store the timebase in the audio state
     
+    // Set default frame size for audio codec
+    if (codec_params->codec_id == AV_CODEC_ID_OPUS) {
+        writer->audio.frame_size = 960;  // Opus typically uses 960 samples per frame (20ms at 48kHz)
+        log_debug("Setting Opus frame size to 960 samples for stream %s", 
+                 writer->stream_name ? writer->stream_name : "unknown");
+    } else if (codec_params->codec_id == AV_CODEC_ID_AAC) {
+        writer->audio.frame_size = 1024;  // AAC typically uses 1024 samples per frame
+        log_debug("Setting AAC frame size to 1024 samples for stream %s", 
+                 writer->stream_name ? writer->stream_name : "unknown");
+    } else {
+        // Default to 1024 for other codecs
+        writer->audio.frame_size = 1024;
+        log_debug("Setting default frame size to 1024 samples for codec %d in stream %s", 
+                 codec_params->codec_id, writer->stream_name ? writer->stream_name : "unknown");
+    }
+    
     // Create a new audio stream in the output
     audio_stream = avformat_new_stream(writer->output_ctx, NULL);
     if (!audio_stream) {
@@ -530,6 +546,14 @@ int mp4_writer_add_audio_stream(mp4_writer_t *writer, const AVCodecParameters *c
                  writer->stream_name ? writer->stream_name : "unknown", error_buf);
         avcodec_parameters_free(&local_codec_params);
         return -1;
+    }
+    
+    // CRITICAL FIX: Set the frame_size in the codec parameters
+    // This prevents the "track 1: codec frame size is not set" error
+    if (audio_stream->codecpar->frame_size == 0) {
+        audio_stream->codecpar->frame_size = writer->audio.frame_size;
+        log_info("Setting audio codec frame_size to %d for stream %s", 
+                writer->audio.frame_size, writer->stream_name ? writer->stream_name : "unknown");
     }
     
     // Free our local copy now that we've copied it to the stream

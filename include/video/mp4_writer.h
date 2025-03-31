@@ -20,6 +20,7 @@ typedef struct {
     int64_t last_dts;         // Last audio DTS written
     int initialized;          // Flag to track if audio has been initialized
     AVRational time_base;     // Audio stream timebase
+    int frame_size;           // Audio frame size in samples (needed for MP4 muxing)
     pthread_mutex_t mutex;    // Mutex to protect audio state
 } mp4_audio_state_t;
 

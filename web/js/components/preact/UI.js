@@ -89,60 +89,72 @@ export function setupModals() {
  * Add status message styles to the document
  */
 export function addStatusMessageStyles() {
-  // Check if styles already exist
-  if (document.getElementById('status-message-styles')) {
-    return;
-  }
-  
-  // Create style element
-  const style = document.createElement('style');
-  style.id = 'status-message-styles';
-  
-  // Add CSS rules
-  style.textContent = `
-    #status-message-container {
-      position: fixed;
-      bottom: 1rem;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 50;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
+  // Import the toast module to ensure it's loaded
+  import('./toast.js').then(({ addToastStyles }) => {
+    // Use the toast styles
+    addToastStyles();
+  }).catch(error => {
+    console.error('Error loading toast module:', error);
+    
+    // Fallback to basic styles if toast module fails to load
+    if (document.getElementById('status-message-styles')) {
+      return;
     }
     
-    .status-message {
-      background-color: #1f2937;
-      color: white;
-      padding: 0.5rem 1rem;
-      border-radius: 0.375rem;
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-      margin-bottom: 0.5rem;
-      transition: all 0.3s ease;
-      opacity: 0;
-      transform: translateY(0.5rem);
-    }
+    // Create style element
+    const style = document.createElement('style');
+    style.id = 'status-message-styles';
     
-    .status-message.show {
-      opacity: 1;
-      transform: translateY(0);
-    }
+    // Add CSS rules
+    style.textContent = `
+      #status-message-container {
+        position: fixed;
+        top: 1rem;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 50;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      
+      .status-message {
+        background-color: #1f2937;
+        color: white;
+        padding: 0.5rem 1rem;
+        border-radius: 0.375rem;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        margin-bottom: 0.5rem;
+        transition: all 0.3s ease;
+        opacity: 0;
+        transform: translateY(-0.5rem);
+      }
+      
+      .status-message.show {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      
+      .status-message.success {
+        background-color: #10b981;
+      }
+      
+      .status-message.error {
+        background-color: #ef4444;
+      }
+      
+      .status-message.warning {
+        background-color: #f59e0b;
+      }
+      
+      .status-message.info {
+        background-color: #3b82f6;
+      }
+    `;
     
-    .status-message.success {
-      background-color: #10b981;
-    }
-    
-    .status-message.error {
-      background-color: #ef4444;
-    }
-    
-    .status-message.warning {
-      background-color: #f59e0b;
-    }
-  `;
-  
-  // Add to document head
-  document.head.appendChild(style);
+    // Add to document head
+    document.head.appendChild(style);
+  });
 }
 
 /**
@@ -757,50 +769,78 @@ export function showVideoModal(videoUrl, title, downloadUrl) {
 /**
  * Show a status message to the user
  * @param {string} message - Message to display
- * @param {number} duration - Duration in milliseconds (default: 3000)
+ * @param {string} type - Message type ('success', 'error', 'warning', 'info')
+ * @param {number} duration - Duration in milliseconds (default: 4000)
  */
-export function showStatusMessage(message, duration = 3000) {
-  // Check if a status message container already exists
-  let statusContainer = document.getElementById('status-message-container');
+export function showStatusMessage(message, type = 'info', duration = 4000) {
+  console.log(`Showing status message: ${message} (${type})`);
   
-  // Create container if it doesn't exist
-  if (!statusContainer) {
-    statusContainer = document.createElement('div');
-    statusContainer.id = 'status-message-container';
-    statusContainer.className = 'fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 flex flex-col items-center';
-    document.body.appendChild(statusContainer);
+  // Try to use the global toast functions first (they should be available)
+  if (window.showToast) {
+    window.showToast(message, type, duration);
+    return;
   }
   
-  // Create message element
-  const messageElement = document.createElement('div');
-  messageElement.className = 'bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg mb-2 transition-all duration-300 opacity-0 transform translate-y-2';
-  messageElement.textContent = message;
-  
-  // Add to container
-  statusContainer.appendChild(messageElement);
-  
-  // Trigger animation to show message
-  setTimeout(() => {
-    messageElement.classList.remove('opacity-0', 'translate-y-2');
-  }, 10);
-  
-  // Set timeout to remove message
-  setTimeout(() => {
-    // Trigger animation to hide message
-    messageElement.classList.add('opacity-0', 'translate-y-2');
+  // If global functions aren't available, import the toast module dynamically
+  import('./toast.js').then(({ showStatusMessage: showToast }) => {
+    // Use the toast system
+    showToast(message, type, duration);
+  }).catch(error => {
+    console.error('Error loading toast module:', error);
     
-    // Remove element after animation completes
+    // Fallback to basic implementation if toast module fails to load
+    let statusContainer = document.getElementById('status-message-container');
+    
+    // Create container if it doesn't exist
+    if (!statusContainer) {
+      statusContainer = document.createElement('div');
+      statusContainer.id = 'status-message-container';
+      statusContainer.className = 'fixed top-4 left-1/2 transform -translate-x-1/2 z-50 flex flex-col items-center';
+      document.body.appendChild(statusContainer);
+    }
+  
+    // Create message element
+    const messageElement = document.createElement('div');
+    
+    // Set class based on type
+    let typeClass = 'bg-blue-500'; // Default for info
+    if (type === 'success') {
+      typeClass = 'bg-green-500';
+    } else if (type === 'error') {
+      typeClass = 'bg-red-500';
+    } else if (type === 'warning') {
+      typeClass = 'bg-yellow-500';
+    }
+    
+    messageElement.className = `${typeClass} text-white px-4 py-2 rounded-lg shadow-lg mb-2 transition-all duration-300 opacity-0 transform translate-y-2`;
+    messageElement.textContent = message;
+    
+    // Add to container
+    statusContainer.appendChild(messageElement);
+    
+    // Trigger animation to show message
     setTimeout(() => {
-      if (messageElement.parentNode === statusContainer) {
-        statusContainer.removeChild(messageElement);
-      }
+      messageElement.classList.remove('opacity-0', 'translate-y-2');
+    }, 10);
+    
+    // Set timeout to remove message
+    setTimeout(() => {
+      // Trigger animation to hide message
+      messageElement.classList.add('opacity-0', 'translate-y-2');
       
-      // Remove container if no more messages
-      if (statusContainer.children.length === 0) {
-        document.body.removeChild(statusContainer);
-      }
-    }, 300);
-  }, duration);
+      // Remove element after animation completes
+      setTimeout(() => {
+        if (messageElement.parentNode === statusContainer) {
+          statusContainer.removeChild(messageElement);
+        }
+        
+        // Remove container if no more messages
+        if (statusContainer.children.length === 0 && statusContainer.parentNode === document.body) {
+          document.body.removeChild(statusContainer);
+        }
+      }, 300);
+    }, duration);
+  });
 }
 
 /**
