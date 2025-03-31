@@ -5,6 +5,7 @@
 #include "web/mongoose_server_auth.h"
 #include "web/mongoose_adapter.h"
 #include "core/logger.h"
+#include "database/db_auth.h"
 
 // Include Mongoose
 #include "mongoose.h"
@@ -47,9 +48,9 @@ int mongoose_server_basic_auth_check(struct mg_http_message *hm, http_server_t *
     // Get Authorization header
     struct mg_str *auth_header = mg_http_get_header(hm, "Authorization");
     
-    // If no Authorization header, check for auth cookie
+    // If no Authorization header, check for session or auth cookie
     if (auth_header == NULL) {
-        log_info("No Authorization header found for URI: %s, checking for cookie", uri);
+        log_info("No Authorization header found for URI: %s, checking for cookies", uri);
         struct mg_str *cookie_header = mg_http_get_header(hm, "Cookie");
         if (cookie_header != NULL) {
             log_info("Cookie header found: %.*s", (int)cookie_header->len, cookie_header->buf);
@@ -60,7 +61,36 @@ int mongoose_server_basic_auth_check(struct mg_http_message *hm, http_server_t *
                 memcpy(cookie_str, cookie_header->buf, cookie_header->len);
                 cookie_str[cookie_header->len] = '\0';
                 
-                // Look for auth cookie
+                // First, check for session cookie (new auth system)
+                char *session_cookie_start = strstr(cookie_str, "session=");
+                if (session_cookie_start) {
+                    session_cookie_start += 8; // Skip "session="
+                    char *session_cookie_end = strchr(session_cookie_start, ';');
+                    if (!session_cookie_end) {
+                        session_cookie_end = session_cookie_start + strlen(session_cookie_start);
+                    }
+                    
+                    // Extract session cookie value
+                    size_t session_cookie_len = session_cookie_end - session_cookie_start;
+                    char session_cookie_value[512] = {0};
+                    if (session_cookie_len < sizeof(session_cookie_value) - 1) {
+                        memcpy(session_cookie_value, session_cookie_start, session_cookie_len);
+                        session_cookie_value[session_cookie_len] = '\0';
+                        
+                        log_info("Found session cookie value: %s", session_cookie_value);
+                        
+                        // Validate the session token
+                        int64_t user_id;
+                        if (db_auth_validate_session(session_cookie_value, &user_id) == 0) {
+                            log_info("Session token validated successfully for user ID: %lld", (long long)user_id);
+                            return 0; // Authentication successful
+                        } else {
+                            log_info("Invalid session token: %s", session_cookie_value);
+                        }
+                    }
+                }
+                
+                // If no valid session cookie, check for auth cookie (legacy auth system)
                 char *auth_cookie_start = strstr(cookie_str, "auth=");
                 if (auth_cookie_start) {
                     auth_cookie_start += 5; // Skip "auth="
@@ -108,7 +138,7 @@ int mongoose_server_basic_auth_check(struct mg_http_message *hm, http_server_t *
         
         // If still no auth header, authentication fails
         if (auth_header == NULL) {
-            log_debug("No Authorization header or auth cookie found");
+            log_debug("No Authorization header or valid cookies found");
             return -1;
         }
     }

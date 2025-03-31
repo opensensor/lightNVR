@@ -80,11 +80,11 @@ else()
     set(SSL_LIBRARIES "")
 endif()
 
-# ONVIF requires mbedTLS for SHA1 and Base64 functions
+# ONVIF and authentication system require mbedTLS for cryptographic functions
 pkg_check_modules(MBEDTLS REQUIRED mbedtls mbedcrypto mbedx509)
 list(APPEND SSL_INCLUDE_DIRS ${MBEDTLS_INCLUDE_DIRS})
 list(APPEND SSL_LIBRARIES ${MBEDTLS_LIBRARIES})
-message(STATUS "ONVIF support enabled, linking with mbedTLS for SHA1 and Base64 functions")
+message(STATUS "ONVIF and authentication system enabled, linking with mbedTLS for cryptographic functions")
 
 # Mongoose is required for web server implementation
 add_definitions(-DUSE_MONGOOSE)

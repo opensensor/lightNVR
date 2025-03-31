@@ -7,17 +7,7 @@ import { h, render } from './preact.min.js';
 import { html } from './html-helper.js';
 import { loadHeader } from './components/preact/Header.js';
 import { loadFooter } from './components/preact/Footer.js';
-import { loadLiveView } from './components/preact/LiveView.js';
-import { loadRecordingsView } from './components/preact/RecordingsView.js';
-import { loadSettingsView } from './components/preact/SettingsView.js';
-import { loadStreamsView } from './components/preact/StreamsView.js';
-import { loadSystemView } from './components/preact/SystemView.js';
-import { loadLoginView } from './components/preact/LoginView.js';
-import { loadIndexView } from './components/preact/IndexView.js';
-import { loadTimelineView } from './components/preact/timeline/TimelineView.js';
-import { loadWebRTCView } from './components/preact/WebRTCView.js';
 import { setupModals, addStatusMessageStyles, addModalStyles } from './components/preact/UI.js';
-import './components/auth.js';  // Import authentication module
 
 // Initialize WebSocket client at the parent level
 // This ensures a single WebSocket connection is shared across all components
@@ -206,25 +196,43 @@ function initApp() {
   loadHeader(activeNav);
   loadFooter();
   
-  // Load page-specific content
+  // Load page-specific content using dynamic imports
   if (currentPage === 'index.html') {
-    loadWebRTCView();
+    import('./components/preact/WebRTCView.js').then(module => {
+      module.loadWebRTCView();
+    });
   } else if (currentPage === 'hls.html') {
-    loadLiveView();
+    import('./components/preact/LiveView.js').then(module => {
+      module.loadLiveView();
+    });
   } else if (currentPage === 'recordings.html') {
-    loadRecordingsView();
+    import('./components/preact/RecordingsView.js').then(module => {
+      module.loadRecordingsView();
+    });
   } else if (currentPage === 'timeline.html') {
-    loadTimelineView();
+    import('./components/preact/timeline/TimelineView.js').then(module => {
+      module.loadTimelineView();
+    });
   } else if (currentPage === 'settings.html') {
-    loadSettingsView();
+    import('./components/preact/SettingsView.js').then(module => {
+      module.loadSettingsView();
+    });
   } else if (currentPage === 'streams.html') {
-    loadStreamsView();
+    import('./components/preact/StreamsView.js').then(module => {
+      module.loadStreamsView();
+    });
   } else if (currentPage === 'system.html') {
-    loadSystemView();
+    import('./components/preact/SystemView.js').then(module => {
+      module.loadSystemView();
+    });
   } else if (currentPage === 'login.html') {
-    loadLoginView();
+    import('./components/preact/LoginView.js').then(module => {
+      module.loadLoginView();
+    });
   } else if (currentPage === '') {
-    loadWebRTCView();
+    import('./components/preact/WebRTCView.js').then(module => {
+      module.loadWebRTCView();
+    });
   }
   
   // Setup UI components

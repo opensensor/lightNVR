@@ -49,6 +49,16 @@ void load_default_config(config_t *config) {
     snprintf(config->web_password, 32, "admin"); // Default password, should be changed
     config->web_thread_pool_size = 4; // Default to 4 threads for the web thread pool (will be limited to 4 for embedded devices)
     
+    // Web optimization settings
+    config->web_compression_enabled = true;
+    config->web_use_minified_assets = true;
+    config->web_cache_max_age_html = 3600;        // 1 hour for HTML
+    config->web_cache_max_age_css = 604800;       // 1 week for CSS
+    config->web_cache_max_age_js = 604800;        // 1 week for JS
+    config->web_cache_max_age_images = 2592000;   // 30 days for images
+    config->web_cache_max_age_fonts = 2592000;    // 30 days for fonts
+    config->web_cache_max_age_default = 86400;    // 1 day default
+    
     // Stream settings
     config->max_streams = 16;
     

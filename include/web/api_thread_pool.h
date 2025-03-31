@@ -38,6 +38,16 @@ void api_thread_pool_release(void);
 void api_thread_pool_shutdown(void);
 
 /**
+ * @brief Add a task to the API thread pool with monitoring
+ * This function wraps the task with monitoring code to detect long-running tasks
+ * 
+ * @param function Function to execute
+ * @param argument Argument to pass to the function
+ * @return true if task was added successfully, false otherwise
+ */
+bool api_thread_pool_add_task(void (*function)(void *), void *argument);
+
+/**
  * @brief Get the API thread pool
  * 
  * @return thread_pool_t* Pointer to the thread pool

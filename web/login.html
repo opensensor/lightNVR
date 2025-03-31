@@ -20,13 +20,23 @@
                 // Clear any potentially invalid credentials
                 localStorage.removeItem('auth');
                 document.cookie = "auth=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict";
+                document.cookie = "session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict";
                 return;
             }
             
             const auth = localStorage.getItem('auth');
-            const hasCookie = document.cookie.split(';').some(item => item.trim().startsWith('auth='));
             
-            if (auth || hasCookie) {
+            // Firefox has stricter cookie handling, so we need to be more careful
+            const cookies = document.cookie.split(';').map(cookie => cookie.trim());
+            const hasAuthCookie = cookies.some(cookie => cookie.startsWith('auth='));
+            const hasSessionCookie = cookies.some(cookie => cookie.startsWith('session='));
+            
+            // Debug cookie information
+            console.log('Login page - Cookies available:', document.cookie ? 'Yes' : 'No');
+            console.log('Login page - Auth cookie found:', hasAuthCookie);
+            console.log('Login page - Session cookie found:', hasSessionCookie);
+            
+            if (auth || hasAuthCookie || hasSessionCookie) {
                 // Already authenticated, redirect to index.html
                 window.location.href = '/index.html?t=' + new Date().getTime();
             }

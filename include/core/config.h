@@ -83,6 +83,16 @@ typedef struct {
     char web_password[32]; // Stored as hash in actual implementation
     int web_thread_pool_size;        // Number of threads for handling both connections and API operations
     
+    // Web optimization settings
+    bool web_compression_enabled;    // Whether to enable gzip compression for text-based responses
+    bool web_use_minified_assets;    // Whether to use minified assets (JS/CSS)
+    int web_cache_max_age_html;      // Cache max-age for HTML files (in seconds)
+    int web_cache_max_age_css;       // Cache max-age for CSS files (in seconds)
+    int web_cache_max_age_js;        // Cache max-age for JS files (in seconds)
+    int web_cache_max_age_images;    // Cache max-age for image files (in seconds)
+    int web_cache_max_age_fonts;     // Cache max-age for font files (in seconds)
+    int web_cache_max_age_default;   // Default cache max-age for other files (in seconds)
+    
     // ONVIF settings
     bool onvif_discovery_enabled;    // Whether ONVIF discovery is enabled
     int onvif_discovery_interval;    // Interval in seconds between discovery attempts

@@ -69,6 +69,7 @@ static const mg_api_route_t s_api_routes[] = {
     // Auth API
     {"POST", "/api/auth/login", mg_handle_auth_login},
     {"POST", "/api/auth/logout", mg_handle_auth_logout},
+    {"GET", "/api/auth/verify", mg_handle_auth_verify},
     
     // Streams API
     {"GET", "/api/streams", mg_handle_get_streams},
@@ -766,14 +767,27 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
             strncmp(uri, "/css/", 5) == 0 || 
             strncmp(uri, "/img/", 5) == 0 || 
             strncmp(uri, "/fonts/", 7) == 0 ||
-            strstr(uri, ".js.map") != NULL ||
-            strstr(uri, ".css.map") != NULL ||
-            strstr(uri, ".ico") != NULL) {
+            strstr(uri, ".js") != NULL ||
+            strstr(uri, ".css") != NULL ||
+            strstr(uri, ".map") != NULL ||
+            strstr(uri, ".ico") != NULL ||
+            strstr(uri, ".png") != NULL ||
+            strstr(uri, ".jpg") != NULL ||
+            strstr(uri, ".jpeg") != NULL ||
+            strstr(uri, ".gif") != NULL ||
+            strstr(uri, ".svg") != NULL ||
+            strstr(uri, ".woff") != NULL ||
+            strstr(uri, ".woff2") != NULL ||
+            strstr(uri, ".ttf") != NULL ||
+            strstr(uri, ".eot") != NULL) {
             is_static_asset = true;
         }
         
         // Check if this is an HLS request
         bool is_hls_request = (strncmp(uri, "/hls/", 5) == 0);
+        
+        // Check if this is an auth verification request
+        bool is_auth_verify = (strcmp(uri, "/api/auth/verify") == 0);
         
         // Skip authentication for static assets and HTML pages
         if (is_static_asset || strstr(uri, ".html") != NULL) {
@@ -799,6 +813,7 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
             // Check for auth cookie
             struct mg_str *cookie_header = mg_http_get_header(hm, "Cookie");
             bool has_auth_cookie = false;
+            bool has_session_cookie = false;
             
             if (cookie_header != NULL) {
                 // Parse cookie to check for auth
@@ -809,14 +824,15 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
                     
                     // Check if auth cookie exists
                     has_auth_cookie = (strstr(cookie_str, "auth=") != NULL);
+                    has_session_cookie = (strstr(cookie_str, "session=") != NULL);
                 }
             }
             
-            log_info("HLS request auth status: header=%d, cookie=%d", 
-                    has_auth_header, has_auth_cookie);
+            log_info("HLS request auth status: header=%d, cookie=%d, session=%d", 
+                    has_auth_header, has_auth_cookie, has_session_cookie);
             
             // If authentication is enabled and we have neither auth header nor cookie, return 401
-            if (server->config.auth_enabled && !has_auth_header && !has_auth_cookie) {
+            if (server->config.auth_enabled && !has_auth_header && !has_auth_cookie && !has_session_cookie) {
                 log_info("Authentication required for HLS request but no auth provided");
                 mg_printf(c, "HTTP/1.1 401 Unauthorized\r\n");
                 mg_printf(c, "WWW-Authenticate: Basic realm=\"LightNVR\"\r\n");
@@ -840,6 +856,7 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
                 mg_printf(c, "Content-Length: 29\r\n");
                 mg_printf(c, "\r\n");
                 mg_printf(c, "{\"error\": \"Unauthorized\"}\n");
+                return;
             } else {
                 // Check if this is the root path or login page - both should be accessible without auth
                 if (strcmp(uri, "/") == 0 || 

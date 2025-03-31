@@ -357,13 +357,13 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     // CRITICAL FIX: Modify HLS options to prevent segmentation faults
     // Use more conservative settings that prioritize stability over low latency
     av_dict_set(&options, "hls_time", hls_time, 0);
-    av_dict_set(&options, "hls_list_size", "5", 0);  // Increased for better stability
+    av_dict_set(&options, "hls_list_size", "3", 0);  // Reduced for faster segment cleanup
     
     // Use MPEG-TS segments for better compatibility and to avoid MP4 moov atom issues
     av_dict_set(&options, "hls_segment_type", "mpegts", 0);
     
-    // Disable second pass optimization that's causing the segmentation fault
-    av_dict_set(&options, "hls_flags", "delete_segments+single_file", 0);
+    // Enable aggressive segment deletion to prevent accumulation
+    av_dict_set(&options, "hls_flags", "delete_segments+discont_start+program_date_time", 0);
     
     // Set start number
     av_dict_set(&options, "start_number", "0", 0);
@@ -887,14 +887,9 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
         return ret;
     }
 
-    // Periodically clean up old segments (every 60 seconds)
-    // Note: now is already set above, and writer->last_cleanup_time is updated there too
-    if (now - writer->last_cleanup_time >= 60) {
-        // Keep more segments than in the playlist for smooth playback
-        int max_segments_to_keep = 15; // More than hls_list_size
-        cleanup_old_segments(writer->output_dir, max_segments_to_keep);
-        writer->last_cleanup_time = now;
-    }
+    // Let FFmpeg handle segment cleanup automatically
+    // Update the last cleanup time to prevent uninitialized value issues
+    writer->last_cleanup_time = now;
 
     return 0;
 }

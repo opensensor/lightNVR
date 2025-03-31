@@ -16,6 +16,8 @@
 #include "mongoose.h"
 #include "video/go2rtc/go2rtc_integration.h"
 #include "video/go2rtc/go2rtc_stream.h"
+#include "web/thread_pool.h"
+#include "web/api_thread_pool.h"
 
 // Buffer size for URLs
 #define URL_BUFFER_SIZE 2048
@@ -51,6 +53,14 @@ static size_t write_callback(void *contents, size_t size, size_t nmemb, void *us
  * This handler proxies WebRTC offer requests to the go2rtc API.
  */
 void mg_handle_go2rtc_webrtc_offer(struct mg_connection *c, struct mg_http_message *hm) {
+    // Acquire the API thread pool to ensure proper thread management
+    bool release_needed = true;
+    thread_pool_t *pool = api_thread_pool_acquire(api_thread_pool_get_size(), 10);
+    if (!pool) {
+        log_error("Failed to acquire API thread pool");
+        mg_send_json_error(c, 500, "Internal server error");
+        return;
+    }
     log_info("Handling POST /api/webrtc request");
     
     // Log request details
@@ -179,6 +189,14 @@ void mg_handle_go2rtc_webrtc_offer(struct mg_connection *c, struct mg_http_messa
     // Set curl options
     if (curl_easy_setopt(curl, CURLOPT_URL, url) != CURLE_OK) {
         log_error("Failed to set CURLOPT_URL");
+        mg_send_json_error(c, 500, "Failed to set curl options");
+        curl_easy_cleanup(curl);
+        return;
+    }
+    
+    // Set a connection timeout to prevent hanging on network issues
+    if (curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L) != CURLE_OK) {
+        log_error("Failed to set CURLOPT_CONNECTTIMEOUT");
         mg_send_json_error(c, 500, "Failed to set curl options");
         curl_easy_cleanup(curl);
         return;
@@ -326,6 +344,11 @@ void mg_handle_go2rtc_webrtc_offer(struct mg_connection *c, struct mg_http_messa
     if (response.data) free(response.data);
     
     log_info("Successfully handled WebRTC offer request for stream: %s", decoded_name);
+    
+    // Release the thread pool when done
+    if (release_needed) {
+        api_thread_pool_release();
+    }
 }
 
 /**
@@ -334,6 +357,14 @@ void mg_handle_go2rtc_webrtc_offer(struct mg_connection *c, struct mg_http_messa
  * This handler proxies WebRTC ICE candidate requests to the go2rtc API.
  */
 void mg_handle_go2rtc_webrtc_ice(struct mg_connection *c, struct mg_http_message *hm) {
+    // Acquire the API thread pool to ensure proper thread management
+    bool release_needed = true;
+    thread_pool_t *pool = api_thread_pool_acquire(api_thread_pool_get_size(), 10);
+    if (!pool) {
+        log_error("Failed to acquire API thread pool");
+        mg_send_json_error(c, 500, "Internal server error");
+        return;
+    }
     log_info("Handling POST /api/webrtc/ice request");
     
     // Log request details
@@ -601,6 +632,11 @@ void mg_handle_go2rtc_webrtc_ice(struct mg_connection *c, struct mg_http_message
     if (response.data) free(response.data);
     
     log_info("Successfully handled WebRTC ICE request for stream: %s", decoded_name);
+    
+    // Release the thread pool when done
+    if (release_needed) {
+        api_thread_pool_release();
+    }
 }
 
 /**
@@ -609,6 +645,14 @@ void mg_handle_go2rtc_webrtc_ice(struct mg_connection *c, struct mg_http_message
  * This handler responds to CORS preflight requests for the WebRTC API.
  */
 void mg_handle_go2rtc_webrtc_options(struct mg_connection *c, struct mg_http_message *hm) {
+    // Acquire the API thread pool to ensure proper thread management
+    bool release_needed = true;
+    thread_pool_t *pool = api_thread_pool_acquire(api_thread_pool_get_size(), 10);
+    if (!pool) {
+        log_error("Failed to acquire API thread pool");
+        mg_send_json_error(c, 500, "Internal server error");
+        return;
+    }
     log_info("Handling OPTIONS /api/webrtc request");
     
     // Set CORS headers
@@ -620,6 +664,11 @@ void mg_handle_go2rtc_webrtc_options(struct mg_connection *c, struct mg_http_mes
     mg_printf(c, "Content-Length: 0\r\n\r\n");
     
     log_info("Successfully handled OPTIONS request for WebRTC API");
+    
+    // Release the thread pool when done
+    if (release_needed) {
+        api_thread_pool_release();
+    }
 }
 
 /**
@@ -628,6 +677,14 @@ void mg_handle_go2rtc_webrtc_options(struct mg_connection *c, struct mg_http_mes
  * This handler responds to CORS preflight requests for the WebRTC ICE API.
  */
 void mg_handle_go2rtc_webrtc_ice_options(struct mg_connection *c, struct mg_http_message *hm) {
+    // Acquire the API thread pool to ensure proper thread management
+    bool release_needed = true;
+    thread_pool_t *pool = api_thread_pool_acquire(api_thread_pool_get_size(), 10);
+    if (!pool) {
+        log_error("Failed to acquire API thread pool");
+        mg_send_json_error(c, 500, "Internal server error");
+        return;
+    }
     log_info("Handling OPTIONS /api/webrtc/ice request");
     
     // Set CORS headers
@@ -639,4 +696,9 @@ void mg_handle_go2rtc_webrtc_ice_options(struct mg_connection *c, struct mg_http
     mg_printf(c, "Content-Length: 0\r\n\r\n");
     
     log_info("Successfully handled OPTIONS request for WebRTC ICE API");
+    
+    // Release the thread pool when done
+    if (release_needed) {
+        api_thread_pool_release();
+    }
 }

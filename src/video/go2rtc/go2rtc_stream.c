@@ -687,9 +687,6 @@ void go2rtc_stream_cleanup(void) {
         return;
     }
     
-    // Stop all go2rtc processes
-    go2rtc_stream_stop_service();
-    
     // Clean up API client
     go2rtc_api_cleanup();
     

@@ -11,6 +11,7 @@
 #include "core/logger.h"
 #include "core/config.h"
 #include "video/streams.h"
+#include "database/db_auth.h"
 
 #ifdef USE_GO2RTC
 #include "video/go2rtc/go2rtc_integration.h"
@@ -39,8 +40,9 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         strncmp(uri, "/css/", 5) == 0 || 
         strncmp(uri, "/img/", 5) == 0 || 
         strncmp(uri, "/fonts/", 7) == 0 ||
-        strstr(uri, ".js.map") != NULL ||
-        strstr(uri, ".css.map") != NULL ||
+        strstr(uri, ".js") != NULL ||
+        strstr(uri, ".css") != NULL ||
+        strstr(uri, ".map") != NULL ||
         strstr(uri, ".ico") != NULL) {
         is_static_asset = true;
     }
@@ -88,9 +90,10 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         struct mg_str *auth_header = mg_http_get_header(hm, "Authorization");
         const bool has_auth_header = (auth_header != NULL);
         
-        // Check for auth cookie
+        // Check for auth or session cookie
         struct mg_str *cookie_header = mg_http_get_header(hm, "Cookie");
         bool has_auth_cookie = false;
+        bool has_session_cookie = false;
         
         if (cookie_header != NULL) {
             // Parse cookie to check for auth
@@ -101,14 +104,17 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
                 
                 // Check if auth cookie exists
                 has_auth_cookie = (strstr(cookie_str, "auth=") != NULL);
+                
+                // Check if session cookie exists
+                has_session_cookie = (strstr(cookie_str, "session=") != NULL);
             }
         }
         
-        log_info("HLS request auth status: header=%d, cookie=%d", 
-                has_auth_header, has_auth_cookie);
+        log_info("HLS request auth status: header=%d, auth_cookie=%d, session_cookie=%d", 
+                has_auth_header, has_auth_cookie, has_session_cookie);
         
-        // If authentication is enabled and we have neither auth header nor cookie, return 401
-        if (server->config.auth_enabled && !has_auth_header && !has_auth_cookie) {
+        // If authentication is enabled and we have neither auth header nor any valid cookie, return 401
+        if (server->config.auth_enabled && !has_auth_header && !has_auth_cookie && !has_session_cookie) {
             log_info("Authentication required for HLS request but no auth provided");
             mg_printf(c, "HTTP/1.1 401 Unauthorized\r\n");
             mg_printf(c, "WWW-Authenticate: Basic realm=\"LightNVR\"\r\n");
@@ -288,16 +294,62 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
                 }
             }
 
-            // Serve the file
-            struct mg_http_serve_opts opts = {
-                .root_dir = server->config.web_root,
-                .mime_types = "html=text/html,htm=text/html,css=text/css,js=application/javascript,"
-                             "json=application/json,jpg=image/jpeg,jpeg=image/jpeg,png=image/png,"
-                             "gif=image/gif,svg=image/svg+xml,ico=image/x-icon,mp4=video/mp4,"
-                             "webm=video/webm,ogg=video/ogg,mp3=audio/mpeg,wav=audio/wav,"
-                             "txt=text/plain,xml=application/xml,pdf=application/pdf"
-            };
-            mg_http_serve_file(c, hm, file_path, &opts);
+            // Serve the file without any locks
+            // This is a critical optimization for static content
+            
+            // Add special handling for JavaScript files to improve Firefox compatibility
+            if (strstr(file_path, ".js") != NULL) {
+                // For JavaScript files, add specific headers for Firefox
+                static const char js_headers[] = 
+                    "Content-Type: application/javascript\r\n"
+                    "Cache-Control: no-cache\r\n"
+                    "Access-Control-Allow-Origin: *\r\n"
+                    "Access-Control-Allow-Methods: GET, OPTIONS\r\n"
+                    "Access-Control-Allow-Headers: Origin, Content-Type, Accept, Authorization\r\n";
+                
+                // Use a static struct for options to avoid stack allocations
+                static struct mg_http_serve_opts js_opts = {
+                    .mime_types = "",
+                    .extra_headers = js_headers
+                };
+                
+                log_debug("Serving JavaScript file with Firefox-friendly headers: %s", file_path);
+                mg_http_serve_file(c, hm, file_path, &js_opts);
+            } 
+            // Add special handling for CSS files to improve Firefox compatibility
+            else if (strstr(file_path, ".css") != NULL) {
+                // For CSS files, add specific headers for Firefox
+                static const char css_headers[] = 
+                    "Content-Type: text/css\r\n"
+                    "Cache-Control: no-cache\r\n"
+                    "Access-Control-Allow-Origin: *\r\n"
+                    "Access-Control-Allow-Methods: GET, OPTIONS\r\n"
+                    "Access-Control-Allow-Headers: Origin, Content-Type, Accept, Authorization\r\n";
+                
+                // Use a static struct for options to avoid stack allocations
+                static struct mg_http_serve_opts css_opts = {
+                    .mime_types = "",
+                    .extra_headers = css_headers
+                };
+                
+                log_debug("Serving CSS file with Firefox-friendly headers: %s", file_path);
+                mg_http_serve_file(c, hm, file_path, &css_opts);
+            } else {
+                // For other files, use standard options
+                // Use a static struct for options to avoid stack allocations
+                static struct mg_http_serve_opts std_opts = {
+                    .mime_types = "html=text/html,htm=text/html,css=text/css,js=application/javascript,"
+                                "json=application/json,jpg=image/jpeg,jpeg=image/jpeg,png=image/png,"
+                                "gif=image/gif,svg=image/svg+xml,ico=image/x-icon,mp4=video/mp4,"
+                                "webm=video/webm,ogg=video/ogg,mp3=audio/mpeg,wav=audio/wav,"
+                                "txt=text/plain,xml=application/xml,pdf=application/pdf"
+                };
+                
+                // Set the root_dir directly before serving
+                std_opts.root_dir = server->config.web_root;
+                
+                mg_http_serve_file(c, hm, file_path, &std_opts);
+            }
             return;
         }
     }
@@ -333,8 +385,46 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         if (server->config.auth_enabled && strcmp(uri, "/login") != 0 && strcmp(uri, "/login.html") != 0) {
             // Check if the request has valid authentication
             struct mg_str *auth_header = mg_http_get_header(hm, "Authorization");
-            if (auth_header == NULL) {
-                // No auth header, redirect to login page
+            
+            // Check for session cookie
+            struct mg_str *cookie_header = mg_http_get_header(hm, "Cookie");
+            bool has_session_cookie = false;
+            bool has_auth_cookie = false;
+            
+            if (cookie_header != NULL) {
+                // Parse cookie to check for session
+                char cookie_str[1024] = {0};
+                if (cookie_header->len < sizeof(cookie_str) - 1) {
+                    memcpy(cookie_str, cookie_header->buf, cookie_header->len);
+                    cookie_str[cookie_header->len] = '\0';
+                    
+                    // Check if session cookie exists
+                    has_session_cookie = (strstr(cookie_str, "session=") != NULL);
+                    
+                    // Check if auth cookie exists
+                    has_auth_cookie = (strstr(cookie_str, "auth=") != NULL);
+                }
+            }
+            
+            // If we have a session cookie, validate it
+            if (has_session_cookie) {
+                // Extract session token
+                char session_token[64] = {0};
+                if (cookie_header != NULL && mg_http_get_var(cookie_header, "session", session_token, sizeof(session_token)) > 0) {
+                    // Validate the session token
+                    int64_t user_id;
+                    if (db_auth_validate_session(session_token, &user_id) == 0) {
+                        // Session is valid, continue
+                        log_info("Session token validated successfully for user ID: %lld", (long long)user_id);
+                        // Skip further authentication checks
+                        goto auth_success;
+                    }
+                }
+            }
+            
+            // If no valid session cookie, check for auth header or auth cookie
+            if (auth_header == NULL && !has_auth_cookie) {
+                // No auth header or cookie, redirect to login page
                 log_info("No authentication, redirecting to login page");
                 mg_printf(c, "HTTP/1.1 302 Found\r\n");
                 mg_printf(c, "Location: /login.html\r\n");
@@ -343,41 +433,58 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
                 return;
             }
             
-            // Validate the authentication credentials
-            const char *auth_str = auth_header->buf;
-            if (auth_header->len > 6 && strncmp(auth_str, "Basic ", 6) == 0) {
-                // Extract credentials
-                char user[64] = {0}, pass[64] = {0};
-                char decoded[128] = {0};
-                
-                // Skip "Basic " prefix and decode base64
-                const char *b64 = auth_str + 6;
-                size_t b64_len = auth_header->len - 6;
-                mg_base64_decode(b64, b64_len, decoded, sizeof(decoded));
-                
-                // Find the colon separator
-                char *colon = strchr(decoded, ':');
-                if (colon != NULL) {
-                    size_t user_len = colon - decoded;
-                    if (user_len < sizeof(user)) {
-                        strncpy(user, decoded, user_len);
-                        user[user_len] = '\0';
-                        
-                        // Get password (everything after the colon)
-                        strncpy(pass, colon + 1, sizeof(pass) - 1);
-                        pass[sizeof(pass) - 1] = '\0';
+auth_success:
+            // If we have a valid session token, skip Basic Auth validation
+            if (has_session_cookie) {
+                // Session is already validated, continue to serve the file
+                log_debug("Using validated session token for authentication");
+            }
+            // Otherwise, validate the authentication credentials if we have an auth header
+            else if (auth_header != NULL) {
+                // Validate the authentication credentials
+                const char *auth_str = auth_header->buf;
+                if (auth_header->len > 6 && strncmp(auth_str, "Basic ", 6) == 0) {
+                    // Extract credentials
+                    char user[64] = {0}, pass[64] = {0};
+                    char decoded[128] = {0};
+                    
+                    // Skip "Basic " prefix and decode base64
+                    const char *b64 = auth_str + 6;
+                    size_t b64_len = auth_header->len - 6;
+                    mg_base64_decode(b64, b64_len, decoded, sizeof(decoded));
+                    
+                    // Find the colon separator
+                    char *colon = strchr(decoded, ':');
+                    if (colon != NULL) {
+                        size_t user_len = colon - decoded;
+                        if (user_len < sizeof(user)) {
+                            strncpy(user, decoded, user_len);
+                            user[user_len] = '\0';
+                            
+                            // Get password (everything after the colon)
+                            strncpy(pass, colon + 1, sizeof(pass) - 1);
+                            pass[sizeof(pass) - 1] = '\0';
+                        }
                     }
-                }
-                
-                if (user[0] != '\0') {
-                    // Check credentials
-                    if (strcmp(user, server->config.username) == 0 && 
-                        strcmp(pass, server->config.password) == 0) {
-                        // Authentication successful, continue
-                        log_debug("Authentication successful for web page request");
+                    
+                    if (user[0] != '\0') {
+                        // Check credentials
+                        if (strcmp(user, server->config.username) == 0 && 
+                            strcmp(pass, server->config.password) == 0) {
+                            // Authentication successful, continue
+                            log_debug("Authentication successful for web page request");
+                        } else {
+                            // Authentication failed, redirect to login page
+                            log_info("Authentication failed for web page request");
+                            mg_printf(c, "HTTP/1.1 302 Found\r\n");
+                            mg_printf(c, "Location: /login.html\r\n");
+                            mg_printf(c, "Content-Length: 0\r\n");
+                            mg_printf(c, "\r\n");
+                            return;
+                        }
                     } else {
-                        // Authentication failed, redirect to login page
-                        log_info("Authentication failed for web page request");
+                        // Invalid format, redirect to login page
+                        log_info("Invalid authentication format for web page request");
                         mg_printf(c, "HTTP/1.1 302 Found\r\n");
                         mg_printf(c, "Location: /login.html\r\n");
                         mg_printf(c, "Content-Length: 0\r\n");
@@ -385,22 +492,14 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
                         return;
                     }
                 } else {
-                    // Invalid format, redirect to login page
-                    log_info("Invalid authentication format for web page request");
+                    // Not Basic authentication, redirect to login page
+                    log_info("Not Basic authentication for web page request");
                     mg_printf(c, "HTTP/1.1 302 Found\r\n");
                     mg_printf(c, "Location: /login.html\r\n");
                     mg_printf(c, "Content-Length: 0\r\n");
                     mg_printf(c, "\r\n");
                     return;
                 }
-            } else {
-                // Not Basic authentication, redirect to login page
-                log_info("Not Basic authentication for web page request");
-                mg_printf(c, "HTTP/1.1 302 Found\r\n");
-                mg_printf(c, "Location: /login.html\r\n");
-                mg_printf(c, "Content-Length: 0\r\n");
-                mg_printf(c, "\r\n");
-                return;
             }
         }
 

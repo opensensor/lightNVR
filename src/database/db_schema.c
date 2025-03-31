@@ -13,7 +13,7 @@
 #include "core/logger.h"
 
 // Current schema version - increment this when adding new migrations
-#define CURRENT_SCHEMA_VERSION 4
+#define CURRENT_SCHEMA_VERSION 5
 
 // Migration function type
 typedef int (*migration_func_t)(void);
@@ -22,13 +22,15 @@ typedef int (*migration_func_t)(void);
 static int migration_v1_to_v2(void);
 static int migration_v2_to_v3(void);
 static int migration_v3_to_v4(void);
+static int migration_v4_to_v5(void);
 
 // Array of migration functions
 static migration_func_t migrations[] = {
     NULL,               // No migration for v0->v1 (initial schema)
     migration_v1_to_v2, // v1->v2
     migration_v2_to_v3, // v2->v3
-    migration_v3_to_v4  // v3->v4
+    migration_v3_to_v4, // v3->v4
+    migration_v4_to_v5  // v4->v5
 };
 
 /**
@@ -467,4 +469,110 @@ static int migration_v3_to_v4(void) {
     
     log_info("Completed migration v3 to v4 with result: %d", rc);
     return rc;
+}
+
+/**
+ * Migration from version 4 to 5
+ * - Add users table for authentication
+ */
+static int migration_v4_to_v5(void) {
+    log_info("Running migration from v4 to v5: Adding users table for authentication");
+    
+    int rc;
+    char *err_msg = NULL;
+    
+    sqlite3 *db = get_db_handle();
+    
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+    
+    // Create users table
+    const char *create_users_table = 
+        "CREATE TABLE IF NOT EXISTS users ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "username TEXT NOT NULL UNIQUE,"
+        "password_hash TEXT NOT NULL,"  // Store hashed passwords, not plaintext
+        "salt TEXT NOT NULL,"           // Salt for password hashing
+        "role TEXT NOT NULL,"           // Role: admin, user, etc.
+        "email TEXT,"                   // Optional email for password reset
+        "created_at INTEGER NOT NULL,"  // Unix timestamp
+        "updated_at INTEGER NOT NULL,"  // Unix timestamp
+        "last_login INTEGER,"           // Unix timestamp of last login
+        "is_active INTEGER DEFAULT 1,"  // Whether the user is active
+        "api_key TEXT"                  // API key for programmatic access
+        ");";
+    
+    rc = sqlite3_exec(db, create_users_table, NULL, NULL, &err_msg);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to create users table: %s", err_msg);
+        sqlite3_free(err_msg);
+        return -1;
+    }
+    
+    // Create indexes for faster lookups
+    const char *create_username_index = 
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users (username);";
+    
+    rc = sqlite3_exec(db, create_username_index, NULL, NULL, &err_msg);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to create username index: %s", err_msg);
+        sqlite3_free(err_msg);
+        return -1;
+    }
+    
+    const char *create_api_key_index = 
+        "CREATE INDEX IF NOT EXISTS idx_users_api_key ON users (api_key);";
+    
+    rc = sqlite3_exec(db, create_api_key_index, NULL, NULL, &err_msg);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to create api_key index: %s", err_msg);
+        sqlite3_free(err_msg);
+        return -1;
+    }
+    
+    // Create sessions table for managing user sessions
+    const char *create_sessions_table = 
+        "CREATE TABLE IF NOT EXISTS sessions ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "user_id INTEGER NOT NULL,"
+        "token TEXT NOT NULL UNIQUE,"   // Session token
+        "created_at INTEGER NOT NULL,"  // Unix timestamp
+        "expires_at INTEGER NOT NULL,"  // Unix timestamp
+        "ip_address TEXT,"              // IP address of the client
+        "user_agent TEXT,"              // User agent of the client
+        "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE"
+        ");";
+    
+    rc = sqlite3_exec(db, create_sessions_table, NULL, NULL, &err_msg);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to create sessions table: %s", err_msg);
+        sqlite3_free(err_msg);
+        return -1;
+    }
+    
+    // Create indexes for faster lookups
+    const char *create_token_index = 
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_token ON sessions (token);";
+    
+    rc = sqlite3_exec(db, create_token_index, NULL, NULL, &err_msg);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to create token index: %s", err_msg);
+        sqlite3_free(err_msg);
+        return -1;
+    }
+    
+    const char *create_user_id_index = 
+        "CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions (user_id);";
+    
+    rc = sqlite3_exec(db, create_user_id_index, NULL, NULL, &err_msg);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to create user_id index: %s", err_msg);
+        sqlite3_free(err_msg);
+        return -1;
+    }
+    
+    log_info("Completed migration v4 to v5 with result: %d", rc);
+    return 0;
 }

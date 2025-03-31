@@ -81,41 +81,66 @@ void mg_handle_websocket_upgrade(struct mg_connection *c, struct mg_http_message
         }
     }
     
-    // Check for auth cookie and log it (we can't store it in c->data as it's only 32 bytes)
+    // Check for auth or session cookie and log it (we can't store it in c->data as it's only 32 bytes)
     struct mg_str *cookie_header = mg_http_get_header(hm, "Cookie");
     if (cookie_header && cookie_header->len > 0) {
         log_info("Found Cookie header in WebSocket upgrade request");
         
-        // Extract auth cookie
+        // Extract cookies
         char cookie_buf[1024] = {0};
         size_t cookie_len = cookie_header->len < sizeof(cookie_buf) - 1 ? cookie_header->len : sizeof(cookie_buf) - 1;
         memcpy(cookie_buf, cookie_header->buf, cookie_len);
         cookie_buf[cookie_len] = '\0';
         
-        // Look for auth cookie
-        char *auth_cookie = strstr(cookie_buf, "auth=");
-        if (auth_cookie) {
-            log_info("Found auth cookie in WebSocket upgrade request");
+        // Look for session cookie first (new auth system)
+        char *session_cookie = strstr(cookie_buf, "session=");
+        if (session_cookie) {
+            log_info("Found session cookie in WebSocket upgrade request");
             
-            // Skip "auth=" prefix
-            auth_cookie += 5;
+            // Skip "session=" prefix
+            session_cookie += 8;
             
             // Find end of cookie value (semicolon or end of string)
-            char *end = strchr(auth_cookie, ';');
+            char *end = strchr(session_cookie, ';');
             if (end) *end = '\0';
             
-            // Log the auth cookie
-            log_info("Auth cookie value: %s", auth_cookie);
+            // Log the session cookie
+            log_info("Session cookie value: %s", session_cookie);
             
-            // We can't store the auth cookie in c->data as it's only 32 bytes
-            // Instead, we'll set a flag in c->data to indicate that this connection has an auth cookie
+            // We can't store the session cookie in c->data as it's only 32 bytes
+            // Instead, we'll set a flag in c->data to indicate that this connection has a session cookie
             // c->data[0] is already used to mark this as a WebSocket client
-            // We'll use c->data[1] to indicate that this connection has an auth cookie
-            c->data[1] = 'A';  // 'A' for Auth
+            // We'll use c->data[1] to indicate that this connection has a session cookie
+            c->data[1] = 'S';  // 'S' for Session
             
-            // The actual auth cookie will be handled by the server's authentication system
-        } else {
-            log_info("No auth cookie found in WebSocket upgrade request");
+            // The actual session cookie will be handled by the server's authentication system
+        } 
+        // If no session cookie, look for auth cookie (legacy auth system)
+        else {
+            char *auth_cookie = strstr(cookie_buf, "auth=");
+            if (auth_cookie) {
+                log_info("Found auth cookie in WebSocket upgrade request");
+                
+                // Skip "auth=" prefix
+                auth_cookie += 5;
+                
+                // Find end of cookie value (semicolon or end of string)
+                char *end = strchr(auth_cookie, ';');
+                if (end) *end = '\0';
+                
+                // Log the auth cookie
+                log_info("Auth cookie value: %s", auth_cookie);
+                
+                // We can't store the auth cookie in c->data as it's only 32 bytes
+                // Instead, we'll set a flag in c->data to indicate that this connection has an auth cookie
+                // c->data[0] is already used to mark this as a WebSocket client
+                // We'll use c->data[1] to indicate that this connection has an auth cookie
+                c->data[1] = 'A';  // 'A' for Auth
+                
+                // The actual auth cookie will be handled by the server's authentication system
+            } else {
+                log_info("No auth or session cookie found in WebSocket upgrade request");
+            }
         }
     }
     

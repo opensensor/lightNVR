@@ -6,7 +6,6 @@
 import { h } from '../../preact.min.js';
 import { html } from '../../html-helper.js';
 import { useState, useEffect, useRef } from '../../preact.hooks.module.js';
-import { LoadingIndicator } from './LoadingIndicator.js';
 import { showStatusMessage, showSnapshotPreview, setupModals, addStatusMessageStyles, addModalStyles } from './UI.js';
 import { toggleFullscreen, exitFullscreenMode } from './FullscreenManager.js';
 import { startDetectionPolling, cleanupDetectionPolling } from './DetectionOverlay.js';
@@ -21,6 +20,7 @@ export function WebRTCView() {
   const [selectedStream, setSelectedStream] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(0);
   const videoGridRef = useRef(null);
   const webrtcConnections = useRef({});
   const detectionIntervals = useRef({});
@@ -52,45 +52,115 @@ export function WebRTCView() {
       stopAllWebRTCStreams();
     };
     
+    // Add event listener for visibility change to handle tab switching
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        console.log("Page hidden, pausing WebRTC streams");
+        // Mark connections as inactive but don't close them yet
+        Object.keys(webrtcConnections.current).forEach(streamName => {
+          const pc = webrtcConnections.current[streamName];
+          if (pc && pc.connectionState !== 'closed') {
+            // Pause video elements to reduce resource usage
+            const videoElementId = `video-${streamName.replace(/\s+/g, '-')}`;
+            const videoElement = document.getElementById(videoElementId);
+            if (videoElement) {
+              videoElement.pause();
+            }
+          }
+        });
+      } else {
+        console.log("Page visible, resuming WebRTC streams");
+        // Resume video playback
+        Object.keys(webrtcConnections.current).forEach(streamName => {
+          const pc = webrtcConnections.current[streamName];
+          if (pc && pc.connectionState !== 'closed') {
+            const videoElementId = `video-${streamName.replace(/\s+/g, '-')}`;
+            const videoElement = document.getElementById(videoElementId);
+            if (videoElement) {
+              videoElement.play().catch(e => {
+                console.warn(`Could not resume video for ${streamName}:`, e);
+              });
+            }
+          }
+        });
+      }
+    };
+    
     window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    // Set up periodic connection check
+    const connectionCheckInterval = setInterval(() => {
+      Object.keys(webrtcConnections.current).forEach(streamName => {
+        const pc = webrtcConnections.current[streamName];
+        if (pc) {
+          // Log connection state for debugging
+          console.debug(`WebRTC connection state for ${streamName}: ${pc.connectionState}, ICE state: ${pc.iceConnectionState}`);
+          
+          // If connection is failed or disconnected for too long, try to reconnect
+          if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+            console.warn(`WebRTC connection for ${streamName} is in ${pc.iceConnectionState} state, will attempt reconnect`);
+            
+            // Clean up the old connection
+            cleanupWebRTCPlayer(streamName);
+            
+            // Find the stream info and reinitialize
+            const stream = streams.find(s => s.name === streamName);
+            if (stream) {
+              console.log(`Attempting to reconnect WebRTC for stream ${streamName}`);
+              initializeWebRTCPlayer(stream);
+            }
+          }
+        }
+      });
+    }, 30000); // Check every 30 seconds
     
     // Cleanup
     return () => {
       document.removeEventListener('keydown', handleEscape);
       window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      clearInterval(connectionCheckInterval);
       stopAllWebRTCStreams();
     };
-  }, []);
+  }, [streams]); // Add streams as dependency to ensure we have the latest stream data
   
   // Load streams after the component has rendered and videoGridRef is available
   useEffect(() => {
-    if (videoGridRef.current) {
-      // Set loading state
+      // Set loading state initially
       setIsLoading(true);
       
-      // Load streams from API
+      // Create a timeout to handle potential stalls in loading
+      const timeoutId = setTimeout(() => {
+        console.warn('Stream loading timed out');
+        setIsLoading(false);
+        showStatusMessage('Loading streams timed out. Please try refreshing the page.');
+      }, 15000); // 15 second timeout
+      
+      // Load streams from API with timeout handling
       loadStreams()
         .then((streamData) => {
-          setStreams(streamData);
-          if (streamData.length > 0) {
+          clearTimeout(timeoutId);
+          if (streamData && streamData.length > 0) {
+            setStreams(streamData);
             setSelectedStream(streamData[0].name);
+          } else {
+            console.warn('No streams returned from API');
           }
-          // Hide loading indicator when done
           setIsLoading(false);
         })
         .catch((error) => {
+          clearTimeout(timeoutId);
           console.error('Error loading streams:', error);
           showStatusMessage('Error loading streams: ' + error.message);
-          // Hide loading indicator on error too
           setIsLoading(false);
         });
-    }
-  }, [videoGridRef.current]);
+  }, []);
   
-  // Update video grid when layout or streams change
+  // Update video grid when layout, page, or streams change
   useEffect(() => {
     updateVideoGrid();
-  }, [layout, selectedStream, streams]);
+  }, [layout, selectedStream, streams, currentPage]);
   
   /**
    * Load streams from API
@@ -98,23 +168,45 @@ export function WebRTCView() {
    */
   const loadStreams = async () => {
     try {
-      // Fetch streams from API
-      const response = await fetch('/api/streams');
+      // Create a timeout promise to handle potential stalls
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Request timed out')), 5000); // 5 second timeout
+      });
+      
+      // Fetch streams from API with timeout
+      const fetchPromise = fetch('/api/streams');
+      const response = await Promise.race([fetchPromise, timeoutPromise]);
+      
       if (!response.ok) {
         throw new Error('Failed to load streams');
       }
       
-      const data = await response.json();
+      // Create another timeout for the JSON parsing
+      const jsonTimeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('JSON parsing timed out')), 3000); // 3 second timeout
+      });
+      
+      const jsonPromise = response.json();
+      const data = await Promise.race([jsonPromise, jsonTimeoutPromise]);
       
       // For WebRTC view, we need to fetch full details for each stream
       const streamPromises = (data || []).map(stream => {
-        return fetch(`/api/streams/${encodeURIComponent(stream.id || stream.name)}`)
+        // Create a timeout promise for this stream's details fetch
+        const detailsTimeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error(`Timeout fetching details for stream ${stream.name}`)), 3000);
+        });
+        
+        // Fetch stream details with timeout
+        const detailsFetchPromise = fetch(`/api/streams/${encodeURIComponent(stream.id || stream.name)}`)
           .then(response => {
             if (!response.ok) {
               throw new Error(`Failed to load details for stream ${stream.name}`);
             }
             return response.json();
-          })
+          });
+          
+        // Race the fetch against the timeout
+        return Promise.race([detailsFetchPromise, detailsTimeoutPromise])
           .catch(error => {
             console.error(`Error loading details for stream ${stream.name}:`, error);
             // Return the basic stream info if we can't get details
@@ -135,7 +227,23 @@ export function WebRTCView() {
   };
   
   /**
-   * Update video grid based on layout and streams
+   * Get maximum number of streams to display based on layout
+   * @returns {number} Maximum number of streams
+   */
+  const getMaxStreamsForLayout = () => {
+    switch (layout) {
+      case '1': return 1;  // Single view
+      case '2': return 2;  // 2x1 grid
+      case '4': return 4;  // 2x2 grid
+      case '6': return 6;  // 2x3 grid
+      case '9': return 9;  // 3x3 grid
+      case '16': return 16; // 4x4 grid
+      default: return 4;
+    }
+  };
+
+  /**
+   * Update video grid based on layout, streams, and pagination
    */
   const updateVideoGrid = () => {
     if (!videoGridRef.current) return;
@@ -154,7 +262,33 @@ export function WebRTCView() {
     let streamsToShow = streams;
     if (layout === '1' && selectedStream) {
       streamsToShow = streams.filter(stream => stream.name === selectedStream);
+    } else {
+      // Apply pagination
+      const maxStreams = getMaxStreamsForLayout();
+      const totalPages = Math.ceil(streams.length / maxStreams);
+      
+      // Ensure current page is valid
+      if (currentPage >= totalPages) {
+        setCurrentPage(Math.max(0, totalPages - 1));
+        return; // Will re-render with corrected page
+      }
+      
+      // Get streams for current page
+      const startIdx = currentPage * maxStreams;
+      const endIdx = Math.min(startIdx + maxStreams, streams.length);
+      streamsToShow = streams.slice(startIdx, endIdx);
     }
+    
+    // Get names of streams that should be shown
+    const streamsToShowNames = streamsToShow.map(stream => stream.name);
+    
+    // Clean up connections for streams that are no longer visible
+    Object.keys(webrtcConnections.current).forEach(streamName => {
+      if (!streamsToShowNames.includes(streamName)) {
+        console.log(`Cleaning up WebRTC connection for stream ${streamName} (not visible in current view)`);
+        cleanupWebRTCPlayer(streamName);
+      }
+    });
     
     // Add video elements for each stream
     streamsToShow.forEach(stream => {
@@ -295,6 +429,17 @@ export function WebRTCView() {
       offerToReceiveVideo: true
     };
     
+    // Create a timeout for the entire WebRTC setup process
+    const setupTimeoutId = setTimeout(() => {
+      console.warn(`WebRTC setup timed out for stream ${stream.name}`);
+      handleWebRTCError(stream.name, 'WebRTC setup timed out');
+      
+      // Clean up the connection if it exists
+      if (webrtcConnections.current[stream.name]) {
+        cleanupWebRTCPlayer(stream.name);
+      }
+    }, 15000); // 15 second timeout for the entire setup process
+    
     pc.createOffer(offerOptions)
       .then(offer => {
         console.log(`Created offer for stream ${stream.name}:`, offer);
@@ -324,6 +469,9 @@ export function WebRTCView() {
       .then(() => {
         console.log(`Set remote description for stream ${stream.name}`);
         
+        // Clear the setup timeout since we've successfully set up the connection
+        clearTimeout(setupTimeoutId);
+        
         // Start detection polling if detection is enabled for this stream
         console.log(`Stream ${stream.name} detection settings:`, {
           detection_based_recording: stream.detection_based_recording,
@@ -339,6 +487,9 @@ export function WebRTCView() {
         }
       })
       .catch(error => {
+        // Clear the setup timeout
+        clearTimeout(setupTimeoutId);
+        
         console.error(`Error setting up WebRTC for stream ${stream.name}:`, error);
         handleWebRTCError(stream.name, error.message);
       });
@@ -364,22 +515,80 @@ export function WebRTCView() {
       
       console.log(`Sending formatted offer for stream ${streamName}:`, formattedOffer);
       
-      const response = await fetch(`/api/webrtc?src=${encodeURIComponent(streamName)}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(auth ? { 'Authorization': 'Basic ' + auth } : {})
-        },
-        body: JSON.stringify(formattedOffer)
-      });
+      // Create an AbortController for the fetch request
+      const controller = new AbortController();
+      const signal = controller.signal;
       
-      if (!response.ok) {
-        throw new Error(`Failed to send offer: ${response.status} ${response.statusText}`);
+      // Set a timeout to abort the fetch after 8 seconds
+      const timeoutId = setTimeout(() => {
+        console.warn(`Aborting WebRTC offer request for stream ${streamName} due to timeout`);
+        controller.abort();
+      }, 8000);
+      
+      try {
+        // Note: Session cookie is automatically included in fetch requests
+        // We only need to add the Authorization header if we have it in localStorage
+        const response = await fetch(`/api/webrtc?src=${encodeURIComponent(streamName)}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(auth ? { 'Authorization': 'Basic ' + auth } : {})
+          },
+          body: JSON.stringify(formattedOffer),
+          signal: signal
+        });
+        
+        // Clear the timeout since the request completed
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+          throw new Error(`Failed to send offer: ${response.status} ${response.statusText}`);
+        }
+        
+        // Create another AbortController for the JSON parsing
+        const jsonController = new AbortController();
+        const jsonSignal = jsonController.signal;
+        
+        // Set a timeout to abort the JSON parsing after 5 seconds
+        const jsonTimeoutId = setTimeout(() => {
+          console.warn(`Aborting JSON parsing for stream ${streamName} due to timeout`);
+          jsonController.abort();
+        }, 5000);
+        
+        try {
+          // Use a separate try/catch for the JSON parsing
+          const text = await response.text();
+          
+          // Clear the JSON timeout
+          clearTimeout(jsonTimeoutId);
+          
+          // Try to parse the JSON
+          try {
+            const answer = JSON.parse(text);
+            return answer;
+          } catch (jsonError) {
+            console.error(`Error parsing JSON for stream ${streamName}:`, jsonError);
+            console.log(`Raw response text: ${text}`);
+            throw new Error(`Failed to parse WebRTC answer: ${jsonError.message}`);
+          }
+        } catch (textError) {
+          // Clear the JSON timeout if it hasn't been cleared yet
+          clearTimeout(jsonTimeoutId);
+          
+          if (textError.name === 'AbortError') {
+            throw new Error(`WebRTC answer parsing timed out for stream ${streamName}`);
+          }
+          throw textError;
+        }
+      } catch (fetchError) {
+        // Clear the timeout if it hasn't been cleared yet
+        clearTimeout(timeoutId);
+        
+        if (fetchError.name === 'AbortError') {
+          throw new Error(`WebRTC offer request timed out for stream ${streamName}`);
+        }
+        throw fetchError;
       }
-      
-      // Parse the answer
-      const answer = await response.json();
-      return answer;
     } catch (error) {
       console.error(`Error sending offer for stream ${streamName}:`, error);
       throw error;
@@ -607,10 +816,15 @@ const takeSnapshot = (streamId) => {
             id="layout-selector" 
             class="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600"
             value=${layout}
-            onChange=${(e) => setLayout(e.target.value)}
+            onChange=${(e) => {
+              setLayout(e.target.value);
+              setCurrentPage(0); // Reset to first page when layout changes
+            }}
           >
             <option value="1">Single View</option>
+            <option value="2">2x1 Grid</option>
             <option value="4" selected>2x2 Grid</option>
+            <option value="6">2x3 Grid</option>
             <option value="9">3x3 Grid</option>
             <option value="16">4x4 Grid</option>
           </select>
@@ -630,22 +844,49 @@ const takeSnapshot = (streamId) => {
         </div>
       </div>
       
-      <div 
-        id="video-grid" 
-        class=${`video-container layout-${layout}`}
-        ref=${videoGridRef}
-      >
-        ${isLoading ? html`
-          <div class="flex justify-center items-center col-span-full row-span-full h-64 w-full">
-            <${LoadingIndicator} message="Loading streams..." size="lg" />
-          </div>
-        ` : streams.length === 0 ? html`
-          <div class="placeholder flex flex-col justify-center items-center col-span-full row-span-full bg-white dark:bg-gray-800 rounded-lg shadow-md text-center p-8">
-            <p class="mb-6 text-gray-600 dark:text-gray-300 text-lg">No streams configured</p>
-            <a href="streams.html" class="btn-primary px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">Configure Streams</a>
+      <div class="flex flex-col space-y-4">
+        <div 
+          id="video-grid" 
+          class=${`video-container layout-${layout}`}
+          ref=${videoGridRef}
+        >
+          ${isLoading ? html`
+            <div class="flex justify-center items-center col-span-full row-span-full h-64 w-full">
+              <div class="flex flex-col items-center justify-center py-8">
+                <div class="inline-block animate-spin rounded-full border-4 border-gray-300 dark:border-gray-600 border-t-blue-600 dark:border-t-blue-500 w-16 h-16"></div>
+                <p class="mt-4 text-gray-700 dark:text-gray-300">Loading streams...</p>
+              </div>
+            </div>
+          ` : streams.length === 0 ? html`
+            <div class="placeholder flex flex-col justify-center items-center col-span-full row-span-full bg-white dark:bg-gray-800 rounded-lg shadow-md text-center p-8">
+              <p class="mb-6 text-gray-600 dark:text-gray-300 text-lg">No streams configured</p>
+              <a href="streams.html" class="btn-primary px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">Configure Streams</a>
+            </div>
+          ` : null}
+          <!-- Video cells will be dynamically added by the updateVideoGrid function -->
+        </div>
+        
+        ${layout !== '1' && streams.length > getMaxStreamsForLayout() ? html`
+          <div class="pagination-controls flex justify-center items-center space-x-4 mt-4">
+            <button 
+              class="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick=${() => setCurrentPage(Math.max(0, currentPage - 1))}
+              disabled=${currentPage === 0}
+            >
+              Previous
+            </button>
+            <span class="text-gray-700 dark:text-gray-300">
+              Page ${currentPage + 1} of ${Math.ceil(streams.length / getMaxStreamsForLayout())}
+            </span>
+            <button 
+              class="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick=${() => setCurrentPage(Math.min(Math.ceil(streams.length / getMaxStreamsForLayout()) - 1, currentPage + 1))}
+              disabled=${currentPage >= Math.ceil(streams.length / getMaxStreamsForLayout()) - 1}
+            >
+              Next
+            </button>
           </div>
         ` : null}
-        <!-- Video cells will be dynamically added by the updateVideoGrid function -->
       </div>
     </section>
   `;

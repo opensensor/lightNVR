@@ -908,6 +908,14 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    // Initialize authentication system
+    if (init_auth_system() != 0) {
+        log_error("Failed to initialize authentication system");
+        // Continue anyway, will fall back to config-based authentication
+    } else {
+        log_info("Authentication system initialized successfully");
+    }
+    
     // Initialize Mongoose web server with direct handlers
     http_server_config_t server_config = {
         .port = config.web_port,

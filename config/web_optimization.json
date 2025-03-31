@@ -1,0 +1,40 @@
+{
+  "use_minified_assets": true,
+  "compression": {
+    "enabled": true,
+    "types": [
+      "text/html",
+      "text/css",
+      "application/javascript",
+      "application/json",
+      "text/plain",
+      "application/xml"
+    ]
+  },
+  "cache_control": {
+    "html": {
+      "max_age": 3600
+    },
+    "css": {
+      "max_age": 604800
+    },
+    "js": {
+      "max_age": 604800
+    },
+    "images": {
+      "max_age": 2592000
+    },
+    "fonts": {
+      "max_age": 2592000
+    },
+    "default": {
+      "max_age": 86400
+    }
+  },
+  "asset_paths": {
+    "js": "web/dist/js",
+    "css": "web/dist/css",
+    "images": "web/dist/img",
+    "fonts": "web/dist/fonts"
+  }
+}

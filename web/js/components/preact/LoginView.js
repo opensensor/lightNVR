@@ -55,10 +55,14 @@ export function LoginView() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Basic ' + auth
+        'Authorization': 'Basic ' + auth,
+        // Add additional headers for Firefox compatibility
+        'X-Requested-With': 'XMLHttpRequest',
+        'Accept': 'application/json'
       },
       body: JSON.stringify({ username, password }),
-      credentials: 'include'
+      credentials: 'include',
+      mode: 'same-origin' // Explicitly set mode for Firefox
     })
     .then(response => {
       clearTimeout(timeoutId); // Clear the timeout
