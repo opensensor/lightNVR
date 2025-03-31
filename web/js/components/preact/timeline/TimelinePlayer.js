@@ -199,31 +199,35 @@ export function TimelinePlayer() {
     // Calculate current timestamp
     const currentTime = segment.start_timestamp + video.currentTime;
     
-    // Only update the timeline state if the time has changed significantly
-    // This prevents constant state updates that can cause performance issues
-    if (!lastTimeUpdateRef.current || 
-        Math.abs(currentTime - lastTimeUpdateRef.current) > 2.0) {
-      
-      // Update timeline state WITHOUT triggering a reload
-      // This is critical to prevent the video from constantly reloading
-      const prevTime = timelineState.currentTime;
-      
-      // Use a direct update to avoid triggering unnecessary reloads
-      timelineState.currentTime = currentTime;
-      timelineState.prevCurrentTime = prevTime;
-      
-      // Only notify listeners about the time change every 2 seconds
-      // This reduces the number of updates and prevents reloading
-      if (Math.floor((lastTimeUpdateRef.current || 0) / 2) !== Math.floor(currentTime / 2)) {
-        // Use a timeout to debounce the notification
-        setTimeout(() => {
-          timelineState.notifyListeners();
-        }, 100);
-      }
-      
-      // Update last time update
-      lastTimeUpdateRef.current = currentTime;
-    }
+    // Directly update the time display as well
+    updateTimeDisplay(currentTime);
+    
+    // Update timeline state with the current time
+    timelineState.setState({
+      currentTime: currentTime,
+      prevCurrentTime: lastTimeUpdateRef.current
+    });
+    
+    // Update last time update
+    lastTimeUpdateRef.current = currentTime;
+  };
+
+  // Add a direct time display update function
+  const updateTimeDisplay = (time) => {
+    if (time === null) return;
+    
+    const timeDisplay = document.getElementById('time-display');
+    if (!timeDisplay) return;
+    
+    const date = new Date(time * 1000);
+    
+    // Format date and time
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    const seconds = date.getSeconds().toString().padStart(2, '0');
+    
+    // Display time only (HH:MM:SS)
+    timeDisplay.textContent = `${hours}:${minutes}:${seconds}`;
   };
 
   return html`

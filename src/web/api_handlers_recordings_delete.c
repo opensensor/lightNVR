@@ -94,13 +94,15 @@ void delete_recording_task_function(void *arg) {
     
     uint64_t id = task->id;
     
-    log_info("Handling DELETE /api/recordings/%llu request", (unsigned long long)id);
+    log_info("Processing DELETE /api/recordings/%llu task", (unsigned long long)id);
     
     // Get recording from database
     recording_metadata_t recording;
+    memset(&recording, 0, sizeof(recording_metadata_t)); // Initialize to prevent undefined behavior
+    
     if (get_recording_metadata_by_id(id, &recording) != 0) {
         log_error("Recording not found: %llu", (unsigned long long)id);
-        mg_send_json_error(c, 404, "Recording not found");
+        // Don't send response here - already sent 202
         delete_recording_task_free(task);
         if (release_needed) {
             api_thread_pool_release();
@@ -108,59 +110,35 @@ void delete_recording_task_function(void *arg) {
         return;
     }
     
-    // Delete file
-    if (unlink(recording.file_path) != 0) {
-        log_warn("Failed to delete recording file: %s", recording.file_path);
-        // Continue anyway, we'll remove from database
+    // Check if file exists before attempting to delete
+    struct stat st;
+    bool file_exists = (stat(recording.file_path, &st) == 0);
+    
+    // Delete file if it exists
+    if (file_exists) {
+        if (unlink(recording.file_path) != 0) {
+            log_warn("Failed to delete recording file: %s (error: %s)", 
+                    recording.file_path, strerror(errno));
+            // Continue anyway, we'll remove from database
+        } else {
+            log_info("Deleted recording file: %s", recording.file_path);
+        }
     } else {
-        log_info("Deleted recording file: %s", recording.file_path);
+        log_warn("Recording file does not exist: %s", recording.file_path);
     }
     
     // Delete from database
     if (delete_recording_metadata(id) != 0) {
         log_error("Failed to delete recording from database: %llu", (unsigned long long)id);
-        mg_send_json_error(c, 500, "Failed to delete recording from database");
+        // Don't send response here - already sent 202
         delete_recording_task_free(task);
         if (release_needed) {
             api_thread_pool_release();
         }
         return;
     }
-    
-    // Create success response using cJSON
-    cJSON *success = cJSON_CreateObject();
-    if (!success) {
-        log_error("Failed to create success JSON object");
-        mg_send_json_error(c, 500, "Failed to create success JSON");
-        delete_recording_task_free(task);
-        if (release_needed) {
-            api_thread_pool_release();
-        }
-        return;
-    }
-    
-    cJSON_AddBoolToObject(success, "success", true);
-    
-    // Convert to string
-    char *json_str = cJSON_PrintUnformatted(success);
-    if (!json_str) {
-        log_error("Failed to convert success JSON to string");
-        cJSON_Delete(success);
-        mg_send_json_error(c, 500, "Failed to convert success JSON to string");
-        delete_recording_task_free(task);
-        if (release_needed) {
-            api_thread_pool_release();
-        }
-        return;
-    }
-    
-    // Send response
-    mg_send_json_response(c, 200, json_str);
     
     // Clean up
-    free(json_str);
-    cJSON_Delete(success);
-    
     delete_recording_task_free(task);
     
     // Release the thread pool if needed
@@ -255,34 +233,44 @@ void mg_handle_delete_recording(struct mg_connection *c, struct mg_http_message 
     
     log_info("Handling DELETE /api/recordings/%llu request", (unsigned long long)id);
     
-    // Acquire thread pool
-    thread_pool_t *pool = api_thread_pool_acquire(api_thread_pool_get_size(), 10);
-    if (!pool) {
-        log_error("Failed to acquire thread pool");
-        mg_send_json_error(c, 500, "Failed to acquire thread pool");
+    // Get recording from database
+    recording_metadata_t recording;
+    memset(&recording, 0, sizeof(recording_metadata_t)); // Initialize to prevent undefined behavior
+    
+    if (get_recording_metadata_by_id(id, &recording) != 0) {
+        log_error("Recording not found: %llu", (unsigned long long)id);
+        mg_send_json_error(c, 404, "Recording not found");
         return;
     }
     
-    // Create task
-    delete_recording_task_t *task = delete_recording_task_create(c, id);
-    if (!task) {
-        log_error("Failed to create delete recording task");
-        api_thread_pool_release();
-        mg_send_json_error(c, 500, "Failed to create delete recording task");
+    // Check if file exists before attempting to delete
+    struct stat st;
+    bool file_exists = (stat(recording.file_path, &st) == 0);
+    
+    // Delete file if it exists
+    if (file_exists) {
+        if (unlink(recording.file_path) != 0) {
+            log_warn("Failed to delete recording file: %s (error: %s)", 
+                    recording.file_path, strerror(errno));
+            // Continue anyway, we'll remove from database
+        } else {
+            log_info("Deleted recording file: %s", recording.file_path);
+        }
+    } else {
+        log_warn("Recording file does not exist: %s", recording.file_path);
+    }
+    
+    // Delete from database
+    if (delete_recording_metadata(id) != 0) {
+        log_error("Failed to delete recording from database: %llu", (unsigned long long)id);
+        mg_send_json_error(c, 500, "Failed to delete recording from database");
         return;
     }
     
-    // Add task to thread pool
-    if (!thread_pool_add_task(pool, delete_recording_task_function, task)) {
-        log_error("Failed to add delete recording task to thread pool");
-        delete_recording_task_free(task);
-        api_thread_pool_release();
-        mg_send_json_error(c, 500, "Failed to add delete recording task to thread pool");
-        return;
-    }
+    // Send success response
+    mg_send_json_response(c, 200, "{\"success\":true}");
     
-    // Note: The task will release the thread pool when it's done
-    log_info("Delete recording task added to thread pool");
+    log_info("Successfully deleted recording: %llu", (unsigned long long)id);
 }
 
 // This function is now defined in api_handlers_recordings_batch.c

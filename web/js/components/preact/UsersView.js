@@ -145,11 +145,8 @@ export function UsersView() {
       // Show success message
       showStatusMessage('User added successfully', 'success', 5000);
       
-      // Wait a moment before refreshing to ensure the API operation has completed
-      setTimeout(() => {
-        console.log('Refreshing users after adding user');
-        fetchUsers();
-      }, 1000);
+      // Refresh users immediately
+      fetchUsers();
     } catch (err) {
       console.error('Error adding user:', err);
       showStatusMessage(`Error adding user: ${err.message}`, 'error', 8000);
@@ -187,11 +184,8 @@ export function UsersView() {
       // Show success message
       showStatusMessage('User updated successfully', 'success', 5000);
       
-      // Wait a moment before refreshing to ensure the API operation has completed
-      setTimeout(() => {
-        console.log('Refreshing users after editing user');
-        fetchUsers();
-      }, 1000);
+      // Refresh users immediately
+      fetchUsers();
     } catch (err) {
       console.error('Error updating user:', err);
       showStatusMessage(`Error updating user: ${err.message}`, 'error', 8000);
@@ -221,8 +215,8 @@ export function UsersView() {
       // Show success message
       showStatusMessage('User deleted successfully', 'success', 5000);
       
-      // Fetch users immediately after the operation completes
-      await fetchUsers();
+      // Refresh users immediately
+      fetchUsers();
     } catch (err) {
       console.error('Error deleting user:', err);
       showStatusMessage(`Error deleting user: ${err.message}`, 'error', 8000);
@@ -239,7 +233,8 @@ export function UsersView() {
     try {
       console.log('Generating API key for user:', currentUser.id, currentUser.username);
       const response = await fetch(`/api/auth/users/${currentUser.id}/api-key`, {
-        method: 'POST'
+        method: 'POST',
+        headers: getAuthHeaders()
       });
       
       if (!response.ok) {
@@ -254,11 +249,8 @@ export function UsersView() {
       // Show success message
       showStatusMessage('API key generated successfully', 'success');
       
-      // Wait a moment before refreshing to ensure the API operation has completed
-      setTimeout(() => {
-        console.log('Refreshing users after generating API key');
-        fetchUsers(); // Refresh users to get the updated API key
-      }, 1000);
+      // Refresh users immediately
+      await fetchUsers();
     } catch (err) {
       console.error('Error generating API key:', err);
       
@@ -360,6 +352,14 @@ export function UsersView() {
     setShowApiKeyModal(false);
   };
 
+  /**
+   * Refresh users after successful operations
+   */
+  const refreshUsers = () => {
+    console.log('Refreshing users after operation');
+    fetchUsers();
+  };
+
   // Render loading state
   if (loading && users.length === 0) {
     return html`
@@ -380,7 +380,7 @@ export function UsersView() {
       ${showAddModal && html`<${AddUserModal} 
         formData=${formData} 
         handleInputChange=${handleInputChange} 
-        handleAddUser=${handleAddUser} 
+        handleSubmit=${handleAddUser} 
         onClose=${closeAddModal} 
       />`}
     `;
@@ -399,7 +399,7 @@ export function UsersView() {
       ${showAddModal && html`<${AddUserModal} 
         formData=${formData} 
         handleInputChange=${handleInputChange} 
-        handleAddUser=${handleAddUser} 
+        handleSubmit=${handleAddUser} 
         onClose=${closeAddModal} 
       />`}
       
@@ -407,7 +407,7 @@ export function UsersView() {
         currentUser=${currentUser} 
         formData=${formData} 
         handleInputChange=${handleInputChange} 
-        handleEditUser=${handleEditUser} 
+        handleSubmit=${handleEditUser} 
         onClose=${closeEditModal} 
       />`}
       

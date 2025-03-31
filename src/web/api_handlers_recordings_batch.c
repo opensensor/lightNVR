@@ -154,16 +154,7 @@ void batch_delete_recordings_task_function(void *arg) {
                 continue;
             }
             
-            // Delete file
-            bool file_deleted = true;
-            if (unlink(recording.file_path) != 0) {
-                log_warn("Failed to delete recording file: %s", recording.file_path);
-                file_deleted = false;
-            } else {
-                log_info("Deleted recording file: %s", recording.file_path);
-            }
-            
-            // Delete from database
+            // First delete from database to prevent any other operations on this recording
             if (delete_recording_metadata(id) != 0) {
                 log_error("Failed to delete recording from database: %llu", (unsigned long long)id);
                 
@@ -176,6 +167,14 @@ void batch_delete_recordings_task_function(void *arg) {
                 
                 error_count++;
             } else {
+                // Then delete the file after the database entry is gone
+                bool file_deleted = true;
+                if (unlink(recording.file_path) != 0) {
+                    log_warn("Failed to delete recording file: %s", recording.file_path);
+                    file_deleted = false;
+                } else {
+                    log_info("Deleted recording file: %s", recording.file_path);
+                }
                 // Add success result to array
                 cJSON *result = cJSON_CreateObject();
                 cJSON_AddNumberToObject(result, "id", id);
@@ -407,16 +406,7 @@ void batch_delete_recordings_task_function(void *arg) {
         for (int i = 0; i < count; i++) {
             uint64_t id = recordings[i].id;
             
-            // Delete file
-            bool file_deleted = true;
-            if (unlink(recordings[i].file_path) != 0) {
-                log_warn("Failed to delete recording file: %s", recordings[i].file_path);
-                file_deleted = false;
-            } else {
-                log_info("Deleted recording file: %s", recordings[i].file_path);
-            }
-            
-            // Delete from database
+            // First delete from database to prevent any other operations on this recording
             if (delete_recording_metadata(id) != 0) {
                 log_error("Failed to delete recording from database: %llu", (unsigned long long)id);
                 
@@ -429,6 +419,15 @@ void batch_delete_recordings_task_function(void *arg) {
                 
                 error_count++;
             } else {
+                // Then delete the file after the database entry is gone
+                bool file_deleted = true;
+                if (unlink(recordings[i].file_path) != 0) {
+                    log_warn("Failed to delete recording file: %s", recordings[i].file_path);
+                    file_deleted = false;
+                } else {
+                    log_info("Deleted recording file: %s", recordings[i].file_path);
+                }
+                
                 // Add success result to array
                 cJSON *result = cJSON_CreateObject();
                 cJSON_AddNumberToObject(result, "id", id);
@@ -538,13 +537,16 @@ void mg_handle_batch_delete_recordings(struct mg_connection *c, struct mg_http_m
         return;
     }
     
+    // Send an immediate response to the client before processing the deletion
+    // This prevents the client from waiting for the deletion to complete
+    mg_send_json_response(c, 202, "{\"success\":true,\"message\":\"Batch deletion in progress\"}");
+    
     // Add task to thread pool
     if (!thread_pool_add_task(pool, batch_delete_recordings_task_function, task)) {
         log_error("Failed to add batch delete recordings task to thread pool");
         batch_delete_recordings_task_free(task);
         free(body);
         api_thread_pool_release();
-        mg_send_json_error(c, 500, "Failed to add batch delete recordings task to thread pool");
         return;
     }
     
