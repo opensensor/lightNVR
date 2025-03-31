@@ -169,20 +169,32 @@ int mongoose_server_basic_auth_check(struct mg_http_message *hm, http_server_t *
             }
         }
         
-                if (user[0] != '\0') {
-                    // Check credentials against server config
-                    if (strcmp(user, server->config.username) == 0 && 
-                        strcmp(pass, server->config.password) == 0) {
-                        return 0; // Authentication successful
-                    }
-                    
-                    // Also check against global config (for API login compatibility)
-                    extern config_t g_config;
-                    if (strcmp(user, g_config.web_username) == 0 && 
-                        strcmp(pass, g_config.web_password) == 0) {
-                        return 0; // Authentication successful
-                    }
+        if (user[0] != '\0') {
+            // First try to authenticate against the database
+            int64_t user_id;
+            if (db_auth_authenticate(user, pass, &user_id) == 0) {
+                // Get the user to check if they're active
+                user_t db_user;
+                if (db_auth_get_user_by_id(user_id, &db_user) == 0 && db_user.is_active) {
+                    log_info("Authentication successful with database credentials for user: %s (ID: %lld)", 
+                            user, (long long)user_id);
+                    return 0; // Authentication successful
                 }
+            }
+            
+            // If database authentication fails, check against server config (legacy)
+            if (strcmp(user, server->config.username) == 0 && 
+                strcmp(pass, server->config.password) == 0) {
+                return 0; // Authentication successful with legacy credentials
+            }
+            
+            // Also check against global config (for API login compatibility)
+            extern config_t g_config;
+            if (strcmp(user, g_config.web_username) == 0 && 
+                strcmp(pass, g_config.web_password) == 0) {
+                return 0; // Authentication successful with global config credentials
+            }
+        }
     }
 
     log_debug("Authentication failed");

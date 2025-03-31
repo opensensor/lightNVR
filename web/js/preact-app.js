@@ -187,6 +187,9 @@ function initApp() {
     case 'settings.html':
       activeNav = 'nav-settings';
       break;
+    case 'users.html':
+      activeNav = 'nav-users';
+      break;
     case 'system.html':
       activeNav = 'nav-system';
       break;
@@ -228,6 +231,10 @@ function initApp() {
   } else if (currentPage === 'login.html') {
     import('./components/preact/LoginView.js').then(module => {
       module.loadLoginView();
+    });
+  } else if (currentPage === 'users.html') {
+    import('./components/preact/UsersView.js').then(module => {
+      module.loadUsersView();
     });
   } else if (currentPage === '') {
     import('./components/preact/WebRTCView.js').then(module => {

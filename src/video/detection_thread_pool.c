@@ -291,9 +291,11 @@ static void *detection_thread_func(void *arg) {
     // Free the packet and codec parameters
     if (pkt) {
         av_packet_free(&pkt);
+        detection_tasks[thread_id].pkt = NULL;  // Prevent double-free
     }
     if (codec_params) {
         avcodec_parameters_free(&codec_params);
+        detection_tasks[thread_id].codec_params = NULL;  // Prevent double-free
     }
         }
 
@@ -398,15 +400,19 @@ void shutdown_detection_thread_pool(void) {
     // Clean up any remaining tasks
     pthread_mutex_lock(&detection_tasks_mutex);
     for (int i = 0; i < actual_max_threads; i++) {
-        if (detection_tasks[i].in_use) {
+        if (detection_tasks[i].in_use || detection_tasks[i].pkt || detection_tasks[i].codec_params) {
+            log_info("Cleaning up resources for detection thread %d", i);
+            
             if (detection_tasks[i].pkt) {
                 av_packet_free(&detection_tasks[i].pkt);
                 detection_tasks[i].pkt = NULL;
             }
+            
             if (detection_tasks[i].codec_params) {
                 avcodec_parameters_free(&detection_tasks[i].codec_params);
                 detection_tasks[i].codec_params = NULL;
             }
+            
             detection_tasks[i].in_use = false;
         }
     }

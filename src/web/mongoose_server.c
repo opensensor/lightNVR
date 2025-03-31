@@ -25,6 +25,7 @@
 #include "web/api_handlers_timeline.h"
 #include "web/api_handlers_recordings.h"
 #include "web/api_handlers_go2rtc_proxy.h"
+#include "web/api_handlers_users.h"
 
 // Forward declarations for timeline API handlers
 void mg_handle_get_timeline_segments(struct mg_connection *c, struct mg_http_message *hm);
@@ -70,6 +71,14 @@ static const mg_api_route_t s_api_routes[] = {
     {"POST", "/api/auth/login", mg_handle_auth_login},
     {"POST", "/api/auth/logout", mg_handle_auth_logout},
     {"GET", "/api/auth/verify", mg_handle_auth_verify},
+    
+    // User Management API
+    {"GET", "/api/auth/users", mg_handle_users_list},
+    {"GET", "/api/auth/users/#", mg_handle_users_get},
+    {"POST", "/api/auth/users", mg_handle_users_create},
+    {"PUT", "/api/auth/users/#", mg_handle_users_update},
+    {"DELETE", "/api/auth/users/#", mg_handle_users_delete},
+    {"POST", "/api/auth/users/#/api-key", mg_handle_users_generate_api_key},
     
     // Streams API
     {"GET", "/api/streams", mg_handle_get_streams},

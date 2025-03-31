@@ -12,6 +12,8 @@
 
 #include "web/api_handlers.h"
 #include "web/mongoose_adapter.h"
+#include "web/mongoose_server_auth.h"
+#include "web/http_server.h"
 #include "web/api_thread_pool.h"
 #include "core/logger.h"
 #include "core/config.h"
@@ -24,6 +26,17 @@
  */
 void mg_handle_get_recordings(struct mg_connection *c, struct mg_http_message *hm) {
     log_info("Handling GET /api/recordings request");
+    
+    // Check authentication
+    http_server_t *server = (http_server_t *)c->fn_data;
+    if (server && server->config.auth_enabled) {
+        // Check if the user is authenticated
+        if (mongoose_server_basic_auth_check(hm, server) != 0) {
+            log_error("Authentication failed for recordings request");
+            mg_send_json_error(c, 401, "Unauthorized");
+            return;
+        }
+    }
     
     // Parse query parameters
     char query_string[512] = {0};
@@ -294,6 +307,17 @@ void mg_handle_get_recordings(struct mg_connection *c, struct mg_http_message *h
  * @brief Direct handler for GET /api/recordings/:id
  */
 void mg_handle_get_recording(struct mg_connection *c, struct mg_http_message *hm) {
+    // Check authentication
+    http_server_t *server = (http_server_t *)c->fn_data;
+    if (server && server->config.auth_enabled) {
+        // Check if the user is authenticated
+        if (mongoose_server_basic_auth_check(hm, server) != 0) {
+            log_error("Authentication failed for recording detail request");
+            mg_send_json_error(c, 401, "Unauthorized");
+            return;
+        }
+    }
+    
     // Extract recording ID from URL
     char id_str[32];
     if (mg_extract_path_param(hm, "/api/recordings/", id_str, sizeof(id_str)) != 0) {

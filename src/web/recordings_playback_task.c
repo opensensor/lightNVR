@@ -16,6 +16,8 @@
 #include "web/recordings_playback_state.h"
 #include "web/api_thread_pool.h"
 #include "web/mongoose_adapter.h"
+#include "web/mongoose_server_auth.h"
+#include "web/http_server.h"
 #include "web/api_handlers.h"
 #include "core/logger.h"
 #include "database/database_manager.h"
@@ -292,6 +294,17 @@ static void mark_request_inactive(uint64_t id) {
  * @brief Direct handler for GET /api/recordings/play/:id
  */
 void mg_handle_play_recording(struct mg_connection *c, struct mg_http_message *hm) {
+    // Check authentication
+    http_server_t *server = (http_server_t *)c->fn_data;
+    if (server && server->config.auth_enabled) {
+        // Check if the user is authenticated
+        if (mongoose_server_basic_auth_check(hm, server) != 0) {
+            log_error("Authentication failed for recording playback request");
+            mg_send_json_error(c, 401, "Unauthorized");
+            return;
+        }
+    }
+    
     // Initialize active requests tracking
     init_active_requests();
     

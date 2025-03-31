@@ -277,8 +277,8 @@ static void *hls_writer_thread_func(void *arg) {
             continue;
         }
         
-        // Only process video packets
-        if (pkt->stream_index == video_stream_idx) {
+        // Only process video packets and skip audio packets (stream index 1)
+        if (pkt->stream_index == video_stream_idx && pkt->stream_index >= 0) {
             // Lock the writer mutex
             pthread_mutex_lock(&ctx->writer->mutex);
             
@@ -320,12 +320,22 @@ static void *hls_writer_thread_func(void *arg) {
             
             // Submit packet to detection thread pool if the stream has detection enabled
             // This wires in detection events to the always-on HLS streaming
-            if (input_stream && input_stream->codecpar) {
+            if (input_stream && input_stream->codecpar && ret >= 0) {
+                // Only submit for detection if the packet was successfully written to HLS
+                // This prevents submitting invalid packets that could cause segfaults
+                
                 // Use the detection thread pool instead of direct processing
                 // Note: submit_detection_task creates its own copies of the packet and codec parameters
                 // so we don't need to worry about memory management here
                 submit_detection_task(stream_name, pkt, input_stream->codecpar);
+            } else if (ret < 0) {
+                // Skip detection for packets that failed to write to HLS
+                log_debug("Skipping detection for failed packet in stream %s", stream_name);
             }
+        } else if (pkt->stream_index != video_stream_idx) {
+            // Log audio packets but don't process them
+            log_debug("Skipping non-video packet (stream index %d) for stream %s", 
+                     pkt->stream_index, stream_name);
         }
         
         av_packet_unref(pkt);
@@ -569,17 +579,19 @@ void hls_writer_stop_recording_thread(hls_writer_t *writer) {
 
 /**
  * Check if the recording thread is running and has a valid connection
- * This function is now safer with go2rtc integration
+ * This function is now safer with go2rtc integration and handles NULL pointers properly
  */
 int hls_writer_is_recording(hls_writer_t *writer) {
     // Basic validation
     if (!writer) {
+        log_debug("hls_writer_is_recording: NULL writer pointer");
         return 0;
     }
     
     // Safely check thread context
     void *thread_ctx_ptr = writer->thread_ctx;
     if (!thread_ctx_ptr) {
+        log_debug("hls_writer_is_recording: NULL thread context pointer");
         return 0;
     }
     
@@ -588,7 +600,7 @@ int hls_writer_is_recording(hls_writer_t *writer) {
     
     // Create a local copy of the stream name for logging
     char stream_name[MAX_STREAM_NAME] = {0};
-    if (ctx->stream_name[0] != '\0') {
+    if (ctx->stream_name && ctx->stream_name[0] != '\0') {
         strncpy(stream_name, ctx->stream_name, MAX_STREAM_NAME - 1);
         stream_name[MAX_STREAM_NAME - 1] = '\0';
     } else {

@@ -228,21 +228,20 @@ void *hls_stream_thread(void *arg) {
 
             // Check if the writer thread is still running and has a valid connection
             // Check more frequently (every 1 second instead of waiting for the sleep at the end)
-            if (!hls_writer_is_recording(ctx->hls_writer)) {
+            if (!ctx->hls_writer || !hls_writer_is_recording(ctx->hls_writer)) {
+                // Check if the writer is NULL first
+                if (!ctx->hls_writer) {
+                    log_error("HLS writer for %s is NULL, cannot check recording status", stream_name);
+                    atomic_store(&ctx->running, 0);
+                    break;
+                }
+                
                 // Log at ERROR level to ensure visibility regardless of log level setting
                 log_error("HLS writer thread for %s is not recording (stopped, invalid connection, or timed out)", stream_name);
                 
                 // Check if the thread context is NULL, which means the thread has exited
                 if (!ctx->hls_writer->thread_ctx) {
                     log_error("HLS writer thread for %s has exited, recreating thread context", stream_name);
-                    
-                    // The thread has exited, so we need to recreate it
-                    // First, make sure the writer is still valid
-                    if (!ctx->hls_writer) {
-                        log_error("HLS writer for %s is NULL, cannot restart", stream_name);
-                        atomic_store(&ctx->running, 0);
-                        break;
-                    }
                 }
                 
                 // Track how long the connection has been invalid - use per-stream tracking

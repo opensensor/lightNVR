@@ -9,6 +9,8 @@
 
 #include "web/api_handlers.h"
 #include "web/mongoose_adapter.h"
+#include "web/mongoose_server_auth.h"
+#include "web/http_server.h"
 #include "core/logger.h"
 #include "core/config.h"
 #include "video/stream_manager.h"
@@ -60,6 +62,18 @@ void mg_handle_go2rtc_webrtc_offer(struct mg_connection *c, struct mg_http_messa
         log_error("Failed to acquire API thread pool");
         mg_send_json_error(c, 500, "Internal server error");
         return;
+    }
+    
+    // Check authentication
+    http_server_t *server = (http_server_t *)c->fn_data;
+    if (server && server->config.auth_enabled) {
+        // Check if the user is authenticated
+        if (mongoose_server_basic_auth_check(hm, server) != 0) {
+            log_error("Authentication failed for go2rtc WebRTC offer request");
+            mg_send_json_error(c, 401, "Unauthorized");
+            api_thread_pool_release();
+            return;
+        }
     }
     log_info("Handling POST /api/webrtc request");
     
@@ -364,6 +378,18 @@ void mg_handle_go2rtc_webrtc_ice(struct mg_connection *c, struct mg_http_message
         log_error("Failed to acquire API thread pool");
         mg_send_json_error(c, 500, "Internal server error");
         return;
+    }
+    
+    // Check authentication
+    http_server_t *server = (http_server_t *)c->fn_data;
+    if (server && server->config.auth_enabled) {
+        // Check if the user is authenticated
+        if (mongoose_server_basic_auth_check(hm, server) != 0) {
+            log_error("Authentication failed for go2rtc WebRTC ICE request");
+            mg_send_json_error(c, 401, "Unauthorized");
+            api_thread_pool_release();
+            return;
+        }
     }
     log_info("Handling POST /api/webrtc/ice request");
     

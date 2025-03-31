@@ -11,12 +11,15 @@
 
 #include "web/api_handlers.h"
 #include "web/mongoose_adapter.h"
+#include "web/mongoose_server_auth.h"
+#include "web/http_server.h"
 #include "web/api_thread_pool.h"
 #include "core/logger.h"
 #include "core/config.h"
 #include "mongoose.h"
 #include "database/database_manager.h"
 #include "database/db_recordings.h"
+#include "database/db_auth.h"
 
 // Forward declarations for batch delete functionality
 typedef struct {
@@ -169,9 +172,71 @@ void delete_recording_task_function(void *arg) {
 }
 
 /**
+ * @brief Check if the user has permission to delete recordings
+ * 
+ * @param hm HTTP message
+ * @param server HTTP server
+ * @return 1 if the user has permission, 0 otherwise
+ */
+static int check_delete_permission(struct mg_http_message *hm, http_server_t *server) {
+    // Get the authenticated user
+    int64_t user_id;
+    user_t user;
+    
+    // Check if authentication is enabled
+    if (!server || !server->config.auth_enabled) {
+        return 1; // Authentication is disabled, allow all
+    }
+    
+    // First, check for session token in cookie
+    struct mg_str *cookie = mg_http_get_header(hm, "Cookie");
+    if (cookie) {
+        char session_token[64] = {0};
+        if (mg_http_get_var(cookie, "session", session_token, sizeof(session_token)) > 0) {
+            // Validate the session token
+            if (db_auth_validate_session(session_token, &user_id) == 0) {
+                // Session is valid, check user role
+                if (db_auth_get_user_by_id(user_id, &user) == 0) {
+                    // Only admin and regular users can delete recordings, viewers cannot
+                    return (user.role == USER_ROLE_ADMIN || user.role == USER_ROLE_USER);
+                }
+            }
+        }
+    }
+    
+    // If no valid session, try HTTP Basic Auth
+    char username[64] = {0};
+    char password[64] = {0};
+    
+    mg_http_creds(hm, username, sizeof(username), password, sizeof(password));
+    
+    // Check if we have credentials
+    if (username[0] != '\0' && password[0] != '\0') {
+        // Authenticate the user
+        if (db_auth_authenticate(username, password, &user_id) == 0) {
+            // Authentication successful, check user role
+            if (db_auth_get_user_by_id(user_id, &user) == 0) {
+                // Only admin and regular users can delete recordings, viewers cannot
+                return (user.role == USER_ROLE_ADMIN || user.role == USER_ROLE_USER);
+            }
+        }
+    }
+    
+    return 0; // No valid authentication or insufficient permissions
+}
+
+/**
  * @brief Direct handler for DELETE /api/recordings/:id
  */
 void mg_handle_delete_recording(struct mg_connection *c, struct mg_http_message *hm) {
+    // Check authentication and permissions
+    http_server_t *server = (http_server_t *)c->fn_data;
+    if (!check_delete_permission(hm, server)) {
+        log_error("Permission denied for DELETE /api/recordings/:id");
+        mg_send_json_error(c, 403, "Permission denied: Only admin and regular users can delete recordings");
+        return;
+    }
+    
     // Extract recording ID from URL
     char id_str[32];
     if (mg_extract_path_param(hm, "/api/recordings/", id_str, sizeof(id_str)) != 0) {

@@ -15,6 +15,8 @@
 #include "web/recordings_download_task.h"
 #include "web/api_thread_pool.h"
 #include "web/mongoose_adapter.h"
+#include "web/mongoose_server_auth.h"
+#include "web/http_server.h"
 #include "web/api_handlers.h"
 #include "core/logger.h"
 #include "database/database_manager.h"
@@ -56,6 +58,17 @@ void download_recording_task_free(download_recording_task_t *task) {
  * @brief Direct handler for GET /api/recordings/download/:id
  */
 void mg_handle_download_recording(struct mg_connection *c, struct mg_http_message *hm) {
+    // Check authentication
+    http_server_t *server = (http_server_t *)c->fn_data;
+    if (server && server->config.auth_enabled) {
+        // Check if the user is authenticated
+        if (mongoose_server_basic_auth_check(hm, server) != 0) {
+            log_error("Authentication failed for recording download request");
+            mg_send_json_error(c, 401, "Unauthorized");
+            return;
+        }
+    }
+    
     // Extract recording ID from URL
     char id_str[32];
     if (mg_extract_path_param(hm, "/api/recordings/download/", id_str, sizeof(id_str)) != 0) {

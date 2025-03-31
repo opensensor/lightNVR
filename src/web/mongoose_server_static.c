@@ -75,7 +75,7 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         // This is an HLS streaming request, serve it directly from the filesystem
         config_t *global_config = get_streaming_config();
         
-        // Check for authentication headers for HLS requests
+        // Check for authentication
         log_info("Processing HLS request: %s", uri);
         
         // Log all headers for debugging
@@ -86,36 +86,9 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
                     (int)hm->headers[i].value.len, hm->headers[i].value.buf);
         }
         
-        // Check for auth header or cookie
-        struct mg_str *auth_header = mg_http_get_header(hm, "Authorization");
-        const bool has_auth_header = (auth_header != NULL);
-        
-        // Check for auth or session cookie
-        struct mg_str *cookie_header = mg_http_get_header(hm, "Cookie");
-        bool has_auth_cookie = false;
-        bool has_session_cookie = false;
-        
-        if (cookie_header != NULL) {
-            // Parse cookie to check for auth
-            char cookie_str[1024] = {0};
-            if (cookie_header->len < sizeof(cookie_str) - 1) {
-                memcpy(cookie_str, cookie_header->buf, cookie_header->len);
-                cookie_str[cookie_header->len] = '\0';
-                
-                // Check if auth cookie exists
-                has_auth_cookie = (strstr(cookie_str, "auth=") != NULL);
-                
-                // Check if session cookie exists
-                has_session_cookie = (strstr(cookie_str, "session=") != NULL);
-            }
-        }
-        
-        log_info("HLS request auth status: header=%d, auth_cookie=%d, session_cookie=%d", 
-                has_auth_header, has_auth_cookie, has_session_cookie);
-        
-        // If authentication is enabled and we have neither auth header nor any valid cookie, return 401
-        if (server->config.auth_enabled && !has_auth_header && !has_auth_cookie && !has_session_cookie) {
-            log_info("Authentication required for HLS request but no auth provided");
+        // Check authentication using the common auth function
+        if (server->config.auth_enabled && mongoose_server_basic_auth_check(hm, server) != 0) {
+            log_info("Authentication required for HLS request but authentication failed");
             mg_printf(c, "HTTP/1.1 401 Unauthorized\r\n");
             mg_printf(c, "WWW-Authenticate: Basic realm=\"LightNVR\"\r\n");
             mg_printf(c, "Content-Type: application/json\r\n");

@@ -8,6 +8,8 @@
 
 #include "web/api_handlers.h"
 #include "web/mongoose_adapter.h"
+#include "web/mongoose_server_auth.h"
+#include "web/http_server.h"
 #include "core/logger.h"
 #include "video/stream_manager.h"
 #include "video/streams.h"
@@ -22,6 +24,17 @@
  */
 void mg_handle_webrtc_offer(struct mg_connection *c, struct mg_http_message *hm) {
     log_info("Handling POST /api/streaming/*/webrtc/offer request");
+    
+    // Check authentication
+    http_server_t *server = (http_server_t *)c->fn_data;
+    if (server && server->config.auth_enabled) {
+        // Check if the user is authenticated
+        if (mongoose_server_basic_auth_check(hm, server) != 0) {
+            log_error("Authentication failed for WebRTC offer request");
+            mg_send_json_error(c, 401, "Unauthorized");
+            return;
+        }
+    }
     
     // Extract stream name from URL
     char stream_name[MAX_STREAM_NAME];
@@ -118,6 +131,17 @@ void mg_handle_webrtc_offer(struct mg_connection *c, struct mg_http_message *hm)
  */
 void mg_handle_webrtc_ice(struct mg_connection *c, struct mg_http_message *hm) {
     log_info("Handling POST /api/streaming/*/webrtc/ice request");
+    
+    // Check authentication
+    http_server_t *server = (http_server_t *)c->fn_data;
+    if (server && server->config.auth_enabled) {
+        // Check if the user is authenticated
+        if (mongoose_server_basic_auth_check(hm, server) != 0) {
+            log_error("Authentication failed for WebRTC ICE request");
+            mg_send_json_error(c, 401, "Unauthorized");
+            return;
+        }
+    }
     
     // Extract stream name from URL
     char stream_name[MAX_STREAM_NAME];

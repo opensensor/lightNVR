@@ -44,6 +44,19 @@ void process_packet_for_detection(const char *stream_name, const AVPacket *pkt, 
         return;
     }
     
+    // Validate packet data
+    if (!pkt->data || pkt->size <= 0) {
+        log_warn("Invalid packet data in process_packet_for_detection: data=%p, size=%d", 
+                pkt->data, pkt->size);
+        return;
+    }
+    
+    // Validate codec parameters
+    if (codec_params->codec_type != AVMEDIA_TYPE_VIDEO) {
+        log_warn("Non-video codec in process_packet_for_detection for stream %s", stream_name);
+        return;
+    }
+    
     //  Check if detection is enabled for this stream
     if (!is_detection_stream_reader_running(stream_name)) {
         // Detection is not enabled for this stream, skip processing
