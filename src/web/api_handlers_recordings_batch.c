@@ -12,96 +12,46 @@
 
 #include "web/api_handlers.h"
 #include "web/mongoose_adapter.h"
-#include "web/api_thread_pool.h"
 #include "core/logger.h"
 #include "core/config.h"
 #include "mongoose.h"
 #include "database/database_manager.h"
 #include "database/db_recordings.h"
-
-/**
- * @brief Structure for batch delete recordings task
- */
-typedef struct {
-    struct mg_connection *connection;  // Mongoose connection
-    char *json_str;                    // JSON request string (for parsing parameters)
-} batch_delete_recordings_task_t;
-
-/**
- * @brief Create a batch delete recordings task
- * 
- * @param c Mongoose connection
- * @param json_str JSON request string (for parsing parameters)
- * @return batch_delete_recordings_task_t* Pointer to the task or NULL on error
- */
-batch_delete_recordings_task_t *batch_delete_recordings_task_create(struct mg_connection *c, const char *json_str) {
-    batch_delete_recordings_task_t *task = calloc(1, sizeof(batch_delete_recordings_task_t));
-    if (!task) {
-        log_error("Failed to allocate memory for batch delete recordings task");
-        return NULL;
-    }
-    
-    task->connection = c;
-    
-    if (json_str) {
-        task->json_str = strdup(json_str);
-        if (!task->json_str) {
-            log_error("Failed to allocate memory for JSON string");
-            free(task);
-            return NULL;
-        }
-    } else {
-        task->json_str = NULL;
-    }
-    
-    return task;
-}
-
-/**
- * @brief Free a batch delete recordings task
- * 
- * @param task Task to free
- */
-void batch_delete_recordings_task_free(batch_delete_recordings_task_t *task) {
-    if (task) {
-        if (task->json_str) {
-            free(task->json_str);
-        }
-        free(task);
-    }
-}
+#include "web/mongoose_server_multithreading.h"
 
 /**
  * @brief Batch delete recordings task function
  * 
- * @param arg Task argument (batch_delete_recordings_task_t*)
+ * This function is called by the multithreading system to handle batch delete recordings requests.
+ * 
+ * @param c Mongoose connection
+ * @param hm HTTP message
  */
-void batch_delete_recordings_task_function(void *arg) {
-    batch_delete_recordings_task_t *task = (batch_delete_recordings_task_t *)arg;
-    if (!task) {
-        log_error("Invalid batch delete recordings task");
+void batch_delete_recordings_task_function(struct mg_connection *c, struct mg_http_message *hm) {
+    // Get request body
+    char *body = NULL;
+    if (hm->body.len > 0) {
+        body = malloc(hm->body.len + 1);
+        if (!body) {
+            log_error("Failed to allocate memory for request body");
+            mg_send_json_error(c, 500, "Failed to allocate memory for request body");
+            return;
+        }
+        
+        memcpy(body, hm->body.buf, hm->body.len);
+        body[hm->body.len] = '\0';
+    } else {
+        log_error("Empty request body");
+        mg_send_json_error(c, 400, "Empty request body");
         return;
     }
-    
-    struct mg_connection *c = task->connection;
-    if (!c) {
-        log_error("Invalid Mongoose connection");
-        batch_delete_recordings_task_free(task);
-        return;
-    }
-    
-    // Release the thread pool when this task is done
-    bool release_needed = true;
     
     // Parse JSON request
-    cJSON *json = cJSON_Parse(task->json_str);
+    cJSON *json = cJSON_Parse(body);
     if (!json) {
         log_error("Failed to parse JSON body");
+        free(body);
         mg_send_json_error(c, 400, "Invalid JSON body");
-        batch_delete_recordings_task_free(task);
-        if (release_needed) {
-            api_thread_pool_release();
-        }
         return;
     }
     
@@ -115,11 +65,8 @@ void batch_delete_recordings_task_function(void *arg) {
         if (array_size == 0) {
             log_warn("Empty 'ids' array in batch delete request");
             cJSON_Delete(json);
+            free(body);
             mg_send_json_error(c, 400, "Empty 'ids' array");
-            batch_delete_recordings_task_free(task);
-            if (release_needed) {
-                api_thread_pool_release();
-            }
             return;
         }
         
@@ -203,11 +150,8 @@ void batch_delete_recordings_task_function(void *arg) {
             log_error("Failed to convert response JSON to string");
             cJSON_Delete(json);
             cJSON_Delete(response);
+            free(body);
             mg_send_json_error(c, 500, "Failed to create response");
-            batch_delete_recordings_task_free(task);
-            if (release_needed) {
-                api_thread_pool_release();
-            }
             return;
         }
         
@@ -326,11 +270,8 @@ void batch_delete_recordings_task_function(void *arg) {
                 log_error("Failed to convert response JSON to string");
                 cJSON_Delete(json);
                 cJSON_Delete(response);
+                free(body);
                 mg_send_json_error(c, 500, "Failed to create response");
-                batch_delete_recordings_task_free(task);
-                if (release_needed) {
-                    api_thread_pool_release();
-                }
                 return;
             }
             
@@ -338,10 +279,7 @@ void batch_delete_recordings_task_function(void *arg) {
             free(json_str);
             cJSON_Delete(json);
             cJSON_Delete(response);
-            batch_delete_recordings_task_free(task);
-            if (release_needed) {
-                api_thread_pool_release();
-            }
+            free(body);
             return;
         }
         
@@ -350,11 +288,8 @@ void batch_delete_recordings_task_function(void *arg) {
         if (!recordings) {
             log_error("Failed to allocate memory for recordings");
             cJSON_Delete(json);
+            free(body);
             mg_send_json_error(c, 500, "Failed to allocate memory for recordings");
-            batch_delete_recordings_task_free(task);
-            if (release_needed) {
-                api_thread_pool_release();
-            }
             return;
         }
         
@@ -379,11 +314,8 @@ void batch_delete_recordings_task_function(void *arg) {
                 log_error("Failed to convert response JSON to string");
                 cJSON_Delete(json);
                 cJSON_Delete(response);
+                free(body);
                 mg_send_json_error(c, 500, "Failed to create response");
-                batch_delete_recordings_task_free(task);
-                if (release_needed) {
-                    api_thread_pool_release();
-                }
                 return;
             }
             
@@ -391,10 +323,7 @@ void batch_delete_recordings_task_function(void *arg) {
             free(json_str);
             cJSON_Delete(json);
             cJSON_Delete(response);
-            batch_delete_recordings_task_free(task);
-            if (release_needed) {
-                api_thread_pool_release();
-            }
+            free(body);
             return;
         }
         
@@ -459,11 +388,8 @@ void batch_delete_recordings_task_function(void *arg) {
             log_error("Failed to convert response JSON to string");
             cJSON_Delete(json);
             cJSON_Delete(response);
+            free(body);
             mg_send_json_error(c, 500, "Failed to create response");
-            batch_delete_recordings_task_free(task);
-            if (release_needed) {
-                api_thread_pool_release();
-            }
             return;
         }
         
@@ -480,18 +406,13 @@ void batch_delete_recordings_task_function(void *arg) {
     } else {
         log_error("Request must contain either 'ids' array or 'filter' object");
         cJSON_Delete(json);
+        free(body);
         mg_send_json_error(c, 400, "Request must contain either 'ids' array or 'filter' object");
-        batch_delete_recordings_task_free(task);
-        if (release_needed) {
-            api_thread_pool_release();
-        }
         return;
     }
     
-    batch_delete_recordings_task_free(task);
-    if (release_needed) {
-        api_thread_pool_release();
-    }
+    // Free the request body
+    free(body);
 }
 
 /**
@@ -500,59 +421,34 @@ void batch_delete_recordings_task_function(void *arg) {
 void mg_handle_batch_delete_recordings(struct mg_connection *c, struct mg_http_message *hm) {
     log_info("Handling POST /api/recordings/batch-delete request");
     
-    // Get request body
-    char *body = NULL;
-    if (hm->body.len > 0) {
-        body = malloc(hm->body.len + 1);
-        if (!body) {
-            log_error("Failed to allocate memory for request body");
-            mg_send_json_error(c, 500, "Failed to allocate memory for request body");
-            return;
-        }
-        
-        memcpy(body, mg_str_get_ptr(&hm->body), hm->body.len);
-        body[hm->body.len] = '\0';
-    } else {
-        log_error("Empty request body");
-        mg_send_json_error(c, 400, "Empty request body");
-        return;
-    }
-    
-    // Acquire thread pool
-    thread_pool_t *pool = api_thread_pool_acquire(api_thread_pool_get_size(), 10);
-    if (!pool) {
-        log_error("Failed to acquire thread pool");
-        free(body);
-        mg_send_json_error(c, 500, "Failed to acquire thread pool");
-        return;
-    }
-    
-    // Create task
-    batch_delete_recordings_task_t *task = batch_delete_recordings_task_create(c, body);
-    if (!task) {
-        log_error("Failed to create batch delete recordings task");
-        free(body);
-        api_thread_pool_release();
-        mg_send_json_error(c, 500, "Failed to create batch delete recordings task");
-        return;
-    }
-    
     // Send an immediate response to the client before processing the deletion
     // This prevents the client from waiting for the deletion to complete
     mg_send_json_response(c, 202, "{\"success\":true,\"message\":\"Batch deletion in progress\"}");
     
-    // Add task to thread pool
-    if (!thread_pool_add_task(pool, batch_delete_recordings_task_function, task)) {
-        log_error("Failed to add batch delete recordings task to thread pool");
-        batch_delete_recordings_task_free(task);
-        free(body);
-        api_thread_pool_release();
+    // Create a thread data structure
+    struct mg_thread_data *data = calloc(1, sizeof(struct mg_thread_data));
+    if (!data) {
+        log_error("Failed to allocate memory for thread data");
+        mg_http_reply(c, 500, "", "Internal Server Error\n");
         return;
     }
     
-    // Free body (task has its own copy)
-    free(body);
+    // Copy the HTTP message
+    data->message = mg_strdup(hm->message);
+    if (data->message.len == 0) {
+        log_error("Failed to duplicate HTTP message");
+        free(data);
+        mg_http_reply(c, 500, "", "Internal Server Error\n");
+        return;
+    }
     
-    // Note: The task will release the thread pool when it's done
-    log_info("Batch delete recordings task added to thread pool");
+    // Set connection ID, manager, and handler function
+    data->conn_id = c->id;
+    data->mgr = c->mgr;
+    data->handler_func = batch_delete_recordings_task_function;
+    
+    // Start thread
+    mg_start_thread(mg_thread_function, data);
+    
+    log_info("Batch delete recordings task started in a worker thread");
 }

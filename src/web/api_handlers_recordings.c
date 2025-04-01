@@ -12,12 +12,8 @@
 #include <time.h>
 
 #include "web/api_handlers.h"
-#include "web/mongoose_adapter.h"
-#include "web/api_thread_pool.h"
 #include "core/logger.h"
-#include "core/config.h"
 #include "mongoose.h"
-#include "database/database_manager.h"
 #include "database/db_recordings.h"
 
 // Use MAX_PATH_LENGTH from config.h
@@ -49,10 +45,20 @@ static pthread_mutex_t temp_files_mutex = PTHREAD_MUTEX_INITIALIZER;
  * Serve an MP4 file with proper headers for download
  */
 void serve_mp4_file(struct mg_connection *c, const char *file_path, const char *filename) {
+    // Set proper headers for CORS and caching
+    const char *headers = "Content-Type: application/json\r\n"
+                         "Access-Control-Allow-Origin: *\r\n"
+                         "Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS\r\n"
+                         "Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With\r\n"
+                         "Access-Control-Allow-Credentials: true\r\n"
+                         "Cache-Control: no-cache, no-store, must-revalidate\r\n"
+                         "Pragma: no-cache\r\n"
+                         "Expires: 0\r\n";
+                         
     // Check if file exists
     struct stat st;
     if (stat(file_path, &st) != 0) {
-        mg_http_reply(c, 404, "Content-Type: application/json\r\n", "{\"error\": \"File not found\"}");
+        mg_http_reply(c, 404, headers, "{\"error\": \"File not found\"}");
         return;
     }
     
@@ -79,10 +85,20 @@ void serve_mp4_file(struct mg_connection *c, const char *file_path, const char *
  * Serve a file for download with proper headers to force browser download
  */
 void serve_file_for_download(struct mg_connection *c, const char *file_path, const char *filename, off_t file_size) {
+    // Set proper headers for CORS and caching
+    const char *headers = "Content-Type: application/json\r\n"
+                         "Access-Control-Allow-Origin: *\r\n"
+                         "Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS\r\n"
+                         "Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With\r\n"
+                         "Access-Control-Allow-Credentials: true\r\n"
+                         "Cache-Control: no-cache, no-store, must-revalidate\r\n"
+                         "Pragma: no-cache\r\n"
+                         "Expires: 0\r\n";
+                         
     // Check if file exists
     struct stat st;
     if (stat(file_path, &st) != 0) {
-        mg_http_reply(c, 404, "Content-Type: application/json\r\n", "{\"error\": \"File not found\"}");
+        mg_http_reply(c, 404, headers, "{\"error\": \"File not found\"}");
         return;
     }
     
@@ -109,10 +125,20 @@ void serve_file_for_download(struct mg_connection *c, const char *file_path, con
  * Serve the direct file download
  */
 void serve_direct_download(struct mg_connection *c, uint64_t id, recording_metadata_t *metadata) {
+    // Set proper headers for CORS and caching
+    const char *headers = "Content-Type: application/json\r\n"
+                         "Access-Control-Allow-Origin: *\r\n"
+                         "Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS\r\n"
+                         "Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With\r\n"
+                         "Access-Control-Allow-Credentials: true\r\n"
+                         "Cache-Control: no-cache, no-store, must-revalidate\r\n"
+                         "Pragma: no-cache\r\n"
+                         "Expires: 0\r\n";
+                         
     // Check if file exists
     struct stat st;
     if (stat(metadata->file_path, &st) != 0) {
-        mg_http_reply(c, 404, "Content-Type: application/json\r\n", "{\"error\": \"Recording file not found\"}");
+        mg_http_reply(c, 404, headers, "{\"error\": \"Recording file not found\"}");
         return;
     }
     
@@ -133,10 +159,20 @@ void serve_direct_download(struct mg_connection *c, uint64_t id, recording_metad
  */
 void serve_download_file(struct mg_connection *c, const char *file_path, const char *content_type,
                        const char *stream_name, time_t timestamp) {
+    // Set proper headers for CORS and caching
+    const char *headers = "Content-Type: application/json\r\n"
+                         "Access-Control-Allow-Origin: *\r\n"
+                         "Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS\r\n"
+                         "Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With\r\n"
+                         "Access-Control-Allow-Credentials: true\r\n"
+                         "Cache-Control: no-cache, no-store, must-revalidate\r\n"
+                         "Pragma: no-cache\r\n"
+                         "Expires: 0\r\n";
+                         
     // Check if file exists
     struct stat st;
     if (stat(file_path, &st) != 0) {
-        mg_http_reply(c, 404, "Content-Type: application/json\r\n", "{\"error\": \"File not found\"}");
+        mg_http_reply(c, 404, headers, "{\"error\": \"File not found\"}");
         return;
     }
     

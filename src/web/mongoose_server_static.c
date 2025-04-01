@@ -197,6 +197,7 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
             snprintf(headers, sizeof(headers),
                 "%s"
                 "%s"  // Dynamic cache control based on file type
+                "Connection: close\r\n"
                 "Access-Control-Allow-Origin: *\r\n"
                 "Access-Control-Allow-Methods: GET, OPTIONS\r\n"
                 "Access-Control-Allow-Headers: Origin, Content-Type, Accept, Authorization\r\n",
@@ -223,6 +224,11 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
     if (strcmp(uri, "/") == 0) {
         // Directly serve index.html for root path
         char index_path[MAX_PATH_LENGTH * 2];
+        
+        // Add debug logging to help diagnose the issue
+        log_info("Root path requested, web_root: %s", server->config.web_root);
+        
+        // Use a direct path to index.html
         snprintf(index_path, sizeof(index_path), "%s/index.html", server->config.web_root);
         
         // Log the path we're trying to serve
@@ -238,7 +244,8 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
                              "json=application/json,jpg=image/jpeg,jpeg=image/jpeg,png=image/png,"
                              "gif=image/gif,svg=image/svg+xml,ico=image/x-icon,mp4=video/mp4,"
                              "webm=video/webm,ogg=video/ogg,mp3=audio/mpeg,wav=audio/wav,"
-                             "txt=text/plain,xml=application/xml,pdf=application/pdf"
+                             "txt=text/plain,xml=application/xml,pdf=application/pdf",
+                .extra_headers = "Connection: close\r\n"
             };
             
             log_info("Serving index file for root path using mg_http_serve_file: %s", index_path);
@@ -273,17 +280,20 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
             // Add special handling for JavaScript files to improve Firefox compatibility
             if (strstr(file_path, ".js") != NULL) {
                 // For JavaScript files, add specific headers for Firefox
-                static const char js_headers[] = 
+                // Create a new opts struct for each request to avoid race conditions
+                const char js_headers[] = 
                     "Content-Type: application/javascript\r\n"
-                    "Cache-Control: no-cache\r\n"
+                    "Cache-Control: no-store\r\n"
+                    "Connection: close\r\n"
                     "Access-Control-Allow-Origin: *\r\n"
                     "Access-Control-Allow-Methods: GET, OPTIONS\r\n"
                     "Access-Control-Allow-Headers: Origin, Content-Type, Accept, Authorization\r\n";
                 
-                // Use a static struct for options to avoid stack allocations
-                static struct mg_http_serve_opts js_opts = {
+                // Create a new struct for each request
+                struct mg_http_serve_opts js_opts = {
                     .mime_types = "",
-                    .extra_headers = js_headers
+                    .extra_headers = js_headers,
+                    .root_dir = server->config.web_root
                 };
                 
                 log_debug("Serving JavaScript file with Firefox-friendly headers: %s", file_path);
@@ -292,34 +302,36 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
             // Add special handling for CSS files to improve Firefox compatibility
             else if (strstr(file_path, ".css") != NULL) {
                 // For CSS files, add specific headers for Firefox
-                static const char css_headers[] = 
+                // Create a new opts struct for each request to avoid race conditions
+                const char css_headers[] = 
                     "Content-Type: text/css\r\n"
-                    "Cache-Control: no-cache\r\n"
+                    "Cache-Control: no-store\r\n"
+                    "Connection: close\r\n"
                     "Access-Control-Allow-Origin: *\r\n"
                     "Access-Control-Allow-Methods: GET, OPTIONS\r\n"
                     "Access-Control-Allow-Headers: Origin, Content-Type, Accept, Authorization\r\n";
                 
-                // Use a static struct for options to avoid stack allocations
-                static struct mg_http_serve_opts css_opts = {
+                // Create a new struct for each request
+                struct mg_http_serve_opts css_opts = {
                     .mime_types = "",
-                    .extra_headers = css_headers
+                    .extra_headers = css_headers,
+                    .root_dir = server->config.web_root
                 };
                 
                 log_debug("Serving CSS file with Firefox-friendly headers: %s", file_path);
                 mg_http_serve_file(c, hm, file_path, &css_opts);
             } else {
                 // For other files, use standard options
-                // Use a static struct for options to avoid stack allocations
-                static struct mg_http_serve_opts std_opts = {
+                // Create a new opts struct for each request to avoid race conditions
+                struct mg_http_serve_opts std_opts = {
                     .mime_types = "html=text/html,htm=text/html,css=text/css,js=application/javascript,"
                                 "json=application/json,jpg=image/jpeg,jpeg=image/jpeg,png=image/png,"
                                 "gif=image/gif,svg=image/svg+xml,ico=image/x-icon,mp4=video/mp4,"
                                 "webm=video/webm,ogg=video/ogg,mp3=audio/mpeg,wav=audio/wav,"
-                                "txt=text/plain,xml=application/xml,pdf=application/pdf"
+                                "txt=text/plain,xml=application/xml,pdf=application/pdf",
+                    .root_dir = server->config.web_root,
+                    .extra_headers = "Connection: close\r\n"
                 };
-                
-                // Set the root_dir directly before serving
-                std_opts.root_dir = server->config.web_root;
                 
                 mg_http_serve_file(c, hm, file_path, &std_opts);
             }
@@ -494,7 +506,8 @@ auth_success:
                              "json=application/json,jpg=image/jpeg,jpeg=image/jpeg,png=image/png,"
                              "gif=image/gif,svg=image/svg+xml,ico=image/x-icon,mp4=video/mp4,"
                              "webm=video/webm,ogg=video/ogg,mp3=audio/mpeg,wav=audio/wav,"
-                             "txt=text/plain,xml=application/xml,pdf=application/pdf"
+                             "txt=text/plain,xml=application/xml,pdf=application/pdf",
+                .extra_headers = "Connection: close\r\n"
             };
             
             log_info("Serving SPA index file using mg_http_serve_file: %s", index_path);

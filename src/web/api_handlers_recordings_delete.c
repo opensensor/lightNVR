@@ -13,13 +13,13 @@
 #include "web/mongoose_adapter.h"
 #include "web/mongoose_server_auth.h"
 #include "web/http_server.h"
-#include "web/api_thread_pool.h"
 #include "core/logger.h"
 #include "core/config.h"
 #include "mongoose.h"
 #include "database/database_manager.h"
 #include "database/db_recordings.h"
 #include "database/db_auth.h"
+#include "web/mongoose_server_multithreading.h"
 
 // Forward declarations for batch delete functionality
 typedef struct {
@@ -89,9 +89,6 @@ void delete_recording_task_function(void *arg) {
         return;
     }
     
-    // Release the thread pool when this task is done
-    bool release_needed = true;
-    
     uint64_t id = task->id;
     
     log_info("Processing DELETE /api/recordings/%llu task", (unsigned long long)id);
@@ -104,9 +101,6 @@ void delete_recording_task_function(void *arg) {
         log_error("Recording not found: %llu", (unsigned long long)id);
         // Don't send response here - already sent 202
         delete_recording_task_free(task);
-        if (release_needed) {
-            api_thread_pool_release();
-        }
         return;
     }
     
@@ -132,21 +126,52 @@ void delete_recording_task_function(void *arg) {
         log_error("Failed to delete recording from database: %llu", (unsigned long long)id);
         // Don't send response here - already sent 202
         delete_recording_task_free(task);
-        if (release_needed) {
-            api_thread_pool_release();
-        }
         return;
     }
     
     // Clean up
     delete_recording_task_free(task);
     
-    // Release the thread pool if needed
-    if (release_needed) {
-        api_thread_pool_release();
+    log_info("Successfully deleted recording: %llu", (unsigned long long)id);
+}
+
+/**
+ * @brief Handler function for delete recording
+ * 
+ * This function is called by the multithreading system.
+ * 
+ * @param c Mongoose connection
+ * @param hm HTTP message
+ */
+void delete_recording_handler(struct mg_connection *c, struct mg_http_message *hm) {
+    // Extract recording ID from URL
+    char id_str[32];
+    if (mg_extract_path_param(hm, "/api/recordings/", id_str, sizeof(id_str)) != 0) {
+        log_error("Failed to extract recording ID from URL");
+        mg_send_json_error(c, 400, "Invalid request path");
+        return;
     }
     
-    log_info("Successfully deleted recording: %llu", (unsigned long long)id);
+    // Convert ID to integer
+    uint64_t id = strtoull(id_str, NULL, 10);
+    if (id == 0) {
+        log_error("Invalid recording ID: %s", id_str);
+        mg_send_json_error(c, 400, "Invalid recording ID");
+        return;
+    }
+    
+    log_info("Handling DELETE /api/recordings/%llu request in worker thread", (unsigned long long)id);
+    
+    // Create task
+    delete_recording_task_t *task = delete_recording_task_create(c, id);
+    if (!task) {
+        log_error("Failed to create delete recording task");
+        mg_send_json_error(c, 500, "Failed to create delete recording task");
+        return;
+    }
+    
+    // Call the task function directly
+    delete_recording_task_function(task);
 }
 
 /**
@@ -233,44 +258,34 @@ void mg_handle_delete_recording(struct mg_connection *c, struct mg_http_message 
     
     log_info("Handling DELETE /api/recordings/%llu request", (unsigned long long)id);
     
-    // Get recording from database
-    recording_metadata_t recording;
-    memset(&recording, 0, sizeof(recording_metadata_t)); // Initialize to prevent undefined behavior
+    // Send an immediate response to the client before processing the request
+    mg_send_json_response(c, 202, "{\"success\":true,\"message\":\"Processing request\"}");
     
-    if (get_recording_metadata_by_id(id, &recording) != 0) {
-        log_error("Recording not found: %llu", (unsigned long long)id);
-        mg_send_json_error(c, 404, "Recording not found");
+    // Create a thread data structure
+    struct mg_thread_data *data = calloc(1, sizeof(struct mg_thread_data));
+    if (!data) {
+        log_error("Failed to allocate memory for thread data");
+        mg_http_reply(c, 500, "", "Internal Server Error\n");
         return;
     }
     
-    // Check if file exists before attempting to delete
-    struct stat st;
-    bool file_exists = (stat(recording.file_path, &st) == 0);
-    
-    // Delete file if it exists
-    if (file_exists) {
-        if (unlink(recording.file_path) != 0) {
-            log_warn("Failed to delete recording file: %s (error: %s)", 
-                    recording.file_path, strerror(errno));
-            // Continue anyway, we'll remove from database
-        } else {
-            log_info("Deleted recording file: %s", recording.file_path);
-        }
-    } else {
-        log_warn("Recording file does not exist: %s", recording.file_path);
-    }
-    
-    // Delete from database
-    if (delete_recording_metadata(id) != 0) {
-        log_error("Failed to delete recording from database: %llu", (unsigned long long)id);
-        mg_send_json_error(c, 500, "Failed to delete recording from database");
+    // Copy the HTTP message
+    data->message = mg_strdup(hm->message);
+    if (data->message.len == 0) {
+        log_error("Failed to duplicate HTTP message");
+        free(data);
         return;
     }
     
-    // Send success response
-    mg_send_json_response(c, 200, "{\"success\":true}");
+    // Set connection ID, manager, and handler function
+    data->conn_id = c->id;
+    data->mgr = c->mgr;
+    data->handler_func = delete_recording_handler;
     
-    log_info("Successfully deleted recording: %llu", (unsigned long long)id);
+    // Start thread
+    mg_start_thread(mg_thread_function, data);
+    
+    log_info("Delete recording task started in a worker thread");
 }
 
 // This function is now defined in api_handlers_recordings_batch.c

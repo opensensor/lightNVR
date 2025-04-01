@@ -65,10 +65,25 @@ int mg_extract_path_param(struct mg_http_message *hm, const char *prefix, char *
  */
 void mg_send_json_response(struct mg_connection *c, int status_code, const char *json_str) {
     if (!c || !json_str) {
+        log_error("Invalid parameters for mg_send_json_response: connection=%p, json_str=%p", 
+                 (void*)c, (void*)json_str);
         return;
     }
     
-    mg_http_reply(c, status_code, "Content-Type: application/json\r\n", "%s", json_str);
+    // Set proper headers for CORS and caching
+    const char *headers = "Content-Type: application/json\r\n"
+                         "Connection: close\r\n"
+                         "Access-Control-Allow-Origin: *\r\n"
+                         "Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS\r\n"
+                         "Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With\r\n"
+                         "Access-Control-Allow-Credentials: true\r\n"
+                         "Access-Control-Max-Age: 86400\r\n"
+                         "Cache-Control: no-cache, no-store, must-revalidate\r\n"
+                         "Pragma: no-cache\r\n"
+                         "Expires: 0\r\n";
+    
+    log_info("Sending JSON response with status code %d", status_code);
+    mg_http_reply(c, status_code, headers, "%s", json_str);
 }
 
 /**
@@ -76,13 +91,27 @@ void mg_send_json_response(struct mg_connection *c, int status_code, const char 
  */
 void mg_send_json_error(struct mg_connection *c, int status_code, const char *error_message) {
     if (!c || !error_message) {
+        log_error("Invalid parameters for mg_send_json_error: connection=%p, error_message=%p", 
+                 (void*)c, (void*)error_message);
         return;
     }
+    
+    // Set proper headers for CORS and caching
+    const char *headers = "Content-Type: application/json\r\n"
+                         "Connection: close\r\n"
+                         "Access-Control-Allow-Origin: *\r\n"
+                         "Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS\r\n"
+                         "Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With\r\n"
+                         "Access-Control-Allow-Credentials: true\r\n"
+                         "Access-Control-Max-Age: 86400\r\n"
+                         "Cache-Control: no-cache, no-store, must-revalidate\r\n"
+                         "Pragma: no-cache\r\n"
+                         "Expires: 0\r\n";
     
     // Create error JSON
     cJSON *error = cJSON_CreateObject();
     if (!error) {
-        mg_http_reply(c, 500, "Content-Type: application/json\r\n", 
+        mg_http_reply(c, 500, headers, 
                      "{\"error\": \"Failed to create error JSON\"}\n");
         return;
     }
@@ -92,12 +121,12 @@ void mg_send_json_error(struct mg_connection *c, int status_code, const char *er
     char *json_str = cJSON_PrintUnformatted(error);
     if (!json_str) {
         cJSON_Delete(error);
-        mg_http_reply(c, 500, "Content-Type: application/json\r\n", 
+        mg_http_reply(c, 500, headers, 
                      "{\"error\": \"Failed to convert error JSON to string\"}\n");
         return;
     }
     
-    mg_http_reply(c, status_code, "Content-Type: application/json\r\n", "%s", json_str);
+    mg_http_reply(c, status_code, headers, "%s", json_str);
     
     free(json_str);
     cJSON_Delete(error);

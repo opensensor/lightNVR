@@ -10,7 +10,7 @@
 #include "web/api_handlers_onvif.h"
 #include "web/api_handlers.h"
 #include "web/mongoose_adapter.h"
-#include "web/api_thread_pool.h"
+#include "web/mongoose_server_multithreading.h"
 #include "core/logger.h"
 #include "core/config.h"
 #include "video/onvif_discovery.h"
@@ -208,19 +208,11 @@ void mg_handle_get_discovered_onvif_devices(struct mg_connection *c, struct mg_h
 }
 
 /**
- * @brief Handle POST request to manually discover ONVIF devices
+ * @brief ONVIF discovery handler function for multithreading
+ * This function is called directly in the main thread or in a worker thread
  */
-void mg_handle_post_discover_onvif_devices(struct mg_connection *c, struct mg_http_message *hm) {
-    log_info("Handling POST /api/onvif/discovery/discover request");
-    
-    // Acquire the API thread pool on demand
-    // This will initialize the pool if it doesn't exist and increment the reference count
-    thread_pool_t *pool = api_thread_pool_acquire(api_thread_pool_get_size(), 10);
-    if (!pool) {
-        log_error("Failed to acquire API thread pool");
-        mg_send_json_error(c, 500, "Failed to acquire API thread pool");
-        return;
-    }
+void mg_handle_onvif_discovery_worker(struct mg_connection *c, struct mg_http_message *hm) {
+    log_info("Processing ONVIF discovery request");
     
     // Parse JSON request
     cJSON *root = mg_parse_json_body(hm);
@@ -244,38 +236,118 @@ void mg_handle_post_discover_onvif_devices(struct mg_connection *c, struct mg_ht
         }
     }
     
-    // Convert JSON to string for task
-    char *json_str = cJSON_PrintUnformatted(root);
+    // If network is NULL, we'll use auto-detection
+    if (!network) {
+        log_info("Network parameter not provided or set to 'auto', will use auto-detection");
+    }
+    
+    // Discover ONVIF devices
+    onvif_device_info_t devices[32];
+    int count = discover_onvif_devices(network, devices, 32);
+    
     cJSON_Delete(root);
     
+    if (count < 0) {
+        log_error("Failed to discover ONVIF devices");
+        mg_send_json_error(c, 500, "Failed to discover ONVIF devices");
+        return;
+    }
+    
+    // Create JSON response
+    cJSON *response_json = cJSON_CreateObject();
+    if (!response_json) {
+        log_error("Failed to create JSON response");
+        mg_send_json_error(c, 500, "Failed to create JSON response");
+        return;
+    }
+    
+    cJSON *devices_array = cJSON_AddArrayToObject(response_json, "devices");
+    if (!devices_array) {
+        log_error("Failed to create JSON response");
+        cJSON_Delete(response_json);
+        mg_send_json_error(c, 500, "Failed to create JSON response");
+        return;
+    }
+    
+    // Add devices to array
+    for (int i = 0; i < count; i++) {
+        cJSON *device = cJSON_CreateObject();
+        if (!device) {
+            log_error("Failed to create JSON response");
+            cJSON_Delete(response_json);
+            mg_send_json_error(c, 500, "Failed to create JSON response");
+            return;
+        }
+        
+        cJSON_AddStringToObject(device, "endpoint", devices[i].endpoint);
+        cJSON_AddStringToObject(device, "device_service", devices[i].device_service);
+        cJSON_AddStringToObject(device, "media_service", devices[i].media_service);
+        cJSON_AddStringToObject(device, "ptz_service", devices[i].ptz_service);
+        cJSON_AddStringToObject(device, "imaging_service", devices[i].imaging_service);
+        cJSON_AddStringToObject(device, "manufacturer", devices[i].manufacturer);
+        cJSON_AddStringToObject(device, "model", devices[i].model);
+        cJSON_AddStringToObject(device, "firmware_version", devices[i].firmware_version);
+        cJSON_AddStringToObject(device, "serial_number", devices[i].serial_number);
+        cJSON_AddStringToObject(device, "hardware_id", devices[i].hardware_id);
+        cJSON_AddStringToObject(device, "ip_address", devices[i].ip_address);
+        cJSON_AddStringToObject(device, "mac_address", devices[i].mac_address);
+        cJSON_AddNumberToObject(device, "discovery_time", (double)devices[i].discovery_time);
+        cJSON_AddBoolToObject(device, "online", devices[i].online);
+        
+        cJSON_AddItemToArray(devices_array, device);
+    }
+    
+    // Convert to string
+    char *json_str = cJSON_PrintUnformatted(response_json);
+    cJSON_Delete(response_json);
+    
     if (!json_str) {
-        log_error("Failed to convert JSON to string");
-        mg_send_json_error(c, 500, "Failed to convert JSON to string");
+        log_error("Failed to generate JSON response");
+        mg_send_json_error(c, 500, "Failed to generate JSON response");
         return;
     }
     
-    // Create task
-    onvif_discovery_task_t *task = onvif_discovery_task_create(c, network, json_str);
-    free(json_str); // We've copied the string into the task
+    // Send response
+    mg_send_json_response(c, 200, json_str);
     
-    if (!task) {
-        log_error("Failed to create ONVIF discovery task");
-        mg_send_json_error(c, 500, "Failed to create ONVIF discovery task");
+    // Clean up
+    free(json_str);
+    
+    log_info("Successfully processed ONVIF discovery request");
+}
+
+/**
+ * @brief Handle POST request to manually discover ONVIF devices
+ */
+void mg_handle_post_discover_onvif_devices(struct mg_connection *c, struct mg_http_message *hm) {
+    log_info("Handling POST /api/onvif/discovery/discover request");
+    
+    // Create a thread data structure
+    struct mg_thread_data *data = calloc(1, sizeof(struct mg_thread_data));
+    if (!data) {
+        log_error("Failed to allocate memory for thread data");
+        mg_http_reply(c, 500, "", "Internal Server Error\n");
         return;
     }
     
-    // Add task to thread pool
-    if (!thread_pool_add_task(pool, onvif_discovery_task_function, task)) {
-        log_error("Failed to add ONVIF discovery task to thread pool");
-        onvif_discovery_task_free(task);
-        mg_send_json_error(c, 500, "Failed to add ONVIF discovery task to thread pool");
+    // Copy the HTTP message
+    data->message = mg_strdup(hm->message);
+    if (data->message.len == 0) {
+        log_error("Failed to duplicate HTTP message");
+        free(data);
+        mg_http_reply(c, 500, "", "Internal Server Error\n");
         return;
     }
     
-    // The task will send the response when it's done
-    log_info("ONVIF discovery task added to thread pool");
+    // Set connection ID, manager, and handler function
+    data->conn_id = c->id;
+    data->mgr = c->mgr;
+    data->handler_func = mg_handle_onvif_discovery_worker;
     
-    // Note: We don't send a response here, the task will send it when it's done
+    // Start thread
+    mg_start_thread(mg_thread_function, data);
+    
+    log_info("ONVIF discovery request is being handled in a worker thread");
 }
 
 /**

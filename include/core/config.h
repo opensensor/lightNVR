@@ -81,7 +81,6 @@ typedef struct {
     bool web_auth_enabled;
     char web_username[32];
     char web_password[32]; // Stored as hash in actual implementation
-    int web_thread_pool_size;        // Number of threads for handling both connections and API operations
     
     // Web optimization settings
     bool web_compression_enabled;    // Whether to enable gzip compression for text-based responses

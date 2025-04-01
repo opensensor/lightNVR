@@ -14,7 +14,6 @@
 
 #include "web/recordings_playback_task.h"
 #include "web/recordings_playback_state.h"
-#include "web/api_thread_pool.h"
 #include "web/mongoose_adapter.h"
 #include "web/mongoose_server_auth.h"
 #include "web/http_server.h"
@@ -22,6 +21,7 @@
 #include "core/logger.h"
 #include "database/database_manager.h"
 #include "database/db_recordings.h"
+#include "web/mongoose_server_multithreading.h"
 
 /**
  * @brief Create a playback recording task
@@ -59,17 +59,18 @@ playback_recording_task_t *playback_recording_task_create(struct mg_connection *
  * @brief Free a playback recording task
  * 
  * @param task Task to free
+ * @param free_http_message Whether to free the HTTP message
  */
-void playback_recording_task_free(playback_recording_task_t *task) {
+void playback_recording_task_free(playback_recording_task_t *task, bool free_http_message) {
     if (task) {
         if (task->range_header) {
             free(task->range_header);
             task->range_header = NULL; // Prevent use-after-free
         }
         
-        // Free the HTTP message if it was dynamically allocated
+        // Free the HTTP message if it was dynamically allocated and we're instructed to free it
         // This is the case when we create a copy in mg_handle_play_recording
-        if (task->hm) {
+        if (free_http_message && task->hm) {
             free(task->hm);
             task->hm = NULL; // Prevent use-after-free
         }
@@ -101,7 +102,7 @@ void playback_recording_task_function(void *arg) {
     if (!c) {
         log_error("Invalid Mongoose connection");
         mark_request_inactive(id);  // Mark request as inactive
-        playback_recording_task_free(task);
+        playback_recording_task_free(task, true);
         return;
     }
 
@@ -109,7 +110,7 @@ void playback_recording_task_function(void *arg) {
     if (c->is_closing) {
         log_error("Connection is closing, aborting playback task");
         mark_request_inactive(id);  // Mark request as inactive
-        playback_recording_task_free(task);
+        playback_recording_task_free(task, true);
         return;
     }
 
@@ -125,20 +126,30 @@ void playback_recording_task_function(void *arg) {
     recording_metadata_t recording;
     memset(&recording, 0, sizeof(recording_metadata_t));
     
+    // Set proper headers for CORS and caching
+    const char *headers = "Content-Type: application/json\r\n"
+                         "Access-Control-Allow-Origin: *\r\n"
+                         "Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS\r\n"
+                         "Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With\r\n"
+                         "Access-Control-Allow-Credentials: true\r\n"
+                         "Cache-Control: no-cache, no-store, must-revalidate\r\n"
+                         "Pragma: no-cache\r\n"
+                         "Expires: 0\r\n";
+                         
     if (get_recording_metadata_by_id(id, &recording) != 0) {
         log_error("Recording not found: %llu", (unsigned long long)id);
-        mg_http_reply(c, 404, "Content-Type: application/json\r\n", "{\"error\":\"Recording not found\"}");
+        mg_http_reply(c, 404, headers, "{\"error\":\"Recording not found\"}");
         mark_request_inactive(id);  // Mark request as inactive
-        playback_recording_task_free(task);
+        playback_recording_task_free(task, true);
         return;
     }
 
     // Validate file path
     if (recording.file_path[0] == '\0') {
         log_error("Recording has empty file path: %llu", (unsigned long long)id);
-        mg_http_reply(c, 500, "Content-Type: application/json\r\n", "{\"error\":\"Recording has invalid file path\"}");
+        mg_http_reply(c, 500, headers, "{\"error\":\"Recording has invalid file path\"}");
         mark_request_inactive(id);  // Mark request as inactive
-        playback_recording_task_free(task);
+        playback_recording_task_free(task, true);
         return;
     }
 
@@ -146,9 +157,9 @@ void playback_recording_task_function(void *arg) {
     struct stat st;
     if (stat(recording.file_path, &st) != 0) {
         log_error("Recording file not found: %s (error: %s)", recording.file_path, strerror(errno));
-        mg_http_reply(c, 404, "Content-Type: application/json\r\n", "{\"error\":\"Recording file not found\"}");
+        mg_http_reply(c, 404, headers, "{\"error\":\"Recording file not found\"}");
         mark_request_inactive(id);  // Mark request as inactive
-        playback_recording_task_free(task);
+        playback_recording_task_free(task, true);
         return;
     }
 
@@ -196,8 +207,10 @@ void playback_recording_task_function(void *arg) {
     // Mark the request as inactive
     mark_request_inactive(id);
 
-    // Free task resources
-    playback_recording_task_free(task);
+    // Free task resources but DO NOT free the HTTP message
+    // Mongoose's mg_http_serve_file needs the HTTP message to remain valid
+    // until it completes serving the file asynchronously
+    playback_recording_task_free(task, false);
 
     log_info("Successfully handled GET /api/recordings/play/%llu request", (unsigned long long)id);
 }
@@ -291,6 +304,62 @@ static void mark_request_inactive(uint64_t id) {
 }
 
 /**
+ * @brief Handler function for playback recording
+ * 
+ * This function is called by the multithreading system.
+ * 
+ * @param c Mongoose connection
+ * @param hm HTTP message
+ */
+void playback_recording_handler(struct mg_connection *c, struct mg_http_message *hm) {
+    // Extract recording ID from URL
+    char id_str[32];
+    if (mg_extract_path_param(hm, "/api/recordings/play/", id_str, sizeof(id_str)) != 0) {
+        log_error("Failed to extract recording ID from URL");
+        mg_send_json_error(c, 400, "Invalid request path");
+        return;
+    }
+    
+    // Convert ID to integer
+    uint64_t id = strtoull(id_str, NULL, 10);
+    if (id == 0) {
+        log_error("Invalid recording ID: %s", id_str);
+        mg_send_json_error(c, 400, "Invalid recording ID");
+        return;
+    }
+    
+    // Check if this request is already being processed
+    if (is_request_active(id)) {
+        log_warn("Request for recording %llu already being processed, skipping duplicate", 
+                (unsigned long long)id);
+        // Instead of just returning, send an error to the client
+        mg_send_json_error(c, 429, "This recording is already being processed");
+        return;
+    }
+    
+    // Mark this request as active
+    if (!mark_request_active(id)) {
+        log_error("Failed to mark request as active, too many concurrent requests");
+        mg_send_json_error(c, 503, "Too many concurrent requests");
+        return;
+    }
+    
+    log_info("Handling GET /api/recordings/play/%llu request in worker thread", (unsigned long long)id);
+    
+    // Create task
+    playback_recording_task_t *task = playback_recording_task_create(c, id, hm);
+    if (!task) {
+        log_error("Failed to create playback recording task");
+        mark_request_inactive(id);
+        mg_send_json_error(c, 500, "Failed to create playback recording task");
+        return;
+    }
+    
+    // Call the task function directly
+    playback_recording_task_function(task);
+}
+
+/**
  * @brief Direct handler for GET /api/recordings/play/:id
  */
 void mg_handle_play_recording(struct mg_connection *c, struct mg_http_message *hm) {
@@ -324,6 +393,8 @@ void mg_handle_play_recording(struct mg_connection *c, struct mg_http_message *h
         return;
     }
     
+    log_info("Handling GET /api/recordings/play/%llu request", (unsigned long long)id);
+    
     // Check if this request is already being processed
     if (is_request_active(id)) {
         log_warn("Request for recording %llu already being processed, skipping duplicate", 
@@ -340,57 +411,17 @@ void mg_handle_play_recording(struct mg_connection *c, struct mg_http_message *h
         return;
     }
     
-    log_info("Handling GET /api/recordings/play/%llu request", (unsigned long long)id);
-    
-    // Create a copy of the HTTP message for the task
-    struct mg_http_message *hm_copy = malloc(sizeof(struct mg_http_message));
-    if (!hm_copy) {
-        log_error("Failed to allocate memory for HTTP message copy");
-        mg_send_json_error(c, 500, "Internal server error");
-        mark_request_inactive(id);
-        return;
-    }
-    
-    // Copy the HTTP message
-    memcpy(hm_copy, hm, sizeof(struct mg_http_message));
-    
-    // Note: We don't need to deep copy the HTTP message contents because
-    // we only need the Range header, which we extract and copy in playback_recording_task_create
-    
-    // Get the global thread pool - this will initialize it if needed
-    thread_pool_t *pool = api_thread_pool_get();
-    if (!pool) {
-        // If the pool doesn't exist, acquire it (this will initialize it)
-        pool = api_thread_pool_acquire(api_thread_pool_get_size(), 10);
-        if (!pool) {
-            log_error("Failed to acquire thread pool");
-            mg_send_json_error(c, 500, "Failed to acquire thread pool");
-            mark_request_inactive(id);
-            free(hm_copy);
-            return;
-        }
-    }
-    
-    // Create task with the copied HTTP message
-    playback_recording_task_t *task = playback_recording_task_create(c, id, hm_copy);
+    // Create task directly
+    playback_recording_task_t *task = playback_recording_task_create(c, id, hm);
     if (!task) {
         log_error("Failed to create playback recording task");
         mark_request_inactive(id);
-        free(hm_copy);
         mg_send_json_error(c, 500, "Failed to create playback recording task");
         return;
     }
     
-    // Add task to thread pool
-    if (!thread_pool_add_task(pool, playback_recording_task_function, task)) {
-        log_error("Failed to add playback recording task to thread pool");
-        playback_recording_task_free(task);
-        mark_request_inactive(id);
-        // Don't free hm_copy here as it's already freed in playback_recording_task_free
-        mg_send_json_error(c, 500, "Failed to add playback recording task to thread pool");
-        return;
-    }
+    // Call the task function directly without creating a worker thread
+    playback_recording_task_function(task);
     
-    // Note: We don't need to release the thread pool here, as it's a global resource
-    log_info("Playback recording task added to thread pool");
+    log_info("Playback recording task completed");
 }

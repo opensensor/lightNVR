@@ -18,8 +18,8 @@
 #include "mongoose.h"
 #include "video/go2rtc/go2rtc_integration.h"
 #include "video/go2rtc/go2rtc_stream.h"
-#include "web/thread_pool.h"
-#include "web/api_thread_pool.h"
+#include "web/mongoose_server_multithreading.h"
+#include "web/api_handlers_go2rtc_proxy.h"
 
 // Buffer size for URLs
 #define URL_BUFFER_SIZE 2048
@@ -50,28 +50,33 @@ static size_t write_callback(void *contents, size_t size, size_t nmemb, void *us
 }
 
 /**
- * @brief Direct handler for POST /api/webrtc
+ * @brief Handler for POST /api/webrtc
  * 
  * This handler proxies WebRTC offer requests to the go2rtc API.
+ * It processes the request directly in the current thread.
  */
 void mg_handle_go2rtc_webrtc_offer(struct mg_connection *c, struct mg_http_message *hm) {
+    log_info("Processing WebRTC offer request");
+    
+    // Process the request directly
+    mg_handle_go2rtc_webrtc_offer_worker(c, hm);
+    
+    log_info("Completed WebRTC offer request");
+}
+
+/**
+ * @brief Worker function for POST /api/webrtc
+ * 
+ * This function is called by the multithreading system to handle WebRTC offer requests.
+ */
+void mg_handle_go2rtc_webrtc_offer_worker(struct mg_connection *c, struct mg_http_message *hm) {
     // Variables for resources that need cleanup
-    thread_pool_t *pool = NULL;
     struct mg_str *src_param = NULL;
     char *param_value = NULL;
     char *offer = NULL;
     CURL *curl = NULL;
     struct curl_slist *headers = NULL;
     struct curl_response response = {0};
-    bool release_needed = true;
-    
-    // Acquire the API thread pool to ensure proper thread management
-    pool = api_thread_pool_acquire(api_thread_pool_get_size(), 10);
-    if (!pool) {
-        log_error("Failed to acquire API thread pool");
-        mg_send_json_error(c, 500, "Internal server error");
-        goto cleanup;
-    }
     
     // Check authentication
     http_server_t *server = (http_server_t *)c->fn_data;
@@ -306,27 +311,14 @@ void mg_handle_go2rtc_webrtc_offer(struct mg_connection *c, struct mg_http_messa
         // Log the response for debugging
         log_info("Response from go2rtc: %s", response.data);
         
-        // Calculate the exact content length
-        size_t content_length = response.size;
-        
-        // Set CORS headers
-        mg_printf(c, "HTTP/1.1 200 OK\r\n");
-        mg_printf(c, "Content-Type: application/json\r\n");
-        mg_printf(c, "Access-Control-Allow-Origin: *\r\n");
-        mg_printf(c, "Access-Control-Allow-Methods: POST, OPTIONS\r\n");
-        mg_printf(c, "Access-Control-Allow-Headers: Content-Type, Authorization, Origin, X-Requested-With, Accept\r\n");
-        mg_printf(c, "Access-Control-Allow-Credentials: true\r\n");
-        
-        // Ensure response.data is not NULL and response.size is valid
-        if (response.data && content_length > 0) {
-            // Use mg_http_printf_chunk for chunked encoding to avoid Content-Length issues
-            mg_printf(c, "Transfer-Encoding: chunked\r\n\r\n");
-            mg_http_printf_chunk(c, "%s", response.data);
-            mg_http_printf_chunk(c, ""); // Empty chunk to end the response
-        } else {
-            // Send empty JSON object if no response data
-            mg_printf(c, "Content-Length: 2\r\n\r\n{}");
-        }
+        // Set CORS headers and send the response
+        mg_http_reply(c, 200, 
+                     "Content-Type: application/json\r\n"
+                     "Access-Control-Allow-Origin: *\r\n"
+                     "Access-Control-Allow-Methods: POST, OPTIONS\r\n"
+                     "Access-Control-Allow-Headers: Content-Type, Authorization, Origin, X-Requested-With, Accept\r\n"
+                     "Access-Control-Allow-Credentials: true\r\n",
+                     "%s", response.data ? response.data : "{}");
     } else {
         log_error("go2rtc API returned error: %ld", http_code);
         mg_send_json_error(c, (int)http_code, response.data ? response.data : "Error from go2rtc API");
@@ -354,36 +346,36 @@ cleanup:
     if (response.data) {
         free(response.data);
     }
-    
-    // Release the thread pool when done
-    if (release_needed && pool) {
-        api_thread_pool_release();
-    }
 }
 
 /**
- * @brief Direct handler for POST /api/webrtc/ice
+ * @brief Handler for POST /api/webrtc/ice
  * 
  * This handler proxies WebRTC ICE candidate requests to the go2rtc API.
+ * It processes the request directly in the current thread.
  */
 void mg_handle_go2rtc_webrtc_ice(struct mg_connection *c, struct mg_http_message *hm) {
+    log_info("Processing WebRTC ICE request");
+    
+    // Process the request directly
+    mg_handle_go2rtc_webrtc_ice_worker(c, hm);
+    
+    log_info("Completed WebRTC ICE request");
+}
+
+/**
+ * @brief Worker function for POST /api/webrtc/ice
+ * 
+ * This function is called by the multithreading system to handle WebRTC ICE candidate requests.
+ */
+void mg_handle_go2rtc_webrtc_ice_worker(struct mg_connection *c, struct mg_http_message *hm) {
     // Variables for resources that need cleanup
-    thread_pool_t *pool = NULL;
     struct mg_str *src_param = NULL;
     char *param_value = NULL;
     char *ice_candidate = NULL;
     CURL *curl = NULL;
     struct curl_slist *headers = NULL;
     struct curl_response response = {0};
-    bool release_needed = true;
-    
-    // Acquire the API thread pool to ensure proper thread management
-    pool = api_thread_pool_acquire(api_thread_pool_get_size(), 10);
-    if (!pool) {
-        log_error("Failed to acquire API thread pool");
-        mg_send_json_error(c, 500, "Internal server error");
-        goto cleanup;
-    }
     
     // Check authentication
     http_server_t *server = (http_server_t *)c->fn_data;
@@ -603,27 +595,14 @@ void mg_handle_go2rtc_webrtc_ice(struct mg_connection *c, struct mg_http_message
         // Log the response for debugging
         log_info("ICE response from go2rtc: %s", response.data ? response.data : "(empty)");
         
-        // Calculate the exact content length
-        size_t content_length = response.size;
-        
-        // Set CORS headers
-        mg_printf(c, "HTTP/1.1 200 OK\r\n");
-        mg_printf(c, "Content-Type: application/json\r\n");
-        mg_printf(c, "Access-Control-Allow-Origin: *\r\n");
-        mg_printf(c, "Access-Control-Allow-Methods: POST, OPTIONS\r\n");
-        mg_printf(c, "Access-Control-Allow-Headers: Content-Type, Authorization, Origin, X-Requested-With, Accept\r\n");
-        mg_printf(c, "Access-Control-Allow-Credentials: true\r\n");
-        
-        // Ensure response.data is not NULL and response.size is valid
-        if (response.data && content_length > 0) {
-            // Use mg_http_printf_chunk for chunked encoding to avoid Content-Length issues
-            mg_printf(c, "Transfer-Encoding: chunked\r\n\r\n");
-            mg_http_printf_chunk(c, "%s", response.data);
-            mg_http_printf_chunk(c, ""); // Empty chunk to end the response
-        } else {
-            // Send empty JSON object if no response data
-            mg_printf(c, "Content-Length: 2\r\n\r\n{}");
-        }
+        // Set CORS headers and send the response
+        mg_http_reply(c, 200, 
+                     "Content-Type: application/json\r\n"
+                     "Access-Control-Allow-Origin: *\r\n"
+                     "Access-Control-Allow-Methods: POST, OPTIONS\r\n"
+                     "Access-Control-Allow-Headers: Content-Type, Authorization, Origin, X-Requested-With, Accept\r\n"
+                     "Access-Control-Allow-Credentials: true\r\n",
+                     "%s", response.data ? response.data : "{}");
     } else {
         log_error("go2rtc API returned error: %ld", http_code);
         mg_send_json_error(c, (int)http_code, response.data ? response.data : "Error from go2rtc API");
@@ -651,30 +630,14 @@ cleanup:
     if (response.data) {
         free(response.data);
     }
-    
-    // Release the thread pool when done
-    if (release_needed && pool) {
-        api_thread_pool_release();
-    }
 }
 
 /**
- * @brief Direct handler for OPTIONS /api/webrtc
+ * @brief Handler for OPTIONS /api/webrtc
  * 
  * This handler responds to CORS preflight requests for the WebRTC API.
  */
 void mg_handle_go2rtc_webrtc_options(struct mg_connection *c, struct mg_http_message *hm) {
-    // Variables for resources that need cleanup
-    thread_pool_t *pool = NULL;
-    bool release_needed = true;
-    
-    // Acquire the API thread pool to ensure proper thread management
-    pool = api_thread_pool_acquire(api_thread_pool_get_size(), 10);
-    if (!pool) {
-        log_error("Failed to acquire API thread pool");
-        mg_send_json_error(c, 500, "Internal server error");
-        goto cleanup;
-    }
     
     log_info("Handling OPTIONS /api/webrtc request");
     
@@ -687,31 +650,14 @@ void mg_handle_go2rtc_webrtc_options(struct mg_connection *c, struct mg_http_mes
     mg_printf(c, "Content-Length: 0\r\n\r\n");
     
     log_info("Successfully handled OPTIONS request for WebRTC API");
-
-cleanup:
-    // Release the thread pool when done
-    if (release_needed && pool) {
-        api_thread_pool_release();
-    }
 }
 
 /**
- * @brief Direct handler for OPTIONS /api/webrtc/ice
+ * @brief Handler for OPTIONS /api/webrtc/ice
  * 
  * This handler responds to CORS preflight requests for the WebRTC ICE API.
  */
 void mg_handle_go2rtc_webrtc_ice_options(struct mg_connection *c, struct mg_http_message *hm) {
-    // Variables for resources that need cleanup
-    thread_pool_t *pool = NULL;
-    bool release_needed = true;
-    
-    // Acquire the API thread pool to ensure proper thread management
-    pool = api_thread_pool_acquire(api_thread_pool_get_size(), 10);
-    if (!pool) {
-        log_error("Failed to acquire API thread pool");
-        mg_send_json_error(c, 500, "Internal server error");
-        goto cleanup;
-    }
     
     log_info("Handling OPTIONS /api/webrtc/ice request");
     
@@ -724,10 +670,4 @@ void mg_handle_go2rtc_webrtc_ice_options(struct mg_connection *c, struct mg_http
     mg_printf(c, "Content-Length: 0\r\n\r\n");
     
     log_info("Successfully handled OPTIONS request for WebRTC ICE API");
-
-cleanup:
-    // Release the thread pool when done
-    if (release_needed && pool) {
-        api_thread_pool_release();
-    }
 }

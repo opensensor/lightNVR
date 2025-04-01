@@ -376,8 +376,8 @@ int stop_daemon(const char *pid_file) {
             // Continue to try SIGKILL
         }
     } else {
-        // Wait for process to terminate after SIGTERM
-        for (int i = 0; i < 30; i++) {
+        // Wait for process to terminate after SIGTERM (doubled from 30 to 60 iterations)
+        for (int i = 0; i < 60; i++) {
             if (kill(pid, 0) != 0) {
                 if (errno == ESRCH) {
                     // Process has terminated

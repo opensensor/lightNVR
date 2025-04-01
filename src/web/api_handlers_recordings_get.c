@@ -14,18 +14,35 @@
 #include "web/mongoose_adapter.h"
 #include "web/mongoose_server_auth.h"
 #include "web/http_server.h"
-#include "web/api_thread_pool.h"
 #include "core/logger.h"
 #include "core/config.h"
 #include "mongoose.h"
 #include "database/database_manager.h"
 #include "database/db_recordings.h"
+#include "web/mongoose_server_multithreading.h"
 
 /**
- * @brief Direct handler for GET /api/recordings
+ * @brief Worker function for GET /api/recordings
+ * 
+ * This function is called by the multithreading system to handle recordings requests.
  */
-void mg_handle_get_recordings(struct mg_connection *c, struct mg_http_message *hm) {
-    log_info("Handling GET /api/recordings request");
+void mg_handle_get_recordings_worker(struct mg_connection *c, struct mg_http_message *hm) {
+    log_info("Processing GET /api/recordings request in worker thread");
+    
+    // Extract URI for logging
+    char uri_buf[MAX_PATH_LENGTH] = {0};
+    size_t uri_len = hm->uri.len < sizeof(uri_buf) - 1 ? hm->uri.len : sizeof(uri_buf) - 1;
+    memcpy(uri_buf, hm->uri.buf, uri_len);
+    uri_buf[uri_len] = '\0';
+    
+    // Log all headers for debugging
+    log_info("Request headers for %s:", uri_buf);
+    for (int i = 0; i < MG_MAX_HTTP_HEADERS; i++) {
+        if (hm->headers[i].name.len == 0) break;
+        log_info("  %.*s: %.*s", 
+                (int)hm->headers[i].name.len, hm->headers[i].name.buf,
+                (int)hm->headers[i].value.len, hm->headers[i].value.buf);
+    }
     
     // Check authentication
     http_server_t *server = (http_server_t *)c->fn_data;
@@ -293,7 +310,8 @@ void mg_handle_get_recordings(struct mg_connection *c, struct mg_http_message *h
         return;
     }
     
-    // Send response
+    // Send response directly
+    log_info("Sending JSON response for GET /api/recordings request");
     mg_send_json_response(c, 200, json_str);
     
     // Clean up
@@ -304,9 +322,28 @@ void mg_handle_get_recordings(struct mg_connection *c, struct mg_http_message *h
 }
 
 /**
- * @brief Direct handler for GET /api/recordings/:id
+ * @brief Handler for GET /api/recordings
+ * 
+ * This handler processes the request directly in the current thread.
+ * For large datasets, this approach ensures the client receives the complete response.
  */
-void mg_handle_get_recording(struct mg_connection *c, struct mg_http_message *hm) {
+void mg_handle_get_recordings(struct mg_connection *c, struct mg_http_message *hm) {
+    log_info("Processing GET /api/recordings request");
+    
+    // Process the request directly
+    mg_handle_get_recordings_worker(c, hm);
+    
+    log_info("Completed GET /api/recordings request");
+}
+
+/**
+ * @brief Worker function for GET /api/recordings/:id
+ * 
+ * This function is called by the multithreading system to handle recording detail requests.
+ */
+void mg_handle_get_recording_worker(struct mg_connection *c, struct mg_http_message *hm) {
+    log_info("Processing GET /api/recordings/:id request in worker thread");
+    
     // Check authentication
     http_server_t *server = (http_server_t *)c->fn_data;
     if (server && server->config.auth_enabled) {
@@ -401,7 +438,7 @@ void mg_handle_get_recording(struct mg_connection *c, struct mg_http_message *hm
         return;
     }
     
-    // Send response
+    // Send response directly
     mg_send_json_response(c, 200, json_str);
     
     // Clean up
@@ -409,4 +446,19 @@ void mg_handle_get_recording(struct mg_connection *c, struct mg_http_message *hm
     cJSON_Delete(recording_obj);
     
     log_info("Successfully handled GET /api/recordings/%llu request", (unsigned long long)id);
+}
+
+/**
+ * @brief Handler for GET /api/recordings/:id
+ * 
+ * This handler processes the request directly in the current thread.
+ * This approach ensures the client receives the complete response.
+ */
+void mg_handle_get_recording(struct mg_connection *c, struct mg_http_message *hm) {
+    log_info("Processing GET /api/recordings/:id request");
+    
+    // Process the request directly
+    mg_handle_get_recording_worker(c, hm);
+    
+    log_info("Completed GET /api/recordings/:id request");
 }

@@ -13,12 +13,12 @@
 #include "../external/cjson/cJSON.h"
 #include "web/api_handlers.h"
 #include "web/mongoose_adapter.h"
-#include "web/api_thread_pool.h"
 #include "web/websocket_bridge.h"
 #include "web/websocket_client.h"
 #include "web/websocket_handler.h"
 #include "web/api_handlers_recordings_batch_ws.h"
 #include "web/mongoose_server_websocket_utils.h"
+#include "web/mongoose_server_multithreading.h"
 #include "core/logger.h"
 #include "core/config.h"
 #include "core/shutdown_coordinator.h"
@@ -199,12 +199,8 @@ void batch_delete_recordings_ws_task_function(void *arg) {
     if (is_shutdown_initiated()) {
         log_info("Skipping batch delete task due to system shutdown");
         batch_delete_recordings_ws_task_free(task);
-        api_thread_pool_release();
         return;
     }
-    
-    // Release the thread pool when this task is done
-    bool release_needed = true;
     
     // Parse JSON request
     cJSON *json = cJSON_Parse(task->json_str);
@@ -219,9 +215,6 @@ void batch_delete_recordings_ws_task_function(void *arg) {
         }
         
         batch_delete_recordings_ws_task_free(task);
-        if (release_needed) {
-            api_thread_pool_release();
-        }
         return;
     }
     
@@ -244,9 +237,6 @@ void batch_delete_recordings_ws_task_function(void *arg) {
             }
             
             batch_delete_recordings_ws_task_free(task);
-            if (release_needed) {
-                api_thread_pool_release();
-            }
             return;
         }
         
@@ -389,9 +379,6 @@ void batch_delete_recordings_ws_task_function(void *arg) {
             }
             
             batch_delete_recordings_ws_task_free(task);
-            if (release_needed) {
-                api_thread_pool_release();
-            }
             return;
         }
         
@@ -534,9 +521,6 @@ void batch_delete_recordings_ws_task_function(void *arg) {
                 }
                 
                 batch_delete_recordings_ws_task_free(task);
-                if (release_needed) {
-                    api_thread_pool_release();
-                }
                 return;
             }
             
@@ -552,9 +536,6 @@ void batch_delete_recordings_ws_task_function(void *arg) {
             cJSON_Delete(json);
             cJSON_Delete(response);
             batch_delete_recordings_ws_task_free(task);
-            if (release_needed) {
-                api_thread_pool_release();
-            }
             return;
         }
         
@@ -579,9 +560,6 @@ void batch_delete_recordings_ws_task_function(void *arg) {
             }
             
             batch_delete_recordings_ws_task_free(task);
-            if (release_needed) {
-                api_thread_pool_release();
-            }
             return;
         }
         
@@ -615,9 +593,6 @@ void batch_delete_recordings_ws_task_function(void *arg) {
                 }
                 
                 batch_delete_recordings_ws_task_free(task);
-                if (release_needed) {
-                    api_thread_pool_release();
-                }
                 return;
             }
             
@@ -633,9 +608,6 @@ void batch_delete_recordings_ws_task_function(void *arg) {
             cJSON_Delete(json);
             cJSON_Delete(response);
             batch_delete_recordings_ws_task_free(task);
-            if (release_needed) {
-                api_thread_pool_release();
-            }
             return;
         }
         
@@ -732,9 +704,6 @@ void batch_delete_recordings_ws_task_function(void *arg) {
             }
             
             batch_delete_recordings_ws_task_free(task);
-            if (release_needed) {
-                api_thread_pool_release();
-            }
             return;
         }
         
@@ -774,9 +743,6 @@ void batch_delete_recordings_ws_task_function(void *arg) {
         }
         
         batch_delete_recordings_ws_task_free(task);
-        if (release_needed) {
-            api_thread_pool_release();
-        }
         return;
     }
     
@@ -794,9 +760,6 @@ void batch_delete_recordings_ws_task_function(void *arg) {
     }
     
     batch_delete_recordings_ws_task_free(task);
-    if (release_needed) {
-        api_thread_pool_release();
-    }
 }
 
 /**
@@ -1114,14 +1077,14 @@ void websocket_handle_batch_delete_recordings(const char *client_id, const char 
 }
 
 /**
- * @brief HTTP handler for batch delete recordings with WebSocket support
+ * @brief Handler function for batch delete recordings with WebSocket support
+ * 
+ * This function is called by the multithreading system.
  * 
  * @param c Mongoose connection
- * @param hm Mongoose HTTP message
+ * @param hm HTTP message
  */
-void mg_handle_batch_delete_recordings_ws(struct mg_connection *c, struct mg_http_message *hm) {
-    log_info("Handling POST /api/recordings/batch-delete-ws request");
-    
+void batch_delete_recordings_ws_handler(struct mg_connection *c, struct mg_http_message *hm) {
     // Get request body
     char *body = NULL;
     if (hm->body.len > 0) {
@@ -1132,7 +1095,7 @@ void mg_handle_batch_delete_recordings_ws(struct mg_connection *c, struct mg_htt
             return;
         }
         
-        memcpy(body, mg_str_get_ptr(&hm->body), hm->body.len);
+        memcpy(body, hm->body.buf, hm->body.len);
         body[hm->body.len] = '\0';
     } else {
         log_error("Empty request body");
@@ -1170,23 +1133,12 @@ void mg_handle_batch_delete_recordings_ws(struct mg_connection *c, struct mg_htt
         return;
     }
     
-    // Acquire thread pool
-    thread_pool_t *pool = api_thread_pool_acquire(api_thread_pool_get_size(), 10);
-    if (!pool) {
-        log_error("Failed to acquire thread pool");
-        cJSON_Delete(json);
-        free(body);
-        mg_send_json_error(c, 500, "Failed to acquire thread pool");
-        return;
-    }
-    
     // Get connection from client_id
     struct mg_connection *conn = websocket_client_get_connection(client_id);
     if (!conn) {
         log_error("WebSocket connection not found for client: %s", client_id);
         cJSON_Delete(json);
         free(body);
-        api_thread_pool_release();
         mg_send_json_error(c, 400, "WebSocket connection not found for client");
         return;
     }
@@ -1199,19 +1151,7 @@ void mg_handle_batch_delete_recordings_ws(struct mg_connection *c, struct mg_htt
         log_error("Failed to create batch delete recordings task");
         cJSON_Delete(json);
         free(body);
-        api_thread_pool_release();
         mg_send_json_error(c, 500, "Failed to create batch delete recordings task");
-        return;
-    }
-    
-    // Add task to thread pool
-    if (!thread_pool_add_task(pool, batch_delete_recordings_ws_task_function, task)) {
-        log_error("Failed to add batch delete recordings task to thread pool");
-        batch_delete_recordings_ws_task_free(task);
-        cJSON_Delete(json);
-        free(body);
-        api_thread_pool_release();
-        mg_send_json_error(c, 500, "Failed to add batch delete recordings task to thread pool");
         return;
     }
     
@@ -1219,8 +1159,45 @@ void mg_handle_batch_delete_recordings_ws(struct mg_connection *c, struct mg_htt
     cJSON_Delete(json);
     free(body);
     
-    // Send success response
-    mg_send_json_response(c, 200, "{\"success\":true,\"message\":\"Batch delete operation started\"}");
+    // Call the task function directly
+    batch_delete_recordings_ws_task_function(task);
+}
+
+/**
+ * @brief HTTP handler for batch delete recordings with WebSocket support
+ * 
+ * @param c Mongoose connection
+ * @param hm Mongoose HTTP message
+ */
+void mg_handle_batch_delete_recordings_ws(struct mg_connection *c, struct mg_http_message *hm) {
+    log_info("Handling POST /api/recordings/batch-delete-ws request");
     
-    log_info("Batch delete recordings task added to thread pool");
+    // Send an immediate response to the client before processing the deletion
+    mg_send_json_response(c, 202, "{\"success\":true,\"message\":\"Batch deletion in progress\"}");
+    
+    // Create a thread data structure
+    struct mg_thread_data *data = calloc(1, sizeof(struct mg_thread_data));
+    if (!data) {
+        log_error("Failed to allocate memory for thread data");
+        mg_http_reply(c, 500, "", "Internal Server Error\n");
+        return;
+    }
+    
+    // Copy the HTTP message
+    data->message = mg_strdup(hm->message);
+    if (data->message.len == 0) {
+        log_error("Failed to duplicate HTTP message");
+        free(data);
+        return;
+    }
+    
+    // Set connection ID, manager, and handler function
+    data->conn_id = c->id;
+    data->mgr = c->mgr;
+    data->handler_func = batch_delete_recordings_ws_handler;
+    
+    // Start thread
+    mg_start_thread(mg_thread_function, data);
+    
+    log_info("Batch delete recordings task started in a worker thread");
 }

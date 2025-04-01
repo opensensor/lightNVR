@@ -5,6 +5,22 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Add this to your CSS file */
+@layer utilities {
+  .top-4 {
+    top: 1rem;
+  }
+  .right-4 {
+    right: 1rem;
+  }
+  .bottom-4 {
+    bottom: 1rem;
+  }
+  .left-4 {
+    left: 1rem;
+  }
+}
+
 /* Custom Variables */
 :root {
   --primary-color: #1e88e5;

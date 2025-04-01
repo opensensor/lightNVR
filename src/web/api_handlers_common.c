@@ -63,10 +63,20 @@ char* mg_create_config_json(const config_t *config) {
  * @param message Error message
  */
 void mg_create_error_response(struct mg_connection *c, int status_code, const char *message) {
+    // Set proper headers for CORS and caching
+    const char *headers = "Content-Type: application/json\r\n"
+                         "Access-Control-Allow-Origin: *\r\n"
+                         "Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS\r\n"
+                         "Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With\r\n"
+                         "Access-Control-Allow-Credentials: true\r\n"
+                         "Cache-Control: no-cache, no-store, must-revalidate\r\n"
+                         "Pragma: no-cache\r\n"
+                         "Expires: 0\r\n";
+    
     // Create JSON object
     cJSON *error = cJSON_CreateObject();
     if (!error) {
-        mg_http_reply(c, 500, "Content-Type: application/json\r\n", "{\"error\": \"Failed to create error JSON\"}");
+        mg_http_reply(c, 500, headers, "{\"error\": \"Failed to create error JSON\"}");
         return;
     }
     
@@ -77,12 +87,12 @@ void mg_create_error_response(struct mg_connection *c, int status_code, const ch
     char *json_str = cJSON_PrintUnformatted(error);
     if (!json_str) {
         cJSON_Delete(error);
-        mg_http_reply(c, 500, "Content-Type: application/json\r\n", "{\"error\": \"Failed to convert error JSON to string\"}");
+        mg_http_reply(c, 500, headers, "{\"error\": \"Failed to convert error JSON to string\"}");
         return;
     }
     
     // Send response
-    mg_http_reply(c, status_code, "Content-Type: application/json\r\n", "%s", json_str);
+    mg_http_reply(c, status_code, headers, "%s", json_str);
     
     // Clean up
     free(json_str);

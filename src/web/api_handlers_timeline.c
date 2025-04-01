@@ -25,7 +25,6 @@ void mg_handle_get_timeline_segments(struct mg_connection *c, struct mg_http_mes
 void mg_handle_timeline_manifest(struct mg_connection *c, struct mg_http_message *hm);
 void mg_handle_timeline_playback(struct mg_connection *c, struct mg_http_message *hm);
 
-
 // Maximum number of segments to return in a single request
 #define MAX_TIMELINE_SEGMENTS 1000
 
@@ -80,7 +79,7 @@ int get_timeline_segments(const char *stream_name, time_t start_time, time_t end
 }
 
 /**
- * Direct handler for GET /api/timeline/segments
+ * @brief Handler for GET /api/timeline/segments
  */
 void mg_handle_get_timeline_segments(struct mg_connection *c, struct mg_http_message *hm) {
     log_info("Handling GET /api/timeline/segments request");
@@ -98,18 +97,19 @@ void mg_handle_get_timeline_segments(struct mg_connection *c, struct mg_http_mes
     char start_time_str[64] = {0};
     char end_time_str[64] = {0};
     
-    // Parse query string
-    char *param = strtok(query_string, "&");
-    while (param) {
-        if (strncmp(param, "stream=", 7) == 0) {
-            strncpy(stream_name, param + 7, sizeof(stream_name) - 1);
-        } else if (strncmp(param, "start=", 6) == 0) {
-            strncpy(start_time_str, param + 6, sizeof(start_time_str) - 1);
-        } else if (strncmp(param, "end=", 4) == 0) {
-            strncpy(end_time_str, param + 4, sizeof(end_time_str) - 1);
-        }
-        param = strtok(NULL, "&");
+    // Parse query string without modifying it
+    // Extract stream parameter
+    char stream_param[MAX_STREAM_NAME] = {0};
+    mg_http_get_var(&hm->query, "stream", stream_param, sizeof(stream_param));
+    if (stream_param[0] != '\0') {
+        strncpy(stream_name, stream_param, sizeof(stream_name) - 1);
     }
+    
+    // Extract start parameter
+    mg_http_get_var(&hm->query, "start", start_time_str, sizeof(start_time_str));
+    
+    // Extract end parameter
+    mg_http_get_var(&hm->query, "end", end_time_str, sizeof(end_time_str));
     
     // Check required parameters
     if (stream_name[0] == '\0') {
@@ -230,20 +230,20 @@ void mg_handle_get_timeline_segments(struct mg_connection *c, struct mg_http_mes
     // Add metadata
     cJSON_AddStringToObject(response, "stream", stream_name);
     
-            // Format timestamps for display in UTC
-            char start_time_display[32] = {0};
-            char end_time_display[32] = {0};
-            struct tm *tm_info;
-            
-            tm_info = gmtime(&start_time);
-            if (tm_info) {
-                strftime(start_time_display, sizeof(start_time_display), "%Y-%m-%d %H:%M:%S UTC", tm_info);
-            }
-            
-            tm_info = gmtime(&end_time);
-            if (tm_info) {
-                strftime(end_time_display, sizeof(end_time_display), "%Y-%m-%d %H:%M:%S UTC", tm_info);
-            }
+    // Format timestamps for display in UTC
+    char start_time_display[32] = {0};
+    char end_time_display[32] = {0};
+    struct tm *tm_info;
+    
+    tm_info = gmtime(&start_time);
+    if (tm_info) {
+        strftime(start_time_display, sizeof(start_time_display), "%Y-%m-%d %H:%M:%S UTC", tm_info);
+    }
+    
+    tm_info = gmtime(&end_time);
+    if (tm_info) {
+        strftime(end_time_display, sizeof(end_time_display), "%Y-%m-%d %H:%M:%S UTC", tm_info);
+    }
     
     cJSON_AddStringToObject(response, "start_time", start_time_display);
     cJSON_AddStringToObject(response, "end_time", end_time_display);
@@ -257,19 +257,19 @@ void mg_handle_get_timeline_segments(struct mg_connection *c, struct mg_http_mes
             continue;
         }
         
-            // Format timestamps in UTC
-            char segment_start_time[32] = {0};
-            char segment_end_time[32] = {0};
-            
-            tm_info = gmtime(&segments[i].start_time);
-            if (tm_info) {
-                strftime(segment_start_time, sizeof(segment_start_time), "%Y-%m-%d %H:%M:%S UTC", tm_info);
-            }
-            
-            tm_info = gmtime(&segments[i].end_time);
-            if (tm_info) {
-                strftime(segment_end_time, sizeof(segment_end_time), "%Y-%m-%d %H:%M:%S UTC", tm_info);
-            }
+        // Format timestamps in UTC
+        char segment_start_time[32] = {0};
+        char segment_end_time[32] = {0};
+        
+        tm_info = gmtime(&segments[i].start_time);
+        if (tm_info) {
+            strftime(segment_start_time, sizeof(segment_start_time), "%Y-%m-%d %H:%M:%S UTC", tm_info);
+        }
+        
+        tm_info = gmtime(&segments[i].end_time);
+        if (tm_info) {
+            strftime(segment_end_time, sizeof(segment_end_time), "%Y-%m-%d %H:%M:%S UTC", tm_info);
+        }
         
         // Calculate duration in seconds
         int duration = (int)difftime(segments[i].end_time, segments[i].start_time);
@@ -316,12 +316,12 @@ void mg_handle_get_timeline_segments(struct mg_connection *c, struct mg_http_mes
     // Send response
     mg_send_json_response(c, 200, json_str);
     
-    // Clean up
     free(json_str);
     cJSON_Delete(response);
     
     log_info("Successfully handled GET /api/timeline/segments request");
 }
+
 
 /**
  * Create a playback manifest for a sequence of recordings
@@ -431,7 +431,7 @@ int create_timeline_manifest(const timeline_segment_t *segments, int segment_cou
 }
 
 /**
- * Direct handler for GET /api/timeline/manifest
+ * @brief Handler for GET /api/timeline/manifest
  */
 void mg_handle_timeline_manifest(struct mg_connection *c, struct mg_http_message *hm) {
     log_info("Handling GET /api/timeline/manifest request");
@@ -449,18 +449,19 @@ void mg_handle_timeline_manifest(struct mg_connection *c, struct mg_http_message
     char start_time_str[64] = {0};
     char end_time_str[64] = {0};
     
-    // Parse query string
-    char *param = strtok(query_string, "&");
-    while (param) {
-        if (strncmp(param, "stream=", 7) == 0) {
-            strncpy(stream_name, param + 7, sizeof(stream_name) - 1);
-        } else if (strncmp(param, "start=", 6) == 0) {
-            strncpy(start_time_str, param + 6, sizeof(start_time_str) - 1);
-        } else if (strncmp(param, "end=", 4) == 0) {
-            strncpy(end_time_str, param + 4, sizeof(end_time_str) - 1);
-        }
-        param = strtok(NULL, "&");
+    // Parse query string without modifying it
+    // Extract stream parameter
+    char stream_param[MAX_STREAM_NAME] = {0};
+    mg_http_get_var(&hm->query, "stream", stream_param, sizeof(stream_param));
+    if (stream_param[0] != '\0') {
+        strncpy(stream_name, stream_param, sizeof(stream_name) - 1);
     }
+    
+    // Extract start parameter
+    mg_http_get_var(&hm->query, "start", start_time_str, sizeof(start_time_str));
+    
+    // Extract end parameter
+    mg_http_get_var(&hm->query, "end", end_time_str, sizeof(end_time_str));
     
     // Check required parameters
     if (stream_name[0] == '\0') {
@@ -496,7 +497,7 @@ void mg_handle_timeline_manifest(struct mg_connection *c, struct mg_http_message
             
             // Convert to UTC timestamp - assume input is already in UTC
             tm.tm_isdst = 0; // No DST for UTC
-            start_time = timegm(&tm);
+            start_time = mktime(&tm);
             log_info("Parsed start time: %ld", (long)start_time);
         } else {
             log_error("Failed to parse start time string: %s", decoded_start_time);
@@ -529,7 +530,7 @@ void mg_handle_timeline_manifest(struct mg_connection *c, struct mg_http_message
             
             // Convert to UTC timestamp - assume input is already in UTC
             tm.tm_isdst = 0; // No DST for UTC
-            end_time = timegm(&tm);
+            end_time = mktime(&tm);
             log_info("Parsed end time: %ld", (long)end_time);
         } else {
             log_error("Failed to parse end time string: %s", decoded_end_time);
@@ -572,7 +573,7 @@ void mg_handle_timeline_manifest(struct mg_connection *c, struct mg_http_message
     // This is more stable and handles all the HTTP headers properly
     struct mg_http_serve_opts opts = {
         .mime_types = "m3u8=application/vnd.apple.mpegurl",
-        .extra_headers = "Cache-Control: no-cache\r\n"
+        .extra_headers = "Connection: close\r\nCache-Control: no-cache\r\n"
     };
     
     log_info("Serving manifest file using mg_http_serve_file: %s", manifest_path);
@@ -585,8 +586,9 @@ void mg_handle_timeline_manifest(struct mg_connection *c, struct mg_http_message
     log_info("Successfully handled GET /api/timeline/manifest request");
 }
 
+
 /**
- * Direct handler for GET /api/timeline/play
+ * @brief Handler for GET /api/timeline/play
  */
 void mg_handle_timeline_playback(struct mg_connection *c, struct mg_http_message *hm) {
     log_info("Handling GET /api/timeline/play request");
@@ -603,16 +605,16 @@ void mg_handle_timeline_playback(struct mg_connection *c, struct mg_http_message
     char stream_name[MAX_STREAM_NAME] = {0};
     char start_time_str[64] = {0};
     
-    // Parse query string
-    char *param = strtok(query_string, "&");
-    while (param) {
-        if (strncmp(param, "stream=", 7) == 0) {
-            strncpy(stream_name, param + 7, sizeof(stream_name) - 1);
-        } else if (strncmp(param, "start=", 6) == 0) {
-            strncpy(start_time_str, param + 6, sizeof(start_time_str) - 1);
-        }
-        param = strtok(NULL, "&");
+    // Parse query string without modifying it
+    // Extract stream parameter
+    char stream_param[MAX_STREAM_NAME] = {0};
+    mg_http_get_var(&hm->query, "stream", stream_param, sizeof(stream_param));
+    if (stream_param[0] != '\0') {
+        strncpy(stream_name, stream_param, sizeof(stream_name) - 1);
     }
+    
+    // Extract start parameter
+    mg_http_get_var(&hm->query, "start", start_time_str, sizeof(start_time_str));
     
     // Check required parameters
     if (stream_name[0] == '\0') {
@@ -722,6 +724,7 @@ void mg_handle_timeline_playback(struct mg_connection *c, struct mg_http_message
     
     // Send redirect response
     mg_printf(c, "HTTP/1.1 302 Found\r\n");
+    mg_printf(c, "Connection: close\r\n");
     mg_printf(c, "Location: %s\r\n", redirect_url);
     mg_printf(c, "Content-Length: 0\r\n");
     mg_printf(c, "\r\n");

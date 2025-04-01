@@ -90,9 +90,9 @@ export function setupModals() {
  */
 export function addStatusMessageStyles() {
   // Import the toast module to ensure it's loaded
-  import('./toast.js').then(({ addToastStyles }) => {
-    // Use the toast styles
-    addToastStyles();
+  import('./toast.js').then(({ initToastContainer }) => {
+    // Initialize the toast container
+    initToastContainer(false);
   }).catch(error => {
     console.error('Error loading toast module:', error);
     

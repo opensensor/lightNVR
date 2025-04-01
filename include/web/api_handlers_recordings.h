@@ -76,12 +76,30 @@ void remove_temp_file_callback(void *data);
 /* Mongoose-specific handlers */
 
 /**
+ * Worker function for GET request for recordings list
+ * 
+ * This function is called by the multithreading system to handle recordings requests.
+ */
+void mg_handle_get_recordings_worker(struct mg_connection *c, struct mg_http_message *hm);
+
+/**
  * Handle GET request for recordings list
+ * 
+ * This handler uses the multithreading pattern to handle the request in a worker thread.
  */
 void mg_handle_get_recordings(struct mg_connection *c, struct mg_http_message *hm);
 
 /**
+ * Worker function for GET request for a specific recording
+ * 
+ * This function is called by the multithreading system to handle recording detail requests.
+ */
+void mg_handle_get_recording_worker(struct mg_connection *c, struct mg_http_message *hm);
+
+/**
  * Handle GET request for a specific recording
+ * 
+ * This handler uses the multithreading pattern to handle the request in a worker thread.
  */
 void mg_handle_get_recording(struct mg_connection *c, struct mg_http_message *hm);
 

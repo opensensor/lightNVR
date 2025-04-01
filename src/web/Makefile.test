@@ -1,0 +1,27 @@
+# Makefile for test_multithreading.c
+
+CC = gcc
+CFLAGS = -Wall -Wextra -g -I../../ -I../../include -I../../external/mongoose
+LDFLAGS = -pthread
+
+# Source files
+SOURCES = test_multithreading.c mongoose_server_multithreading.c ../../external/mongoose/mongoose.c
+
+# Object files
+OBJECTS = $(SOURCES:.c=.o)
+
+# Executable
+TARGET = test_multithreading
+
+all: $(TARGET)
+
+$(TARGET): $(OBJECTS)
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+clean:
+	rm -f $(OBJECTS) $(TARGET)
+
+.PHONY: all clean

@@ -233,6 +233,7 @@ void mongoose_server_handle_cors_preflight(struct mg_connection *c, struct mg_ht
 
     // Send CORS preflight response
     mg_printf(c, "HTTP/1.1 200 OK\r\n");
+    mg_printf(c, "Connection: close\r\n");
     mongoose_server_add_cors_headers(c, server);
     mg_printf(c, "Content-Length: 0\r\n");
     mg_printf(c, "\r\n");

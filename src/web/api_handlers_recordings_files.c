@@ -12,12 +12,12 @@
 
 #include "web/api_handlers.h"
 #include "web/mongoose_adapter.h"
-#include "web/api_thread_pool.h"
 #include "core/logger.h"
 #include "core/config.h"
 #include "mongoose.h"
 #include "database/database_manager.h"
 #include "database/db_recordings.h"
+#include "web/mongoose_server_multithreading.h"
 
 /**
  * @brief Structure for file operations task
@@ -107,9 +107,6 @@ void file_operation_task_function(void *arg) {
         return;
     }
     
-    // Release the thread pool when this task is done
-    bool release_needed = true;
-    
     // Check operation type
     if (strcmp(task->operation, "check") == 0) {
         // Check if file exists
@@ -131,9 +128,6 @@ void file_operation_task_function(void *arg) {
             cJSON_Delete(response);
             mg_send_json_error(c, 500, "Failed to create response");
             file_operation_task_free(task);
-            if (release_needed) {
-                api_thread_pool_release();
-            }
             return;
         }
         
@@ -163,9 +157,6 @@ void file_operation_task_function(void *arg) {
                 cJSON_Delete(response);
                 mg_send_json_error(c, 500, "Failed to create response");
                 file_operation_task_free(task);
-                if (release_needed) {
-                    api_thread_pool_release();
-                }
                 return;
             }
             
@@ -183,9 +174,6 @@ void file_operation_task_function(void *arg) {
                 log_error("Failed to delete file: %s", task->path);
                 mg_send_json_error(c, 500, "Failed to delete file");
                 file_operation_task_free(task);
-                if (release_needed) {
-                    api_thread_pool_release();
-                }
                 return;
             }
             
@@ -201,9 +189,6 @@ void file_operation_task_function(void *arg) {
                 cJSON_Delete(response);
                 mg_send_json_error(c, 500, "Failed to create response");
                 file_operation_task_free(task);
-                if (release_needed) {
-                    api_thread_pool_release();
-                }
                 return;
             }
             
@@ -222,9 +207,77 @@ void file_operation_task_function(void *arg) {
     }
     
     file_operation_task_free(task);
-    if (release_needed) {
-        api_thread_pool_release();
+}
+
+/**
+ * @brief Handler function for file operations
+ * 
+ * This function is called by the multithreading system.
+ * 
+ * @param c Mongoose connection
+ * @param hm HTTP message
+ */
+void file_operation_handler(struct mg_connection *c, struct mg_http_message *hm) {
+    // Parse query parameters
+    char query_string[512] = {0};
+    if (hm->query.len > 0 && hm->query.len < sizeof(query_string)) {
+        memcpy(query_string, hm->query.buf, hm->query.len);
+        query_string[hm->query.len] = '\0';
+        log_info("Query string: %s", query_string);
     }
+    
+    // Extract path parameter
+    char path[256] = {0};
+    char *param = strtok(query_string, "&");
+    while (param) {
+        if (strncmp(param, "path=", 5) == 0) {
+            // URL-decode the path
+            char *decoded_path = param + 5;
+            // Simple URL decoding for %20 (space)
+            char *src = decoded_path;
+            char *dst = path;
+            while (*src && dst < path + sizeof(path) - 1) {
+                if (src[0] == '%' && src[1] == '2' && src[2] == '0') {
+                    *dst++ = ' ';
+                    src += 3;
+                } else {
+                    *dst++ = *src++;
+                }
+            }
+            *dst = '\0';
+            break;
+        }
+        param = strtok(NULL, "&");
+    }
+    
+    if (path[0] == '\0') {
+        log_error("Missing path parameter");
+        mg_send_json_error(c, 400, "Missing path parameter");
+        return;
+    }
+    
+    // Determine operation type based on HTTP method
+    const char *operation = NULL;
+    if (mg_http_match_uri(hm, "/api/recordings/files/check")) {
+        operation = "check";
+    } else if (mg_http_match_uri(hm, "/api/recordings/files")) {
+        operation = "delete";
+    } else {
+        log_error("Unknown URI");
+        mg_send_json_error(c, 404, "Unknown URI");
+        return;
+    }
+    
+    // Create task
+    file_operation_task_t *task = file_operation_task_create(c, path, operation);
+    if (!task) {
+        log_error("Failed to create file operation task");
+        mg_send_json_error(c, 500, "Failed to create file operation task");
+        return;
+    }
+    
+    // Call the task function directly
+    file_operation_task_function(task);
 }
 
 /**
@@ -233,72 +286,34 @@ void file_operation_task_function(void *arg) {
 void mg_handle_check_recording_file(struct mg_connection *c, struct mg_http_message *hm) {
     log_info("Handling GET /api/recordings/files/check request");
     
-    // Parse query parameters
-    char query_string[512] = {0};
-    if (hm->query.len > 0 && hm->query.len < sizeof(query_string)) {
-        memcpy(query_string, mg_str_get_ptr(&hm->query), hm->query.len);
-        query_string[hm->query.len] = '\0';
-        log_info("Query string: %s", query_string);
-    }
+    // Send an immediate response to the client before processing the request
+    mg_send_json_response(c, 202, "{\"success\":true,\"message\":\"Processing request\"}");
     
-    // Extract path parameter
-    char path[256] = {0};
-    char *param = strtok(query_string, "&");
-    while (param) {
-        if (strncmp(param, "path=", 5) == 0) {
-            // URL-decode the path
-            char *decoded_path = param + 5;
-            // Simple URL decoding for %20 (space)
-            char *src = decoded_path;
-            char *dst = path;
-            while (*src && dst < path + sizeof(path) - 1) {
-                if (src[0] == '%' && src[1] == '2' && src[2] == '0') {
-                    *dst++ = ' ';
-                    src += 3;
-                } else {
-                    *dst++ = *src++;
-                }
-            }
-            *dst = '\0';
-            break;
-        }
-        param = strtok(NULL, "&");
-    }
-    
-    if (path[0] == '\0') {
-        log_error("Missing path parameter");
-        mg_send_json_error(c, 400, "Missing path parameter");
+    // Create a thread data structure
+    struct mg_thread_data *data = calloc(1, sizeof(struct mg_thread_data));
+    if (!data) {
+        log_error("Failed to allocate memory for thread data");
+        mg_http_reply(c, 500, "", "Internal Server Error\n");
         return;
     }
     
-    // Acquire thread pool
-    thread_pool_t *pool = api_thread_pool_acquire(api_thread_pool_get_size(), 10);
-    if (!pool) {
-        log_error("Failed to acquire thread pool");
-        mg_send_json_error(c, 500, "Failed to acquire thread pool");
+    // Copy the HTTP message
+    data->message = mg_strdup(hm->message);
+    if (data->message.len == 0) {
+        log_error("Failed to duplicate HTTP message");
+        free(data);
         return;
     }
     
-    // Create task
-    file_operation_task_t *task = file_operation_task_create(c, path, "check");
-    if (!task) {
-        log_error("Failed to create file operation task");
-        api_thread_pool_release();
-        mg_send_json_error(c, 500, "Failed to create file operation task");
-        return;
-    }
+    // Set connection ID, manager, and handler function
+    data->conn_id = c->id;
+    data->mgr = c->mgr;
+    data->handler_func = file_operation_handler;
     
-    // Add task to thread pool
-    if (!thread_pool_add_task(pool, file_operation_task_function, task)) {
-        log_error("Failed to add file operation task to thread pool");
-        file_operation_task_free(task);
-        api_thread_pool_release();
-        mg_send_json_error(c, 500, "Failed to add file operation task to thread pool");
-        return;
-    }
+    // Start thread
+    mg_start_thread(mg_thread_function, data);
     
-    // Note: The task will release the thread pool when it's done
-    log_info("File operation task added to thread pool");
+    log_info("File operation task started in a worker thread");
 }
 
 /**
@@ -307,70 +322,32 @@ void mg_handle_check_recording_file(struct mg_connection *c, struct mg_http_mess
 void mg_handle_delete_recording_file(struct mg_connection *c, struct mg_http_message *hm) {
     log_info("Handling DELETE /api/recordings/files request");
     
-    // Parse query parameters
-    char query_string[512] = {0};
-    if (hm->query.len > 0 && hm->query.len < sizeof(query_string)) {
-        memcpy(query_string, mg_str_get_ptr(&hm->query), hm->query.len);
-        query_string[hm->query.len] = '\0';
-        log_info("Query string: %s", query_string);
-    }
+    // Send an immediate response to the client before processing the request
+    mg_send_json_response(c, 202, "{\"success\":true,\"message\":\"Processing request\"}");
     
-    // Extract path parameter
-    char path[256] = {0};
-    char *param = strtok(query_string, "&");
-    while (param) {
-        if (strncmp(param, "path=", 5) == 0) {
-            // URL-decode the path
-            char *decoded_path = param + 5;
-            // Simple URL decoding for %20 (space)
-            char *src = decoded_path;
-            char *dst = path;
-            while (*src && dst < path + sizeof(path) - 1) {
-                if (src[0] == '%' && src[1] == '2' && src[2] == '0') {
-                    *dst++ = ' ';
-                    src += 3;
-                } else {
-                    *dst++ = *src++;
-                }
-            }
-            *dst = '\0';
-            break;
-        }
-        param = strtok(NULL, "&");
-    }
-    
-    if (path[0] == '\0') {
-        log_error("Missing path parameter");
-        mg_send_json_error(c, 400, "Missing path parameter");
+    // Create a thread data structure
+    struct mg_thread_data *data = calloc(1, sizeof(struct mg_thread_data));
+    if (!data) {
+        log_error("Failed to allocate memory for thread data");
+        mg_http_reply(c, 500, "", "Internal Server Error\n");
         return;
     }
     
-    // Acquire thread pool
-    thread_pool_t *pool = api_thread_pool_acquire(api_thread_pool_get_size(), 10);
-    if (!pool) {
-        log_error("Failed to acquire thread pool");
-        mg_send_json_error(c, 500, "Failed to acquire thread pool");
+    // Copy the HTTP message
+    data->message = mg_strdup(hm->message);
+    if (data->message.len == 0) {
+        log_error("Failed to duplicate HTTP message");
+        free(data);
         return;
     }
     
-    // Create task
-    file_operation_task_t *task = file_operation_task_create(c, path, "delete");
-    if (!task) {
-        log_error("Failed to create file operation task");
-        api_thread_pool_release();
-        mg_send_json_error(c, 500, "Failed to create file operation task");
-        return;
-    }
+    // Set connection ID, manager, and handler function
+    data->conn_id = c->id;
+    data->mgr = c->mgr;
+    data->handler_func = file_operation_handler;
     
-    // Add task to thread pool
-    if (!thread_pool_add_task(pool, file_operation_task_function, task)) {
-        log_error("Failed to add file operation task to thread pool");
-        file_operation_task_free(task);
-        api_thread_pool_release();
-        mg_send_json_error(c, 500, "Failed to add file operation task to thread pool");
-        return;
-    }
+    // Start thread
+    mg_start_thread(mg_thread_function, data);
     
-    // Note: The task will release the thread pool when it's done
-    log_info("File operation task added to thread pool");
+    log_info("File operation task started in a worker thread");
 }

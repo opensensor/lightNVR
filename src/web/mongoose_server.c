@@ -12,10 +12,9 @@
 #include "core/logger.h"
 #include "core/shutdown_coordinator.h"
 #include "utils/memory.h"
-#include "web/connection_pool.h"
-#include "web/api_thread_pool.h"
 #include "web/mongoose_server_websocket.h"
 #include "web/websocket_manager.h"
+#include "web/mongoose_server_multithreading.h"
 
 // Include Mongoose
 #include "mongoose.h"
@@ -31,6 +30,12 @@
 void mg_handle_get_timeline_segments(struct mg_connection *c, struct mg_http_message *hm);
 void mg_handle_timeline_manifest(struct mg_connection *c, struct mg_http_message *hm);
 void mg_handle_timeline_playback(struct mg_connection *c, struct mg_http_message *hm);
+
+// Forward declarations for HLS API handlers
+void mg_handle_hls_master_playlist(struct mg_connection *c, struct mg_http_message *hm);
+void mg_handle_hls_media_playlist(struct mg_connection *c, struct mg_http_message *hm);
+void mg_handle_hls_segment(struct mg_connection *c, struct mg_http_message *hm);
+void mg_handle_direct_hls_request(struct mg_connection *c, struct mg_http_message *hm);
 
 // Default initial handler capacity
 #define INITIAL_HANDLER_CAPACITY 32
@@ -120,6 +125,8 @@ static const mg_api_route_t s_api_routes[] = {
     {"GET", "/api/streaming/#/hls/segment_#.ts", mg_handle_hls_segment},
     {"GET", "/api/streaming/#/hls/segment_#.m4s", mg_handle_hls_segment},
     {"GET", "/api/streaming/#/hls/init.mp4", mg_handle_hls_segment},
+    
+    // No direct HLS access handler - handled by static file handler
 
     // go2rtc WebRTC API
     {"POST", "/api/webrtc", mg_handle_go2rtc_webrtc_offer},
@@ -155,24 +162,38 @@ static const mg_api_route_t s_api_routes[] = {
  * 
  * @param c Mongoose connection
  * @param hm Mongoose HTTP message
+ * @param use_threading Whether to use threading for this request
  * @return true if request was handled, false otherwise
  */
-static bool handle_api_request(struct mg_connection *c, struct mg_http_message *hm) {
+static bool handle_api_request(struct mg_connection *c, struct mg_http_message *hm, bool use_threading) {
+    // Extract URI for logging
+    char uri_buf[MAX_PATH_LENGTH] = {0};
+    size_t uri_len = hm->uri.len < sizeof(uri_buf) - 1 ? hm->uri.len : sizeof(uri_buf) - 1;
+    memcpy(uri_buf, hm->uri.buf, uri_len);
+    uri_buf[uri_len] = '\0';
+    
+    // Extract method for logging
+    char method_buf[16] = {0};
+    size_t method_len = hm->method.len < sizeof(method_buf) - 1 ? hm->method.len : sizeof(method_buf) - 1;
+    memcpy(method_buf, hm->method.buf, method_len);
+    method_buf[method_len] = '\0';
+    
+    log_info("API request received: %s %s", method_buf, uri_buf);
+    
     // Find matching route
     int route_index = match_route(hm);
     if (route_index >= 0) {
-        // Route matched, call handler
-        log_info("API route matched: %.*s %.*s", 
-                (int)hm->method.len, hm->method.buf, 
-                (int)hm->uri.len, hm->uri.buf);
+        // Route matched
+        log_info("API route matched: %s %s", method_buf, uri_buf);
+
+        // Call handler directly
+        log_info("Handling API request directly: %s %s", method_buf, uri_buf);
         s_api_routes[route_index].handler(c, hm);
         return true;
     }
     
     // No route matched
-    log_debug("No API route matched for: %.*s %.*s", 
-             (int)hm->method.len, hm->method.buf, 
-             (int)hm->uri.len, hm->uri.buf);
+    log_warn("No API route matched for: %s %s", method_buf, uri_buf);
     return false;
 }
 
@@ -245,9 +266,8 @@ http_server_handle_t http_server_init(const http_server_config_t *config) {
     log_info("Registering WebSocket handlers");
     websocket_register_handlers();
     
-    // We no longer initialize the API thread pool here
-    // It will be initialized on demand when needed
-    log_info("API thread pool will be initialized on demand");
+    // We now use the multithreading pattern instead of the API thread pool
+    log_info("Using multithreading pattern for all requests");
     
     http_server_handle_t server = mongoose_server_init(config);
     if (!server) {
@@ -287,6 +307,9 @@ http_server_handle_t mongoose_server_init(const http_server_config_t *config) {
 
     // Initialize Mongoose event manager
     mg_mgr_init(server->mgr);
+    
+    // Initialize wakeup functionality for multithreading
+    mg_wakeup_init(server->mgr);
 
     // Allocate handlers array
     server->handlers = calloc(INITIAL_HANDLER_CAPACITY, sizeof(*server->handlers));
@@ -298,38 +321,13 @@ http_server_handle_t mongoose_server_init(const http_server_config_t *config) {
         return NULL;
     }
     
-    // Initialize connection pool for connection handling
-    // Use the number of threads specified in the configuration, or a default value
-    // For embedded devices, this will be limited to 4 threads
-    int num_threads = api_thread_pool_get_size();
+    // No mutex needed as we're not tracking statistics
     
-    server->conn_pool = connection_pool_init(num_threads);
-    if (!server->conn_pool) {
-        log_error("Failed to initialize connection pool");
-        free(server->handlers);
-        mg_mgr_free(server->mgr);
-        free(server->mgr);
-        free(server);
-        return NULL;
-    }
-    
-    // Initialize global mutex for thread safety (for shared resources)
-    if (pthread_mutex_init(&server->mutex, NULL) != 0) {
-        log_error("Failed to initialize mutex");
-        connection_pool_shutdown(server->conn_pool);
-        free(server->handlers);
-        mg_mgr_free(server->mgr);
-        free(server->mgr);
-        free(server);
-        return NULL;
-    }
-    
-    log_info("Connection pool initialized with %d threads", num_threads);
+    log_info("Using per-request threading for all requests");
 
     server->handler_capacity = INITIAL_HANDLER_CAPACITY;
     server->handler_count = 0;
     server->running = false;
-    server->start_time = time(NULL);
 
     log_info("HTTP server initialized");
     return server;
@@ -583,31 +581,12 @@ void http_server_destroy(http_server_handle_t server) {
     // Wait a moment for WebSocket connections to finish closing
     usleep(250000);  // 250ms - increased from 100ms for better safety
     
-    // Then shutdown connection pool to ensure no more connections are processed
-    if (server->conn_pool) {
-        log_info("Shutting down connection pool");
-        
-        // Create a local copy of the connection pool pointer
-        connection_pool_t *pool = server->conn_pool;
-        
-        // Clear the server's pointer to the pool BEFORE shutting it down
-        // This prevents any other threads from accessing it after shutdown starts
-        server->conn_pool = NULL;
-        
-        // Now shutdown the connection pool
-        connection_pool_shutdown(pool);
-        // Note: connection_pool_shutdown also frees the memory
-    }
-    
     // Wait longer for connections to finish closing
     usleep(250000);  // 250ms - increased from 100ms for better safety
     
-    // Finally shutdown API thread pool
-    log_info("Shutting down API thread pool");
-    api_thread_pool_shutdown();
+    log_info("Multithreading cleanup complete");
 
-    // Destroy global mutex
-    pthread_mutex_destroy(&server->mutex);
+    // No mutex to destroy
 
     // Free resources
     if (server->mgr) {
@@ -673,6 +652,8 @@ int http_server_register_handler(http_server_handle_t server, const char *path,
 
 /**
  * @brief Get server statistics
+ * 
+ * Note: This function is kept for API compatibility but no longer tracks statistics
  */
 int http_server_get_stats(http_server_handle_t server, int *active_connections, 
                          double *requests_per_second, uint64_t *bytes_sent, 
@@ -681,30 +662,22 @@ int http_server_get_stats(http_server_handle_t server, int *active_connections,
         return -1;
     }
 
-    pthread_mutex_lock(&server->mutex);
-    
+    // Set all statistics to zero or default values
     if (active_connections) {
-        *active_connections = server->active_connections;
+        *active_connections = 0;
     }
 
     if (requests_per_second) {
-        time_t uptime = time(NULL) - server->start_time;
-        if (uptime > 0) {
-            *requests_per_second = (double)server->total_requests / (double)uptime;
-        } else {
-            *requests_per_second = 0.0;
-        }
+        *requests_per_second = 0.0;
     }
 
     if (bytes_sent) {
-        *bytes_sent = server->bytes_sent;
+        *bytes_sent = 0;
     }
 
     if (bytes_received) {
-        *bytes_received = server->bytes_received;
+        *bytes_received = 0;
     }
-    
-    pthread_mutex_unlock(&server->mutex);
 
     return 0;
 }
@@ -719,14 +692,10 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
         // New connection accepted
         log_debug("New connection accepted");
         
-        // Update statistics
-        pthread_mutex_lock(&server->mutex);
-        server->active_connections++;
-        pthread_mutex_unlock(&server->mutex);
+        // No statistics tracking
         
-        //  Do not add connections to the pool here
-        // Let the main event loop handle all events for all connections
-        // This ensures proper event handling and prevents connections from being orphaned
+        // Set Connection: close header for all responses to prevent connection reuse
+        c->data[1] = 'C';  // Mark connection to add "Connection: close" header
         
 } else if (ev == MG_EV_WS_OPEN) {
     // WebSocket connection opened
@@ -747,15 +716,18 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
     // Call the WebSocket message handler directly
     mg_handle_websocket_message(c, wm);
         
+    } else if (ev == MG_EV_WAKEUP) {
+        // Wakeup event from worker thread
+        log_debug("Received wakeup event for connection ID %lu", c->id);
+        
+        // Handle the wakeup event
+        mg_handle_wakeup_event(c, ev_data);
+        
     } else if (ev == MG_EV_HTTP_MSG) {
         // HTTP request received
         struct mg_http_message *hm = (struct mg_http_message *)ev_data;
 
-        // Update statistics
-        pthread_mutex_lock(&server->mutex);
-        server->total_requests++;
-        server->bytes_received += hm->message.len;
-        pthread_mutex_unlock(&server->mutex);
+        // No statistics tracking
 
         // Extract URI
         char uri[MAX_PATH_LENGTH];
@@ -763,8 +735,14 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
         memcpy(uri, hm->uri.buf, uri_len);
         uri[uri_len] = '\0';
 
-        // Log request details
-        log_info("Received request: uri=%s", uri);
+        // Log request details with more information
+        log_info("Received request: uri=%s, method=%.*s", uri, 
+                (int)hm->method.len, hm->method.buf);
+        
+        // Special handling for root path
+        if (strcmp(uri, "/") == 0) {
+            log_info("Root path detected, web_root=%s", server->config.web_root);
+        }
 
         // Check if this is a static asset that should bypass authentication
         bool is_static_asset = false;
@@ -888,32 +866,80 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
             return;
         }
         
-        // Process the request
-        // Check if this is an API request
+        // Check if this is a static asset, HTML file, or HLS request
+        is_static_asset = is_static_asset || strstr(uri, ".html") != NULL;
         bool is_api_request = strncasecmp(uri, "/api/", 5) == 0;
+        bool is_direct_hls = strncasecmp(uri, "/hls/", 5) == 0;
         bool handled = false;
         
-        // If this is an API request, try to handle it with direct handlers
-        if (is_api_request) {
-            // Try to handle the API request using the routes table
-            handled = handle_api_request(c, hm);
+        // Special handling for root path
+        if (strcmp(uri, "/") == 0) {
+            log_info("Root path detected in main handler, redirecting to index.html");
+            // Directly serve index.html for root path
+            char index_path[MAX_PATH_LENGTH * 2];
+            snprintf(index_path, sizeof(index_path), "%s/index.html", server->config.web_root);
+            
+            // Check if index.html exists
+            struct stat st;
+            if (stat(index_path, &st) == 0 && S_ISREG(st.st_mode)) {
+                // Use Mongoose's built-in file serving capabilities
+                struct mg_http_serve_opts opts = {
+                    .root_dir = server->config.web_root,
+                    .mime_types = "html=text/html,htm=text/html,css=text/css,js=application/javascript,"
+                                "json=application/json,jpg=image/jpeg,jpeg=image/jpeg,png=image/png,"
+                                "gif=image/gif,svg=image/svg+xml,ico=image/x-icon,mp4=video/mp4,"
+                                "webm=video/webm,ogg=video/ogg,mp3=audio/mpeg,wav=audio/wav,"
+                                "txt=text/plain,xml=application/xml,pdf=application/pdf",
+                    .extra_headers = "Connection: close\r\n"
+                };
+                
+                log_info("Serving index file for root path using mg_http_serve_file: %s", index_path);
+                mg_http_serve_file(c, hm, index_path, &opts);
+            } else {
+                // If index.html doesn't exist, redirect to index.html
+                log_info("Index file not found, redirecting to /index.html");
+                mg_printf(c, "HTTP/1.1 302 Found\r\n");
+                mg_printf(c, "Location: /index.html\r\n");
+                mg_printf(c, "Content-Length: 0\r\n");
+                mg_printf(c, "\r\n");
+            }
+            handled = true;
+        }
+        else if (is_api_request) {
+            // For API requests, use the API request handler - always handle directly
+            handled = handle_api_request(c, hm, false);
+        } else if (is_direct_hls) {
+            // For direct HLS requests, use the HLS handler
+            log_debug("Handling direct HLS request: %s", uri);
+            mg_handle_direct_hls_request(c, hm);
+            handled = true;
+        } else if (is_static_asset) {
+            // For static assets, serve directly
+            log_debug("Serving static asset directly: %s", uri);
+            mongoose_server_handle_static_file(c, hm, server);
+            handled = true;
+        } else {
+            // For other requests, handle directly
+            log_debug("Handling non-API request directly: %s", uri);
+            handled = mg_handle_request_with_threading(c, hm, false);
         }
         
-        // If not handled by API handlers, serve static file or return 404
-        if (!handled) {
-            // Try to serve static file
-            mongoose_server_handle_static_file(c, hm, server);
-        }
+    // If not handled by API handlers or multithreading, serve static file or return 404
+    if (!handled) {
+        // Extract URI for logging
+        char uri_buf[MAX_PATH_LENGTH] = {0};
+        size_t uri_len = hm->uri.len < sizeof(uri_buf) - 1 ? hm->uri.len : sizeof(uri_buf) - 1;
+        memcpy(uri_buf, hm->uri.buf, uri_len);
+        uri_buf[uri_len] = '\0';
+        
+        log_info("Request not handled by API or multithreading, passing to static file handler: %s", uri_buf);
+        
+        // Try to serve static file
+        mongoose_server_handle_static_file(c, hm, server);
+    }
     } else if (ev == MG_EV_CLOSE) {
         // Connection closed
         log_debug("Connection closed");
-        
-        // Update statistics
-        pthread_mutex_lock(&server->mutex);
-        if (server->active_connections > 0) {
-            server->active_connections--;
-        }
-        pthread_mutex_unlock(&server->mutex);
         
         // If this was a WebSocket connection, handle cleanup
         if (c->is_websocket) {

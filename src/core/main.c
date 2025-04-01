@@ -47,7 +47,7 @@ void init_recordings_system(void);
 #include "web/http_server.h"
 #include "web/mongoose_server.h"
 #include "web/api_handlers.h"
-#include "web/api_thread_pool.h"
+#include "web/websocket_manager.h"
 #include "mongoose.h"
 
 // Include necessary headers for signal handling
@@ -271,8 +271,8 @@ static int check_and_kill_existing_instance(const char *pid_file) {
 
         // Send SIGTERM to let it clean up
         if (kill(existing_pid, SIGTERM) == 0) {
-            // Wait longer for it to terminate properly (increased from 5 to 15 seconds)
-            int timeout = 15;  // 15 seconds
+            // Wait longer for it to terminate properly (increased from 15 to 30 seconds)
+            int timeout = 30;  // 30 seconds
             while (timeout-- > 0 && kill(existing_pid, 0) == 0) {
                 sleep(1);
             }
@@ -919,7 +919,6 @@ int main(int argc, char *argv[]) {
         .max_connections = 100,
         .connection_timeout = 30,
         .daemon_mode = daemon_mode,
-        .web_thread_pool_size = api_thread_pool_get_size()  // Use the value from api_thread_pool_get_size()
     };
     
     // Set CORS allowed origins, methods, and headers
@@ -1186,14 +1185,6 @@ cleanup:
         http_server_stop(http_server);
         http_server_destroy(http_server);
         
-        // Update server thread pool component state
-        for (int j = 0; j < atomic_load(&get_shutdown_coordinator()->component_count); j++) {
-            if (strcmp(get_shutdown_coordinator()->components[j].name, "server_thread_pool") == 0) {
-                update_component_state(j, COMPONENT_STOPPED);
-                break;
-            }
-        }
-        
         log_info("Shutting down stream manager...");
         shutdown_stream_manager();
         
@@ -1228,6 +1219,10 @@ cleanup:
         
         // Add a small delay after database shutdown to ensure all resources are properly released
         usleep(100000);  // 100ms
+        
+        // Explicitly shutdown WebSocket manager before go2rtc
+        log_info("Explicitly shutting down WebSocket manager before go2rtc...");
+        websocket_manager_shutdown();
         
         // Now clean up go2rtc as one of the last steps
         #ifdef USE_GO2RTC

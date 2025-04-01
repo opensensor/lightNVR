@@ -13,7 +13,6 @@
 #include <errno.h>
 
 #include "web/recordings_download_task.h"
-#include "web/api_thread_pool.h"
 #include "web/mongoose_adapter.h"
 #include "web/mongoose_server_auth.h"
 #include "web/http_server.h"

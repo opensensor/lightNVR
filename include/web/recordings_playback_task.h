@@ -28,8 +28,9 @@ playback_recording_task_t *playback_recording_task_create(struct mg_connection *
  * @brief Free a playback recording task
  * 
  * @param task Task to free
+ * @param free_http_message Whether to free the HTTP message
  */
-void playback_recording_task_free(playback_recording_task_t *task);
+void playback_recording_task_free(playback_recording_task_t *task, bool free_http_message);
 
 /**
  * @brief Playback recording task function

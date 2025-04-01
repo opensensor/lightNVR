@@ -9,7 +9,6 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <time.h>
-#include <pthread.h>
 #include "request_response.h"
 
 // Forward declaration of Mongoose structures
@@ -18,7 +17,6 @@ struct mg_connection;
 struct mg_http_message;
 
 // Forward declarations
-typedef struct connection_pool connection_pool_t;
 
 /**
  * @brief HTTP server configuration
@@ -40,7 +38,6 @@ typedef struct {
     int connection_timeout;         // Connection timeout in seconds
     bool daemon_mode;               // Daemon mode
     char pid_file[256];             // PID file path
-    int web_thread_pool_size;       // Number of threads for handling both connections and API operations
 } http_server_config_t;
 
 /**
@@ -50,20 +47,6 @@ typedef struct http_server {
     struct mg_mgr *mgr;             // Mongoose event manager
     http_server_config_t config;    // Server configuration
     bool running;                   // Server running flag
-    
-    // Connection pool for handling connections
-    connection_pool_t *conn_pool;   // Connection pool for handling connections
-    
-    // Synchronization
-    pthread_mutex_t mutex;          // Global mutex for thread safety
-    
-    // Statistics
-    int active_connections;         // Number of active connections
-    uint64_t total_requests;        // Total number of requests
-    uint64_t bytes_sent;            // Total bytes sent
-    uint64_t bytes_received;        // Total bytes received
-    double requests_per_second;     // Requests per second
-    time_t start_time;              // Server start time
     
     // Handler registry
     struct {
@@ -124,6 +107,8 @@ int http_server_register_handler(http_server_handle_t server, const char *path,
 
 /**
  * @brief Get server statistics
+ * 
+ * Note: This function is kept for API compatibility but no longer tracks statistics
  * 
  * @param server Server handle
  * @param active_connections Number of active connections

@@ -32,9 +32,9 @@
     }
   },
   "asset_paths": {
-    "js": "web/dist/js",
-    "css": "web/dist/css",
-    "images": "web/dist/img",
-    "fonts": "web/dist/fonts"
+    "js": "web/build/dist",
+    "css": "web/build/dist",
+    "images": "web/build/dist",
+    "fonts": "web/build/dist"
   }
 }

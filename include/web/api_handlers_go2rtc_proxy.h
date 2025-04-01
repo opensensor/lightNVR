@@ -9,9 +9,10 @@
 #include "mongoose.h"
 
 /**
- * @brief Direct handler for POST /api/webrtc
+ * @brief Handler for POST /api/webrtc
  * 
  * This handler proxies WebRTC offer requests to the go2rtc API.
+ * It uses the multithreading pattern to handle the request in a worker thread.
  * 
  * @param c Mongoose connection
  * @param hm Mongoose HTTP message
@@ -19,9 +20,20 @@
 void mg_handle_go2rtc_webrtc_offer(struct mg_connection *c, struct mg_http_message *hm);
 
 /**
- * @brief Direct handler for POST /api/webrtc/ice
+ * @brief Worker function for POST /api/webrtc
+ * 
+ * This function is called by the multithreading system to handle WebRTC offer requests.
+ * 
+ * @param c Mongoose connection
+ * @param hm Mongoose HTTP message
+ */
+void mg_handle_go2rtc_webrtc_offer_worker(struct mg_connection *c, struct mg_http_message *hm);
+
+/**
+ * @brief Handler for POST /api/webrtc/ice
  * 
  * This handler proxies WebRTC ICE candidate requests to the go2rtc API.
+ * It uses the multithreading pattern to handle the request in a worker thread.
  * 
  * @param c Mongoose connection
  * @param hm Mongoose HTTP message
@@ -29,9 +41,20 @@ void mg_handle_go2rtc_webrtc_offer(struct mg_connection *c, struct mg_http_messa
 void mg_handle_go2rtc_webrtc_ice(struct mg_connection *c, struct mg_http_message *hm);
 
 /**
- * @brief Direct handler for OPTIONS /api/webrtc
+ * @brief Worker function for POST /api/webrtc/ice
+ * 
+ * This function is called by the multithreading system to handle WebRTC ICE candidate requests.
+ * 
+ * @param c Mongoose connection
+ * @param hm Mongoose HTTP message
+ */
+void mg_handle_go2rtc_webrtc_ice_worker(struct mg_connection *c, struct mg_http_message *hm);
+
+/**
+ * @brief Handler for OPTIONS /api/webrtc
  * 
  * This handler responds to CORS preflight requests for the WebRTC API.
+ * This is a simple handler that doesn't use the multithreading pattern.
  * 
  * @param c Mongoose connection
  * @param hm Mongoose HTTP message
@@ -39,9 +62,10 @@ void mg_handle_go2rtc_webrtc_ice(struct mg_connection *c, struct mg_http_message
 void mg_handle_go2rtc_webrtc_options(struct mg_connection *c, struct mg_http_message *hm);
 
 /**
- * @brief Direct handler for OPTIONS /api/webrtc/ice
+ * @brief Handler for OPTIONS /api/webrtc/ice
  * 
  * This handler responds to CORS preflight requests for the WebRTC ICE API.
+ * This is a simple handler that doesn't use the multithreading pattern.
  * 
  * @param c Mongoose connection
  * @param hm Mongoose HTTP message
