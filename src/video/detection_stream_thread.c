@@ -336,6 +336,10 @@ static int process_segment_for_detection(stream_detection_thread_t *thread, cons
                 // Calculate frame timestamp based on segment timestamp
                 time_t frame_timestamp = time(NULL);
                 
+                // CRITICAL FIX: Ensure only one detection is running at a time
+                // Lock the thread mutex to ensure exclusive access to the model
+                pthread_mutex_lock(&thread->mutex);
+                
                 // Process the frame for detection using our dedicated model
                 if (thread->model) {
                     // Convert frame to RGB format
@@ -436,6 +440,9 @@ static int process_segment_for_detection(stream_detection_thread_t *thread, cons
                     // Update last detection time
                     thread->last_detection_time = time(NULL);
                 }
+                
+                // CRITICAL FIX: Release the mutex after detection is complete
+                pthread_mutex_unlock(&thread->mutex);
                 
                 processed_frames++;
             }
@@ -878,9 +885,9 @@ static void *stream_detection_thread_func(void *arg) {
     int consecutive_errors = 0;
     bool initial_startup_period = true;
     
-    // Set a 15-second delay before starting to process segments
+    // Set a 10-second delay before starting to process segments
     // This gives the system time to initialize without blocking the main thread
-    global_startup_delay_end = startup_time + 15;
+    global_startup_delay_end = startup_time + 10;
     
     while (thread->running) {
         // Check if shutdown has been initiated
