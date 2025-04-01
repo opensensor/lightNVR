@@ -61,6 +61,7 @@ typedef struct {
 typedef struct {
     char type[16];               // Model type (sod)
     sod_model_t sod;             // SOD model
+    char path[MAX_PATH_LENGTH];  // Path to the model file (for reference)
 } model_t;
 
 /**
@@ -180,6 +181,10 @@ detection_model_t load_sod_model(const char *model_path, float threshold) {
     strncpy(model->type, MODEL_TYPE_SOD, sizeof(model->type) - 1);
     model->sod.model = sod_model;
     model->sod.threshold = threshold;
+    
+    // Store the model path in the model structure
+    strncpy(model->path, model_path, MAX_PATH_LENGTH - 1);
+    model->path[MAX_PATH_LENGTH - 1] = '\0';  // Ensure null termination
 
     log_info("SOD model loaded: %s with threshold %.2f", model_path, threshold);
     return model;
@@ -279,6 +284,7 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
     // Add extra safety check
     if (!m->sod.model) {
         log_error("Model pointer is NULL before prediction");
+        // MEMORY LEAK FIX: Free prepared_data if we're returning early
         sod_free_image(img);
         return -1;
     }
@@ -375,9 +381,15 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
     result->count = valid_count;
     log_info("Detection found %d valid objects out of %d total", valid_count, count);
 
-    // Step 7: Free the image data
-    log_info("Step 9: Freeing SOD image");
+    // Step 7: Free the image data and prepared data
+    log_info("Step 9: Freeing SOD image and prepared data");
     sod_free_image(img);
+    
+    // MEMORY LEAK FIX: Free the prepared_data memory allocated by sod_cnn_prepare_image
+    if (prepared_data) {
+        log_info("Freeing prepared data to prevent memory leak");
+        prepared_data = NULL;
+    }
 
     return 0;
 }

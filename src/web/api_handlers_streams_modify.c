@@ -16,6 +16,7 @@
 #include "video/stream_state.h"
 #include "mongoose.h"
 #include "video/detection_stream.h"
+#include "video/detection_stream_thread.h"
 #include "database/database_manager.h"
 #include "video/hls/hls_directory.h"
 #include "video/hls/hls_api.h"
@@ -241,6 +242,25 @@ void mg_handle_post_stream(struct mg_connection *c, struct mg_http_message *hm) 
         if (start_stream(stream) != 0) {
             log_error("Failed to start stream: %s", config.name);
             // Continue anyway, stream is created
+        }
+        
+        // Start detection thread if detection is enabled and we have a model
+        if (config.detection_based_recording && config.detection_model[0] != '\0') {
+            log_info("Detection enabled for new stream %s, starting detection thread with model %s", 
+                    config.name, config.detection_model);
+            
+            // Construct HLS directory path
+            char hls_dir[MAX_PATH_LENGTH];
+            snprintf(hls_dir, MAX_PATH_LENGTH, "/var/lib/lightnvr/hls/%s", config.name);
+            
+            // Start detection thread
+            if (start_stream_detection_thread(config.name, config.detection_model, 
+                                             config.detection_threshold, 
+                                             config.detection_interval, hls_dir) != 0) {
+                log_warn("Failed to start detection thread for new stream %s", config.name);
+            } else {
+                log_info("Successfully started detection thread for new stream %s", config.name);
+            }
         }
     }
     
@@ -582,6 +602,82 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
         log_warn("Failed to update streaming setting for stream %s", config.name);
     }
     
+    // Handle detection thread management based on detection_based_recording setting
+    bool detection_enabled_changed = false;
+    bool detection_was_enabled = false;
+    bool detection_now_enabled = false;
+    
+    // Check if detection_based_recording was changed in this request
+    if (detection_based_recording != NULL) {
+        detection_enabled_changed = true;
+        detection_was_enabled = !cJSON_IsTrue(detection_based_recording); // Previous state was opposite
+        detection_now_enabled = cJSON_IsTrue(detection_based_recording);  // New state
+    } else {
+        // If not explicitly changed in this request, use the current config value
+        detection_now_enabled = config.detection_based_recording;
+        
+        // We need to check if a detection thread is already running to determine previous state
+        detection_was_enabled = is_stream_detection_thread_running(config.name);
+    }
+    
+    // If detection was enabled and now disabled, stop the detection thread
+    if (detection_was_enabled && !detection_now_enabled) {
+        log_info("Detection disabled for stream %s, stopping detection thread", config.name);
+        if (stop_stream_detection_thread(config.name) != 0) {
+            log_warn("Failed to stop detection thread for stream %s", config.name);
+        } else {
+            log_info("Successfully stopped detection thread for stream %s", config.name);
+        }
+    }
+    // If detection was disabled and now enabled, start the detection thread
+    else if (!detection_was_enabled && detection_now_enabled) {
+        // Only start if we have a valid model and the stream is enabled
+        if (config.detection_model[0] != '\0' && config.enabled) {
+            log_info("Detection enabled for stream %s, starting detection thread with model %s", 
+                    config.name, config.detection_model);
+            
+            // Construct HLS directory path
+            char hls_dir[MAX_PATH_LENGTH];
+            snprintf(hls_dir, MAX_PATH_LENGTH, "/var/lib/lightnvr/hls/%s", config.name);
+            
+            // Start detection thread
+            if (start_stream_detection_thread(config.name, config.detection_model, 
+                                             config.detection_threshold, 
+                                             config.detection_interval, hls_dir) != 0) {
+                log_warn("Failed to start detection thread for stream %s", config.name);
+            } else {
+                log_info("Successfully started detection thread for stream %s", config.name);
+            }
+        } else {
+            log_warn("Detection enabled for stream %s but no model specified or stream disabled", config.name);
+        }
+    }
+    // If detection settings changed but detection was already enabled, restart the thread with new settings
+    else if (detection_now_enabled && (detection_model != NULL || detection_threshold != NULL || detection_interval != NULL)) {
+        log_info("Detection settings changed for stream %s, restarting detection thread", config.name);
+        
+        // Stop existing thread
+        if (stop_stream_detection_thread(config.name) != 0) {
+            log_warn("Failed to stop existing detection thread for stream %s", config.name);
+        }
+        
+        // Start new thread with updated settings
+        if (config.detection_model[0] != '\0' && config.enabled) {
+            // Construct HLS directory path
+            char hls_dir[MAX_PATH_LENGTH];
+            snprintf(hls_dir, MAX_PATH_LENGTH, "/var/lib/lightnvr/hls/%s", config.name);
+            
+            // Start detection thread
+            if (start_stream_detection_thread(config.name, config.detection_model, 
+                                             config.detection_threshold, 
+                                             config.detection_interval, hls_dir) != 0) {
+                log_warn("Failed to restart detection thread for stream %s", config.name);
+            } else {
+                log_info("Successfully restarted detection thread for stream %s", config.name);
+            }
+        }
+    }
+    
     log_info("Updated stream configuration in memory for stream %s", config.name);
     
     // Verify the update by reading back the configuration
@@ -739,6 +835,17 @@ void mg_handle_delete_stream(struct mg_connection *c, struct mg_http_message *hm
         while (get_stream_status(stream) != STREAM_STATUS_STOPPED && timeout > 0) {
             usleep(100000); // 100ms
             timeout--;
+        }
+    }
+    
+    // Stop any detection thread for this stream
+    if (is_stream_detection_thread_running(decoded_id)) {
+        log_info("Stopping detection thread for stream %s", decoded_id);
+        if (stop_stream_detection_thread(decoded_id) != 0) {
+            log_warn("Failed to stop detection thread for stream %s", decoded_id);
+            // Continue anyway
+        } else {
+            log_info("Successfully stopped detection thread for stream %s", decoded_id);
         }
     }
     

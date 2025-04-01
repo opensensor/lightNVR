@@ -7,6 +7,13 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <fcntl.h>
+#include <signal.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <unistd.h>
+#include <sys/time.h>
 
 /**
  * Check if a URL is a multicast address
@@ -77,6 +84,134 @@ bool is_multicast_url(const char *url) {
 }
 
 /**
+ * Check if an RTSP stream exists by sending a simple HTTP request
+ * This is a lightweight check to avoid FFmpeg crashes when trying to connect to non-existent streams
+ * 
+ * @param url The RTSP URL to check
+ * @return true if the stream exists, false otherwise
+ */
+static bool check_rtsp_stream_exists(const char *url) {
+    if (!url || strncmp(url, "rtsp://", 7) != 0) {
+        return true; // Not an RTSP URL, assume it exists
+    }
+    
+    // Extract the host and port from the URL
+    char host[256] = {0};
+    int port = 554; // Default RTSP port
+    
+    // Skip the rtsp:// prefix
+    const char *host_start = url + 7;
+    
+    // Skip any authentication info (user:pass@)
+    const char *at_sign = strchr(host_start, '@');
+    if (at_sign) {
+        host_start = at_sign + 1;
+    }
+    
+    // Find the end of the host part
+    const char *host_end = strchr(host_start, ':');
+    if (!host_end) {
+        host_end = strchr(host_start, '/');
+        if (!host_end) {
+            host_end = host_start + strlen(host_start);
+        }
+    }
+    
+    // Copy the host part
+    size_t host_len = host_end - host_start;
+    if (host_len >= sizeof(host)) {
+        host_len = sizeof(host) - 1;
+    }
+    memcpy(host, host_start, host_len);
+    host[host_len] = '\0';
+    
+    // Extract the port if specified
+    if (*host_end == ':') {
+        port = atoi(host_end + 1);
+        if (port <= 0) {
+            port = 554; // Default RTSP port
+        }
+    }
+    
+    // Create a socket
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) {
+        log_error("Failed to create socket for RTSP check");
+        return true; // Assume the stream exists if we can't check
+    }
+    
+    // Set a short timeout for the connection
+    struct timeval tv;
+    tv.tv_sec = 1;
+    tv.tv_usec = 0;
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
+    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof tv);
+    
+    // Connect to the server
+    struct sockaddr_in server_addr;
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(port);
+    
+    // Convert hostname to IP address
+    struct hostent *he = gethostbyname(host);
+    if (!he) {
+        log_error("Failed to resolve hostname: %s", host);
+        close(sock);
+        return true; // Assume the stream exists if we can't resolve the hostname
+    }
+    
+    memcpy(&server_addr.sin_addr, he->h_addr_list[0], he->h_length);
+    
+    // Connect to the server
+    if (connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+        log_error("Failed to connect to RTSP server: %s:%d", host, port);
+        close(sock);
+        return false; // Stream doesn't exist if we can't connect to the server
+    }
+    
+    // Extract the path part of the URL
+    const char *path = strchr(host_start, '/');
+    if (!path) {
+        path = "/";
+    }
+    
+    // Send a simple RTSP OPTIONS request
+    char request[1024];
+    snprintf(request, sizeof(request),
+             "OPTIONS %s RTSP/1.0\r\n"
+             "CSeq: 1\r\n"
+             "User-Agent: LightNVR\r\n"
+             "\r\n",
+             path);
+    
+    if (send(sock, request, strlen(request), 0) < 0) {
+        log_error("Failed to send RTSP OPTIONS request");
+        close(sock);
+        return false; // Stream doesn't exist if we can't send the request
+    }
+    
+    // Receive the response
+    char response[1024] = {0};
+    int bytes_received = recv(sock, response, sizeof(response) - 1, 0);
+    close(sock);
+    
+    if (bytes_received <= 0) {
+        log_error("Failed to receive RTSP OPTIONS response");
+        return false; // Stream doesn't exist if we don't get a response
+    }
+    
+    // Check if the response contains "404 Not Found"
+    if (strstr(response, "404 Not Found") != NULL) {
+        log_error("RTSP stream not found (404): %s", url);
+        return false; // Stream doesn't exist
+    }
+    
+    // Stream exists
+    return true;
+}
+
+/**
  * Open input stream with appropriate options based on protocol
  * Enhanced with more robust error handling and synchronization for UDP streams
  */
@@ -96,6 +231,14 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
     if (*input_ctx) {
         log_warn("Input context not NULL, closing existing context before opening new one");
         avformat_close_input(input_ctx);
+    }
+    
+    // Check if the RTSP stream exists before trying to connect
+    if (strncmp(url, "rtsp://", 7) == 0) {
+        if (!check_rtsp_stream_exists(url)) {
+            log_error("RTSP stream does not exist: %s", url);
+            return AVERROR(ENOENT); // Return "No such file or directory" error
+        }
     }
     
     // Log the stream opening attempt
@@ -220,7 +363,7 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
         av_dict_set(&input_options, "rtsp_transport", "tcp", 0);
         
         // Disable authentication requirement - some servers don't need it
-        av_dict_set(&input_options, "rtsp_flags", "prefer_tcp+no_auth", 0);
+        av_dict_set(&input_options, "rtsp_flags", "prefer_tcp", 0);
         
         // Increase timeout for RTSP connections
         av_dict_set(&input_options, "stimeout", "15000000", 0); // 15 seconds
@@ -230,24 +373,44 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
     }
     
     // Open input with protocol-specific options and better error handling
-    ret = avformat_open_input(input_ctx, url, NULL, &input_options);
+    // Use a local variable to avoid modifying the input_ctx in case of error
+    AVFormatContext *local_ctx = NULL;
+    
+    // Add extra safety options to prevent crashes
+    av_dict_set(&input_options, "rtsp_flags", "prefer_tcp", 0);
+    av_dict_set(&input_options, "allowed_media_types", "video+audio", 0);
+    av_dict_set(&input_options, "max_analyze_duration", "5000000", 0); // 5 seconds
+    av_dict_set(&input_options, "rw_timeout", "5000000", 0); // 5 seconds
+    
+    // Open the input stream
+    ret = avformat_open_input(&local_ctx, url, NULL, &input_options);
+    
     if (ret < 0) {
         char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
         av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+        
+        // Log the error with appropriate context
         log_error("Could not open input stream: %s (error code: %d, message: %s)", 
                  url, ret, error_buf);
         
-        // Check for specific RTSP errors
-        if (strstr(url, "rtsp://") != NULL && 
-            (ret == AVERROR(ECONNREFUSED) || ret == AVERROR(ETIMEDOUT) || 
-             strstr(error_buf, "404") || strstr(error_buf, "401") || 
-             strstr(error_buf, "403"))) {
+        // Log additional context for RTSP errors
+        if (strstr(url, "rtsp://") != NULL) {
             log_error("RTSP connection failed - server may be down or URL may be incorrect: %s", url);
         }
         
+        // Free options before returning
         av_dict_free(&input_options);
+        
+        // Make sure we don't have a dangling pointer
+        if (local_ctx) {
+            avformat_close_input(&local_ctx);
+        }
+        
         return ret;
     }
+    
+    // If we got here, the open was successful, so assign the local context to the output parameter
+    *input_ctx = local_ctx;
     
     // Free options
     av_dict_free(&input_options);

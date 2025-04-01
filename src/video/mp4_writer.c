@@ -668,8 +668,6 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration,
                                                   (AVRational){1, audio_stream->codecpar->sample_rate},
                                                   audio_stream->time_base);
                     }
-                    
-                    log_debug("Set audio packet duration to %lld (time_base units)", (long long)pkt.duration);
                 } else {
                     // If we can't calculate based on sample rate, use a default value
                     pkt.duration = 1;

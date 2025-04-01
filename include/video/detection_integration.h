@@ -6,6 +6,9 @@
 #include <pthread.h>
 #include <stdbool.h>
 
+// Flag to indicate if we're using the new stream-based detection system
+extern bool use_stream_based_detection;
+
 /**
  * Initialize the detection integration system
  * This should be called at startup

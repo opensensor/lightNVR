@@ -62,6 +62,14 @@ const char* get_model_path(detection_model_t model);
 void* get_realnet_model_handle(detection_model_t model);
 
 /**
+ * Get the type of a loaded model
+ * 
+ * @param model Detection model handle
+ * @return String describing the model type (e.g., "sod", "tflite") or "unknown" if not found
+ */
+const char* get_model_type_from_handle(detection_model_t model);
+
+/**
  * Clean up old models in the global cache
  * 
  * @param max_age Maximum age in seconds for a model to be considered active

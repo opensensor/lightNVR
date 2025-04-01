@@ -28,11 +28,15 @@
 #include "video/detection_embedded.h"
 #include "video/detection_integration.h"
 #include "video/detection_frame_processing.h"
+#include "video/detection_stream_thread.h"
 
 // Track which streams are currently being processed for detection
 char *active_detection_streams = NULL; // Accessible from detection_frame_processing.c
 int active_detections = 0; // Accessible from detection_frame_processing.c
 static int max_detections = 0;
+
+// Flag to indicate if we're using the new stream-based detection system
+bool use_stream_based_detection = true;
 
 /**
  * Initialize the detection integration system
@@ -65,6 +69,15 @@ int init_detection_integration(void) {
         return -1;
     }
     
+    // Initialize the stream detection system - we always use it now
+    if (init_stream_detection_system() != 0) {
+        log_error("Failed to initialize stream detection system");
+        // This is a critical error now that we've removed the fallback
+        return -1;
+    } else {
+        log_info("Stream detection system initialized");
+    }
+    
     log_info("Detection integration initialized with %d max concurrent detections", max_detections);
     return 0;
 }
@@ -84,6 +97,10 @@ void cleanup_detection_resources(void) {
     
     // Cleanup buffer pool
     cleanup_buffer_pool();
+    
+    // Shutdown the stream detection system
+    shutdown_stream_detection_system();
+    log_info("Stream detection system shutdown");
     
     // Ensure all detection models are unloaded
     shutdown_detection_system();

@@ -29,7 +29,6 @@
 #include "video/detection_stream.h"
 #include "video/detection.h"
 #include "video/detection_integration.h"
-#include "video/detection_thread_pool.h"
 #include "video/detection_recording.h"
 #include "video/stream_packet_processor.h"
 #include "video/timestamp_manager.h"
@@ -697,13 +696,13 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
 
-        // Initialize go2rtc integration if enabled
+    // Initialize go2rtc integration if enabled - MOVED TO BEGINNING OF SETUP
     #ifdef USE_GO2RTC
     log_info("Initializing go2rtc integration...");
     
     // Use configuration values if provided, otherwise use defaults
     const char *binary_path = NULL;  // Will use go2rtc from PATH if not specified
-    const char *config_dir = "/etc/lightnvr/go2rtc";    // Default config directory
+    const char *config_dir = "/tmp/go2rtc";    // Default config directory
     int api_port = 1984;                               // Default API port
     
     // Check if custom values are provided in the configuration
@@ -793,12 +792,6 @@ int main(int argc, char *argv[]) {
         log_info("Detection system initialized successfully");
     }
     
-    // Initialize detection thread pool
-    if (init_detection_thread_pool() != 0) {
-        log_error("Failed to initialize detection thread pool");
-    } else {
-        log_info("Detection thread pool initialized successfully");
-    }
     
     // Initialize detection recording system
     init_detection_recording_system();
@@ -828,8 +821,16 @@ int main(int argc, char *argv[]) {
     // Now that go2rtc is initialized (if enabled), load streams from config
     log_info("Loading streams from configuration...");
     load_streams_from_config(&config);
+
+    // Initialize authentication system
+    if (init_auth_system() != 0) {
+        log_error("Failed to initialize authentication system");
+        // Continue anyway, will fall back to config-based authentication
+    } else {
+        log_info("Authentication system initialized successfully");
+    }
     
-    // Check if detection models exist and start detection-based recording
+    // Check if detection models exist and start detection-based recording - MOVED TO END OF SETUP
     for (int i = 0; i < config.max_streams; i++) {
         if (config.streams[i].name[0] != '\0' && config.streams[i].enabled && 
             config.streams[i].detection_based_recording && config.streams[i].detection_model[0] != '\0') {
@@ -907,14 +908,6 @@ int main(int argc, char *argv[]) {
             }
         }
     }
-
-    // Initialize authentication system
-    if (init_auth_system() != 0) {
-        log_error("Failed to initialize authentication system");
-        // Continue anyway, will fall back to config-based authentication
-    } else {
-        log_info("Authentication system initialized successfully");
-    }
     
     // Initialize Mongoose web server with direct handlers
     http_server_config_t server_config = {
@@ -985,7 +978,8 @@ int main(int argc, char *argv[]) {
         if (now - last_recording_check_time > 60) {
             check_and_ensure_recording();
             
-            // Also monitor HLS segments for detection
+            // Call monitor_all_hls_segments_for_detection to ensure detection threads are started
+            // This is important to make sure detection threads are running
             monitor_all_hls_segments_for_detection();
             
             last_recording_check_time = now;
@@ -1182,9 +1176,6 @@ cleanup:
         cleanup_detection_resources();
         alarm(0); // Cancel the alarm if cleanup completed successfully
         
-        // Shutdown detection thread pool
-        log_info("Shutting down detection thread pool...");
-        shutdown_detection_thread_pool();
         
         // Shutdown ONVIF discovery
         log_info("Shutting down ONVIF discovery module...");

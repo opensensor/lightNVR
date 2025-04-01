@@ -270,8 +270,8 @@ void emergency_buffer_pool_cleanup(void) {
     // First pass: free buffers that have been in use for too long
     for (int i = 0; i < max_buffers; i++) {
         if (buffer_pool[i].in_use && buffer_pool[i].buffer) {
-            // If buffer has been in use for more than 15 seconds (reduced from 30), assume it's leaked
-            if (current_time - buffer_pool[i].last_used > 15) {
+            // If buffer has been in use for more than 5 seconds (reduced from 15), assume it's leaked
+            if (current_time - buffer_pool[i].last_used > 5) {
                 log_warn("Freeing leaked buffer (index %d, in use for %ld seconds)",
                         i, current_time - buffer_pool[i].last_used);
                 
@@ -290,8 +290,9 @@ void emergency_buffer_pool_cleanup(void) {
         }
     }
     
-    // Second pass: if we didn't free any buffers, force free the oldest buffer
-    if (freed_count == 0 && active_buffers >= max_buffers) {
+    // Second pass: if we didn't free any buffers or we're still at max capacity, 
+    // force free the oldest buffer regardless of in_use status
+    if ((freed_count == 0 && active_buffers >= max_buffers) || active_buffers >= max_buffers * 0.9) {
         time_t oldest_time = current_time;
         int oldest_idx = -1;
         
@@ -305,8 +306,9 @@ void emergency_buffer_pool_cleanup(void) {
         
         // Free the oldest buffer if found
         if (oldest_idx >= 0) {
-            log_warn("Force freeing oldest buffer (index %d, last used %ld seconds ago)",
-                    oldest_idx, current_time - buffer_pool[oldest_idx].last_used);
+            log_warn("Force freeing oldest buffer (index %d, last used %ld seconds ago, in_use=%d)",
+                    oldest_idx, current_time - buffer_pool[oldest_idx].last_used, 
+                    buffer_pool[oldest_idx].in_use);
             
             // Track memory before freeing
             track_memory_allocation(buffer_pool[oldest_idx].size, false);
@@ -320,6 +322,51 @@ void emergency_buffer_pool_cleanup(void) {
                 active_buffers--;
             }
         }
+    }
+    
+    // Third pass: if we're still at high capacity, free more buffers aggressively
+    if (active_buffers >= max_buffers * 0.8) {
+        log_warn("Still high buffer usage after initial cleanup (%d/%d), freeing more aggressively", 
+                active_buffers, max_buffers);
+        
+        // Free up to 25% of the buffers, starting with the oldest
+        int target_to_free = max_buffers / 4;
+        int additional_freed = 0;
+        
+        while (additional_freed < target_to_free) {
+            time_t oldest_time = current_time;
+            int oldest_idx = -1;
+            
+            // Find the oldest buffer
+            for (int i = 0; i < max_buffers; i++) {
+                if (buffer_pool[i].buffer && buffer_pool[i].last_used < oldest_time) {
+                    oldest_time = buffer_pool[i].last_used;
+                    oldest_idx = i;
+                }
+            }
+            
+            if (oldest_idx < 0) {
+                break; // No more buffers to free
+            }
+            
+            log_warn("Aggressively freeing buffer (index %d, last used %ld seconds ago, in_use=%d)",
+                    oldest_idx, current_time - buffer_pool[oldest_idx].last_used,
+                    buffer_pool[oldest_idx].in_use);
+            
+            // Track memory before freeing
+            track_memory_allocation(buffer_pool[oldest_idx].size, false);
+            free(buffer_pool[oldest_idx].buffer);
+            buffer_pool[oldest_idx].buffer = NULL;
+            buffer_pool[oldest_idx].size = 0;
+            buffer_pool[oldest_idx].in_use = false;
+            additional_freed++;
+            
+            if (active_buffers > 0) {
+                active_buffers--;
+            }
+        }
+        
+        freed_count += additional_freed;
     }
     
     if (freed_count > 0) {

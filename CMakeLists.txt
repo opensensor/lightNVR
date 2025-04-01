@@ -202,9 +202,10 @@ file(GLOB_RECURSE ROOT_SOURCES "src/*.c")
 # Exclude sod.c from ROOT_SOURCES to avoid static linking
 list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*sod/sod\\.c$")
 
-# Explicitly list video sources to exclude motion_detection_optimized.c
+# Explicitly list video sources to exclude motion_detection_optimized.c and detection_thread_pool.c
 file(GLOB VIDEO_SOURCES "src/video/*.c")
 list(FILTER VIDEO_SOURCES EXCLUDE REGEX ".*motion_detection_optimized\\.c$")
+list(FILTER VIDEO_SOURCES EXCLUDE REGEX ".*detection_thread_pool\\.c$")
 
 # Add HLS sources
 file(GLOB HLS_SOURCES "src/video/hls/*.c")

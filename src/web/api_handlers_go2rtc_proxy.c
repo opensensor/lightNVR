@@ -55,13 +55,22 @@ static size_t write_callback(void *contents, size_t size, size_t nmemb, void *us
  * This handler proxies WebRTC offer requests to the go2rtc API.
  */
 void mg_handle_go2rtc_webrtc_offer(struct mg_connection *c, struct mg_http_message *hm) {
-    // Acquire the API thread pool to ensure proper thread management
+    // Variables for resources that need cleanup
+    thread_pool_t *pool = NULL;
+    struct mg_str *src_param = NULL;
+    char *param_value = NULL;
+    char *offer = NULL;
+    CURL *curl = NULL;
+    struct curl_slist *headers = NULL;
+    struct curl_response response = {0};
     bool release_needed = true;
-    thread_pool_t *pool = api_thread_pool_acquire(api_thread_pool_get_size(), 10);
+    
+    // Acquire the API thread pool to ensure proper thread management
+    pool = api_thread_pool_acquire(api_thread_pool_get_size(), 10);
     if (!pool) {
         log_error("Failed to acquire API thread pool");
         mg_send_json_error(c, 500, "Internal server error");
-        return;
+        goto cleanup;
     }
     
     // Check authentication
@@ -71,8 +80,7 @@ void mg_handle_go2rtc_webrtc_offer(struct mg_connection *c, struct mg_http_messa
         if (mongoose_server_basic_auth_check(hm, server) != 0) {
             log_error("Authentication failed for go2rtc WebRTC offer request");
             mg_send_json_error(c, 401, "Unauthorized");
-            api_thread_pool_release();
-            return;
+            goto cleanup;
         }
     }
     log_info("Handling POST /api/webrtc request");
@@ -85,7 +93,6 @@ void mg_handle_go2rtc_webrtc_offer(struct mg_connection *c, struct mg_http_messa
     
     // Extract stream name from query parameter
     struct mg_str src_param_str = mg_str("src");
-    struct mg_str *src_param = NULL;
     
     // Extract query parameters
     for (int i = 0; i < MG_MAX_HTTP_HEADERS; i++) {
@@ -107,11 +114,11 @@ void mg_handle_go2rtc_webrtc_offer(struct mg_connection *c, struct mg_http_messa
             
             // Allocate memory for the parameter value
             size_t value_len = value_end - value_start;
-            char *param_value = malloc(value_len + 1);
+            param_value = malloc(value_len + 1);
             if (!param_value) {
                 log_error("Failed to allocate memory for query parameter");
                 mg_send_json_error(c, 500, "Internal server error");
-                return;
+                goto cleanup;
             }
             
             // Copy the parameter value
@@ -119,24 +126,23 @@ void mg_handle_go2rtc_webrtc_offer(struct mg_connection *c, struct mg_http_messa
             param_value[value_len] = '\0';
             
             // Create a mg_str for the parameter value
-            struct mg_str *param = malloc(sizeof(struct mg_str));
-            if (!param) {
-                free(param_value);
+            src_param = malloc(sizeof(struct mg_str));
+            if (!src_param) {
                 log_error("Failed to allocate memory for query parameter");
                 mg_send_json_error(c, 500, "Internal server error");
-                return;
+                goto cleanup;
             }
             
-            param->buf = param_value;
-            param->len = value_len;
-            src_param = param;
+            src_param->buf = param_value;
+            src_param->len = value_len;
             break;
         }
     }
+    
     if (!src_param || src_param->len == 0) {
         log_error("Missing 'src' query parameter");
         mg_send_json_error(c, 400, "Missing 'src' query parameter");
-        return;
+        goto cleanup;
     }
     
     // Extract the stream name
@@ -144,7 +150,7 @@ void mg_handle_go2rtc_webrtc_offer(struct mg_connection *c, struct mg_http_messa
     if (src_param->len >= sizeof(stream_name)) {
         log_error("Stream name too long");
         mg_send_json_error(c, 400, "Stream name too long");
-        return;
+        goto cleanup;
     }
     
     memcpy(stream_name, src_param->buf, src_param->len);
@@ -161,18 +167,18 @@ void mg_handle_go2rtc_webrtc_offer(struct mg_connection *c, struct mg_http_messa
     if (!stream) {
         log_error("Stream not found: %s", decoded_name);
         mg_send_json_error(c, 404, "Stream not found");
-        return;
+        goto cleanup;
     }
     
     // Get the request body (WebRTC offer)
     log_info("WebRTC offer length: %zu", hm->body.len);
     
     // Create a null-terminated copy of the request body
-    char *offer = malloc(hm->body.len + 1);
+    offer = malloc(hm->body.len + 1);
     if (!offer) {
         log_error("Failed to allocate memory for WebRTC offer");
         mg_send_json_error(c, 500, "Internal server error");
-        return;
+        goto cleanup;
     }
     
     memcpy(offer, hm->body.buf, hm->body.len);
@@ -184,16 +190,11 @@ void mg_handle_go2rtc_webrtc_offer(struct mg_connection *c, struct mg_http_messa
     log_info("WebRTC offer preview: %s", offer_preview);
     
     // Proxy the request to go2rtc API
-    CURL *curl;
-    CURLcode res;
-    struct curl_response response = {0};
-    
-    // Initialize curl
     curl = curl_easy_init();
     if (!curl) {
         log_error("Failed to initialize curl");
         mg_send_json_error(c, 500, "Failed to initialize curl");
-        return;
+        goto cleanup;
     }
     
     // Construct the URL for the go2rtc API
@@ -204,16 +205,14 @@ void mg_handle_go2rtc_webrtc_offer(struct mg_connection *c, struct mg_http_messa
     if (curl_easy_setopt(curl, CURLOPT_URL, url) != CURLE_OK) {
         log_error("Failed to set CURLOPT_URL");
         mg_send_json_error(c, 500, "Failed to set curl options");
-        curl_easy_cleanup(curl);
-        return;
+        goto cleanup;
     }
     
     // Set a connection timeout to prevent hanging on network issues
     if (curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L) != CURLE_OK) {
         log_error("Failed to set CURLOPT_CONNECTTIMEOUT");
         mg_send_json_error(c, 500, "Failed to set curl options");
-        curl_easy_cleanup(curl);
-        return;
+        goto cleanup;
     }
     
     // Set basic authentication if enabled in the main application
@@ -221,22 +220,19 @@ void mg_handle_go2rtc_webrtc_offer(struct mg_connection *c, struct mg_http_messa
         if (curl_easy_setopt(curl, CURLOPT_HTTPAUTH, CURLAUTH_BASIC) != CURLE_OK) {
             log_error("Failed to set CURLOPT_HTTPAUTH");
             mg_send_json_error(c, 500, "Failed to set curl options");
-            curl_easy_cleanup(curl);
-            return;
+            goto cleanup;
         }
         
         if (curl_easy_setopt(curl, CURLOPT_USERNAME, g_config.web_username) != CURLE_OK) {
             log_error("Failed to set CURLOPT_USERNAME");
             mg_send_json_error(c, 500, "Failed to set curl options");
-            curl_easy_cleanup(curl);
-            return;
+            goto cleanup;
         }
         
         if (curl_easy_setopt(curl, CURLOPT_PASSWORD, g_config.web_password) != CURLE_OK) {
             log_error("Failed to set CURLOPT_PASSWORD");
             mg_send_json_error(c, 500, "Failed to set curl options");
-            curl_easy_cleanup(curl);
-            return;
+            goto cleanup;
         }
         
         log_info("Using authentication for go2rtc API request: username=%s", g_config.web_username);
@@ -248,80 +244,62 @@ void mg_handle_go2rtc_webrtc_offer(struct mg_connection *c, struct mg_http_messa
     if (curl_easy_setopt(curl, CURLOPT_POSTFIELDS, offer) != CURLE_OK) {
         log_error("Failed to set CURLOPT_POSTFIELDS");
         mg_send_json_error(c, 500, "Failed to set curl options");
-        free(offer);
-        curl_easy_cleanup(curl);
-        return;
+        goto cleanup;
     }
     
     // Set POST field size
     if (curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)hm->body.len) != CURLE_OK) {
         log_error("Failed to set CURLOPT_POSTFIELDSIZE");
         mg_send_json_error(c, 500, "Failed to set curl options");
-        free(offer);
-        curl_easy_cleanup(curl);
-        return;
+        goto cleanup;
     }
     
     if (curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback) != CURLE_OK) {
         log_error("Failed to set CURLOPT_WRITEFUNCTION");
         mg_send_json_error(c, 500, "Failed to set curl options");
-        curl_easy_cleanup(curl);
-        return;
+        goto cleanup;
     }
     
     if (curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response) != CURLE_OK) {
         log_error("Failed to set CURLOPT_WRITEDATA");
         mg_send_json_error(c, 500, "Failed to set curl options");
-        curl_easy_cleanup(curl);
-        return;
+        goto cleanup;
     }
     
     if (curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L) != CURLE_OK) { // 10 second timeout
         log_error("Failed to set CURLOPT_TIMEOUT");
         mg_send_json_error(c, 500, "Failed to set curl options");
-        curl_easy_cleanup(curl);
-        return;
+        goto cleanup;
     }
     
     // Set content type header only, let curl handle Content-Length
-    struct curl_slist *headers = NULL;
     headers = curl_slist_append(headers, "Content-Type: application/json");
     
     if (!headers) {
         log_error("Failed to create headers list");
         mg_send_json_error(c, 500, "Failed to set curl options");
-        curl_easy_cleanup(curl);
-        return;
+        goto cleanup;
     }
     
     if (curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers) != CURLE_OK) {
         log_error("Failed to set CURLOPT_HTTPHEADER");
         mg_send_json_error(c, 500, "Failed to set curl options");
-        curl_slist_free_all(headers);
-        curl_easy_cleanup(curl);
-        return;
+        goto cleanup;
     }
     
     // Perform the request
-    res = curl_easy_perform(curl);
+    CURLcode res = curl_easy_perform(curl);
     
     // Check for errors
     if (res != CURLE_OK) {
         log_error("curl_easy_perform() failed: %s", curl_easy_strerror(res));
         mg_send_json_error(c, 500, "Failed to proxy request to go2rtc API");
-        curl_slist_free_all(headers);
-        curl_easy_cleanup(curl);
-        if (response.data) free(response.data);
-        return;
+        goto cleanup;
     }
     
     // Get HTTP response code
     long http_code = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-    
-    // Clean up curl
-    curl_slist_free_all(headers);
-    curl_easy_cleanup(curl);
     
     // Send the response back to the client
     if (http_code == 200 && response.data) {
@@ -354,13 +332,31 @@ void mg_handle_go2rtc_webrtc_offer(struct mg_connection *c, struct mg_http_messa
         mg_send_json_error(c, (int)http_code, response.data ? response.data : "Error from go2rtc API");
     }
     
-    // Free response data
-    if (response.data) free(response.data);
-    
     log_info("Successfully handled WebRTC offer request for stream: %s", decoded_name);
+
+cleanup:
+    // Free all allocated resources
+    if (src_param) {
+        free(src_param);
+    }
+    if (param_value) {
+        free(param_value);
+    }
+    if (offer) {
+        free(offer);
+    }
+    if (headers) {
+        curl_slist_free_all(headers);
+    }
+    if (curl) {
+        curl_easy_cleanup(curl);
+    }
+    if (response.data) {
+        free(response.data);
+    }
     
     // Release the thread pool when done
-    if (release_needed) {
+    if (release_needed && pool) {
         api_thread_pool_release();
     }
 }
@@ -371,13 +367,22 @@ void mg_handle_go2rtc_webrtc_offer(struct mg_connection *c, struct mg_http_messa
  * This handler proxies WebRTC ICE candidate requests to the go2rtc API.
  */
 void mg_handle_go2rtc_webrtc_ice(struct mg_connection *c, struct mg_http_message *hm) {
-    // Acquire the API thread pool to ensure proper thread management
+    // Variables for resources that need cleanup
+    thread_pool_t *pool = NULL;
+    struct mg_str *src_param = NULL;
+    char *param_value = NULL;
+    char *ice_candidate = NULL;
+    CURL *curl = NULL;
+    struct curl_slist *headers = NULL;
+    struct curl_response response = {0};
     bool release_needed = true;
-    thread_pool_t *pool = api_thread_pool_acquire(api_thread_pool_get_size(), 10);
+    
+    // Acquire the API thread pool to ensure proper thread management
+    pool = api_thread_pool_acquire(api_thread_pool_get_size(), 10);
     if (!pool) {
         log_error("Failed to acquire API thread pool");
         mg_send_json_error(c, 500, "Internal server error");
-        return;
+        goto cleanup;
     }
     
     // Check authentication
@@ -387,8 +392,7 @@ void mg_handle_go2rtc_webrtc_ice(struct mg_connection *c, struct mg_http_message
         if (mongoose_server_basic_auth_check(hm, server) != 0) {
             log_error("Authentication failed for go2rtc WebRTC ICE request");
             mg_send_json_error(c, 401, "Unauthorized");
-            api_thread_pool_release();
-            return;
+            goto cleanup;
         }
     }
     log_info("Handling POST /api/webrtc/ice request");
@@ -401,7 +405,6 @@ void mg_handle_go2rtc_webrtc_ice(struct mg_connection *c, struct mg_http_message
     
     // Extract stream name from query parameter
     struct mg_str src_param_str = mg_str("src");
-    struct mg_str *src_param = NULL;
     
     // Extract query parameters
     for (int i = 0; i < MG_MAX_HTTP_HEADERS; i++) {
@@ -423,11 +426,11 @@ void mg_handle_go2rtc_webrtc_ice(struct mg_connection *c, struct mg_http_message
             
             // Allocate memory for the parameter value
             size_t value_len = value_end - value_start;
-            char *param_value = malloc(value_len + 1);
+            param_value = malloc(value_len + 1);
             if (!param_value) {
                 log_error("Failed to allocate memory for query parameter");
                 mg_send_json_error(c, 500, "Internal server error");
-                return;
+                goto cleanup;
             }
             
             // Copy the parameter value
@@ -435,24 +438,23 @@ void mg_handle_go2rtc_webrtc_ice(struct mg_connection *c, struct mg_http_message
             param_value[value_len] = '\0';
             
             // Create a mg_str for the parameter value
-            struct mg_str *param = malloc(sizeof(struct mg_str));
-            if (!param) {
-                free(param_value);
+            src_param = malloc(sizeof(struct mg_str));
+            if (!src_param) {
                 log_error("Failed to allocate memory for query parameter");
                 mg_send_json_error(c, 500, "Internal server error");
-                return;
+                goto cleanup;
             }
             
-            param->buf = param_value;
-            param->len = value_len;
-            src_param = param;
+            src_param->buf = param_value;
+            src_param->len = value_len;
             break;
         }
     }
+    
     if (!src_param || src_param->len == 0) {
         log_error("Missing 'src' query parameter");
         mg_send_json_error(c, 400, "Missing 'src' query parameter");
-        return;
+        goto cleanup;
     }
     
     // Extract the stream name
@@ -460,7 +462,7 @@ void mg_handle_go2rtc_webrtc_ice(struct mg_connection *c, struct mg_http_message
     if (src_param->len >= sizeof(stream_name)) {
         log_error("Stream name too long");
         mg_send_json_error(c, 400, "Stream name too long");
-        return;
+        goto cleanup;
     }
     
     memcpy(stream_name, src_param->buf, src_param->len);
@@ -476,11 +478,11 @@ void mg_handle_go2rtc_webrtc_ice(struct mg_connection *c, struct mg_http_message
     log_info("ICE candidate length: %zu", hm->body.len);
     
     // Create a null-terminated copy of the request body
-    char *ice_candidate = malloc(hm->body.len + 1);
+    ice_candidate = malloc(hm->body.len + 1);
     if (!ice_candidate) {
         log_error("Failed to allocate memory for ICE candidate");
         mg_send_json_error(c, 500, "Internal server error");
-        return;
+        goto cleanup;
     }
     
     memcpy(ice_candidate, hm->body.buf, hm->body.len);
@@ -492,16 +494,11 @@ void mg_handle_go2rtc_webrtc_ice(struct mg_connection *c, struct mg_http_message
     log_info("ICE candidate preview: %s", ice_preview);
     
     // Proxy the request to go2rtc API
-    CURL *curl;
-    CURLcode res;
-    struct curl_response response = {0};
-    
-    // Initialize curl
     curl = curl_easy_init();
     if (!curl) {
         log_error("Failed to initialize curl");
         mg_send_json_error(c, 500, "Failed to initialize curl");
-        return;
+        goto cleanup;
     }
     
     // Construct the URL for the go2rtc API
@@ -512,8 +509,7 @@ void mg_handle_go2rtc_webrtc_ice(struct mg_connection *c, struct mg_http_message
     if (curl_easy_setopt(curl, CURLOPT_URL, url) != CURLE_OK) {
         log_error("Failed to set CURLOPT_URL");
         mg_send_json_error(c, 500, "Failed to set curl options");
-        curl_easy_cleanup(curl);
-        return;
+        goto cleanup;
     }
     
     // Set basic authentication if enabled in the main application
@@ -521,22 +517,19 @@ void mg_handle_go2rtc_webrtc_ice(struct mg_connection *c, struct mg_http_message
         if (curl_easy_setopt(curl, CURLOPT_HTTPAUTH, CURLAUTH_BASIC) != CURLE_OK) {
             log_error("Failed to set CURLOPT_HTTPAUTH");
             mg_send_json_error(c, 500, "Failed to set curl options");
-            curl_easy_cleanup(curl);
-            return;
+            goto cleanup;
         }
         
         if (curl_easy_setopt(curl, CURLOPT_USERNAME, g_config.web_username) != CURLE_OK) {
             log_error("Failed to set CURLOPT_USERNAME");
             mg_send_json_error(c, 500, "Failed to set curl options");
-            curl_easy_cleanup(curl);
-            return;
+            goto cleanup;
         }
         
         if (curl_easy_setopt(curl, CURLOPT_PASSWORD, g_config.web_password) != CURLE_OK) {
             log_error("Failed to set CURLOPT_PASSWORD");
             mg_send_json_error(c, 500, "Failed to set curl options");
-            curl_easy_cleanup(curl);
-            return;
+            goto cleanup;
         }
         
         log_info("Using authentication for go2rtc ICE API request: username=%s", g_config.web_username);
@@ -548,80 +541,62 @@ void mg_handle_go2rtc_webrtc_ice(struct mg_connection *c, struct mg_http_message
     if (curl_easy_setopt(curl, CURLOPT_POSTFIELDS, ice_candidate) != CURLE_OK) {
         log_error("Failed to set CURLOPT_POSTFIELDS");
         mg_send_json_error(c, 500, "Failed to set curl options");
-        free(ice_candidate);
-        curl_easy_cleanup(curl);
-        return;
+        goto cleanup;
     }
     
     // Set POST field size
     if (curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)hm->body.len) != CURLE_OK) {
         log_error("Failed to set CURLOPT_POSTFIELDSIZE");
         mg_send_json_error(c, 500, "Failed to set curl options");
-        free(ice_candidate);
-        curl_easy_cleanup(curl);
-        return;
+        goto cleanup;
     }
     
     if (curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback) != CURLE_OK) {
         log_error("Failed to set CURLOPT_WRITEFUNCTION");
         mg_send_json_error(c, 500, "Failed to set curl options");
-        curl_easy_cleanup(curl);
-        return;
+        goto cleanup;
     }
     
     if (curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response) != CURLE_OK) {
         log_error("Failed to set CURLOPT_WRITEDATA");
         mg_send_json_error(c, 500, "Failed to set curl options");
-        curl_easy_cleanup(curl);
-        return;
+        goto cleanup;
     }
     
     if (curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L) != CURLE_OK) { // 5 second timeout
         log_error("Failed to set CURLOPT_TIMEOUT");
         mg_send_json_error(c, 500, "Failed to set curl options");
-        curl_easy_cleanup(curl);
-        return;
+        goto cleanup;
     }
     
     // Set content type header only, let curl handle Content-Length
-    struct curl_slist *headers = NULL;
     headers = curl_slist_append(headers, "Content-Type: application/json");
     
     if (!headers) {
         log_error("Failed to create headers list");
         mg_send_json_error(c, 500, "Failed to set curl options");
-        curl_easy_cleanup(curl);
-        return;
+        goto cleanup;
     }
     
     if (curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers) != CURLE_OK) {
         log_error("Failed to set CURLOPT_HTTPHEADER");
         mg_send_json_error(c, 500, "Failed to set curl options");
-        curl_slist_free_all(headers);
-        curl_easy_cleanup(curl);
-        return;
+        goto cleanup;
     }
     
     // Perform the request
-    res = curl_easy_perform(curl);
+    CURLcode res = curl_easy_perform(curl);
     
     // Check for errors
     if (res != CURLE_OK) {
         log_error("curl_easy_perform() failed: %s", curl_easy_strerror(res));
         mg_send_json_error(c, 500, "Failed to proxy request to go2rtc API");
-        curl_slist_free_all(headers);
-        curl_easy_cleanup(curl);
-        if (response.data) free(response.data);
-        return;
+        goto cleanup;
     }
     
     // Get HTTP response code
     long http_code = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-    
-    // Clean up curl
-    curl_slist_free_all(headers);
-    curl_easy_cleanup(curl);
     
     // Send the response back to the client
     if (http_code == 200) {
@@ -654,13 +629,31 @@ void mg_handle_go2rtc_webrtc_ice(struct mg_connection *c, struct mg_http_message
         mg_send_json_error(c, (int)http_code, response.data ? response.data : "Error from go2rtc API");
     }
     
-    // Free response data
-    if (response.data) free(response.data);
-    
     log_info("Successfully handled WebRTC ICE request for stream: %s", decoded_name);
+
+cleanup:
+    // Free all allocated resources
+    if (src_param) {
+        free(src_param);
+    }
+    if (param_value) {
+        free(param_value);
+    }
+    if (ice_candidate) {
+        free(ice_candidate);
+    }
+    if (headers) {
+        curl_slist_free_all(headers);
+    }
+    if (curl) {
+        curl_easy_cleanup(curl);
+    }
+    if (response.data) {
+        free(response.data);
+    }
     
     // Release the thread pool when done
-    if (release_needed) {
+    if (release_needed && pool) {
         api_thread_pool_release();
     }
 }
@@ -671,14 +664,18 @@ void mg_handle_go2rtc_webrtc_ice(struct mg_connection *c, struct mg_http_message
  * This handler responds to CORS preflight requests for the WebRTC API.
  */
 void mg_handle_go2rtc_webrtc_options(struct mg_connection *c, struct mg_http_message *hm) {
-    // Acquire the API thread pool to ensure proper thread management
+    // Variables for resources that need cleanup
+    thread_pool_t *pool = NULL;
     bool release_needed = true;
-    thread_pool_t *pool = api_thread_pool_acquire(api_thread_pool_get_size(), 10);
+    
+    // Acquire the API thread pool to ensure proper thread management
+    pool = api_thread_pool_acquire(api_thread_pool_get_size(), 10);
     if (!pool) {
         log_error("Failed to acquire API thread pool");
         mg_send_json_error(c, 500, "Internal server error");
-        return;
+        goto cleanup;
     }
+    
     log_info("Handling OPTIONS /api/webrtc request");
     
     // Set CORS headers
@@ -690,9 +687,10 @@ void mg_handle_go2rtc_webrtc_options(struct mg_connection *c, struct mg_http_mes
     mg_printf(c, "Content-Length: 0\r\n\r\n");
     
     log_info("Successfully handled OPTIONS request for WebRTC API");
-    
+
+cleanup:
     // Release the thread pool when done
-    if (release_needed) {
+    if (release_needed && pool) {
         api_thread_pool_release();
     }
 }
@@ -703,14 +701,18 @@ void mg_handle_go2rtc_webrtc_options(struct mg_connection *c, struct mg_http_mes
  * This handler responds to CORS preflight requests for the WebRTC ICE API.
  */
 void mg_handle_go2rtc_webrtc_ice_options(struct mg_connection *c, struct mg_http_message *hm) {
-    // Acquire the API thread pool to ensure proper thread management
+    // Variables for resources that need cleanup
+    thread_pool_t *pool = NULL;
     bool release_needed = true;
-    thread_pool_t *pool = api_thread_pool_acquire(api_thread_pool_get_size(), 10);
+    
+    // Acquire the API thread pool to ensure proper thread management
+    pool = api_thread_pool_acquire(api_thread_pool_get_size(), 10);
     if (!pool) {
         log_error("Failed to acquire API thread pool");
         mg_send_json_error(c, 500, "Internal server error");
-        return;
+        goto cleanup;
     }
+    
     log_info("Handling OPTIONS /api/webrtc/ice request");
     
     // Set CORS headers
@@ -722,9 +724,10 @@ void mg_handle_go2rtc_webrtc_ice_options(struct mg_connection *c, struct mg_http
     mg_printf(c, "Content-Length: 0\r\n\r\n");
     
     log_info("Successfully handled OPTIONS request for WebRTC ICE API");
-    
+
+cleanup:
     // Release the thread pool when done
-    if (release_needed) {
+    if (release_needed && pool) {
         api_thread_pool_release();
     }
 }

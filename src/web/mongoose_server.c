@@ -120,11 +120,7 @@ static const mg_api_route_t s_api_routes[] = {
     {"GET", "/api/streaming/#/hls/segment_#.ts", mg_handle_hls_segment},
     {"GET", "/api/streaming/#/hls/segment_#.m4s", mg_handle_hls_segment},
     {"GET", "/api/streaming/#/hls/init.mp4", mg_handle_hls_segment},
-    
-    // Streaming API - WebRTC
-    {"POST", "/api/streaming/#/webrtc/offer", mg_handle_webrtc_offer},
-    {"POST", "/api/streaming/#/webrtc/ice", mg_handle_webrtc_ice},
-    
+
     // go2rtc WebRTC API
     {"POST", "/api/webrtc", mg_handle_go2rtc_webrtc_offer},
     {"POST", "/api/webrtc/ice", mg_handle_go2rtc_webrtc_ice},

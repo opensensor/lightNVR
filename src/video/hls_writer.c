@@ -23,7 +23,6 @@
 #include "video/hls_writer_thread.h"
 #include "video/detection_integration.h"
 #include "video/detection_frame_processing.h"
-#include "video/detection_thread_pool.h"
 #include "video/streams.h"
 #include "video/stream_manager.h"
 
@@ -94,10 +93,12 @@ void process_packet_for_detection(const char *stream_name, const AVPacket *pkt, 
     
     // Skip if detection is already in progress to prevent recursive calls
     if (detection_in_progress) {
+        log_debug("Skipping detection processing for stream %s - detection already in progress", stream_name);
         return;
     }
     
     detection_in_progress = 1;
+    log_info("Starting detection processing for stream %s", stream_name);
     
     // Use a try/catch style approach with goto for cleanup
     AVPacket *pkt_copy = NULL;
@@ -184,10 +185,13 @@ void process_packet_for_detection(const char *stream_name, const AVPacket *pkt, 
                              stream_name, stream_config.detection_model);
                     
                     // Call the detection function
-                    if (process_decoded_frame_for_detection) {
-                        process_decoded_frame_for_detection(stream_name, frame, detection_interval);
+                    log_info("Calling process_decoded_frame_for_detection for stream %s with interval %d", 
+                             stream_name, detection_interval);
+                    int detection_ret = process_decoded_frame_for_detection(stream_name, frame, detection_interval);
+                    if (detection_ret != 0) {
+                        log_error("process_decoded_frame_for_detection failed with error code %d", detection_ret);
                     } else {
-                        log_error("process_decoded_frame_for_detection function is not available");
+                        log_info("process_decoded_frame_for_detection succeeded for stream %s", stream_name);
                     }
                 } else {
                     log_debug("Detection not enabled for stream %s in configuration", stream_name);

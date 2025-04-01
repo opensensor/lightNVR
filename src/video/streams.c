@@ -14,11 +14,43 @@
 #include "core/config.h"
 #include "video/stream_manager.h"
 #include "video/streams.h"
+#include "video/stream_state.h"
 #include "database/database_manager.h"
 
 #ifdef USE_GO2RTC
 #include "video/go2rtc/go2rtc_integration.h"
 #endif
+
+/**
+ * Get the HLS writer for a stream
+ * 
+ * This function returns the HLS writer for a stream, which can be used
+ * to check if the stream is recording or to write packets to the HLS stream.
+ * 
+ * @param stream The stream handle
+ * @return Pointer to the HLS writer, or NULL if not available
+ */
+hls_writer_t *get_stream_hls_writer(stream_handle_t stream) {
+    if (!stream) {
+        return NULL;
+    }
+    
+    // Get the stream configuration to get the name
+    stream_config_t config;
+    if (get_stream_config(stream, &config) != 0) {
+        return NULL;
+    }
+    
+    // Get the stream state manager using the name
+    stream_state_manager_t *state = get_stream_state_by_name(config.name);
+    if (!state) {
+        return NULL;
+    }
+    
+    // Get the HLS writer from the stream state
+    // The hls_ctx field in the stream_state_manager_t structure contains the HLS writer
+    return (hls_writer_t *)state->hls_ctx;
+}
 
 /**
  * Get current streaming configuration from database

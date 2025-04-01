@@ -17,7 +17,7 @@
 #include "video/detection.h"
 #include "video/detection_result.h"
 #include "video/detection_stream.h"
-#include "video/detection_thread_pool.h"
+#include "video/detection_stream_thread.h"
 #include "database/database_manager.h"
 #include "web/api_handlers_detection_results.h"
 
@@ -227,14 +227,11 @@ int start_detection_recording(const char *stream_name, const char *model_path, f
     
     set_stream_detection_params(stream, detection_interval, threshold, pre_buffer, post_buffer);
     
-    // Start a dedicated stream reader for detection
-    int ret = start_detection_stream_reader(stream_name, detection_interval);
-    if (ret != 0) {
-        log_error("Failed to start detection stream reader for stream %s", stream_name);
-        // Continue anyway, as the detection recording can still work with HLS-based detection
-    } else {
-        log_info("Started detection stream reader for stream %s with interval %d", stream_name, detection_interval);
-    }
+    // We'll let the monitor_hls_segments_for_detection function start the detection thread
+    // once HLS segments are available. This ensures we don't start detection before
+    // the go2rtc service has a chance to create the HLS segments.
+    log_info("Detection configuration set for stream %s - detection thread will start when HLS segments are available", 
+             stream_name);
     
     log_info("Started detection-based recording for stream %s with model %s", 
              stream_name, model_path);
@@ -586,6 +583,8 @@ int monitor_hls_segments_for_detection(const char *stream_name) {
         return -1;
     }
     
+    log_info("Monitoring HLS segments for detection on stream: %s", stream_name);
+    
     // Get the stream configuration
     stream_handle_t stream = get_stream_by_name(stream_name);
     if (!stream) {
@@ -601,14 +600,100 @@ int monitor_hls_segments_for_detection(const char *stream_name) {
     
     // Check if detection is enabled for this stream
     if (!config.detection_based_recording || config.detection_model[0] == '\0') {
-        log_debug("Detection-based recording not enabled for stream %s", stream_name);
+        log_info("Detection-based recording not enabled for stream %s", stream_name);
         return 0;
     }
     
-    // Get the HLS directory for this stream
-    extern config_t g_config;
+    log_info("Detection is enabled for stream %s with model %s", 
+            stream_name, config.detection_model);
+    
+    // Get the HLS directory for this stream using the config
     char hls_dir[MAX_PATH_LENGTH];
-    snprintf(hls_dir, MAX_PATH_LENGTH, "%s/hls/%s", g_config.storage_path, stream_name);
+    
+    // Use storage_path_hls if specified, otherwise fall back to storage_path
+    const char *base_storage_path = g_config.storage_path;
+    if (g_config.storage_path_hls[0] != '\0') {
+        base_storage_path = g_config.storage_path_hls;
+        log_info("Using dedicated HLS storage path: %s", base_storage_path);
+    }
+    
+    // CRITICAL FIX: Ensure we're using the correct HLS directory path
+    // First try the standard path
+    char standard_path[MAX_PATH_LENGTH];
+    snprintf(standard_path, MAX_PATH_LENGTH, "%s/hls/%s", base_storage_path, stream_name);
+    
+    // Also try the path with extra "hls" directory
+    char alternative_path[MAX_PATH_LENGTH];
+    snprintf(alternative_path, MAX_PATH_LENGTH, "%s/hls/hls/%s", base_storage_path, stream_name);
+    
+    struct stat st_standard, st_alternative;
+    bool standard_exists = (stat(standard_path, &st_standard) == 0 && S_ISDIR(st_standard.st_mode));
+    bool alternative_exists = (stat(alternative_path, &st_alternative) == 0 && S_ISDIR(st_alternative.st_mode));
+    
+    // Check which path exists and has segments
+    if (standard_exists) {
+        DIR *dir = opendir(standard_path);
+        int segment_count = 0;
+        if (dir) {
+            struct dirent *entry;
+            while ((entry = readdir(dir)) != NULL) {
+                if (strstr(entry->d_name, ".ts") || strstr(entry->d_name, ".m4s")) {
+                    segment_count++;
+                }
+            }
+            closedir(dir);
+        }
+        
+        if (segment_count > 0) {
+            strncpy(hls_dir, standard_path, MAX_PATH_LENGTH - 1);
+            hls_dir[MAX_PATH_LENGTH - 1] = '\0';
+            log_info("Using standard HLS directory path with %d segments: %s", segment_count, hls_dir);
+        } else if (alternative_exists) {
+            // Standard path exists but has no segments, try alternative
+            dir = opendir(alternative_path);
+            segment_count = 0;
+            if (dir) {
+                struct dirent *entry;
+                while ((entry = readdir(dir)) != NULL) {
+                    if (strstr(entry->d_name, ".ts") || strstr(entry->d_name, ".m4s")) {
+                        segment_count++;
+                    }
+                }
+                closedir(dir);
+            }
+            
+            if (segment_count > 0) {
+                strncpy(hls_dir, alternative_path, MAX_PATH_LENGTH - 1);
+                hls_dir[MAX_PATH_LENGTH - 1] = '\0';
+                log_info("Using alternative HLS directory path with %d segments: %s", segment_count, hls_dir);
+            } else {
+                // No segments in either path, default to standard
+                strncpy(hls_dir, standard_path, MAX_PATH_LENGTH - 1);
+                hls_dir[MAX_PATH_LENGTH - 1] = '\0';
+                log_info("No segments found, defaulting to standard HLS directory path: %s", hls_dir);
+            }
+        } else {
+            // Alternative doesn't exist, use standard
+            strncpy(hls_dir, standard_path, MAX_PATH_LENGTH - 1);
+            hls_dir[MAX_PATH_LENGTH - 1] = '\0';
+            log_info("Using standard HLS directory path: %s", hls_dir);
+        }
+    } else if (alternative_exists) {
+        // Standard doesn't exist but alternative does
+        strncpy(hls_dir, alternative_path, MAX_PATH_LENGTH - 1);
+        hls_dir[MAX_PATH_LENGTH - 1] = '\0';
+        log_info("Using alternative HLS directory path: %s", hls_dir);
+    } else {
+        // Neither exists, create and use standard path
+        strncpy(hls_dir, standard_path, MAX_PATH_LENGTH - 1);
+        hls_dir[MAX_PATH_LENGTH - 1] = '\0';
+        log_info("Creating standard HLS directory path: %s", hls_dir);
+        
+        // Create the directory
+        char cmd[MAX_PATH_LENGTH * 2];
+        snprintf(cmd, sizeof(cmd), "mkdir -p %s", hls_dir);
+        system(cmd);
+    }
     
     // Check if directory exists
     struct stat st;
@@ -702,16 +787,179 @@ int monitor_hls_segments_for_detection(const char *stream_name) {
         // Use a default segment duration
         float segment_duration = 2.0; // Default to 2 seconds
         
-        // Submit the segment to the detection thread pool
-        log_info("Submitting HLS segment for detection: %s (stream: %s, duration: %.1f)",
-                newest_segment, stream_name, segment_duration);
+        // Detection thread pool has been removed, process segment directly
+        log_info("Processing HLS segment directly for stream %s: %s", stream_name, newest_segment);
         
-        int ret = submit_segment_detection_task(stream_name, newest_segment, segment_duration, newest_time);
-        if (ret != 0) {
-            log_warn("Failed to submit segment detection task for stream %s (error code: %d)",
-                    stream_name, ret);
+        // Get the stream configuration
+        stream_handle_t stream = get_stream_by_name(stream_name);
+        if (!stream) {
+            log_error("Failed to get stream handle for %s", stream_name);
+            return -1;
+        }
+        
+        stream_config_t config;
+        if (get_stream_config(stream, &config) != 0) {
+            log_error("Failed to get stream config for %s", stream_name);
+            return -1;
+        }
+        
+        // Get global config to access models path
+        extern config_t g_config;
+        
+        // Check if model_path is a relative path
+        char full_model_path[MAX_PATH_LENGTH];
+        if (config.detection_model[0] != '/') {
+            // Construct full path using configured models path from INI if it exists
+            if (g_config.models_path && strlen(g_config.models_path) > 0) {
+                snprintf(full_model_path, MAX_PATH_LENGTH, "%s/%s", 
+                        g_config.models_path, config.detection_model);
+            } else {
+                // Fall back to default path if INI config doesn't exist
+                snprintf(full_model_path, MAX_PATH_LENGTH, "/etc/lightnvr/models/%s", 
+                        config.detection_model);
+            }
         } else {
-            log_info("Successfully submitted segment detection task for stream %s", stream_name);
+            // Already an absolute path
+            strncpy(full_model_path, config.detection_model, MAX_PATH_LENGTH - 1);
+            full_model_path[MAX_PATH_LENGTH - 1] = '\0';
+        }
+        
+        // Get the HLS directory for this stream using the config
+        char hls_dir[MAX_PATH_LENGTH];
+        
+        // Use storage_path_hls if specified, otherwise fall back to storage_path
+        const char *base_storage_path = g_config.storage_path;
+        if (g_config.storage_path_hls[0] != '\0') {
+            base_storage_path = g_config.storage_path_hls;
+            log_info("Using dedicated HLS storage path: %s", base_storage_path);
+        }
+        
+        // CRITICAL FIX: Account for the extra "hls" directory in the path
+        // Check if the directory exists with the standard path first
+        char standard_path[MAX_PATH_LENGTH];
+        snprintf(standard_path, MAX_PATH_LENGTH, "%s/hls/%s", base_storage_path, stream_name);
+        
+        struct stat st_standard;
+        if (stat(standard_path, &st_standard) == 0 && S_ISDIR(st_standard.st_mode)) {
+            // Standard path exists, use it
+            strncpy(hls_dir, standard_path, MAX_PATH_LENGTH - 1);
+            hls_dir[MAX_PATH_LENGTH - 1] = '\0';
+            log_info("Using standard HLS directory path for segment check: %s", hls_dir);
+        } else {
+            // Try with the extra "hls" directory
+            snprintf(hls_dir, MAX_PATH_LENGTH, "%s/hls/hls/%s", base_storage_path, stream_name);
+            log_info("Using alternative HLS directory path with extra 'hls' for segment check: %s", hls_dir);
+        }
+        
+    // Check if the HLS directory has any segments
+    DIR *segment_dir = opendir(hls_dir);
+    int segment_count = 0;
+    
+    if (segment_dir) {
+        struct dirent *segment_entry;
+        while ((segment_entry = readdir(segment_dir)) != NULL) {
+            // Count .ts or .m4s files
+            if (strstr(segment_entry->d_name, ".ts") || strstr(segment_entry->d_name, ".m4s")) {
+                segment_count++;
+            }
+        }
+        closedir(segment_dir);
+    }
+    
+    log_info("Found %d HLS segments in directory: %s", segment_count, hls_dir);
+    
+    // CRITICAL FIX: Create the HLS directory if it doesn't exist
+    // This ensures the detection thread can start even if the directory doesn't exist yet
+    if (segment_count == 0) {
+        log_warn("No segments found in HLS directory, checking if directory exists");
+        
+        struct stat st;
+        if (stat(hls_dir, &st) != 0) {
+            log_warn("HLS directory does not exist, creating it: %s", hls_dir);
+            
+            // Create the directory with all parent directories
+            char cmd[MAX_PATH_LENGTH * 2];
+            snprintf(cmd, sizeof(cmd), "mkdir -p %s", hls_dir);
+            int result = system(cmd);
+            
+            if (result != 0) {
+                log_error("Failed to create HLS directory: %s (error code: %d)", hls_dir, result);
+            } else {
+                log_info("Successfully created HLS directory: %s", hls_dir);
+            }
+        }
+    }
+        
+        // Get the current detection thread status
+        extern bool is_stream_detection_thread_running(const char *stream_name);
+        bool thread_running = is_stream_detection_thread_running(stream_name);
+        
+        // Start a detection thread for this stream if not already running
+        if (!thread_running) {
+            float threshold = config.detection_threshold;
+            if (threshold <= 0.0f) {
+                threshold = 0.5f; // Default threshold
+            }
+            
+            // Always try to start the detection thread, even if no segments are found yet
+            // The thread will periodically check for new segments
+            log_info("Starting detection thread for stream %s with model %s (found %d segments)", 
+                    stream_name, config.detection_model, segment_count);
+            
+            // CRITICAL FIX: Force start the detection thread regardless of segment count
+            // This ensures the thread is always running and will check for segments periodically
+            // The thread will handle its own startup delay and retry logic
+            
+            // Always create the HLS directory if it doesn't exist
+            struct stat st_dir;
+            if (stat(hls_dir, &st_dir) != 0) {
+                log_warn("HLS directory does not exist, creating it: %s", hls_dir);
+                char cmd[MAX_PATH_LENGTH * 2];
+                snprintf(cmd, sizeof(cmd), "mkdir -p %s", hls_dir);
+                system(cmd);
+            }
+            
+            int result = start_stream_detection_thread(stream_name, full_model_path, threshold, 
+                                         config.detection_interval, hls_dir);
+            
+            if (result == 0) {
+                log_info("Successfully started detection thread for stream %s", stream_name);
+                
+                // Verify the thread is actually running
+                if (is_stream_detection_thread_running(stream_name)) {
+                    log_info("Confirmed detection thread is running for stream %s", stream_name);
+                } else {
+                    log_error("Detection thread failed to start for stream %s despite successful return code", 
+                             stream_name);
+                    
+                    // Try one more time with a delay
+                    usleep(500000); // 500ms delay
+                    result = start_stream_detection_thread(stream_name, full_model_path, threshold, 
+                                                         config.detection_interval, hls_dir);
+                    
+                    if (result == 0 && is_stream_detection_thread_running(stream_name)) {
+                        log_info("Successfully started detection thread for stream %s on second attempt", 
+                                stream_name);
+                    } else {
+                        log_error("Failed to start detection thread for stream %s on second attempt", 
+                                 stream_name);
+                    }
+                }
+            } else {
+                log_error("Failed to start detection thread for stream %s (error code: %d)", 
+                         stream_name, result);
+            }
+        } else {
+            log_info("Detection thread is already running for stream %s", stream_name);
+        }
+        
+        // Check if the stream detection thread is running
+        if (is_stream_detection_thread_running(stream_name)) {
+            // Process the segment using the stream detection thread
+            // This will be handled by the check_for_new_segments function in the detection thread
+            log_info("Stream detection thread is running for %s, segment will be processed by the thread", stream_name);
+        } else {
+            log_error("Failed to start detection thread for stream %s", stream_name);
         }
     }
     
@@ -758,26 +1006,38 @@ int get_detection_recording_state(const char *stream_name, bool *recording_activ
 
 /**
  * Start monitoring HLS segments for all streams with detection enabled
- * This function should be called periodically to check for new segments
+ * This function ensures that detection threads are started for all streams with detection enabled
  */
 void monitor_all_hls_segments_for_detection(void) {
-    pthread_mutex_lock(&detection_recordings_mutex);
+    log_info("Starting detection threads for all streams with detection enabled");
     
+    // Get all streams
     for (int i = 0; i < MAX_STREAMS; i++) {
-        if (detection_recordings[i].stream_name[0] != '\0') {
-            // Found a stream with detection enabled
-            char stream_name[MAX_STREAM_NAME];
-            strncpy(stream_name, detection_recordings[i].stream_name, MAX_STREAM_NAME - 1);
-            stream_name[MAX_STREAM_NAME - 1] = '\0';
-            
-            pthread_mutex_unlock(&detection_recordings_mutex);
-            
-            // Monitor HLS segments for this stream
-            monitor_hls_segments_for_detection(stream_name);
-            
-            pthread_mutex_lock(&detection_recordings_mutex);
+        stream_handle_t stream = get_stream_by_index(i);
+        if (!stream) {
+            continue;
         }
+        
+        // Get stream config
+        stream_config_t config;
+        if (get_stream_config(stream, &config) != 0) {
+            continue;
+        }
+        
+        // Check if detection is enabled for this stream
+        if (!config.detection_based_recording || config.detection_model[0] == '\0') {
+            continue;
+        }
+        
+        // Check if detection thread is already running
+        extern bool is_stream_detection_thread_running(const char *stream_name);
+        if (is_stream_detection_thread_running(config.name)) {
+            log_info("Detection thread already running for stream %s", config.name);
+            continue;
+        }
+        
+        // Start monitoring HLS segments for this stream
+        log_info("Starting detection thread for stream %s", config.name);
+        monitor_hls_segments_for_detection(config.name);
     }
-    
-    pthread_mutex_unlock(&detection_recordings_mutex);
 }

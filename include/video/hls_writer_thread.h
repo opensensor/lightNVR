@@ -1,5 +1,6 @@
 /**
  * Header file for HLS writer thread implementation
+ * Improved with state machine approach for more robust stream handling
  */
 
 #ifndef HLS_WRITER_THREAD_H
@@ -14,6 +15,7 @@ typedef struct hls_writer_thread_ctx hls_writer_thread_ctx_t;
 
 /**
  * HLS writer thread context structure
+ * Enhanced with additional state tracking for better error handling
  */
 struct hls_writer_thread_ctx {
     char rtsp_url[MAX_PATH_LENGTH];

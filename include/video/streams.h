@@ -12,6 +12,7 @@
 #include "video/hls_streaming.h"
 #include "video/mp4_recording.h"
 #include "video/stream_transcoding.h"
+#include "video/stream_manager.h"
 
 
 // Structure for stream transcoding context (legacy, kept for compatibility)
@@ -56,6 +57,7 @@ int stop_hls_stream(const char *stream_name);
 void handle_hls_manifest(const http_request_t *request, http_response_t *response);
 void handle_hls_segment(const http_request_t *request, http_response_t *response);
 void cleanup_hls_directories(void);
+hls_writer_t *get_stream_hls_writer(stream_handle_t stream);
 
 // WebRTC functions (placeholders)
 void handle_webrtc_offer(const http_request_t *request, http_response_t *response);

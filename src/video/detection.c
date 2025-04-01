@@ -71,8 +71,8 @@ int detect_objects(detection_model_t model, const unsigned char *frame_data,
     // Initialize result
     result->count = 0;
 
-    // Get the model type
-    const char *model_type = get_model_type(get_model_path(model));
+    // Get the model type directly from the model handle
+    const char *model_type = get_model_type_from_handle(model);
     log_info("Detecting objects using model type: %s (dimensions: %dx%d, channels: %d)",
              model_type, width, height, channels);
 
