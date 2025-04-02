@@ -14,12 +14,27 @@ import { html } from '../../../html-helper.js';
  * @returns {JSX.Element} MemoryStorage component
  */
 export function MemoryStorage({ systemInfo, formatBytes }) {
-  // Calculate the percentage of memory used by LightNVR and go2rtc
-  const lightNvrMemoryPercent = systemInfo.memory?.total ? 
-    (systemInfo.memory.used / systemInfo.memory.total * 100).toFixed(1) : 0;
+  // Get memory usage values
+  const lightNvrMemoryUsed = systemInfo.memory?.used || 0;
+  const go2rtcMemoryUsed = systemInfo.go2rtcMemory?.used || 0;
+  const totalSystemMemory = systemInfo.memory?.total || 0;
   
-  const go2rtcMemoryPercent = systemInfo.go2rtcMemory?.total ? 
-    (systemInfo.go2rtcMemory.used / systemInfo.go2rtcMemory.total * 100).toFixed(1) : 0;
+  // Calculate combined memory usage
+  const combinedMemoryUsed = lightNvrMemoryUsed + go2rtcMemoryUsed;
+  
+  // Calculate the percentage of total system memory used by both processes combined
+  const combinedMemoryPercent = totalSystemMemory ? 
+    (combinedMemoryUsed / totalSystemMemory * 100).toFixed(1) : 0;
+  
+  // Calculate the percentage of each process relative to their combined usage
+  // This ensures the slivers add up to the total width of the progress bar
+  const lightNvrSlicePercent = combinedMemoryUsed ? 
+    (lightNvrMemoryUsed / combinedMemoryUsed * 100).toFixed(1) : 0;
+  
+  const go2rtcSlicePercent = combinedMemoryUsed ? 
+    (go2rtcMemoryUsed / combinedMemoryUsed * 100).toFixed(1) : 0;
+  
+  // These variables ensure the slivers add up to 100% of the combined usage bar
   
   return html`
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
@@ -30,23 +45,22 @@ export function MemoryStorage({ systemInfo, formatBytes }) {
             <span class="font-medium">Process Memory:</span>
             <div>
               <span class="inline-block px-2 py-0.5 mr-1 text-xs rounded bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                LightNVR: ${systemInfo.memory?.used ? formatBytes(systemInfo.memory.used) : '0'}
+                LightNVR: ${formatBytes(lightNvrMemoryUsed)}
               </span>
               <span class="inline-block px-2 py-0.5 text-xs rounded bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                go2rtc: ${systemInfo.go2rtcMemory?.used ? formatBytes(systemInfo.go2rtcMemory.used) : '0'}
+                go2rtc: ${formatBytes(go2rtcMemoryUsed)}
               </span>
             </div>
           </div>
-          <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700 overflow-hidden">
-            <div class="flex h-full">
-              <div class="bg-blue-600 h-2.5" style=${`width: ${lightNvrMemoryPercent}%`}></div>
-              <div class="bg-green-500 h-2.5" style=${`width: ${go2rtcMemoryPercent}%`}></div>
-            </div>
+          <div class="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+            <span>Combined: ${formatBytes(combinedMemoryUsed)} / ${formatBytes(totalSystemMemory)}</span>
+            <span>${combinedMemoryPercent}% of total memory</span>
           </div>
-          <div class="flex justify-end mt-1">
-            <span class="text-xs text-gray-500 dark:text-gray-400">
-              Total: ${systemInfo.memory?.total ? formatBytes(systemInfo.memory.total) : '0'}
-            </span>
+          <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700 overflow-hidden">
+            <div class="flex h-full" style=${`width: ${combinedMemoryPercent}%`}>
+              <div class="bg-blue-600 h-2.5" style=${`width: ${lightNvrSlicePercent}%`}></div>
+              <div class="bg-green-500 h-2.5" style=${`width: ${go2rtcSlicePercent}%`}></div>
+            </div>
           </div>
         </div>
         <div>
