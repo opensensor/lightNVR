@@ -15,7 +15,7 @@ export const urlUtils = {
     const urlParams = new URLSearchParams(window.location.search);
     
     // Check if we have any filter parameters
-    if (!urlParams.has('dateRange') && !urlParams.has('page') && !urlParams.has('sort') && !urlParams.has('detection')) {
+    if (!urlParams.has('dateRange') && !urlParams.has('page') && !urlParams.has('sort') && !urlParams.has('detection') && !urlParams.has('stream')) {
       return null;
     }
     

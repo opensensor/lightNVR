@@ -14,6 +14,7 @@ import { fetchJSON, enhancedFetch, createRequestController } from '../../fetch-u
 import { SystemControls } from './system/SystemControls.js';
 import { SystemInfo } from './system/SystemInfo.js';
 import { MemoryStorage } from './system/MemoryStorage.js';
+import { StreamStorage } from './system/StreamStorage.js';
 import { NetworkInfo } from './system/NetworkInfo.js';
 import { StreamsInfo } from './system/StreamsInfo.js';
 import { LogsView } from './system/LogsView.js';
@@ -392,6 +393,10 @@ export function SystemView() {
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <${SystemInfo} systemInfo=${systemInfo} formatUptime=${formatUptime} />
           <${MemoryStorage} systemInfo=${systemInfo} formatBytes=${formatBytes} />
+        </div>
+        
+        <div class="grid grid-cols-1 gap-4 mb-4">
+          <${StreamStorage} systemInfo=${systemInfo} formatBytes=${formatBytes} />
         </div>
         
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">

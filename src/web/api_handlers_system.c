@@ -29,6 +29,7 @@
 #include "database/database_manager.h"
 #include "database/db_streams.h"
 #include "database/db_recordings.h"
+#include "storage/storage_manager_streams.h"
 #include "mongoose.h"
 
 // External function from api_handlers_system_go2rtc.c
@@ -522,6 +523,9 @@ void mg_handle_get_system_info(struct mg_connection *c, struct mg_http_message *
         // Add recordings object to info
         cJSON_AddItemToObject(info, "recordings", recordings);
     }
+    
+    // Add stream storage usage information
+    add_stream_storage_usage_to_json(info);
     
     // Convert to string
     char *json_str = cJSON_PrintUnformatted(info);

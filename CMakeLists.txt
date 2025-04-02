@@ -197,10 +197,15 @@ file(GLOB_RECURSE CORE_SOURCES "src/core/*.c")
 file(GLOB_RECURSE DATABASE_SOURCES "src/database/*.c")
 file(GLOB_RECURSE STORAGE_SOURCES "src/storage/*.c")
 file(GLOB_RECURSE UTILS_SOURCES "src/utils/*.c")
+# Exclude rebuild_recordings.c from UTILS_SOURCES to avoid multiple main functions
+list(FILTER UTILS_SOURCES EXCLUDE REGEX ".*rebuild_recordings\\.c$")
+message(STATUS "Excluding rebuild_recordings.c from main executable")
 file(GLOB_RECURSE WEB_SOURCES "src/web/*.c")
 file(GLOB_RECURSE ROOT_SOURCES "src/*.c")
-# Exclude sod.c from ROOT_SOURCES to avoid static linking
+# Exclude sod.c and rebuild_recordings.c from ROOT_SOURCES to avoid static linking and multiple main functions
 list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*sod/sod\\.c$")
+list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*utils/rebuild_recordings\\.c$")
+message(STATUS "Excluding rebuild_recordings.c from ROOT_SOURCES")
 
 # Explicitly list video sources to exclude motion_detection_optimized.c and detection_thread_pool.c
 file(GLOB VIDEO_SOURCES "src/video/*.c")
@@ -252,21 +257,49 @@ if(CJSON_BUNDLED)
     list(APPEND SOURCES ${CJSON_SOURCES})
 endif()
 
-# Define the executable
+# Define the main executable
 add_executable(lightnvr ${SOURCES})
 
-# Set the output directory for the binary
-set_target_properties(lightnvr PROPERTIES
+# Define source files for rebuild_recordings utility
+set(REBUILD_RECORDINGS_SOURCES
+    src/utils/rebuild_recordings.c
+    src/core/config.c
+    src/core/logger.c
+    src/web/logger_websocket.c
+    src/database/db_core.c
+    src/database/db_streams.c
+    src/database/db_recordings.c
+    src/database/db_schema.c
+    src/database/db_schema_cache.c
+    src/database/db_backup.c
+    src/database/db_transaction.c
+    "${INIH_INCLUDE_DIR}/ini.c"
+)
+
+# Define the rebuild_recordings utility
+add_executable(rebuild_recordings ${REBUILD_RECORDINGS_SOURCES})
+
+# Set the output directory for the binaries
+set_target_properties(lightnvr rebuild_recordings PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
 
-# Link libraries
+# Link libraries for main executable
 target_link_libraries(lightnvr
         ${FFMPEG_LIBRARIES}
         ${SQLITE_LIBRARIES}
         ${CURL_LIBRARIES}
         ${SSL_LIBRARIES}
-	atomic
+        atomic
+        pthread
+        dl
+        m
+)
+
+# Link libraries for rebuild_recordings utility
+target_link_libraries(rebuild_recordings
+        ${FFMPEG_LIBRARIES}
+        ${SQLITE_LIBRARIES}
         pthread
         dl
         m
@@ -319,7 +352,7 @@ if(ENABLE_SOD)
 endif()
 
 # Install targets
-install(TARGETS lightnvr DESTINATION bin)
+install(TARGETS lightnvr rebuild_recordings DESTINATION bin)
 install(DIRECTORY config/ DESTINATION /etc/lightnvr)
 
 # Add subdirectories for tests if testing is enabled
@@ -356,4 +389,3 @@ message(STATUS "- Include directories:")
 foreach(dir ${LIGHTNVR_INCLUDE_DIRS})
     message(STATUS "  * ${dir}")
 endforeach()
-message(STATUS "Ensure all dependencies are optimized for low memory usage")

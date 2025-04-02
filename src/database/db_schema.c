@@ -13,7 +13,7 @@
 #include "core/logger.h"
 
 // Current schema version - increment this when adding new migrations
-#define CURRENT_SCHEMA_VERSION 5
+#define CURRENT_SCHEMA_VERSION 6
 
 // Migration function type
 typedef int (*migration_func_t)(void);
@@ -23,6 +23,7 @@ static int migration_v1_to_v2(void);
 static int migration_v2_to_v3(void);
 static int migration_v3_to_v4(void);
 static int migration_v4_to_v5(void);
+static int migration_v5_to_v6(void);
 
 // Array of migration functions
 static migration_func_t migrations[] = {
@@ -30,7 +31,8 @@ static migration_func_t migrations[] = {
     migration_v1_to_v2, // v1->v2
     migration_v2_to_v3, // v2->v3
     migration_v3_to_v4, // v3->v4
-    migration_v4_to_v5  // v4->v5
+    migration_v4_to_v5, // v4->v5
+    migration_v5_to_v6  // v5->v6
 };
 
 /**
@@ -575,4 +577,21 @@ static int migration_v4_to_v5(void) {
     
     log_info("Completed migration v4 to v5 with result: %d", rc);
     return 0;
+}
+
+/**
+ * Migration from version 5 to 6
+ * - Add is_deleted column to streams table for soft deletion
+ */
+static int migration_v5_to_v6(void) {
+    log_info("Running migration from v5 to v6: Adding is_deleted column to streams table for soft deletion");
+    
+    int rc = 0;
+    
+    // Add is_deleted column to streams table
+    log_info("Adding is_deleted column");
+    rc |= add_column_if_not_exists("streams", "is_deleted", "INTEGER DEFAULT 0");
+    
+    log_info("Completed migration v5 to v6 with result: %d", rc);
+    return rc;
 }
