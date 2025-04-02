@@ -1,0 +1,45 @@
+/* Toast Notifications - Tailwind-based */
+
+/* 
+ * This file contains Tailwind-compatible styles for toast notifications.
+ * Using @apply to leverage Tailwind's utility classes while maintaining
+ * the component-based structure.
+ */
+
+.toast-container {
+    @apply fixed top-5 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2.5 w-full max-w-[450px] pointer-events-none;
+}
+
+.toast {
+    @apply py-3.5 px-4.5 rounded-lg shadow-lg w-full flex items-center opacity-0 -translate-y-5 transition-all duration-300 pointer-events-auto font-medium;
+}
+
+.toast.visible {
+    @apply opacity-100 translate-y-0;
+}
+
+.toast-success {
+    @apply bg-green-500 text-white border-l-[6px] border-green-600;
+}
+
+.toast-error {
+    @apply bg-red-500 text-white border-l-[6px] border-red-700;
+}
+
+.toast-icon {
+    @apply mr-3 flex-shrink-0;
+}
+
+.toast-message {
+    @apply flex-grow text-sm leading-relaxed;
+}
+
+.toast-close {
+    @apply ml-3 cursor-pointer opacity-70 transition-opacity duration-200 flex-shrink-0 hover:opacity-100;
+}
+
+/* SVG icons for toasts */
+.toast-success .toast-icon svg,
+.toast-error .toast-icon svg {
+    @apply fill-white;
+}

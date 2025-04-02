@@ -31,6 +31,9 @@
 #include "database/db_recordings.h"
 #include "mongoose.h"
 
+// External function from api_handlers_system_go2rtc.c
+extern bool get_go2rtc_memory_usage(unsigned long long *memory_usage);
+
 // External declarations
 extern bool daemon_mode;
 
@@ -136,6 +139,32 @@ void mg_handle_get_system_info(struct mg_connection *c, struct mg_http_message *
         
         // Add memory object to info
         cJSON_AddItemToObject(info, "memory", memory);
+    }
+    
+    // Get memory information for the go2rtc process
+    cJSON *go2rtc_memory = cJSON_CreateObject();
+    if (go2rtc_memory) {
+        unsigned long long go2rtc_used = 0;
+        
+        // Try to get go2rtc memory usage
+        if (get_go2rtc_memory_usage(&go2rtc_used)) {
+            log_debug("go2rtc memory usage: %llu bytes", go2rtc_used);
+        } else {
+            log_warn("Failed to get go2rtc memory usage, using 0");
+        }
+        
+        // Use the system total memory as the total for go2rtc as well
+        unsigned long long total = system_total;
+        
+        // Calculate free as the difference between total and used
+        unsigned long long free = (total > go2rtc_used) ? (total - go2rtc_used) : 0;
+        
+        cJSON_AddNumberToObject(go2rtc_memory, "total", total);
+        cJSON_AddNumberToObject(go2rtc_memory, "used", go2rtc_used);
+        cJSON_AddNumberToObject(go2rtc_memory, "free", free);
+        
+        // Add go2rtc memory object to info
+        cJSON_AddItemToObject(info, "go2rtcMemory", go2rtc_memory);
     }
     
     // Get system-wide memory information

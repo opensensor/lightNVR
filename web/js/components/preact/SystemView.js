@@ -40,6 +40,11 @@ export function SystemView() {
       used: 0,
       free: 0
     },
+    go2rtcMemory: {
+      total: 0,
+      used: 0,
+      free: 0
+    },
     systemMemory: {
       total: 0,
       used: 0,
