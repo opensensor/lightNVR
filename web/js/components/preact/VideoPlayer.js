@@ -4,6 +4,10 @@
 
 import { showStatusMessage } from './UI.js';
 import { startDetectionPolling, cleanupDetectionPolling } from './DetectionOverlay.js';
+import Hls from 'hls.js';
+
+// Make Hls available globally for backward compatibility
+window.Hls = Hls;
 
 /**
  * Initialize video player for a stream
