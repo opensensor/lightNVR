@@ -1,14 +1,13 @@
 /** @type {import('tailwindcss').Config} */
-module.exports = {
+export default {
   content: [
-    './index.snowpack.html',
     './index.html',
+    './*.html',
     './js/**/*.js',
     './js/**/*.jsx',
     './js/**/*.ts',
     './js/**/*.tsx',
     './css/**/*.css',
-    './*.html',
   ],
   theme: {
     extend: {

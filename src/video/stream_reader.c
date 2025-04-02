@@ -63,7 +63,19 @@ static void *stream_reader_thread(void *arg) {
     const int max_retries = 5;
     
     while (retry_count < max_retries && ctx->running) {  //  Check running state in loop condition
+        // CRITICAL FIX: Ensure input_ctx is NULL before calling open_input_stream
+        // This prevents potential double-free issues if open_input_stream fails
+        ctx->input_ctx = NULL;
+        
         ret = open_input_stream(&ctx->input_ctx, ctx->config.url, ctx->config.protocol);
+        
+        // CRITICAL FIX: Double check that input_ctx is NULL if open_input_stream failed
+        // This prevents potential use-after-free issues
+        if (ret < 0 && ctx->input_ctx != NULL) {
+            log_warn("Input context not NULL after failed open_input_stream, closing it");
+            avformat_close_input(&ctx->input_ctx);
+            ctx->input_ctx = NULL;
+        }
         if (ret == 0) {
             // Successfully opened the stream
             
@@ -182,10 +194,19 @@ static void *stream_reader_thread(void *arg) {
         
         //  Add timeout check for RTSP connections
         // If we've been trying to connect for too long, log an error and mark as not running
-        if (ret < 0 && (ret == AVERROR_EOF || ret == AVERROR(EAGAIN))) {
-            time_t current_time = time(NULL);
-            if (current_time - start_time > 30) { // 30 second timeout
-                log_error("Timeout connecting to stream %s after 30 seconds, marking as failed", stream_name);
+        if (ret < 0) {
+            if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN)) {
+                time_t current_time = time(NULL);
+                if (current_time - start_time > 30) { // 30 second timeout
+                    log_error("Timeout connecting to stream %s after 30 seconds, marking as failed", stream_name);
+                    ctx->running = 0;
+                    av_packet_unref(pkt);
+                    pthread_mutex_unlock(&packet_mutex);
+                    break;
+                }
+            } else {
+                // Handle other errors (like 404 Not Found) by safely exiting
+                log_error("Failed to read frame from stream %s: %d", stream_name, ret);
                 ctx->running = 0;
                 av_packet_unref(pkt);
                 pthread_mutex_unlock(&packet_mutex);
@@ -451,11 +472,18 @@ static void *stream_reader_thread(void *arg) {
                 }
                 
                 continue;
-            } else {
-                log_ffmpeg_error(ret, "Error reading frame");
-                pthread_mutex_unlock(&packet_mutex);
-                break;
-            }
+    } else {
+        log_ffmpeg_error(ret, "Error reading frame");
+        
+        // Ensure we're not leaving with an invalid context
+        if (ctx->input_ctx) {
+            avformat_close_input(&ctx->input_ctx);
+            ctx->input_ctx = NULL;
+        }
+        
+        pthread_mutex_unlock(&packet_mutex);
+        break;
+    }
         }
         
         // Process video and audio packets
@@ -513,8 +541,10 @@ static void *stream_reader_thread(void *arg) {
         av_packet_free(&pkt);
     }
     
+    // Safely close input context if it exists
     if (ctx->input_ctx) {
         avformat_close_input(&ctx->input_ctx);
+        ctx->input_ctx = NULL;
     }
     
     // Destroy the packet mutex

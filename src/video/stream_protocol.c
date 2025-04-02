@@ -396,15 +396,27 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
         // Log additional context for RTSP errors
         if (strstr(url, "rtsp://") != NULL) {
             log_error("RTSP connection failed - server may be down or URL may be incorrect: %s", url);
+            
+            // Log specific error for 404 Not Found
+            if (strstr(error_buf, "404") != NULL || strstr(error_buf, "Not Found") != NULL) {
+                log_error("Failed to connect to stream %s: %s (error code: %d)", 
+                         url, error_buf, ret);
+            }
         }
         
         // Free options before returning
         av_dict_free(&input_options);
         
-        // Make sure we don't have a dangling pointer
+        // CRITICAL FIX: Make sure local_ctx is NULL after a failed open
+        // This is important because avformat_open_input might have allocated memory
+        // even if it returned an error
         if (local_ctx) {
             avformat_close_input(&local_ctx);
+            local_ctx = NULL;  // Explicitly set to NULL after closing
         }
+        
+        // Ensure the output parameter is set to NULL to prevent use-after-free
+        *input_ctx = NULL;
         
         return ret;
     }

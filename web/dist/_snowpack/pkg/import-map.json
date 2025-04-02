@@ -1,6 +1,0 @@
-{
-  "imports": {
-    "htm": "./htm.js",
-    "preact": "./preact.js"
-  }
-}

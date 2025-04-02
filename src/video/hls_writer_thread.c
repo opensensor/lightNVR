@@ -360,6 +360,9 @@ static void *hls_writer_thread_func(void *arg) {
                 }
                 
                 // Open input stream
+                // CRITICAL FIX: Ensure input_ctx is NULL before calling open_input_stream
+                input_ctx = NULL;
+                
                 ret = open_input_stream(&input_ctx, ctx->rtsp_url, ctx->protocol);
                 if (ret < 0) {
                     char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
@@ -368,6 +371,16 @@ static void *hls_writer_thread_func(void *arg) {
                     // Log the error but don't treat any error type specially
                     log_error("Failed to connect to stream %s: %s (error code: %d)", 
                              stream_name, error_buf, ret);
+                    
+                    // CRITICAL FIX: Ensure input_ctx is NULL after a failed open
+                    // This prevents potential use-after-free issues
+                    if (input_ctx) {
+                        avformat_close_input(&input_ctx);
+                        input_ctx = NULL;
+                    }
+                    
+                    // Never quit, always keep trying
+                    // Just continue the loop and try again after the delay
                     
                     // Mark connection as invalid
                     atomic_store(&ctx->connection_valid, 0);
@@ -548,6 +561,9 @@ static void *hls_writer_thread_func(void *arg) {
                 }
                 
                 // Open input stream
+                // CRITICAL FIX: Ensure input_ctx is NULL before calling open_input_stream
+                input_ctx = NULL;
+                
                 ret = open_input_stream(&input_ctx, ctx->rtsp_url, ctx->protocol);
                 if (ret < 0) {
                     char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
@@ -556,6 +572,13 @@ static void *hls_writer_thread_func(void *arg) {
                     // Log the error but don't treat any error type specially
                     log_error("Failed to reconnect to stream %s: %s (error code: %d)", 
                              stream_name, error_buf, ret);
+                    
+                    // CRITICAL FIX: Ensure input_ctx is NULL after a failed open
+                    // This prevents potential use-after-free issues
+                    if (input_ctx) {
+                        avformat_close_input(&input_ctx);
+                        input_ctx = NULL;
+                    }
                     
                     // Increment reconnection attempt counter
                     reconnect_attempt++;

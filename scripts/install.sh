@@ -328,7 +328,17 @@ fi
 if [ -d "web" ]; then
     # Install web interface files
     echo "Installing web interface files..."
-    cp -r web/* "$DATA_DIR/www/"
+    
+    # Check if dist directory exists (prebuilt assets)
+    if [ -d "web/dist" ]; then
+        echo "Found prebuilt web assets, installing from dist directory..."
+        cp -r web/dist/* "$DATA_DIR/www/"
+        echo "Web interface files installed to $DATA_DIR/www/"
+    else
+        echo "No prebuilt web assets found, copying web directory as is..."
+        cp -r web/* "$DATA_DIR/www/"
+        echo "Note: For optimized web assets, run scripts/build_and_update_web_vite.sh before installation"
+    fi
 else
     echo "Web interface directory not found, skipping web installation"
 fi

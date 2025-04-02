@@ -118,11 +118,18 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration,
         av_dict_set(&opts, "stimeout", "5000000", 0);    // Socket timeout in microseconds (5 seconds)
         
         // Open input
-        ret = avformat_open_input(&input_ctx, rtsp_url, NULL, &opts);
-        if (ret < 0) {
-            log_error("Failed to open input: %d", ret);
-            goto cleanup;
-        }
+    ret = avformat_open_input(&input_ctx, rtsp_url, NULL, &opts);
+    if (ret < 0) {
+        char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+        av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+        log_error("Failed to open input: %d (%s)", ret, error_buf);
+        
+        // Ensure input_ctx is NULL after a failed open
+        input_ctx = NULL;
+        
+        // Don't quit, just return an error code so the caller can retry
+        goto cleanup;
+    }
         
         // Find stream info
         ret = avformat_find_stream_info(input_ctx, NULL);
@@ -767,46 +774,33 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration,
     }
     
 cleanup:
-    // Ensure packet is properly unreferenced before cleanup
-    // This prevents memory leaks if we exit the function with an active packet
-    av_packet_unref(&pkt);
+    // CRITICAL FIX: Minimal cleanup to avoid double free issues
+    // Only clean up what we know is safe
     
-    // Close output
-    if (output_ctx) {
-        // Write trailer if header was written successfully and trailer hasn't been written yet
-        if (output_ctx->pb && ret >= 0 && !trailer_written) {
-            int trailer_ret = av_write_trailer(output_ctx);
-            if (trailer_ret < 0) {
-                log_error("Failed to write trailer: %d", trailer_ret);
-            } else {
-                log_debug("Successfully wrote trailer to output file during cleanup");
-            }
-        }
-        
-        if (output_ctx->pb) {
-            // Create a local copy of the pb pointer to avoid double-free issues
-            AVIOContext *pb_to_close = output_ctx->pb;
-            output_ctx->pb = NULL;
-            
-            // Close the AVIO context
-            avio_closep(&pb_to_close);
-        }
-        avformat_free_context(output_ctx);
-    }
-    
-    // Free dictionaries
+    // Free dictionaries - these are always safe to free
     av_dict_free(&opts);
     av_dict_free(&out_opts);
     
-    // MEMORY LEAK FIX: Close input_ctx if it was allocated in this function but not stored in *input_ctx_ptr
-    // This happens when avformat_find_stream_info fails after avformat_open_input succeeds
-    if (input_ctx && input_ctx_ptr && *input_ctx_ptr != input_ctx) {
-        log_info("Closing input context that was not stored in caller's pointer");
-        avformat_close_input(&input_ctx);
+    // Only clean up output context if it was successfully created
+    if (output_ctx) {
+        // Only write trailer if we successfully wrote the header
+        if (output_ctx->pb && ret >= 0 && !trailer_written) {
+            av_write_trailer(output_ctx);
+        }
+        
+        // Close output file if it was opened
+        if (output_ctx->pb) {
+            avio_closep(&output_ctx->pb);
+        }
+        
+        // Free output context
+        avformat_free_context(output_ctx);
     }
     
-    // Don't close input_ctx if it's managed by the caller
+    // IMPORTANT: Do not touch input_ctx here - it's managed by the caller
     // The caller will reuse it for the next segment or close it when done
+    
+    // Return the error code
     
     return ret;
 }
@@ -1025,6 +1019,12 @@ static void *mp4_writer_rtsp_thread(void *arg) {
         if (ret < 0) {
             log_error("Failed to record segment for stream %s (error: %d), implementing retry strategy...", 
                      stream_name, ret);
+                     
+            // Check if input_ctx is NULL after a failed record_segment call
+            // This can happen if the connection failed and avformat_open_input failed
+            if (input_ctx == NULL) {
+                log_warn("Input context is NULL after record_segment failure for stream %s", stream_name);
+            }
             
             // Calculate backoff time based on retry count (exponential backoff with max of 30 seconds)
             int backoff_seconds = 1 << (segment_retry_count > 4 ? 4 : segment_retry_count); // 1, 2, 4, 8, 16, 16, ...
