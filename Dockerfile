@@ -100,6 +100,8 @@ COPY --from=builder /var/run/lightnvr /var/run/lightnvr
 COPY --from=builder /lib/libsod.so.1.1.9 /lib/libsod.so.1.1.9
 COPY --from=builder /lib/libsod.so.1 /lib/libsod.so.1
 COPY --from=builder /lib/libsod.so /lib/libsod.so
+# Copy web assets from Vite build
+COPY --from=builder /opt/web/dist /var/lib/lightnvr/web
 
 # Create a startup script to launch both services
 RUN echo '#!/bin/bash' > /bin/start.sh && \
