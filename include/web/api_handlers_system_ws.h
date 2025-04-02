@@ -26,4 +26,11 @@ void websocket_handle_system_logs(const char *client_id, const char *message);
  */
 int fetch_system_logs(const char *client_id, const char *min_level, const char *last_timestamp);
 
+/**
+ * @brief Remove log level for a client
+ * 
+ * @param client_id WebSocket client ID
+ */
+void remove_client_log_level(const char *client_id);
+
 #endif /* API_HANDLERS_SYSTEM_WS_H */

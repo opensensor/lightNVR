@@ -288,21 +288,20 @@ static bool extract_recording_info(const char *file_path, recording_file_info_t 
         int64_t duration_us = format_ctx->duration;
         int64_t duration_s = duration_us / AV_TIME_BASE;
         
-        // Extract timestamp from filename (assuming format: timestamp.mp4)
-        const char *filename = strrchr(file_path, '/');
-        if (filename) {
-            filename++; // Skip '/'
-            info->start_time = (time_t)strtol(filename, NULL, 10);
-            info->end_time = info->start_time + duration_s;
-        } else {
-            // If timestamp can't be extracted, use file modification time
-            info->end_time = st.st_mtime;
-            info->start_time = info->end_time - duration_s;
-        }
-    } else {
-        // If duration is not available, use file modification time
+        // Use file modification time as the end time
         info->end_time = st.st_mtime;
-        info->start_time = info->end_time - 60; // Assume 1 minute duration
+        
+        // Calculate start time by subtracting duration from end time
+        info->start_time = info->end_time - duration_s;
+        
+        log_info("Using file modification time for recording: %s (start: %ld, end: %ld, duration: %ld)",
+                file_path, info->start_time, info->end_time, duration_s);
+    } else {
+        // If duration is not available, use file modification time and assume 1 minute duration
+        info->end_time = st.st_mtime;
+        info->start_time = info->end_time - 30; // Assume 30 second duration
+        
+        log_warn("Duration not available for recording: %s, assuming 30 seconds", file_path);
     }
     
     avformat_close_input(&format_ctx);

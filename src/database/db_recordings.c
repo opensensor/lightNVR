@@ -364,8 +364,8 @@ int get_recording_count(time_t start_time, time_t end_time,
         // Use a JOIN with the detections table to filter recordings with detections
         strcpy(sql, "SELECT COUNT(DISTINCT r.id) FROM recordings r "
                     "INNER JOIN detections d ON r.stream_name = d.stream_name "
-                    "WHERE r.is_complete = 1 AND r.end_time IS NOT NULL "
-                    "AND d.timestamp BETWEEN r.start_time AND r.end_time");
+                    "WHERE d.timestamp BETWEEN r.start_time AND COALESCE(r.end_time, strftime('%s', 'now')) "
+                    "AND r.is_complete = 1 AND r.end_time IS NOT NULL");
     } else {
         // Simple query without detection filter
         strcpy(sql, "SELECT COUNT(*) FROM recordings WHERE is_complete = 1 AND end_time IS NOT NULL");
@@ -490,8 +490,8 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
                 "r.size_bytes, r.width, r.height, r.fps, r.codec, r.is_complete "
                 "FROM recordings r "
                 "INNER JOIN detections d ON r.stream_name = d.stream_name "
-                "WHERE r.is_complete = 1 AND r.end_time IS NOT NULL "
-                "AND d.timestamp BETWEEN r.start_time AND r.end_time");
+                "WHERE d.timestamp BETWEEN r.start_time AND COALESCE(r.end_time, strftime('%%s', 'now')) "
+                "AND r.is_complete = 1 AND r.end_time IS NOT NULL");
     } else {
         // Simple query without detection filter
         snprintf(sql, sizeof(sql), 

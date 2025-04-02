@@ -82,7 +82,7 @@ static const char *get_client_log_level(const char *client_id) {
  * 
  * @param client_id WebSocket client ID
  */
-static void remove_client_log_level(const char *client_id) {
+void remove_client_log_level(const char *client_id) {
     for (int i = 0; i < client_log_level_count; i++) {
         if (strcmp(client_log_levels[i].client_id, client_id) == 0) {
             // Move last client to this position

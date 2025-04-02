@@ -1005,6 +1005,8 @@ static void *mongoose_server_event_loop(void *arg) {
     
     // Run event loop until server is stopped
     int poll_count = 0;
+    uint64_t last_cleanup_time = mg_millis();
+    
     while (server->running) {
         // Check if shutdown has been initiated
         if (is_shutdown_initiated()) {
@@ -1029,6 +1031,19 @@ static void *mongoose_server_event_loop(void *arg) {
             
             log_debug("Mongoose event loop poll count: %d, active connections: %d", 
                      poll_count, active_count);
+        }
+        
+        // Periodically clean up inactive WebSocket clients (every 5 minutes)
+        uint64_t now = mg_millis();
+        if (now - last_cleanup_time > 300000) { // 5 minutes in milliseconds
+            // Clean up inactive WebSocket clients
+            extern void websocket_client_cleanup_inactive(void);
+            if (websocket_client_cleanup_inactive) {
+                log_debug("Cleaning up inactive WebSocket clients");
+                websocket_client_cleanup_inactive();
+            }
+            
+            last_cleanup_time = now;
         }
     }
     
