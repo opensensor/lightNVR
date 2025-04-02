@@ -186,6 +186,9 @@ static bool add_go2rtc_recording_consumer(const char *stream_id, const char *out
     }
     
     // Clean up
+    if (headers) {
+        curl_slist_free_all(headers);
+    }
     curl_easy_cleanup(curl);
     
     return success;
