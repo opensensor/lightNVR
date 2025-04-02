@@ -672,7 +672,7 @@ export function RecordingsView() {
         </button>
       </div>
       
-      <div class="recordings-layout flex flex-col md:flex-row gap-4">
+      <div class="recordings-layout flex flex-col md:flex-row gap-4 w-full">
         <!-- Sidebar for filters -->
         <${FiltersSidebar}
           filters=${filters}

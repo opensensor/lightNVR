@@ -11,7 +11,7 @@
 
 /* Header styles */
 header {
-  @apply bg-gray-800 text-white py-2 px-4 flex justify-between items-center shadow-md mb-4;
+  @apply bg-gray-800 text-white py-2 w-full shadow-md mb-4;
 }
 
 .logo {

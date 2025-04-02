@@ -95,8 +95,8 @@ export function Header({ activeNav = '', version = '' }) {
   };
 
   return html`
-    <header class="bg-gray-800 text-white py-2 px-4 shadow-md mb-4">
-      <div class="flex justify-between items-center">
+    <header class="bg-gray-800 text-white py-2 shadow-md mb-4 w-full">
+      <div class="container mx-auto px-4 flex justify-between items-center">
         <div class="logo flex items-center">
           <h1 class="text-xl font-bold m-0">LightNVR</h1>
           <span class="version text-blue-200 text-xs ml-2">v${version}</span>
@@ -129,8 +129,8 @@ export function Header({ activeNav = '', version = '' }) {
 
       <!-- Mobile Navigation -->
       ${mobileMenuOpen ? html`
-        <div class="md:hidden mt-2 border-t border-gray-700 pt-2">
-          <ul class="list-none m-0 p-0 flex flex-col">
+        <div class="md:hidden mt-2 border-t border-gray-700 pt-2 container mx-auto px-4">
+          <ul class="list-none m-0 p-0 flex flex-col w-full">
             ${navItems.map(renderNavItem)}
             <li class="w-full mt-2 pt-2 border-t border-gray-700">
               <div class="flex justify-between items-center px-4 py-2">

@@ -29,7 +29,7 @@ export function RecordingsTable({
   pagination
 }) {
   return html`
-    <div class="recordings-container bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+    <div class="recordings-container bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden w-full">
       <div class="batch-actions p-3 border-b border-gray-200 dark:border-gray-700 flex flex-wrap gap-2 items-center">
         <div class="selected-count text-sm text-gray-600 dark:text-gray-400 mr-2">
           ${getSelectedCount() > 0 ? 

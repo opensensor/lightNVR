@@ -44,9 +44,17 @@
     @apply ml-2 cursor-pointer font-bold text-base leading-none;
 }
 
-/* Ensure tables don't get too compressed on small screens */
+/* Ensure tables don't get too compressed on small screens but stay within container */
 @media (max-width: 576px) {
     #recordings-table {
-        @apply min-w-[500px];
+        @apply min-w-[500px] max-w-full;
+    }
+    
+    .recordings-container {
+        @apply max-w-full;
+    }
+    
+    .overflow-x-auto {
+        @apply max-w-full;
     }
 }
