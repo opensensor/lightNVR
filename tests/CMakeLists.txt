@@ -178,6 +178,8 @@ set(STREAM_DETECTION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/mp4_recording_writer.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/mp4_writer_core.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/mp4_writer_utils.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/mp4_writer_thread.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/mp4_segment_recorder.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/mp4_writer.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/thread_utils.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/hls_writer.c

@@ -33,12 +33,9 @@
 #include "video/mp4_writer.h"
 #include "video/mp4_recording.h"
 #include "video/mp4_recording_internal.h"
-#include "video/stream_transcoding.h"
-#include "video/stream_reader.h"
-#include "video/stream_state.h"
+#include "video/mp4_writer_thread.h"
 #include "video/stream_packet_processor.h"
-#include "database/database_manager.h"
-#include "database/db_events.h"
+
 
 // Hash map for tracking running MP4 recording contexts
 mp4_recording_ctx_t *recording_contexts[MAX_STREAMS];
