@@ -34,8 +34,15 @@ export function LogsPoller({ logLevel, logCount, onLogsReceived }) {
   
   // Function to fetch logs via WebSocket
   const fetchLogs = () => {
-    if (!window.wsClient || !window.wsClient.isConnected()) {
-      console.log('WebSocket not connected, skipping log fetch');
+    if (!window.wsClient) {
+      console.log('WebSocket client not available, will retry on next poll');
+      return;
+    }
+    
+    if (!window.wsClient.isConnected()) {
+      console.log('WebSocket not connected, attempting to connect');
+      window.wsClient.connect();
+      // Skip this fetch attempt, will retry on next poll
       return;
     }
     
@@ -81,140 +88,160 @@ export function LogsPoller({ logLevel, logCount, onLogsReceived }) {
   
   // Set up WebSocket handler for log updates - only once on mount
   useEffect(() => {
+    // If WebSocket client is not available, set up a check to try again later
     if (!window.wsClient) {
-      console.log('WebSocket client not available');
-      return;
+      console.log('WebSocket client not available, will check again later');
+      const checkInterval = setInterval(() => {
+        if (window.wsClient) {
+          console.log('WebSocket client now available, setting up handlers');
+          clearInterval(checkInterval);
+          setupHandlers();
+        }
+      }, 1000);
+      
+      // Clean up interval on unmount
+      return () => {
+        clearInterval(checkInterval);
+      };
+    } else {
+      // WebSocket client is available, set up handlers immediately
+      return setupHandlers();
     }
     
-    // Handler for log updates
-    const handleLogsUpdate = (payload) => {
-      console.log('Received logs update via WebSocket:', payload);
+    // Function to set up WebSocket handlers
+    function setupHandlers() {
+      console.log('Setting up WebSocket handlers for logs');
       
-      // Only process updates if we're on the system page
-      if (!document.getElementById('system-page')) {
-        console.log('Not on system page, ignoring log update');
-        return;
-      }
-      
-      if (payload && payload.logs && Array.isArray(payload.logs)) {
-        // Clean and normalize logs
-        const cleanedLogs = payload.logs.map(log => {
-          // Simply use the component attributes directly
-          const normalizedLog = {
-            timestamp: log.timestamp || 'Unknown',
-            level: log.level || 'info',
-            message: log.message || ''
-          };
-          
-          // Convert level to lowercase for consistency
-          if (normalizedLog.level) {
-            normalizedLog.level = normalizedLog.level.toLowerCase();
-          }
-          
-          // Normalize 'warn' to 'warning'
-          if (normalizedLog.level === 'warn') {
-            normalizedLog.level = 'warning';
-          }
-          
-          return normalizedLog;
-        });
+      // Handler for log updates
+      const handleLogsUpdate = (payload) => {
+        console.log('Received logs update via WebSocket:', payload);
         
-        // Don't filter logs here - let the parent component handle filtering
-        // This ensures we're always using the most current logLevel value
-        
-        // Update last timestamp for pagination if available
-        if (payload.latest_timestamp) {
-          lastTimestampRef.current = payload.latest_timestamp;
-          // Save to localStorage for persistence between page refreshes
-          localStorage.setItem('lastLogTimestamp', payload.latest_timestamp);
-          console.log('Updated and saved last log timestamp:', payload.latest_timestamp);
+        // Only process updates if we're on the system page
+        if (!document.getElementById('system-page')) {
+          console.log('Not on system page, ignoring log update');
+          return;
         }
         
-        // Call the callback with all logs - parent will filter
-        if (cleanedLogs.length > 0) {
-          console.log(`Received ${cleanedLogs.length} logs via WebSocket`);
+        if (payload && payload.logs && Array.isArray(payload.logs)) {
+          // Clean and normalize logs
+          const cleanedLogs = payload.logs.map(log => {
+            // Simply use the component attributes directly
+            const normalizedLog = {
+              timestamp: log.timestamp || 'Unknown',
+              level: log.level || 'info',
+              message: log.message || ''
+            };
+            
+            // Convert level to lowercase for consistency
+            if (normalizedLog.level) {
+              normalizedLog.level = normalizedLog.level.toLowerCase();
+            }
+            
+            // Normalize 'warn' to 'warning'
+            if (normalizedLog.level === 'warn') {
+              normalizedLog.level = 'warning';
+            }
+            
+            return normalizedLog;
+          });
           
-          // Get existing logs from the parent component using enhanced fetch
-          fetchJSON('/api/system/logs?level=debug&count=100', {
-            timeout: 15000, // 15 second timeout
-            retries: 1,     // Retry once
-            retryDelay: 1000 // 1 second between retries
-          })
-            .then(data => {
-              if (data.logs && Array.isArray(data.logs)) {
-                // Combine existing logs with new logs
-                const existingLogs = data.logs.map(log => {
-                  // Normalize existing logs
-                  const normalizedLog = {
-                    timestamp: log.timestamp || 'Unknown',
-                    level: (log.level || 'info').toLowerCase(),
-                    message: log.message || ''
-                  };
-                  
-                  // Normalize 'warn' to 'warning'
-                  if (normalizedLog.level === 'warn') {
-                    normalizedLog.level = 'warning';
-                  }
-                  
-                  return normalizedLog;
-                });
-                
-                // Combine existing logs with new logs, avoiding duplicates
-                const combinedLogs = [...existingLogs];
-                
-                // Add new logs that don't already exist
-                cleanedLogs.forEach(newLog => {
-                  // Check if this log already exists
-                  const exists = combinedLogs.some(existingLog => 
-                    existingLog.timestamp === newLog.timestamp && 
-                    existingLog.message === newLog.message
-                  );
-                  
-                  if (!exists) {
-                    combinedLogs.push(newLog);
-                  }
-                });
-                
-                // Sort logs by timestamp (newest first)
-                combinedLogs.sort((a, b) => {
-                  return new Date(b.timestamp) - new Date(a.timestamp);
-                });
-                
-                // Call the callback with combined logs - don't filter here
-                // This ensures WebSocket debug logs are included when debug is selected in UI
-                onLogsReceived(combinedLogs);
-              } else {
-                // If no existing logs, just use the new logs
-                onLogsReceived(cleanedLogs);
-              }
+          // Don't filter logs here - let the parent component handle filtering
+          // This ensures we're always using the most current logLevel value
+          
+          // Update last timestamp for pagination if available
+          if (payload.latest_timestamp) {
+            lastTimestampRef.current = payload.latest_timestamp;
+            // Save to localStorage for persistence between page refreshes
+            localStorage.setItem('lastLogTimestamp', payload.latest_timestamp);
+            console.log('Updated and saved last log timestamp:', payload.latest_timestamp);
+          }
+          
+          // Call the callback with all logs - parent will filter
+          if (cleanedLogs.length > 0) {
+            console.log(`Received ${cleanedLogs.length} logs via WebSocket`);
+            
+            // Get existing logs from the parent component using enhanced fetch
+            fetchJSON('/api/system/logs?level=debug&count=100', {
+              timeout: 15000, // 15 second timeout
+              retries: 1,     // Retry once
+              retryDelay: 1000 // 1 second between retries
             })
-            .catch(error => {
-              console.error('Error fetching existing logs:', error);
-              // If error fetching existing logs, just use the new logs
-              onLogsReceived(cleanedLogs);
-            });
-        } else {
-          console.log('No logs received via WebSocket');
+              .then(data => {
+                if (data.logs && Array.isArray(data.logs)) {
+                  // Combine existing logs with new logs
+                  const existingLogs = data.logs.map(log => {
+                    // Normalize existing logs
+                    const normalizedLog = {
+                      timestamp: log.timestamp || 'Unknown',
+                      level: (log.level || 'info').toLowerCase(),
+                      message: log.message || ''
+                    };
+                    
+                    // Normalize 'warn' to 'warning'
+                    if (normalizedLog.level === 'warn') {
+                      normalizedLog.level = 'warning';
+                    }
+                    
+                    return normalizedLog;
+                  });
+                  
+                  // Combine existing logs with new logs, avoiding duplicates
+                  const combinedLogs = [...existingLogs];
+                  
+                  // Add new logs that don't already exist
+                  cleanedLogs.forEach(newLog => {
+                    // Check if this log already exists
+                    const exists = combinedLogs.some(existingLog => 
+                      existingLog.timestamp === newLog.timestamp && 
+                      existingLog.message === newLog.message
+                    );
+                    
+                    if (!exists) {
+                      combinedLogs.push(newLog);
+                    }
+                  });
+                  
+                  // Sort logs by timestamp (newest first)
+                  combinedLogs.sort((a, b) => {
+                    return new Date(b.timestamp) - new Date(a.timestamp);
+                  });
+                  
+                  // Call the callback with combined logs - don't filter here
+                  // This ensures WebSocket debug logs are included when debug is selected in UI
+                  onLogsReceived(combinedLogs);
+                } else {
+                  // If no existing logs, just use the new logs
+                  onLogsReceived(cleanedLogs);
+                }
+              })
+              .catch(error => {
+                console.error('Error fetching existing logs:', error);
+                // If error fetching existing logs, just use the new logs
+                onLogsReceived(cleanedLogs);
+              });
+          } else {
+            console.log('No logs received via WebSocket');
+          }
         }
-      }
-    };
-    
-    // Register handler for system logs updates - only once
-    console.log('Registering handler for system/logs via WebSocket (once on mount)');
-    window.wsClient.on('update', 'system/logs', handleLogsUpdate);
-    
-    // Clean up on unmount
-    return () => {
-      // Unregister handler
-      console.log('Unregistering handler for system/logs via WebSocket (component unmounting)');
-      window.wsClient.off('update', 'system/logs');
+      };
       
-      // Clear polling interval
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
-      }
-    };
+      // Register handler for system logs updates - only once
+      console.log('Registering handler for system/logs via WebSocket (once on mount)');
+      window.wsClient.on('update', 'system/logs', handleLogsUpdate);
+      
+      // Clean up on unmount
+      return () => {
+        // Unregister handler
+        console.log('Unregistering handler for system/logs via WebSocket (component unmounting)');
+        window.wsClient.off('update', 'system/logs');
+        
+        // Clear polling interval
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+      };
+    }
   }, []); // Empty dependency array - only run once on mount
   
   // Start/stop polling when isPolling changes

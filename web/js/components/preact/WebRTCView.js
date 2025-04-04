@@ -217,7 +217,32 @@ export function WebRTCView() {
       const detailedStreams = await Promise.all(streamPromises);
       console.log('Loaded detailed streams for WebRTC view:', detailedStreams);
       
-      return detailedStreams || [];
+      // Filter out streams that are soft deleted, inactive, or not configured for HLS
+      const filteredStreams = detailedStreams.filter(stream => {
+        // Filter out soft deleted streams
+        if (stream.is_deleted) {
+          console.log(`Stream ${stream.name} is soft deleted, filtering out`);
+          return false;
+        }
+        
+        // Filter out inactive streams
+        if (!stream.enabled) {
+          console.log(`Stream ${stream.name} is inactive, filtering out`);
+          return false;
+        }
+        
+        // Filter out streams not configured for HLS
+        if (!stream.streaming_enabled) {
+          console.log(`Stream ${stream.name} is not configured for HLS, filtering out`);
+          return false;
+        }
+        
+        return true;
+      });
+      
+      console.log('Filtered streams for WebRTC view:', filteredStreams);
+      
+      return filteredStreams || [];
     } catch (error) {
       console.error('Error loading streams for WebRTC view:', error);
       showStatusMessage('Error loading streams: ' + error.message);

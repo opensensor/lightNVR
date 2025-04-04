@@ -15,7 +15,7 @@ typedef void* detection_model_t;
 
 /**
  * Check if a model file is supported
- * 
+ *
  * @param model_path Path to the model file
  * @return true if supported, false otherwise
  */
@@ -23,7 +23,7 @@ bool is_model_supported(const char *model_path);
 
 /**
  * Get the type of a model file
- * 
+ *
  * @param model_path Path to the model file
  * @return String describing the model type (e.g., "sod", "tflite")
  */
@@ -31,7 +31,7 @@ const char* get_model_type(const char *model_path);
 
 /**
  * Load a detection model
- * 
+ *
  * @param model_path Path to the model file
  * @param threshold Detection confidence threshold (0.0-1.0)
  * @return Model handle or NULL on failure
@@ -40,14 +40,14 @@ detection_model_t load_detection_model(const char *model_path, float threshold);
 
 /**
  * Unload a detection model
- * 
+ *
  * @param model Detection model handle
  */
 void unload_detection_model(detection_model_t model);
 
 /**
  * Get the path of a loaded model
- * 
+ *
  * @param model Detection model handle
  * @return Path to the model file or NULL if not found
  */
@@ -55,7 +55,7 @@ const char* get_model_path(detection_model_t model);
 
 /**
  * Get the RealNet model handle from a detection model
- * 
+ *
  * @param model Detection model handle
  * @return RealNet model handle or NULL if not a RealNet model
  */
@@ -63,7 +63,7 @@ void* get_realnet_model_handle(detection_model_t model);
 
 /**
  * Get the type of a loaded model
- * 
+ *
  * @param model Detection model handle
  * @return String describing the model type (e.g., "sod", "tflite") or "unknown" if not found
  */
@@ -71,14 +71,14 @@ const char* get_model_type_from_handle(detection_model_t model);
 
 /**
  * Clean up old models in the global cache
- * 
+ *
  * @param max_age Maximum age in seconds for a model to be considered active
  */
 void cleanup_old_detection_models(time_t max_age);
 
 /**
  * Initialize the model system
- * 
+ *
  * @return 0 on success, non-zero on failure
  */
 int init_detection_model_system(void);
@@ -87,5 +87,12 @@ int init_detection_model_system(void);
  * Shutdown the model system
  */
 void shutdown_detection_model_system(void);
+
+/**
+ * Force cleanup of all models in the global cache
+ * This is a more aggressive cleanup that ensures all models are unloaded
+ * to prevent memory leaks during shutdown
+ */
+void force_cleanup_model_cache(void);
 
 #endif /* DETECTION_MODEL_H */

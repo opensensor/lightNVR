@@ -12,6 +12,7 @@
 #include <sys/wait.h>
 #include <sys/time.h>
 #include <sys/utsname.h>
+#include <limits.h>
 
 #include "core/version.h"
 #include "core/config.h"
@@ -30,7 +31,6 @@
 #include "video/detection.h"
 #include "video/detection_integration.h"
 #include "video/detection_recording.h"
-#include "video/stream_packet_processor.h"
 #include "video/timestamp_manager.h"
 #include "video/onvif_discovery.h"
 
@@ -44,6 +44,8 @@
 void init_recordings_system(void);
 #include "database/database_manager.h"
 #include "database/db_schema_cache.h"
+#include "database/db_core.h"
+#include <sqlite3.h>
 #include "web/http_server.h"
 #include "web/mongoose_server.h"
 #include "web/api_handlers.h"
@@ -75,7 +77,7 @@ void set_web_server_socket(int socket_fd) {
 static void signal_handler(int sig) {
     // Log the signal received
     log_info("Received signal %d, shutting down...", sig);
-    
+
     // Check if we're already shutting down
     static bool shutdown_in_progress = false;
     if (shutdown_in_progress) {
@@ -83,21 +85,21 @@ static void signal_handler(int sig) {
         // Do not force immediate exit, continue with clean shutdown
         return;
     }
-    
+
     // Mark that we're in the process of shutting down
     shutdown_in_progress = true;
-    
+
     // Initiate shutdown sequence through the coordinator
     initiate_shutdown();
-    
+
     // Set the running flag to false to trigger shutdown
     running = false;
-    
+
     // For Linux 4.4 embedded systems, we need a more robust approach
     // Set an alarm to force exit if normal shutdown doesn't work
     // Increased from 10 to 20 seconds to give more time for graceful shutdown
     alarm(20);
-    
+
     // Log that we've started the shutdown process
     log_info("Shutdown process initiated, waiting for components to stop gracefully");
 }
@@ -106,30 +108,30 @@ static void signal_handler(int sig) {
 static void alarm_handler(int sig) {
     static bool emergency_cleanup_in_progress = false;
     static int emergency_phase = 0;
-    
+
     // If this is the first time we're called, start emergency cleanup
     if (!emergency_cleanup_in_progress) {
         log_warn("Shutdown timeout reached, forcing exit");
         log_info("Performing emergency cleanup of critical resources");
         emergency_cleanup_in_progress = true;
-        
+
         // Set a new alarm for the next phase (30 seconds)
         alarm(30);
-        
+
         // Phase 1: Try to stop all HLS writers first as they're often the source of hangs
         log_info("Emergency cleanup phase 1: Stopping HLS writers");
-        
+
         // Force cleanup of HLS contexts first
         log_info("Starting detection resources cleanup...");
         cleanup_detection_resources();
-        
+
         // Force cleanup of websocket connections
         if (web_server_socket >= 0) {
             log_info("Closing web server socket %d", web_server_socket);
             close(web_server_socket);
             web_server_socket = -1;
         }
-        
+
         // Mark all components as stopping
         shutdown_coordinator_t *coordinator = get_shutdown_coordinator();
         if (coordinator) {
@@ -138,33 +140,33 @@ static void alarm_handler(int sig) {
                 // Only update components that are still running
                 if (atomic_load(&coordinator->components[i].state) == COMPONENT_RUNNING) {
                     atomic_store(&coordinator->components[i].state, COMPONENT_STOPPING);
-                    log_info("Forcing component %s (ID: %d) to STOPPING state", 
+                    log_info("Forcing component %s (ID: %d) to STOPPING state",
                              coordinator->components[i].name, i);
                 }
             }
             pthread_mutex_unlock(&coordinator->mutex);
         }
-        
+
         // Increment phase for next alarm
         emergency_phase = 1;
         return;
     }
-    
+
     // Phase 2: If we're still not exiting, force all components to stopped state
     if (emergency_phase == 1) {
         log_warn("Emergency cleanup phase 1 timed out, proceeding to phase 2");
-        
+
         // Set a final alarm (15 seconds)
         alarm(15);
-        
+
         // Force all components to be marked as stopped
         shutdown_coordinator_t *coordinator = get_shutdown_coordinator();
         if (coordinator) {
             pthread_mutex_lock(&coordinator->mutex);
             for (int i = 0; i < atomic_load(&coordinator->component_count); i++) {
                 if (atomic_load(&coordinator->components[i].state) != COMPONENT_STOPPED) {
-                    log_warn("Forcing component %s (ID: %d) from state %d to STOPPED", 
-                             coordinator->components[i].name, i, 
+                    log_warn("Forcing component %s (ID: %d) from state %d to STOPPED",
+                             coordinator->components[i].name, i,
                              atomic_load(&coordinator->components[i].state));
                     atomic_store(&coordinator->components[i].state, COMPONENT_STOPPED);
                 }
@@ -172,12 +174,12 @@ static void alarm_handler(int sig) {
             coordinator->all_components_stopped = true;
             pthread_mutex_unlock(&coordinator->mutex);
         }
-        
+
         // Increment phase for next alarm
         emergency_phase = 2;
         return;
     }
-    
+
     // Phase 3: Final forced exit
     log_error("Emergency cleanup timed out after multiple phases, forcing immediate exit");
     _exit(EXIT_SUCCESS); // Use _exit instead of exit to avoid calling atexit handlers
@@ -188,7 +190,7 @@ static void init_signals() {
     // Check if we're running on Linux 4.4 or similar embedded system
     struct utsname uts_info;
     bool is_linux_4_4 = false;
-    
+
     if (uname(&uts_info) == 0) {
         // Check if kernel version starts with 4.4
         if (strncmp(uts_info.release, "4.4", 3) == 0) {
@@ -196,7 +198,7 @@ static void init_signals() {
             is_linux_4_4 = true;
         }
     }
-    
+
     // Only set up signal handlers if we're not in daemon mode
     // In daemon mode, the signal handlers are set up in daemon.c
     if (!daemon_mode || !is_linux_4_4) {
@@ -205,15 +207,15 @@ static void init_signals() {
         struct sigaction sa;
         memset(&sa, 0, sizeof(sa));
         sa.sa_handler = signal_handler;
-        
+
         // Add SA_RESTART flag to automatically restart interrupted system calls
         // This helps prevent issues with blocking I/O operations during signal handling
         sa.sa_flags = SA_RESTART;
-        
+
         sigaction(SIGINT, &sa, NULL);
         sigaction(SIGTERM, &sa, NULL);
         sigaction(SIGHUP, &sa, NULL);
-        
+
         // Set up alarm handler for phased forced exit
         struct sigaction sa_alarm;
         memset(&sa_alarm, 0, sizeof(sa_alarm));
@@ -223,7 +225,7 @@ static void init_signals() {
     } else {
         log_info("Running in daemon mode on Linux 4.4, signal handlers will be set up by daemon.c");
     }
-    
+
     // Set up SIGPIPE handler to ignore broken pipe errors
     // This is important for socket operations to prevent crashes
     struct sigaction sa_pipe;
@@ -231,14 +233,14 @@ static void init_signals() {
     sa_pipe.sa_handler = SIG_IGN;  // Ignore SIGPIPE
     sa_pipe.sa_flags = SA_RESTART;
     sigaction(SIGPIPE, &sa_pipe, NULL);
-    
+
     // Block SIGPIPE to prevent crashes when writing to closed sockets
     // This is especially important for older Linux kernels
     sigset_t set;
     sigemptyset(&set);
     sigaddset(&set, SIGPIPE);
     pthread_sigmask(SIG_BLOCK, &set, NULL);
-    
+
     log_info("Signal handlers initialized with improved handling");
 }
 /**
@@ -337,7 +339,7 @@ static int check_and_kill_existing_instance(const char *pid_file) {
 static int create_pid_file(const char *pid_file) {
     char pid_str[16];
     int fd;
-    
+
     // Make sure the directory exists
     char dir_path[MAX_PATH_LENGTH] = {0};
     char *last_slash = strrchr(pid_file, '/');
@@ -345,7 +347,7 @@ static int create_pid_file(const char *pid_file) {
         size_t dir_len = last_slash - pid_file;
         strncpy(dir_path, pid_file, dir_len);
         dir_path[dir_len] = '\0';
-        
+
         // Create directory if it doesn't exist
         struct stat st;
         if (stat(dir_path, &st) != 0) {
@@ -355,32 +357,32 @@ static int create_pid_file(const char *pid_file) {
             }
         }
     }
-    
+
     // Try to open the PID file with exclusive creation first
     fd = open(pid_file, O_RDWR | O_CREAT | O_EXCL, 0644);
     if (fd < 0 && errno == EEXIST) {
         // File exists, try to open it normally
         fd = open(pid_file, O_RDWR | O_CREAT, 0644);
     }
-    
+
     if (fd < 0) {
         log_error("Could not open PID file %s: %s", pid_file, strerror(errno));
         return -1;
     }
-    
+
     // Lock the PID file to prevent multiple instances
     if (lockf(fd, F_TLOCK, 0) < 0) {
         log_error("Could not lock PID file %s: %s", pid_file, strerror(errno));
         close(fd);
         return -1;
     }
-    
+
     // Truncate the file to ensure we overwrite any existing content
     if (ftruncate(fd, 0) < 0) {
         log_warn("Could not truncate PID file: %s", strerror(errno));
         // Continue anyway
     }
-    
+
     // Write PID to file
     sprintf(pid_str, "%d\n", getpid());
     if (write(fd, pid_str, strlen(pid_str)) != strlen(pid_str)) {
@@ -389,10 +391,10 @@ static int create_pid_file(const char *pid_file) {
         unlink(pid_file);  // Try to remove the file
         return -1;
     }
-    
+
     // Sync to ensure the PID is written to disk
     fsync(fd);
-    
+
     // Keep file open to maintain lock
     return fd;
 }
@@ -403,7 +405,7 @@ static void remove_pid_file(int fd, const char *pid_file) {
         // Release the lock by closing the file
         close(fd);
     }
-    
+
     // Try to remove the file
     if (unlink(pid_file) != 0) {
         log_warn("Failed to remove PID file %s: %s", pid_file, strerror(errno));
@@ -447,7 +449,7 @@ static void load_streams_from_config(const config_t *config) {
                 if (config->streams[i].enabled) {
                     if (start_stream(stream) == 0) {
                         log_info("Stream started: %s", config->streams[i].name);
-                        
+
                         // Start recording if record flag is set
                         if (config->streams[i].record) {
                             // Start HLS streaming for the stream
@@ -457,7 +459,7 @@ static void load_streams_from_config(const config_t *config) {
                             } else {
                                 log_warn("Failed to start HLS streaming for stream: %s", config->streams[i].name);
                             }
-                            
+
                             // Also start MP4 recording for the stream, regardless of HLS streaming status
                             if (go2rtc_integration_start_recording(config->streams[i].name) == 0) {
                                 log_info("MP4 recording started for stream: %s (using go2rtc if available)", config->streams[i].name);
@@ -471,7 +473,7 @@ static void load_streams_from_config(const config_t *config) {
                             } else {
                                 log_warn("Failed to start HLS streaming for stream: %s", config->streams[i].name);
                             }
-                            
+
                             // Also start MP4 recording for the stream, regardless of HLS streaming status
                             if (start_mp4_recording(config->streams[i].name) == 0) {
                                 log_info("MP4 recording started for stream: %s", config->streams[i].name);
@@ -546,9 +548,35 @@ int main(int argc, char *argv[]) {
         log_error("Failed to load configuration");
         return EXIT_FAILURE;
     }
-    
+
     // Copy to global config
     memcpy(&g_config, &config, sizeof(config_t));
+
+    log_info("LightNVR v%s starting up", LIGHTNVR_VERSION_STRING);
+
+    // Initialize database
+    if (init_database(config.db_path) != 0) {
+        log_error("Failed to initialize database");
+        goto cleanup;
+    }
+
+    // Initialize schema cache
+    log_info("Initializing schema cache...");
+    init_schema_cache();
+    log_info("Schema cache initialized");
+
+    // Initialize storage manager
+    if (init_storage_manager(config.storage_path, config.max_storage_size) != 0) {
+        log_error("Failed to initialize storage manager");
+        goto cleanup;
+    }
+    log_info("Storage manager initialized");
+
+    // Load stream configurations from database
+    if (load_stream_configs(&config) < 0) {
+        log_error("Failed to load stream configurations from database");
+        // Continue anyway, we'll use empty stream configurations
+    }
 
     // Set log file from configuration
     if (config.log_file[0] != '\0') {
@@ -558,11 +586,11 @@ int main(int argc, char *argv[]) {
             log_info("Logging to file: %s", config.log_file);
         }
     }
-    
+
     // Set log level from configuration
     fprintf(stderr, "Setting log level from config: %d\n", config.log_level);
     set_log_level(config.log_level);
-    
+
     // Use log_error instead of log_info to ensure this message is always logged
     // regardless of the configured log level
     log_error("Log level set to %d (%s)", config.log_level, get_log_level_string(config.log_level));
@@ -576,23 +604,23 @@ int main(int argc, char *argv[]) {
         log_error("Web root directory %s does not exist or is not a directory", config.web_root);
 
         // Check if this is a path in /var or another system directory
-        if (strncmp(config.web_root, "/var/", 5) == 0 || 
+        if (strncmp(config.web_root, "/var/", 5) == 0 ||
             strncmp(config.web_root, "/tmp/", 5) == 0 ||
             strncmp(config.web_root, "/run/", 5) == 0) {
-            
+
             // Create a symlink from the system directory to our storage path
             char storage_web_path[MAX_PATH_LENGTH];
             snprintf(storage_web_path, sizeof(storage_web_path), "%s/web", config.storage_path);
-            
+
             log_warn("Web root is in system directory (%s), redirecting to storage path (%s)",
                     config.web_root, storage_web_path);
-            
+
             // Create the directory in our storage path
             if (mkdir(storage_web_path, 0755) != 0 && errno != EEXIST) {
                 log_error("Failed to create web root in storage path: %s", strerror(errno));
                 return EXIT_FAILURE;
             }
-            
+
             // Create parent directory for symlink if needed
             char parent_dir[MAX_PATH_LENGTH];
             strncpy(parent_dir, config.web_root, sizeof(parent_dir) - 1);
@@ -603,12 +631,12 @@ int main(int argc, char *argv[]) {
                     log_warn("Failed to create parent directory for web root symlink: %s", strerror(errno));
                 }
             }
-            
+
             // Create the symlink
             if (symlink(storage_web_path, config.web_root) != 0) {
-                log_error("Failed to create symlink from %s to %s: %s", 
+                log_error("Failed to create symlink from %s to %s: %s",
                         config.web_root, storage_web_path, strerror(errno));
-                
+
                 // Fall back to using the storage path directly
                 strncpy(config.web_root, storage_web_path, MAX_PATH_LENGTH - 1);
                 log_warn("Using storage path directly for web root: %s", config.web_root);
@@ -621,7 +649,7 @@ int main(int argc, char *argv[]) {
                 log_error("Failed to create web root directory: %s", strerror(errno));
                 return EXIT_FAILURE;
             }
-            
+
             log_info("Created web root directory: %s", config.web_root);
         }
     }
@@ -659,37 +687,18 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    log_info("LightNVR v%s starting up", LIGHTNVR_VERSION_STRING);
-
-    // Initialize database
-    if (init_database(config.db_path) != 0) {
-        log_error("Failed to initialize database");
-        goto cleanup;
-    }
-    
-    // Initialize schema cache
-    log_info("Initializing schema cache...");
-    init_schema_cache();
-    log_info("Schema cache initialized");
-
-    // Initialize storage manager
-    if (init_storage_manager(config.storage_path, config.max_storage_size) != 0) {
-        log_error("Failed to initialize storage manager");
-        goto cleanup;
-    }
-
     // Initialize stream state manager
     if (init_stream_state_manager(config.max_streams) != 0) {
         log_error("Failed to initialize stream state manager");
         goto cleanup;
     }
-    
+
     // Initialize stream state adapter
     if (init_stream_state_adapter() != 0) {
         log_error("Failed to initialize stream state adapter");
         goto cleanup;
     }
-    
+
     // Initialize stream manager
     if (init_stream_manager(config.max_streams) != 0) {
         log_error("Failed to initialize stream manager");
@@ -699,12 +708,12 @@ int main(int argc, char *argv[]) {
     // Initialize go2rtc integration if enabled - MOVED TO BEGINNING OF SETUP
     #ifdef USE_GO2RTC
     log_info("Initializing go2rtc integration...");
-    
+
     // Use configuration values if provided, otherwise use defaults
     const char *binary_path = NULL;  // Will use go2rtc from PATH if not specified
     const char *config_dir = "/tmp/go2rtc";    // Default config directory
     int api_port = 1984;                               // Default API port
-    
+
     // Check if custom values are provided in the configuration
     if (config.go2rtc_binary_path[0] != '\0') {
         binary_path = config.go2rtc_binary_path;
@@ -712,21 +721,21 @@ int main(int argc, char *argv[]) {
     } else {
         log_info("go2rtc binary path not specified, will use from PATH or existing service");
     }
-    
+
     if (config.go2rtc_config_dir[0] != '\0') {
         config_dir = config.go2rtc_config_dir;
         log_info("Using custom go2rtc config directory: %s", config_dir);
     } else {
         log_info("Using default go2rtc config directory: %s", config_dir);
     }
-    
+
     if (config.go2rtc_api_port > 0) {
         api_port = config.go2rtc_api_port;
         log_info("Using custom go2rtc API port: %d", api_port);
     } else {
         log_info("Using default go2rtc API port: %d", api_port);
     }
-    
+
     if (go2rtc_stream_init(binary_path, config_dir, api_port)) {
         log_info("go2rtc integration initialized successfully");
 
@@ -777,13 +786,14 @@ int main(int argc, char *argv[]) {
 
     // Initialize FFmpeg streaming backend
     init_transcoding_backend();
-    
+
     // Initialize timestamp trackers
     init_timestamp_trackers();
     log_info("Timestamp trackers initialized");
-    
+
     init_hls_streaming_backend();
     init_mp4_recording_backend();
+    log_info("MP4 writer shutdown system initialized");
     
     // Initialize detection system
     if (init_detection_system() != 0) {
@@ -791,25 +801,25 @@ int main(int argc, char *argv[]) {
     } else {
         log_info("Detection system initialized successfully");
     }
-    
-    
+
+
     // Initialize detection recording system
     init_detection_recording_system();
-    
+
     // Initialize detection stream system
     init_detection_stream_system();
-    
+
     // Initialize ONVIF discovery module
     if (init_onvif_discovery() != 0) {
         log_error("Failed to initialize ONVIF discovery module");
     } else {
         log_info("ONVIF discovery module initialized successfully");
-        
+
         // Start ONVIF discovery if enabled in configuration
         if (config.onvif_discovery_enabled) {
-            log_info("Starting ONVIF discovery on network %s with interval %d seconds", 
+            log_info("Starting ONVIF discovery on network %s with interval %d seconds",
                     config.onvif_discovery_network, config.onvif_discovery_interval);
-            
+
             if (start_onvif_discovery(config.onvif_discovery_network, config.onvif_discovery_interval) != 0) {
                 log_error("Failed to start ONVIF discovery");
             } else {
@@ -817,7 +827,7 @@ int main(int argc, char *argv[]) {
             }
         }
     }
-    
+
     // Now that go2rtc is initialized (if enabled), load streams from config
     log_info("Loading streams from configuration...");
     load_streams_from_config(&config);
@@ -829,12 +839,12 @@ int main(int argc, char *argv[]) {
     } else {
         log_info("Authentication system initialized successfully");
     }
-    
+
     // Check if detection models exist and start detection-based recording - MOVED TO END OF SETUP
     for (int i = 0; i < config.max_streams; i++) {
-        if (config.streams[i].name[0] != '\0' && config.streams[i].enabled && 
+        if (config.streams[i].name[0] != '\0' && config.streams[i].enabled &&
             config.streams[i].detection_based_recording && config.streams[i].detection_model[0] != '\0') {
-            
+
             // Check if model file exists
             char model_path[MAX_PATH_LENGTH];
             if (config.streams[i].detection_model[0] != '/') {
@@ -849,7 +859,7 @@ int main(int argc, char *argv[]) {
                 // Absolute path
                 strncpy(model_path, config.streams[i].detection_model, MAX_PATH_LENGTH - 1);
             }
-            
+
             // Check if file exists
             FILE *model_file = fopen(model_path, "r");
             if (model_file) {
@@ -858,7 +868,7 @@ int main(int argc, char *argv[]) {
             } else {
                 log_error("Detection model not found: %s", model_path);
                 log_error("Detection will not work properly!");
-                
+
                 // Create the models directory if it doesn't exist
                 if (mkdir(config.models_path, 0755) != 0 && errno != EEXIST) {
                     log_error("Failed to create models directory: %s", strerror(errno));
@@ -866,49 +876,37 @@ int main(int argc, char *argv[]) {
                     log_info("Created models directory: %s", config.models_path);
                 }
             }
-            
-            log_info("Starting detection-based recording for stream %s with model %s", 
+
+            log_info("Starting detection-based recording for stream %s with model %s",
                     config.streams[i].name, config.streams[i].detection_model);
-            
-            // Start detection recording
-            float threshold = config.streams[i].detection_threshold;
-            int pre_buffer = config.streams[i].pre_detection_buffer;
-            int post_buffer = config.streams[i].post_detection_buffer;
-            
-            if (start_detection_recording(config.streams[i].name, config.streams[i].detection_model, 
-                                         threshold, pre_buffer, post_buffer) == 0) {
-                log_info("Detection-based recording started for stream %s", config.streams[i].name);
-            } else {
-                log_warn("Failed to start detection-based recording for stream %s", config.streams[i].name);
-            }
-            
+
             // Start detection stream reader with more detailed logging
-            log_info("Starting detection stream reader for stream %s with model %s", 
+            log_info("Starting detection stream reader for stream %s with model %s",
                     config.streams[i].name, config.streams[i].detection_model);
-            
-            int detection_interval = config.streams[i].detection_interval > 0 ? 
+
+            int detection_interval = config.streams[i].detection_interval > 0 ?
                                     config.streams[i].detection_interval : 10;
-            
+
             int result = start_detection_stream_reader(config.streams[i].name, detection_interval);
             if (result == 0) {
-                log_info("Successfully started detection stream reader for stream %s", 
+                log_info("Successfully started detection stream reader for stream %s",
                         config.streams[i].name);
-                
+
                 // Verify the reader is running
                 if (is_detection_stream_reader_running(config.streams[i].name)) {
-                    log_info("Confirmed detection stream reader is running for %s", 
+                    log_info("Confirmed detection stream reader is running for %s",
                             config.streams[i].name);
                 } else {
-                    log_warn("Detection stream reader reported as not running for %s despite successful start", 
+                    log_warn("Detection stream reader reported as not running for %s despite successful start",
                             config.streams[i].name);
                 }
             } else {
-                log_error("Failed to start detection stream reader for stream %s: error code %d", 
+                log_error("Failed to start detection stream reader for stream %s: error code %d",
                         config.streams[i].name, result);
             }
         }
     }
-    
+
     // Initialize Mongoose web server with direct handlers
     http_server_config_t server_config = {
         .port = config.web_port,
@@ -920,32 +918,32 @@ int main(int argc, char *argv[]) {
         .connection_timeout = 30,
         .daemon_mode = daemon_mode,
     };
-    
+
     // Set CORS allowed origins, methods, and headers
     strncpy(server_config.allowed_origins, "*", sizeof(server_config.allowed_origins) - 1);
     strncpy(server_config.allowed_methods, "GET, POST, PUT, DELETE, OPTIONS", sizeof(server_config.allowed_methods) - 1);
     strncpy(server_config.allowed_headers, "Content-Type, Authorization", sizeof(server_config.allowed_headers) - 1);
-    
+
     if (config.web_auth_enabled) {
         strncpy(server_config.username, config.web_username, sizeof(server_config.username) - 1);
         strncpy(server_config.password, config.web_password, sizeof(server_config.password) - 1);
     }
-    
+
     // Use the direct mongoose server implementation
     http_server_handle_t http_server = mongoose_server_init(&server_config);
     if (!http_server) {
         log_error("Failed to initialize Mongoose web server");
         goto cleanup;
     }
-    
+
     if (http_server_start(http_server) != 0) {
         log_error("Failed to start Mongoose web server");
         http_server_destroy(http_server);
         goto cleanup;
     }
-    
+
     log_info("Mongoose web server started on port %d", config.web_port);
-    
+
     // No need to register API handlers with the Mongoose server
     // Direct handlers are registered in register_api_handlers
 
@@ -961,26 +959,26 @@ int main(int argc, char *argv[]) {
         static time_t last_status_time = 0;
         static time_t last_recording_check_time = 0;
         time_t now = time(NULL);
-        
+
         if (now - last_log_time > 60) {
             log_debug("Daemon is still running...");
             last_log_time = now;
         }
-        
+
         // Print detection stream status every 5 minutes to help diagnose issues
         if (now - last_status_time > 300) {
             print_detection_stream_status();
             last_status_time = now;
         }
-        
+
         // Check and ensure recording is active every minute
         if (now - last_recording_check_time > 60) {
             check_and_ensure_recording();
-            
+
             // Call monitor_all_hls_segments_for_detection to ensure detection threads are started
             // This is important to make sure detection threads are running
             monitor_all_hls_segments_for_detection();
-            
+
             last_recording_check_time = now;
         }
 
@@ -993,7 +991,7 @@ int main(int argc, char *argv[]) {
     // Cleanup
 cleanup:
     log_info("Starting cleanup process...");
-    
+
     // We'll clean up go2rtc later in the shutdown sequence
     // First clean up go2rtc integration (but not the process yet)
     #ifdef USE_GO2RTC
@@ -1001,21 +999,21 @@ cleanup:
     go2rtc_integration_cleanup();
     // Note: go2rtc_stream_cleanup() will be called later
     #endif
-    
+
     // Block signals during cleanup to prevent interruptions
     sigset_t block_mask, old_mask;
     sigfillset(&block_mask);
     pthread_sigmask(SIG_BLOCK, &block_mask, &old_mask);
-    
+
     // Set up a watchdog timer to force exit if cleanup takes too long
     pid_t cleanup_pid = fork();
-    
+
     if (cleanup_pid == 0) {
         // Child process - watchdog timer
         sleep(30);  // 30 seconds for first phase timeout
         log_error("Cleanup process phase 1 timed out after 30 seconds");
         kill(getppid(), SIGUSR1);  // Send USR1 to parent to trigger emergency cleanup
-        
+
         // Wait another 30 seconds for emergency cleanup
         sleep(30);
         log_error("Cleanup process phase 2 timed out after 30 seconds, forcing exit");
@@ -1023,17 +1021,17 @@ cleanup:
         exit(EXIT_FAILURE);
     } else if (cleanup_pid > 0) {
         // Parent process - continue with cleanup
-        
+
         // Set up a handler for USR1 to perform emergency cleanup
         struct sigaction sa_usr1;
         memset(&sa_usr1, 0, sizeof(sa_usr1));
         sa_usr1.sa_handler = alarm_handler;  // Reuse the alarm handler for USR1
         sigaction(SIGUSR1, &sa_usr1, NULL);
-        
+
         // Components should already be registered during initialization
         // No need to register them again during shutdown
         log_info("Starting shutdown sequence for all components...");
-        
+
         // First, clear all packet callbacks to prevent further processing
         log_info("Clearing all packet callbacks...");
         for (int i = 0; i < MAX_STREAMS; i++) {
@@ -1044,7 +1042,7 @@ cleanup:
                 log_info("Cleared packet callback for stream reader %d", i);
             }
         }
-        
+
         // Wait a moment for callbacks to clear and any in-progress operations to complete
         log_info("Waiting for callbacks to clear...");
         usleep(1000000);  // 1000ms (increased from 500ms)
@@ -1077,7 +1075,7 @@ cleanup:
         
         // Wait for detection stream readers to stop
         usleep(500000);  // 500ms
-        
+
         // Stop all streams to ensure clean shutdown
         for (int i = 0; i < config.max_streams; i++) {
             if (config.streams[i].name[0] != '\0') {
@@ -1088,10 +1086,10 @@ cleanup:
                 }
             }
         }
-        
+
         // Wait longer for streams to stop
         usleep(1500000);  // 1500ms
-        
+
         // Finalize all MP4 recordings first before cleaning up the backend
         log_info("Finalizing all MP4 recordings...");
         close_all_mp4_writers();
@@ -1113,11 +1111,11 @@ cleanup:
                 }
             }
         }
-        
+
         // Clean up HLS directories
         log_info("Cleaning up HLS directories...");
         cleanup_hls_directories();
-        
+
         // Update HLS writer components state
         for (int i = 0; i < config.max_streams; i++) {
             if (config.streams[i].name[0] != '\0') {
@@ -1135,112 +1133,127 @@ cleanup:
                 }
             }
         }
-        
+
         // Now clean up the backends in the correct order
         // First stop all detection streams
         log_info("Cleaning up detection stream system...");
         shutdown_detection_stream_system();
-        
+
         // Wait for detection streams to stop
         usleep(1000000);  // 1000ms
-        
+
         // Clean up HLS streaming before MP4 recording
         // This is important because HLS streaming is used by MP4 recording
         log_info("Cleaning up HLS streaming backend...");
         cleanup_hls_streaming_backend();
-        
+
         // Wait for HLS streaming to clean up
         usleep(1000000);  // 1000ms
-        
+
         // Now clean up MP4 recording
         log_info("Cleaning up MP4 recording backend...");
         cleanup_mp4_recording_backend();
         
         // Wait for MP4 recording to clean up
         usleep(1000000);  // 1000ms
-        
+
         // Clean up stream reader backend last to ensure all consumers are stopped
         log_info("Cleaning up stream reader backend...");
         cleanup_stream_reader_backend();
-        
+
         // Clean up FFmpeg resources
         log_info("Cleaning up transcoding backend...");
         cleanup_transcoding_backend();
-        
+
         // Shutdown detection resources with timeout protection
         log_info("Cleaning up detection resources...");
-        
+
         // Set an alarm to prevent hanging during detection resource cleanup
         alarm(5); // 5 second timeout for detection resource cleanup
         cleanup_detection_resources();
         alarm(0); // Cancel the alarm if cleanup completed successfully
-        
-        
+
+
         // Shutdown ONVIF discovery
         log_info("Shutting down ONVIF discovery module...");
         shutdown_onvif_discovery();
-        
+
         // Now shut down other components
         log_info("Shutting down web server...");
         http_server_stop(http_server);
         http_server_destroy(http_server);
-        
+
         log_info("Shutting down stream manager...");
         shutdown_stream_manager();
-        
+
         log_info("Shutting down stream state adapter...");
         shutdown_stream_state_adapter();
-        
+
         log_info("Shutting down stream state manager...");
         shutdown_stream_state_manager();
-        
+
         log_info("Shutting down storage manager...");
         shutdown_storage_manager();
-        
+
         // Add a memory barrier before database shutdown to ensure all previous operations are complete
         __sync_synchronize();
-        
-        log_info("Shutting down database...");
-        shutdown_database();
-        
-        // Free schema cache
+
+        // Ensure all database operations are complete before cleanup
+        log_info("Ensuring all database operations are complete...");
+        __sync_synchronize();
+
+        // Free schema cache first to ensure all schema-related statements are finalized
         log_info("Freeing schema cache...");
         free_schema_cache();
-        
+
+        // Add a small delay after schema cache cleanup
+        usleep(100000);  // 100ms
+
+        log_info("Shutting down database...");
+        shutdown_database();
+
+        // Add another small delay after database shutdown
+        usleep(100000);  // 100ms
+
+        // Final SQLite memory cleanup
+        log_info("Performing final SQLite memory cleanup...");
+        sqlite3_release_memory(INT_MAX);
+        sqlite3_shutdown();
+
         // Wait for all components to stop
         log_info("Waiting for all components to stop...");
         if (!wait_for_all_components_stopped(5)) {
             log_warn("Not all components stopped within timeout, continuing anyway");
         }
-        
+
         // Clean up the shutdown coordinator
         log_info("Cleaning up shutdown coordinator...");
         shutdown_coordinator_cleanup();
-        
+
         // Add a small delay after database shutdown to ensure all resources are properly released
         usleep(100000);  // 100ms
-        
+
         // Explicitly shutdown WebSocket manager before go2rtc
         log_info("Explicitly shutting down WebSocket manager before go2rtc...");
         websocket_manager_shutdown();
-        
+
         // Now clean up go2rtc as one of the last steps
         #ifdef USE_GO2RTC
         log_info("Cleaning up go2rtc stream...");
         go2rtc_stream_cleanup();
         #endif
-        
+
         // Kill the watchdog timer since we completed successfully
         kill(cleanup_pid, SIGKILL);
         waitpid(cleanup_pid, NULL, 0);
-        
+
         // Restore signal mask
         pthread_sigmask(SIG_SETMASK, &old_mask, NULL);
     } else {
         // Fork failed
         log_error("Failed to create watchdog process for cleanup timeout");
         // Continue with cleanup anyway in a simplified manner
-        
+
         // Clear all packet callbacks
         for (int i = 0; i < MAX_STREAMS; i++) {
             stream_reader_ctx_t *reader = get_stream_reader_by_index(i);
@@ -1248,7 +1261,7 @@ cleanup:
                 set_packet_callback(reader, NULL, NULL);
             }
         }
-        
+
         // Stop all streams first
         for (int i = 0; i < config.max_streams; i++) {
             if (config.streams[i].name[0] != '\0') {
@@ -1258,7 +1271,7 @@ cleanup:
                 }
             }
         }
-        
+
         // Wait a moment
         usleep(1000000);  // 1 second
         
@@ -1271,7 +1284,7 @@ cleanup:
         cleanup_hls_streaming_backend();
         cleanup_stream_reader_backend();
         cleanup_transcoding_backend();
-        
+
         // Shut down remaining components
         http_server_stop(http_server);
         http_server_destroy(http_server);
@@ -1279,11 +1292,33 @@ cleanup:
         shutdown_stream_state_adapter();
         shutdown_stream_state_manager();
         shutdown_storage_manager();
+
+        // Ensure all database operations are complete before cleanup
+        log_info("Ensuring all database operations are complete...");
+        __sync_synchronize();
+
+        // Free schema cache first
+        log_info("Freeing schema cache...");
+        free_schema_cache();
+
+        // Add a small delay
+        usleep(100000);  // 100ms
+
+        // Shutdown database
+        log_info("Shutting down database...");
         shutdown_database();
-        
+
+        // Add another small delay after database shutdown
+        usleep(100000);  // 100ms
+
+        // Final SQLite memory cleanup
+        log_info("Performing final SQLite memory cleanup...");
+        sqlite3_release_memory(INT_MAX);
+        sqlite3_shutdown();
+
         // Clean up the shutdown coordinator
         shutdown_coordinator_cleanup();
-        
+
         // Restore signal mask
         pthread_sigmask(SIG_SETMASK, &old_mask, NULL);
     }
@@ -1298,7 +1333,7 @@ cleanup:
     }
 
     log_info("Cleanup complete, shutting down");
-    
+
     // Shutdown logging
     shutdown_logger();
 
@@ -1313,18 +1348,18 @@ static void check_and_ensure_recording(void) {
         if (config.streams[i].name[0] != '\0' && config.streams[i].enabled && config.streams[i].record) {
             // Check if MP4 recording is active for this stream
             int recording_state = get_recording_state(config.streams[i].name);
-            
+
             if (recording_state == 0) {
                 // Recording is not active, start it
                 log_info("Ensuring MP4 recording is active for stream: %s", config.streams[i].name);
-                
+
                 #ifdef USE_GO2RTC
                 // First ensure HLS streaming is active (required for MP4 recording)
                 if (go2rtc_integration_start_hls(config.streams[i].name) != 0) {
                     log_warn("Failed to start HLS streaming for stream: %s", config.streams[i].name);
                     // Continue anyway, as the HLS streaming might already be running
                 }
-                
+
                 // Start MP4 recording
                 if (go2rtc_integration_start_recording(config.streams[i].name) != 0) {
                     log_warn("Failed to start MP4 recording for stream: %s", config.streams[i].name);
@@ -1337,7 +1372,7 @@ static void check_and_ensure_recording(void) {
                     log_warn("Failed to start HLS streaming for stream: %s", config.streams[i].name);
                     // Continue anyway, as the HLS streaming might already be running
                 }
-                
+
                 // Start MP4 recording
                 if (start_mp4_recording(config.streams[i].name) != 0) {
                     log_warn("Failed to start MP4 recording for stream: %s", config.streams[i].name);

@@ -6,7 +6,7 @@
 import { h, render } from './preact.min.js';
 import { html } from './html-helper.js';
 // Import WebSocketClient class directly
-import './websocket-client.js';
+import { WebSocketClient, BatchDeleteRecordingsClient } from './websocket-client.js';
 import { loadHeader } from './components/preact/Header.js';
 import { loadFooter } from './components/preact/Footer.js';
 import { setupModals, addStatusMessageStyles, addModalStyles } from './components/preact/UI.js';

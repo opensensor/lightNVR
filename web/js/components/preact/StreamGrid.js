@@ -129,15 +129,40 @@ export async function loadStreams(setStreams, setSelectedStream, videoGridRef) {
     const detailedStreams = await Promise.all(streamPromises);
     console.log('Loaded detailed streams for live view:', detailedStreams);
     
-    // Store streams in state
-    setStreams(detailedStreams || []);
+    // Filter out streams that are soft deleted, inactive, or not configured for HLS
+    const filteredStreams = detailedStreams.filter(stream => {
+      // Filter out soft deleted streams
+      if (stream.is_deleted) {
+        console.log(`Stream ${stream.name} is soft deleted, filtering out`);
+        return false;
+      }
+      
+      // Filter out inactive streams
+      if (!stream.enabled) {
+        console.log(`Stream ${stream.name} is inactive, filtering out`);
+        return false;
+      }
+      
+      // Filter out streams not configured for HLS
+      if (!stream.streaming_enabled) {
+        console.log(`Stream ${stream.name} is not configured for HLS, filtering out`);
+        return false;
+      }
+      
+      return true;
+    });
     
-    // If we have streams, set the first one as selected for single view
-    if (detailedStreams.length > 0) {
-      setSelectedStream(detailedStreams[0].name);
+    console.log('Filtered streams for live view:', filteredStreams);
+    
+    // Store filtered streams in state
+    setStreams(filteredStreams || []);
+    
+    // If we have filtered streams, set the first one as selected for single view
+    if (filteredStreams.length > 0) {
+      setSelectedStream(filteredStreams[0].name);
     }
     
-    return detailedStreams;
+    return filteredStreams;
   } catch (error) {
     console.error('Error loading streams for live view:', error);
     showStatusMessage('Error loading streams: ' + error.message);

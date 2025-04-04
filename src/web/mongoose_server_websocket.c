@@ -265,12 +265,6 @@ void mg_handle_websocket_close(struct mg_connection *c) {
     // Remove client from WebSocket manager
     websocket_client_remove_by_connection(c);
     
-    // Clean up client log level preferences
-    extern void remove_client_log_level(const char *client_id);
-    if (remove_client_log_level) {
-        remove_client_log_level(client_id);
-    }
-    
     // Handle WebSocket close event
     websocket_manager_handle_close(c);
 }

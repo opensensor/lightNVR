@@ -147,6 +147,15 @@ void mg_handle_get_timeline_segments(struct mg_connection *c, struct mg_http_mes
             tm.tm_isdst = -1;
             start_time = mktime(&tm);
             log_info("Parsed start time: %ld", (long)start_time);
+        } else if (strptime(decoded_start_time, "%Y-%m-%d", &tm) != NULL) {
+            // Handle date-only format (YYYY-MM-DD)
+            // Set time to 00:00:00
+            tm.tm_hour = 0;
+            tm.tm_min = 0;
+            tm.tm_sec = 0;
+            tm.tm_isdst = -1;
+            start_time = mktime(&tm);
+            log_info("Parsed date-only start time: %ld", (long)start_time);
         } else {
             log_error("Failed to parse start time string: %s", decoded_start_time);
         }
@@ -180,6 +189,15 @@ void mg_handle_get_timeline_segments(struct mg_connection *c, struct mg_http_mes
             tm.tm_isdst = -1;
             end_time = mktime(&tm);
             log_info("Parsed end time: %ld", (long)end_time);
+        } else if (strptime(decoded_end_time, "%Y-%m-%d", &tm) != NULL) {
+            // Handle date-only format (YYYY-MM-DD)
+            // Set time to 23:59:59 for the end of the day
+            tm.tm_hour = 23;
+            tm.tm_min = 59;
+            tm.tm_sec = 59;
+            tm.tm_isdst = -1;
+            end_time = mktime(&tm);
+            log_info("Parsed date-only end time: %ld", (long)end_time);
         } else {
             log_error("Failed to parse end time string: %s", decoded_end_time);
         }
@@ -499,6 +517,15 @@ void mg_handle_timeline_manifest(struct mg_connection *c, struct mg_http_message
             tm.tm_isdst = 0; // No DST for UTC
             start_time = mktime(&tm);
             log_info("Parsed start time: %ld", (long)start_time);
+        } else if (strptime(decoded_start_time, "%Y-%m-%d", &tm) != NULL) {
+            // Handle date-only format (YYYY-MM-DD)
+            // Set time to 00:00:00
+            tm.tm_hour = 0;
+            tm.tm_min = 0;
+            tm.tm_sec = 0;
+            tm.tm_isdst = 0; // No DST for UTC
+            start_time = mktime(&tm);
+            log_info("Parsed date-only start time: %ld", (long)start_time);
         } else {
             log_error("Failed to parse start time string: %s", decoded_start_time);
         }
@@ -532,6 +559,15 @@ void mg_handle_timeline_manifest(struct mg_connection *c, struct mg_http_message
             tm.tm_isdst = 0; // No DST for UTC
             end_time = mktime(&tm);
             log_info("Parsed end time: %ld", (long)end_time);
+        } else if (strptime(decoded_end_time, "%Y-%m-%d", &tm) != NULL) {
+            // Handle date-only format (YYYY-MM-DD)
+            // Set time to 23:59:59 for the end of the day
+            tm.tm_hour = 23;
+            tm.tm_min = 59;
+            tm.tm_sec = 59;
+            tm.tm_isdst = 0; // No DST for UTC
+            end_time = mktime(&tm);
+            log_info("Parsed date-only end time: %ld", (long)end_time);
         } else {
             log_error("Failed to parse end time string: %s", decoded_end_time);
         }
@@ -656,6 +692,15 @@ void mg_handle_timeline_playback(struct mg_connection *c, struct mg_http_message
                 tm.tm_isdst = -1;
                 start_time = mktime(&tm);
                 log_info("Parsed start time: %ld", (long)start_time);
+            } else if (strptime(decoded_start_time, "%Y-%m-%d", &tm) != NULL) {
+                // Handle date-only format (YYYY-MM-DD)
+                // Set time to 00:00:00
+                tm.tm_hour = 0;
+                tm.tm_min = 0;
+                tm.tm_sec = 0;
+                tm.tm_isdst = -1;
+                start_time = mktime(&tm);
+                log_info("Parsed date-only start time: %ld", (long)start_time);
             } else {
                 log_error("Failed to parse start time string: %s", decoded_start_time);
                 mg_send_json_error(c, 400, "Invalid start time format");

@@ -165,6 +165,7 @@ int store_detections_in_db(const char *stream_name, const detection_result_t *re
         sqlite3_clear_bindings(stmt);
     }
     
+    // Untrack and finalize the prepared statement
     sqlite3_finalize(stmt);
     
     // Commit transaction
@@ -335,7 +336,7 @@ int get_detections_from_db_time_range(const char *stream_name, detection_result_
         if (sqlite3_step(stmt) == SQLITE_ROW) {
             latest_timestamp = (time_t)sqlite3_column_int64(stmt, 0);
         }
-        
+
         sqlite3_finalize(stmt);
         
         // If no timestamp found, return empty result
@@ -415,7 +416,7 @@ int get_detections_from_db_time_range(const char *stream_name, detection_result_
     }
     
     result->count = count;
-    
+
     sqlite3_finalize(stmt);
     pthread_mutex_unlock(db_mutex);
     
@@ -472,7 +473,7 @@ int get_detection_timestamps(const char *stream_name, detection_result_t *result
             pthread_mutex_unlock(db_mutex);
             return -1;
         }
-        
+
         // Bind parameters
         sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
         sqlite3_bind_int64(stmt, 2, (sqlite3_int64)start_time);
@@ -660,6 +661,7 @@ int delete_old_detections(uint64_t max_age) {
     
     deleted_count = sqlite3_changes(db);
     
+    // finalize the prepared statement
     sqlite3_finalize(stmt);
     pthread_mutex_unlock(db_mutex);
     

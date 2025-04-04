@@ -17,6 +17,7 @@
 
 #include "database/db_core.h"
 #include "database/db_backup.h"
+#include "database/db_schema_utils.h"
 #include "core/logger.h"
 
 // Flag to indicate if a backup is in progress
@@ -157,8 +158,10 @@ int restore_database_from_backup(const char *backup_path, const char *db_path) {
     }
     
     // Run integrity check on the restored database
-    sqlite3_stmt *stmt;
-    rc = sqlite3_prepare_v2(test_db, "PRAGMA integrity_check;", -1, &stmt, NULL);
+    sqlite3_stmt *stmt = NULL;
+    const char *integrity_sql = "PRAGMA integrity_check;";
+    
+    rc = sqlite3_prepare_v2(test_db, integrity_sql, -1, &stmt, NULL);
     if (rc == SQLITE_OK) {
         if (sqlite3_step(stmt) == SQLITE_ROW) {
             const char *result = (const char *)sqlite3_column_text(stmt, 0);
@@ -197,12 +200,29 @@ int check_and_repair_database(void) {
         return -1;
     }
     
-    // Run integrity check
-    rc = sqlite3_exec(db, "PRAGMA integrity_check;", NULL, NULL, &err_msg);
+    // Run integrity check using a prepared statement for better error handling
+    sqlite3_stmt *stmt;
+    rc = sqlite3_prepare_v2(db, "PRAGMA integrity_check;", -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
-        log_error("Integrity check failed: %s", err_msg);
-        sqlite3_free(err_msg);
-        
+        log_error("Failed to prepare integrity check statement");
+        return -1;
+    }
+    
+    bool integrity_ok = false;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char *result = (const char *)sqlite3_column_text(stmt, 0);
+        if (result && strcmp(result, "ok") == 0) {
+            integrity_ok = true;
+        } else {
+            log_error("Integrity check failed: %s", result ? result : "unknown error");
+        }
+    } else {
+        log_error("Failed to execute integrity check");
+    }
+    
+    sqlite3_finalize(stmt);
+    
+    if (!integrity_ok) {
         // Try to recover by recreating the database
         log_warn("Attempting to recover by recreating the database");
         

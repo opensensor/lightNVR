@@ -59,15 +59,24 @@ export function initializeVideoPlayer(stream, videoPlayers, detectionIntervals) 
     loadingIndicator.style.display = 'flex';
   }
   
-  // Build the HLS stream URL with cache-busting timestamp to prevent stale data
-  const timestamp = Date.now();
-  const hlsStreamUrl = `/hls/${encodeURIComponent(stream.name)}/index.m3u8?_t=${timestamp}`;
-  
-  // Get auth from localStorage
-  const auth = localStorage.getItem('auth');
-  
-  // Ensure auth headers are set for HLS requests
-  console.log(`Initializing video player for stream ${stream.name}`);
+    // Build the HLS stream URL with cache-busting timestamp to prevent stale data
+    const timestamp = Date.now();
+    const hlsStreamUrl = `/hls/${encodeURIComponent(stream.name)}/index.m3u8?_t=${timestamp}`;
+    
+    // Get auth from localStorage
+    const auth = localStorage.getItem('auth');
+    
+    // Check if the stream is already running or needs to be started
+    console.log(`Initializing video player for stream ${stream.name}`);
+    
+    // Show loading indicator with starting message
+    if (loadingIndicator) {
+      loadingIndicator.style.display = 'flex';
+      const messageSpan = loadingIndicator.querySelector('span');
+      if (messageSpan) {
+        messageSpan.textContent = 'Starting stream...';
+      }
+    }
   
   // Check if HLS is supported natively
   if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {

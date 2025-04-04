@@ -673,18 +673,6 @@ int load_config(config_t *config) {
         return -1;
     }
     
-    // Initialize database
-    if (init_database(config->db_path) != 0) {
-        log_error("Failed to initialize database");
-        return -1;
-    }
-    
-    // Load stream configurations from database
-    if (load_stream_configs(config) < 0) {
-        log_error("Failed to load stream configurations from database");
-        // Continue anyway, we'll use empty stream configurations
-    }
-    
     return 0;
 }
 

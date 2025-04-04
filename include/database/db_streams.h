@@ -61,4 +61,12 @@ int count_stream_configs(void);
  */
 int get_enabled_stream_count(void);
 
+/**
+ * Check if a stream is eligible for live streaming
+ * 
+ * @param stream_name Name of the stream to check
+ * @return 1 if eligible, 0 if not eligible, -1 on error
+ */
+int is_stream_eligible_for_live_streaming(const char *stream_name);
+
 #endif // LIGHTNVR_DB_STREAMS_H

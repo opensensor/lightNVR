@@ -6,7 +6,7 @@
 /**
  * WebSocket Client class
  */
-class WebSocketClient {
+export class WebSocketClient {
     /**
      * Generate a UUID v4
      * @returns {string} A random UUID
@@ -546,7 +546,7 @@ class WebSocketClient {
  * BatchDeleteRecordingsClient class
  * Handles batch delete recordings operations via WebSocket
  */
-class BatchDeleteRecordingsClient {
+export class BatchDeleteRecordingsClient {
     /**
      * Create a new BatchDeleteRecordingsClient
      * 

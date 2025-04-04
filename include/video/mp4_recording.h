@@ -103,6 +103,7 @@ void unregister_mp4_writer_for_stream(const char *stream_name);
 
 /**
  * Close all MP4 writers during shutdown
+ * @deprecated Use safe_close_all_mp4_writers from mp4_writer_shutdown.h instead
  */
 void close_all_mp4_writers(void);
 

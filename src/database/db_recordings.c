@@ -45,6 +45,8 @@ uint64_t add_recording_metadata(const recording_metadata_t *metadata) {
         return 0;
     }
     
+    // No longer tracking statements - each function is responsible for finalizing its own statements
+    
     // Bind parameters
     sqlite3_bind_text(stmt, 1, metadata->stream_name, -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 2, metadata->file_path, -1, SQLITE_STATIC);
@@ -72,6 +74,7 @@ uint64_t add_recording_metadata(const recording_metadata_t *metadata) {
         log_debug("Added recording metadata with ID %llu", (unsigned long long)recording_id);
     }
     
+    // Finalize the prepared statement
     sqlite3_finalize(stmt);
     pthread_mutex_unlock(db_mutex);
     
@@ -104,6 +107,8 @@ int update_recording_metadata(uint64_t id, time_t end_time,
         return -1;
     }
     
+    // No longer tracking statements - each function is responsible for finalizing its own statements
+    
     // Bind parameters
     sqlite3_bind_int64(stmt, 1, (sqlite3_int64)end_time);
     sqlite3_bind_int64(stmt, 2, (sqlite3_int64)size_bytes);
@@ -119,6 +124,7 @@ int update_recording_metadata(uint64_t id, time_t end_time,
         return -1;
     }
     
+    // Finalize the prepared statement
     sqlite3_finalize(stmt);
     pthread_mutex_unlock(db_mutex);
     
@@ -156,6 +162,8 @@ int get_recording_metadata_by_id(uint64_t id, recording_metadata_t *metadata) {
         pthread_mutex_unlock(db_mutex);
         return -1;
     }
+    
+    // No longer tracking statements - each function is responsible for finalizing its own statements
     
     // Bind parameters
     sqlite3_bind_int64(stmt, 1, (sqlite3_int64)id);
@@ -206,6 +214,7 @@ int get_recording_metadata_by_id(uint64_t id, recording_metadata_t *metadata) {
         result = 0; // Success
     }
     
+    // Finalize the prepared statement
     sqlite3_finalize(stmt);
     pthread_mutex_unlock(db_mutex);
     
@@ -261,6 +270,8 @@ int get_recording_metadata(time_t start_time, time_t end_time,
         pthread_mutex_unlock(db_mutex);
         return -1;
     }
+    
+    // No longer tracking statements - each function is responsible for finalizing its own statements
     
     // Bind parameters
     int param_index = 1;
@@ -333,6 +344,7 @@ int get_recording_metadata(time_t start_time, time_t end_time,
         log_error("Error while fetching recordings: %s", sqlite3_errmsg(db));
     }
     
+    // Finalize the prepared statement
     sqlite3_finalize(stmt);
     pthread_mutex_unlock(db_mutex);
     
@@ -398,6 +410,8 @@ int get_recording_count(time_t start_time, time_t end_time,
         return -1;
     }
     
+    // No longer tracking statements - each function is responsible for finalizing its own statements
+    
     // Bind parameters
     int param_index = 1;
     
@@ -421,6 +435,7 @@ int get_recording_count(time_t start_time, time_t end_time,
         count = -1;
     }
     
+    // Finalize the prepared statement
     sqlite3_finalize(stmt);
     pthread_mutex_unlock(db_mutex);
     
@@ -549,6 +564,8 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
         return -1;
     }
     
+    // No longer tracking statements - each function is responsible for finalizing its own statements
+    
     // Bind parameters
     int param_index = 1;
     
@@ -622,6 +639,7 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
         log_error("Error while fetching recordings: %s", sqlite3_errmsg(db));
     }
     
+    // Finalize the prepared statement
     sqlite3_finalize(stmt);
     pthread_mutex_unlock(db_mutex);
     
@@ -654,6 +672,8 @@ int delete_recording_metadata(uint64_t id) {
         return -1;
     }
     
+    // No longer tracking statements - each function is responsible for finalizing its own statements
+    
     // Bind parameters
     sqlite3_bind_int64(stmt, 1, (sqlite3_int64)id);
     
@@ -666,6 +686,7 @@ int delete_recording_metadata(uint64_t id) {
         return -1;
     }
     
+    // Finalize the prepared statement
     sqlite3_finalize(stmt);
     pthread_mutex_unlock(db_mutex);
     

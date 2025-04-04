@@ -47,20 +47,20 @@ int init_detection_integration(void) {
         log_error("Failed to initialize detection configuration");
         return -1;
     }
-    
+
     // Initialize buffer pool
     if (init_buffer_pool() != 0) {
         log_error("Failed to initialize buffer pool");
         return -1;
     }
-    
+
     // Get configuration
     detection_config_t *config = get_detection_config();
     if (!config) {
         log_error("Failed to get detection configuration");
         return -1;
     }
-    
+
     // Allocate active detection streams array
     max_detections = config->concurrent_detections;
     active_detection_streams = (char *)calloc(max_detections, MAX_STREAM_NAME);
@@ -68,7 +68,7 @@ int init_detection_integration(void) {
         log_error("Failed to allocate active detection streams array");
         return -1;
     }
-    
+
     // Initialize the stream detection system - we always use it now
     if (init_stream_detection_system() != 0) {
         log_error("Failed to initialize stream detection system");
@@ -77,9 +77,24 @@ int init_detection_integration(void) {
     } else {
         log_info("Stream detection system initialized");
     }
-    
+
     log_info("Detection integration initialized with %d max concurrent detections", max_detections);
     return 0;
+}
+
+/**
+ * Force cleanup of all SOD models in the global cache
+ * This is needed to prevent memory leaks when the program exits
+ */
+void force_cleanup_sod_models(void) {
+    log_info("Forcing cleanup of all SOD models in global cache...");
+
+    // Call the function to clean up the global model cache
+    // This function is defined in detection_model.c
+    extern void force_cleanup_model_cache(void);
+    force_cleanup_model_cache();
+
+    log_info("SOD model cleanup completed");
 }
 
 /**
@@ -87,30 +102,33 @@ int init_detection_integration(void) {
  */
 void cleanup_detection_resources(void) {
     log_info("Starting detection resources cleanup...");
-    
+
     // Free active detection streams array
     if (active_detection_streams) {
         free(active_detection_streams);
         active_detection_streams = NULL;
         active_detections = 0;
     }
-    
+
     // Cleanup buffer pool
     cleanup_buffer_pool();
-    
+
     // Shutdown the stream detection system
     shutdown_stream_detection_system();
     log_info("Stream detection system shutdown");
-    
+
+    // Force cleanup of all SOD models to prevent memory leaks
+    force_cleanup_sod_models();
+
     // Ensure all detection models are unloaded
     shutdown_detection_system();
-    
+
     // Ensure motion detection is cleaned up
     shutdown_motion_detection_system();
-    
+
     // Explicitly call memory cleanup for any remaining buffers
     emergency_buffer_pool_cleanup();
-    
+
     log_info("Detection resources cleaned up successfully");
 }
 
@@ -135,7 +153,7 @@ bool is_detection_in_progress(const char *stream_name) {
     if (!stream_name || !active_detection_streams) {
         return false;
     }
-    
+
     // Check if this stream is in the active list
     for (int i = 0; i < max_detections; i++) {
         char *active_stream = active_detection_streams + i * MAX_STREAM_NAME;
@@ -143,6 +161,6 @@ bool is_detection_in_progress(const char *stream_name) {
             return true;
         }
     }
-    
+
     return false;
 }

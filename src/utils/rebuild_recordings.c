@@ -149,6 +149,13 @@ static bool stream_exists_in_db(const char *stream_name, bool *is_deleted) {
 static bool create_soft_deleted_stream(const char *stream_name) {
     stream_config_t stream;
     uint64_t stream_id;
+    bool is_deleted = false;
+    
+    // Check if the stream already exists but is soft-deleted
+    if (stream_exists_in_db(stream_name, &is_deleted) && is_deleted) {
+        log_info("Stream %s already exists as soft-deleted, not modifying it", stream_name);
+        return true;
+    }
     
     // Initialize stream configuration with default values
     memset(&stream, 0, sizeof(stream_config_t));

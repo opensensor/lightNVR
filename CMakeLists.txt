@@ -207,13 +207,20 @@ list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*sod/sod\\.c$")
 list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*utils/rebuild_recordings\\.c$")
 message(STATUS "Excluding rebuild_recordings.c from ROOT_SOURCES")
 
-# Explicitly list video sources to exclude motion_detection_optimized.c and detection_thread_pool.c
+# Explicitly list video sources to exclude motion_detection_optimized.c, detection_thread_pool.c,
+# and the original hls_writer_thread.c (since we're using our split version)
 file(GLOB VIDEO_SOURCES "src/video/*.c")
 list(FILTER VIDEO_SOURCES EXCLUDE REGEX ".*motion_detection_optimized\\.c$")
 list(FILTER VIDEO_SOURCES EXCLUDE REGEX ".*detection_thread_pool\\.c$")
+list(FILTER VIDEO_SOURCES EXCLUDE REGEX ".*hls_writer_thread\\.c$")
 
 # Add HLS sources
 file(GLOB HLS_SOURCES "src/video/hls/*.c")
+
+# Add HLS writer thread sources explicitly to ensure they're included
+set(HLS_WRITER_THREAD_SOURCES
+    "src/video/hls_writer_thread.c"
+)
 
 # Set up go2rtc integration if enabled
 set(GO2RTC_SOURCES "")
@@ -236,6 +243,7 @@ set(SOURCES
         ${UTILS_SOURCES}
         ${VIDEO_SOURCES}
         ${HLS_SOURCES}
+        ${HLS_WRITER_THREAD_SOURCES}
         ${WEB_SOURCES}
         ${ROOT_SOURCES}
         "${INIH_INCLUDE_DIR}/ini.c"

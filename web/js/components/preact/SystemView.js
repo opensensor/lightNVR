@@ -367,11 +367,12 @@ export function SystemView() {
     }
   };
   
-  // Initialize WebSocket client if not already initialized
+  // Check if WebSocket client is initialized
   useEffect(() => {
-    if (!window.wsClient && typeof WebSocketClient === 'function') {
-      console.log('Initializing WebSocket client for system page');
-      window.wsClient = new WebSocketClient();
+    if (!window.wsClient) {
+      console.log('WebSocket client not available in SystemView, it should be initialized in preact-app.js');
+    } else {
+      console.log('WebSocket client is available in SystemView');
     }
   }, []);
 

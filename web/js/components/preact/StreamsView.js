@@ -234,6 +234,11 @@ export function StreamsView() {
         record_audio: currentStream.recordAudio
       };
       
+      // When editing, set is_deleted to false to allow undeleting soft-deleted streams
+      if (isEditing) {
+        streamData.is_deleted = false;
+      }
+      
       const url = isEditing 
         ? `/api/streams/${encodeURIComponent(currentStream.name)}`
         : '/api/streams';

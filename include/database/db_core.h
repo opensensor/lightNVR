@@ -36,4 +36,12 @@ sqlite3 *get_db_handle(void);
  */
 pthread_mutex_t *get_db_mutex(void);
 
+/**
+ * Checkpoint the database WAL file
+ * This ensures all changes are written to the main database file
+ * 
+ * @return 0 on success, non-zero on failure
+ */
+int checkpoint_database(void);
+
 #endif // LIGHTNVR_DB_CORE_H

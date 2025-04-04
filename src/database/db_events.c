@@ -72,6 +72,7 @@ uint64_t add_event(event_type_t type, const char *stream_name,
         log_debug("Added event with ID %llu", (unsigned long long)event_id);
     }
     
+    // finalize the prepared statement
     sqlite3_finalize(stmt);
     pthread_mutex_unlock(db_mutex);
     
@@ -183,6 +184,7 @@ int get_events(time_t start_time, time_t end_time, int type,
         count++;
     }
     
+    // finalize the prepared statement
     sqlite3_finalize(stmt);
     pthread_mutex_unlock(db_mutex);
     
@@ -232,6 +234,7 @@ int delete_old_events(uint64_t max_age) {
     
     deleted_count = sqlite3_changes(db);
     
+    // finalize the prepared statement
     sqlite3_finalize(stmt);
     pthread_mutex_unlock(db_mutex);
     

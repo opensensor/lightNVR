@@ -537,6 +537,48 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
         }
     }
     
+    // Check if there's a request to undelete the stream
+    cJSON *is_deleted = cJSON_GetObjectItem(stream_json, "is_deleted");
+    bool undelete_requested = false;
+    if (is_deleted && cJSON_IsBool(is_deleted) && !cJSON_IsTrue(is_deleted)) {
+        // Request to set is_deleted to false (undelete)
+        undelete_requested = true;
+        log_info("Undelete requested for stream %s", decoded_id);
+        
+        // Check if the stream is currently soft-deleted
+        bool currently_deleted = false;
+        sqlite3 *db = get_db_handle();
+        if (db) {
+            sqlite3_stmt *stmt;
+            const char *sql = "SELECT is_deleted FROM streams WHERE name = ?;";
+            if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) == SQLITE_OK) {
+                sqlite3_bind_text(stmt, 1, decoded_id, -1, SQLITE_STATIC);
+                if (sqlite3_step(stmt) == SQLITE_ROW && sqlite3_column_type(stmt, 0) != SQLITE_NULL) {
+                    currently_deleted = sqlite3_column_int(stmt, 0) != 0;
+                }
+                sqlite3_finalize(stmt);
+            }
+        }
+        
+        if (currently_deleted) {
+            // Undelete the stream by setting is_deleted to 0
+            sqlite3 *db = get_db_handle();
+            if (db) {
+                sqlite3_stmt *stmt;
+                const char *sql = "UPDATE streams SET is_deleted = 0 WHERE name = ?;";
+                if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) == SQLITE_OK) {
+                    sqlite3_bind_text(stmt, 1, decoded_id, -1, SQLITE_STATIC);
+                    if (sqlite3_step(stmt) != SQLITE_DONE) {
+                        log_error("Failed to undelete stream %s: %s", decoded_id, sqlite3_errmsg(db));
+                    } else {
+                        log_info("Successfully undeleted stream %s", decoded_id);
+                    }
+                    sqlite3_finalize(stmt);
+                }
+            }
+        }
+    }
+    
     // Clean up JSON
     cJSON_Delete(stream_json);
     
