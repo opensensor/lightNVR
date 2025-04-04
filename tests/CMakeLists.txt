@@ -175,7 +175,6 @@ set(STREAM_DETECTION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/detection_stream.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/recording.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/mp4_recording_core.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/mp4_recording_utils.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/mp4_recording_writer.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/mp4_writer_core.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/mp4_writer_utils.c

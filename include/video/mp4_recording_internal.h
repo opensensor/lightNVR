@@ -19,16 +19,6 @@
  */
 extern mp4_recording_ctx_t *recording_contexts[MAX_STREAMS];
 
-/**
- * Update MP4 recording metadata in the database
- * 
- * This function is called periodically to update the recording metadata
- * in the database.
- * 
- * @param stream_name Name of the stream
- */
-void update_mp4_recording(const char *stream_name);
-
 // We'll use the pthread_join_with_timeout function from thread_utils.h
 
 #endif /* MP4_RECORDING_INTERNAL_H */

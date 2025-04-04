@@ -54,7 +54,7 @@ mp4_writer_t *mp4_writer_create(const char *output_path, const char *stream_name
     writer->last_packet_time = 0;  // Initialize to 0 to indicate no packets written yet
     writer->has_audio = 1;         // Initialize to 1 to enable audio by default
     writer->current_recording_id = 0; // Initialize to 0 to indicate no recording ID yet
-    
+
     // Initialize audio state
     writer->audio.stream_idx = -1; // Initialize to -1 to indicate no audio stream
     writer->audio.first_dts = AV_NOPTS_VALUE;
@@ -64,21 +64,21 @@ mp4_writer_t *mp4_writer_create(const char *output_path, const char *stream_name
     writer->audio.time_base.num = 1;
     writer->audio.time_base.den = 48000; // Default to 48kHz
     writer->audio.frame_size = 1024;    // Default audio frame size for Opus
-    
+
     // Initialize segment-related fields
     writer->segment_duration = 0;  // Default to 0 (no rotation)
     writer->last_rotation_time = time(NULL);
     writer->waiting_for_keyframe = 0;
     writer->is_rotating = 0;       // Initialize rotation flag
     writer->shutdown_component_id = -1; // Initialize to -1 to indicate not registered
-    
+
     // Extract output directory from output path
     strncpy(writer->output_dir, output_path, sizeof(writer->output_dir) - 1);
     char *last_slash = strrchr(writer->output_dir, '/');
     if (last_slash) {
         *last_slash = '\0';  // Truncate at the last slash to get directory
     }
-    
+
     // Initialize mutexes
     pthread_mutex_init(&writer->mutex, NULL);
     pthread_mutex_init(&writer->audio.mutex, NULL);
@@ -96,12 +96,12 @@ void mp4_writer_set_segment_duration(mp4_writer_t *writer, int segment_duration)
         log_error("NULL writer passed to mp4_writer_set_segment_duration");
         return;
     }
-    
+
     writer->segment_duration = segment_duration;
     writer->last_rotation_time = time(NULL);
     writer->waiting_for_keyframe = 0;
-    
-    log_info("Set segment duration to %d seconds for stream %s", 
+
+    log_info("Set segment duration to %d seconds for stream %s",
              segment_duration, writer->stream_name ? writer->stream_name : "unknown");
 }
 
@@ -113,44 +113,47 @@ void mp4_writer_close(mp4_writer_t *writer) {
         log_warn("NULL writer passed to mp4_writer_close");
         return;
     }
-    
+
     // Log the closing operation
-    log_info("Closing MP4 writer for stream %s at %s", 
-             writer->stream_name ? writer->stream_name : "unknown", 
+    log_info("Closing MP4 writer for stream %s at %s",
+             writer->stream_name ? writer->stream_name : "unknown",
              writer->output_path ? writer->output_path : "unknown");
-    
+
     //  First, mark the recording as complete in the database if needed
     if (writer->current_recording_id > 0) {
         // Get the file size before marking as complete
         struct stat st;
         uint64_t size_bytes = 0;
-        
+
         if (writer->output_path && stat(writer->output_path, &st) == 0) {
             size_bytes = st.st_size;
-            log_info("Final file size for %s: %llu bytes", 
+            log_info("Final file size for %s: %llu bytes",
                     writer->output_path, (unsigned long long)size_bytes);
-            
+
             // Mark the recording as complete with the correct file size
             update_recording_metadata(writer->current_recording_id, time(NULL), size_bytes, true);
-            log_info("Marked recording (ID: %llu) as complete during writer close", 
+            log_info("Marked recording (ID: %llu) as complete during writer close",
                     (unsigned long long)writer->current_recording_id);
         } else if (writer->output_path) {
             log_warn("Failed to get file size for %s during close", writer->output_path);
-            
+
             // Still mark the recording as complete, but with size 0
             update_recording_metadata(writer->current_recording_id, time(NULL), 0, true);
-            log_info("Marked recording (ID: %llu) as complete during writer close (size unknown)", 
+            log_info("Marked recording (ID: %llu) as complete during writer close (size unknown)",
                     (unsigned long long)writer->current_recording_id);
         }
     }
-    
+
     // First, stop any recording thread if it's running
     if (writer->thread_ctx) {
+        log_info("Stopping recording thread for %s during writer close",
+                writer->stream_name ? writer->stream_name : "unknown");
         mp4_writer_stop_recording_thread(writer);
         //  thread_ctx should now be NULL if join was successful
         // If join failed, the thread was detached and will clean up itself
     }
-    
+
+    // MEMORY LEAK FIX: Ensure proper cleanup of FFmpeg resources
     // Close the output context if it exists
     if (writer->output_ctx) {
         // Write trailer if the context is initialized
@@ -162,37 +165,50 @@ void mp4_writer_close(mp4_writer_t *writer) {
                 log_warn("Failed to write trailer for MP4 writer: %s", error_buf);
             }
         }
-        
+
         // Close the output file
         if (writer->output_ctx->pb) {
             avio_closep(&writer->output_ctx->pb);
         }
-        
+
+        // MEMORY LEAK FIX: Properly clean up all streams in the output context
+        // This ensures all codec contexts and other resources are freed
+        if (writer->output_ctx->nb_streams > 0) {
+            for (unsigned int i = 0; i < writer->output_ctx->nb_streams; i++) {
+                if (writer->output_ctx->streams[i]) {
+                    // Free any codec parameters
+                    if (writer->output_ctx->streams[i]->codecpar) {
+                        avcodec_parameters_free(&writer->output_ctx->streams[i]->codecpar);
+                    }
+                }
+            }
+        }
+
         // Free the output context
         avformat_free_context(writer->output_ctx);
         writer->output_ctx = NULL;
     }
-    
+
     //  Ensure we're not in the middle of a rotation
     if (writer->is_rotating) {
         log_warn("MP4 writer was still rotating during close, forcing rotation to complete");
         writer->is_rotating = 0;
         writer->waiting_for_keyframe = 0;
     }
-    
+
     // Destroy mutexes with proper error handling
     int mutex_result = pthread_mutex_destroy(&writer->mutex);
     if (mutex_result != 0) {
         log_warn("Failed to destroy writer mutex: %s", strerror(mutex_result));
     }
-    
+
     mutex_result = pthread_mutex_destroy(&writer->audio.mutex);
     if (mutex_result != 0) {
         log_warn("Failed to destroy audio mutex: %s", strerror(mutex_result));
     }
-    
+
     // Free the writer structure
     free(writer);
-    
+
     log_info("MP4 writer closed and resources freed");
 }
