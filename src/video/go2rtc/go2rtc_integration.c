@@ -494,6 +494,15 @@ int go2rtc_integration_stop_hls(const char *stream_name) {
         // Get the stream state manager to ensure proper cleanup
         stream_state_manager_t *state = get_stream_state_by_name(stream_name);
 
+        // Store a local copy of the HLS writer pointer if it exists
+        hls_writer_t *writer = NULL;
+        if (state && state->hls_ctx) {
+            writer = (hls_writer_t *)state->hls_ctx;
+            // Clear the reference in the state before stopping the stream
+            // This prevents accessing freed memory later
+            state->hls_ctx = NULL;
+        }
+
         // Stop HLS streaming
         int result = stop_hls_stream(stream_name);
         if (result != 0) {
@@ -504,16 +513,7 @@ int go2rtc_integration_stop_hls(const char *stream_name) {
         // Update tracking
         tracking->using_go2rtc_for_hls = false;
 
-        // Ensure any remaining thread resources are cleaned up
-        if (state && state->hls_ctx) {
-            log_info("Ensuring HLS writer resources are fully cleaned up for %s", stream_name);
-            hls_writer_t *writer = (hls_writer_t *)state->hls_ctx;
-            if (writer->thread_ctx) {
-                log_warn("Found lingering thread context for %s, cleaning up", stream_name);
-                hls_writer_stop_recording_thread(writer);
-            }
-            state->hls_ctx = NULL;
-        }
+        // We've already cleared state->hls_ctx, so we don't need to do it again
 
         log_info("Stopped HLS streaming for stream %s using go2rtc", stream_name);
         return 0;
