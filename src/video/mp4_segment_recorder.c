@@ -1,6 +1,6 @@
 /**
  * MP4 Segment Recorder
- * 
+ *
  * This module handles the recording of individual MP4 segments from RTSP streams.
  * It's responsible for:
  * - Opening RTSP streams
@@ -268,11 +268,11 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration,
                 log_info("Reached duration limit of %d seconds, waiting for next key frame to end recording", duration);
                 waiting_for_final_keyframe = true;
             }
-            // If we're close to the duration limit (within 3 seconds), also wait for the next key frame
+            // If we're close to the duration limit (within 1 second), also wait for the next key frame
             // This helps ensure we don't wait too long for a key frame at the end of a segment
-            // Increased from 1 to 3 seconds to improve segment length precision
-            else if (elapsed_seconds >= duration - 3) {
-                log_info("Within 3 seconds of duration limit (%d seconds), waiting for next key frame to end recording", duration);
+            // Reduced from 3 to 1 second to prevent segments from being too long
+            else if (elapsed_seconds >= duration - 1) {
+                log_info("Within 1 second of duration limit (%d seconds), waiting for next key frame to end recording", duration);
                 waiting_for_final_keyframe = true;
             }
         }
@@ -299,7 +299,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration,
 
             // If we're waiting for the first key frame
             if (!found_first_keyframe) {
-                // If the previous segment ended with a key frame, we can start immediately
+                // If the previous segment ended with a key frame, we can start immediately with this frame
                 // Otherwise, wait for a key frame
                 if (prev_segment_info && prev_segment_info->last_frame_was_key && segment_index > 0) {
                     log_info("Previous segment ended with a key frame, starting new segment immediately");
@@ -307,6 +307,11 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration,
 
                     // Reset start time to now
                     start_time = av_gettime();
+
+                    // If this frame is not a keyframe, log a warning as we might have missed the keyframe
+                    if (!is_keyframe) {
+                        log_warn("Starting segment with non-keyframe even though previous segment ended with keyframe");
+                    }
                 } else if (is_keyframe) {
                     log_info("Found first key frame, starting recording");
                     found_first_keyframe = true;
@@ -342,13 +347,14 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration,
                         // Set flag to indicate the last frame was a key frame
                         if (prev_segment_info) {
                             prev_segment_info->last_frame_was_key = true;
-                            log_debug("Last frame was a key frame, next segment will start immediately");
+                            log_debug("Last frame was a key frame, next segment will start immediately with this keyframe");
                         }
                     } else {
                         log_info("Waited %lld seconds for key frame, ending recording with non-key frame", (long long)wait_time);
                         // Clear flag since the last frame was not a key frame
                         if (prev_segment_info) {
                             prev_segment_info->last_frame_was_key = false;
+                            log_debug("Last frame was NOT a key frame, next segment will wait for a keyframe");
                         }
                     }
 
@@ -758,8 +764,8 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration,
     if (prev_segment_info) {
         prev_segment_info->segment_index = segment_index;
         prev_segment_info->has_audio = has_audio && audio_stream_idx >= 0;
-        log_debug("Saved segment info for next segment: index=%d, has_audio=%d",
-                segment_index, has_audio && audio_stream_idx >= 0);
+        log_info("Saved segment info for next segment: index=%d, has_audio=%d, last_frame_was_key=%d",
+                segment_index, has_audio && audio_stream_idx >= 0, prev_segment_info->last_frame_was_key);
     }
 
 cleanup:

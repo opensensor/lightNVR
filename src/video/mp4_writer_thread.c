@@ -1,6 +1,6 @@
 /**
  * MP4 Writer Thread Implementation
- * 
+ *
  * This module handles the thread-related functionality for MP4 recording.
  * It's responsible for:
  * - Managing RTSP recording threads
@@ -47,7 +47,7 @@ static void *mp4_writer_rtsp_thread(void *arg) {
     int audio_stream_idx = -1;
     int ret;
     time_t start_time = time(NULL);  // Record when we started
-    segment_info_t segment_info = {0};  // Initialize segment info for timestamp continuity
+    segment_info_t segment_info = {0};  // Initialize segment info for timestamp continuity and keyframe handling
 
     // Initialize self-management fields
     thread_ctx->retry_count = 0;
@@ -100,6 +100,9 @@ static void *mp4_writer_rtsp_thread(void *arg) {
     segment_info.segment_index = 0;
     segment_info.has_audio = false;
     segment_info.last_frame_was_key = false;
+
+    log_info("Initialized segment info: index=%d, has_audio=%d, last_frame_was_key=%d",
+            segment_info.segment_index, segment_info.has_audio, segment_info.last_frame_was_key);
 
     // Main loop to record segments
     while (thread_ctx->running && !thread_ctx->shutdown_requested) {
@@ -292,104 +295,16 @@ static void *mp4_writer_rtsp_thread(void *arg) {
             }
         }
 
-    // Main loop to handle recording and retries
-    while (thread_ctx->running && !thread_ctx->shutdown_requested) {
-        // Check if shutdown has been initiated
-        if (is_shutdown_initiated()) {
-            log_info("RTSP reading thread for %s stopping due to system shutdown", stream_name);
-            thread_ctx->running = 0;
-            break;
-        }
+        // Record the segment with timestamp continuity and keyframe handling
+        // BUGFIX: Removed duplicate loop that was causing segments to be double the intended length
+        log_info("Starting segment recording with info: index=%d, has_audio=%d, last_frame_was_key=%d",
+                segment_info.segment_index, segment_info.has_audio, segment_info.last_frame_was_key);
 
-        // Check if it's time to create a new segment based on segment duration
-        // Force segment rotation every segment_duration seconds
-        if (segment_duration > 0) {
-            time_t current_time = time(NULL);
-            time_t elapsed_time = current_time - thread_ctx->writer->last_rotation_time;
-
-            if (elapsed_time >= segment_duration) {
-                log_info("Time to create new segment for stream %s (elapsed time: %ld seconds, segment duration: %d seconds)",
-                         stream_name, (long)elapsed_time, segment_duration);
-
-                // Create timestamp for new MP4 filename
-                char timestamp_str[32];
-                struct tm *tm_info = localtime(&current_time);
-                strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M%S", tm_info);
-
-                // Create new output path
-                char new_path[MAX_PATH_LENGTH];
-                snprintf(new_path, MAX_PATH_LENGTH, "%s/recording_%s.mp4",
-                         thread_ctx->writer->output_dir, timestamp_str);
-
-                // Get the current output path before closing
-                char current_path[MAX_PATH_LENGTH];
-                strncpy(current_path, thread_ctx->writer->output_path, MAX_PATH_LENGTH - 1);
-                current_path[MAX_PATH_LENGTH - 1] = '\0';
-
-                // Create recording metadata for the new file
-                recording_metadata_t metadata;
-                memset(&metadata, 0, sizeof(recording_metadata_t));
-
-                // Fill in the metadata
-                strncpy(metadata.stream_name, stream_name, sizeof(metadata.stream_name) - 1);
-                strncpy(metadata.file_path, new_path, sizeof(metadata.file_path) - 1);
-                metadata.start_time = current_time;
-                metadata.end_time = 0; // Will be updated when recording ends
-                metadata.size_bytes = 0; // Will be updated as recording grows
-                metadata.is_complete = false;
-
-                // Add recording to database for the new file
-                uint64_t new_recording_id = add_recording_metadata(&metadata);
-                if (new_recording_id == 0) {
-                    log_error("Failed to add recording metadata for stream %s during rotation", stream_name);
-                } else {
-                    log_info("Added new recording to database with ID: %llu for rotated file: %s",
-                            (unsigned long long)new_recording_id, new_path);
-                }
-
-                // Mark the previous recording as complete
-                if (thread_ctx->writer->current_recording_id > 0) {
-                    // Get the file size before marking as complete
-                    struct stat st;
-                    uint64_t size_bytes = 0;
-
-                    if (stat(current_path, &st) == 0) {
-                        size_bytes = st.st_size;
-                        log_info("File size for %s: %llu bytes",
-                                current_path, (unsigned long long)size_bytes);
-
-                        // Mark the recording as complete with the correct file size
-                        update_recording_metadata(thread_ctx->writer->current_recording_id, current_time, size_bytes, true);
-                        log_info("Marked previous recording (ID: %llu) as complete for stream %s (size: %llu bytes)",
-                                (unsigned long long)thread_ctx->writer->current_recording_id, stream_name, (unsigned long long)size_bytes);
-                    } else {
-                        log_warn("Failed to get file size for %s: %s",
-                                current_path, strerror(errno));
-
-                        // Still mark the recording as complete, but with size 0
-                        update_recording_metadata(thread_ctx->writer->current_recording_id, current_time, 0, true);
-                        log_info("Marked previous recording (ID: %llu) as complete for stream %s (size unknown)",
-                                (unsigned long long)thread_ctx->writer->current_recording_id, stream_name);
-                    }
-                }
-
-                // Update the output path
-                strncpy(thread_ctx->writer->output_path, new_path, MAX_PATH_LENGTH - 1);
-                thread_ctx->writer->output_path[MAX_PATH_LENGTH - 1] = '\0';
-
-                // Store the new recording ID in the writer for later update
-                if (new_recording_id > 0) {
-                    thread_ctx->writer->current_recording_id = new_recording_id;
-                }
-
-                // Update rotation time
-                thread_ctx->writer->last_rotation_time = current_time;
-            }
-        }
-
-        // Record the segment with timestamp continuity
         ret = record_segment(thread_ctx->rtsp_url, thread_ctx->writer->output_path,
                            segment_duration, &input_ctx, thread_ctx->writer->has_audio, &segment_info);
+
+        log_info("Finished segment recording with info: index=%d, has_audio=%d, last_frame_was_key=%d",
+                segment_info.segment_index, segment_info.has_audio, segment_info.last_frame_was_key);
 
         if (ret < 0) {
             log_error("Failed to record segment for stream %s (error: %d), implementing retry strategy...",
@@ -446,23 +361,6 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                 thread_ctx->retry_count = 0;
             }
         }
-
-        // Update the last packet time for activity tracking
-        thread_ctx->writer->last_packet_time = time(NULL);
-
-        // Update the recording metadata with the current file size
-        if (thread_ctx->writer->current_recording_id > 0) {
-            struct stat st;
-            if (stat(thread_ctx->writer->output_path, &st) == 0) {
-                uint64_t size_bytes = st.st_size;
-                // Update size but don't mark as complete yet
-                update_recording_metadata(thread_ctx->writer->current_recording_id, 0, size_bytes, false);
-                log_debug("Updated recording metadata for ID: %llu, size: %llu bytes",
-                        (unsigned long long)thread_ctx->writer->current_recording_id,
-                        (unsigned long long)size_bytes);
-            }
-        }
-    }
 
         // Update the last packet time for activity tracking
         thread_ctx->writer->last_packet_time = time(NULL);
