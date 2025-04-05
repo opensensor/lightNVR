@@ -211,9 +211,6 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
         return -1;
     }
 
-    // When SOD is statically linked, use direct function calls
-    log_info("Using statically linked SOD functions");
-
     // Step 1: Create a SOD image
     log_info("Step 1: Creating SOD image from frame data (dimensions: %dx%d, channels: %d)",
             width, height, channels);
