@@ -291,8 +291,7 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
 
     // Step 5: Call predict
     sod_box *boxes = NULL;
-    //int rc = sod_cnn_predict((sod_cnn*)m->sod.model, prepared_data, &boxes, &count);
-    int rc = 0;
+    int rc = sod_cnn_predict((sod_cnn*)m->sod.model, prepared_data, &boxes, &count);
     log_info("Step 7: sod_cnn_predict returned with rc=%d, count=%d", rc, count);
 
     if (rc != 0) { // SOD_OK is 0
@@ -300,9 +299,6 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
         sod_free_image(img);
         return -1;
     }
-
-    // For static linking, boxes is already an array of sod_box structures
-    // No need to create a boxes_ptr
 
     // Step 6: Process detection results
     log_info("Step 8: Processing detection results");
@@ -385,8 +381,6 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
     // Step 7: Free the image data and prepared data
     log_info("Step 9: Freeing SOD image and prepared data");
     sod_free_image(img);
-
-    // MEMORY LEAK FIX: Free the prepared_data memory allocated by sod_cnn_prepare_image
     // Note: The prepared_data is actually part of the SOD image structure, so we don't need to free it separately
     // It's automatically freed when we call sod_free_image(img)
 
