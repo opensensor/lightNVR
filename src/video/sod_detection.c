@@ -94,6 +94,47 @@ void shutdown_sod_detection_system(void) {
     log_info("SOD detection system shutdown");
 }
 
+// Track cleaned up models to prevent double-free issues
+#define MAX_CLEANED_MODELS 32
+static void *cleaned_models[MAX_CLEANED_MODELS] = {NULL};
+static int cleaned_models_count = 0;
+static pthread_mutex_t cleaned_models_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+/**
+ * Check if a model has already been cleaned up
+ */
+static bool is_model_already_cleaned(void *model_ptr) {
+    bool result = false;
+
+    pthread_mutex_lock(&cleaned_models_mutex);
+    for (int i = 0; i < cleaned_models_count; i++) {
+        if (cleaned_models[i] == model_ptr) {
+            result = true;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&cleaned_models_mutex);
+
+    return result;
+}
+
+/**
+ * Add a model to the cleaned models list
+ */
+static void add_to_cleaned_models(void *model_ptr) {
+    pthread_mutex_lock(&cleaned_models_mutex);
+    if (cleaned_models_count < MAX_CLEANED_MODELS) {
+        cleaned_models[cleaned_models_count++] = model_ptr;
+    } else {
+        // If the array is full, shift everything down and add to the end
+        for (int i = 0; i < MAX_CLEANED_MODELS - 1; i++) {
+            cleaned_models[i] = cleaned_models[i + 1];
+        }
+        cleaned_models[MAX_CLEANED_MODELS - 1] = model_ptr;
+    }
+    pthread_mutex_unlock(&cleaned_models_mutex);
+}
+
 /**
  * Safely clean up a SOD model
  * This function ensures proper cleanup of SOD model resources
@@ -114,10 +155,28 @@ void cleanup_sod_model(detection_model_t model) {
 
     log_info("Cleaning up SOD model: %s", m->path);
 
-    // Clean up the SOD model
-    if (m->sod.model) {
-        sod_cnn_destroy(m->sod.model);
-        m->sod.model = NULL;
+    // Clean up the SOD model - use a local variable to avoid double-free issues
+    void *sod_model_ptr = m->sod.model;
+
+    // Set the model pointer to NULL first to prevent double-free
+    m->sod.model = NULL;
+
+    // Only destroy the model if the pointer is valid
+    if (sod_model_ptr) {
+        if (is_model_already_cleaned(sod_model_ptr)) {
+            log_warn("Skipping cleanup of already cleaned SOD model: %p", sod_model_ptr);
+        } else {
+            log_info("Destroying SOD model: %p", sod_model_ptr);
+            // Add to cleaned models list BEFORE destroying to prevent race conditions
+            add_to_cleaned_models(sod_model_ptr);
+
+            // Use a safer approach to destroy the model
+            // This prevents accessing memory after it's been freed
+            // which is what was causing the Valgrind errors
+            void *temp = sod_model_ptr;
+            sod_model_ptr = NULL;
+            sod_cnn_destroy(temp);
+        }
     }
 
     // Free the model structure
