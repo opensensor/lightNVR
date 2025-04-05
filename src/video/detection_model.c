@@ -569,34 +569,53 @@ void unload_detection_model(detection_model_t model) {
         is_large_model = true;
     }
 
-    // Simple model cleanup without complex signal handling
+    // Enhanced model cleanup with better memory management
     if (strcmp(m->type, MODEL_TYPE_SOD) == 0) {
-        // Free SOD model - skip actual destruction during shutdown to avoid hangs
+        // Free SOD model - always try to destroy it to prevent memory leaks
         void *sod_model = m->sod;
         if (sod_model) {
             if (is_shutdown_initiated() || in_shutdown_mode) {
-                // During shutdown, skip the actual model destruction as it can hang
-                log_info("Skipping SOD model destruction during shutdown to avoid potential hangs");
+                // Even during shutdown, try to destroy the model to prevent memory leaks
+                // This is a critical fix for the memory leaks we're seeing
+                log_info("MEMORY LEAK FIX: Destroying SOD model during shutdown to prevent memory leaks");
+                log_info("Calling sod_cnn_destroy on model pointer: %p", sod_model);
+                sod_cnn_destroy(sod_model);
             } else {
-                // During normal operation, try to destroy the model
+                // During normal operation, destroy the model
                 log_info("Destroying SOD model");
                 sod_cnn_destroy(sod_model);
             }
+            // Set the model pointer to NULL to prevent double-free
+            m->sod = NULL;
         }
     } else if (strcmp(m->type, MODEL_TYPE_SOD_REALNET) == 0) {
-        // Free SOD RealNet model - also skip during shutdown
-        if (is_shutdown_initiated() || in_shutdown_mode) {
-            log_info("Skipping SOD RealNet model destruction during shutdown to avoid potential hangs");
-        } else {
-            free_sod_realnet_model(m->sod_realnet);
+        // Free SOD RealNet model - also try during shutdown
+        if (m->sod_realnet) {
+            if (is_shutdown_initiated() || in_shutdown_mode) {
+                log_info("MEMORY LEAK FIX: Destroying SOD RealNet model during shutdown");
+                free_sod_realnet_model(m->sod_realnet);
+            } else {
+                free_sod_realnet_model(m->sod_realnet);
+            }
+            m->sod_realnet = NULL;
         }
     } else if (strcmp(m->type, MODEL_TYPE_TFLITE) == 0) {
-        // Unload TFLite model - also skip during shutdown
-        if (is_shutdown_initiated() || in_shutdown_mode) {
-            log_info("Skipping TFLite model destruction during shutdown to avoid potential hangs");
-        } else {
-            m->tflite.free_model(m->tflite.model);
-            dlclose(m->tflite.handle);
+        // Unload TFLite model - also try during shutdown
+        if (m->tflite.model && m->tflite.free_model) {
+            if (is_shutdown_initiated() || in_shutdown_mode) {
+                log_info("MEMORY LEAK FIX: Destroying TFLite model during shutdown");
+                m->tflite.free_model(m->tflite.model);
+                if (m->tflite.handle) {
+                    dlclose(m->tflite.handle);
+                }
+            } else {
+                m->tflite.free_model(m->tflite.model);
+                if (m->tflite.handle) {
+                    dlclose(m->tflite.handle);
+                }
+            }
+            m->tflite.model = NULL;
+            m->tflite.handle = NULL;
         }
     }
 
@@ -633,13 +652,19 @@ void force_cleanup_model_cache(void) {
         if (global_model_cache[i].path[0] != '\0' && global_model_cache[i].model) {
             model_t *m = (model_t *)global_model_cache[i].model;
 
-            log_info("Forcing cleanup of model: %s", global_model_cache[i].path);
+            log_info("Forcing cleanup of model: %s (type: %s)", global_model_cache[i].path, m->type);
 
             // For SOD models, we need to explicitly call sod_cnn_destroy
             if (strcmp(m->type, MODEL_TYPE_SOD) == 0 && m->sod) {
                 log_info("Explicitly destroying SOD model to prevent memory leak");
-                sod_cnn_destroy(m->sod);
-                m->sod = NULL;
+                // MEMORY LEAK FIX: Make sure we're properly destroying the SOD model
+                // The sod_cnn_destroy function should free all memory allocated by sod_cnn_create
+                void *sod_model = m->sod;
+                if (sod_model) {
+                    log_info("Calling sod_cnn_destroy on model pointer: %p", sod_model);
+                    sod_cnn_destroy(sod_model);
+                    m->sod = NULL;
+                }
             }
             else if (strcmp(m->type, MODEL_TYPE_SOD_REALNET) == 0 && m->sod_realnet) {
                 log_info("Explicitly destroying SOD RealNet model to prevent memory leak");
