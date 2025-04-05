@@ -15,6 +15,7 @@
 #include "../../include/video/detection.h"
 #include "../../include/video/detection_result.h"
 #include "../../include/video/sod_integration.h"
+#include "../../include/video/detection_model.h"
 
 // Define model types
 #define MODEL_TYPE_SOD "sod"
@@ -40,30 +41,30 @@ const char* detect_model_type(const char *model_path) {
     if (!model_path) {
         return "unknown";
     }
-    
+
     // Check for SOD RealNet models
     if (strstr(model_path, ".realnet.sod") != NULL) {
         return MODEL_TYPE_SOD_REALNET;
     }
-    
+
     // Check for regular SOD models
     const char *ext = strrchr(model_path, '.');
     if (ext && strcasecmp(ext, ".sod") == 0) {
         return MODEL_TYPE_SOD;
     }
-    
+
     // Check for TFLite models
     if (ext && strcasecmp(ext, ".tflite") == 0) {
         return MODEL_TYPE_TFLITE;
     }
-    
+
     return "unknown";
 }
 
 /**
  * Load a SOD model for detection
  */
-void* load_sod_model_for_detection(const char *model_path, float threshold, 
+void* load_sod_model_for_detection(const char *model_path, float threshold,
                                   char *full_model_path, size_t max_path_length) {
     if (!model_path || !full_model_path) {
         log_error("Invalid parameters for load_sod_model_for_detection");
@@ -71,7 +72,7 @@ void* load_sod_model_for_detection(const char *model_path, float threshold,
     }
 
     extern config_t g_config;
-    
+
     // Check if model_path is a relative path
     if (model_path[0] != '/') {
         // Construct full path using configured models path from INI if it exists
@@ -88,7 +89,7 @@ void* load_sod_model_for_detection(const char *model_path, float threshold,
 
             // Try alternative locations
             char alt_path[MAX_PATH_LENGTH];
-            
+
             // Get current working directory
             char cwd[MAX_PATH_LENGTH];
             if (getcwd(cwd, sizeof(cwd)) != NULL) {
@@ -97,7 +98,7 @@ void* load_sod_model_for_detection(const char *model_path, float threshold,
                 };
 
                 for (int i = 0; i < sizeof(locations)/sizeof(locations[0]); i++) {
-                    snprintf(alt_path, MAX_PATH_LENGTH, "%s%s", 
+                    snprintf(alt_path, MAX_PATH_LENGTH, "%s%s",
                              locations[i],
                              model_path);
                     if (file_exists(alt_path)) {
@@ -136,7 +137,7 @@ void* load_sod_model_for_detection(const char *model_path, float threshold,
 /**
  * Run detection on a frame using SOD
  */
-int detect_with_sod(void *model, const unsigned char *frame_data, 
+int detect_with_sod(void *model, const unsigned char *frame_data,
                    int width, int height, int channels, detection_result_t *result) {
     if (!model || !frame_data || !result) {
         log_error("Invalid parameters for detect_with_sod");
@@ -145,4 +146,40 @@ int detect_with_sod(void *model, const unsigned char *frame_data,
 
     // Use the unified detection function
     return detect_objects(model, frame_data, width, height, channels, result);
+}
+
+/**
+ * Ensure proper cleanup of SOD models to prevent memory leaks
+ * This function should be called when a detection thread is stopping
+ * or when the application is shutting down
+ *
+ * @param model The detection model to clean up
+ */
+void ensure_sod_model_cleanup(detection_model_t model) {
+    if (!model) {
+        return;
+    }
+
+    // Get the model type
+    const char *model_type = get_model_type_from_handle(model);
+
+    // Only proceed if this is a SOD model
+    if (strcmp(model_type, MODEL_TYPE_SOD) == 0) {
+        log_info("Ensuring proper cleanup of SOD model to prevent memory leaks");
+
+        // Unload the model using the detection model system
+        // This will call sod_cnn_destroy internally
+        unload_detection_model(model);
+    }
+}
+
+/**
+ * Force cleanup of all SOD models to prevent memory leaks
+ * This function should be called during application shutdown
+ */
+void force_sod_models_cleanup(void) {
+    log_info("Forcing cleanup of all SOD models to prevent memory leaks");
+
+    // Call the global model cache cleanup function
+    force_cleanup_model_cache();
 }
