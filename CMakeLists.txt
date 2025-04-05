@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(LightNVR VERSION 0.10.20 LANGUAGES C CXX)
+project(LightNVR VERSION 0.10.21 LANGUAGES C CXX)
 
 # Set C/C++ standards
 set(CMAKE_C_STANDARD 11)
@@ -375,6 +375,16 @@ configure_file(
         ${CMAKE_CURRENT_SOURCE_DIR}/include/core/version.h.in
         ${CMAKE_CURRENT_SOURCE_DIR}/include/core/version.h
 )
+
+# Generate version.js for web interface
+add_custom_target(generate_version_js
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/extract_version.js
+        COMMENT "Generating version.js for web interface"
+        VERBATIM
+)
+
+# Make sure version.js is generated before building the web assets
+add_dependencies(lightnvr generate_version_js)
 
 # Print build information
 message(STATUS "Building LightNVR ${PROJECT_VERSION} with the following configuration:")

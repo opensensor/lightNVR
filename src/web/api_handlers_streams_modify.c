@@ -21,6 +21,9 @@
 #include "video/hls/hls_directory.h"
 #include "video/hls/hls_api.h"
 #include "video/onvif_device_management.h"
+#include "video/go2rtc/go2rtc_stream.h"
+#include "video/go2rtc/go2rtc_integration.h"
+#include "video/go2rtc/go2rtc_api.h"
 
 /**
  * @brief Direct handler for POST /api/streams
@@ -572,6 +575,44 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
                         log_error("Failed to enable stream %s: %s", decoded_id, sqlite3_errmsg(db));
                     } else {
                         log_info("Successfully enabled stream %s", decoded_id);
+
+                        // Get the stream configuration to register with go2rtc
+                        stream_config_t stream_config;
+                        if (get_stream_config_by_name(decoded_id, &stream_config) == 0) {
+                            // Register the stream with go2rtc if go2rtc is ready
+                            if (go2rtc_stream_is_ready()) {
+                                log_info("Registering enabled stream %s with go2rtc", decoded_id);
+                                if (go2rtc_stream_register(decoded_id, stream_config.url,
+                                                         stream_config.onvif_username[0] != '\0' ? stream_config.onvif_username : NULL,
+                                                         stream_config.onvif_password[0] != '\0' ? stream_config.onvif_password : NULL)) {
+                                    log_info("Successfully registered stream %s with go2rtc", decoded_id);
+                                } else {
+                                    log_warn("Failed to register stream %s with go2rtc", decoded_id);
+                                }
+                            } else {
+                                log_warn("go2rtc is not ready, stream %s will not be registered", decoded_id);
+                            }
+
+                            // If detection is enabled for this stream, start the detection thread
+                            if (stream_config.detection_based_recording && stream_config.detection_model[0] != '\0') {
+                                log_info("Starting detection thread for enabled stream %s", decoded_id);
+
+                                // Construct HLS directory path
+                                char hls_dir[MAX_PATH_LENGTH];
+                                snprintf(hls_dir, MAX_PATH_LENGTH, "/var/lib/lightnvr/hls/%s", decoded_id);
+
+                                // Start detection thread
+                                if (start_stream_detection_thread(decoded_id, stream_config.detection_model,
+                                                               stream_config.detection_threshold,
+                                                               stream_config.detection_interval, hls_dir) != 0) {
+                                    log_warn("Failed to start detection thread for stream %s", decoded_id);
+                                } else {
+                                    log_info("Successfully started detection thread for stream %s", decoded_id);
+                                }
+                            }
+                        } else {
+                            log_error("Failed to get configuration for stream %s", decoded_id);
+                        }
                     }
                     sqlite3_finalize(stmt);
                 }
@@ -677,6 +718,25 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
         if (config.detection_model[0] != '\0' && config.enabled) {
             log_info("Detection enabled for stream %s, starting detection thread with model %s",
                     config.name, config.detection_model);
+
+            // Make sure the stream is registered with go2rtc
+            if (go2rtc_stream_is_ready()) {
+                // Check if the stream is already registered with go2rtc
+                if (!go2rtc_api_stream_exists(config.name)) {
+                    log_info("Registering stream %s with go2rtc after enabling detection", config.name);
+                    if (go2rtc_stream_register(config.name, config.url,
+                                             config.onvif_username[0] != '\0' ? config.onvif_username : NULL,
+                                             config.onvif_password[0] != '\0' ? config.onvif_password : NULL)) {
+                        log_info("Successfully registered stream %s with go2rtc", config.name);
+                    } else {
+                        log_warn("Failed to register stream %s with go2rtc", config.name);
+                    }
+                } else {
+                    log_info("Stream %s is already registered with go2rtc", config.name);
+                }
+            } else {
+                log_warn("go2rtc is not ready, stream %s will not be registered", config.name);
+            }
 
             // Construct HLS directory path
             char hls_dir[MAX_PATH_LENGTH];

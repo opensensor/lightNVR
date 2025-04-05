@@ -11,6 +11,14 @@ if ! command -v npm &> /dev/null; then
     exit 1
 fi
 
+# Extract version from CMakeLists.txt and generate version.js
+echo "Extracting version from CMakeLists.txt..."
+"$(dirname "$0")/extract_version.js"
+if [ $? -ne 0 ]; then
+    echo "Failed to extract version. Please check the error messages above."
+    exit 1
+fi
+
 # Navigate to web directory
 cd "$WEB_DIR" || exit 1
 

@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <dirent.h>
 #include <time.h>
+#include <stdatomic.h>
 
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
@@ -44,6 +45,7 @@ typedef struct {
     char hls_dir[MAX_PATH_LENGTH];
     time_t last_detection_time;
     int component_id;
+    atomic_int detection_in_progress; // Atomic flag to track if a detection is currently running
 } stream_detection_thread_t;
 
 // Array of stream detection threads
@@ -83,6 +85,14 @@ int process_frame_for_stream_detection(const char *stream_name, const uint8_t *f
         return -1;
     }
 
+    // Check if a detection is already in progress
+    int detection_running = atomic_load(&thread->detection_in_progress);
+    if (detection_running) {
+        log_info("[Stream %s] Detection already in progress, skipping frame", thread->stream_name);
+        pthread_mutex_unlock(&stream_threads_mutex);
+        return 0;
+    }
+
     // Check if enough time has passed since the last detection
     time_t current_time = time(NULL);
     if (thread->last_detection_time > 0) {
@@ -93,6 +103,9 @@ int process_frame_for_stream_detection(const char *stream_name, const uint8_t *f
             return 0;
         }
     }
+
+    // Set the atomic flag to indicate a detection is in progress
+    atomic_store(&thread->detection_in_progress, 1);
 
     // Update last detection time
     thread->last_detection_time = current_time;
@@ -161,6 +174,9 @@ int process_frame_for_stream_detection(const char *stream_name, const uint8_t *f
     } else {
         log_debug("[Stream %s] No objects detected in frame", thread->stream_name);
     }
+
+    // Clear the atomic flag to indicate detection is complete
+    atomic_store(&thread->detection_in_progress, 0);
 
     pthread_mutex_unlock(&stream_threads_mutex);
     return 0;
@@ -486,16 +502,37 @@ static void check_for_new_segments(stream_detection_thread_t *thread) {
 
     log_info("[Stream %s] Checking for new segments in HLS directory", thread->stream_name);
 
-    // We'll always check for segments, but we'll only process them if enough time has passed
-    // This ensures we're constantly monitoring for new segments
-    if (thread->last_detection_time > 0) {
-        time_t time_since_last = current_time - thread->last_detection_time;
-        if (time_since_last < thread->detection_interval) {
+    // We'll always check for segments, but we'll only process them if:
+    // 1. Enough time has passed since the last detection AND
+    // 2. No detection is currently in progress
+    bool should_run_detection = false;
+    time_t time_since_last = 0;
+
+    // Check if a detection is already in progress
+    int detection_running = atomic_load(&thread->detection_in_progress);
+
+    if (detection_running) {
+        log_info("[Stream %s] Detection already in progress, skipping segment check", thread->stream_name);
+        // We'll still check for segments, but won't start a new detection
+    } else if (thread->last_detection_time > 0) {
+        // No detection in progress, check if enough time has passed
+        time_since_last = current_time - thread->last_detection_time;
+
+        if (time_since_last >= thread->detection_interval) {
+            // Enough time has passed and no detection is running, we can run a new one
+            log_info("[Stream %s] Time for a new detection (%ld seconds since last, interval: %d seconds)",
+                    thread->stream_name, time_since_last, thread->detection_interval);
+            should_run_detection = true;
+        } else {
             // Not enough time has passed for detection, but we'll still check for segments
             log_info("[Stream %s] Checking for segments (last detection was %ld seconds ago, interval: %d seconds)",
                      thread->stream_name, time_since_last, thread->detection_interval);
             // We don't return here - we continue to check for segments
         }
+    } else {
+        // No previous detection, we should run one
+        log_info("[Stream %s] No previous detection, running first detection", thread->stream_name);
+        should_run_detection = true;
     }
 
     // Check if the HLS writer is recording for this stream
@@ -734,15 +771,21 @@ static void check_for_new_segments(stream_detection_thread_t *thread) {
             // Track the last processed segment to avoid processing the same one repeatedly
             static char last_processed_segment[MAX_PATH_LENGTH] = {0};
 
-            // CRITICAL FIX: Always process the newest segment if it's different from the last one
-            // This ensures we're always processing segments regardless of the detection interval
-            bool should_process = (strcmp(newest_segment, last_processed_segment) != 0);
+            // Determine if we should process this segment
+            // Process if:
+            // 1. It's a new segment (different from the last one we processed) AND
+            // 2. We should run a detection (based on time and no detection in progress)
+            bool is_new_segment = (strcmp(newest_segment, last_processed_segment) != 0);
+            bool should_process = is_new_segment && should_run_detection;
 
             // Log the decision
             if (should_process) {
                 log_info("[Stream %s] Processing new segment (different from last processed)", thread->stream_name);
-            } else {
+            } else if (!is_new_segment) {
                 log_info("[Stream %s] Skipping segment processing (same as last processed): %s",
+                         thread->stream_name, newest_segment);
+            } else if (!should_run_detection) {
+                log_info("[Stream %s] Skipping segment processing (detection not due or already running): %s",
                          thread->stream_name, newest_segment);
             }
 
@@ -750,7 +793,14 @@ static void check_for_new_segments(stream_detection_thread_t *thread) {
                 log_info("[Stream %s] Processing segment: %s (age: %ld seconds)",
                         thread->stream_name, newest_segment, current_time - newest_time);
 
+                // Set the atomic flag to indicate a detection is in progress
+                atomic_store(&thread->detection_in_progress, 1);
+
                 int result = process_segment_for_detection(thread, newest_segment);
+
+                // Clear the atomic flag when detection is complete
+                atomic_store(&thread->detection_in_progress, 0);
+
                 if (result == 0) {
                     log_info("[Stream %s] Successfully processed segment: %s", thread->stream_name, newest_segment);
 
@@ -924,12 +974,41 @@ static void *stream_detection_thread_func(void *arg) {
                     thread->stream_name, consecutive_empty_checks, consecutive_errors);
             last_log_time = current_time;
 
-            // Also log the thread status to help with debugging
-            log_info("[Stream %s] Thread status: model loaded: %s, last detection: %s, interval: %d seconds",
-                    thread->stream_name,
-                    thread->model ? "yes" : "no",
-                    thread->last_detection_time > 0 ? ctime(&thread->last_detection_time) : "never",
-                    thread->detection_interval);
+            // Calculate time since last detection
+            time_t time_since_detection = 0;
+            if (thread->last_detection_time > 0) {
+                time_since_detection = current_time - thread->last_detection_time;
+            }
+
+            // Check if a detection is in progress
+            int detection_running = atomic_load(&thread->detection_in_progress);
+
+            // Log with appropriate level based on status
+            if (detection_running) {
+                // Detection is in progress, this is normal
+                log_info("[Stream %s] Thread status: model loaded: %s, detection in progress, last detection: %s (%ld seconds ago), interval: %d seconds",
+                        thread->stream_name,
+                        thread->model ? "yes" : "no",
+                        thread->last_detection_time > 0 ? ctime(&thread->last_detection_time) : "never",
+                        time_since_detection,
+                        thread->detection_interval);
+            } else if (time_since_detection > (thread->detection_interval * 2)) {
+                // No detection in progress but we're behind schedule
+                log_warn("[Stream %s] Thread status: model loaded: %s, no detection in progress, last detection: %s (%ld seconds ago), interval: %d seconds",
+                        thread->stream_name,
+                        thread->model ? "yes" : "no",
+                        thread->last_detection_time > 0 ? ctime(&thread->last_detection_time) : "never",
+                        time_since_detection,
+                        thread->detection_interval);
+            } else {
+                // Normal status
+                log_info("[Stream %s] Thread status: model loaded: %s, no detection in progress, last detection: %s (%ld seconds ago), interval: %d seconds",
+                        thread->stream_name,
+                        thread->model ? "yes" : "no",
+                        thread->last_detection_time > 0 ? ctime(&thread->last_detection_time) : "never",
+                        time_since_detection,
+                        thread->detection_interval);
+            }
         }
 
         // Check for new segments more frequently if we've had consecutive empty checks
@@ -1137,6 +1216,7 @@ int start_stream_detection_thread(const char *stream_name, const char *model_pat
     thread->running = true;
     thread->model = NULL;
     thread->last_detection_time = 0;
+    atomic_init(&thread->detection_in_progress, 0); // Initialize atomic flag to 0 (no detection in progress)
 
     // Create the thread
     if (pthread_create(&thread->thread, NULL, stream_detection_thread_func, thread) != 0) {
