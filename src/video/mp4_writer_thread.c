@@ -33,6 +33,7 @@
 #include "database/database_manager.h"
 #include "database/db_recordings.h"
 
+
 /**
  * RTSP stream reading thread function
  * This function maintains a single RTSP connection across multiple segments
@@ -508,15 +509,6 @@ static void *mp4_writer_rtsp_thread(void *arg) {
             log_debug("Flushed input context buffers");
         }
 
-        // Let FFmpeg handle its own memory management
-        // We don't need to manually free codec parameters or side data
-        // avformat_close_input will handle this for us
-
-        // MEMORY LEAK FIX: Additional cleanup to prevent memory leaks
-        // Note: We don't access internal fields directly as they may not be available in all FFmpeg versions
-
-        // Now safely close the input context - this will free all associated resources
-        // This will handle freeing all streams, codec parameters, and other resources
         avformat_close_input(&ctx_to_close);
 
         // Log that we've closed the input context to help with debugging
