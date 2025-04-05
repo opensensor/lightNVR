@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(LightNVR VERSION 0.10.21 LANGUAGES C CXX)
+project(LightNVR VERSION 0.10.22 LANGUAGES C CXX)
 
 # Set C/C++ standards
 set(CMAKE_C_STANDARD 11)

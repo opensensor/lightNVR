@@ -25,10 +25,10 @@ bool is_multicast_url(const char *url) {
         log_warn("Invalid URL for multicast detection: %s", url ? url : "NULL");
         return false;
     }
-    
+
     // Extract IP address from URL with more robust parsing
     const char *ip_start = NULL;
-    
+
     // Skip protocol prefix with safer checks
     if (strncmp(url, "udp://", 6) == 0) {
         ip_start = url + 6;
@@ -39,29 +39,29 @@ bool is_multicast_url(const char *url) {
         log_debug("Not a UDP/RTP URL for multicast detection: %s", url);
         return false;
     }
-    
+
     // Skip any authentication info (user:pass@)
     const char *at_sign = strchr(ip_start, '@');
     if (at_sign) {
         ip_start = at_sign + 1;
     }
-    
+
     // Make a copy of the IP part to avoid modifying the original
     char ip_buffer[256];
     strncpy(ip_buffer, ip_start, sizeof(ip_buffer) - 1);
     ip_buffer[sizeof(ip_buffer) - 1] = '\0';
-    
+
     // Remove port and path information
     char *colon = strchr(ip_buffer, ':');
     if (colon) {
         *colon = '\0';
     }
-    
+
     char *slash = strchr(ip_buffer, '/');
     if (slash) {
         *slash = '\0';
     }
-    
+
     // Parse IP address with additional validation
     unsigned int a = 0, b = 0, c = 0, d = 0;
     if (sscanf(ip_buffer, "%u.%u.%u.%u", &a, &b, &c, &d) == 4) {
@@ -70,7 +70,7 @@ bool is_multicast_url(const char *url) {
             log_warn("Invalid IP address components in URL: %s", url);
             return false;
         }
-        
+
         // Check if it's in multicast range (224.0.0.0 - 239.255.255.255)
         if (a >= 224 && a <= 239) {
             log_info("Detected multicast address: %u.%u.%u.%u in URL: %s", a, b, c, d, url);
@@ -79,14 +79,14 @@ bool is_multicast_url(const char *url) {
     } else {
         log_debug("Could not parse IP address from URL: %s", url);
     }
-    
+
     return false;
 }
 
 /**
  * Check if an RTSP stream exists by sending a simple HTTP request
  * This is a lightweight check to avoid FFmpeg crashes when trying to connect to non-existent streams
- * 
+ *
  * @param url The RTSP URL to check
  * @return true if the stream exists, false otherwise
  */
@@ -94,20 +94,20 @@ static bool check_rtsp_stream_exists(const char *url) {
     if (!url || strncmp(url, "rtsp://", 7) != 0) {
         return true; // Not an RTSP URL, assume it exists
     }
-    
+
     // Extract the host and port from the URL
     char host[256] = {0};
     int port = 554; // Default RTSP port
-    
+
     // Skip the rtsp:// prefix
     const char *host_start = url + 7;
-    
+
     // Skip any authentication info (user:pass@)
     const char *at_sign = strchr(host_start, '@');
     if (at_sign) {
         host_start = at_sign + 1;
     }
-    
+
     // Find the end of the host part
     const char *host_end = strchr(host_start, ':');
     if (!host_end) {
@@ -116,7 +116,7 @@ static bool check_rtsp_stream_exists(const char *url) {
             host_end = host_start + strlen(host_start);
         }
     }
-    
+
     // Copy the host part
     size_t host_len = host_end - host_start;
     if (host_len >= sizeof(host)) {
@@ -124,7 +124,7 @@ static bool check_rtsp_stream_exists(const char *url) {
     }
     memcpy(host, host_start, host_len);
     host[host_len] = '\0';
-    
+
     // Extract the port if specified
     if (*host_end == ':') {
         port = atoi(host_end + 1);
@@ -132,27 +132,27 @@ static bool check_rtsp_stream_exists(const char *url) {
             port = 554; // Default RTSP port
         }
     }
-    
+
     // Create a socket
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) {
         log_error("Failed to create socket for RTSP check");
         return true; // Assume the stream exists if we can't check
     }
-    
+
     // Set a short timeout for the connection
     struct timeval tv;
     tv.tv_sec = 1;
     tv.tv_usec = 0;
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
     setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof tv);
-    
+
     // Connect to the server
     struct sockaddr_in server_addr;
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(port);
-    
+
     // Convert hostname to IP address
     struct hostent *he = gethostbyname(host);
     if (!he) {
@@ -160,22 +160,22 @@ static bool check_rtsp_stream_exists(const char *url) {
         close(sock);
         return true; // Assume the stream exists if we can't resolve the hostname
     }
-    
+
     memcpy(&server_addr.sin_addr, he->h_addr_list[0], he->h_length);
-    
+
     // Connect to the server
     if (connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
         log_error("Failed to connect to RTSP server: %s:%d", host, port);
         close(sock);
         return false; // Stream doesn't exist if we can't connect to the server
     }
-    
+
     // Extract the path part of the URL
     const char *path = strchr(host_start, '/');
     if (!path) {
         path = "/";
     }
-    
+
     // Send a simple RTSP OPTIONS request
     char request[1024];
     snprintf(request, sizeof(request),
@@ -184,29 +184,29 @@ static bool check_rtsp_stream_exists(const char *url) {
              "User-Agent: LightNVR\r\n"
              "\r\n",
              path);
-    
+
     if (send(sock, request, strlen(request), 0) < 0) {
         log_error("Failed to send RTSP OPTIONS request");
         close(sock);
         return false; // Stream doesn't exist if we can't send the request
     }
-    
+
     // Receive the response
     char response[1024] = {0};
     int bytes_received = recv(sock, response, sizeof(response) - 1, 0);
     close(sock);
-    
+
     if (bytes_received <= 0) {
         log_error("Failed to receive RTSP OPTIONS response");
         return false; // Stream doesn't exist if we don't get a response
     }
-    
+
     // Check if the response contains "404 Not Found"
     if (strstr(response, "404 Not Found") != NULL) {
         log_error("RTSP stream not found (404): %s", url);
         return false; // Stream doesn't exist
     }
-    
+
     // Stream exists
     return true;
 }
@@ -219,20 +219,20 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
     int ret;
     AVDictionary *input_options = NULL;
     bool is_multicast = false;
-    
+
     // Validate input parameters
     if (!input_ctx || !url || strlen(url) < 5) {
-        log_error("Invalid parameters for open_input_stream: ctx=%p, url=%s", 
+        log_error("Invalid parameters for open_input_stream: ctx=%p, url=%s",
                  (void*)input_ctx, url ? url : "NULL");
         return AVERROR(EINVAL);
     }
-    
+
     // Make sure we're starting with a NULL context
     if (*input_ctx) {
         log_warn("Input context not NULL, closing existing context before opening new one");
         avformat_close_input(input_ctx);
     }
-    
+
     // Check if the RTSP stream exists before trying to connect
     if (strncmp(url, "rtsp://", 7) == 0) {
         if (!check_rtsp_stream_exists(url)) {
@@ -240,24 +240,24 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
             return AVERROR(ENOENT); // Return "No such file or directory" error
         }
     }
-    
+
     // Log the stream opening attempt
-    log_info("Opening input stream: %s (protocol: %s)", 
+    log_info("Opening input stream: %s (protocol: %s)",
             url, protocol == STREAM_PROTOCOL_UDP ? "UDP" : "TCP");
-    
+
     // Set common options for all protocols
     av_dict_set(&input_options, "protocol_whitelist", "file,udp,rtp,rtsp,tcp,https,tls,http", 0);
     av_dict_set(&input_options, "reconnect", "1", 0); // Enable reconnection
     av_dict_set(&input_options, "reconnect_streamed", "1", 0); // Reconnect if streaming
     av_dict_set(&input_options, "reconnect_delay_max", "5", 0); // Max 5 seconds between reconnection attempts
-    
+
     if (protocol == STREAM_PROTOCOL_UDP) {
         // Check if this is a multicast stream with robust error handling
         is_multicast = is_multicast_url(url);
-        
-        log_info("Using UDP protocol for stream URL: %s (multicast: %s)", 
+
+        log_info("Using UDP protocol for stream URL: %s (multicast: %s)",
                 url, is_multicast ? "yes" : "no");
-        
+
         // UDP-specific options with improved buffering for smoother playback
         // Increased buffer size to 16MB as recommended for UDP jitter handling
         av_dict_set(&input_options, "buffer_size", "16777216", 0); // 16MB buffer
@@ -268,35 +268,35 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
 
         // Allow port reuse
         av_dict_set(&input_options, "reuse", "1", 0);
-        
+
         // Extended timeout for UDP streams which may have more jitter
         av_dict_set(&input_options, "timeout", "10000000", 0); // 10 second timeout in microseconds
-        
+
         // Increased max delay for UDP streams
         av_dict_set(&input_options, "max_delay", "2000000", 0); // 2000ms max delay
-        
+
         // More tolerant timestamp handling for UDP streams with ultra-low latency flags
         av_dict_set(&input_options, "fflags", "genpts+discardcorrupt+nobuffer+flush_packets", 0);
-        
+
         // Set UDP-specific socket options
         av_dict_set(&input_options, "recv_buffer_size", "16777216", 0); // 16MB socket receive buffer
-        
+
         // UDP-specific packet reordering settings
         av_dict_set(&input_options, "max_interleave_delta", "1000000", 0); // 1 second max interleave
-        
+
         // Multicast-specific settings with enhanced error handling
         if (is_multicast) {
             log_info("Configuring multicast-specific settings for %s", url);
-            
+
             // Set appropriate TTL for multicast
             av_dict_set(&input_options, "ttl", "32", 0);
-            
+
             // Join multicast group
             av_dict_set(&input_options, "multiple_requests", "1", 0);
-            
+
             // Auto-detect the best network interface
             av_dict_set(&input_options, "localaddr", "0.0.0.0", 0);
-            
+
             // Additional multicast settings for better reliability
             av_dict_set(&input_options, "pkt_size", "1316", 0); // Standard UDP packet size for MPEG-TS
             av_dict_set(&input_options, "rw_timeout", "10000000", 0); // 10 second read/write timeout
@@ -311,27 +311,27 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
         av_dict_set(&input_options, "reconnect", "1", 0); // Enable reconnection
         av_dict_set(&input_options, "reconnect_streamed", "1", 0); // Reconnect if streaming
         av_dict_set(&input_options, "reconnect_delay_max", "2", 0); // Max 2 seconds between reconnection attempts (reduced from 5s)
-        
+
         // Add more tolerant timestamp handling for TCP streams as well
         av_dict_set(&input_options, "fflags", "genpts+discardcorrupt", 0);
     }
-    
+
     // Check if this is an ONVIF stream and apply ONVIF-specific options
     // This allows ONVIF to work with either TCP or UDP protocol
     if (is_onvif_stream(url)) {
         log_info("Applying ONVIF-specific options for stream URL: %s", url);
-        
+
         // ONVIF-specific options for better reliability
         av_dict_set(&input_options, "stimeout", "10000000", 0); // 10 second timeout in microseconds
         av_dict_set(&input_options, "analyzeduration", "3000000", 0); // 3 seconds analyze duration
         av_dict_set(&input_options, "probesize", "2000000", 0); // 2MB probe size
-        
+
         // More tolerant timestamp handling for ONVIF streams
         av_dict_set(&input_options, "fflags", "genpts+discardcorrupt", 0);
-        
+
         // ONVIF streams may need more time to start
         av_dict_set(&input_options, "rw_timeout", "15000000", 0); // 15 second read/write timeout
-        
+
         // For onvif_simple_server compatibility
         // Extract username and password from URL if present
         const char *auth_start = strstr(url, "://");
@@ -339,11 +339,11 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
             // URL contains authentication, extract it for RTSP auth
             char username[64] = {0};
             char password[64] = {0};
-            
+
             // Parse username and password from URL
             if (sscanf(auth_start + 3, "%63[^:]:%63[^@]@", username, password) == 2) {
                 log_info("Extracted credentials from URL for RTSP authentication");
-                
+
                 // Set RTSP authentication options
                 av_dict_set(&input_options, "rtsp_transport", "tcp", 0);
                 av_dict_set(&input_options, "rtsp_flags", "prefer_tcp", 0);
@@ -356,57 +356,62 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
             av_dict_set(&input_options, "rtsp_transport", "tcp", 0);
             av_dict_set(&input_options, "rtsp_flags", "prefer_tcp", 0);
         }
-        
+
         // Try multiple authentication methods for onvif_simple_server
         // Some ONVIF implementations require specific auth methods
         log_info("Setting multiple auth options for ONVIF compatibility");
         av_dict_set(&input_options, "rtsp_transport", "tcp", 0);
-        
+
         // Disable authentication requirement - some servers don't need it
         av_dict_set(&input_options, "rtsp_flags", "prefer_tcp", 0);
-        
+
         // Increase timeout for RTSP connections
         av_dict_set(&input_options, "stimeout", "15000000", 0); // 15 seconds
-        
+
         // Add detailed logging for RTSP
         av_dict_set(&input_options, "loglevel", "debug", 0);
     }
-    
+
     // Open input with protocol-specific options and better error handling
     // Use a local variable to avoid modifying the input_ctx in case of error
     AVFormatContext *local_ctx = NULL;
-    
+
     // Add extra safety options to prevent crashes
     av_dict_set(&input_options, "rtsp_flags", "prefer_tcp", 0);
     av_dict_set(&input_options, "allowed_media_types", "video+audio", 0);
     av_dict_set(&input_options, "max_analyze_duration", "5000000", 0); // 5 seconds
     av_dict_set(&input_options, "rw_timeout", "5000000", 0); // 5 seconds
-    
+
+    // CRITICAL FIX: Increase analyzeduration and probesize to handle streams with unspecified dimensions
+    // This addresses the "Could not find codec parameters for stream 0" error
+    av_dict_set(&input_options, "analyzeduration", "10000000", 0); // 10 seconds (increased from default)
+    av_dict_set(&input_options, "probesize", "10000000", 0); // 10MB (increased from default 5MB)
+
     // Open the input stream
     ret = avformat_open_input(&local_ctx, url, NULL, &input_options);
-    
+
     if (ret < 0) {
         char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
         av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-        
+
         // Log the error with appropriate context
-        log_error("Could not open input stream: %s (error code: %d, message: %s)", 
+        log_error("Could not open input stream: %s (error code: %d, message: %s)",
                  url, ret, error_buf);
-        
+
         // Log additional context for RTSP errors
         if (strstr(url, "rtsp://") != NULL) {
             log_error("RTSP connection failed - server may be down or URL may be incorrect: %s", url);
-            
+
             // Log specific error for 404 Not Found
             if (strstr(error_buf, "404") != NULL || strstr(error_buf, "Not Found") != NULL) {
-                log_error("Failed to connect to stream %s: %s (error code: %d)", 
+                log_error("Failed to connect to stream %s: %s (error code: %d)",
                          url, error_buf, ret);
             }
         }
-        
+
         // Free options before returning
         av_dict_free(&input_options);
-        
+
         // CRITICAL FIX: Make sure local_ctx is NULL after a failed open
         // This is important because avformat_open_input might have allocated memory
         // even if it returned an error
@@ -414,19 +419,19 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
             avformat_close_input(&local_ctx);
             local_ctx = NULL;  // Explicitly set to NULL after closing
         }
-        
+
         // Ensure the output parameter is set to NULL to prevent use-after-free
         *input_ctx = NULL;
-        
+
         return ret;
     }
-    
+
     // If we got here, the open was successful, so assign the local context to the output parameter
     *input_ctx = local_ctx;
-    
+
     // Free options
     av_dict_free(&input_options);
-    
+
     // Verify that the context was created with additional safety checks
     if (!*input_ctx) {
         log_error("Input context is NULL after successful open for URL: %s", url);
@@ -441,23 +446,23 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
         avformat_close_input(input_ctx);
         return ret;
     }
-    
+
     // Log successful stream opening
     if (*input_ctx && (*input_ctx)->nb_streams > 0) {
-        log_info("Successfully opened input stream: %s with %d streams", 
+        log_info("Successfully opened input stream: %s with %d streams",
                 url, (*input_ctx)->nb_streams);
-        
+
         // Log information about detected streams
         for (unsigned int i = 0; i < (*input_ctx)->nb_streams; i++) {
             AVStream *stream = (*input_ctx)->streams[i];
             if (stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
-                log_info("Stream %d: Video stream detected (codec: %d, width: %d, height: %d)", 
+                log_info("Stream %d: Video stream detected (codec: %d, width: %d, height: %d)",
                         i, stream->codecpar->codec_id, stream->codecpar->width, stream->codecpar->height);
             } else if (stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
-                log_info("Stream %d: Audio stream detected (codec: %d, channels: %d, sample_rate: %d)", 
+                log_info("Stream %d: Audio stream detected (codec: %d, channels: %d, sample_rate: %d)",
                         i, stream->codecpar->codec_id, stream->codecpar->ch_layout.nb_channels, stream->codecpar->sample_rate);
             } else {
-                log_info("Stream %d: Other stream type detected (type: %d)", 
+                log_info("Stream %d: Other stream type detected (type: %d)",
                         i, stream->codecpar->codec_type);
             }
         }
@@ -475,13 +480,13 @@ bool is_onvif_stream(const char *url) {
     if (!url) {
         return false;
     }
-    
+
     // Check if URL contains "onvif" substring
     if (strstr(url, "onvif") != NULL) {
         log_info("Detected ONVIF stream URL: %s", url);
         return true;
     }
-    
+
     return false;
 }
 
