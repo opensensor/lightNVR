@@ -265,23 +265,36 @@ int init_database(const char *db_path) {
         return -1;
     }
 
+    // MEMORY LEAK FIX: dirname() returns a pointer to internal memory that becomes invalid when dir_path is freed
+    // So we need to make a copy of the directory name before freeing dir_path
     char *dir = dirname(dir_path);
-    log_info("Creating database directory if needed: %s", dir);
-    if (create_directory(dir) != 0) {
-        log_error("Failed to create database directory: %s", dir);
+    char *dir_copy = strdup(dir);
+    if (!dir_copy) {
+        log_error("Failed to allocate memory for directory name copy");
         free(dir_path);
+        return -1;
+    }
+
+    log_info("Creating database directory if needed: %s", dir_copy);
+    if (create_directory(dir_copy) != 0) {
+        log_error("Failed to create database directory: %s", dir_copy);
+        free(dir_path);
+        free(dir_copy);
         return -1;
     }
     free(dir_path);
 
     // Check directory permissions
     struct stat st;
-    if (stat(dir, &st) == 0) {
+    if (stat(dir_copy, &st) == 0) {
         log_info("Database directory permissions: %o", st.st_mode & 0777);
         if ((st.st_mode & 0200) == 0) {
             log_warn("Database directory is not writable");
         }
     }
+
+    // Free the directory name copy
+    free(dir_copy);
 
     // Open database with extended options for better error handling
     log_info("Opening database at: %s", db_path);
