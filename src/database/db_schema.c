@@ -616,16 +616,140 @@ static int migration_v4_to_v5(void) {
 
 /**
  * Migration from version 5 to 6
- * - Add is_deleted column to streams table for soft deletion
+ * - Check for is_deleted column, update streams, and drop the column
  */
 static int migration_v5_to_v6(void) {
-    log_info("Running migration from v5 to v6: Adding is_deleted column to streams table for soft deletion");
+    log_info("Running migration from v5 to v6: Checking for is_deleted column and simplifying status fields");
 
     int rc = 0;
+    char *err_msg = NULL;
+    sqlite3 *db = get_db_handle();
 
-    // Add is_deleted column to streams table
-    log_info("Adding is_deleted column");
-    rc |= add_column_if_not_exists("streams", "is_deleted", "INTEGER DEFAULT 0");
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
+    // Check if is_deleted column exists
+    if (column_exists("streams", "is_deleted")) {
+        log_info("is_deleted column exists, updating streams and dropping column");
+
+        // Update any deleted streams to not be active
+        const char *update_sql = "UPDATE streams SET enabled = 0 WHERE is_deleted = 1;";
+        rc = sqlite3_exec(db, update_sql, NULL, NULL, &err_msg);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to update streams: %s", err_msg);
+            if (err_msg) {
+                sqlite3_free(err_msg);
+                err_msg = NULL;
+            }
+            return -1;
+        }
+        log_info("Updated streams with is_deleted=1 to enabled=0");
+
+        // Drop the is_deleted column
+        // SQLite doesn't directly support dropping columns, so we need to:
+        // 1. Create a new table without the column
+        // 2. Copy data from old table to new table
+        // 3. Drop old table
+        // 4. Rename new table to old table name
+
+        // Create new table without is_deleted column
+        const char *create_new_table =
+            "CREATE TABLE streams_new ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "name TEXT NOT NULL UNIQUE,"
+            "url TEXT NOT NULL,"
+            "enabled INTEGER DEFAULT 1,"
+            "streaming_enabled INTEGER DEFAULT 1,"
+            "width INTEGER DEFAULT 1280,"
+            "height INTEGER DEFAULT 720,"
+            "fps INTEGER DEFAULT 30,"
+            "codec TEXT DEFAULT 'h264',"
+            "priority INTEGER DEFAULT 5,"
+            "record INTEGER DEFAULT 1,"
+            "segment_duration INTEGER DEFAULT 900,"
+            "detection_based_recording INTEGER DEFAULT 0,"
+            "detection_model TEXT DEFAULT '',"
+            "detection_threshold REAL DEFAULT 0.5,"
+            "detection_interval INTEGER DEFAULT 10,"
+            "pre_detection_buffer INTEGER DEFAULT 0,"
+            "post_detection_buffer INTEGER DEFAULT 3,"
+            "protocol INTEGER DEFAULT 0,"
+            "is_onvif INTEGER DEFAULT 0,"
+            "record_audio INTEGER DEFAULT 1"
+            ");";
+
+        rc = sqlite3_exec(db, create_new_table, NULL, NULL, &err_msg);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to create new streams table: %s", err_msg);
+            if (err_msg) {
+                sqlite3_free(err_msg);
+                err_msg = NULL;
+            }
+            return -1;
+        }
+
+        // Copy data from old table to new table
+        const char *copy_data =
+            "INSERT INTO streams_new "
+            "SELECT id, name, url, enabled, streaming_enabled, width, height, fps, codec, "
+            "priority, record, segment_duration, detection_based_recording, detection_model, "
+            "detection_threshold, detection_interval, pre_detection_buffer, post_detection_buffer, "
+            "protocol, is_onvif, record_audio "
+            "FROM streams;";
+
+        rc = sqlite3_exec(db, copy_data, NULL, NULL, &err_msg);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to copy data to new streams table: %s", err_msg);
+            if (err_msg) {
+                sqlite3_free(err_msg);
+                err_msg = NULL;
+            }
+            return -1;
+        }
+
+        // Drop old table
+        const char *drop_old_table = "DROP TABLE streams;";
+        rc = sqlite3_exec(db, drop_old_table, NULL, NULL, &err_msg);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to drop old streams table: %s", err_msg);
+            if (err_msg) {
+                sqlite3_free(err_msg);
+                err_msg = NULL;
+            }
+            return -1;
+        }
+
+        // Rename new table to old table name
+        const char *rename_table = "ALTER TABLE streams_new RENAME TO streams;";
+        rc = sqlite3_exec(db, rename_table, NULL, NULL, &err_msg);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to rename new streams table: %s", err_msg);
+            if (err_msg) {
+                sqlite3_free(err_msg);
+                err_msg = NULL;
+            }
+            return -1;
+        }
+
+        // Recreate indexes
+        const char *recreate_indexes =
+            "CREATE INDEX IF NOT EXISTS idx_streams_name ON streams (name);";
+        rc = sqlite3_exec(db, recreate_indexes, NULL, NULL, &err_msg);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to recreate indexes on streams table: %s", err_msg);
+            if (err_msg) {
+                sqlite3_free(err_msg);
+                err_msg = NULL;
+            }
+            return -1;
+        }
+
+        log_info("Successfully dropped is_deleted column from streams table");
+    } else {
+        log_info("is_deleted column does not exist, no changes needed");
+    }
 
     log_info("Completed migration v5 to v6 with result: %d", rc);
     return rc;

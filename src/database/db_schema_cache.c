@@ -69,7 +69,7 @@ void init_schema_cache(void) {
         bool protocol_exists = column_exists("streams", "protocol");
         bool onvif_exists = column_exists("streams", "is_onvif");
         bool record_audio_exists = column_exists("streams", "record_audio");
-        bool is_deleted_exists = column_exists("streams", "is_deleted");
+        // is_deleted column has been removed in migration_v5_to_v6
 
         // Add them to the cache manually
         if (column_cache_size < column_cache_capacity) {
@@ -101,13 +101,7 @@ void init_schema_cache(void) {
             column_cache_size++;
         }
 
-        // Add is_deleted column to cache
-        if (column_cache_size < column_cache_capacity) {
-            strncpy(column_cache[column_cache_size].table_name, "streams", sizeof(column_cache[column_cache_size].table_name) - 1);
-            strncpy(column_cache[column_cache_size].column_name, "is_deleted", sizeof(column_cache[column_cache_size].column_name) - 1);
-            column_cache[column_cache_size].exists = is_deleted_exists;
-            column_cache_size++;
-        }
+        // is_deleted column has been removed in migration_v5_to_v6
 
         schema_initialized = true;
         log_info("Schema cache initialized with %d entries", column_cache_size);

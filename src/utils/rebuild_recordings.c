@@ -82,10 +82,10 @@ static bool recording_exists_in_db(const char *file_path) {
  * Check if a stream exists in the database
  * 
  * @param stream_name Name of the stream
- * @param is_deleted Pointer to store whether the stream is soft-deleted
+ * @param is_disabled Pointer to store whether the stream is disabled
  * @return true if the stream exists in the database, false otherwise
  */
-static bool stream_exists_in_db(const char *stream_name, bool *is_deleted) {
+static bool stream_exists_in_db(const char *stream_name, bool *is_disabled) {
     stream_config_t stream;
     int result;
     
@@ -93,67 +93,60 @@ static bool stream_exists_in_db(const char *stream_name, bool *is_deleted) {
     result = get_stream_config_by_name(stream_name, &stream);
     
     if (result == 0) {
-        // Stream exists and is not soft-deleted
-        if (is_deleted) *is_deleted = false;
+        // Stream exists
+        if (is_disabled) *is_disabled = !stream.enabled;
         return true;
     }
     
-    // Check if is_deleted column exists
-    bool has_is_deleted_column = cached_column_exists("streams", "is_deleted");
+    // Check if the stream exists but is disabled
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *db_mutex = get_db_mutex();
     
-    if (has_is_deleted_column) {
-        // Check if the stream exists but is soft-deleted
-        sqlite3 *db = get_db_handle();
-        pthread_mutex_t *db_mutex = get_db_mutex();
-        
-        if (!db) {
-            log_error("Database not initialized");
-            return false;
-        }
-        
-        pthread_mutex_lock(db_mutex);
-        
-        sqlite3_stmt *stmt;
-        const char *sql = "SELECT id FROM streams WHERE name = ? AND is_deleted = 1;";
-        
-        int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
-        if (rc != SQLITE_OK) {
-            log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
-            pthread_mutex_unlock(db_mutex);
-            return false;
-        }
-        
-        sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
-        
-        bool exists = false;
-        if (sqlite3_step(stmt) == SQLITE_ROW) {
-            exists = true;
-            if (is_deleted) *is_deleted = true;
-        }
-        
-        sqlite3_finalize(stmt);
-        pthread_mutex_unlock(db_mutex);
-        
-        return exists;
+    if (!db) {
+        log_error("Database not initialized");
+        return false;
     }
     
-    return false;
+    pthread_mutex_lock(db_mutex);
+    
+    sqlite3_stmt *stmt;
+    const char *sql = "SELECT id FROM streams WHERE name = ? AND enabled = 0;";
+    
+    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(db_mutex);
+        return false;
+    }
+    
+    sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
+    
+    bool exists = false;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        exists = true;
+        if (is_disabled) *is_disabled = true;
+    }
+    
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(db_mutex);
+    
+    return exists;
 }
 
 /**
- * Create a soft-deleted stream in the database
+ * Create a disabled stream in the database
  * 
  * @param stream_name Name of the stream
  * @return true if the stream was created successfully, false otherwise
  */
-static bool create_soft_deleted_stream(const char *stream_name) {
+static bool create_disabled_stream(const char *stream_name) {
     stream_config_t stream;
     uint64_t stream_id;
-    bool is_deleted = false;
+    bool is_disabled = false;
     
-    // Check if the stream already exists but is soft-deleted
-    if (stream_exists_in_db(stream_name, &is_deleted) && is_deleted) {
-        log_info("Stream %s already exists as soft-deleted, not modifying it", stream_name);
+    // Check if the stream already exists but is disabled
+    if (stream_exists_in_db(stream_name, &is_disabled) && is_disabled) {
+        log_info("Stream %s already exists as disabled, not modifying it", stream_name);
         return true;
     }
     
@@ -168,11 +161,11 @@ static bool create_soft_deleted_stream(const char *stream_name) {
     stream.fps = 30;
     strncpy(stream.codec, "h264", sizeof(stream.codec) - 1);
     stream.priority = 5;
-    stream.record = true;
+    stream.record = false;  // Set record to false for disabled streams
     stream.segment_duration = 60;
     stream.detection_based_recording = false;
     stream.protocol = STREAM_PROTOCOL_TCP;
-    stream.record_audio = true;
+    stream.record_audio = false;  // Set record_audio to false for disabled streams
     
     // Add the stream to the database
     stream_id = add_stream_config(&stream);
@@ -181,13 +174,8 @@ static bool create_soft_deleted_stream(const char *stream_name) {
         return false;
     }
     
-    // Soft delete the stream
-    if (delete_stream_config(stream_name) != 0) {
-        log_error("Failed to soft delete stream %s", stream_name);
-        return false;
-    }
-    
-    log_info("Created soft-deleted stream: %s", stream_name);
+    // The stream is already created as disabled by default
+    log_info("Created disabled stream: %s", stream_name);
     return true;
 }
 
@@ -359,7 +347,7 @@ static bool add_recording_to_db(const recording_file_info_t *info) {
  */
 static bool process_recording_file(const char *file_path) {
     recording_file_info_t info;
-    bool is_deleted;
+    bool is_disabled;
     
     // Check if the recording already exists in the database
     if (recording_exists_in_db(file_path)) {
@@ -374,14 +362,14 @@ static bool process_recording_file(const char *file_path) {
     }
     
     // Check if the stream exists
-    if (!stream_exists_in_db(info.stream_name, &is_deleted)) {
-        // Stream doesn't exist, create a soft-deleted stream
-        if (!create_soft_deleted_stream(info.stream_name)) {
-            log_error("Failed to create soft-deleted stream: %s", info.stream_name);
+    if (!stream_exists_in_db(info.stream_name, &is_disabled)) {
+        // Stream doesn't exist, create a disabled stream
+        if (!create_disabled_stream(info.stream_name)) {
+            log_error("Failed to create disabled stream: %s", info.stream_name);
             return false;
         }
-    } else if (is_deleted) {
-        log_info("Stream %s already exists as soft-deleted", info.stream_name);
+    } else if (is_disabled) {
+        log_info("Stream %s already exists as disabled", info.stream_name);
     } else {
         log_info("Stream %s already exists", info.stream_name);
     }

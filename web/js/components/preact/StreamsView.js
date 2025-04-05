@@ -9,6 +9,7 @@ import { useState, useEffect, useRef } from '../../preact.hooks.module.js';
 import { showStatusMessage } from './UI.js';
 import { ContentLoader } from './LoadingIndicator.js';
 import { fetchJSON, enhancedFetch, createRequestController } from '../../fetch-utils.js';
+import { StreamDeleteModal } from './StreamDeleteModal.js';
 
 /**
  * StreamsView component
@@ -49,6 +50,10 @@ export function StreamsView() {
   });
   const [detectionModels, setDetectionModels] = useState([]);
   const [isEditing, setIsEditing] = useState(false);
+  
+  // State for delete modal
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [streamToDelete, setStreamToDelete] = useState(null);
   
   // State for loading and data status
   const [isLoading, setIsLoading] = useState(false);
@@ -311,14 +316,60 @@ export function StreamsView() {
     }
   };
   
-  // Delete stream
-  const deleteStream = async (streamId) => {
-    if (!confirm(`Are you sure you want to delete stream "${streamId}"?`)) {
-      return;
-    }
-    
+  // Open delete modal
+  const openDeleteModal = (stream) => {
+    setStreamToDelete(stream);
+    setDeleteModalVisible(true);
+  };
+  
+  // Close delete modal
+  const closeDeleteModal = () => {
+    setDeleteModalVisible(false);
+    setStreamToDelete(null);
+  };
+  
+  // Disable stream (soft delete)
+  const disableStream = async (streamId) => {
     try {
+      // First, get the current stream configuration
+      const stream = await fetchJSON(`/api/streams/${encodeURIComponent(streamId)}`, {
+        signal: requestControllerRef.current?.signal,
+        timeout: 10000, // 10 second timeout
+        retries: 1,     // Retry once
+        retryDelay: 1000 // 1 second between retries
+      });
+      
+      // Update the stream with disabled flags for all relevant features
       await enhancedFetch(`/api/streams/${encodeURIComponent(streamId)}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          enabled: false,                    // Disable the stream
+          streaming_enabled: false,          // Disable live streaming
+          record: false,                     // Disable recording
+          record_audio: false,               // Disable audio recording
+          detection_based_recording: false   // Disable detection-based recording
+        }),
+        signal: requestControllerRef.current?.signal,
+        timeout: 15000, // 15 second timeout
+        retries: 1,     // Retry once
+        retryDelay: 1000 // 1 second between retries
+      });
+      
+      showStatusMessage('Stream disabled successfully');
+      loadStreams();
+    } catch (error) {
+      console.error('Error disabling stream:', error);
+      showStatusMessage('Error disabling stream: ' + error.message);
+    }
+  };
+  
+  // Delete stream (permanent)
+  const deleteStream = async (streamId) => {
+    try {
+      await enhancedFetch(`/api/streams/${encodeURIComponent(streamId)}?permanent=true`, {
         method: 'DELETE',
         signal: requestControllerRef.current?.signal,
         timeout: 15000, // 15 second timeout
@@ -326,7 +377,7 @@ export function StreamsView() {
         retryDelay: 1000 // 1 second between retries
       });
       
-      showStatusMessage('Stream deleted successfully');
+      showStatusMessage('Stream deleted permanently');
       loadStreams();
     } catch (error) {
       console.error('Error deleting stream:', error);
@@ -605,7 +656,7 @@ export function StreamsView() {
                         </button>
                         <button 
                           class="p-1 rounded-full text-red-600 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-900 focus:outline-none"
-                          onClick=${() => deleteStream(stream.name)}
+                          onClick=${() => openDeleteModal(stream)}
                           title="Delete"
                         >
                           <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
@@ -621,6 +672,16 @@ export function StreamsView() {
           </div>
         </div>
       <//>
+      
+      ${deleteModalVisible && streamToDelete && html`
+        <${StreamDeleteModal}
+          streamId=${streamToDelete.name}
+          streamName=${streamToDelete.name}
+          onClose=${closeDeleteModal}
+          onDisable=${disableStream}
+          onDelete=${deleteStream}
+        />
+      `}
       
       ${modalVisible && html`
         <div id="stream-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 transition-opacity duration-300">

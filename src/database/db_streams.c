@@ -42,130 +42,117 @@ uint64_t add_stream_config(const stream_config_t *stream) {
 
     pthread_mutex_lock(db_mutex);
 
-    // Check if is_deleted column exists
-    bool has_is_deleted_column = cached_column_exists("streams", "is_deleted");
+    // Check if a stream with this name already exists but is disabled
+    const char *check_sql = "SELECT id FROM streams WHERE name = ? AND enabled = 0;";
+    sqlite3_stmt *check_stmt;
 
-    // Check if a stream with this name already exists but is soft-deleted
-    if (has_is_deleted_column) {
-        const char *check_sql = "SELECT id FROM streams WHERE name = ? AND is_deleted = 1;";
-        sqlite3_stmt *check_stmt;
+    rc = sqlite3_prepare_v2(db, check_sql, -1, &check_stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement to check for disabled stream: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(db_mutex);
+        return 0;
+    }
 
-        rc = sqlite3_prepare_v2(db, check_sql, -1, &check_stmt, NULL);
-        if (rc != SQLITE_OK) {
-            log_error("Failed to prepare statement to check for soft-deleted stream: %s", sqlite3_errmsg(db));
-            pthread_mutex_unlock(db_mutex);
-            return 0;
-        }
+    sqlite3_bind_text(check_stmt, 1, stream->name, -1, SQLITE_STATIC);
 
-        sqlite3_bind_text(check_stmt, 1, stream->name, -1, SQLITE_STATIC);
-
-        if (sqlite3_step(check_stmt) == SQLITE_ROW) {
-            // Stream exists but is soft-deleted, undelete it by updating
-            uint64_t existing_id = (uint64_t)sqlite3_column_int64(check_stmt, 0);
-
-            // Finalize the prepared statement
-            if (check_stmt) {
-                sqlite3_finalize(check_stmt);
-                check_stmt = NULL;
-            }
-
-            const char *update_sql = "UPDATE streams SET "
-                                    "url = ?, enabled = ?, streaming_enabled = ?, width = ?, height = ?, "
-                                    "fps = ?, codec = ?, priority = ?, record = ?, segment_duration = ?, "
-                                    "detection_based_recording = ?, detection_model = ?, detection_threshold = ?, "
-                                    "detection_interval = ?, pre_detection_buffer = ?, post_detection_buffer = ?, "
-                                    "protocol = ?, is_onvif = ?, record_audio = ?, is_deleted = 0 "
-                                    "WHERE id = ?;";
-
-            rc = sqlite3_prepare_v2(db, update_sql, -1, &stmt, NULL);
-            if (rc != SQLITE_OK) {
-                log_error("Failed to prepare statement to undelete stream: %s", sqlite3_errmsg(db));
-                pthread_mutex_unlock(db_mutex);
-                return 0;
-            }
-
-            // Bind parameters for basic stream settings
-            sqlite3_bind_text(stmt, 1, stream->url, -1, SQLITE_STATIC);
-            sqlite3_bind_int(stmt, 2, stream->enabled ? 1 : 0);
-            sqlite3_bind_int(stmt, 3, stream->streaming_enabled ? 1 : 0);
-            sqlite3_bind_int(stmt, 4, stream->width);
-            sqlite3_bind_int(stmt, 5, stream->height);
-            sqlite3_bind_int(stmt, 6, stream->fps);
-            sqlite3_bind_text(stmt, 7, stream->codec, -1, SQLITE_STATIC);
-            sqlite3_bind_int(stmt, 8, stream->priority);
-            sqlite3_bind_int(stmt, 9, stream->record ? 1 : 0);
-            sqlite3_bind_int(stmt, 10, stream->segment_duration);
-
-            // Bind parameters for detection settings
-            sqlite3_bind_int(stmt, 11, stream->detection_based_recording ? 1 : 0);
-            sqlite3_bind_text(stmt, 12, stream->detection_model, -1, SQLITE_STATIC);
-            sqlite3_bind_double(stmt, 13, stream->detection_threshold);
-            sqlite3_bind_int(stmt, 14, stream->detection_interval);
-            sqlite3_bind_int(stmt, 15, stream->pre_detection_buffer);
-            sqlite3_bind_int(stmt, 16, stream->post_detection_buffer);
-
-            // Bind protocol parameter
-            sqlite3_bind_int(stmt, 17, (int)stream->protocol);
-
-            // Bind is_onvif parameter
-            sqlite3_bind_int(stmt, 18, stream->is_onvif ? 1 : 0);
-
-            // Bind record_audio parameter
-            sqlite3_bind_int(stmt, 19, stream->record_audio ? 1 : 0);
-
-            // Bind ID parameter
-            sqlite3_bind_int64(stmt, 20, (sqlite3_int64)existing_id);
-
-            // Execute statement
-            rc = sqlite3_step(stmt);
-            if (rc != SQLITE_DONE) {
-                log_error("Failed to undelete stream configuration: %s", sqlite3_errmsg(db));
-
-                // Finalize the prepared statement
-                if (stmt) {
-                    sqlite3_finalize(stmt);
-                    stmt = NULL;
-                }
-                pthread_mutex_unlock(db_mutex);
-                return 0;
-            }
-
-            // Finalize the prepared statement
-            if (stmt) {
-                sqlite3_finalize(stmt);
-                stmt = NULL;
-            }
-
-            log_info("Undeleted and updated stream configuration: name=%s, enabled=%s, detection=%s, model=%s",
-                    stream->name,
-                    stream->enabled ? "true" : "false",
-                    stream->detection_based_recording ? "true" : "false",
-                    stream->detection_model);
-
-            pthread_mutex_unlock(db_mutex);
-            return existing_id;
-        }
+    if (sqlite3_step(check_stmt) == SQLITE_ROW) {
+        // Stream exists but is disabled, enable it by updating
+        uint64_t existing_id = (uint64_t)sqlite3_column_int64(check_stmt, 0);
 
         // Finalize the prepared statement
         if (check_stmt) {
             sqlite3_finalize(check_stmt);
             check_stmt = NULL;
         }
+
+        const char *update_sql = "UPDATE streams SET "
+                                "url = ?, enabled = ?, streaming_enabled = ?, width = ?, height = ?, "
+                                "fps = ?, codec = ?, priority = ?, record = ?, segment_duration = ?, "
+                                "detection_based_recording = ?, detection_model = ?, detection_threshold = ?, "
+                                "detection_interval = ?, pre_detection_buffer = ?, post_detection_buffer = ?, "
+                                "protocol = ?, is_onvif = ?, record_audio = ? "
+                                "WHERE id = ?;";
+
+        rc = sqlite3_prepare_v2(db, update_sql, -1, &stmt, NULL);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to prepare statement to update disabled stream: %s", sqlite3_errmsg(db));
+            pthread_mutex_unlock(db_mutex);
+            return 0;
+        }
+
+        // Bind parameters for basic stream settings
+        sqlite3_bind_text(stmt, 1, stream->url, -1, SQLITE_STATIC);
+        sqlite3_bind_int(stmt, 2, stream->enabled ? 1 : 0);
+        sqlite3_bind_int(stmt, 3, stream->streaming_enabled ? 1 : 0);
+        sqlite3_bind_int(stmt, 4, stream->width);
+        sqlite3_bind_int(stmt, 5, stream->height);
+        sqlite3_bind_int(stmt, 6, stream->fps);
+        sqlite3_bind_text(stmt, 7, stream->codec, -1, SQLITE_STATIC);
+        sqlite3_bind_int(stmt, 8, stream->priority);
+        sqlite3_bind_int(stmt, 9, stream->record ? 1 : 0);
+        sqlite3_bind_int(stmt, 10, stream->segment_duration);
+
+        // Bind parameters for detection settings
+        sqlite3_bind_int(stmt, 11, stream->detection_based_recording ? 1 : 0);
+        sqlite3_bind_text(stmt, 12, stream->detection_model, -1, SQLITE_STATIC);
+        sqlite3_bind_double(stmt, 13, stream->detection_threshold);
+        sqlite3_bind_int(stmt, 14, stream->detection_interval);
+        sqlite3_bind_int(stmt, 15, stream->pre_detection_buffer);
+        sqlite3_bind_int(stmt, 16, stream->post_detection_buffer);
+
+        // Bind protocol parameter
+        sqlite3_bind_int(stmt, 17, (int)stream->protocol);
+
+        // Bind is_onvif parameter
+        sqlite3_bind_int(stmt, 18, stream->is_onvif ? 1 : 0);
+
+        // Bind record_audio parameter
+        sqlite3_bind_int(stmt, 19, stream->record_audio ? 1 : 0);
+
+        // Bind ID parameter
+        sqlite3_bind_int64(stmt, 20, (sqlite3_int64)existing_id);
+
+        // Execute statement
+        rc = sqlite3_step(stmt);
+        if (rc != SQLITE_DONE) {
+            log_error("Failed to update disabled stream configuration: %s", sqlite3_errmsg(db));
+
+            // Finalize the prepared statement
+            if (stmt) {
+                sqlite3_finalize(stmt);
+                stmt = NULL;
+            }
+            pthread_mutex_unlock(db_mutex);
+            return 0;
+        }
+
+        // Finalize the prepared statement
+        if (stmt) {
+            sqlite3_finalize(stmt);
+            stmt = NULL;
+        }
+
+        log_info("Updated disabled stream configuration: name=%s, enabled=%s, detection=%s, model=%s",
+                stream->name,
+                stream->enabled ? "true" : "false",
+                stream->detection_based_recording ? "true" : "false",
+                stream->detection_model);
+
+        pthread_mutex_unlock(db_mutex);
+        return existing_id;
     }
 
-    // No soft-deleted stream found, insert a new one
-    const char *sql;
-    if (has_is_deleted_column) {
-        sql = "INSERT INTO streams (name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
-              "detection_based_recording, detection_model, detection_threshold, detection_interval, "
-              "pre_detection_buffer, post_detection_buffer, protocol, is_onvif, record_audio, is_deleted) "
-              "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0);";
-    } else {
-        sql = "INSERT INTO streams (name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
-              "detection_based_recording, detection_model, detection_threshold, detection_interval, "
-              "pre_detection_buffer, post_detection_buffer, protocol, is_onvif, record_audio) "
-              "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+    // Finalize the prepared statement
+    if (check_stmt) {
+        sqlite3_finalize(check_stmt);
+        check_stmt = NULL;
     }
+
+    // No disabled stream found, insert a new one
+    const char *sql = "INSERT INTO streams (name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
+          "detection_based_recording, detection_model, detection_threshold, detection_interval, "
+          "pre_detection_buffer, post_detection_buffer, protocol, is_onvif, record_audio) "
+          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -348,6 +335,17 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
  * @return 0 on success, non-zero on failure
  */
 int delete_stream_config(const char *name) {
+    return delete_stream_config_internal(name, false);
+}
+
+/**
+ * Delete a stream configuration from the database with option for permanent deletion
+ *
+ * @param name Stream name to delete
+ * @param permanent If true, permanently delete the stream; if false, just disable it
+ * @return 0 on success, non-zero on failure
+ */
+int delete_stream_config_internal(const char *name, bool permanent) {
     int rc;
     sqlite3_stmt *stmt;
 
@@ -366,77 +364,53 @@ int delete_stream_config(const char *name) {
 
     pthread_mutex_lock(db_mutex);
 
-    // Check if is_deleted column exists
-    bool has_is_deleted_column = cached_column_exists("streams", "is_deleted");
-
-    if (has_is_deleted_column) {
-        // Soft delete by setting is_deleted = 1
-        const char *sql = "UPDATE streams SET is_deleted = 1 WHERE name = ?;";
-
-        rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
-        if (rc != SQLITE_OK) {
-            log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
-            pthread_mutex_unlock(db_mutex);
-            return -1;
-        }
-
-        // Bind parameters
-        sqlite3_bind_text(stmt, 1, name, -1, SQLITE_STATIC);
-
-        // Execute statement
-        rc = sqlite3_step(stmt);
-        if (rc != SQLITE_DONE) {
-            log_error("Failed to soft delete stream configuration: %s", sqlite3_errmsg(db));
-
-            // Finalize the prepared statement
-            if (stmt) {
-                sqlite3_finalize(stmt);
-                stmt = NULL;
-            }
-            pthread_mutex_unlock(db_mutex);
-            return -1;
-        }
-
-        // Finalize the prepared statement
-        if (stmt) {
-            sqlite3_finalize(stmt);
-            stmt = NULL;
-        }
-        log_info("Soft deleted stream configuration: %s", name);
+    const char *sql;
+    if (permanent) {
+        // Permanently delete the stream
+        sql = "DELETE FROM streams WHERE name = ?;";
+        log_info("Preparing to permanently delete stream: %s", name);
     } else {
-        // Fall back to hard delete if is_deleted column doesn't exist
-        const char *sql = "DELETE FROM streams WHERE name = ?;";
+        // Disable the stream by setting enabled = 0
+        sql = "UPDATE streams SET enabled = 0 WHERE name = ?;";
+        log_info("Preparing to disable stream: %s", name);
+    }
 
-        rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
-        if (rc != SQLITE_OK) {
-            log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
-            pthread_mutex_unlock(db_mutex);
-            return -1;
-        }
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(db_mutex);
+        return -1;
+    }
 
-        // Bind parameters
-        sqlite3_bind_text(stmt, 1, name, -1, SQLITE_STATIC);
+    // Bind parameters
+    sqlite3_bind_text(stmt, 1, name, -1, SQLITE_STATIC);
 
-        // Execute statement
-        rc = sqlite3_step(stmt);
-        if (rc != SQLITE_DONE) {
-            log_error("Failed to delete stream configuration: %s", sqlite3_errmsg(db));
-
-            // Finalize the prepared statement
-            if (stmt) {
-                sqlite3_finalize(stmt);
-                stmt = NULL;
-            }
-            pthread_mutex_unlock(db_mutex);
-            return -1;
-        }
+    // Execute statement
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE) {
+        log_error("Failed to %s stream configuration: %s",
+                permanent ? "permanently delete" : "disable",
+                sqlite3_errmsg(db));
 
         // Finalize the prepared statement
         if (stmt) {
             sqlite3_finalize(stmt);
             stmt = NULL;
         }
-        log_info("Hard deleted stream configuration: %s", name);
+        pthread_mutex_unlock(db_mutex);
+        return -1;
+    }
+
+    // Finalize the prepared statement
+    if (stmt) {
+        sqlite3_finalize(stmt);
+        stmt = NULL;
+    }
+
+    if (permanent) {
+        log_info("Permanently deleted stream configuration: %s", name);
+    } else {
+        log_info("Disabled stream configuration: %s", name);
     }
 
     pthread_mutex_unlock(db_mutex);
@@ -477,59 +451,26 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
     bool has_onvif_column = cached_column_exists("streams", "is_onvif");
     bool has_record_audio_column = cached_column_exists("streams", "record_audio");
 
-    // Check if is_deleted column exists
-    bool has_is_deleted_column = cached_column_exists("streams", "is_deleted");
-
     // Prepare SQL based on whether detection columns, protocol column, is_onvif column, and record_audio column exist
     const char *sql;
     if (has_detection_columns && has_protocol_column && has_onvif_column && has_record_audio_column) {
-        if (has_is_deleted_column) {
-            sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
-                  "detection_based_recording, detection_model, detection_threshold, detection_interval, "
-                  "pre_detection_buffer, post_detection_buffer, protocol, is_onvif, record_audio, "
-                  "CASE WHEN is_deleted IS NULL THEN 0 ELSE is_deleted END AS is_deleted "
-                  "FROM streams WHERE name = ?;";
-        } else {
-            sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
-                  "detection_based_recording, detection_model, detection_threshold, detection_interval, "
-                  "pre_detection_buffer, post_detection_buffer, protocol, is_onvif, record_audio "
-                  "FROM streams WHERE name = ?;";
-        }
+        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
+              "detection_based_recording, detection_model, detection_threshold, detection_interval, "
+              "pre_detection_buffer, post_detection_buffer, protocol, is_onvif, record_audio "
+              "FROM streams WHERE name = ?;";
     } else if (has_detection_columns && has_protocol_column) {
-        if (has_is_deleted_column) {
-            sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
-                  "detection_based_recording, detection_model, detection_threshold, detection_interval, "
-                  "pre_detection_buffer, post_detection_buffer, protocol, "
-                  "CASE WHEN is_deleted IS NULL THEN 0 ELSE is_deleted END AS is_deleted "
-                  "FROM streams WHERE name = ?;";
-        } else {
-            sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
-                  "detection_based_recording, detection_model, detection_threshold, detection_interval, "
-                  "pre_detection_buffer, post_detection_buffer, protocol "
-                  "FROM streams WHERE name = ?;";
-        }
+        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
+              "detection_based_recording, detection_model, detection_threshold, detection_interval, "
+              "pre_detection_buffer, post_detection_buffer, protocol "
+              "FROM streams WHERE name = ?;";
     } else if (has_detection_columns) {
-        if (has_is_deleted_column) {
-            sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
-                  "detection_based_recording, detection_model, detection_threshold, detection_interval, "
-                  "pre_detection_buffer, post_detection_buffer, "
-                  "CASE WHEN is_deleted IS NULL THEN 0 ELSE is_deleted END AS is_deleted "
-                  "FROM streams WHERE name = ?;";
-        } else {
-            sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
-                  "detection_based_recording, detection_model, detection_threshold, detection_interval, "
-                  "pre_detection_buffer, post_detection_buffer "
-                  "FROM streams WHERE name = ?;";
-        }
+        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
+              "detection_based_recording, detection_model, detection_threshold, detection_interval, "
+              "pre_detection_buffer, post_detection_buffer "
+              "FROM streams WHERE name = ?;";
     } else {
-        if (has_is_deleted_column) {
-            sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
-                  "CASE WHEN is_deleted IS NULL THEN 0 ELSE is_deleted END AS is_deleted "
-                  "FROM streams WHERE name = ?;";
-        } else {
-            sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration "
-                  "FROM streams WHERE name = ?;";
-        }
+        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration "
+              "FROM streams WHERE name = ?;";
     }
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -676,32 +617,25 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
     bool has_onvif_column = cached_column_exists("streams", "is_onvif");
     bool has_record_audio_column = cached_column_exists("streams", "record_audio");
 
-    // Check if is_deleted column exists
-    bool has_is_deleted_column = cached_column_exists("streams", "is_deleted");
-
     // Prepare SQL based on whether detection columns, protocol column, is_onvif column, and record_audio column exist
     const char *sql;
     if (has_detection_columns && has_protocol_column && has_onvif_column && has_record_audio_column) {
         sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
               "detection_based_recording, detection_model, detection_threshold, detection_interval, "
-              "pre_detection_buffer, post_detection_buffer, protocol, is_onvif, record_audio, "
-              "CASE WHEN is_deleted IS NULL THEN 0 ELSE is_deleted END AS is_deleted "
+              "pre_detection_buffer, post_detection_buffer, protocol, is_onvif, record_audio "
               "FROM streams ORDER BY name;";
     } else if (has_detection_columns && has_protocol_column) {
         sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
               "detection_based_recording, detection_model, detection_threshold, detection_interval, "
-              "pre_detection_buffer, post_detection_buffer, protocol, "
-              "CASE WHEN is_deleted IS NULL THEN 0 ELSE is_deleted END AS is_deleted "
+              "pre_detection_buffer, post_detection_buffer, protocol "
               "FROM streams ORDER BY name;";
     } else if (has_detection_columns) {
         sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
               "detection_based_recording, detection_model, detection_threshold, detection_interval, "
-              "pre_detection_buffer, post_detection_buffer, "
-              "CASE WHEN is_deleted IS NULL THEN 0 ELSE is_deleted END AS is_deleted "
+              "pre_detection_buffer, post_detection_buffer "
               "FROM streams ORDER BY name;";
     } else {
-        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
-              "CASE WHEN is_deleted IS NULL THEN 0 ELSE is_deleted END AS is_deleted "
+        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration "
               "FROM streams ORDER BY name;";
     }
 
@@ -839,15 +773,7 @@ int is_stream_eligible_for_live_streaming(const char *stream_name) {
 
     pthread_mutex_lock(db_mutex);
 
-    // Check if is_deleted column exists
-    bool has_is_deleted_column = cached_column_exists("streams", "is_deleted");
-
-    const char *sql;
-    if (has_is_deleted_column) {
-        sql = "SELECT enabled, streaming_enabled, is_deleted FROM streams WHERE name = ?;";
-    } else {
-        sql = "SELECT enabled, streaming_enabled FROM streams WHERE name = ?;";
-    }
+    const char *sql = "SELECT enabled, streaming_enabled FROM streams WHERE name = ?;";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -862,21 +788,14 @@ int is_stream_eligible_for_live_streaming(const char *stream_name) {
     if (sqlite3_step(stmt) == SQLITE_ROW) {
         bool enabled = sqlite3_column_int(stmt, 0) != 0;
         bool streaming_enabled = sqlite3_column_int(stmt, 1) != 0;
-        bool is_deleted = false;
 
-        if (has_is_deleted_column && sqlite3_column_count(stmt) > 2) {
-            is_deleted = sqlite3_column_int(stmt, 2) != 0;
-        }
-
-        // Stream is eligible if it's enabled, streaming is enabled, and it's not deleted
-        result = (enabled && streaming_enabled && !is_deleted) ? 1 : 0;
+        // Stream is eligible if it's enabled and streaming is enabled
+        result = (enabled && streaming_enabled) ? 1 : 0;
 
         if (!enabled) {
             log_info("Stream %s is not eligible for live streaming: not enabled", stream_name);
         } else if (!streaming_enabled) {
             log_info("Stream %s is not eligible for live streaming: streaming not enabled", stream_name);
-        } else if (is_deleted) {
-            log_info("Stream %s is not eligible for live streaming: soft-deleted", stream_name);
         }
     } else {
         log_error("Stream %s not found", stream_name);
@@ -913,15 +832,7 @@ int get_enabled_stream_count(void) {
 
     pthread_mutex_lock(db_mutex);
 
-    // Check if is_deleted column exists
-    bool has_is_deleted_column = cached_column_exists("streams", "is_deleted");
-
-    const char *sql;
-    if (has_is_deleted_column) {
-        sql = "SELECT COUNT(*) FROM streams WHERE enabled = 1 AND (is_deleted = 0 OR is_deleted IS NULL);";
-    } else {
-        sql = "SELECT COUNT(*) FROM streams WHERE enabled = 1;";
-    }
+    const char *sql = "SELECT COUNT(*) FROM streams WHERE enabled = 1;";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -961,15 +872,7 @@ int count_stream_configs(void) {
 
     pthread_mutex_lock(db_mutex);
 
-    // Check if is_deleted column exists
-    bool has_is_deleted_column = cached_column_exists("streams", "is_deleted");
-
-    const char *sql;
-    if (has_is_deleted_column) {
-        sql = "SELECT COUNT(*) FROM streams;";
-    } else {
-        sql = "SELECT COUNT(*) FROM streams;";
-    }
+    const char *sql = "SELECT COUNT(*) FROM streams;";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
