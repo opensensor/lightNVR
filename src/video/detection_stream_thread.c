@@ -1113,20 +1113,39 @@ void shutdown_stream_detection_system(void) {
 
             // First, check if the thread has a model loaded and ensure it's properly cleaned up
             pthread_mutex_lock(&stream_threads[i].mutex);
+
+            // CRITICAL FIX: Make a local copy of the model pointer to prevent race conditions
+            detection_model_t model_to_cleanup = NULL;
             if (stream_threads[i].model) {
                 log_info("Ensuring model cleanup during shutdown for stream %s", stream_threads[i].stream_name);
+                model_to_cleanup = stream_threads[i].model;
 
+                // Immediately set the thread's model to NULL to prevent double-free
+                stream_threads[i].model = NULL;
+            }
+            pthread_mutex_unlock(&stream_threads[i].mutex);
+
+            // Now clean up the model outside the mutex lock if we have one to clean up
+            if (model_to_cleanup) {
                 // Get the model type to check if it's a SOD model
-                const char *model_type = get_model_type_from_handle(stream_threads[i].model);
+                const char *model_type = get_model_type_from_handle(model_to_cleanup);
 
                 // Use our enhanced cleanup for SOD models to prevent memory leaks
                 if (strcmp(model_type, MODEL_TYPE_SOD) == 0) {
-                    log_info("Using enhanced SOD model cleanup to prevent memory leaks");
-                    ensure_sod_model_cleanup(stream_threads[i].model);
-                    stream_threads[i].model = NULL;
+                    log_info("Using enhanced SOD model cleanup to prevent memory leaks during shutdown");
+                    ensure_sod_model_cleanup(model_to_cleanup);
+                } else if (strcmp(model_type, "unknown") != 0) {
+                    // For non-SOD models (except unknown type), use standard unload
+                    log_info("Using standard unload for non-SOD model type: %s during shutdown", model_type);
+                    unload_detection_model(model_to_cleanup);
+                } else {
+                    // For unknown model type, use the safest approach
+                    log_warn("Unknown model type detected during shutdown, using generic unload");
+                    unload_detection_model(model_to_cleanup);
                 }
+
+                log_info("Model cleanup completed during shutdown for stream %s", stream_threads[i].stream_name);
             }
-            pthread_mutex_unlock(&stream_threads[i].mutex);
 
             // Now stop the thread
             stream_threads[i].running = false;
@@ -1249,20 +1268,41 @@ int stop_stream_detection_thread(const char *stream_name) {
             // First, check if the thread has a model loaded and ensure it's properly cleaned up
             // This is a safety measure in case the thread doesn't clean up its own model
             pthread_mutex_lock(&stream_threads[i].mutex);
+
+            // CRITICAL FIX: Make a local copy of the model pointer to prevent race conditions
+            detection_model_t model_to_cleanup = NULL;
             if (stream_threads[i].model) {
                 log_info("Ensuring model cleanup before stopping thread for stream %s", stream_name);
+                model_to_cleanup = stream_threads[i].model;
 
+                // Immediately set the thread's model to NULL to prevent double-free
+                // This ensures that even if another thread tries to access it, it will be NULL
+                stream_threads[i].model = NULL;
+            }
+            pthread_mutex_unlock(&stream_threads[i].mutex);
+
+            // Now clean up the model outside the mutex lock if we have one to clean up
+            if (model_to_cleanup) {
                 // Get the model type to check if it's a SOD model
-                const char *model_type = get_model_type_from_handle(stream_threads[i].model);
+                const char *model_type = get_model_type_from_handle(model_to_cleanup);
 
                 // Use our enhanced cleanup for SOD models to prevent memory leaks
                 if (strcmp(model_type, MODEL_TYPE_SOD) == 0) {
                     log_info("Using enhanced SOD model cleanup to prevent memory leaks");
-                    ensure_sod_model_cleanup(stream_threads[i].model);
+                    ensure_sod_model_cleanup(model_to_cleanup);
+                } else if (strcmp(model_type, "unknown") != 0) {
+                    // For non-SOD models (except unknown type), use standard unload
+                    log_info("Using standard unload for non-SOD model type: %s", model_type);
+                    unload_detection_model(model_to_cleanup);
+                } else {
+                    // For unknown model type, use the safest approach
+                    log_warn("Unknown model type detected, using generic unload");
+                    unload_detection_model(model_to_cleanup);
                 }
-                // Don't set model to NULL here as the thread will handle that
+
+                // The model pointer is now invalid, no need to set it to NULL as we already did that
+                log_info("Model cleanup completed for stream %s", stream_name);
             }
-            pthread_mutex_unlock(&stream_threads[i].mutex);
 
             // Now stop the thread
             stream_threads[i].running = false;
