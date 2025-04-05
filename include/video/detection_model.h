@@ -72,7 +72,10 @@ const char* get_model_type_from_handle(detection_model_t model);
 /**
  * Clean up old models in the global cache
  *
- * @param max_age Maximum age in seconds for a model to be considered active
+ * This function is kept for API compatibility but does nothing in the thread-local model approach
+ * Each thread is responsible for managing its own model
+ *
+ * @param max_age Maximum age in seconds (ignored in thread-local approach)
  */
 void cleanup_old_detection_models(time_t max_age);
 
@@ -90,8 +93,9 @@ void shutdown_detection_model_system(void);
 
 /**
  * Force cleanup of all models in the global cache
- * This is a more aggressive cleanup that ensures all models are unloaded
- * to prevent memory leaks during shutdown
+ *
+ * This function is kept for API compatibility but does nothing in the thread-local model approach
+ * Each thread is responsible for managing its own model
  */
 void force_cleanup_model_cache(void);
 
