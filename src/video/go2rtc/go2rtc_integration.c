@@ -14,7 +14,6 @@
 #include "video/streams.h"
 #include "database/db_streams.h"
 #include "video/stream_state.h"
-#include "video/hls_writer_thread.h"
 
 #include <stdio.h>
 #include <stdlib.h>

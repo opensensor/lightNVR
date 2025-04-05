@@ -28,7 +28,7 @@
 #include "video/detection_recording.h"
 #include "video/streams.h"
 #include "video/hls_writer.h"
-#include "video/hls_writer_thread.h"
+#include "video/hls/hls_unified_thread.h"
 
 // Maximum number of streams we can handle
 #define MAX_STREAM_THREADS 32
@@ -515,7 +515,7 @@ static void check_for_new_segments(stream_detection_thread_t *thread) {
         hls_writer_t *writer = get_stream_hls_writer(stream);
         if (writer) {
             // Check if the HLS writer is recording
-            hls_writer_recording = hls_writer_is_recording(writer);
+            hls_writer_recording = is_hls_stream_active(thread->stream_name);
             if (!hls_writer_recording) {
                 // Only log a warning every 60 seconds to avoid log spam
                 if (current_time - last_warning_time > 60 || first_check) {
@@ -526,17 +526,17 @@ static void check_for_new_segments(stream_detection_thread_t *thread) {
                     // This is a more proactive approach to handling stream failures
                     stream_config_t config;
                     if (get_stream_config(stream, &config) == 0) {
-                        // Stop the existing HLS writer thread first
-                        hls_writer_stop_recording_thread(writer);
-                        
-                        // Wait a short time before restarting
-                        usleep(500000); // 500ms
-                        
-                        // Restart the HLS writer thread
+                        // Stop and restart the HLS stream
                         if (config.url[0] != '\0') {
-                            log_info("[Stream %s] Attempting to restart HLS writer thread with URL: %s", 
+                            log_info("[Stream %s] Attempting to restart HLS stream with URL: %s", 
                                     thread->stream_name, config.url);
-                            hls_writer_start_recording_thread(writer, config.url, config.name, config.protocol);
+                            stop_hls_stream(thread->stream_name);
+                            
+                            // Wait a short time before restarting
+                            usleep(500000); // 500ms
+                            
+                            // Restart the HLS stream
+                            start_hls_stream(thread->stream_name);
                         }
                     }
                 }
@@ -686,7 +686,7 @@ static void check_for_new_segments(stream_detection_thread_t *thread) {
             if (stream) {
                 hls_writer_t *writer = get_stream_hls_writer(stream);
                 if (writer) {
-                    bool is_recording = hls_writer_is_recording(writer);
+                    bool is_recording = is_hls_stream_active(thread->stream_name);
                     log_info("[Stream %s] HLS writer recording status: %s", 
                             thread->stream_name, is_recording ? "RECORDING" : "NOT RECORDING");
                     
@@ -697,15 +697,16 @@ static void check_for_new_segments(stream_detection_thread_t *thread) {
                             log_info("[Stream %s] Attempting to restart HLS writer with URL: %s", 
                                     thread->stream_name, config.url);
                             
-                            // Stop the existing HLS writer thread first
-                            hls_writer_stop_recording_thread(writer);
+                            // Stop and restart the HLS stream
+                            log_info("[Stream %s] Attempting to restart HLS stream", thread->stream_name);
+                            stop_hls_stream(thread->stream_name);
                             
                             // Wait a short time before restarting
                             usleep(500000); // 500ms
                             
-                            // Restart the HLS writer thread
-                            hls_writer_start_recording_thread(writer, config.url, config.name, config.protocol);
-                            log_info("[Stream %s] HLS writer restart attempted", thread->stream_name);
+                            // Restart the HLS stream
+                            start_hls_stream(thread->stream_name);
+                            log_info("[Stream %s] HLS stream restart attempted", thread->stream_name);
                         }
                     }
                 }

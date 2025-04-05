@@ -5,10 +5,15 @@
 #include "core/logger.h"
 #include "video/stream_state.h"
 #include "video/hls/hls_context.h"
+#include "video/hls/hls_unified_thread.h"
 
-// Hash map for tracking running HLS streaming contexts
+// Hash map for tracking running HLS streaming contexts (kept for backward compatibility)
 hls_stream_ctx_t *streaming_contexts[MAX_STREAMS];
 pthread_mutex_t hls_contexts_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// Hash map for tracking running unified HLS contexts
+extern hls_unified_thread_ctx_t *unified_contexts[MAX_STREAMS];
+extern pthread_mutex_t unified_contexts_mutex;
 
 // State to track streams in the process of being stopped
 pthread_mutex_t stopping_mutex = PTHREAD_MUTEX_INITIALIZER;

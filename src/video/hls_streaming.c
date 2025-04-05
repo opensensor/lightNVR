@@ -2,11 +2,7 @@
  * HLS Streaming Module
  * 
  * This file serves as a thin wrapper around the HLS streaming components.
- * The actual implementation has been split into separate files for better maintainability:
- * - hls_context.c: Manages HLS streaming contexts
- * - hls_stream_thread.c: Implements the HLS streaming thread and packet callback
- * - hls_directory.c: Handles HLS directory management
- * - hls_api.c: Provides the API for starting and stopping HLS streams
+ * The implementation uses a unified thread approach for better efficiency and reliability.
  */
 
 #include <stdio.h>
@@ -14,14 +10,18 @@
 #include <string.h>
 #include <unistd.h>
 #include <stdbool.h>
+#include <pthread.h>
 
 #include "core/logger.h"
 #include "video/hls_streaming.h"
-#include "video/hls/hls_context.h"
-#include "video/hls/hls_stream_thread.h"
-#include "video/hls/hls_directory.h"
-#include "video/hls/hls_api.h"
 #include "video/stream_state.h"
+#include "video/hls/hls_unified_thread.h"
+#include "video/hls/hls_context.h"
+#include "video/hls/hls_directory.h"
+
+// Forward declarations for the unified thread implementation
+extern pthread_mutex_t unified_contexts_mutex;
+extern hls_unified_thread_ctx_t *unified_contexts[MAX_STREAMS];
 
 /**
  * Initialize HLS streaming backend
@@ -29,7 +29,15 @@
 void init_hls_streaming_backend(void) {
     // Initialize the HLS contexts
     init_hls_contexts();
-    log_info("HLS streaming backend initialized");
+    
+    // Initialize the unified contexts array
+    pthread_mutex_lock(&unified_contexts_mutex);
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        unified_contexts[i] = NULL;
+    }
+    pthread_mutex_unlock(&unified_contexts_mutex);
+    
+    log_info("HLS streaming backend initialized with unified thread architecture");
 }
 
 /**
@@ -43,25 +51,19 @@ void cleanup_hls_streaming_backend(void) {
     int stream_count = 0;
 
     // Collect all stream names first with mutex protection
-    pthread_mutex_lock(&hls_contexts_mutex);
+    pthread_mutex_lock(&unified_contexts_mutex);
     for (int i = 0; i < MAX_STREAMS; i++) {
-        if (streaming_contexts[i]) {
-            strncpy(stream_names[stream_count], streaming_contexts[i]->config.name, MAX_STREAM_NAME - 1);
+        if (unified_contexts[i]) {
+            strncpy(stream_names[stream_count], unified_contexts[i]->stream_name, MAX_STREAM_NAME - 1);
             stream_names[stream_count][MAX_STREAM_NAME - 1] = '\0';
             
             // Mark as not running to ensure threads exit even if stop_hls_stream fails
-            atomic_store(&streaming_contexts[i]->running, 0);
-            
-            // Also clear the HLS writer pointer to prevent double-free issues
-            if (streaming_contexts[i]->hls_writer) {
-                log_info("Marking HLS writer for stream %s as pending cleanup", 
-                        streaming_contexts[i]->config.name);
-            }
+            atomic_store(&unified_contexts[i]->running, 0);
             
             stream_count++;
         }
     }
-    pthread_mutex_unlock(&hls_contexts_mutex);
+    pthread_mutex_unlock(&unified_contexts_mutex);
 
     // Log how many streams we need to stop
     log_info("Found %d active HLS streams to stop during shutdown", stream_count);
@@ -89,12 +91,6 @@ void cleanup_hls_streaming_backend(void) {
         
         // Mark the stream as stopping in our tracking system
         mark_stream_stopping(stream_names[i]);
-        
-        // Double-check that callbacks are disabled
-        if (state) {
-            set_stream_callbacks_enabled(state, false);
-            log_info("Callbacks disabled for stream '%s'", stream_names[i]);
-        }
     }
     
     // Add a small delay to allow in-progress operations to complete
@@ -126,15 +122,15 @@ void cleanup_hls_streaming_backend(void) {
             } else {
                 // Check if the stream is already stopped
                 bool already_stopped = true;
-                pthread_mutex_lock(&hls_contexts_mutex);
+                pthread_mutex_lock(&unified_contexts_mutex);
                 for (int j = 0; j < MAX_STREAMS; j++) {
-                    if (streaming_contexts[j] && 
-                        strcmp(streaming_contexts[j]->config.name, stream_names[i]) == 0) {
+                    if (unified_contexts[j] && 
+                        strcmp(unified_contexts[j]->stream_name, stream_names[i]) == 0) {
                         already_stopped = false;
                         break;
                     }
                 }
-                pthread_mutex_unlock(&hls_contexts_mutex);
+                pthread_mutex_unlock(&unified_contexts_mutex);
                 
                 if (already_stopped) {
                     log_warn("HLS stream %s is already stopped", stream_names[i]);
@@ -147,29 +143,22 @@ void cleanup_hls_streaming_backend(void) {
                     log_error("Failed to stop HLS stream %s after %d attempts", stream_names[i], max_attempts);
                     
                     // Force cleanup of this stream's context
-                    pthread_mutex_lock(&hls_contexts_mutex);
+                    pthread_mutex_lock(&unified_contexts_mutex);
                     for (int j = 0; j < MAX_STREAMS; j++) {
-                        if (streaming_contexts[j] && 
-                            strcmp(streaming_contexts[j]->config.name, stream_names[i]) == 0) {
+                        if (unified_contexts[j] && 
+                            strcmp(unified_contexts[j]->stream_name, stream_names[i]) == 0) {
                             
                             // Mark as not running
-                            atomic_store(&streaming_contexts[j]->running, 0);
-                            
-                            // Close the HLS writer if it exists
-                            if (streaming_contexts[j]->hls_writer) {
-                                log_warn("Forcing close of HLS writer for stream %s", stream_names[i]);
-                                hls_writer_close(streaming_contexts[j]->hls_writer);
-                                streaming_contexts[j]->hls_writer = NULL;
-                            }
+                            atomic_store(&unified_contexts[j]->running, 0);
                             
                             // Free the context
                             log_warn("Forcing cleanup of HLS context for stream %s", stream_names[i]);
-                            free(streaming_contexts[j]);
-                            streaming_contexts[j] = NULL;
+                            free(unified_contexts[j]);
+                            unified_contexts[j] = NULL;
                             break;
                         }
                     }
-                    pthread_mutex_unlock(&hls_contexts_mutex);
+                    pthread_mutex_unlock(&unified_contexts_mutex);
                 }
             }
         }
@@ -183,32 +172,24 @@ void cleanup_hls_streaming_backend(void) {
     cleanup_hls_contexts();
     
     // Final verification that all contexts are cleaned up with mutex protection
-    pthread_mutex_lock(&hls_contexts_mutex);
+    pthread_mutex_lock(&unified_contexts_mutex);
     bool any_remaining = false;
     for (int i = 0; i < MAX_STREAMS; i++) {
-        if (streaming_contexts[i] != NULL) {
+        if (unified_contexts[i] != NULL) {
             any_remaining = true;
             log_warn("HLS context for stream %s still exists after cleanup", 
-                    streaming_contexts[i]->config.name);
+                    unified_contexts[i]->stream_name);
             
             // Force cleanup of remaining HLS context
             log_info("Cleaning up remaining HLS context for stream %s", 
-                    streaming_contexts[i]->config.name);
-            
-            // Close the HLS writer if it exists
-            if (streaming_contexts[i]->hls_writer) {
-                log_warn("Forcing close of remaining HLS writer for stream %s", 
-                        streaming_contexts[i]->config.name);
-                hls_writer_close(streaming_contexts[i]->hls_writer);
-                streaming_contexts[i]->hls_writer = NULL;
-            }
+                    unified_contexts[i]->stream_name);
             
             // Free the context
-            free(streaming_contexts[i]);
-            streaming_contexts[i] = NULL;
+            free(unified_contexts[i]);
+            unified_contexts[i] = NULL;
         }
     }
-    pthread_mutex_unlock(&hls_contexts_mutex);
+    pthread_mutex_unlock(&unified_contexts_mutex);
     
     if (!any_remaining) {
         log_info("All HLS contexts successfully cleaned up");

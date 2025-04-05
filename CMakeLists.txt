@@ -217,9 +217,9 @@ list(FILTER VIDEO_SOURCES EXCLUDE REGEX ".*hls_writer_thread\\.c$")
 # Add HLS sources
 file(GLOB HLS_SOURCES "src/video/hls/*.c")
 
-# Add HLS writer thread sources explicitly to ensure they're included
-set(HLS_WRITER_THREAD_SOURCES
-    "src/video/hls_writer_thread.c"
+# Add unified HLS thread sources explicitly to ensure they're included
+set(HLS_UNIFIED_THREAD_SOURCES
+    "src/video/hls/hls_unified_thread.c"
 )
 
 # Set up go2rtc integration if enabled
@@ -243,7 +243,7 @@ set(SOURCES
         ${UTILS_SOURCES}
         ${VIDEO_SOURCES}
         ${HLS_SOURCES}
-        ${HLS_WRITER_THREAD_SOURCES}
+        ${HLS_UNIFIED_THREAD_SOURCES}
         ${WEB_SOURCES}
         ${ROOT_SOURCES}
         "${INIH_INCLUDE_DIR}/ini.c"

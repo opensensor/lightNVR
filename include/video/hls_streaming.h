@@ -7,21 +7,19 @@
 #include "video/hls_writer.h"
 #include "video/stream_reader.h"
 
-// Structure for HLS streaming context
+// Structure for HLS streaming context (kept for backward compatibility)
 typedef struct {
     stream_config_t config;
     atomic_int running;  // Use atomic_int for thread-safe access
     pthread_t thread;
     char output_path[MAX_PATH_LENGTH];
     hls_writer_t *hls_writer;
-    // Removed reader_ctx field since we're using a single thread approach
 } hls_stream_ctx_t;
 
 // Include all HLS component headers
 #include "video/hls/hls_context.h"
-#include "video/hls/hls_stream_thread.h"
 #include "video/hls/hls_directory.h"
-#include "video/hls/hls_api.h"
+#include "video/hls/hls_unified_thread.h"
 
 /**
  * Initialize HLS streaming backend
