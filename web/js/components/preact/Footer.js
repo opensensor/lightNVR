@@ -16,7 +16,7 @@ import { fetchSystemVersion } from './utils.js';
  */
 export function Footer({ version = '' }) {
   const [year] = useState(new Date().getFullYear());
-  
+
   return html`
     <footer class="bg-gray-800 text-white py-4 px-4 mt-4 shadow-inner">
       <div class="container mx-auto flex flex-col sm:flex-row justify-between items-center">
@@ -41,11 +41,23 @@ export function Footer({ version = '' }) {
 export function loadFooter() {
   const footerContainer = document.getElementById('footer-container');
   if (!footerContainer) return;
-  
-  // Fetch system version and render the Footer component
-  fetchSystemVersion().then(version => {
-    import('../../preact.min.js').then(({ render }) => {
-      render(html`<${Footer} version=${version} />`, footerContainer);
-    });
+
+  // First render the footer with an empty version to ensure it appears immediately
+  import('../../preact.min.js').then(({ render }) => {
+    render(html`<${Footer} version="" />`, footerContainer);
+
+    // Then fetch the version and update the footer
+    fetchSystemVersion()
+      .then(version => {
+        if (version) {
+          render(html`<${Footer} version=${version} />`, footerContainer);
+        }
+      })
+      .catch(error => {
+        console.error('Error loading system version for footer:', error);
+        // Footer is already rendered with empty version, so no need to re-render
+      });
+  }).catch(error => {
+    console.error('Error importing Preact for footer:', error);
   });
 }

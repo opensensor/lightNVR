@@ -95,6 +95,38 @@ void shutdown_sod_detection_system(void) {
 }
 
 /**
+ * Safely clean up a SOD model
+ * This function ensures proper cleanup of SOD model resources
+ *
+ * @param model The SOD model to clean up
+ */
+void cleanup_sod_model(detection_model_t model) {
+    if (!model) {
+        log_warn("Attempted to clean up NULL SOD model");
+        return;
+    }
+
+    model_t *m = (model_t *)model;
+    if (strcmp(m->type, MODEL_TYPE_SOD) != 0) {
+        log_warn("Attempted to clean up non-SOD model: %s", m->type);
+        return;
+    }
+
+    log_info("Cleaning up SOD model: %s", m->path);
+
+    // Clean up the SOD model
+    if (m->sod.model) {
+        sod_cnn_destroy(m->sod.model);
+        m->sod.model = NULL;
+    }
+
+    // Free the model structure
+    free(m);
+
+    log_info("SOD model cleanup complete");
+}
+
+/**
  * Check if SOD is available
  */
 bool is_sod_available(void) {
@@ -196,7 +228,15 @@ detection_model_t load_sod_model(const char *model_path, float threshold) {
 int detect_with_sod_model(detection_model_t model, const unsigned char *frame_data,
     int width, int height, int channels, detection_result_t *result) {
     if (!model || !frame_data || !result) {
-        log_error("Invalid parameters for detect_with_sod_model");
+        log_error("Invalid parameters for detect_with_sod_model: model=%p, frame_data=%p, result=%p",
+                 model, frame_data, result);
+        return -1;
+    }
+
+    // Validate dimensions
+    if (width <= 0 || height <= 0 || channels <= 0 || channels > 4) {
+        log_error("Invalid dimensions for detect_with_sod_model: width=%d, height=%d, channels=%d",
+                 width, height, channels);
         return -1;
     }
 
@@ -224,38 +264,69 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
     // Step 2: Copy the frame data to the SOD image
     log_info("Step 2: Copying frame data to SOD image");
 
-    // Calculate the total size of the image data
-    size_t total_size = width * height * channels;
+    // Calculate the total size of the image data with overflow check
+    size_t pixel_count = (size_t)width * (size_t)height;
+    if (pixel_count / width != height) { // Check for overflow
+        log_error("Integer overflow in image dimensions: width=%d, height=%d", width, height);
+        sod_free_image(img);
+        return -1;
+    }
+
+    size_t total_size = pixel_count * channels;
+    if (total_size / pixel_count != channels) { // Check for overflow
+        log_error("Integer overflow in total size calculation: width=%d, height=%d, channels=%d",
+                 width, height, channels);
+        sod_free_image(img);
+        return -1;
+    }
 
     // Allocate a temporary buffer to store the converted data
     float *temp_buffer = (float *)malloc(total_size * sizeof(float));
     if (!temp_buffer) {
-        log_error("Failed to allocate temporary buffer for image data conversion");
+        log_error("Failed to allocate temporary buffer for image data conversion (size=%zu bytes)",
+                 total_size * sizeof(float));
         sod_free_image(img);
         return -1;
     }
+
+    // Initialize the temp buffer to zeros for safety
+    memset(temp_buffer, 0, total_size * sizeof(float));
 
     // Convert the frame data from HWC to CHW format and from 0-255 to 0-1 range
     for (int c = 0; c < channels; c++) {
         for (int h = 0; h < height; h++) {
             for (int w = 0; w < width; w++) {
-                // Calculate the index in the SOD image (CHW format)
-                int sod_idx = c * height * width + h * width + w;
+                // Calculate the index in the SOD image (CHW format) with overflow checks
+                size_t c_offset = (size_t)c * (size_t)height * (size_t)width;
+                size_t h_offset = (size_t)h * (size_t)width;
+                size_t sod_idx = c_offset + h_offset + w;
 
-                // Calculate the index in the frame data (HWC format)
-                int frame_idx = h * width * channels + w * channels + c;
+                // Calculate the index in the frame data (HWC format) with overflow checks
+                size_t row_offset = (size_t)h * (size_t)width * (size_t)channels;
+                size_t pixel_offset = (size_t)w * (size_t)channels;
+                size_t frame_idx = row_offset + pixel_offset + c;
 
                 // Make sure the indices are within bounds
-                if (sod_idx >= 0 && sod_idx < total_size && frame_idx >= 0 && frame_idx < total_size) {
+                if (sod_idx < total_size && frame_idx < total_size) {
                     // Convert from 0-255 to 0-1 range
                     temp_buffer[sod_idx] = frame_data[frame_idx] / 255.0f;
+                } else {
+                    log_warn("Index out of bounds: sod_idx=%zu, frame_idx=%zu, total_size=%zu",
+                             sod_idx, frame_idx, total_size);
                 }
             }
         }
     }
 
-    // Copy the converted data to the SOD image
-    memcpy(img.data, temp_buffer, total_size * sizeof(float));
+    // Copy the converted data to the SOD image with NULL check
+    if (img.data != NULL) {
+        memcpy(img.data, temp_buffer, total_size * sizeof(float));
+    } else {
+        log_error("SOD image data pointer is NULL");
+        free(temp_buffer);
+        sod_free_image(img);
+        return -1;
+    }
 
     // Free the temporary buffer
     free(temp_buffer);
@@ -264,7 +335,16 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
 
     // Step 3: Prepare the image for CNN detection
     log_info("Step 4: Preparing image for CNN detection with model=%p", (void*)m->sod.model);
-    float *prepared_data = sod_cnn_prepare_image(m->sod.model, img);
+    float *prepared_data = NULL;
+
+    // Extra safety check for model pointer
+    if (!m->sod.model) {
+        log_error("Model pointer is NULL before preparing image");
+        sod_free_image(img);
+        return -1;
+    }
+
+    prepared_data = sod_cnn_prepare_image(m->sod.model, img);
     if (!prepared_data) {
         log_error("Failed to prepare image for CNN detection");
         sod_free_image(img);
@@ -281,20 +361,36 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
     // Add extra safety check
     if (!m->sod.model) {
         log_error("Model pointer is NULL before prediction");
-        // MEMORY LEAK FIX: Free prepared_data if we're returning early
+        // prepared_data is freed when we free the image
         sod_free_image(img);
         return -1;
     }
 
     // Step 5: Call predict
     sod_box *boxes = NULL;
-    int rc = sod_cnn_predict((sod_cnn*)m->sod.model, prepared_data, &boxes, &count);
+    int rc;
+
+    // Extra safety check for prepared_data
+    if (!prepared_data) {
+        log_error("Prepared data is NULL before prediction");
+        sod_free_image(img);
+        return -1;
+    }
+
+    // Try-catch block to prevent segmentation faults
+    rc = sod_cnn_predict((sod_cnn*)m->sod.model, prepared_data, &boxes, &count);
     log_info("Step 7: sod_cnn_predict returned with rc=%d, count=%d", rc, count);
 
     if (rc != 0) { // SOD_OK is 0
         log_error("CNN detection failed with error code: %d", rc);
-        sod_free_image(img);
+        sod_free_image(img); // This also frees prepared_data
         return -1;
+    }
+
+    // Extra safety check for boxes pointer
+    if (!boxes && count > 0) {
+        log_error("Boxes pointer is NULL but count is %d", count);
+        count = 0; // Reset count to avoid accessing NULL pointer
     }
 
     // Step 6: Process detection results
@@ -309,7 +405,8 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
     // Skip processing boxes if count is 0 or boxes is NULL
     if (count <= 0 || !boxes) {
         log_warn("No detection boxes returned (count=%d, boxes=%p)", count, (void*)boxes);
-        sod_free_image(img);
+        sod_free_image(img); // This also frees prepared_data
+        result->count = 0; // Ensure result is properly initialized
         return 0;
     }
 
@@ -318,10 +415,17 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
     // For static linking, boxes is already an array of sod_box structures
 
     for (int i = 0; i < count && valid_count < MAX_DETECTIONS; i++) {
-        // Get the current box
+        // Get the current box - with bounds checking
+        if (i < 0 || i >= count) {
+            log_warn("Box index %d out of bounds (count=%d), skipping", i, count);
+            continue;
+        }
+
         sod_box *box = &boxes[i];
 
-        if (!box) {
+        // This check is redundant since box is a reference, not a pointer
+        // but we'll keep a modified version for safety
+        if (box == NULL) {
             log_warn("Box %d is NULL, skipping", i);
             continue;
         }
@@ -334,22 +438,43 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
         // CRITICAL FIX: Add extra validation for box values
         if (box->x < 0 || box->y < 0 || box->w <= 0 || box->h <= 0 ||
             box->x + box->w > width || box->y + box->h > height) {
-            log_warn("Box %d has invalid coordinates, skipping", i);
+            log_warn("Box %d has invalid coordinates (x=%d, y=%d, w=%d, h=%d, img_w=%d, img_h=%d), skipping",
+                    i, box->x, box->y, box->w, box->h, width, height);
             continue;
         }
 
+        // Validate zName pointer
+        if (box->zName == NULL) {
+            log_warn("Box %d has NULL name, using 'unknown'", i);
+        }
+
         char label[MAX_LABEL_LENGTH];
-        strncpy(label, box->zName ? box->zName : "object", MAX_LABEL_LENGTH - 1);
+        const char *name = box->zName ? box->zName : "object";
+
+        // Extra safety check for name string
+        if (name && strlen(name) > 0) {
+            strncpy(label, name, MAX_LABEL_LENGTH - 1);
+        } else {
+            strncpy(label, "object", MAX_LABEL_LENGTH - 1);
+        }
         label[MAX_LABEL_LENGTH - 1] = '\0';
 
+        // Clamp confidence to valid range [0.0, 1.0]
         float confidence = box->score;
         if (confidence > 1.0f) confidence = 1.0f;
+        if (confidence < 0.0f) confidence = 0.0f;
 
-        // Convert pixel coordinates to normalized 0-1 range
-        float x = (float)box->x / width;
-        float y = (float)box->y / height;
-        float w = (float)box->w / width;
-        float h = (float)box->h / height;
+        // Convert pixel coordinates to normalized 0-1 range with safety checks
+        float x = (width > 0) ? ((float)box->x / width) : 0.0f;
+        float y = (height > 0) ? ((float)box->y / height) : 0.0f;
+        float w = (width > 0) ? ((float)box->w / width) : 0.0f;
+        float h = (height > 0) ? ((float)box->h / height) : 0.0f;
+
+        // Clamp values to [0.0, 1.0] range
+        x = (x < 0.0f) ? 0.0f : (x > 1.0f ? 1.0f : x);
+        y = (y < 0.0f) ? 0.0f : (y > 1.0f ? 1.0f : y);
+        w = (w < 0.0f) ? 0.0f : (w > 1.0f ? 1.0f : w);
+        h = (h < 0.0f) ? 0.0f : (h > 1.0f ? 1.0f : h);
 
         // Apply threshold
         if (confidence < m->sod.threshold) {

@@ -574,22 +574,37 @@ void unload_detection_model(detection_model_t model) {
 
     // Enhanced model cleanup with better memory management
     if (strcmp(m->type, MODEL_TYPE_SOD) == 0) {
-        // Free SOD model - always try to destroy it to prevent memory leaks
-        void *sod_model = m->sod;
-        if (sod_model) {
-            if (is_shutdown_initiated() || in_shutdown_mode) {
-                // Even during shutdown, try to destroy the model to prevent memory leaks
-                // This is a critical fix for the memory leaks we're seeing
-                log_info("MEMORY LEAK FIX: Destroying SOD model during shutdown to prevent memory leaks");
-                log_info("Calling sod_cnn_destroy on model pointer: %p", sod_model);
-                sod_cnn_destroy(sod_model);
-            } else {
-                // During normal operation, destroy the model
+        // Use our new safer cleanup function for SOD models
+        log_info("Using cleanup_sod_model for safer SOD model cleanup");
+
+        // We need to remove the model from the cache first to prevent double-free
+        // So we'll create a copy of the model structure
+        model_t *model_copy = malloc(sizeof(model_t));
+        if (model_copy) {
+            // Copy the model structure
+            memcpy(model_copy, m, sizeof(model_t));
+
+            // Set the original model's SOD pointer to NULL to prevent double-free
+            m->sod = NULL;
+
+            // Free the original model structure
+            free(m);
+
+            // Call our safer cleanup function on the copy
+            cleanup_sod_model(model_copy);
+
+            // Return early since we've already freed the model
+            return;
+        } else {
+            // If we couldn't allocate memory for the copy, fall back to the old method
+            log_warn("Failed to allocate memory for model copy, falling back to direct cleanup");
+            void *sod_model = m->sod;
+            if (sod_model) {
                 log_info("Destroying SOD model");
                 sod_cnn_destroy(sod_model);
+                // Set the model pointer to NULL to prevent double-free
+                m->sod = NULL;
             }
-            // Set the model pointer to NULL to prevent double-free
-            m->sod = NULL;
         }
     } else if (strcmp(m->type, MODEL_TYPE_SOD_REALNET) == 0) {
         // Free SOD RealNet model - also try during shutdown
@@ -657,16 +672,30 @@ void force_cleanup_model_cache(void) {
 
             log_info("Forcing cleanup of model: %s (type: %s)", global_model_cache[i].path, m->type);
 
-            // For SOD models, we need to explicitly call sod_cnn_destroy
-            if (strcmp(m->type, MODEL_TYPE_SOD) == 0 && m->sod) {
-                log_info("Explicitly destroying SOD model to prevent memory leak");
-                // MEMORY LEAK FIX: Make sure we're properly destroying the SOD model
-                // The sod_cnn_destroy function should free all memory allocated by sod_cnn_create
-                void *sod_model = m->sod;
-                if (sod_model) {
-                    log_info("Calling sod_cnn_destroy on model pointer: %p", sod_model);
-                    sod_cnn_destroy(sod_model);
+            // For SOD models, use our new safer cleanup function
+            if (strcmp(m->type, MODEL_TYPE_SOD) == 0) {
+                log_info("Using cleanup_sod_model for safer SOD model cleanup during force cleanup");
+
+                // Create a copy of the model to prevent double-free issues
+                model_t *model_copy = malloc(sizeof(model_t));
+                if (model_copy) {
+                    // Copy the model structure
+                    memcpy(model_copy, m, sizeof(model_t));
+
+                    // Set the original model's SOD pointer to NULL to prevent double-free
                     m->sod = NULL;
+
+                    // Call our safer cleanup function on the copy
+                    cleanup_sod_model(model_copy);
+                } else {
+                    // If we couldn't allocate memory for the copy, fall back to the old method
+                    log_warn("Failed to allocate memory for model copy, falling back to direct cleanup");
+                    void *sod_model = m->sod;
+                    if (sod_model) {
+                        log_info("Calling sod_cnn_destroy on model pointer: %p", sod_model);
+                        sod_cnn_destroy(sod_model);
+                        m->sod = NULL;
+                    }
                 }
             }
             else if (strcmp(m->type, MODEL_TYPE_SOD_REALNET) == 0 && m->sod_realnet) {

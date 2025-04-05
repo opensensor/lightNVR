@@ -157,6 +157,7 @@ int detect_with_sod(void *model, const unsigned char *frame_data,
  */
 void ensure_sod_model_cleanup(detection_model_t model) {
     if (!model) {
+        log_warn("Attempted to clean up NULL SOD model");
         return;
     }
 
@@ -167,8 +168,11 @@ void ensure_sod_model_cleanup(detection_model_t model) {
     if (strcmp(model_type, MODEL_TYPE_SOD) == 0) {
         log_info("Ensuring proper cleanup of SOD model to prevent memory leaks");
 
-        // Unload the model using the detection model system
-        // This will call sod_cnn_destroy internally
+        // Use our new safer cleanup function
+        cleanup_sod_model(model);
+    } else {
+        // For non-SOD models, use the standard unload function
+        log_info("Using standard unload for non-SOD model type: %s", model_type);
         unload_detection_model(model);
     }
 }

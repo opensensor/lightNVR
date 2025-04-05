@@ -153,10 +153,22 @@ export function loadHeader(activeNav = '') {
   const headerContainer = document.getElementById('header-container');
   if (!headerContainer) return;
 
-  // Fetch system version and render the Header component
-  fetchSystemVersion().then(version => {
-    import('../../preact.min.js').then(({ render }) => {
-      render(html`<${Header} activeNav=${activeNav} version=${version} />`, headerContainer);
-    });
+  // First render the header with an empty version to ensure it appears immediately
+  import('../../preact.min.js').then(({ render }) => {
+    render(html`<${Header} activeNav=${activeNav} version="" />`, headerContainer);
+
+    // Then fetch the version and update the header
+    fetchSystemVersion()
+      .then(version => {
+        if (version) {
+          render(html`<${Header} activeNav=${activeNav} version=${version} />`, headerContainer);
+        }
+      })
+      .catch(error => {
+        console.error('Error loading system version:', error);
+        // Header is already rendered with empty version, so no need to re-render
+      });
+  }).catch(error => {
+    console.error('Error importing Preact:', error);
   });
 }
