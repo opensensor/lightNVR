@@ -118,15 +118,18 @@ void shutdown_detection_model_system(void) {
     // Set the in_shutdown_mode flag to true
     in_shutdown_mode = true;
 
-    // During shutdown, we'll just clear the cache entries without trying to unload models
-    // This prevents hanging during shutdown due to model destruction
+    // MEMORY LEAK FIX: Instead of just clearing the cache entries, properly unload the models
+    // This is critical to prevent memory leaks during shutdown
+    log_info("MEMORY LEAK FIX: Properly unloading all models during shutdown");
+
+    // First, force cleanup of all models in the global cache
+    force_cleanup_model_cache();
+
+    // Then, clear any remaining cache entries
     pthread_mutex_lock(&global_model_cache_mutex);
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (global_model_cache[i].path[0] != '\0' && global_model_cache[i].model) {
-            log_info("Clearing model from global cache during shutdown (skipping unload): %s", global_model_cache[i].path);
-
-            // Just mark the model as unloaded in our cache without calling unload_detection_model
-            // This avoids the potentially hanging sod_cnn_destroy call
+            log_info("Clearing remaining model from global cache: %s", global_model_cache[i].path);
             global_model_cache[i].path[0] = '\0';
             global_model_cache[i].model = NULL;
             global_model_cache[i].is_large_model = false;
