@@ -314,16 +314,34 @@ int stop_hls_stream(const char *stream_name) {
 
     // Since we're using detached threads, we don't need to join the thread
     // The thread will exit on its own when it checks ctx->running
-    // We just need to wait a bit to ensure the thread has time to notice it should exit
+    // But we need to ensure the thread has fully exited before freeing its context
 
     // Unlock the mutex to allow the thread to access shared resources during shutdown
     pthread_mutex_unlock(&hls_contexts_mutex);
 
-    // Wait a short time for the thread to begin its shutdown process
+    // Wait for the thread to begin its shutdown process
     // This helps ensure more orderly shutdown
     usleep(100000); // 100ms
 
     log_info("Waiting for detached thread for stream %s to exit on its own", stream_name);
+
+    // Wait longer to ensure the thread has fully exited
+    // This is critical to prevent use-after-free issues
+    int wait_attempts = 10; // Try up to 10 times
+    while (wait_attempts > 0) {
+        // Check if the thread has marked itself as exiting
+        if (is_stream_stopping(stream_name)) {
+            // Thread is still in the process of stopping
+            log_info("Thread for stream %s is still stopping, waiting... (%d attempts left)",
+                    stream_name, wait_attempts);
+            usleep(500000); // Wait 500ms between checks
+            wait_attempts--;
+        } else {
+            // Thread has completed its shutdown
+            log_info("Thread for stream %s has completed its shutdown", stream_name);
+            break;
+        }
+    }
 
     // Re-acquire the mutex for cleanup
     pthread_mutex_lock(&hls_contexts_mutex);

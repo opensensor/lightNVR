@@ -26,6 +26,7 @@
 #include "video/streams.h"
 #include "video/thread_utils.h"
 #include "video/detection_frame_processing.h"
+#include "video/hls/hls_context.h"
 
 // Stream thread state constants
 typedef enum {
@@ -656,6 +657,10 @@ static void *hls_writer_thread_func(void *arg) {
         log_info("Updated HLS writer thread %s state to STOPPED in shutdown coordinator", stream_name);
     }
 
+    // Unmark the stream as stopping to indicate we've completed our shutdown
+    unmark_stream_stopping(stream_name);
+    log_info("Unmarked stream %s as stopping before thread exit", stream_name);
+
     log_info("HLS writer thread for stream %s exited", stream_name);
     return NULL;
 }
@@ -841,6 +846,9 @@ void hls_writer_stop_recording_thread(hls_writer_t *writer) {
     atomic_store(&ctx->running, 0);
     atomic_store(&ctx->connection_valid, 0);
 
+    // Mark the stream as stopping to track the shutdown process
+    mark_stream_stopping(stream_name);
+
     // Mark the thread context as NULL in the writer
     // This prevents other threads from trying to access it while we're shutting down
     writer->thread_ctx = NULL;
@@ -852,8 +860,26 @@ void hls_writer_stop_recording_thread(hls_writer_t *writer) {
 
     // Since we're using detached threads, we don't need to join or detach the thread
     // The thread will exit on its own when it checks ctx->running
-    // We just need to wait a bit to ensure the thread has time to notice it should exit
+    // But we need to ensure the thread has fully exited before freeing its context
     log_info("Waiting for detached HLS writer thread for %s to exit on its own", stream_name);
+
+    // Wait longer to ensure the thread has fully exited
+    // This is critical to prevent use-after-free issues
+    int wait_attempts = 10; // Try up to 10 times
+    while (wait_attempts > 0) {
+        // Check if the thread has marked itself as exiting
+        if (is_stream_stopping(stream_name)) {
+            // Thread is still in the process of stopping
+            log_info("HLS writer thread for stream %s is still stopping, waiting... (%d attempts left)",
+                    stream_name, wait_attempts);
+            usleep(500000); // Wait 500ms between checks
+            wait_attempts--;
+        } else {
+            // Thread has completed its shutdown
+            log_info("HLS writer thread for stream %s has completed its shutdown", stream_name);
+            break;
+        }
+    }
 
     // Update component state in shutdown coordinator
     if (ctx->shutdown_component_id >= 0) {

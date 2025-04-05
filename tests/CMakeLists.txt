@@ -184,6 +184,11 @@ set(STREAM_DETECTION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/thread_utils.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/hls_writer.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/hls_writer_thread.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/hls/hls_context.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/hls/hls_stream_thread.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/hls/hls_directory.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/hls/hls_api.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/timestamp_manager.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/stream_protocol.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/stream_state.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/ffmpeg_utils.c
