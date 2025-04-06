@@ -247,6 +247,7 @@ set(SOURCES
         ${WEB_SOURCES}
         ${ROOT_SOURCES}
         "${INIH_INCLUDE_DIR}/ini.c"
+        include/utils/strings.h
 )
 
 # Add go2rtc sources if enabled

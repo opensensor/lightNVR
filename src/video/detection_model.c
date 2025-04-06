@@ -15,6 +15,7 @@
 #include "core/config.h"
 #include "core/shutdown_coordinator.h"
 #include "utils/memory.h"  // For get_total_memory_allocated
+#include "utils/strings.h"
 #include "video/detection_model.h"
 #include "video/sod_detection.h"
 #include "video/sod_realnet.h"
@@ -310,9 +311,7 @@ detection_model_t load_detection_model(const char *model_path, float threshold) 
     }
 
     // Check if this is an API URL (starts with http:// or https://) or the special "api-detection" string
-    bool is_api_url = (strncmp(model_path, "http://", 7) == 0 || 
-                      strncmp(model_path, "https://", 8) == 0 ||
-                      strcmp(model_path, "api-detection") == 0);
+    bool is_api_url = ends_with(model_path, "api-detection");
 
     // Only check file existence if it's not an API URL
     if (!is_api_url) {

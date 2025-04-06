@@ -18,6 +18,7 @@
 #include "core/logger.h"
 #include "core/config.h"
 #include "core/shutdown_coordinator.h"
+#include "utils/strings.h"
 #include "video/detection_stream_thread.h"
 #include "video/detection_model.h"
 #include "video/sod_integration.h"
@@ -949,9 +950,7 @@ static void *stream_detection_thread_func(void *arg) {
         log_info("[Stream %s] Loading detection model: %s", thread->stream_name, thread->model_path);
 
         // Check if this is an API URL or the special "api-detection" string
-        bool is_api_detection = (strncmp(thread->model_path, "http://", 7) == 0 || 
-                               strncmp(thread->model_path, "https://", 8) == 0 ||
-                               strcmp(thread->model_path, "api-detection") == 0);
+        bool is_api_detection = ends_with(thread->model_path, "api-detection");
 
         // Only check file existence if it's not an API detection
         if (!is_api_detection) {

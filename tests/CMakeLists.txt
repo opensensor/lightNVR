@@ -51,6 +51,7 @@ set(DETECTION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../external/inih/ini.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../external/cjson/cJSON.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../external/mongoose/mongoose.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/utils/strings.c
 )
 
 # Define motion detection sources
@@ -215,6 +216,7 @@ set(STREAM_DETECTION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/shutdown_coordinator.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/web/logger_websocket.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/utils/memory.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/utils/strings.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../external/inih/ini.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../external/cjson/cJSON.c
 )
