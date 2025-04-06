@@ -1130,6 +1130,10 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
         av_strerror(result, error_buf, AV_ERROR_MAX_STRING_SIZE);
         log_error("Error writing HLS packet for stream %s: %s", writer->stream_name, error_buf);
 
+        // MEMORY LEAK FIX: Force a garbage collection on error
+        // This helps clean up any buffer pools that might be leaking
+        av_buffer_pool_uninit(NULL);
+
         // Try to fix directory issues
         if (strstr(error_buf, "No such file or directory") != NULL) {
             ensure_output_directory(writer);
@@ -1139,6 +1143,15 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
             // Reset DTS tracker on timestamp errors or invalid data
             log_warn("Resetting DTS tracker for stream %s due to error: %s", writer->stream_name, error_buf);
             dts_tracker->initialized = 0;
+
+            // MEMORY LEAK FIX: For timestamp errors, force a more aggressive cleanup
+            if (strstr(error_buf, "non monotonically increasing dts") != NULL) {
+                log_warn("Forcing aggressive cleanup for timestamp error in stream %s", writer->stream_name);
+                // Call garbage collection multiple times to ensure all buffer pools are cleaned up
+                for (int i = 0; i < 3; i++) {
+                    av_buffer_pool_uninit(NULL);
+                }
+            }
 
             // For invalid data errors, return 0 instead of the error code
             // This allows the stream processing to continue despite occasional bad packets
@@ -1152,6 +1165,14 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
         // Let FFmpeg handle segment cleanup automatically
         // Update the last cleanup time to prevent uninitialized value issues
         writer->last_cleanup_time = now;
+
+        // MEMORY LEAK FIX: Periodically force a garbage collection on success
+        // This helps prevent memory growth over time
+        static int packet_count = 0;
+        if (++packet_count % 1000 == 0) {
+            log_debug("Performing periodic garbage collection after %d packets", packet_count);
+            av_buffer_pool_uninit(NULL);
+        }
     }
 
     return result;

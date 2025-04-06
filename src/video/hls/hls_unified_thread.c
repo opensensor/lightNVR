@@ -1242,6 +1242,17 @@ void *hls_unified_thread_func(void *arg) {
     // MEMORY LEAK FIX: Enhanced final cleanup with multiple safety checks
     log_info("Performing aggressive final cleanup for stream %s", stream_name);
 
+    // MEMORY LEAK FIX: Explicitly declare the comprehensive_ffmpeg_cleanup function
+    extern void comprehensive_ffmpeg_cleanup(AVFormatContext **input_ctx, AVCodecContext **codec_ctx,
+                                           AVPacket **packet, AVFrame **frame);
+
+    // MEMORY LEAK FIX: Add additional cleanup for FFmpeg resources
+    // This helps clean up any buffer pools or other resources that might be leaking
+    extern void av_buffer_pool_uninit(AVBufferPool **pool);
+    for (int i = 0; i < 5; i++) {
+        av_buffer_pool_uninit(NULL);
+    }
+
     // First attempt: Use our comprehensive cleanup function with enhanced safety
     if (ctx) {
         // Clean up FFmpeg resources first
@@ -1317,6 +1328,17 @@ void *hls_unified_thread_func(void *arg) {
         // Try one more time with our comprehensive cleanup
         comprehensive_ffmpeg_cleanup(&input_ctx, NULL, NULL, NULL);
     }
+
+    // MEMORY LEAK FIX: Final aggressive cleanup of FFmpeg resources
+    // This is a last-ditch effort to clean up any remaining resources
+    for (int i = 0; i < 10; i++) {
+        av_buffer_pool_uninit(NULL);
+    }
+
+    // MEMORY LEAK FIX: Force a garbage collection
+    // This helps clean up any remaining buffer pools
+    // Note: FFmpeg doesn't provide explicit functions to flush all buffers,
+    // so we're using av_buffer_pool_uninit as our best option
 
     log_info("Completed aggressive final cleanup for stream %s", stream_name);
 

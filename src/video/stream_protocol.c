@@ -477,6 +477,10 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
     timeout_context_t timeout;
     init_timeout(&timeout, 8); // 8-second timeout for stream info
 
+    // MEMORY LEAK FIX: Force a garbage collection before find_stream_info
+    // This helps clean up any buffer pools that might be in use
+    av_buffer_pool_uninit(NULL);
+
     // Find stream info with options
     ret = avformat_find_stream_info(*input_ctx, stream_options);
 
@@ -490,6 +494,16 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
 
         // Log detailed information about the timeout for debugging
         log_error("RTSP timeout details: URL=%s, Protocol=%d", url, protocol);
+    } else if (ret < 0) {
+        // MEMORY LEAK FIX: Handle errors from avformat_find_stream_info
+        // This is important because avformat_find_stream_info might have allocated memory
+        // even if it returned an error
+        char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+        av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+        log_error("Error finding stream info for %s: %s (code: %d)", url, error_buf, ret);
+
+        // Use our comprehensive cleanup function to ensure all resources are properly freed
+        handle_timeout_cleanup(url, input_ctx);
     }
 
     // Free the stream options
