@@ -469,14 +469,27 @@ int process_segment_for_detection(stream_detection_thread_t *thread, const char 
                 continue;
             }
 
-            // Receive frame from decoder
+            // Receive frame from decoder with safety checks
             ret = avcodec_receive_frame(codec_ctx, frame);
             if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
                 av_packet_unref(pkt);
                 continue;
             } else if (ret < 0) {
-                log_error("[Stream %s] Error receiving frame from decoder for segment file: %s",
-                         thread->stream_name, segment_path);
+                char err_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+                av_strerror(ret, err_buf, sizeof(err_buf));
+                log_error("[Stream %s] Error receiving frame from decoder for segment file: %s (error: %s)",
+                         thread->stream_name, segment_path, err_buf);
+
+                // Count errors and break if too many
+                error_frames++;
+                if (error_frames >= max_errors) {
+                    log_error("[Stream %s] Too many errors receiving frames from decoder for segment file: %s (errors: %d)",
+                             thread->stream_name, segment_path, error_frames);
+                    av_packet_unref(pkt);
+                    break;
+                }
+
+                // Try to continue with the next frame
                 av_packet_unref(pkt);
                 continue;
             }
@@ -659,14 +672,34 @@ int process_segment_for_detection(stream_detection_thread_t *thread, const char 
         av_packet_unref(pkt);
     }
 
-    log_info("[Stream %s] Processed %d frames out of %d total frames from segment file: %s",
-             thread->stream_name, processed_frames, frame_count, segment_path);
+    log_info("[Stream %s] Processed %d frames out of %d total frames from segment file: %s (errors: %d)",
+             thread->stream_name, processed_frames, frame_count, segment_path, error_frames);
 
-    // Cleanup
-    av_frame_free(&frame);
-    av_packet_free(&pkt);
-    avcodec_free_context(&codec_ctx);
-    avformat_close_input(&format_ctx);
+    // CRITICAL FIX: Use comprehensive cleanup to prevent memory leaks and segmentation faults
+    log_debug("[Stream %s] Starting comprehensive cleanup of FFmpeg resources", thread->stream_name);
+
+    // Cleanup with safety checks
+    if (frame) {
+        log_debug("[Stream %s] Freeing frame during cleanup", thread->stream_name);
+        av_frame_free(&frame);
+    }
+
+    if (pkt) {
+        log_debug("[Stream %s] Freeing packet during cleanup", thread->stream_name);
+        av_packet_free(&pkt);
+    }
+
+    if (codec_ctx) {
+        log_debug("[Stream %s] Freeing codec context during cleanup", thread->stream_name);
+        avcodec_free_context(&codec_ctx);
+    }
+
+    if (format_ctx) {
+        log_debug("[Stream %s] Closing input format context during cleanup", thread->stream_name);
+        avformat_close_input(&format_ctx);
+    }
+
+    log_debug("[Stream %s] Completed comprehensive cleanup of FFmpeg resources", thread->stream_name);
 
     return 0;
 }
