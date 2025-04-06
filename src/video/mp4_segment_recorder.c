@@ -279,6 +279,10 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
     start_time = av_gettime();
     log_info("Recording started...");
 
+    // Initialize timestamp tracking variables
+    int consecutive_timestamp_errors = 0;
+    int max_timestamp_errors = 5;  // Maximum number of consecutive timestamp errors before resetting
+
     // Flag to track if we've found the first key frame
     bool found_first_keyframe = false;
     // Flag to track if we're waiting for the final key frame
@@ -565,6 +569,24 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                 pkt->pts = pkt->dts;
             }
 
+            // CRITICAL FIX: Ensure monotonically increasing DTS values
+            // This prevents the "Application provided invalid, non monotonically increasing dts" error
+            if (pkt->dts != AV_NOPTS_VALUE && last_video_dts != 0 && pkt->dts <= last_video_dts) {
+                int64_t fixed_dts = last_video_dts + 1;
+                log_debug("Fixing non-monotonic DTS: old=%lld, last=%lld, new=%lld",
+                         (long long)pkt->dts, (long long)last_video_dts, (long long)fixed_dts);
+
+                // Maintain the PTS-DTS relationship if possible
+                if (pkt->pts != AV_NOPTS_VALUE) {
+                    int64_t pts_dts_diff = pkt->pts - pkt->dts;
+                    pkt->dts = fixed_dts;
+                    pkt->pts = fixed_dts + (pts_dts_diff > 0 ? pts_dts_diff : 0);
+                } else {
+                    pkt->dts = fixed_dts;
+                    pkt->pts = fixed_dts;
+                }
+            }
+
             // Update last timestamps
             if (pkt->dts != AV_NOPTS_VALUE) {
                 last_video_dts = pkt->dts;
@@ -597,8 +619,45 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
             // Write packet
             ret = av_interleaved_write_frame(output_ctx, pkt);
             if (ret < 0) {
-                log_error("Error writing video frame: %d", ret);
+                char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+                av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+                log_error("Error writing video frame: %d (%s)", ret, error_buf);
+
+                // CRITICAL FIX: Handle timestamp-related errors
+                if (ret == AVERROR(EINVAL) && strstr(error_buf, "monoton")) {
+                    // This is likely a timestamp error, try to fix it for the next packet
+                    log_warn("Detected timestamp error, will try to fix for next packet");
+
+                    // Increment the consecutive error counter
+                    consecutive_timestamp_errors++;
+
+                    if (consecutive_timestamp_errors >= max_timestamp_errors) {
+                        // Too many consecutive errors, reset all timestamps
+                        log_warn("Too many consecutive timestamp errors (%d), resetting all timestamps",
+                                consecutive_timestamp_errors);
+
+                        // Reset timestamps to small values
+                        first_video_dts = 0;
+                        first_video_pts = 0;
+                        last_video_dts = 0;
+                        last_video_pts = 0;
+                        first_audio_dts = 0;
+                        first_audio_pts = 0;
+                        last_audio_dts = 0;
+                        last_audio_pts = 0;
+
+                        // Reset the error counter
+                        consecutive_timestamp_errors = 0;
+                    } else {
+                        // Force a larger increment for the next packet to avoid timestamp issues
+                        last_video_dts += 100 * consecutive_timestamp_errors;
+                        last_video_pts += 100 * consecutive_timestamp_errors;
+                    }
+                }
             } else {
+                // Reset consecutive error counter on success
+                consecutive_timestamp_errors = 0;
+
                 video_packet_count++;
                 if (video_packet_count % 300 == 0) {
                     log_debug("Processed %d video packets", video_packet_count);
@@ -653,16 +712,25 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 
             // Ensure monotonic increase of timestamps
             if (audio_packet_count > 0) {
+                // CRITICAL FIX: More robust handling of non-monotonic DTS values
                 if (pkt->dts != AV_NOPTS_VALUE && pkt->dts <= last_audio_dts) {
-                    pkt->dts = last_audio_dts + 1;
+                    int64_t fixed_dts = last_audio_dts + 1;
+                    log_debug("Fixing non-monotonic audio DTS: old=%lld, last=%lld, new=%lld",
+                             (long long)pkt->dts, (long long)last_audio_dts, (long long)fixed_dts);
+                    pkt->dts = fixed_dts;
                 }
 
                 if (pkt->pts != AV_NOPTS_VALUE && pkt->pts <= last_audio_pts) {
-                    pkt->pts = last_audio_pts + 1;
+                    int64_t fixed_pts = last_audio_pts + 1;
+                    log_debug("Fixing non-monotonic audio PTS: old=%lld, last=%lld, new=%lld",
+                             (long long)pkt->pts, (long long)last_audio_pts, (long long)fixed_pts);
+                    pkt->pts = fixed_pts;
                 }
 
                 // Ensure PTS >= DTS
                 if (pkt->pts != AV_NOPTS_VALUE && pkt->dts != AV_NOPTS_VALUE && pkt->pts < pkt->dts) {
+                    log_debug("Fixing audio packet with PTS < DTS: PTS=%lld, DTS=%lld",
+                             (long long)pkt->pts, (long long)pkt->dts);
                     pkt->pts = pkt->dts;
                 }
             }
@@ -762,8 +830,45 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
             // Write packet
             ret = av_interleaved_write_frame(output_ctx, pkt);
             if (ret < 0) {
-                log_error("Error writing audio frame: %d", ret);
+                char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+                av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+                log_error("Error writing audio frame: %d (%s)", ret, error_buf);
+
+                // CRITICAL FIX: Handle timestamp-related errors
+                if (ret == AVERROR(EINVAL) && strstr(error_buf, "monoton")) {
+                    // This is likely a timestamp error, try to fix it for the next packet
+                    log_warn("Detected audio timestamp error, will try to fix for next packet");
+
+                    // Increment the consecutive error counter
+                    consecutive_timestamp_errors++;
+
+                    if (consecutive_timestamp_errors >= max_timestamp_errors) {
+                        // Too many consecutive errors, reset all timestamps
+                        log_warn("Too many consecutive audio timestamp errors (%d), resetting all timestamps",
+                                consecutive_timestamp_errors);
+
+                        // Reset timestamps to small values
+                        first_video_dts = 0;
+                        first_video_pts = 0;
+                        last_video_dts = 0;
+                        last_video_pts = 0;
+                        first_audio_dts = 0;
+                        first_audio_pts = 0;
+                        last_audio_dts = 0;
+                        last_audio_pts = 0;
+
+                        // Reset the error counter
+                        consecutive_timestamp_errors = 0;
+                    } else {
+                        // Force a larger increment for the next packet to avoid timestamp issues
+                        last_audio_dts += 100 * consecutive_timestamp_errors;
+                        last_audio_pts += 100 * consecutive_timestamp_errors;
+                    }
+                }
             } else {
+                // Reset consecutive error counter on success
+                consecutive_timestamp_errors = 0;
+
                 audio_packet_count++;
                 if (audio_packet_count % 300 == 0) {
                     log_debug("Processed %d audio packets", audio_packet_count);
