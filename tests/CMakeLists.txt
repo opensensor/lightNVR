@@ -192,6 +192,7 @@ set(STREAM_DETECTION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/stream_protocol.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/stream_state.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/ffmpeg_utils.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/timeout_utils.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/go2rtc/go2rtc_integration.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/go2rtc/go2rtc_consumer.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/go2rtc/go2rtc_api.c

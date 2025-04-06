@@ -11,19 +11,6 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <time.h>
-#include <signal.h>
-#include <setjmp.h>
-
-// Global variables for alarm handling
-static jmp_buf alarm_jmp_buf;
-static volatile sig_atomic_t alarm_triggered = 0;
-
-// Signal handler for SIGALRM
-static void alarm_handler(int sig) {
-    alarm_triggered = 1;
-    longjmp(alarm_jmp_buf, 1);
-}
-
 #include "core/logger.h"
 #include "core/config.h"
 #include "core/shutdown_coordinator.h"
@@ -481,3 +468,5 @@ void force_cleanup_model_cache(void) {
 
     log_info("Thread-local model approach: No global cache to clean up");
 }
+
+

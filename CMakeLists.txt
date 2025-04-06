@@ -214,6 +214,11 @@ list(FILTER VIDEO_SOURCES EXCLUDE REGEX ".*motion_detection_optimized\\.c$")
 list(FILTER VIDEO_SOURCES EXCLUDE REGEX ".*detection_thread_pool\\.c$")
 list(FILTER VIDEO_SOURCES EXCLUDE REGEX ".*hls_writer_thread\\.c$")
 
+# Add our new timeout utilities
+set(TIMEOUT_UTILS_SOURCES
+    "src/video/timeout_utils.c"
+)
+
 # Add HLS sources
 file(GLOB HLS_SOURCES "src/video/hls/*.c")
 
@@ -242,6 +247,7 @@ set(SOURCES
         ${STORAGE_SOURCES}
         ${UTILS_SOURCES}
         ${VIDEO_SOURCES}
+        ${TIMEOUT_UTILS_SOURCES}
         ${HLS_SOURCES}
         ${HLS_UNIFIED_THREAD_SOURCES}
         ${WEB_SOURCES}

@@ -143,7 +143,12 @@ int process_frame_for_stream_detection(const char *stream_name, const uint8_t *f
     pthread_mutex_unlock(&thread->mutex);
 
     if (detect_ret != 0) {
+        // Handle detection errors
         log_error("[Stream %s] Detection failed (error code: %d)", thread->stream_name, detect_ret);
+
+        // Clear the atomic flag to indicate detection is complete
+        atomic_store(&thread->detection_in_progress, 0);
+
         pthread_mutex_unlock(&stream_threads_mutex);
         return -1;
     }

@@ -32,13 +32,16 @@ typedef struct hls_writer_t {
 
     // Per-stream DTS tracking
     stream_dts_info_t dts_tracker;
-    
+
+    // Counter for DTS jumps to detect stream issues
+    int dts_jump_count;
+
     // Bitstream filter context for H.264 streams
     AVBSFContext *bsf_ctx;
-    
+
     // Thread context for standalone operation
     void *thread_ctx;
-    
+
     // Mutex for thread safety
     pthread_mutex_t mutex;
 } hls_writer_t;
@@ -66,7 +69,7 @@ void hls_writer_close(hls_writer_t *writer);
 /**
  * Process a packet for detection
  * This function decodes the packet and passes the decoded frame to the detection system
- * 
+ *
  * @param stream_name The name of the stream
  * @param pkt The packet to process
  * @param codec_params The codec parameters for the stream
