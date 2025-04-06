@@ -10,8 +10,11 @@
 
 #include "core/logger.h"
 #include "core/config.h"
+#include "core/shutdown_coordinator.h"
 #include "video/api_detection.h"
 #include "video/detection_result.h"
+#include "video/stream_manager.h"
+#include "video/stream_state.h"
 #include "database/db_detections.h"
 
 // Global variables
@@ -101,6 +104,28 @@ void shutdown_api_detection_system(void) {
 int detect_objects_api(const char *api_url, const unsigned char *frame_data,
                       int width, int height, int channels, detection_result_t *result,
                       const char *stream_name) {
+    // CRITICAL FIX: Check if we're in shutdown mode or if the stream has been stopped
+    if (is_shutdown_initiated()) {
+        log_info("API Detection: System shutdown in progress, skipping detection");
+        return -1;
+    }
+    
+    // Check if the stream still exists
+    if (stream_name && stream_name[0] != '\0') {
+        stream_handle_t stream = get_stream_by_name(stream_name);
+        if (!stream) {
+            log_info("API Detection: Stream %s no longer exists, skipping detection", stream_name);
+            return -1;
+        }
+        
+        // Check if the stream is still running
+        stream_status_t status = get_stream_status(stream);
+        if (status != STREAM_STATUS_RUNNING && status != STREAM_STATUS_STARTING) {
+            log_info("API Detection: Stream %s is not running (status: %d), skipping detection", 
+                    stream_name, status);
+            return -1;
+        }
+    }
     // CRITICAL FIX: Check if api_url is the special "api-detection" string
     // If so, get the actual URL from the global config
     const char *actual_api_url = api_url;
