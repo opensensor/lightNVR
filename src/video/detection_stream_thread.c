@@ -632,10 +632,107 @@ static void check_for_new_segments(stream_detection_thread_t *thread) {
         }
     }
 
-    if (thread->hls_dir[0] == '\0') {
-        log_error("[Stream %s] HLS directory path is empty", thread->stream_name);
-        return;
+    // CRITICAL FIX: Always determine the HLS directory path from the global config
+    extern config_t g_config;
+    
+    // Get the HLS directory for this stream using the global config
+    char hls_dir[MAX_PATH_LENGTH];
+    
+    // Use storage_path_hls if specified, otherwise fall back to storage_path
+    const char *base_storage_path = g_config.storage_path;
+    if (g_config.storage_path_hls[0] != '\0') {
+        base_storage_path = g_config.storage_path_hls;
+        log_info("[Stream %s] Using dedicated HLS storage path: %s", thread->stream_name, base_storage_path);
     }
+    
+    // Try both possible HLS directory paths
+    char standard_path[MAX_PATH_LENGTH];
+    char alternative_path[MAX_PATH_LENGTH];
+    
+    // Standard path: base_storage_path/hls/stream_name
+    snprintf(standard_path, MAX_PATH_LENGTH, "%s/hls/%s", base_storage_path, thread->stream_name);
+    
+    // Alternative path: base_storage_path/hls/hls/stream_name
+    snprintf(alternative_path, MAX_PATH_LENGTH, "%s/hls/hls/%s", base_storage_path, thread->stream_name);
+    
+    // Check which path exists and has segments
+    struct stat st_standard, st_alternative;
+    bool standard_exists = (stat(standard_path, &st_standard) == 0 && S_ISDIR(st_standard.st_mode));
+    bool alternative_exists = (stat(alternative_path, &st_alternative) == 0 && S_ISDIR(st_alternative.st_mode));
+    
+    // Determine which path to use
+    if (standard_exists) {
+        DIR *dir = opendir(standard_path);
+        int segment_count = 0;
+        if (dir) {
+            struct dirent *entry;
+            while ((entry = readdir(dir)) != NULL) {
+                if (strstr(entry->d_name, ".ts") || strstr(entry->d_name, ".m4s")) {
+                    segment_count++;
+                    break;
+                }
+            }
+            closedir(dir);
+        }
+        
+        if (segment_count > 0) {
+            strncpy(hls_dir, standard_path, MAX_PATH_LENGTH - 1);
+            log_info("[Stream %s] Using standard HLS directory path with segments: %s", 
+                    thread->stream_name, standard_path);
+        } else if (alternative_exists) {
+            // Standard path exists but has no segments, try alternative
+            dir = opendir(alternative_path);
+            segment_count = 0;
+            if (dir) {
+                struct dirent *entry;
+                while ((entry = readdir(dir)) != NULL) {
+                    if (strstr(entry->d_name, ".ts") || strstr(entry->d_name, ".m4s")) {
+                        segment_count++;
+                        break;
+                    }
+                }
+                closedir(dir);
+            }
+            
+            if (segment_count > 0) {
+                strncpy(hls_dir, alternative_path, MAX_PATH_LENGTH - 1);
+                log_info("[Stream %s] Using alternative HLS directory path with segments: %s", 
+                        thread->stream_name, alternative_path);
+            } else {
+                // No segments in either path, default to standard
+                strncpy(hls_dir, standard_path, MAX_PATH_LENGTH - 1);
+                log_info("[Stream %s] No segments found, defaulting to standard HLS directory path: %s", 
+                        thread->stream_name, standard_path);
+            }
+        } else {
+            // Alternative doesn't exist, use standard
+            strncpy(hls_dir, standard_path, MAX_PATH_LENGTH - 1);
+            log_info("[Stream %s] Using standard HLS directory path: %s", 
+                    thread->stream_name, standard_path);
+        }
+    } else if (alternative_exists) {
+        // Standard doesn't exist but alternative does
+        strncpy(hls_dir, alternative_path, MAX_PATH_LENGTH - 1);
+        log_info("[Stream %s] Using alternative HLS directory path: %s", 
+                thread->stream_name, alternative_path);
+    } else {
+        // Neither exists, create and use standard path
+        strncpy(hls_dir, standard_path, MAX_PATH_LENGTH - 1);
+        log_info("[Stream %s] Creating standard HLS directory path: %s", 
+                thread->stream_name, standard_path);
+        
+        // Create the directory
+        char cmd[MAX_PATH_LENGTH * 2];
+        snprintf(cmd, sizeof(cmd), "mkdir -p %s", standard_path);
+        system(cmd);
+    }
+    
+    hls_dir[MAX_PATH_LENGTH - 1] = '\0';
+    
+    // Update the thread's HLS directory path
+    strncpy(thread->hls_dir, hls_dir, MAX_PATH_LENGTH - 1);
+    thread->hls_dir[MAX_PATH_LENGTH - 1] = '\0';
+    
     log_info("[Stream %s] Using HLS directory: %s", thread->stream_name, thread->hls_dir);
 
     // Open the HLS directory
