@@ -4,6 +4,9 @@
 /lib/
 /obj/
 
+# Sub-project
+light-object-detect/
+
 # Generated files
 cmake-build-debug/
 
