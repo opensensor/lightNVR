@@ -309,24 +309,31 @@ detection_model_t load_detection_model(const char *model_path, float threshold) 
         return NULL;
     }
 
-    // Check if file exists and get its size
-    struct stat st;
-    if (stat(model_path, &st) != 0) {
-        log_error("MODEL FILE NOT FOUND: %s", model_path);
-        return NULL;
+    // Check if this is an API URL (starts with http:// or https://) or the special "api-detection" string
+    bool is_api_url = (strncmp(model_path, "http://", 7) == 0 || 
+                      strncmp(model_path, "https://", 8) == 0 ||
+                      strcmp(model_path, "api-detection") == 0);
+
+    // Only check file existence if it's not an API URL
+    if (!is_api_url) {
+        // Check if file exists and get its size
+        struct stat st;
+        if (stat(model_path, &st) != 0) {
+            log_error("MODEL FILE NOT FOUND: %s", model_path);
+            return NULL;
+        }
+
+        log_info("MODEL FILE EXISTS: %s", model_path);
+        log_info("MODEL FILE SIZE: %ld bytes", (long)st.st_size);
+
+        // Check if this is a large model (just for logging)
+        double model_size_mb = (double)st.st_size / (1024 * 1024);
+        if (model_size_mb > MAX_MODEL_SIZE_MB) {
+            log_warn("Large model detected: %.1f MB (limit: %d MB)", model_size_mb, MAX_MODEL_SIZE_MB);
+        }
+    } else {
+        log_info("API DETECTION: Using API for detection instead of a local model file");
     }
-
-    log_info("MODEL FILE EXISTS: %s", model_path);
-    log_info("MODEL FILE SIZE: %ld bytes", (long)st.st_size);
-
-    // Check if this is a large model (just for logging)
-    double model_size_mb = (double)st.st_size / (1024 * 1024);
-    if (model_size_mb > MAX_MODEL_SIZE_MB) {
-        log_warn("Large model detected: %.1f MB (limit: %d MB)", model_size_mb, MAX_MODEL_SIZE_MB);
-    }
-
-    // Check if this is an API URL (starts with http:// or https://)
-    bool is_api_url = (strncmp(model_path, "http://", 7) == 0 || strncmp(model_path, "https://", 8) == 0);
     
     // Get model type
     const char *model_type = is_api_url ? MODEL_TYPE_API : get_model_type(model_path);

@@ -425,11 +425,26 @@ static int process_segment_for_detection(stream_detection_thread_t *thread, cons
                     
                     if (strcmp(api_model_type, MODEL_TYPE_API) == 0) {
                         // For API models, we need to pass the stream name
-                        const char *api_url = get_model_path(thread->model);
-                        log_info("[Stream %s] Using API detection with URL: %s", thread->stream_name, api_url ? api_url : "NULL");
+                        const char *model_path = get_model_path(thread->model);
                         
-                        if (!api_url) {
-                            log_error("[Stream %s] Failed to get API URL from model", thread->stream_name);
+                        // Get the API URL - either from the model path if it's a URL,
+                        // or from the global config if it's the special "api-detection" string
+                        const char *api_url = NULL;
+                        if (model_path && strcmp(model_path, "api-detection") == 0) {
+                            // Get the API URL from the global config
+                            extern config_t g_config;
+                            api_url = g_config.api_detection_url;
+                            log_info("[Stream %s] Using API detection URL from config: %s", 
+                                    thread->stream_name, api_url ? api_url : "NULL");
+                        } else {
+                            // Use the model path directly as the URL
+                            api_url = model_path;
+                            log_info("[Stream %s] Using API detection with URL from model path: %s", 
+                                    thread->stream_name, api_url ? api_url : "NULL");
+                        }
+                        
+                        if (!api_url || api_url[0] == '\0') {
+                            log_error("[Stream %s] Failed to get API URL from model or config", thread->stream_name);
                             detect_ret = -1;
                         } else {
                             log_info("[Stream %s] Calling detect_objects_api with URL: %s", thread->stream_name, api_url);

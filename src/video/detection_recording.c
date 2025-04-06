@@ -812,9 +812,10 @@ int monitor_hls_segments_for_detection(const char *stream_name) {
                           strncmp(config.detection_model, "https://", 8) == 0);
         
         if (is_api_url) {
-            // For API URLs, use the URL directly
-            log_info("Using API detection URL: %s", config.detection_model);
-            strncpy(full_model_path, config.detection_model, MAX_PATH_LENGTH - 1);
+            // For API URLs, use the special "api-detection" string instead of the URL directly
+            // This will make the system use the API URL from settings when needed
+            log_info("Using API detection for URL: %s", config.detection_model);
+            strncpy(full_model_path, "api-detection", MAX_PATH_LENGTH - 1);
             full_model_path[MAX_PATH_LENGTH - 1] = '\0';
         } else if (config.detection_model[0] != '/') {
             // Construct full path using configured models path from INI if it exists
