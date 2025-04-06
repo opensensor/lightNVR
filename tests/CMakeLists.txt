@@ -29,6 +29,11 @@ include_directories(
 
 # Define source files needed for tests
 set(DETECTION_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/go2rtc/go2rtc_api.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/go2rtc/go2rtc_consumer.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/go2rtc/go2rtc_integration.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/go2rtc/go2rtc_process.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/go2rtc/go2rtc_stream.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/detection.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/detection_model.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/sod_detection.c
