@@ -699,8 +699,15 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
         // If not explicitly changed in this request, use the current config value
         detection_now_enabled = config.detection_based_recording;
 
-        // We need to check if a detection thread is already running to determine previous state
+        // Check if a detection thread is already running
         detection_was_enabled = is_stream_detection_thread_running(config.name);
+        
+        // If detection is enabled in config but no thread is running, we need to start one
+        if (detection_now_enabled && !detection_was_enabled) {
+            log_info("Detection is enabled in config for stream %s but no thread is running", config.name);
+            detection_enabled_changed = true;
+            detection_was_enabled = false; // Force thread start below
+        }
     }
 
     // If detection was enabled and now disabled, stop the detection thread
