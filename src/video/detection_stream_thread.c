@@ -632,62 +632,10 @@ static void check_for_new_segments(stream_detection_thread_t *thread) {
         }
     }
 
-    // CRITICAL FIX: Check both possible HLS directory paths
     if (thread->hls_dir[0] == '\0') {
         log_error("[Stream %s] HLS directory path is empty", thread->stream_name);
         return;
     }
-
-    // Try both possible HLS directory paths
-    char alt_hls_dir[MAX_PATH_LENGTH];
-
-    // If the current path is /tmp/lightnvr/hls/hls/stream_name, try /tmp/lightnvr/hls/stream_name
-    // If the current path is /tmp/lightnvr/hls/stream_name, try /tmp/lightnvr/hls/hls/stream_name
-    if (strstr(thread->hls_dir, "/hls/hls/")) {
-        // Current path has double hls, try with single hls
-        char *pos = strstr(thread->hls_dir, "/hls/hls/");
-        snprintf(alt_hls_dir, MAX_PATH_LENGTH, "%.*s/hls/%s",
-                (int)(pos - thread->hls_dir), thread->hls_dir,
-                pos + strlen("/hls/hls/"));
-    } else if (strstr(thread->hls_dir, "/hls/")) {
-        // Current path has single hls, try with double hls
-        char *pos = strstr(thread->hls_dir, "/hls/");
-        snprintf(alt_hls_dir, MAX_PATH_LENGTH, "%.*s/hls/hls/%s",
-                (int)(pos - thread->hls_dir), thread->hls_dir,
-                pos + strlen("/hls/"));
-    } else {
-        // Unexpected path format, just use the original
-        strncpy(alt_hls_dir, thread->hls_dir, MAX_PATH_LENGTH - 1);
-        alt_hls_dir[MAX_PATH_LENGTH - 1] = '\0';
-    }
-
-    log_info("[Stream %s] CRITICAL FIX: Checking both HLS directory paths:", thread->stream_name);
-    log_info("[Stream %s]   Primary: %s", thread->stream_name, thread->hls_dir);
-    log_info("[Stream %s]   Alternative: %s", thread->stream_name, alt_hls_dir);
-
-    // Check if the alternative directory exists and has segments
-    DIR *alt_dir = opendir(alt_hls_dir);
-    if (alt_dir) {
-        struct dirent *alt_entry;
-        int alt_segment_count = 0;
-
-        while ((alt_entry = readdir(alt_dir)) != NULL) {
-            if (strstr(alt_entry->d_name, ".ts") || strstr(alt_entry->d_name, ".m4s")) {
-                alt_segment_count++;
-                break;  // We only need to know if there's at least one segment
-            }
-        }
-
-        closedir(alt_dir);
-
-        if (alt_segment_count > 0) {
-            log_info("[Stream %s] Found segments in alternative directory, switching to: %s",
-                    thread->stream_name, alt_hls_dir);
-            strncpy(thread->hls_dir, alt_hls_dir, MAX_PATH_LENGTH - 1);
-            thread->hls_dir[MAX_PATH_LENGTH - 1] = '\0';
-        }
-    }
-
     log_info("[Stream %s] Using HLS directory: %s", thread->stream_name, thread->hls_dir);
 
     // Open the HLS directory
@@ -903,46 +851,56 @@ static void *stream_detection_thread_func(void *arg) {
     if (!thread->model && thread->model_path[0] != '\0') {
         log_info("[Stream %s] Loading detection model: %s", thread->stream_name, thread->model_path);
 
-        // Check if model file exists
-        struct stat st;
-        if (stat(thread->model_path, &st) != 0) {
-            log_error("[Stream %s] Model file does not exist: %s", thread->stream_name, thread->model_path);
+        // Check if this is an API URL or the special "api-detection" string
+        bool is_api_detection = (strncmp(thread->model_path, "http://", 7) == 0 || 
+                               strncmp(thread->model_path, "https://", 8) == 0 ||
+                               strcmp(thread->model_path, "api-detection") == 0);
 
-            // Try to find the model in alternative locations
-            char alt_model_path[MAX_PATH_LENGTH];
-            const char *locations[] = {
-                "/var/lib/lightnvr/models/",
-                "/etc/lightnvr/models/",
-                "/usr/local/share/lightnvr/models/"
-            };
+        // Only check file existence if it's not an API detection
+        if (!is_api_detection) {
+            // Check if model file exists
+            struct stat st;
+            if (stat(thread->model_path, &st) != 0) {
+                log_error("[Stream %s] Model file does not exist: %s", thread->stream_name, thread->model_path);
 
-            bool found = false;
-            for (int i = 0; i < sizeof(locations)/sizeof(locations[0]); i++) {
-                // Try with just the filename (not the full path)
-                const char *filename = strrchr(thread->model_path, '/');
-                if (filename) {
-                    filename++; // Skip the '/'
-                } else {
-                    filename = thread->model_path; // No '/' in the path
+                // Try to find the model in alternative locations
+                char alt_model_path[MAX_PATH_LENGTH];
+                const char *locations[] = {
+                    "/var/lib/lightnvr/models/",
+                    "/etc/lightnvr/models/",
+                    "/usr/local/share/lightnvr/models/"
+                };
+
+                bool found = false;
+                for (int i = 0; i < sizeof(locations)/sizeof(locations[0]); i++) {
+                    // Try with just the filename (not the full path)
+                    const char *filename = strrchr(thread->model_path, '/');
+                    if (filename) {
+                        filename++; // Skip the '/'
+                    } else {
+                        filename = thread->model_path; // No '/' in the path
+                    }
+
+                    snprintf(alt_model_path, MAX_PATH_LENGTH, "%s%s", locations[i], filename);
+                    if (stat(alt_model_path, &st) == 0) {
+                        log_info("[Stream %s] Found model at alternative location: %s",
+                                thread->stream_name, alt_model_path);
+                        strncpy(thread->model_path, alt_model_path, MAX_PATH_LENGTH - 1);
+                        thread->model_path[MAX_PATH_LENGTH - 1] = '\0';
+                        found = true;
+                        break;
+                    }
                 }
 
-                snprintf(alt_model_path, MAX_PATH_LENGTH, "%s%s", locations[i], filename);
-                if (stat(alt_model_path, &st) == 0) {
-                    log_info("[Stream %s] Found model at alternative location: %s",
-                            thread->stream_name, alt_model_path);
-                    strncpy(thread->model_path, alt_model_path, MAX_PATH_LENGTH - 1);
-                    thread->model_path[MAX_PATH_LENGTH - 1] = '\0';
-                    found = true;
-                    break;
+                if (!found) {
+                    log_error("[Stream %s] Could not find model in any location", thread->stream_name);
+                    model_load_retries++;
+                    pthread_mutex_unlock(&thread->mutex);
+                    return NULL;
                 }
             }
-
-            if (!found) {
-                log_error("[Stream %s] Could not find model in any location", thread->stream_name);
-                model_load_retries++;
-                pthread_mutex_unlock(&thread->mutex);
-                return NULL;
-            }
+        } else {
+            log_info("[Stream %s] Using API detection, no need to check for model file on disk", thread->stream_name);
         }
 
         // Load the model with explicit logging
