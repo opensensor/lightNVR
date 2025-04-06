@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <signal.h>
+#include <sys/signal.h>
 #include <setjmp.h>
 #include <errno.h>
 
@@ -22,6 +23,7 @@
 #include "../../include/video/sod_detection.h"
 #include "../../include/video/sod_realnet.h"
 #include "../../include/video/motion_detection.h"
+#include "../../include/video/api_detection.h"
 #include "../../include/core/logger.h"
 #include "../../include/core/config.h"  // For MAX_PATH_LENGTH
 
@@ -58,6 +60,15 @@ int init_detection_system(void) {
     } else {
         log_info("Motion detection system initialized");
     }
+    
+    // Initialize API detection system
+    int api_ret = init_api_detection_system();
+    if (api_ret != 0) {
+        log_error("Failed to initialize API detection system");
+        log_warn("API detection will not be available");
+    } else {
+        log_info("API detection system initialized");
+    }
 
     log_info("Detection system initialized");
     return 0;
@@ -72,6 +83,10 @@ void shutdown_detection_system(void) {
 
     // Shutdown motion detection system
     shutdown_motion_detection_system();
+    
+    // Shutdown API detection system
+    shutdown_api_detection_system();
+    log_info("API detection system shutdown");
 
     log_info("Detection system shutdown");
 }
@@ -195,6 +210,18 @@ int detect_objects(detection_model_t model, const unsigned char *frame_data,
     else if (strcmp(model_type, MODEL_TYPE_TFLITE) == 0) {
         log_error("TFLite detection not implemented yet");
         ret = -1;
+    }
+    else if (strcmp(model_type, MODEL_TYPE_API) == 0) {
+        // For API models, the model_path contains the API URL
+        const char *api_url = get_model_path(model);
+        if (!api_url) {
+            log_error("Failed to get API URL from model");
+            ret = -1;
+        } else {
+            // We don't have the stream name here, so we'll pass NULL
+            // The stream name will be set by the caller when storing the detections
+            ret = detect_objects_api(api_url, frame_data, width, height, channels, result, NULL);
+        }
     }
     else {
         log_error("Unknown model type: %s", model_type);

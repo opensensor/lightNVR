@@ -71,6 +71,9 @@ typedef struct {
     
     // Models settings
     char models_path[MAX_PATH_LENGTH]; // Path to detection models directory
+    
+    // API detection settings
+    char api_detection_url[MAX_URL_LENGTH]; // URL for the detection API
 
     // Database settings
     char db_path[MAX_PATH_LENGTH];

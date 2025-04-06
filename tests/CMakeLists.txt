@@ -34,6 +34,7 @@ set(DETECTION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/sod_detection.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/sod_realnet.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/motion_detection.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/api_detection.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/logger.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/config.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/shutdown_coordinator.c

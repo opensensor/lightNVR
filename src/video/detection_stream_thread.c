@@ -27,6 +27,7 @@
 #include "video/streams.h"
 #include "video/hls_writer.h"
 #include "video/hls/hls_unified_thread.h"
+#include "video/api_detection.h"
 
 // Maximum number of streams we can handle
 #define MAX_STREAM_THREADS 32
@@ -416,7 +417,23 @@ static int process_segment_for_detection(stream_detection_thread_t *thread, cons
                             model_type ? model_type : "unknown");
 
                     // Run detection on the RGB frame
-                    int detect_ret = detect_objects(thread->model, rgb_buffer, target_width, target_height, channels, &result);
+                    int detect_ret;
+                    
+                    // Check if this is an API model
+                    const char *api_model_type = get_model_type_from_handle(thread->model);
+                    if (strcmp(api_model_type, MODEL_TYPE_API) == 0) {
+                        // For API models, we need to pass the stream name
+                        const char *api_url = get_model_path(thread->model);
+                        if (!api_url) {
+                            log_error("[Stream %s] Failed to get API URL from model", thread->stream_name);
+                            detect_ret = -1;
+                        } else {
+                            detect_ret = detect_objects_api(api_url, rgb_buffer, target_width, target_height, channels, &result, thread->stream_name);
+                        }
+                    } else {
+                        // For other models, use the standard detect_objects function
+                        detect_ret = detect_objects(thread->model, rgb_buffer, target_width, target_height, channels, &result);
+                    }
 
                     if (detect_ret == 0) {
                         // Process detection results

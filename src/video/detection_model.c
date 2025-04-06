@@ -18,6 +18,7 @@
 #include "video/detection_model.h"
 #include "video/sod_detection.h"
 #include "video/sod_realnet.h"
+#include "video/api_detection.h"
 #include "sod/sod.h"  // For sod_cnn_destroy
 
 // Static variable to track if we're in shutdown mode
@@ -324,14 +325,32 @@ detection_model_t load_detection_model(const char *model_path, float threshold) 
         log_warn("Large model detected: %.1f MB (limit: %d MB)", model_size_mb, MAX_MODEL_SIZE_MB);
     }
 
+    // Check if this is an API URL (starts with http:// or https://)
+    bool is_api_url = (strncmp(model_path, "http://", 7) == 0 || strncmp(model_path, "https://", 8) == 0);
+    
     // Get model type
-    const char *model_type = get_model_type(model_path);
+    const char *model_type = is_api_url ? MODEL_TYPE_API : get_model_type(model_path);
     log_info("MODEL TYPE: %s", model_type);
 
     // Load appropriate model type
     detection_model_t model = NULL;
 
-    if (strcmp(model_type, MODEL_TYPE_SOD_REALNET) == 0) {
+    if (strcmp(model_type, MODEL_TYPE_API) == 0) {
+        // For API models, we just need to store the URL
+        model_t *m = (model_t *)malloc(sizeof(model_t));
+        if (m) {
+            strncpy(m->type, MODEL_TYPE_API, sizeof(m->type) - 1);
+            m->sod = NULL; // We don't need a model handle for API
+            m->threshold = threshold;
+            strncpy(m->path, model_path, MAX_PATH_LENGTH - 1);
+            m->path[MAX_PATH_LENGTH - 1] = '\0';  // Ensure null termination
+            model = m;
+            
+            // Initialize the API detection system
+            init_api_detection_system();
+        }
+    }
+    else if (strcmp(model_type, MODEL_TYPE_SOD_REALNET) == 0) {
         void *realnet_model = load_sod_realnet_model(model_path, threshold);
         if (realnet_model) {
             // Create model structure
@@ -383,7 +402,12 @@ void unload_detection_model(detection_model_t model) {
     }
 
     // Enhanced model cleanup with better memory management
-    if (strcmp(m->type, MODEL_TYPE_SOD) == 0) {
+    if (strcmp(m->type, MODEL_TYPE_API) == 0) {
+        // For API models, we don't need to free any resources
+        // Just log that we're unloading the model
+        log_info("Unloading API model: %s", model_path);
+    }
+    else if (strcmp(m->type, MODEL_TYPE_SOD) == 0) {
         // Use our new safer cleanup function for SOD models
         log_info("Using cleanup_sod_model for safer SOD model cleanup");
 
@@ -468,5 +492,3 @@ void force_cleanup_model_cache(void) {
 
     log_info("Thread-local model approach: No global cache to clean up");
 }
-
-

@@ -38,6 +38,9 @@ void load_default_config(config_t *config) {
     // Models settings
     snprintf(config->models_path, MAX_PATH_LENGTH, "/var/lib/lightnvr/models");
     
+    // API detection settings
+    snprintf(config->api_detection_url, MAX_URL_LENGTH, "http://localhost:8000/detect");
+    
     // Database settings
     snprintf(config->db_path, MAX_PATH_LENGTH, "/var/lib/lightnvr/lightnvr.db");
     
@@ -277,6 +280,12 @@ static int config_ini_handler(void* user, const char* section, const char* name,
     else if (strcmp(section, "models") == 0) {
         if (strcmp(name, "path") == 0) {
             strncpy(config->models_path, value, MAX_PATH_LENGTH - 1);
+        }
+    }
+    // API detection settings
+    else if (strcmp(section, "api_detection") == 0) {
+        if (strcmp(name, "url") == 0) {
+            strncpy(config->api_detection_url, value, MAX_URL_LENGTH - 1);
         }
     }
     // Database settings
@@ -826,6 +835,10 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "[models]\n");
     fprintf(file, "path = %s\n\n", config->models_path);
     
+    // Write API detection settings
+    fprintf(file, "[api_detection]\n");
+    fprintf(file, "url = %s\n\n", config->api_detection_url);
+    
     // Write database settings
     fprintf(file, "[database]\n");
     fprintf(file, "path = %s\n\n", config->db_path);
@@ -920,6 +933,9 @@ void print_config(const config_t *config) {
     
     printf("  Models Settings:\n");
     printf("    Models Path: %s\n", config->models_path);
+    
+    printf("  API Detection Settings:\n");
+    printf("    API URL: %s\n", config->api_detection_url);
     
     printf("  Database Settings:\n");
     printf("    Database Path: %s\n", config->db_path);

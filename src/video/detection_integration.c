@@ -20,6 +20,7 @@
 #include "video/motion_detection.h"
 #include "video/motion_detection_wrapper.h"
 #include "video/sod_integration.h"
+#include "video/api_detection.h"
 #include "utils/memory.h"
 
 // Include our new modules
@@ -77,6 +78,15 @@ int init_detection_integration(void) {
     } else {
         log_info("Stream detection system initialized");
     }
+    
+    // Initialize the API detection system
+    if (init_api_detection_system() != 0) {
+        log_error("Failed to initialize API detection system");
+        // This is not a critical error, as we can still use other detection methods
+        log_warn("API detection will not be available");
+    } else {
+        log_info("API detection system initialized");
+    }
 
     log_info("Detection integration initialized with %d max concurrent detections", max_detections);
     return 0;
@@ -125,6 +135,10 @@ void cleanup_detection_resources(void) {
 
     // Ensure motion detection is cleaned up
     shutdown_motion_detection_system();
+    
+    // Shutdown the API detection system
+    shutdown_api_detection_system();
+    log_info("API detection system shutdown");
 
     // Explicitly call memory cleanup for any remaining buffers
     emergency_buffer_pool_cleanup();
