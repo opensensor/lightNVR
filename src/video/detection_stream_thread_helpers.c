@@ -28,20 +28,32 @@
 // Forward declaration of the internal function - this is defined in detection_stream_thread.c
 extern int process_segment_for_detection(stream_detection_thread_t *thread, const char *segment_path);
 
+// Forward declaration of global variable from detection_stream_thread.c
+extern time_t global_startup_delay_end;
+
 /**
  * Check if detection should run based on startup delay, detection in progress, and time interval
  * Returns true if detection should run, false otherwise
  */
 bool should_run_detection_check(stream_detection_thread_t *thread, time_t current_time) {
-    // Check if we're still in the startup delay period
-    if (global_startup_delay_end > 0 && current_time < global_startup_delay_end) {
-        log_info("[Stream %s] In startup delay period, waiting %ld more seconds before processing segments",
-                thread->stream_name, global_startup_delay_end - current_time);
+    // CRITICAL FIX: Add safety checks to prevent memory corruption
+    if (!thread) {
+        log_error("should_run_detection_check: thread is NULL");
         return false;
     }
 
-    // Check if a detection is already in progress
-    int detection_running = atomic_load(&thread->detection_in_progress);
+    // Check if we're still in the startup delay period with safety checks
+    if (global_startup_delay_end > 0 && current_time < global_startup_delay_end) {
+        log_info("[Stream %s] In startup delay period, waiting %ld more seconds before processing segments",
+                thread->stream_name ? thread->stream_name : "unknown", global_startup_delay_end - current_time);
+        return false;
+    }
+
+    // Check if a detection is already in progress with safety checks
+    int detection_running = 0;
+
+    // Safely load the atomic value
+    detection_running = atomic_load(&thread->detection_in_progress);
 
     // Check if a detection has been running for too long (more than 60 seconds)
     // This prevents a stuck detection_in_progress flag from blocking all future detections
@@ -49,7 +61,7 @@ bool should_run_detection_check(stream_detection_thread_t *thread, time_t curren
         time_t detection_time = current_time - thread->last_detection_time;
         if (detection_time > 60) {  // 60 seconds timeout
             log_warn("[Stream %s] Detection has been running for %ld seconds, which is too long. Resetting flag.",
-                    thread->stream_name, detection_time);
+                    thread->stream_name ? thread->stream_name : "unknown", detection_time);
             atomic_store(&thread->detection_in_progress, 0);
             detection_running = 0;  // Update local variable to reflect the change
         }
@@ -69,13 +81,13 @@ bool should_run_detection_check(stream_detection_thread_t *thread, time_t curren
                      thread->stream_name, time_since_last, thread->detection_interval);
             return false;
         }
-        
+
         // Enough time has passed and no detection is running
         log_info("[Stream %s] Time for a new detection (%ld seconds since last, interval: %d seconds)",
                 thread->stream_name, time_since_last, thread->detection_interval);
         return true;
-    } 
-    
+    }
+
     // No previous detection, we should run one
     log_info("[Stream %s] No previous detection, running first detection", thread->stream_name);
     return true;
@@ -85,11 +97,11 @@ bool should_run_detection_check(stream_detection_thread_t *thread, time_t curren
  * Check and manage HLS writer status
  * Returns true if HLS writer is recording, false otherwise
  */
-bool check_hls_writer_status(stream_detection_thread_t *thread, time_t current_time, 
+bool check_hls_writer_status(stream_detection_thread_t *thread, time_t current_time,
                             time_t *last_warning_time, bool first_check, int *consecutive_failures) {
     bool hls_writer_recording = false;
     stream_handle_t stream = get_stream_by_name(thread->stream_name);
-    
+
     if (!stream) {
         // Only log a warning every 60 seconds to avoid log spam
         if (current_time - *last_warning_time > 60 || first_check) {
@@ -98,7 +110,7 @@ bool check_hls_writer_status(stream_detection_thread_t *thread, time_t current_t
         }
         return false;
     }
-    
+
     // Get the HLS writer
     hls_writer_t *writer = get_stream_hls_writer(stream);
     if (!writer) {
@@ -109,7 +121,7 @@ bool check_hls_writer_status(stream_detection_thread_t *thread, time_t current_t
         }
         return false;
     }
-    
+
     // Check if the HLS writer is recording
     hls_writer_recording = is_hls_stream_active(thread->stream_name);
     if (!hls_writer_recording) {
@@ -139,7 +151,7 @@ bool check_hls_writer_status(stream_detection_thread_t *thread, time_t current_t
         log_info("[Stream %s] HLS writer is recording, checking for new segments", thread->stream_name);
         *consecutive_failures = 0; // Reset failure counter when HLS writer is recording
     }
-    
+
     return hls_writer_recording;
 }
 
@@ -148,7 +160,7 @@ bool check_hls_writer_status(stream_detection_thread_t *thread, time_t current_t
  * Updates thread->hls_dir with the correct path
  * Returns true if a valid directory was found, false otherwise
  */
-bool find_hls_directory(stream_detection_thread_t *thread, time_t current_time, 
+bool find_hls_directory(stream_detection_thread_t *thread, time_t current_time,
                         time_t *last_warning_time, int *consecutive_failures, bool first_check) {
     extern config_t g_config;
 
@@ -279,7 +291,7 @@ bool find_hls_directory(stream_detection_thread_t *thread, time_t current_time,
         }
         return false;
     }
-    
+
     closedir(dir);
     return true;
 }
@@ -289,12 +301,12 @@ bool find_hls_directory(stream_detection_thread_t *thread, time_t current_time,
  * Returns true if a segment was found, false otherwise
  * Updates newest_segment with the path to the newest segment if found
  */
-bool find_newest_segment(stream_detection_thread_t *thread, char *newest_segment, 
+bool find_newest_segment(stream_detection_thread_t *thread, char *newest_segment,
                          time_t *newest_time, int *segment_count) {
     DIR *dir;
     struct dirent *entry;
     struct stat st;
-    
+
     *segment_count = 0;
     *newest_time = 0;
     newest_segment[0] = '\0';
@@ -343,30 +355,30 @@ bool find_newest_segment(stream_detection_thread_t *thread, char *newest_segment
  * Check if a segment should be processed
  * Returns true if the segment should be processed, false otherwise
  */
-bool should_process_segment(const char *newest_segment, const char *last_processed_segment, 
+bool should_process_segment(const char *newest_segment, const char *last_processed_segment,
                           bool should_run_detection) {
     bool is_new_segment = (strcmp(newest_segment, last_processed_segment) != 0);
     bool should_process = is_new_segment && should_run_detection;
-    
+
     if (should_process) {
         return true;
     }
-    
+
     if (!is_new_segment) {
         return false;
     }
-    
+
     if (!should_run_detection) {
         return false;
     }
-    
+
     return false;
 }
 
 /**
  * Attempt to restart the HLS stream if no segments were found
  */
-void restart_hls_stream_if_needed(stream_detection_thread_t *thread, time_t current_time, 
+void restart_hls_stream_if_needed(stream_detection_thread_t *thread, time_t current_time,
                                  time_t *last_warning_time, bool first_check) {
     // Only log a warning every 60 seconds to avoid log spam
     if (current_time - *last_warning_time > 60 || first_check) {
@@ -410,8 +422,8 @@ void restart_hls_stream_if_needed(stream_detection_thread_t *thread, time_t curr
  * Process a segment if it should be processed
  * Returns 0 on success, non-zero on failure
  */
-int process_segment_if_needed(stream_detection_thread_t *thread, 
-                             const char *newest_segment, 
+int process_segment_if_needed(stream_detection_thread_t *thread,
+                             const char *newest_segment,
                              const char *last_processed_segment,
                              bool should_run_detection,
                              time_t newest_time,
@@ -419,7 +431,7 @@ int process_segment_if_needed(stream_detection_thread_t *thread,
     // Static variable to track the last processed segment
     static char last_segment_processed[MAX_PATH_LENGTH] = {0};
     char local_last_processed[MAX_PATH_LENGTH] = {0};
-    
+
     // If last_processed_segment is provided, use it, otherwise use our static variable
     if (last_processed_segment && last_processed_segment[0] != '\0') {
         strncpy(local_last_processed, last_processed_segment, MAX_PATH_LENGTH - 1);
@@ -455,7 +467,7 @@ int process_segment_if_needed(stream_detection_thread_t *thread,
             log_warn("[Stream %s] Segment no longer exists: %s", thread->stream_name, newest_segment);
             return -1;
         }
-        
+
         log_info("[Stream %s] Processing segment: %s (age: %ld seconds)",
                 thread->stream_name, newest_segment, current_time - newest_time);
 
@@ -483,6 +495,6 @@ int process_segment_if_needed(stream_detection_thread_t *thread,
             return result;
         }
     }
-    
+
     return 0;
 }

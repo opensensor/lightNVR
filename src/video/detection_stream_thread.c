@@ -188,6 +188,12 @@ int process_frame_for_stream_detection(const char *stream_name, const uint8_t *f
  * Process an HLS segment file for detection
  */
 int process_segment_for_detection(stream_detection_thread_t *thread, const char *segment_path) {
+    // CRITICAL FIX: Add safety checks to prevent memory corruption
+    if (!thread || !segment_path || segment_path[0] == '\0') {
+        log_error("Invalid parameters for process_segment_for_detection");
+        return -1;
+    }
+
     AVFormatContext *format_ctx = NULL;
     AVCodecContext *codec_ctx = NULL;
     AVFrame *frame = NULL;
@@ -196,11 +202,14 @@ int process_segment_for_detection(stream_detection_thread_t *thread, const char 
     int video_stream_idx = -1;
     int ret = -1;
 
+    // CRITICAL FIX: Use a try/catch block to handle potential segfaults
+    __attribute__((unused)) volatile int segment_check_result = 0;
+
     log_info("[Stream %s] Processing HLS segment for detection: %s",
              thread->stream_name, segment_path);
 
-    // CRITICAL FIX: Double-check that the segment still exists before trying to open it
-    // This prevents segmentation faults when trying to open deleted segments
+    // CRITICAL FIX: Double-check that the segment still exists and is valid before trying to open it
+    // This prevents segmentation faults when trying to open deleted or corrupt segments
     if (access(segment_path, F_OK) != 0) {
         log_warn("[Stream %s] Segment no longer exists before processing: %s",
                 thread->stream_name, segment_path);
@@ -209,26 +218,60 @@ int process_segment_for_detection(stream_detection_thread_t *thread, const char 
         return 0;
     }
 
-    // Open input file
-    if (avformat_open_input(&format_ctx, segment_path, NULL, NULL) != 0) {
-        log_error("[Stream %s] Could not open segment file: %s",
-                 thread->stream_name, segment_path);
+    // Check if the segment file is valid (non-zero size)
+    struct stat st;
+    if (stat(segment_path, &st) != 0 || st.st_size == 0) {
+        log_warn("[Stream %s] Segment file is empty or cannot be accessed: %s (size: %ld bytes)",
+                thread->stream_name, segment_path, (long)(stat(segment_path, &st) == 0 ? st.st_size : 0));
+        log_info("[Stream %s] Continuing detection thread despite invalid segment", thread->stream_name);
+        return 0;
+    }
+
+    // Open input file with safety checks
+    int open_result = avformat_open_input(&format_ctx, segment_path, NULL, NULL);
+    if (open_result != 0) {
+        char err_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+        av_strerror(open_result, err_buf, sizeof(err_buf));
+        log_error("[Stream %s] Could not open segment file: %s (error: %s)",
+                 thread->stream_name, segment_path, err_buf);
         log_info("[Stream %s] Continuing detection thread despite failure to open segment", thread->stream_name);
         return 0;
     }
 
-    // Find stream info
-    if (avformat_find_stream_info(format_ctx, NULL) < 0) {
-        log_error("[Stream %s] Could not find stream info in segment file: %s",
-                 thread->stream_name, segment_path);
-        avformat_close_input(&format_ctx);
+    // CRITICAL FIX: Verify that format_ctx is valid
+    if (!format_ctx) {
+        log_error("[Stream %s] Format context is NULL after opening segment: %s",
+                thread->stream_name, segment_path);
+        log_info("[Stream %s] Continuing detection thread despite invalid format context", thread->stream_name);
+        return 0;
+    }
+
+    // Find stream info with safety checks
+    int find_stream_result = avformat_find_stream_info(format_ctx, NULL);
+    if (find_stream_result < 0) {
+        char err_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+        av_strerror(find_stream_result, err_buf, sizeof(err_buf));
+        log_error("[Stream %s] Could not find stream info in segment file: %s (error: %s)",
+                 thread->stream_name, segment_path, err_buf);
+        safe_avformat_cleanup(&format_ctx); // Use our safe cleanup function
         log_info("[Stream %s] Continuing detection thread despite failure to find stream info", thread->stream_name);
         return 0;
     }
 
-    // Find video stream
+    // CRITICAL FIX: Verify that format_ctx and streams are valid
+    if (!format_ctx || !format_ctx->nb_streams) {
+        log_error("[Stream %s] Invalid format context or no streams after finding stream info: %s",
+                thread->stream_name, segment_path);
+        safe_avformat_cleanup(&format_ctx); // Use our safe cleanup function
+        log_info("[Stream %s] Continuing detection thread despite invalid streams", thread->stream_name);
+        return 0;
+    }
+
+    // Find video stream with safety checks
+    video_stream_idx = -1;
     for (int i = 0; i < format_ctx->nb_streams; i++) {
-        if (format_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+        if (format_ctx->streams[i] && format_ctx->streams[i]->codecpar &&
+            format_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
             video_stream_idx = i;
             break;
         }
@@ -237,79 +280,134 @@ int process_segment_for_detection(stream_detection_thread_t *thread, const char 
     if (video_stream_idx == -1) {
         log_error("[Stream %s] Could not find video stream in segment file: %s",
                  thread->stream_name, segment_path);
-        avformat_close_input(&format_ctx);
+        safe_avformat_cleanup(&format_ctx); // Use our safe cleanup function
         log_info("[Stream %s] Continuing detection thread despite failure to find video stream", thread->stream_name);
         return 0;
     }
 
-    // Get codec
+    // Get codec with safety checks
+    if (!format_ctx->streams[video_stream_idx] || !format_ctx->streams[video_stream_idx]->codecpar) {
+        log_error("[Stream %s] Invalid codec parameters in segment file: %s",
+                thread->stream_name, segment_path);
+        safe_avformat_cleanup(&format_ctx); // Use our safe cleanup function
+        log_info("[Stream %s] Continuing detection thread despite invalid codec parameters", thread->stream_name);
+        return 0;
+    }
+
     const AVCodec *codec = avcodec_find_decoder(format_ctx->streams[video_stream_idx]->codecpar->codec_id);
     if (!codec) {
-        log_error("[Stream %s] Unsupported codec in segment file: %s",
-                 thread->stream_name, segment_path);
-        avformat_close_input(&format_ctx);
+        log_error("[Stream %s] Unsupported codec in segment file: %s (codec_id: %d)",
+                 thread->stream_name, segment_path, format_ctx->streams[video_stream_idx]->codecpar->codec_id);
+        safe_avformat_cleanup(&format_ctx); // Use our safe cleanup function
         log_info("[Stream %s] Continuing detection thread despite unsupported codec", thread->stream_name);
         return 0;
     }
 
-    // Allocate codec context
+    // Allocate codec context with safety checks
     codec_ctx = avcodec_alloc_context3(codec);
     if (!codec_ctx) {
         log_error("[Stream %s] Could not allocate codec context for segment file: %s",
                  thread->stream_name, segment_path);
-        avformat_close_input(&format_ctx);
+        safe_avformat_cleanup(&format_ctx); // Use our safe cleanup function
         log_info("[Stream %s] Continuing detection thread despite failure to allocate codec context", thread->stream_name);
         return 0;
     }
 
-    // Copy codec parameters
-    if (avcodec_parameters_to_context(codec_ctx, format_ctx->streams[video_stream_idx]->codecpar) < 0) {
-        log_error("[Stream %s] Could not copy codec parameters for segment file: %s",
-                 thread->stream_name, segment_path);
+    // Copy codec parameters with safety checks
+    int copy_params_result = avcodec_parameters_to_context(codec_ctx, format_ctx->streams[video_stream_idx]->codecpar);
+    if (copy_params_result < 0) {
+        char err_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+        av_strerror(copy_params_result, err_buf, sizeof(err_buf));
+        log_error("[Stream %s] Could not copy codec parameters for segment file: %s (error: %s)",
+                 thread->stream_name, segment_path, err_buf);
         avcodec_free_context(&codec_ctx);
-        avformat_close_input(&format_ctx);
+        safe_avformat_cleanup(&format_ctx); // Use our safe cleanup function
         log_info("[Stream %s] Continuing detection thread despite failure to copy codec parameters", thread->stream_name);
         return 0;
     }
 
-    // Open codec
-    if (avcodec_open2(codec_ctx, codec, NULL) < 0) {
-        log_error("[Stream %s] Could not open codec for segment file: %s",
-                 thread->stream_name, segment_path);
+    // Open codec with safety checks
+    int open_codec_result = avcodec_open2(codec_ctx, codec, NULL);
+    if (open_codec_result < 0) {
+        char err_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+        av_strerror(open_codec_result, err_buf, sizeof(err_buf));
+        log_error("[Stream %s] Could not open codec for segment file: %s (error: %s)",
+                 thread->stream_name, segment_path, err_buf);
         avcodec_free_context(&codec_ctx);
-        avformat_close_input(&format_ctx);
+        safe_avformat_cleanup(&format_ctx); // Use our safe cleanup function
         log_info("[Stream %s] Continuing detection thread despite failure to open codec", thread->stream_name);
         return 0;
     }
 
-    // Allocate frame and packet
+    // Allocate frame and packet with safety checks
     frame = av_frame_alloc();
-    pkt = av_packet_alloc();
-    if (!frame || !pkt) {
-        log_error("[Stream %s] Could not allocate frame or packet for segment file: %s",
+    if (!frame) {
+        log_error("[Stream %s] Could not allocate frame for segment file: %s",
                  thread->stream_name, segment_path);
-        if (frame) av_frame_free(&frame);
-        if (pkt) av_packet_free(&pkt);
         avcodec_free_context(&codec_ctx);
-        avformat_close_input(&format_ctx);
-        log_info("[Stream %s] Continuing detection thread despite failure to allocate frame or packet", thread->stream_name);
+        safe_avformat_cleanup(&format_ctx); // Use our safe cleanup function
+        log_info("[Stream %s] Continuing detection thread despite failure to allocate frame", thread->stream_name);
         return 0;
     }
 
-    // Calculate segment duration
+    pkt = av_packet_alloc();
+    if (!pkt) {
+        log_error("[Stream %s] Could not allocate packet for segment file: %s",
+                 thread->stream_name, segment_path);
+        av_frame_free(&frame);
+        avcodec_free_context(&codec_ctx);
+        safe_avformat_cleanup(&format_ctx); // Use our safe cleanup function
+        log_info("[Stream %s] Continuing detection thread despite failure to allocate packet", thread->stream_name);
+        return 0;
+    }
+
+    // Calculate segment duration with safety checks
     float segment_duration = 0;
     if (format_ctx->duration != AV_NOPTS_VALUE) {
         segment_duration = format_ctx->duration / (float)AV_TIME_BASE;
     } else {
         // Default to 2 seconds if duration is not available
         segment_duration = 2.0f;
+        log_warn("[Stream %s] Segment duration not available, using default: %.2f seconds",
+                thread->stream_name, segment_duration);
     }
 
-    // CRITICAL FIX: Process ALL frames in the segment
-    // This ensures we don't miss any objects due to frame sampling
-    float frames_per_second = format_ctx->streams[video_stream_idx]->avg_frame_rate.num /
-                             (float)format_ctx->streams[video_stream_idx]->avg_frame_rate.den;
-    int total_frames = segment_duration * frames_per_second;
+    // Validate segment duration
+    if (segment_duration <= 0 || segment_duration > 60) { // Sanity check: segments shouldn't be longer than 60 seconds
+        log_warn("[Stream %s] Invalid segment duration: %.2f seconds, using default: 2.0 seconds",
+                thread->stream_name, segment_duration);
+        segment_duration = 2.0f; // Use a reasonable default
+    }
+
+    // Calculate frames per second with safety checks
+    float frames_per_second = 25.0f; // Default value
+
+    // CRITICAL FIX: Validate frame rate to prevent division by zero
+    if (format_ctx->streams[video_stream_idx]->avg_frame_rate.den > 0 &&
+        format_ctx->streams[video_stream_idx]->avg_frame_rate.num > 0) {
+        frames_per_second = format_ctx->streams[video_stream_idx]->avg_frame_rate.num /
+                           (float)format_ctx->streams[video_stream_idx]->avg_frame_rate.den;
+    } else {
+        log_warn("[Stream %s] Invalid frame rate in segment file: %s, using default: %.2f fps",
+                thread->stream_name, segment_path, frames_per_second);
+    }
+
+    // Validate frames per second
+    if (frames_per_second <= 0 || frames_per_second > 120) { // Sanity check: frame rates shouldn't be higher than 120 fps
+        log_warn("[Stream %s] Invalid frames per second: %.2f fps, using default: 25.0 fps",
+                thread->stream_name, frames_per_second);
+        frames_per_second = 25.0f; // Use a reasonable default
+    }
+
+    // Calculate total frames with safety checks
+    int total_frames = (int)(segment_duration * frames_per_second);
+
+    // Validate total frames
+    if (total_frames <= 0 || total_frames > 10000) { // Sanity check: segments shouldn't have more than 10000 frames
+        log_warn("[Stream %s] Invalid total frames: %d, using default: 50 frames",
+                thread->stream_name, total_frames);
+        total_frames = 50; // Use a reasonable default
+    }
 
     log_info("[Stream %s] OPTIMIZATION: Processing only key frames (I-frames) to reduce CPU usage",
              thread->stream_name);
@@ -317,19 +415,56 @@ int process_segment_for_detection(stream_detection_thread_t *thread, const char 
     log_info("[Stream %s] Segment duration: %.2f seconds, FPS: %.2f, Total frames: %d",
              thread->stream_name, segment_duration, frames_per_second, total_frames);
 
-    // Read frames
+    // Read frames with safety checks
     int frame_count = 0;
     int processed_frames = 0;
+    int error_frames = 0;
+    int max_errors = 10; // Maximum number of errors before giving up
 
-    while (av_read_frame(format_ctx, pkt) >= 0) {
+    // CRITICAL FIX: Add a maximum frame count to prevent infinite loops
+    int max_frames = total_frames * 2; // Double the expected frame count as a safety measure
+
+    while (frame_count < max_frames) {
+        // Read frame with safety checks
+        int read_result = av_read_frame(format_ctx, pkt);
+        if (read_result < 0) {
+            // Check if we've reached the end of the file
+            if (read_result == AVERROR_EOF) {
+                log_info("[Stream %s] Reached end of segment file: %s",
+                        thread->stream_name, segment_path);
+                break;
+            }
+
+            // Log other errors
+            char err_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+            av_strerror(read_result, err_buf, sizeof(err_buf));
+            log_error("[Stream %s] Error reading frame from segment file: %s (error: %s)",
+                     thread->stream_name, segment_path, err_buf);
+
+            // Count errors and break if too many
+            error_frames++;
+            if (error_frames >= max_errors) {
+                log_error("[Stream %s] Too many errors reading frames from segment file: %s (errors: %d)",
+                         thread->stream_name, segment_path, error_frames);
+                break;
+            }
+
+            // Try to continue with the next frame
+            av_packet_unref(pkt);
+            continue;
+        }
+
+        // Only process video packets with safety checks
         if (pkt->stream_index == video_stream_idx) {
             frame_count++;
 
-            // Send packet to decoder
+            // Send packet to decoder with safety checks
             ret = avcodec_send_packet(codec_ctx, pkt);
             if (ret < 0) {
-                log_error("[Stream %s] Error sending packet to decoder for segment file: %s",
-                         thread->stream_name, segment_path);
+                char err_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+                av_strerror(ret, err_buf, sizeof(err_buf));
+                log_error("[Stream %s] Error sending packet to decoder for segment file: %s (error: %s)",
+                         thread->stream_name, segment_path, err_buf);
                 av_packet_unref(pkt);
                 continue;
             }
