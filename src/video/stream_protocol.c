@@ -1,7 +1,6 @@
 #include "video/stream_protocol.h"
 #include "core/logger.h"
 #include "video/ffmpeg_utils.h"
-#include "video/timeout_utils.h"
 #include <string.h>
 #include <stdio.h>
 #include <ctype.h>
@@ -413,18 +412,16 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
         // Free options before returning
         av_dict_free(&input_options);
 
-        // CRITICAL FIX: Use our comprehensive cleanup function to ensure all resources are properly freed
+        // CRITICAL FIX: Make sure local_ctx is NULL after a failed open
         // This is important because avformat_open_input might have allocated memory
         // even if it returned an error
         if (local_ctx) {
-            // First assign to output parameter so our cleanup function can handle it
-            *input_ctx = local_ctx;
-            comprehensive_ffmpeg_cleanup(input_ctx, NULL, NULL, NULL);
+            avformat_close_input(&local_ctx);
             local_ctx = NULL;  // Explicitly set to NULL after closing
-        } else {
-            // Ensure the output parameter is set to NULL to prevent use-after-free
-            *input_ctx = NULL;
         }
+
+        // Ensure the output parameter is set to NULL to prevent use-after-free
+        *input_ctx = NULL;
 
         return ret;
     }
@@ -443,104 +440,11 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
 
     // Get stream info with enhanced error handling
     log_debug("Getting stream info for %s", url);
-
-    // MEMORY LEAK FIX: Use a local dictionary for stream info options
-    AVDictionary *stream_info_options = NULL;
-
-    // Set more aggressive options to limit memory usage
-    av_dict_set(&stream_info_options, "analyzeduration", "3000000", 0); // 3 seconds (reduced from 5)
-    av_dict_set(&stream_info_options, "probesize", "3000000", 0); // 3MB (reduced from 5MB)
-    av_dict_set(&stream_info_options, "max_analyze_duration", "3000000", 0); // 3 seconds
-
-    // Add options to reduce memory usage
-    av_dict_set(&stream_info_options, "refcounted_frames", "0", 0); // Disable refcounted frames
-    av_dict_set(&stream_info_options, "enable_drefs", "0", 0); // Disable external track references
-
-    // Create an array of option dictionaries, one per stream
-    AVDictionary **stream_options = NULL;
-    if ((*input_ctx)->nb_streams > 0) {
-        stream_options = av_calloc((*input_ctx)->nb_streams, sizeof(*stream_options));
-        if (stream_options) {
-            // Set options for each stream
-            for (int i = 0; i < (*input_ctx)->nb_streams; i++) {
-                stream_options[i] = NULL;
-                av_dict_copy(&stream_options[i], stream_info_options, 0);
-
-                // Add stream-specific options to reduce memory usage
-                av_dict_set(&stream_options[i], "threads", "1", 0); // Use single thread
-                av_dict_set(&stream_options[i], "skip_frame", "noref", 0); // Skip non-reference frames
-            }
-        }
-    }
-
-    // Set up a timeout context for find_stream_info
-    timeout_context_t timeout;
-    init_timeout(&timeout, 8); // 8-second timeout for stream info
-
-    // MEMORY LEAK FIX: Force a garbage collection before find_stream_info
-    // This helps clean up any buffer pools that might be in use
-    av_buffer_pool_uninit(NULL);
-
-    // Find stream info with options
-    ret = avformat_find_stream_info(*input_ctx, stream_options);
-
-    // Check if a timeout occurred
-    if (check_timeout(&timeout)) {
-        // Timeout occurred
-        log_warn("Timeout occurred during avformat_find_stream_info for %s", url);
-
-        // Handle the timeout using our cleanup function
-        ret = handle_timeout_cleanup(url, input_ctx);
-
-        // Log detailed information about the timeout for debugging
-        log_error("RTSP timeout details: URL=%s, Protocol=%d", url, protocol);
-    } else if (ret < 0) {
-        // MEMORY LEAK FIX: Handle errors from avformat_find_stream_info
-        // This is important because avformat_find_stream_info might have allocated memory
-        // even if it returned an error
-        char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
-        av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-        log_error("Error finding stream info for %s: %s (code: %d)", url, error_buf, ret);
-
-        // Use our comprehensive cleanup function to ensure all resources are properly freed
-        handle_timeout_cleanup(url, input_ctx);
-    }
-
-    // Free the stream options
-    if (stream_options) {
-        // MEMORY LEAK FIX: Only try to free if input_ctx is valid
-        if (*input_ctx) {
-            for (int i = 0; i < (*input_ctx)->nb_streams; i++) {
-                av_dict_free(&stream_options[i]);
-            }
-        }
-        av_free(stream_options);
-    }
-
-    // Free the main options dictionary
-    av_dict_free(&stream_info_options);
-
+    ret = avformat_find_stream_info(*input_ctx, NULL);
     if (ret < 0) {
         log_ffmpeg_error(ret, "Could not find stream info");
-
-        // Use our comprehensive cleanup function to ensure all resources are properly freed
-        comprehensive_ffmpeg_cleanup(input_ctx, NULL, NULL, NULL);
-
+        avformat_close_input(input_ctx);
         return ret;
-    }
-
-    // MEMORY LEAK FIX: After successful find_stream_info, check for any unused streams
-    // and mark them as discard to prevent memory allocation for unused streams
-    if (*input_ctx) {
-        for (unsigned int i = 0; i < (*input_ctx)->nb_streams; i++) {
-            AVStream *stream = (*input_ctx)->streams[i];
-            // If not video or audio, mark as discard
-            if (stream->codecpar->codec_type != AVMEDIA_TYPE_VIDEO &&
-                stream->codecpar->codec_type != AVMEDIA_TYPE_AUDIO) {
-                stream->discard = AVDISCARD_ALL;
-                log_debug("Marking stream %d as discard to save memory", i);
-            }
-        }
     }
 
     // Log successful stream opening
