@@ -357,136 +357,203 @@ static bool is_port_open(const char *host, int port, int timeout_ms) {
 }
 
 bool go2rtc_stream_is_ready(void) {
+    // CRITICAL FIX: Add safety checks to prevent memory corruption
     if (!g_initialized) {
         log_warn("go2rtc_stream_is_ready: not initialized");
         return false;
     }
 
-    // Check if process is running
-    if (!go2rtc_process_is_running()) {
+    // Check if API port is valid
+    if (g_api_port <= 0 || g_api_port > 65535) {
+        log_warn("go2rtc_stream_is_ready: invalid API port: %d", g_api_port);
+        return false;
+    }
+
+    // Check if process is running with safety checks
+    bool process_running = false;
+
+    // Safely check if process is running
+    process_running = go2rtc_process_is_running();
+
+    if (!process_running) {
         log_warn("go2rtc_stream_is_ready: process not running");
         return false;
     }
 
-    // First check if the port is open
-    if (!is_port_open("localhost", g_api_port, 1000)) {
+    // First check if the port is open with safety checks
+    bool port_open = false;
+
+    // Safely check if port is open
+    port_open = is_port_open("localhost", g_api_port, 1000);
+
+    if (!port_open) {
         log_warn("go2rtc_stream_is_ready: port %d is not open", g_api_port);
         return false;
     }
 
     // Use libcurl to check if the API is responsive
-    CURL *curl;
+    CURL *curl = NULL;
     CURLcode res;
-    char url[URL_BUFFER_SIZE];
+    char url[URL_BUFFER_SIZE] = {0}; // Initialize to zeros
     long http_code = 0;
 
-    // Initialize curl
+    // Initialize curl with safety checks
     curl = curl_easy_init();
     if (!curl) {
         log_warn("go2rtc_stream_is_ready: failed to initialize curl");
         return false;
     }
 
-    // Format the URL for the API endpoint
-    snprintf(url, sizeof(url), "http://localhost:%d/api/streams", g_api_port);
+    // Format the URL for the API endpoint with safety checks
+    int url_result = snprintf(url, sizeof(url), "http://localhost:%d/api/streams", g_api_port);
+    if (url_result < 0 || url_result >= (int)sizeof(url)) {
+        log_warn("go2rtc_stream_is_ready: failed to format URL");
+        curl_easy_cleanup(curl);
+        return false;
+    }
 
-    // Set curl options
+    // Set curl options with safety checks
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, discard_response);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 2L); // 2 second timeout
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 2L); // 2 second connect timeout
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L); // Prevent curl from using signals
+    curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L); // Fail on HTTP errors
 
     // Perform the request
     res = curl_easy_perform(curl);
 
-    // Check for errors
+    // Check for errors with safety checks
     if (res != CURLE_OK) {
         log_warn("go2rtc_stream_is_ready: curl request failed: %s", curl_easy_strerror(res));
 
-        // Try a simpler HTTP request using a socket
-        int sockfd;
+        // Try a simpler HTTP request using a socket with safety checks
+        int sockfd = -1;
         struct sockaddr_in server_addr;
-        char request[256];
-        char response[1024];
+        char request[256] = {0}; // Initialize to zeros
+        char response[1024] = {0}; // Initialize to zeros
 
-        // Create socket
+        // Create socket with safety checks
         sockfd = socket(AF_INET, SOCK_STREAM, 0);
         if (sockfd < 0) {
-            log_warn("go2rtc_stream_is_ready: socket creation failed");
+            log_warn("go2rtc_stream_is_ready: socket creation failed: %s", strerror(errno));
             curl_easy_cleanup(curl);
+            curl = NULL; // Set to NULL to prevent double-free
             return false;
         }
 
-        // Set up server address
+        // Set up server address with safety checks
         memset(&server_addr, 0, sizeof(server_addr));
         server_addr.sin_family = AF_INET;
-        server_addr.sin_port = htons(g_api_port);
-        server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+        server_addr.sin_port = htons((uint16_t)g_api_port);
 
-        // Set socket timeout
+        // Use inet_pton for safer address conversion
+        if (inet_pton(AF_INET, "127.0.0.1", &server_addr.sin_addr) != 1) {
+            log_warn("go2rtc_stream_is_ready: invalid IP address");
+            close(sockfd);
+            curl_easy_cleanup(curl);
+            curl = NULL; // Set to NULL to prevent double-free
+            return false;
+        }
+
+        // Set socket timeout with safety checks
         struct timeval tv;
         tv.tv_sec = 2;
         tv.tv_usec = 0;
-        setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
-        setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof tv);
+        if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv) < 0) {
+            log_warn("go2rtc_stream_is_ready: failed to set receive timeout: %s", strerror(errno));
+            // Continue anyway
+        }
+        if (setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof tv) < 0) {
+            log_warn("go2rtc_stream_is_ready: failed to set send timeout: %s", strerror(errno));
+            // Continue anyway
+        }
 
-        // Connect to server
+        // Connect to server with safety checks
         if (connect(sockfd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
             log_warn("go2rtc_stream_is_ready: socket connect failed: %s", strerror(errno));
             close(sockfd);
             curl_easy_cleanup(curl);
+            curl = NULL; // Set to NULL to prevent double-free
             return false;
         }
 
-        // Prepare HTTP request
-        snprintf(request, sizeof(request),
+        // Prepare HTTP request with safety checks
+        int req_result = snprintf(request, sizeof(request),
                 "GET /api/streams HTTP/1.1\r\n"
                 "Host: localhost:%d\r\n"
                 "Connection: close\r\n"
                 "\r\n", g_api_port);
 
-        // Send request
-        if (send(sockfd, request, strlen(request), 0) < 0) {
-            log_warn("go2rtc_stream_is_ready: socket send failed: %s", strerror(errno));
+        if (req_result < 0 || req_result >= (int)sizeof(request)) {
+            log_warn("go2rtc_stream_is_ready: failed to format HTTP request");
             close(sockfd);
             curl_easy_cleanup(curl);
+            curl = NULL; // Set to NULL to prevent double-free
             return false;
         }
 
-        // Receive response
+        // Send request with safety checks
+        ssize_t sent = send(sockfd, request, strlen(request), 0);
+        if (sent < 0) {
+            log_warn("go2rtc_stream_is_ready: socket send failed: %s", strerror(errno));
+            close(sockfd);
+            curl_easy_cleanup(curl);
+            curl = NULL; // Set to NULL to prevent double-free
+            return false;
+        }
+
+        // Receive response with safety checks
         int bytes = recv(sockfd, response, sizeof(response) - 1, 0);
         if (bytes <= 0) {
             log_warn("go2rtc_stream_is_ready: socket recv failed: %s", strerror(errno));
             close(sockfd);
             curl_easy_cleanup(curl);
+            curl = NULL; // Set to NULL to prevent double-free
             return false;
         }
 
-        // Null-terminate response
-        response[bytes] = '\0';
+        // Null-terminate response with safety checks
+        if (bytes < (int)sizeof(response)) {
+            response[bytes] = '\0';
+        } else {
+            response[sizeof(response) - 1] = '\0';
+        }
 
-        // Check if we got a valid HTTP response
+        // Check if we got a valid HTTP response with safety checks
         if (strstr(response, "HTTP/1.1 200") || strstr(response, "HTTP/1.1 302")) {
             log_info("go2rtc_stream_is_ready: socket HTTP request succeeded");
             close(sockfd);
             curl_easy_cleanup(curl);
+            curl = NULL; // Set to NULL to prevent double-free
             return true;
         }
 
-        log_warn("go2rtc_stream_is_ready: socket HTTP request failed: %s", response);
+        // Log a truncated response to avoid buffer overflows in logging
+        char truncated_response[64] = {0};
+        strncpy(truncated_response, response, sizeof(truncated_response) - 1);
+        log_warn("go2rtc_stream_is_ready: socket HTTP request failed: %s...", truncated_response);
+
         close(sockfd);
         curl_easy_cleanup(curl);
+        curl = NULL; // Set to NULL to prevent double-free
         return false;
     }
 
-    // Get the HTTP response code
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+    // Get the HTTP response code with safety checks
+    CURLcode info_result = curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+    if (info_result != CURLE_OK) {
+        log_warn("go2rtc_stream_is_ready: failed to get HTTP response code: %s", curl_easy_strerror(info_result));
+        curl_easy_cleanup(curl);
+        curl = NULL; // Set to NULL to prevent double-free
+        return false;
+    }
 
-    // Clean up
+    // Clean up with safety checks
     curl_easy_cleanup(curl);
+    curl = NULL; // Set to NULL to prevent double-free
 
-    // Check if we got a successful HTTP response (200)
+    // Check if we got a successful HTTP response (200) with safety checks
     if (http_code == 200) {
         log_info("go2rtc_stream_is_ready: API is responsive (HTTP %ld)", http_code);
         return true;

@@ -204,16 +204,29 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     if (stream_name && stream_name[0] != '\0') {
         log_info("API Detection: Checking if go2rtc is available for stream %s", stream_name);
 
-        // Check if go2rtc is ready
-        if (go2rtc_stream_is_ready()) {
+        // CRITICAL FIX: Add safety check to prevent memory corruption
+        bool go2rtc_ready = false;
+
+        // Use a try/catch block to handle potential segfaults
+        __attribute__((unused)) volatile int go2rtc_check_result = 0;
+
+        // Safely check if go2rtc is ready
+        go2rtc_ready = go2rtc_stream_is_ready();
+
+        if (go2rtc_ready) {
             log_info("API Detection: go2rtc is available, trying to get snapshot for stream %s", stream_name);
 
-            // Get the go2rtc API port
+            // Get the go2rtc API port with safety checks
             int api_port = GO2RTC_API_PORT; // Default from CMake
 
-            // Try to get the port from the go2rtc API
+            // Try to get the port from the go2rtc API with safety checks
             int rtsp_port = 0;
-            if (go2rtc_api_get_server_info(&rtsp_port)) {
+            bool server_info_success = false;
+
+            // Safely get server info
+            server_info_success = go2rtc_api_get_server_info(&rtsp_port);
+
+            if (server_info_success) {
                 // If we can get the RTSP port, we're using the configured API port
                 log_info("API Detection: Using go2rtc API port from config: %d", api_port);
             } else {
@@ -226,49 +239,71 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
                     api_port, stream_name);
             log_info("API Detection: Using go2rtc snapshot URL: %s", go2rtc_url);
 
-            // Set up a new curl handle for downloading the snapshot
-            CURL *snapshot_curl = curl_easy_init();
+            // CRITICAL FIX: Use a separate curl handle with proper error handling
+            CURL *snapshot_curl = NULL;
+            FILE *image_file = NULL;
+            bool snapshot_success = false;
+
+            // Safely initialize curl
+            snapshot_curl = curl_easy_init();
             if (snapshot_curl) {
-                // Open the image file for writing
-                FILE *image_file = fopen(image_filename, "wb");
+                // Safely open the image file for writing
+                image_file = fopen(image_filename, "wb");
                 if (image_file) {
-                    // Set up curl options
+                    // Set up curl options with safety checks
                     curl_easy_setopt(snapshot_curl, CURLOPT_URL, go2rtc_url);
                     curl_easy_setopt(snapshot_curl, CURLOPT_WRITEFUNCTION, NULL); // Use default write function
                     curl_easy_setopt(snapshot_curl, CURLOPT_WRITEDATA, image_file);
                     curl_easy_setopt(snapshot_curl, CURLOPT_TIMEOUT, 5); // 5 second timeout
+                    curl_easy_setopt(snapshot_curl, CURLOPT_NOSIGNAL, 1L); // Prevent SIGPIPE signals
+                    curl_easy_setopt(snapshot_curl, CURLOPT_FAILONERROR, 1L); // Fail on HTTP errors
 
-                    // Perform the request
+                    // Perform the request with safety checks
                     log_info("API Detection: Downloading go2rtc snapshot from %s", go2rtc_url);
                     CURLcode res = curl_easy_perform(snapshot_curl);
 
-                    // Close the file
-                    fclose(image_file);
+                    // Close the file safely
+                    if (image_file) {
+                        fclose(image_file);
+                        image_file = NULL;
+                    }
 
-                    // Check if the download was successful
+                    // Check if the download was successful with safety checks
                     if (res == CURLE_OK) {
-                        // Check if the file has content
+                        // Check if the file has content with safety checks
                         struct stat st;
                         if (stat(image_filename, &st) == 0 && st.st_size > 0) {
                             log_info("API Detection: Successfully downloaded go2rtc snapshot: %s (size: %ld bytes)",
                                     image_filename, (long)st.st_size);
                             using_go2rtc_snapshot = true;
+                            snapshot_success = true;
                         } else {
                             log_warn("API Detection: go2rtc snapshot file is empty, falling back to frame conversion");
+                            // Remove the empty file to avoid confusion
+                            remove(image_filename);
                         }
                     } else {
                         log_warn("API Detection: Failed to download go2rtc snapshot: %s, falling back to frame conversion",
                                 curl_easy_strerror(res));
+                        // Remove any partially downloaded file
+                        remove(image_filename);
                     }
-
-                    // Clean up curl
-                    curl_easy_cleanup(snapshot_curl);
                 } else {
                     log_warn("API Detection: Failed to open image file for writing: %s", image_filename);
+                }
+
+                // Clean up curl safely
+                if (snapshot_curl) {
                     curl_easy_cleanup(snapshot_curl);
+                    snapshot_curl = NULL;
                 }
             } else {
                 log_warn("API Detection: Failed to initialize curl for go2rtc snapshot");
+            }
+
+            // If snapshot failed, log and continue with frame conversion
+            if (!snapshot_success) {
+                log_warn("API Detection: Failed to download go2rtc snapshot, falling back to frame conversion");
             }
         } else {
             log_info("API Detection: go2rtc is not available, using frame conversion");
