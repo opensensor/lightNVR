@@ -246,6 +246,9 @@ void init_mp4_recording_backend(void) {
     // Reset shutdown flag
     shutdown_in_progress = 0;
 
+    // Initialize the MP4 segment recorder
+    mp4_segment_recorder_init();
+
     log_info("MP4 recording backend initialized");
 }
 

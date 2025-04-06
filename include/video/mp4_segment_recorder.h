@@ -48,6 +48,12 @@ typedef struct {
 int record_segment(const char *rtsp_url, const char *output_file, int duration, int has_audio);
 
 /**
+ * Initialize the MP4 segment recorder
+ * This function should be called during program startup
+ */
+void mp4_segment_recorder_init(void);
+
+/**
  * Clean up all static resources used by the MP4 segment recorder
  * This function should be called during program shutdown to prevent memory leaks
  */

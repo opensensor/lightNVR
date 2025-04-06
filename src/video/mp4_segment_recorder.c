@@ -32,12 +32,41 @@
 #include "video/mp4_writer_internal.h"
 #include "video/mp4_segment_recorder.h"
 
+// Note: We can't directly access internal FFmpeg structures
+// So we'll use the public API for cleanup
+
 // Static variables to maintain state between segment recordings
 static AVFormatContext *static_input_ctx = NULL;
 static segment_info_t segment_info = {0, false, false};
 
 // Mutex to protect access to static variables
 static pthread_mutex_t static_vars_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+/**
+ * Initialize the MP4 segment recorder
+ * This function should be called during program startup
+ */
+void mp4_segment_recorder_init(void) {
+    // Initialize FFmpeg network
+    #if LIBAVFORMAT_VERSION_INT < AV_VERSION_INT(58, 9, 100)
+    // For older FFmpeg versions
+    av_register_all();
+    avformat_network_init();
+    #else
+    // For newer FFmpeg versions
+    avformat_network_init();
+    #endif
+
+    // Reset static variables
+    pthread_mutex_lock(&static_vars_mutex);
+    static_input_ctx = NULL;
+    segment_info.segment_index = 0;
+    segment_info.has_audio = false;
+    segment_info.last_frame_was_key = false;
+    pthread_mutex_unlock(&static_vars_mutex);
+
+    log_info("MP4 segment recorder initialized");
+}
 
 /**
  * Record an RTSP stream to an MP4 file for a specified duration
@@ -774,6 +803,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 
 cleanup:
     // CRITICAL FIX: Aggressive cleanup to prevent memory growth over time
+    log_debug("Starting aggressive cleanup of FFmpeg resources");
 
     // Free dictionaries - these are always safe to free
     av_dict_free(&opts);
@@ -781,38 +811,36 @@ cleanup:
 
     // Safely flush input context if it exists
     if (input_ctx && input_ctx->pb) {
+        log_debug("Flushing input context");
         avio_flush(input_ctx->pb);
     }
 
     // Safely flush output context if it exists
     if (output_ctx && output_ctx->pb) {
+        log_debug("Flushing output context");
         avio_flush(output_ctx->pb);
-    }
-
-    // In the cleanup section, add this before freeing the output context:
-    if (output_ctx && output_ctx->nb_streams > 0) {
-        for (unsigned int i = 0; i < output_ctx->nb_streams; i++) {
-            if (output_ctx->streams[i] && output_ctx->streams[i]->codecpar) {
-                avcodec_parameters_free(&output_ctx->streams[i]->codecpar);
-            }
-        }
     }
 
     // Clean up output context if it was created
     if (output_ctx) {
+        log_debug("Cleaning up output context");
+
         // Only write trailer if we successfully wrote the header and it hasn't been written yet
         if (output_ctx->pb && ret >= 0 && !trailer_written) {
+            log_debug("Writing trailer during cleanup");
             av_write_trailer(output_ctx);
         }
 
         // Close output file if it was opened
         if (output_ctx->pb) {
+            log_debug("Closing output file");
             avio_closep(&output_ctx->pb);
         }
 
         // MEMORY LEAK FIX: Properly clean up all streams in the output context
         // This ensures all codec contexts and other resources are freed
         if (output_ctx->nb_streams > 0) {
+            log_debug("Cleaning up %d output streams", output_ctx->nb_streams);
             for (unsigned int i = 0; i < output_ctx->nb_streams; i++) {
                 if (output_ctx->streams[i]) {
                     // Free any codec parameters
@@ -824,17 +852,23 @@ cleanup:
         }
 
         // Free output context
+        log_debug("Freeing output context");
         avformat_free_context(output_ctx);
         output_ctx = NULL;
     }
 
     // CRITICAL FIX: Properly handle the input context to prevent memory leaks
     if (input_ctx) {
+        log_debug("Handling input context cleanup");
+
         // Store the input context for reuse if recording was successful
         if (ret >= 0) {
             pthread_mutex_lock(&static_vars_mutex);
             // Only store if there's no existing context (should never happen, but just in case)
             if (static_input_ctx == NULL) {
+                // We can't directly access internal FFmpeg structures
+                // Just store the context as is and rely on FFmpeg's internal reference counting
+
                 static_input_ctx = input_ctx;
                 // Don't close the input context as we're keeping it for the next segment
                 input_ctx = NULL;
@@ -842,11 +876,34 @@ cleanup:
             } else {
                 // This should never happen, but if it does, close the current context
                 log_warn("Static input context already exists, closing current context");
+
+                // Clean up all streams before closing
+                for (unsigned int i = 0; i < input_ctx->nb_streams; i++) {
+                    if (input_ctx->streams[i]) {
+                        // Free any codec parameters
+                        if (input_ctx->streams[i]->codecpar) {
+                            avcodec_parameters_free(&input_ctx->streams[i]->codecpar);
+                        }
+                    }
+                }
+
                 avformat_close_input(&input_ctx);
             }
             pthread_mutex_unlock(&static_vars_mutex);
         } else {
             // If there was an error, close the input context
+            log_debug("Closing input context due to error");
+
+            // Clean up all streams before closing
+            for (unsigned int i = 0; i < input_ctx->nb_streams; i++) {
+                if (input_ctx->streams[i]) {
+                    // Free any codec parameters
+                    if (input_ctx->streams[i]->codecpar) {
+                        avcodec_parameters_free(&input_ctx->streams[i]->codecpar);
+                    }
+                }
+            }
+
             avformat_close_input(&input_ctx);
             log_debug("Closed input context due to error");
         }
@@ -855,9 +912,17 @@ cleanup:
     // MEMORY LEAK FIX: Ensure packet is unref'd and freed before returning
     // This is a safety measure in case we jumped to cleanup without unreferencing the packet
     if (pkt) {
+        log_debug("Cleaning up packet");
         av_packet_unref(pkt);
         av_packet_free(&pkt);
     }
+
+    // Final FFmpeg cleanup to prevent memory leaks
+    // This helps clean up any internal FFmpeg resources that might not be properly freed
+    av_log_set_level(AV_LOG_QUIET);  // Suppress any warnings during cleanup
+
+    // Note: We don't call avformat_network_deinit() here because it might affect other threads
+    // It will be called during final program shutdown in mp4_segment_recorder_cleanup
 
     // Return the error code
     return ret;
@@ -873,6 +938,16 @@ void mp4_segment_recorder_cleanup(void) {
 
     // Clean up static input context if it exists
     if (static_input_ctx) {
+        log_info("Cleaning up static input context during shutdown");
+
+        // Flush the input context before closing it
+        if (static_input_ctx->pb) {
+            avio_flush(static_input_ctx->pb);
+        }
+
+        // Let avformat_close_input handle the cleanup of streams and codecs
+
+        // Close the input context
         avformat_close_input(&static_input_ctx);
         static_input_ctx = NULL;
         log_debug("Cleaned up static input context during shutdown");
@@ -884,6 +959,16 @@ void mp4_segment_recorder_cleanup(void) {
     segment_info.last_frame_was_key = false;
 
     pthread_mutex_unlock(&static_vars_mutex);
+
+    // Call FFmpeg's global cleanup functions to release any global resources
+    // This helps clean up resources that might not be freed otherwise
+
+    // Set log level to quiet to suppress any warnings during cleanup
+    av_log_set_level(AV_LOG_QUIET);
+
+    // Clean up network resources
+    // Note: This is safe to call during shutdown as we're ensuring all contexts are closed first
+    avformat_network_deinit();
 
     log_info("MP4 segment recorder resources cleaned up");
 }
