@@ -148,23 +148,12 @@ int clear_video_timeout(void) {
 int handle_hls_timeout(const char *url, AVFormatContext **input_ctx) {
     log_warn("HLS timeout occurred for stream: %s", url ? url : "unknown");
 
-    // Safely clean up resources
-    if (input_ctx && *input_ctx) {
-        // Flush all buffers before closing if possible
-        if ((*input_ctx)->pb && !(*input_ctx)->pb->error) {
-            avio_flush((*input_ctx)->pb);
-        }
-
-        // Close the input context - this will free all associated resources
-        avformat_close_input(input_ctx);
-
-        // Double check that it's really closed
-        if (*input_ctx) {
-            log_warn("Input context still exists after avformat_close_input, forcing cleanup");
-            avformat_free_context(*input_ctx);
-            *input_ctx = NULL;
-        }
-    }
+    // MEMORY LEAK FIX: Use our comprehensive cleanup function instead of manual cleanup
+    // This ensures all resources are properly freed, including internal buffers
+    // that might be causing memory leaks
+    extern void comprehensive_ffmpeg_cleanup(AVFormatContext **input_ctx, AVCodecContext **codec_ctx,
+                                           AVPacket **packet, AVFrame **frame);
+    comprehensive_ffmpeg_cleanup(input_ctx, NULL, NULL, NULL);
 
     return AVERROR(ETIMEDOUT);
 }
