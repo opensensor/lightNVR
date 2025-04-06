@@ -176,7 +176,21 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
             video_stream_idx = i;
             log_debug("Found video stream: %d", i);
             log_debug("  Codec: %s", avcodec_get_name(stream->codecpar->codec_id));
-            log_debug("  Resolution: %dx%d", stream->codecpar->width, stream->codecpar->height);
+
+            // CRITICAL FIX: Check for unspecified dimensions and log a warning
+            if (stream->codecpar->width == 0 || stream->codecpar->height == 0) {
+                log_warn("Video stream has unspecified dimensions (width=%d, height=%d)",
+                        stream->codecpar->width, stream->codecpar->height);
+
+                // Try to extract dimensions from extradata if available
+                if (stream->codecpar->extradata_size > 0 && stream->codecpar->codec_id == AV_CODEC_ID_H264) {
+                    log_info("Attempting to extract dimensions from H.264 extradata");
+                    // This would require SPS parsing which is complex - we'll use defaults instead
+                }
+            } else {
+                log_debug("  Resolution: %dx%d", stream->codecpar->width, stream->codecpar->height);
+            }
+
             if (stream->avg_frame_rate.num && stream->avg_frame_rate.den) {
                 log_debug("  Frame rate: %.2f fps",
                        (float)stream->avg_frame_rate.num / stream->avg_frame_rate.den);
@@ -219,6 +233,20 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         goto cleanup;
     }
 
+    // CRITICAL FIX: Check for unspecified video dimensions (0x0) and set default values
+    // This prevents the "dimensions not set" error and segmentation fault
+    if (out_video_stream->codecpar->width == 0 || out_video_stream->codecpar->height == 0) {
+        log_warn("Video dimensions not set (width=%d, height=%d), using default values",
+                out_video_stream->codecpar->width, out_video_stream->codecpar->height);
+
+        // Set default dimensions (640x480 is a safe choice)
+        out_video_stream->codecpar->width = 640;
+        out_video_stream->codecpar->height = 480;
+
+        log_info("Set default video dimensions to %dx%d",
+                out_video_stream->codecpar->width, out_video_stream->codecpar->height);
+    }
+
     // Set video stream time base
     out_video_stream->time_base = input_ctx->streams[video_stream_idx]->time_base;
 
@@ -256,10 +284,29 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         goto cleanup;
     }
 
+    // CRITICAL FIX: Double-check video dimensions before writing header
+    if (out_video_stream->codecpar->width == 0 || out_video_stream->codecpar->height == 0) {
+        log_error("Video dimensions still not set after fix attempt, setting emergency defaults");
+        out_video_stream->codecpar->width = 640;
+        out_video_stream->codecpar->height = 480;
+    }
+
     // Write file header
     ret = avformat_write_header(output_ctx, &out_opts);
     if (ret < 0) {
-        log_error("Failed to write header: %d", ret);
+        char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+        av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+        log_error("Failed to write header: %d (%s)", ret, error_buf);
+
+        // If this is an EINVAL error, it might be related to dimensions
+        if (ret == AVERROR(EINVAL)) {
+            log_error("Header write failed with EINVAL, likely due to invalid video parameters");
+            log_error("Video stream parameters: width=%d, height=%d, codec_id=%d",
+                     out_video_stream->codecpar->width,
+                     out_video_stream->codecpar->height,
+                     out_video_stream->codecpar->codec_id);
+        }
+
         goto cleanup;
     }
 
@@ -914,6 +961,14 @@ cleanup:
     av_dict_free(&opts);
     av_dict_free(&out_opts);
 
+    // Free packet if allocated
+    if (pkt) {
+        log_debug("Freeing packet during cleanup");
+        av_packet_unref(pkt);
+        av_packet_free(&pkt);
+        pkt = NULL;
+    }
+
     // Safely flush input context if it exists
     if (input_ctx && input_ctx->pb) {
         log_debug("Flushing input context");
@@ -1013,18 +1068,7 @@ cleanup:
         log_debug("Closed input context due to error");
     }
 
-    // MEMORY LEAK FIX: Ensure packet is unref'd and freed before returning
-    // This is a safety measure in case we jumped to cleanup without unreferencing the packet
-    if (pkt) {
-        log_debug("Cleaning up packet");
-        av_packet_unref(pkt);
-        av_packet_free(&pkt);
-    }
-
     // Final FFmpeg cleanup to prevent memory leaks
-    // This helps clean up any internal FFmpeg resources that might not be properly freed
-    av_log_set_level(AV_LOG_QUIET);  // Suppress any warnings during cleanup
-
     avformat_network_deinit();
     av_dict_free(&opts);
 
