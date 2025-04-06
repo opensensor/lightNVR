@@ -32,6 +32,13 @@
 #include "video/mp4_writer_internal.h"
 #include "video/mp4_segment_recorder.h"
 
+// Static variables to maintain state between segment recordings
+static AVFormatContext *static_input_ctx = NULL;
+static segment_info_t segment_info = {0, false, false};
+
+// Mutex to protect access to static variables
+static pthread_mutex_t static_vars_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 /**
  * Record an RTSP stream to an MP4 file for a specified duration
  *
@@ -50,14 +57,10 @@
  * @param rtsp_url The URL of the RTSP stream to record
  * @param output_file The path to the output MP4 file
  * @param duration The duration to record in seconds
- * @param input_ctx_ptr Pointer to an existing input context (can be NULL)
  * @param has_audio Flag indicating whether to include audio in the recording
- * @param prev_segment_info Optional pointer to previous segment information for timestamp continuity
  * @return 0 on success, negative value on error
  */
-int record_segment(const char *rtsp_url, const char *output_file, int duration,
-                  AVFormatContext **input_ctx_ptr, int has_audio,
-                  segment_info_t *prev_segment_info) {
+int record_segment(const char *rtsp_url, const char *output_file, int duration, int has_audio) {
     int ret = 0;
     AVFormatContext *input_ctx = NULL;
     AVFormatContext *output_ctx = NULL;
@@ -82,21 +85,28 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration,
     time_t last_progress = 0;
     int segment_index = 0;
 
-    // Initialize segment index if previous segment info is provided
-    if (prev_segment_info) {
-        segment_index = prev_segment_info->segment_index + 1;
-        log_info("Starting new segment with index %d", segment_index);
-    }
+    // Thread-safe access to static segment info
+    pthread_mutex_lock(&static_vars_mutex);
+    segment_index = segment_info.segment_index + 1;
+    pthread_mutex_unlock(&static_vars_mutex);
+
+    log_info("Starting new segment with index %d", segment_index);
 
     log_info("Recording from %s", rtsp_url);
     log_info("Output file: %s", output_file);
     log_info("Duration: %d seconds", duration);
 
-    // Use existing input context if provided
-    if (*input_ctx_ptr) {
-        input_ctx = *input_ctx_ptr;
+    // Thread-safe access to static input context
+    pthread_mutex_lock(&static_vars_mutex);
+    if (static_input_ctx) {
+        input_ctx = static_input_ctx;
+        // Clear the static pointer to prevent double free
+        static_input_ctx = NULL;
+        pthread_mutex_unlock(&static_vars_mutex);
         log_debug("Using existing input context");
     } else {
+        pthread_mutex_unlock(&static_vars_mutex);
+
         // Set up RTSP options for low latency
         av_dict_set(&opts, "rtsp_transport", "tcp", 0);  // Use TCP for RTSP (more reliable than UDP)
         av_dict_set(&opts, "fflags", "nobuffer", 0);     // Reduce buffering
@@ -105,18 +115,18 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration,
         av_dict_set(&opts, "stimeout", "5000000", 0);    // Socket timeout in microseconds (5 seconds)
 
         // Open input
-    ret = avformat_open_input(&input_ctx, rtsp_url, NULL, &opts);
-    if (ret < 0) {
-        char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
-        av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-        log_error("Failed to open input: %d (%s)", ret, error_buf);
+        ret = avformat_open_input(&input_ctx, rtsp_url, NULL, &opts);
+        if (ret < 0) {
+            char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+            av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+            log_error("Failed to open input: %d (%s)", ret, error_buf);
 
-        // Ensure input_ctx is NULL after a failed open
-        input_ctx = NULL;
+            // Ensure input_ctx is NULL after a failed open
+            input_ctx = NULL;
 
-        // Don't quit, just return an error code so the caller can retry
-        goto cleanup;
-    }
+            // Don't quit, just return an error code so the caller can retry
+            goto cleanup;
+        }
 
         // Find stream info
         ret = avformat_find_stream_info(input_ctx, NULL);
@@ -124,9 +134,6 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration,
             log_error("Failed to find stream info: %d", ret);
             goto cleanup;
         }
-
-        // Store the input context for reuse
-        *input_ctx_ptr = input_ctx;
     }
 
     // Log input stream info
@@ -151,13 +158,6 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration,
             log_debug("  Codec: %s", avcodec_get_name(stream->codecpar->codec_id));
             log_debug("  Sample rate: %d Hz", stream->codecpar->sample_rate);
             // Handle channel count for different FFmpeg versions
-#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
-            // For FFmpeg 5.0 and newer
-            log_debug("  Channels: %d", stream->codecpar->ch_layout.nb_channels);
-#else
-            // For older FFmpeg versions
-            log_debug("  Channels: %d", stream->codecpar->channels);
-#endif
         }
     }
 
@@ -234,10 +234,17 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration,
         goto cleanup;
     }
 
-    // Initialize packet
+    // Initialize packet - ensure it's properly allocated and initialized
     pkt = av_packet_alloc();
+    if (!pkt) {
+        log_error("Failed to allocate packet");
+        ret = AVERROR(ENOMEM);
+        goto cleanup;
+    }
+    // Initialize packet fields
     pkt->data = NULL;
     pkt->size = 0;
+    pkt->stream_index = -1;
 
     // Start recording
     start_time = av_gettime();
@@ -299,9 +306,9 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration,
 
             // If we're waiting for the first key frame
             if (!found_first_keyframe) {
-                // If the previous segment ended with a key frame, we can start immediately with this frame
-                // Otherwise, wait for a key frame
-                if (prev_segment_info && prev_segment_info->last_frame_was_key && segment_index > 0) {
+            // If the previous segment ended with a key frame, we can start immediately with this frame
+            // Otherwise, wait for a key frame
+            if (segment_info.last_frame_was_key && segment_index > 0) {
                     log_info("Previous segment ended with a key frame, starting new segment immediately");
                     found_first_keyframe = true;
 
@@ -345,17 +352,13 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration,
                     if (is_keyframe) {
                         log_info("Found final key frame, ending recording");
                         // Set flag to indicate the last frame was a key frame
-                        if (prev_segment_info) {
-                            prev_segment_info->last_frame_was_key = true;
-                            log_debug("Last frame was a key frame, next segment will start immediately with this keyframe");
-                        }
+                        segment_info.last_frame_was_key = true;
+                        log_debug("Last frame was a key frame, next segment will start immediately with this keyframe");
                     } else {
                         log_info("Waited %lld seconds for key frame, ending recording with non-key frame", (long long)wait_time);
                         // Clear flag since the last frame was not a key frame
-                        if (prev_segment_info) {
-                            prev_segment_info->last_frame_was_key = false;
-                            log_debug("Last frame was NOT a key frame, next segment will wait for a keyframe");
-                        }
+                        segment_info.last_frame_was_key = false;
+                        log_debug("Last frame was NOT a key frame, next segment will wait for a keyframe");
                     }
 
                     // Process this final frame and then break the loop
@@ -760,13 +763,14 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration,
         }
     }
 
-    // Save segment info for the next segment if needed
-    if (prev_segment_info) {
-        prev_segment_info->segment_index = segment_index;
-        prev_segment_info->has_audio = has_audio && audio_stream_idx >= 0;
-        log_info("Saved segment info for next segment: index=%d, has_audio=%d, last_frame_was_key=%d",
-                segment_index, has_audio && audio_stream_idx >= 0, prev_segment_info->last_frame_was_key);
-    }
+    // Thread-safe update of segment info for the next segment
+    pthread_mutex_lock(&static_vars_mutex);
+    segment_info.segment_index = segment_index;
+    segment_info.has_audio = has_audio && audio_stream_idx >= 0;
+    pthread_mutex_unlock(&static_vars_mutex);
+
+    log_info("Saved segment info for next segment: index=%d, has_audio=%d, last_frame_was_key=%d",
+            segment_index, has_audio && audio_stream_idx >= 0, segment_info.last_frame_was_key);
 
 cleanup:
     // CRITICAL FIX: Aggressive cleanup to prevent memory growth over time
@@ -775,11 +779,13 @@ cleanup:
     av_dict_free(&opts);
     av_dict_free(&out_opts);
 
-    if (input_ctx->pb) {
+    // Safely flush input context if it exists
+    if (input_ctx && input_ctx->pb) {
         avio_flush(input_ctx->pb);
     }
 
-    if (output_ctx->pb) {
+    // Safely flush output context if it exists
+    if (output_ctx && output_ctx->pb) {
         avio_flush(output_ctx->pb);
     }
 
@@ -794,7 +800,7 @@ cleanup:
 
     // Clean up output context if it was created
     if (output_ctx) {
-        // Only write trailer if we successfully wrote the header
+        // Only write trailer if we successfully wrote the header and it hasn't been written yet
         if (output_ctx->pb && ret >= 0 && !trailer_written) {
             av_write_trailer(output_ctx);
         }
@@ -822,42 +828,62 @@ cleanup:
         output_ctx = NULL;
     }
 
-    // Add this to the cleanup section in record_segment():
+    // CRITICAL FIX: Properly handle the input context to prevent memory leaks
     if (input_ctx) {
-        // CRITICAL FIX: Always close the input context after each segment
-        avformat_close_input(&input_ctx);
-        *input_ctx_ptr = NULL; // Ensure the caller knows it's closed
-    }
-
-    // MEMORY LEAK FIX: If we had a critical error, close and reopen the input context
-    // This prevents memory growth over time by periodically refreshing FFmpeg resources
-    if (ret < 0 && ret != AVERROR(EAGAIN) && *input_ctx_ptr) {
-        log_info("Critical error occurred, closing and reopening input context to prevent memory leaks");
-        avformat_close_input(input_ctx_ptr);
-        // The caller will reopen the input context on the next attempt
-    }
-
-    // MEMORY LEAK FIX: Ensure packet is unref'd before returning
-    // This is a safety measure in case we jumped to cleanup without unreferencing the packet
-    av_packet_unref(pkt);
-    av_packet_free(&pkt);
-
-    // MEMORY LEAK FIX: Always close and reopen the input context after each segment
-    // This is the most aggressive approach to prevent memory growth
-    if (*input_ctx_ptr) {
-        log_info("Closing input context after segment to prevent memory leaks");
-
-        // CRITICAL: Flush all buffers before closing
-        if ((*input_ctx_ptr)->pb) {
-            avio_flush((*input_ctx_ptr)->pb);
+        // Store the input context for reuse if recording was successful
+        if (ret >= 0) {
+            pthread_mutex_lock(&static_vars_mutex);
+            // Only store if there's no existing context (should never happen, but just in case)
+            if (static_input_ctx == NULL) {
+                static_input_ctx = input_ctx;
+                // Don't close the input context as we're keeping it for the next segment
+                input_ctx = NULL;
+                log_debug("Stored input context for reuse in next segment");
+            } else {
+                // This should never happen, but if it does, close the current context
+                log_warn("Static input context already exists, closing current context");
+                avformat_close_input(&input_ctx);
+            }
+            pthread_mutex_unlock(&static_vars_mutex);
+        } else {
+            // If there was an error, close the input context
+            avformat_close_input(&input_ctx);
+            log_debug("Closed input context due to error");
         }
+    }
 
-        // Close the input context - this will free all associated resources
-        // Let FFmpeg handle its own memory management
-        avformat_close_input(input_ctx_ptr);
-        // The caller will reopen the input context on the next attempt
+    // MEMORY LEAK FIX: Ensure packet is unref'd and freed before returning
+    // This is a safety measure in case we jumped to cleanup without unreferencing the packet
+    if (pkt) {
+        av_packet_unref(pkt);
+        av_packet_free(&pkt);
     }
 
     // Return the error code
     return ret;
+}
+
+/**
+ * Clean up all static resources used by the MP4 segment recorder
+ * This function should be called during program shutdown to prevent memory leaks
+ */
+void mp4_segment_recorder_cleanup(void) {
+    // Thread-safe cleanup of static resources
+    pthread_mutex_lock(&static_vars_mutex);
+
+    // Clean up static input context if it exists
+    if (static_input_ctx) {
+        avformat_close_input(&static_input_ctx);
+        static_input_ctx = NULL;
+        log_debug("Cleaned up static input context during shutdown");
+    }
+
+    // Reset segment info
+    segment_info.segment_index = 0;
+    segment_info.has_audio = false;
+    segment_info.last_frame_was_key = false;
+
+    pthread_mutex_unlock(&static_vars_mutex);
+
+    log_info("MP4 segment recorder resources cleaned up");
 }

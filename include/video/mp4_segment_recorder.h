@@ -1,6 +1,6 @@
 /**
  * MP4 Segment Recorder Header
- * 
+ *
  * This module handles the recording of individual MP4 segments from RTSP streams.
  * It's responsible for:
  * - Opening RTSP streams
@@ -42,13 +42,15 @@ typedef struct {
  * @param rtsp_url The URL of the RTSP stream to record
  * @param output_file The path to the output MP4 file
  * @param duration The duration to record in seconds
- * @param input_ctx_ptr Pointer to an existing input context (can be NULL)
  * @param has_audio Flag indicating whether to include audio in the recording
- * @param prev_segment_info Optional pointer to previous segment information for timestamp continuity
  * @return 0 on success, negative value on error
  */
-int record_segment(const char *rtsp_url, const char *output_file, int duration,
-                  AVFormatContext **input_ctx_ptr, int has_audio,
-                  segment_info_t *prev_segment_info);
+int record_segment(const char *rtsp_url, const char *output_file, int duration, int has_audio);
+
+/**
+ * Clean up all static resources used by the MP4 segment recorder
+ * This function should be called during program shutdown to prevent memory leaks
+ */
+void mp4_segment_recorder_cleanup(void);
 
 #endif /* MP4_SEGMENT_RECORDER_H */

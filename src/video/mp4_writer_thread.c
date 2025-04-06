@@ -300,8 +300,16 @@ static void *mp4_writer_rtsp_thread(void *arg) {
         log_info("Starting segment recording with info: index=%d, has_audio=%d, last_frame_was_key=%d",
                 segment_info.segment_index, segment_info.has_audio, segment_info.last_frame_was_key);
 
+        // MEMORY LEAK FIX: Ensure we don't have any lingering input context before recording
+        // This is a safety measure to prevent resource leaks
+        if (input_ctx) {
+            avformat_close_input(&input_ctx);
+            input_ctx = NULL;
+            log_debug("Closed existing input context before recording new segment");
+        }
+
         ret = record_segment(thread_ctx->rtsp_url, thread_ctx->writer->output_path,
-                           segment_duration, &input_ctx, thread_ctx->writer->has_audio, &segment_info);
+                           segment_duration, thread_ctx->writer->has_audio);
 
         log_info("Finished segment recording with info: index=%d, has_audio=%d, last_frame_was_key=%d",
                 segment_info.segment_index, segment_info.has_audio, segment_info.last_frame_was_key);

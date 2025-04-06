@@ -378,7 +378,7 @@ configure_file(
 
 # Generate version.js for web interface
 add_custom_target(generate_version_js
-        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/extract_version.js
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/extract_version.sh
         COMMENT "Generating version.js for web interface"
         VERBATIM
 )

@@ -1,6 +1,6 @@
 /**
  * MP4 Recording Core
- * 
+ *
  * This module is responsible for managing MP4 recording threads.
  * Each recording thread is responsible for starting and stopping an MP4 recorder
  * for a specific stream. The actual RTSP interaction is contained within the
@@ -34,6 +34,7 @@
 #include "video/mp4_recording.h"
 #include "video/mp4_recording_internal.h"
 #include "video/mp4_writer_thread.h"
+#include "video/mp4_segment_recorder.h"
 #include "video/stream_packet_processor.h"
 
 
@@ -48,7 +49,7 @@ static void *mp4_recording_thread(void *arg);
 
 /**
  * MP4 recording thread function for a single stream
- * 
+ *
  * This thread is responsible for:
  * 1. Creating and managing the output directory
  * 2. Creating the MP4 writer
@@ -58,7 +59,7 @@ static void *mp4_recording_thread(void *arg);
  */
 static void *mp4_recording_thread(void *arg) {
     mp4_recording_ctx_t *ctx = (mp4_recording_ctx_t *)arg;
-    
+
     // Make a local copy of the stream name for thread safety
     char stream_name[MAX_STREAM_NAME];
     strncpy(stream_name, ctx->config.name, MAX_STREAM_NAME - 1);
@@ -76,13 +77,13 @@ static void *mp4_recording_thread(void *arg) {
     char mp4_dir[MAX_PATH_LENGTH];
     strncpy(mp4_dir, ctx->output_path, MAX_PATH_LENGTH - 1);
     mp4_dir[MAX_PATH_LENGTH - 1] = '\0';
-    
+
     // Remove filename from path to get directory
     char *last_slash = strrchr(mp4_dir, '/');
     if (last_slash) {
         *last_slash = '\0';
     }
-    
+
     struct stat st;
     if (stat(mp4_dir, &st) != 0 || !S_ISDIR(st.st_mode)) {
         log_error("Output directory does not exist or is not a directory: %s", mp4_dir);
@@ -104,7 +105,7 @@ static void *mp4_recording_thread(void *arg) {
         if (ret_chmod != 0) {
             log_warn("Failed to set permissions on directory: %s (return code: %d)", mp4_dir, ret_chmod);
         }
-        
+
         log_info("Successfully created output directory: %s", mp4_dir);
     }
 
@@ -125,7 +126,7 @@ static void *mp4_recording_thread(void *arg) {
             ctx->running = 0;
             return NULL;
         }
-        
+
         log_info("Successfully fixed permissions for output directory: %s", mp4_dir);
     }
 
@@ -142,44 +143,44 @@ static void *mp4_recording_thread(void *arg) {
         ctx->running = 0;
         return NULL;
     }
-    
+
     log_info("Created MP4 writer for %s at %s", stream_name, ctx->output_path);
-    
+
     // Set segment duration in the MP4 writer
     int segment_duration = ctx->config.segment_duration > 0 ? ctx->config.segment_duration : 30;
     mp4_writer_set_segment_duration(ctx->mp4_writer, segment_duration);
-    log_info("Set segment duration to %d seconds for MP4 writer for stream %s", 
+    log_info("Set segment duration to %d seconds for MP4 writer for stream %s",
              segment_duration, stream_name);
-    
+
     // Check if this stream is using go2rtc for recording
     char actual_url[MAX_PATH_LENGTH];
     bool using_go2rtc = false;
-    
+
     // Forward declarations for go2rtc integration
     extern bool go2rtc_integration_is_using_go2rtc_for_recording(const char *stream_name);
     extern bool go2rtc_get_rtsp_url(const char *stream_name, char *url, size_t url_size);
-    
+
     // Try to get the go2rtc RTSP URL for this stream
     if (go2rtc_integration_is_using_go2rtc_for_recording(stream_name)) {
         // Retry a few times to get the go2rtc RTSP URL
         int retries = 5;
         bool success = false;
-        
+
         while (retries > 0 && !success) {
             if (go2rtc_get_rtsp_url(stream_name, actual_url, sizeof(actual_url))) {
                 log_info("Using go2rtc RTSP URL for MP4 recording: %s", actual_url);
                 using_go2rtc = true;
                 success = true;
             } else {
-                log_warn("Failed to get go2rtc RTSP URL for stream %s, retrying in 2 seconds (%d retries left)", 
+                log_warn("Failed to get go2rtc RTSP URL for stream %s, retrying in 2 seconds (%d retries left)",
                         stream_name, retries);
                 sleep(2);
                 retries--;
             }
         }
-        
+
         if (!success) {
-            log_error("Failed to get go2rtc RTSP URL for stream %s after multiple retries, falling back to original URL", 
+            log_error("Failed to get go2rtc RTSP URL for stream %s after multiple retries, falling back to original URL",
                      stream_name);
             strncpy(actual_url, ctx->config.url, sizeof(actual_url) - 1);
             actual_url[sizeof(actual_url) - 1] = '\0';
@@ -189,7 +190,7 @@ static void *mp4_recording_thread(void *arg) {
         strncpy(actual_url, ctx->config.url, sizeof(actual_url) - 1);
         actual_url[sizeof(actual_url) - 1] = '\0';
     }
-    
+
     // Start the self-managing RTSP recording thread in the MP4 writer
     int ret = mp4_writer_start_recording_thread(ctx->mp4_writer, actual_url);
     if (ret < 0) {
@@ -199,13 +200,13 @@ static void *mp4_recording_thread(void *arg) {
         ctx->running = 0;
         return NULL;
     }
-    
+
     if (using_go2rtc) {
         log_info("Started MP4 recording for stream %s using go2rtc's RTSP output", stream_name);
     }
-    
+
     log_info("Started self-managing RTSP recording thread for %s", stream_name);
-    
+
     // Main loop to monitor the recording thread
     while (ctx->running && !shutdown_in_progress) {
         // Check if shutdown has been initiated
@@ -214,7 +215,7 @@ static void *mp4_recording_thread(void *arg) {
             ctx->running = 0;
             break;
         }
-        
+
         // Sleep for a bit to avoid busy waiting
         sleep(1);
     }
@@ -223,7 +224,7 @@ static void *mp4_recording_thread(void *arg) {
     if (ctx->mp4_writer) {
         log_info("Stopping RTSP recording thread for stream %s", stream_name);
         mp4_writer_stop_recording_thread(ctx->mp4_writer);
-        
+
         log_info("Closing MP4 writer for stream %s during thread exit", stream_name);
         mp4_writer_close(ctx->mp4_writer);
         ctx->mp4_writer = NULL;
@@ -235,13 +236,13 @@ static void *mp4_recording_thread(void *arg) {
 
 /**
  * Initialize MP4 recording backend
- * 
+ *
  * This function initializes the recording contexts array and resets the shutdown flag.
  */
 void init_mp4_recording_backend(void) {
     // Initialize contexts array
     memset(recording_contexts, 0, sizeof(recording_contexts));
-    
+
     // Reset shutdown flag
     shutdown_in_progress = 0;
 
@@ -250,7 +251,7 @@ void init_mp4_recording_backend(void) {
 
 /**
  * Cleanup MP4 recording backend
- * 
+ *
  * This function stops all recording threads and frees all recording contexts.
  */
 void cleanup_mp4_recording_backend(void) {
@@ -267,25 +268,25 @@ void cleanup_mp4_recording_backend(void) {
         char stream_name[MAX_STREAM_NAME];
         int index;
     } cleanup_item_t;
-    
+
     cleanup_item_t items_to_cleanup[MAX_STREAMS];
     int cleanup_count = 0;
-    
+
     // First collect all contexts under lock
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (recording_contexts[i]) {
             // Mark as not running
             recording_contexts[i]->running = 0;
-            
+
             // Store context info for cleanup
             items_to_cleanup[cleanup_count].ctx = recording_contexts[i];
             items_to_cleanup[cleanup_count].thread = recording_contexts[i]->thread;
-            strncpy(items_to_cleanup[cleanup_count].stream_name, 
-                    recording_contexts[i]->config.name, 
+            strncpy(items_to_cleanup[cleanup_count].stream_name,
+                    recording_contexts[i]->config.name,
                     MAX_STREAM_NAME - 1);
             items_to_cleanup[cleanup_count].stream_name[MAX_STREAM_NAME - 1] = '\0';
             items_to_cleanup[cleanup_count].index = i;
-            
+
             cleanup_count++;
         }
     }
@@ -293,15 +294,15 @@ void cleanup_mp4_recording_backend(void) {
     // Now join threads and free contexts outside the lock
     for (int i = 0; i < cleanup_count; i++) {
         // Join thread with timeout
-        log_info("Waiting for MP4 recording thread for %s to exit", 
+        log_info("Waiting for MP4 recording thread for %s to exit",
                 items_to_cleanup[i].stream_name);
-        
+
         int join_result = pthread_join_with_timeout(items_to_cleanup[i].thread, NULL, 3);
         if (join_result != 0) {
-            log_warn("Could not join MP4 recording thread for %s within timeout: %s", 
+            log_warn("Could not join MP4 recording thread for %s within timeout: %s",
                     items_to_cleanup[i].stream_name, strerror(join_result));
         } else {
-            log_info("Successfully joined MP4 recording thread for %s", 
+            log_info("Successfully joined MP4 recording thread for %s",
                     items_to_cleanup[i].stream_name);
         }
 
@@ -312,10 +313,14 @@ void cleanup_mp4_recording_backend(void) {
             recording_contexts[items_to_cleanup[i].index] = NULL;
             log_info("Freed MP4 recording context for %s", items_to_cleanup[i].stream_name);
         } else {
-            log_warn("MP4 recording context for %s was already cleaned up or moved", 
+            log_warn("MP4 recording context for %s was already cleaned up or moved",
                     items_to_cleanup[i].stream_name);
         }
     }
+
+    // Clean up static resources in the MP4 segment recorder
+    log_info("Cleaning up MP4 segment recorder resources");
+    mp4_segment_recorder_cleanup();
 
     log_info("MP4 recording backend cleanup complete");
 }
@@ -349,7 +354,7 @@ int start_mp4_recording(const char *stream_name) {
             return 0;  // Already running
         }
     }
-    
+
     // MAJOR ARCHITECTURAL CHANGE: We no longer need to start the HLS streaming thread
     // since we're using a standalone recording thread that directly reads from the RTSP stream
     log_info("Using standalone recording thread for stream %s", stream_name);
@@ -406,7 +411,7 @@ int start_mp4_recording(const char *stream_name) {
     int ret = system(dir_cmd);
     if (ret != 0) {
         log_error("Failed to create MP4 directory: %s (return code: %d)", mp4_dir, ret);
-        
+
         // Try to create the parent directory first
         char parent_dir[MAX_PATH_LENGTH];
         if (global_config->record_mp4_directly && global_config->mp4_storage_path[0] != '\0') {
@@ -414,7 +419,7 @@ int start_mp4_recording(const char *stream_name) {
         } else {
             snprintf(parent_dir, MAX_PATH_LENGTH, "%s/mp4", global_config->storage_path);
         }
-        
+
         snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s", parent_dir);
         ret = system(dir_cmd);
         if (ret != 0) {
@@ -422,7 +427,7 @@ int start_mp4_recording(const char *stream_name) {
             free(ctx);
             return -1;
         }
-        
+
         // Try again to create the stream-specific directory
         snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s", mp4_dir);
         ret = system(dir_cmd);
@@ -439,7 +444,7 @@ int start_mp4_recording(const char *stream_name) {
     if (ret_chmod != 0) {
         log_warn("Failed to set permissions on MP4 directory: %s (return code: %d)", mp4_dir, ret_chmod);
     }
-    
+
     // Full path for the MP4 file
     snprintf(ctx->output_path, MAX_PATH_LENGTH, "%s/recording_%s.mp4",
              mp4_dir, timestamp_str);
@@ -488,7 +493,7 @@ int start_mp4_recording_with_url(const char *stream_name, const char *url) {
             return 0;  // Already running
         }
     }
-    
+
     log_info("Using standalone recording thread for stream %s with custom URL: %s", stream_name, url);
 
     // Find empty slot
@@ -514,11 +519,11 @@ int start_mp4_recording_with_url(const char *stream_name, const char *url) {
 
     memset(ctx, 0, sizeof(mp4_recording_ctx_t));
     memcpy(&ctx->config, &config, sizeof(stream_config_t));
-    
+
     // Override the URL in the config with the provided URL
     strncpy(ctx->config.url, url, MAX_PATH_LENGTH - 1);
     ctx->config.url[MAX_PATH_LENGTH - 1] = '\0';
-    
+
     ctx->running = 1;
 
     // Create output paths
@@ -548,7 +553,7 @@ int start_mp4_recording_with_url(const char *stream_name, const char *url) {
     int ret = system(dir_cmd);
     if (ret != 0) {
         log_error("Failed to create MP4 directory: %s (return code: %d)", mp4_dir, ret);
-        
+
         // Try to create the parent directory first
         char parent_dir[MAX_PATH_LENGTH];
         if (global_config->record_mp4_directly && global_config->mp4_storage_path[0] != '\0') {
@@ -556,7 +561,7 @@ int start_mp4_recording_with_url(const char *stream_name, const char *url) {
         } else {
             snprintf(parent_dir, MAX_PATH_LENGTH, "%s/mp4", global_config->storage_path);
         }
-        
+
         snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s", parent_dir);
         ret = system(dir_cmd);
         if (ret != 0) {
@@ -564,7 +569,7 @@ int start_mp4_recording_with_url(const char *stream_name, const char *url) {
             free(ctx);
             return -1;
         }
-        
+
         // Try again to create the stream-specific directory
         snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s", mp4_dir);
         ret = system(dir_cmd);
@@ -581,7 +586,7 @@ int start_mp4_recording_with_url(const char *stream_name, const char *url) {
     if (ret_chmod != 0) {
         log_warn("Failed to set permissions on MP4 directory: %s (return code: %d)", mp4_dir, ret_chmod);
     }
-    
+
     // Full path for the MP4 file
     snprintf(ctx->output_path, MAX_PATH_LENGTH, "%s/recording_%s.mp4",
              mp4_dir, timestamp_str);
