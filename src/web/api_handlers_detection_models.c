@@ -104,6 +104,25 @@ void mg_handle_get_detection_models(struct mg_connection *c, struct mg_http_mess
         model_count = 0;
     }
     
+    // Add API detection model
+    cJSON *api_model = cJSON_CreateObject();
+    if (api_model) {
+        cJSON_AddStringToObject(api_model, "name", "API Detection (light-object-detect)");
+        cJSON_AddStringToObject(api_model, "path", "http://localhost:8000/detect");
+        cJSON_AddStringToObject(api_model, "type", MODEL_TYPE_API);
+        cJSON_AddBoolToObject(api_model, "supported", true);
+        cJSON_AddStringToObject(api_model, "description", "External API-based object detection");
+        cJSON_AddStringToObject(api_model, "id", "http://localhost:8000/detect");
+        
+        // Add model to array
+        cJSON_AddItemToArray(models_array, api_model);
+        model_count++;
+        
+        log_info("Added API detection model");
+    } else {
+        log_error("Failed to create API model JSON object");
+    }
+    
     // Scan models directory
     struct dirent *entry;
     

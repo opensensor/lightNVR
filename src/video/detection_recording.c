@@ -806,9 +806,17 @@ int monitor_hls_segments_for_detection(const char *stream_name) {
         // Get global config to access models path
         extern config_t g_config;
         
-        // Check if model_path is a relative path
+        // Check if model_path is an API URL (starts with http:// or https://)
         char full_model_path[MAX_PATH_LENGTH];
-        if (config.detection_model[0] != '/') {
+        bool is_api_url = (strncmp(config.detection_model, "http://", 7) == 0 || 
+                          strncmp(config.detection_model, "https://", 8) == 0);
+        
+        if (is_api_url) {
+            // For API URLs, use the URL directly
+            log_info("Using API detection URL: %s", config.detection_model);
+            strncpy(full_model_path, config.detection_model, MAX_PATH_LENGTH - 1);
+            full_model_path[MAX_PATH_LENGTH - 1] = '\0';
+        } else if (config.detection_model[0] != '/') {
             // Construct full path using configured models path from INI if it exists
             if (g_config.models_path && strlen(g_config.models_path) > 0) {
                 snprintf(full_model_path, MAX_PATH_LENGTH, "%s/%s", 
@@ -1002,42 +1010,4 @@ int get_detection_recording_state(const char *stream_name, bool *recording_activ
     *recording_active = (recording_state > 0);
     
     return 1;
-}
-
-/**
- * Start monitoring HLS segments for all streams with detection enabled
- * This function ensures that detection threads are started for all streams with detection enabled
- */
-void monitor_all_hls_segments_for_detection(void) {
-    log_info("Starting detection threads for all streams with detection enabled");
-    
-    // Get all streams
-    for (int i = 0; i < MAX_STREAMS; i++) {
-        stream_handle_t stream = get_stream_by_index(i);
-        if (!stream) {
-            continue;
-        }
-        
-        // Get stream config
-        stream_config_t config;
-        if (get_stream_config(stream, &config) != 0) {
-            continue;
-        }
-        
-        // Check if detection is enabled for this stream
-        if (!config.detection_based_recording || config.detection_model[0] == '\0') {
-            continue;
-        }
-        
-        // Check if detection thread is already running
-        extern bool is_stream_detection_thread_running(const char *stream_name);
-        if (is_stream_detection_thread_running(config.name)) {
-            log_info("Detection thread already running for stream %s", config.name);
-            continue;
-        }
-        
-        // Start monitoring HLS segments for this stream
-        log_info("Starting detection thread for stream %s", config.name);
-        monitor_hls_segments_for_detection(config.name);
-    }
 }

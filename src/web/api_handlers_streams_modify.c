@@ -254,7 +254,7 @@ void mg_handle_post_stream(struct mg_connection *c, struct mg_http_message *hm) 
 
             // Construct HLS directory path
             char hls_dir[MAX_PATH_LENGTH];
-            snprintf(hls_dir, MAX_PATH_LENGTH, "/var/lib/lightnvr/hls/%s", config.name);
+            snprintf(hls_dir, MAX_PATH_LENGTH, "/var/lib/lightnvr/recordings/hls/%s", config.name);
 
             // Start detection thread
             if (start_stream_detection_thread(config.name, config.detection_model,
@@ -599,7 +599,7 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
 
                                 // Construct HLS directory path
                                 char hls_dir[MAX_PATH_LENGTH];
-                                snprintf(hls_dir, MAX_PATH_LENGTH, "/var/lib/lightnvr/hls/%s", decoded_id);
+                                snprintf(hls_dir, MAX_PATH_LENGTH, "/var/lib/lightnvr/recordings/hls/%s", decoded_id);
 
                                 // Start detection thread
                                 if (start_stream_detection_thread(decoded_id, stream_config.detection_model,
@@ -740,7 +740,7 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
 
             // Construct HLS directory path
             char hls_dir[MAX_PATH_LENGTH];
-            snprintf(hls_dir, MAX_PATH_LENGTH, "/var/lib/lightnvr/hls/%s", config.name);
+            snprintf(hls_dir, MAX_PATH_LENGTH, "/var/lib/lightnvr/recordings/hls/%s", config.name);
 
             // Start detection thread
             if (start_stream_detection_thread(config.name, config.detection_model,
@@ -767,7 +767,7 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
         if (config.detection_model[0] != '\0' && config.enabled) {
             // Construct HLS directory path
             char hls_dir[MAX_PATH_LENGTH];
-            snprintf(hls_dir, MAX_PATH_LENGTH, "/var/lib/lightnvr/hls/%s", config.name);
+            snprintf(hls_dir, MAX_PATH_LENGTH, "/var/lib/lightnvr/recordings/hls/%s", config.name);
 
             // Start detection thread
             if (start_stream_detection_thread(config.name, config.detection_model,

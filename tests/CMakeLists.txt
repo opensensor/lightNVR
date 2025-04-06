@@ -172,7 +172,6 @@ set(STREAM_DETECTION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/detection.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/api_detection.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/detection_embedded.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/detection_frame_processing.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/detection_recording.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/detection_config.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/detection_integration.c

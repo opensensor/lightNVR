@@ -421,18 +421,26 @@ static int process_segment_for_detection(stream_detection_thread_t *thread, cons
                     
                     // Check if this is an API model
                     const char *api_model_type = get_model_type_from_handle(thread->model);
+                    log_info("[Stream %s] Model type: %s", thread->stream_name, api_model_type);
+                    
                     if (strcmp(api_model_type, MODEL_TYPE_API) == 0) {
                         // For API models, we need to pass the stream name
                         const char *api_url = get_model_path(thread->model);
+                        log_info("[Stream %s] Using API detection with URL: %s", thread->stream_name, api_url ? api_url : "NULL");
+                        
                         if (!api_url) {
                             log_error("[Stream %s] Failed to get API URL from model", thread->stream_name);
                             detect_ret = -1;
                         } else {
+                            log_info("[Stream %s] Calling detect_objects_api with URL: %s", thread->stream_name, api_url);
                             detect_ret = detect_objects_api(api_url, rgb_buffer, target_width, target_height, channels, &result, thread->stream_name);
+                            log_info("[Stream %s] detect_objects_api returned: %d", thread->stream_name, detect_ret);
                         }
                     } else {
                         // For other models, use the standard detect_objects function
+                        log_info("[Stream %s] Using standard detect_objects function", thread->stream_name);
                         detect_ret = detect_objects(thread->model, rgb_buffer, target_width, target_height, channels, &result);
+                        log_info("[Stream %s] detect_objects returned: %d", thread->stream_name, detect_ret);
                     }
 
                     if (detect_ret == 0) {
@@ -960,6 +968,8 @@ static void *stream_detection_thread_func(void *arg) {
     global_startup_delay_end = startup_time + 10;
 
     while (thread->running) {
+        log_info("[Stream %s] Checking for new segments in HLS directory", thread->stream_name);
+
         // Check if shutdown has been initiated
         if (is_shutdown_initiated()) {
             log_info("[Stream %s] Stopping due to system shutdown", thread->stream_name);
@@ -1051,15 +1061,7 @@ static void *stream_detection_thread_func(void *arg) {
             // This is handled inside check_for_new_segments
         }
 
-        // Adaptive sleep based on consecutive empty checks
-        // Sleep less if we're actively finding segments, more if we're not
         int sleep_time = 500000; // Default 500ms
-        if (consecutive_empty_checks > 20) {
-            sleep_time = 1000000; // 1 second if we've had many empty checks
-        } else if (consecutive_empty_checks < 5) {
-            sleep_time = 250000; // 250ms if we're actively finding segments
-        }
-
         usleep(sleep_time);
     }
 

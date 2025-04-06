@@ -549,11 +549,6 @@ void *hls_unified_thread_func(void *arg) {
 
                     // Unlock the writer mutex
                     pthread_mutex_unlock(&ctx->writer->mutex);
-
-                    // Process packet for detection if needed
-                    if (input_stream && input_stream->codecpar) {
-                        process_packet_for_detection(stream_name, pkt, input_stream->codecpar);
-                    }
                 }
 
                 // Unref packet

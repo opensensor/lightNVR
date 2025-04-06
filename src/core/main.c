@@ -31,6 +31,7 @@
 #include "video/detection.h"
 #include "video/detection_integration.h"
 #include "video/detection_recording.h"
+#include "video/detection_stream_thread.h"
 #include "video/timestamp_manager.h"
 #include "video/onvif_discovery.h"
 
@@ -794,7 +795,7 @@ int main(int argc, char *argv[]) {
     init_hls_streaming_backend();
     init_mp4_recording_backend();
     log_info("MP4 writer shutdown system initialized");
-    
+
     // Initialize detection system
     if (init_detection_system() != 0) {
         log_error("Failed to initialize detection system");
@@ -887,6 +888,7 @@ int main(int argc, char *argv[]) {
             int detection_interval = config.streams[i].detection_interval > 0 ?
                                     config.streams[i].detection_interval : 10;
 
+            // First register the detection stream reader
             int result = start_detection_stream_reader(config.streams[i].name, detection_interval);
             if (result == 0) {
                 log_info("Successfully started detection stream reader for stream %s",
@@ -903,6 +905,22 @@ int main(int argc, char *argv[]) {
             } else {
                 log_error("Failed to start detection stream reader for stream %s: error code %d",
                         config.streams[i].name, result);
+            }
+
+            // Now directly start the detection thread
+            log_info("Directly starting detection thread for stream %s", config.streams[i].name);
+
+            // Construct HLS directory path
+            char hls_dir[MAX_PATH_LENGTH];
+            snprintf(hls_dir, MAX_PATH_LENGTH, "/var/lib/lightnvr/recordings/hls/%s", config.streams[i].name);
+
+            // Start the detection thread
+            if (start_stream_detection_thread(config.streams[i].name, model_path,
+                                             config.streams[i].detection_threshold,
+                                             config.streams[i].detection_interval, hls_dir) != 0) {
+                log_warn("Failed to start detection thread for stream %s", config.streams[i].name);
+            } else {
+                log_info("Successfully started detection thread for stream %s", config.streams[i].name);
             }
         }
     }
@@ -974,11 +992,6 @@ int main(int argc, char *argv[]) {
         // Check and ensure recording is active every minute
         if (now - last_recording_check_time > 60) {
             check_and_ensure_recording();
-
-            // Call monitor_all_hls_segments_for_detection to ensure detection threads are started
-            // This is important to make sure detection threads are running
-            monitor_all_hls_segments_for_detection();
-
             last_recording_check_time = now;
         }
 
@@ -1046,17 +1059,17 @@ cleanup:
         // Wait a moment for callbacks to clear and any in-progress operations to complete
         log_info("Waiting for callbacks to clear...");
         usleep(1000000);  // 1000ms (increased from 500ms)
-        
+
         // Stop all detection stream readers first
         log_info("Stopping all detection stream readers...");
         for (int i = 0; i < config.max_streams; i++) {
-            if (config.streams[i].name[0] != '\0' && 
-                config.streams[i].detection_based_recording && 
+            if (config.streams[i].name[0] != '\0' &&
+                config.streams[i].detection_based_recording &&
                 config.streams[i].detection_model[0] != '\0') {
-                
+
                 log_info("Stopping detection stream reader for: %s", config.streams[i].name);
                 stop_detection_stream_reader(config.streams[i].name);
-                
+
                 // Update component state
                 char component_name[128];
                 snprintf(component_name, sizeof(component_name), "detection_thread_%s", config.streams[i].name);
@@ -1072,7 +1085,7 @@ cleanup:
                 }
             }
         }
-        
+
         // Wait for detection stream readers to stop
         usleep(500000);  // 500ms
 
@@ -1093,7 +1106,7 @@ cleanup:
         // Finalize all MP4 recordings first before cleaning up the backend
         log_info("Finalizing all MP4 recordings...");
         close_all_mp4_writers();
-        
+
         // Update MP4 writer components state
         for (int i = 0; i < config.max_streams; i++) {
             if (config.streams[i].name[0] != '\0' && config.streams[i].record) {
@@ -1153,7 +1166,7 @@ cleanup:
         // Now clean up MP4 recording
         log_info("Cleaning up MP4 recording backend...");
         cleanup_mp4_recording_backend();
-        
+
         // Wait for MP4 recording to clean up
         usleep(1000000);  // 1000ms
 
@@ -1274,10 +1287,10 @@ cleanup:
 
         // Wait a moment
         usleep(1000000);  // 1 second
-        
+
         // Close all MP4 writers first
         close_all_mp4_writers();
-        
+
         // Then clean up backends in the correct order
         shutdown_detection_stream_system();
         cleanup_mp4_recording_backend();

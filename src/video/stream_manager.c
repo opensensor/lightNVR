@@ -300,8 +300,10 @@ int set_stream_detection_recording(stream_handle_t stream, bool enabled, const c
     // Check if detection was previously enabled and is now being disabled
     bool was_enabled = s->config.detection_based_recording;
     bool now_disabled = was_enabled && !enabled;
+    // Check if detection was previously disabled and is now being enabled
+    bool now_enabled = !was_enabled && enabled;
 
-    // Get stream name for potential thread stopping
+    // Get stream name for potential thread stopping/starting
     char stream_name[MAX_STREAM_NAME];
     strncpy(stream_name, s->config.name, MAX_STREAM_NAME - 1);
     stream_name[MAX_STREAM_NAME - 1] = '\0';
@@ -333,7 +335,7 @@ int set_stream_detection_recording(stream_handle_t stream, bool enabled, const c
         log_info("Updated stream state configuration for stream %s", config_copy.name);
     }
 
-    // CRITICAL FIX: If detection was enabled and is now being disabled, stop the detection thread
+    // If detection was enabled and is now being disabled, stop the detection thread
     if (now_disabled) {
         log_info("Detection disabled for stream %s, stopping detection thread", stream_name);
 
@@ -342,6 +344,24 @@ int set_stream_detection_recording(stream_handle_t stream, bool enabled, const c
             log_warn("Failed to stop detection thread for stream %s", stream_name);
         } else {
             log_info("Successfully stopped detection thread for stream %s", stream_name);
+        }
+    }
+    // If detection was disabled and is now being enabled, start the detection thread
+    else if (now_enabled && config_copy.detection_model[0] != '\0') {
+        log_info("Detection enabled for stream %s, starting detection thread with model %s",
+                stream_name, config_copy.detection_model);
+
+        // Construct HLS directory path
+        char hls_dir[MAX_PATH_LENGTH];
+        snprintf(hls_dir, MAX_PATH_LENGTH, "/var/lib/lightnvr/recordings/hls/%s", stream_name);
+
+        // Start detection thread
+        if (start_stream_detection_thread(stream_name, config_copy.detection_model,
+                                         config_copy.detection_threshold,
+                                         config_copy.detection_interval, hls_dir) != 0) {
+            log_warn("Failed to start detection thread for stream %s", stream_name);
+        } else {
+            log_info("Successfully started detection thread for stream %s", stream_name);
         }
     }
 

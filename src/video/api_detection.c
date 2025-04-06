@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <errno.h>
+#include <unistd.h>
 #include <curl/curl.h>
 #include <cJSON.h>
 
@@ -87,6 +89,10 @@ void shutdown_api_detection_system(void) {
 int detect_objects_api(const char *api_url, const unsigned char *frame_data,
                       int width, int height, int channels, detection_result_t *result,
                       const char *stream_name) {
+    log_info("API Detection: Starting detection with API URL: %s", api_url);
+    log_info("API Detection: Frame dimensions: %dx%d, channels: %d", width, height, channels);
+    log_info("API Detection: Stream name: %s", stream_name ? stream_name : "NULL");
+    
     if (!initialized || !curl_handle) {
         log_error("API detection system not initialized");
         return -1;
@@ -104,17 +110,20 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     struct curl_httppost *formpost = NULL;
     struct curl_httppost *lastptr = NULL;
     
-    // Create a temporary file for the image data
-    char temp_filename[L_tmpnam];
-    if (!tmpnam(temp_filename)) {
-        log_error("Failed to create temporary filename");
+    // Create a temporary file for the image data using mkstemp (safer than tmpnam)
+    char temp_filename[] = "/tmp/lightnvr_api_detection_XXXXXX";
+    int temp_fd = mkstemp(temp_filename);
+    if (temp_fd < 0) {
+        log_error("Failed to create temporary file: %s", strerror(errno));
         return -1;
     }
     
-    // Write the image data to the temporary file
-    FILE *temp_file = fopen(temp_filename, "wb");
+    // Convert file descriptor to FILE pointer
+    FILE *temp_file = fdopen(temp_fd, "wb");
     if (!temp_file) {
-        log_error("Failed to open temporary file for writing");
+        log_error("Failed to open temporary file for writing: %s", strerror(errno));
+        close(temp_fd);
+        unlink(temp_filename);
         return -1;
     }
     
@@ -172,6 +181,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 10);
     
     // Perform the request
+    log_info("API Detection: Sending request to %s", api_url);
     CURLcode res = curl_easy_perform(curl_handle);
     
     // Clean up the temporary file
@@ -179,7 +189,17 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     
     // Check for errors
     if (res != CURLE_OK) {
-        log_error("curl_easy_perform() failed: %s", curl_easy_strerror(res));
+        log_error("API Detection: curl_easy_perform() failed: %s", curl_easy_strerror(res));
+        
+        // Check if it's a connection error
+        if (res == CURLE_COULDNT_CONNECT) {
+            log_error("API Detection: Could not connect to server at %s. Is the API server running?", api_url);
+        } else if (res == CURLE_OPERATION_TIMEDOUT) {
+            log_error("API Detection: Connection to %s timed out. Server might be slow or unreachable.", api_url);
+        } else if (res == CURLE_COULDNT_RESOLVE_HOST) {
+            log_error("API Detection: Could not resolve host %s. Check your network connection and DNS settings.", api_url);
+        }
+        
         free(chunk.memory);
         curl_formfree(formpost);
         return -1;
