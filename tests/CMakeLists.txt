@@ -35,6 +35,7 @@ set(DETECTION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/sod_realnet.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/motion_detection.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/api_detection.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/database/db_detections.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/logger.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/config.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/shutdown_coordinator.c
@@ -93,19 +94,23 @@ if(ENABLE_SOD)
     target_link_libraries(test_sod_unified
         ${FFMPEG_LIBRARIES}
         ${SQLITE_LIBRARIES}
+        ${CURL_LIBRARIES}
         pthread
         dl
         sod
         sqlite3
+        curl
     )
 
     target_link_libraries(test_sod_voc
         ${FFMPEG_LIBRARIES}
         ${SQLITE_LIBRARIES}
+        ${CURL_LIBRARIES}
         pthread
         dl
         sod
         sqlite3
+        curl
     )
 
     # Set output directory for test binaries
@@ -165,6 +170,7 @@ set(STREAM_DETECTION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/sod_realnet.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/sod_integration.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/detection.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/api_detection.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/detection_embedded.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/detection_frame_processing.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/detection_recording.c
