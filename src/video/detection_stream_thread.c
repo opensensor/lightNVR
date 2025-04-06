@@ -431,9 +431,8 @@ static int process_segment_for_detection(stream_detection_thread_t *thread, cons
                         // Get the API URL - either from the model path if it's a URL,
                         // or from the global config if it's the special "api-detection" string
                         const char *api_url = NULL;
-                        if (model_path && strcmp(model_path, "api-detection") == 0) {
+                        if (model_path && ends_with(model_path, "api-detection")) {
                             // Get the API URL from the global config
-                            extern config_t g_config;
                             api_url = g_config.api_detection_url;
                             log_info("[Stream %s] Using API detection URL from config: %s", 
                                     thread->stream_name, api_url ? api_url : "NULL");

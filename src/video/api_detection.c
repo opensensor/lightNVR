@@ -89,7 +89,17 @@ void shutdown_api_detection_system(void) {
 int detect_objects_api(const char *api_url, const unsigned char *frame_data,
                       int width, int height, int channels, detection_result_t *result,
                       const char *stream_name) {
-    log_info("API Detection: Starting detection with API URL: %s", api_url);
+    // CRITICAL FIX: Check if api_url is the special "api-detection" string
+    // If so, get the actual URL from the global config
+    const char *actual_api_url = api_url;
+    if (api_url && strcmp(api_url, "api-detection") == 0) {
+        // Get the API URL from the global config
+        extern config_t g_config;
+        actual_api_url = g_config.api_detection_url;
+        log_info("API Detection: Using API URL from config: %s", actual_api_url ? actual_api_url : "NULL");
+    }
+    
+    log_info("API Detection: Starting detection with API URL: %s", actual_api_url);
     log_info("API Detection: Frame dimensions: %dx%d, channels: %d", width, height, channels);
     log_info("API Detection: Stream name: %s", stream_name ? stream_name : "NULL");
     
@@ -98,8 +108,14 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         return -1;
     }
 
-    if (!api_url || !frame_data || !result) {
+    if (!actual_api_url || !frame_data || !result) {
         log_error("Invalid parameters for detect_objects_api");
+        return -1;
+    }
+    
+    // Check if the URL is valid (must start with http:// or https://)
+    if (strncmp(actual_api_url, "http://", 7) != 0 && strncmp(actual_api_url, "https://", 8) != 0) {
+        log_error("API Detection: Invalid URL format: %s (must start with http:// or https://)", actual_api_url);
         return -1;
     }
 
@@ -137,37 +153,63 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         return -1;
     }
     
-    // Add the file to the form
-    curl_formadd(&formpost, &lastptr,
-                CURLFORM_COPYNAME, "image",
-                CURLFORM_FILE, temp_filename,
-                CURLFORM_CONTENTTYPE, "application/octet-stream",
-                CURLFORM_END);
+    // CRITICAL FIX: Modify the request to match the API server's expected format
+    // Based on working curl examples:
+    // curl -X 'POST' 'http://127.0.0.1:9001/api/v1/detect?backend=tflite&confidence_threshold=.5&return_image=false' 
+    //   -H 'accept: application/json' -H 'Content-Type: multipart/form-data' 
+    //   -F 'file=@image.jpg;type=image/jpeg'
     
-    // Add the image dimensions to the form
-    char width_str[16], height_str[16], channels_str[16];
-    snprintf(width_str, sizeof(width_str), "%d", width);
-    snprintf(height_str, sizeof(height_str), "%d", height);
-    snprintf(channels_str, sizeof(channels_str), "%d", channels);
+    // Construct the URL with query parameters
+    char url_with_params[1024];
+    snprintf(url_with_params, sizeof(url_with_params), 
+             "%s?backend=tflite&confidence_threshold=0.5&return_image=false", 
+             actual_api_url);
+    log_info("API Detection: Using URL with parameters: %s", url_with_params);
     
-    curl_formadd(&formpost, &lastptr,
-                CURLFORM_COPYNAME, "width",
-                CURLFORM_COPYCONTENTS, width_str,
-                CURLFORM_END);
+    // CRITICAL FIX: We need to convert the raw image data to a proper image format
+    // The API expects a proper image file (JPEG/PNG), not raw RGB/RGBA data
     
-    curl_formadd(&formpost, &lastptr,
-                CURLFORM_COPYNAME, "height",
-                CURLFORM_COPYCONTENTS, height_str,
-                CURLFORM_END);
+    // Create a new temporary file with a .jpg extension
+    char image_filename[256];
+    snprintf(image_filename, sizeof(image_filename), "%s.jpg", temp_filename);
     
-    curl_formadd(&formpost, &lastptr,
-                CURLFORM_COPYNAME, "channels",
-                CURLFORM_COPYCONTENTS, channels_str,
-                CURLFORM_END);
+    // Use system command to convert the raw data to JPEG using ImageMagick
+    char convert_cmd[1024];
+    snprintf(convert_cmd, sizeof(convert_cmd), 
+             "convert -size %dx%d -depth 8 rgb:%s %s", 
+             width, height, temp_filename, image_filename);
+    log_info("API Detection: Converting raw data to JPEG: %s", convert_cmd);
     
-    // Set up the request
-    curl_easy_setopt(curl_handle, CURLOPT_URL, api_url);
+    int convert_result = system(convert_cmd);
+    if (convert_result != 0) {
+        log_error("API Detection: Failed to convert raw data to JPEG (error code: %d)", convert_result);
+        log_info("API Detection: Falling back to raw data with application/octet-stream MIME type");
+        
+        // Add the file to the form with the correct field name 'file' (not 'image')
+        curl_formadd(&formpost, &lastptr,
+                    CURLFORM_COPYNAME, "file",
+                    CURLFORM_FILE, temp_filename,
+                    CURLFORM_CONTENTTYPE, "application/octet-stream",
+                    CURLFORM_END);
+    } else {
+        log_info("API Detection: Successfully converted raw data to JPEG: %s", image_filename);
+        
+        // Add the JPEG file to the form
+        curl_formadd(&formpost, &lastptr,
+                    CURLFORM_COPYNAME, "file",
+                    CURLFORM_FILE, image_filename,
+                    CURLFORM_CONTENTTYPE, "image/jpeg",
+                    CURLFORM_END);
+    }
+    
+    // Set up the request with the URL including query parameters
+    curl_easy_setopt(curl_handle, CURLOPT_URL, url_with_params);
     curl_easy_setopt(curl_handle, CURLOPT_HTTPPOST, formpost);
+    
+    // Add the accept header
+    struct curl_slist *headers = NULL;
+    headers = curl_slist_append(headers, "accept: application/json");
+    curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, headers);
     
     // Set up the response buffer
     memory_struct_t chunk;
@@ -181,11 +223,14 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 10);
     
     // Perform the request
-    log_info("API Detection: Sending request to %s", api_url);
+    log_info("API Detection: Sending request to %s", url_with_params);
     CURLcode res = curl_easy_perform(curl_handle);
     
-    // Clean up the temporary file
+    // Clean up the temporary files
     remove(temp_filename);
+    if (convert_result == 0) {
+        remove(image_filename);
+    }
     
     // Check for errors
     if (res != CURLE_OK) {
@@ -193,11 +238,11 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         
         // Check if it's a connection error
         if (res == CURLE_COULDNT_CONNECT) {
-            log_error("API Detection: Could not connect to server at %s. Is the API server running?", api_url);
+            log_error("API Detection: Could not connect to server at %s. Is the API server running?", url_with_params);
         } else if (res == CURLE_OPERATION_TIMEDOUT) {
-            log_error("API Detection: Connection to %s timed out. Server might be slow or unreachable.", api_url);
+            log_error("API Detection: Connection to %s timed out. Server might be slow or unreachable.", url_with_params);
         } else if (res == CURLE_COULDNT_RESOLVE_HOST) {
-            log_error("API Detection: Could not resolve host %s. Check your network connection and DNS settings.", api_url);
+            log_error("API Detection: Could not resolve host %s. Check your network connection and DNS settings.", url_with_params);
         }
         
         free(chunk.memory);
@@ -289,6 +334,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     cJSON_Delete(root);
     free(chunk.memory);
     curl_formfree(formpost);
+    curl_slist_free_all(headers);
     
     return 0;
 }
