@@ -412,12 +412,13 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
         // Free options before returning
         av_dict_free(&input_options);
 
-        // CRITICAL FIX: Make sure local_ctx is NULL after a failed open
+        // CRITICAL FIX: Use comprehensive cleanup to prevent segmentation faults
         // This is important because avformat_open_input might have allocated memory
         // even if it returned an error
         if (local_ctx) {
-            avformat_close_input(&local_ctx);
-            local_ctx = NULL;  // Explicitly set to NULL after closing
+            // Use our comprehensive cleanup function to ensure all resources are freed
+            comprehensive_ffmpeg_cleanup(&local_ctx, NULL, NULL, NULL);
+            // The function already sets the pointer to NULL
         }
 
         // Ensure the output parameter is set to NULL to prevent use-after-free

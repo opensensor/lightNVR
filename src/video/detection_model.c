@@ -333,7 +333,7 @@ detection_model_t load_detection_model(const char *model_path, float threshold) 
     } else {
         log_info("API DETECTION: Using API for detection instead of a local model file");
     }
-    
+
     // Get model type
     const char *model_type = is_api_url ? MODEL_TYPE_API : get_model_type(model_path);
     log_info("MODEL TYPE: %s", model_type);
@@ -351,7 +351,7 @@ detection_model_t load_detection_model(const char *model_path, float threshold) 
             strncpy(m->path, model_path, MAX_PATH_LENGTH - 1);
             m->path[MAX_PATH_LENGTH - 1] = '\0';  // Ensure null termination
             model = m;
-            
+
             // Initialize the API detection system
             init_api_detection_system();
         }
@@ -409,9 +409,16 @@ void unload_detection_model(detection_model_t model) {
 
     // Enhanced model cleanup with better memory management
     if (strcmp(m->type, MODEL_TYPE_API) == 0) {
-        // For API models, we don't need to free any resources
-        // Just log that we're unloading the model
+        // For API models, we need to ensure the API detection system is properly cleaned up
+        // when the last API model is unloaded
         log_info("Unloading API model: %s", model_path);
+
+        // We don't need to call shutdown_api_detection_system() here because
+        // it will be called during program shutdown, and we want to keep the
+        // API detection system initialized for other API models that might be in use
+
+        // Just set the model pointer to NULL to prevent double-free
+        m->sod = NULL;
     }
     else if (strcmp(m->type, MODEL_TYPE_SOD) == 0) {
         // Use our new safer cleanup function for SOD models

@@ -24,6 +24,7 @@
 #include "../../include/video/sod_realnet.h"
 #include "../../include/video/motion_detection.h"
 #include "../../include/video/api_detection.h"
+#include "../../include/video/ffmpeg_utils.h"  // For comprehensive_ffmpeg_cleanup
 #include "../../include/core/logger.h"
 #include "../../include/core/config.h"  // For MAX_PATH_LENGTH
 
@@ -60,7 +61,7 @@ int init_detection_system(void) {
     } else {
         log_info("Motion detection system initialized");
     }
-    
+
     // Initialize API detection system
     int api_ret = init_api_detection_system();
     if (api_ret != 0) {
@@ -83,7 +84,7 @@ void shutdown_detection_system(void) {
 
     // Shutdown motion detection system
     shutdown_motion_detection_system();
-    
+
     // Shutdown API detection system
     shutdown_api_detection_system();
     log_info("API detection system shutdown");
@@ -166,8 +167,6 @@ int handle_hls_timeout(const char *url, AVFormatContext **input_ctx) {
     // MEMORY LEAK FIX: Use our comprehensive cleanup function instead of manual cleanup
     // This ensures all resources are properly freed, including internal buffers
     // that might be causing memory leaks
-    extern void comprehensive_ffmpeg_cleanup(AVFormatContext **input_ctx, AVCodecContext **codec_ctx,
-                                           AVPacket **packet, AVFrame **frame);
     comprehensive_ffmpeg_cleanup(input_ctx, NULL, NULL, NULL);
 
     return AVERROR(ETIMEDOUT);

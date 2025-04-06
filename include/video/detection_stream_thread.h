@@ -2,7 +2,34 @@
 #define DETECTION_STREAM_THREAD_H
 
 #include <stdbool.h>
+#include <pthread.h>
+#include <stdatomic.h>
+#include <time.h>
 #include "video/packet_processor.h" // For MAX_STREAM_NAME definition
+#include "video/detection_model.h"
+
+// Maximum number of streams we can handle
+#define MAX_STREAM_THREADS 32
+
+// Stream detection thread structure
+typedef struct {
+    pthread_t thread;
+    char stream_name[MAX_STREAM_NAME];
+    char model_path[MAX_PATH_LENGTH];
+    detection_model_t model;
+    float threshold;
+    int detection_interval;
+    bool running;
+    pthread_mutex_t mutex;
+    pthread_cond_t cond;
+    char hls_dir[MAX_PATH_LENGTH];
+    time_t last_detection_time;
+    int component_id;
+    atomic_int detection_in_progress; // Atomic flag to track if a detection is currently running
+} stream_detection_thread_t;
+
+// Global variable for startup delay
+extern time_t global_startup_delay_end;
 
 /**
  * Initialize the stream detection system

@@ -39,6 +39,8 @@ set(DETECTION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/sod_detection.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/sod_realnet.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/motion_detection.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/detection_stream_thread.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/detection_stream_thread_helpers.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/api_detection.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/database/db_detections.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/logger.c
@@ -95,6 +97,10 @@ if(ENABLE_SOD)
         test_sod_voc.c
         ${DETECTION_SOURCES}
     )
+
+    # Add BUILDING_TEST definition for test builds
+    target_compile_definitions(test_sod_unified PRIVATE BUILDING_TEST)
+    target_compile_definitions(test_sod_voc PRIVATE BUILDING_TEST)
 
     # Link libraries
     target_link_libraries(test_sod_unified
@@ -171,6 +177,7 @@ add_test(NAME test_db_backup COMMAND test_db_backup)
 # Define stream detection test sources
 set(STREAM_DETECTION_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/detection_stream_thread.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/detection_stream_thread_helpers.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/detection_model.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/sod_detection.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/video/sod_realnet.c
@@ -231,6 +238,9 @@ add_executable(test_stream_detection
     test_stream_detection.c
     ${STREAM_DETECTION_SOURCES}
 )
+
+# Add BUILDING_TEST definition for test builds
+target_compile_definitions(test_stream_detection PRIVATE BUILDING_TEST)
 
 # Link libraries for stream detection test
 target_link_libraries(test_stream_detection
