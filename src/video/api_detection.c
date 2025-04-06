@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <errno.h>
 #include <unistd.h>
+#include <sys/stat.h>
 #include <curl/curl.h>
 #include <cJSON.h>
 
@@ -173,33 +174,89 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     char image_filename[256];
     snprintf(image_filename, sizeof(image_filename), "%s.jpg", temp_filename);
     
+    // Determine the correct ImageMagick parameters based on channels
+    const char *pixel_format;
+    if (channels == 1) {
+        pixel_format = "gray";
+    } else if (channels == 3) {
+        pixel_format = "rgb";
+    } else if (channels == 4) {
+        pixel_format = "rgba";
+    } else {
+        log_error("API Detection: Unsupported number of channels: %d", channels);
+        remove(temp_filename);
+        return -1;
+    }
+    
     // Use system command to convert the raw data to JPEG using ImageMagick
+    // The -depth 8 parameter specifies 8 bits per channel
+    // The -size WxH parameter specifies the dimensions of the input image
+    // The pixel_format: parameter specifies the pixel format of the input image
     char convert_cmd[1024];
     snprintf(convert_cmd, sizeof(convert_cmd), 
-             "convert -size %dx%d -depth 8 rgb:%s %s", 
-             width, height, temp_filename, image_filename);
+             "convert -size %dx%d -depth 8 %s:%s -quality 90 %s", 
+             width, height, pixel_format, temp_filename, image_filename);
     log_info("API Detection: Converting raw data to JPEG: %s", convert_cmd);
     
     int convert_result = system(convert_cmd);
     if (convert_result != 0) {
         log_error("API Detection: Failed to convert raw data to JPEG (error code: %d)", convert_result);
-        log_info("API Detection: Falling back to raw data with application/octet-stream MIME type");
         
-        // Add the file to the form with the correct field name 'file' (not 'image')
-        curl_formadd(&formpost, &lastptr,
-                    CURLFORM_COPYNAME, "file",
-                    CURLFORM_FILE, temp_filename,
-                    CURLFORM_CONTENTTYPE, "application/octet-stream",
-                    CURLFORM_END);
+        // Try an alternative approach using ffmpeg
+        log_info("API Detection: Trying alternative conversion with ffmpeg");
+        char ffmpeg_cmd[1024];
+        snprintf(ffmpeg_cmd, sizeof(ffmpeg_cmd),
+                "ffmpeg -f rawvideo -pixel_format %s -video_size %dx%d -i %s -y %s",
+                channels == 3 ? "rgb24" : (channels == 4 ? "rgba" : "gray"),
+                width, height, temp_filename, image_filename);
+        log_info("API Detection: Running ffmpeg command: %s", ffmpeg_cmd);
+        
+        int ffmpeg_result = system(ffmpeg_cmd);
+        if (ffmpeg_result != 0) {
+            log_error("API Detection: Failed to convert with ffmpeg (error code: %d)", ffmpeg_result);
+            log_info("API Detection: Falling back to raw data with application/octet-stream MIME type");
+            
+            // Add the file to the form with the correct field name 'file' (not 'image')
+            curl_formadd(&formpost, &lastptr,
+                        CURLFORM_COPYNAME, "file",
+                        CURLFORM_FILE, temp_filename,
+                        CURLFORM_CONTENTTYPE, "application/octet-stream",
+                        CURLFORM_END);
+        } else {
+            log_info("API Detection: Successfully converted raw data to JPEG with ffmpeg: %s", image_filename);
+            
+            // Add the JPEG file to the form
+            curl_formadd(&formpost, &lastptr,
+                        CURLFORM_COPYNAME, "file",
+                        CURLFORM_FILE, image_filename,
+                        CURLFORM_CONTENTTYPE, "image/jpeg",
+                        CURLFORM_END);
+        }
     } else {
-        log_info("API Detection: Successfully converted raw data to JPEG: %s", image_filename);
+        log_info("API Detection: Successfully converted raw data to JPEG with ImageMagick: %s", image_filename);
         
-        // Add the JPEG file to the form
-        curl_formadd(&formpost, &lastptr,
-                    CURLFORM_COPYNAME, "file",
-                    CURLFORM_FILE, image_filename,
-                    CURLFORM_CONTENTTYPE, "image/jpeg",
-                    CURLFORM_END);
+        // Verify the file was created and has a non-zero size
+        struct stat st;
+        if (stat(image_filename, &st) == 0 && st.st_size > 0) {
+            log_info("API Detection: JPEG file size: %ld bytes", (long)st.st_size);
+            
+            // Add the JPEG file to the form
+            curl_formadd(&formpost, &lastptr,
+                        CURLFORM_COPYNAME, "file",
+                        CURLFORM_FILE, image_filename,
+                        CURLFORM_CONTENTTYPE, "image/jpeg",
+                        CURLFORM_END);
+        } else {
+            log_error("API Detection: JPEG file was not created or has zero size");
+            log_info("API Detection: Falling back to raw data with application/octet-stream MIME type");
+            
+            // Add the file to the form with the correct field name 'file' (not 'image')
+            curl_formadd(&formpost, &lastptr,
+                        CURLFORM_COPYNAME, "file",
+                        CURLFORM_FILE, temp_filename,
+                        CURLFORM_CONTENTTYPE, "application/octet-stream",
+                        CURLFORM_END);
+        }
     }
     
     // Set up the request with the URL including query parameters
@@ -228,7 +285,10 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     
     // Clean up the temporary files
     remove(temp_filename);
-    if (convert_result == 0) {
+    // Remove the JPEG file if it was created by either ImageMagick or ffmpeg
+    struct stat st;
+    if (stat(image_filename, &st) == 0) {
+        log_info("API Detection: Removing temporary JPEG file: %s", image_filename);
         remove(image_filename);
     }
     
@@ -247,6 +307,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         
         free(chunk.memory);
         curl_formfree(formpost);
+        curl_slist_free_all(headers);
         return -1;
     }
     
@@ -258,6 +319,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         log_error("API request failed with HTTP code %ld", http_code);
         free(chunk.memory);
         curl_formfree(formpost);
+        curl_slist_free_all(headers);
         return -1;
     }
     
@@ -269,6 +331,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         log_error("Failed to parse JSON response: %s", error_ptr ? error_ptr : "Unknown error");
         free(chunk.memory);
         curl_formfree(formpost);
+        curl_slist_free_all(headers);
         return -1;
     }
     
@@ -279,6 +342,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         cJSON_Delete(root);
         free(chunk.memory);
         curl_formfree(formpost);
+        curl_slist_free_all(headers);
         return -1;
     }
     
@@ -296,10 +360,29 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         // Extract the detection data
         cJSON *label = cJSON_GetObjectItem(detection, "label");
         cJSON *confidence = cJSON_GetObjectItem(detection, "confidence");
-        cJSON *x_min = cJSON_GetObjectItem(detection, "x_min");
-        cJSON *y_min = cJSON_GetObjectItem(detection, "y_min");
-        cJSON *x_max = cJSON_GetObjectItem(detection, "x_max");
-        cJSON *y_max = cJSON_GetObjectItem(detection, "y_max");
+        
+        // The bounding box coordinates might be in a nested object
+        cJSON *bounding_box = cJSON_GetObjectItem(detection, "bounding_box");
+        cJSON *x_min = NULL;
+        cJSON *y_min = NULL;
+        cJSON *x_max = NULL;
+        cJSON *y_max = NULL;
+        
+        if (bounding_box) {
+            // Get coordinates from the nested bounding_box object
+            x_min = cJSON_GetObjectItem(bounding_box, "x_min");
+            y_min = cJSON_GetObjectItem(bounding_box, "y_min");
+            x_max = cJSON_GetObjectItem(bounding_box, "x_max");
+            y_max = cJSON_GetObjectItem(bounding_box, "y_max");
+            log_info("API Detection: Found bounding_box object in JSON response");
+        } else {
+            // Try to get coordinates directly from the detection object (old format)
+            x_min = cJSON_GetObjectItem(detection, "x_min");
+            y_min = cJSON_GetObjectItem(detection, "y_min");
+            x_max = cJSON_GetObjectItem(detection, "x_max");
+            y_max = cJSON_GetObjectItem(detection, "y_max");
+            log_info("API Detection: Using direct coordinates from JSON response");
+        }
         
         if (!label || !cJSON_IsString(label) ||
             !confidence || !cJSON_IsNumber(confidence) ||
@@ -308,6 +391,12 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
             !x_max || !cJSON_IsNumber(x_max) ||
             !y_max || !cJSON_IsNumber(y_max)) {
             log_warn("Invalid detection data in JSON response");
+            // Log the actual JSON for debugging
+            char *json_str = cJSON_Print(detection);
+            if (json_str) {
+                log_warn("Detection JSON: %s", json_str);
+                free(json_str);
+            }
             continue;
         }
         
