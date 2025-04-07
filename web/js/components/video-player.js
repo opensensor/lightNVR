@@ -63,6 +63,12 @@ function initializeVideoPlayer(stream) {
             if (loadingIndicator) {
                 loadingIndicator.style.display = 'none';
             }
+            
+            // Show stream controls when stream is successfully loaded
+            const streamControls = videoCell.querySelector('.stream-controls');
+            if (streamControls) {
+                streamControls.style.display = 'flex';
+            }
         });
 
         videoElement.addEventListener('error', function() {
@@ -103,6 +109,13 @@ function initializeVideoPlayer(stream) {
             if (loadingIndicator) {
                 loadingIndicator.style.display = 'none';
             }
+            
+            // Show stream controls when stream is successfully loaded
+            const streamControls = videoCell.querySelector('.stream-controls');
+            if (streamControls) {
+                streamControls.style.display = 'flex';
+            }
+            
             videoElement.play().catch(error => {
                 console.warn('Auto-play prevented:', error);
                 // Add play button overlay for user interaction
@@ -212,6 +225,12 @@ function handleVideoError(streamName, message) {
     if (loadingIndicator) {
         loadingIndicator.style.display = 'none';
     }
+    
+    // Hide stream controls when there's an error
+    const streamControls = videoCell.querySelector('.stream-controls');
+    if (streamControls) {
+        streamControls.style.display = 'none';
+    }
 
     // Create error indicator if it doesn't exist
     let errorIndicator = videoCell.querySelector('.error-indicator');
@@ -300,6 +319,12 @@ function cleanupVideoPlayer(streamName) {
     const loadingIndicator = videoCell.querySelector('.loading-indicator');
     if (loadingIndicator) {
         loadingIndicator.style.display = 'none';
+    }
+    
+    // Hide stream controls
+    const streamControls = videoCell.querySelector('.stream-controls');
+    if (streamControls) {
+        streamControls.style.display = 'none';
     }
 
     // Remove error indicator if any

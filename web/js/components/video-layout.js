@@ -194,7 +194,7 @@ function updateVideoGrid(streams) {
             <div class="stream-info">
                 <span>${stream.name}</span>
                 <span>${stream.width}x${stream.height} · ${stream.fps}fps</span>
-                <div class="stream-controls">
+                <div class="stream-controls" style="display: none;">
                     <button class="snapshot-btn" data-id="${streamId}" data-name="${stream.name}">
                         <span>📷</span> Snapshot
                     </button>
