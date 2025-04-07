@@ -135,9 +135,13 @@ export function TimelineCursor() {
       
       for (let i = 0; i < segments.length; i++) {
         const segment = segments[i];
-        if (timestamp >= segment.start_timestamp && timestamp <= segment.end_timestamp) {
+        // Use local timestamps if available, otherwise fall back to regular timestamps
+        const startTimestamp = segment.local_start_timestamp || segment.start_timestamp;
+        const endTimestamp = segment.local_end_timestamp || segment.end_timestamp;
+        
+        if (timestamp >= startTimestamp && timestamp <= endTimestamp) {
           // Calculate relative time within the segment
-          const relativeTime = timestamp - segment.start_timestamp;
+          const relativeTime = timestamp - startTimestamp;
           
           // Update timeline state
           timelineState.setState({ 
@@ -159,8 +163,12 @@ export function TimelineCursor() {
         
         for (let i = 0; i < segments.length; i++) {
           const segment = segments[i];
-          const startDistance = Math.abs(segment.start_timestamp - timestamp);
-          const endDistance = Math.abs(segment.end_timestamp - timestamp);
+          // Use local timestamps if available, otherwise fall back to regular timestamps
+          const startTimestamp = segment.local_start_timestamp || segment.start_timestamp;
+          const endTimestamp = segment.local_end_timestamp || segment.end_timestamp;
+          
+          const startDistance = Math.abs(startTimestamp - timestamp);
+          const endDistance = Math.abs(endTimestamp - timestamp);
           const distance = Math.min(startDistance, endDistance);
           
           if (distance < minDistance) {
@@ -169,10 +177,14 @@ export function TimelineCursor() {
           }
         }
         
+        // Use local timestamps if available, otherwise fall back to regular timestamps
+        const closestSegmentObj = segments[closestSegment];
+        const startTimestamp = closestSegmentObj.local_start_timestamp || closestSegmentObj.start_timestamp;
+        
         // Update timeline state
         timelineState.setState({ 
           currentSegmentIndex: closestSegment,
-          currentTime: segments[closestSegment].start_timestamp,
+          currentTime: startTimestamp,
           prevCurrentTime: timelineState.currentTime,
           isPlaying: true
         });
