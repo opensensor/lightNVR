@@ -661,20 +661,20 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
         }
         // Handle large DTS jumps by normalizing the timestamps
         else if (out_pkt.dts > dts_tracker->last_dts + 90000) {
-            log_warn("HLS large DTS jump in stream %s: last=%lld, current=%lld, diff=%lld",
-                    writer->stream_name,
-                    (long long)dts_tracker->last_dts,
-                    (long long)out_pkt.dts,
-                    (long long)(out_pkt.dts - dts_tracker->last_dts));
+            // log_debug("HLS large DTS jump in stream %s: last=%lld, current=%lld, diff=%lld",
+            //         writer->stream_name,
+            //         (long long)dts_tracker->last_dts,
+            //         (long long)out_pkt.dts,
+            //         (long long)(out_pkt.dts - dts_tracker->last_dts));
 
             // CRITICAL FIX: Normalize timestamps to prevent exceeding MP4 format limits
             // The MP4 format has a limit of 0x7fffffff (2,147,483,647) for DTS values
             // We'll reset the DTS to a small value after the last DTS to maintain continuity
             int64_t fixed_dts = dts_tracker->last_dts + 3000; // Add 3000 ticks (about 1/10 second at 90kHz)
             int64_t pts_dts_diff = out_pkt.pts - out_pkt.dts;
-
-            log_info("Normalizing timestamps for stream %s: old_dts=%lld, new_dts=%lld",
-                    writer->stream_name, (long long)out_pkt.dts, (long long)fixed_dts);
+            //
+            // log_debug("Normalizing timestamps for stream %s: old_dts=%lld, new_dts=%lld",
+            //         writer->stream_name, (long long)out_pkt.dts, (long long)fixed_dts);
 
             out_pkt.dts = fixed_dts;
             out_pkt.pts = fixed_dts + (pts_dts_diff > 0 ? pts_dts_diff : 0);

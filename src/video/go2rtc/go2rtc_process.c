@@ -63,13 +63,10 @@ static bool is_go2rtc_running_as_service(int api_port) {
         
         // Check if the process using the port is go2rtc
         if (strstr(netstat_line, "go2rtc") != NULL) {
-            log_info("go2rtc is already running as a service on port %d", api_port);
+            log_debug("go2rtc is already running as a service on port %d", api_port);
             pclose(fp);
             return true;
         }
-        
-        // If we can't identify the process, check if it responds like go2rtc
-        log_info("Port %d is in use, checking if it's go2rtc: %s", api_port, netstat_line);
     }
     
     pclose(fp);
@@ -115,11 +112,11 @@ static bool is_go2rtc_running_as_service(int api_port) {
         curl_easy_cleanup(curl);
         
         if (http_code == 200 || http_code == 401) {
-            log_info("Port %d is responding like go2rtc (HTTP %ld)", api_port, http_code);
+            log_debug("Port %d is responding like go2rtc (HTTP %ld)", api_port, http_code);
             return true;
         }
         
-        log_info("Port %d returned HTTP %ld, not a go2rtc service", api_port, http_code);
+        log_warn("Port %d returned HTTP %ld, not a go2rtc service", api_port, http_code);
     }
     
     return false;

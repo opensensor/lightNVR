@@ -311,8 +311,6 @@ bool find_newest_segment(stream_detection_thread_t *thread, char *newest_segment
     *newest_time = 0;
     newest_segment[0] = '\0';
 
-    log_info("[Stream %s] Scanning directory for segments: %s", thread->stream_name, thread->hls_dir);
-
     dir = opendir(thread->hls_dir);
     if (!dir) {
         log_error("[Stream %s] Failed to open HLS directory: %s (error: %s)",
@@ -332,8 +330,6 @@ bool find_newest_segment(stream_detection_thread_t *thread, char *newest_segment
         char segment_path[MAX_PATH_LENGTH];
         snprintf(segment_path, MAX_PATH_LENGTH, "%s/%s", thread->hls_dir, entry->d_name);
 
-        log_info("[Stream %s] Found segment file: %s", thread->stream_name, entry->d_name);
-
         // Get file stats
         if (stat(segment_path, &st) == 0) {
             // Check if this is the newest file
@@ -341,8 +337,6 @@ bool find_newest_segment(stream_detection_thread_t *thread, char *newest_segment
                 *newest_time = st.st_mtime;
                 strncpy(newest_segment, segment_path, MAX_PATH_LENGTH - 1);
                 newest_segment[MAX_PATH_LENGTH - 1] = '\0';
-                log_info("[Stream %s] New newest segment: %s (mtime: %ld)",
-                        thread->stream_name, segment_path, (long)st.st_mtime);
             }
         }
     }
@@ -450,13 +444,13 @@ int process_segment_if_needed(stream_detection_thread_t *thread,
 
     // Log the decision
     if (should_process) {
-        log_info("[Stream %s] Processing new segment (different from last processed)", thread->stream_name);
+        log_debug("[Stream %s] Processing new segment (different from last processed)", thread->stream_name);
     } else if (!is_new_segment) {
-        log_info("[Stream %s] Skipping segment processing (same as last processed): %s",
+        log_debug("[Stream %s] Skipping segment processing (same as last processed): %s",
                  thread->stream_name, newest_segment);
         return 0;
     } else if (!should_run_detection) {
-        log_info("[Stream %s] Skipping segment processing (detection not due or already running): %s",
+        log_debug("[Stream %s] Skipping segment processing (detection not due or already running): %s",
                  thread->stream_name, newest_segment);
         return 0;
     }
