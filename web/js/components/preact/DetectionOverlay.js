@@ -93,8 +93,8 @@ export function startDetectionPolling(streamName, canvasOverlay, videoElement, d
   let errorCount = 0;
   let currentInterval = 1000; // Start with 1 second
   
-  // Poll for detection results
-  const intervalId = setInterval(() => {
+  // Create a polling function that we can reference for recreating intervals
+  const pollDetections = () => {
     if (!videoElement.videoWidth) {
       // Video not loaded yet, skip this cycle
       return;
@@ -126,14 +126,18 @@ export function startDetectionPolling(streamName, canvasOverlay, videoElement, d
         errorCount++;
         if (errorCount > 3) {
           // After 3 consecutive errors, slow down polling to avoid overwhelming the server
-          clearInterval(intervalId);
+          clearInterval(detectionIntervals[streamName]);
           currentInterval = Math.min(5000, currentInterval * 2); // Max 5 seconds
           console.log(`Reducing detection polling frequency to ${currentInterval}ms due to errors`);
           
-          detectionIntervals[streamName] = setInterval(arguments.callee, currentInterval);
+          // Create a new interval with the updated taming
+          detectionIntervals[streamName] = setInterval(pollDetections, currentInterval);
         }
       });
-  }, currentInterval);
+  };
+  
+  // Start the polling interval
+  const intervalId = setInterval(pollDetections, currentInterval);
   
   // Store interval ID for cleanup
   detectionIntervals[streamName] = intervalId;
@@ -160,4 +164,260 @@ export function cleanupDetectionPolling(streamName, detectionIntervals) {
     clearInterval(detectionIntervals[streamName]);
     delete detectionIntervals[streamName];
   }
+}
+
+/**
+ * Draw detections on canvas overlay
+ * @param {HTMLCanvasElement} canvas - Canvas element
+ * @param {HTMLVideoElement} videoElement - Video element
+ * @param {Array} detections - Array of detection objects
+ */
+export function drawDetections(canvas, videoElement, detections) {
+  if (!canvas || !videoElement || !detections || !detections.length) return;
+  
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  
+  // Clear previous drawings
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  // Get video dimensions
+  const videoWidth = videoElement.videoWidth;
+  const videoHeight = videoElement.videoHeight;
+  
+  if (videoWidth === 0 || videoHeight === 0) return;
+  
+  // Ensure canvas dimensions match video container dimensions
+  if (canvas.width !== canvas.offsetWidth || canvas.height !== canvas.offsetHeight) {
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+  }
+  
+  // For object-fit: cover, we need to calculate the visible portion of the video
+  const videoAspect = videoWidth / videoHeight;
+  const canvasAspect = canvas.width / canvas.height;
+  
+  let scale, offsetX = 0, offsetY = 0;
+  
+  if (videoAspect > canvasAspect) {
+    // Video is wider than canvas - some width is cropped
+    scale = canvas.height / videoHeight;
+    offsetX = (videoWidth * scale - canvas.width) / 2;
+  } else {
+    // Video is taller than canvas - some height is cropped
+    scale = canvas.width / videoWidth;
+    offsetY = (videoHeight * scale - canvas.height) / 2;
+  }
+  
+  // Draw each detection
+  detections.forEach(detection => {
+    // Convert normalized coordinates to canvas coordinates
+    const x = (detection.x * videoWidth * scale) - offsetX;
+    const y = (detection.y * videoHeight * scale) - offsetY;
+    const width = detection.width * videoWidth * scale;
+    const height = detection.height * videoHeight * scale;
+    
+    // Draw bounding box
+    ctx.strokeStyle = detection.color || '#00FF00';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, width, height);
+    
+    // Draw label background
+    ctx.fillStyle = detection.color || '#00FF00';
+    const label = `${detection.class} ${Math.round(detection.confidence * 100)}%`;
+    const textWidth = ctx.measureText(label).width + 10;
+    ctx.fillRect(x, y - 20, textWidth, 20);
+    
+    // Draw label text
+    ctx.fillStyle = '#000000';
+    ctx.font = '12px Arial';
+    ctx.fillText(label, x + 5, y - 5);
+  });
+}
+
+/**
+ * Handle fullscreen change events for detection overlay
+ * @param {Event} event - Fullscreen change event
+ * @param {HTMLCanvasElement} canvasOverlay - Canvas element for drawing detection boxes
+ * @param {HTMLVideoElement} videoElement - Video element
+ */
+export function handleFullscreenChange(event, canvasOverlay, videoElement) {
+  if (document.fullscreenElement) {
+    // When entering fullscreen, resize the canvas to match the fullscreen dimensions
+    setTimeout(() => {
+      if (canvasOverlay && videoElement) {
+        canvasOverlay.width = videoElement.clientWidth;
+        canvasOverlay.height = videoElement.clientHeight;
+        
+        // Ensure the canvas is positioned correctly in fullscreen
+        canvasOverlay.style.position = 'absolute';
+        canvasOverlay.style.top = '0';
+        canvasOverlay.style.left = '0';
+        canvasOverlay.style.width = '100%';
+        canvasOverlay.style.height = '100%';
+        canvasOverlay.style.zIndex = '10'; // Ensure it's above the video but below controls
+      }
+    }, 100); // Small delay to allow fullscreen to complete
+  } else {
+    // When exiting fullscreen, reset the canvas dimensions
+    setTimeout(() => {
+      if (canvasOverlay && videoElement) {
+        canvasOverlay.width = videoElement.clientWidth;
+        canvasOverlay.height = videoElement.clientHeight;
+      }
+    }, 100);
+  }
+}
+
+/**
+ * Ensure controls are visible above the detection overlay
+ * @param {string} streamName - Name of the stream
+ */
+export function ensureControlsVisibility(streamName) {
+  const streamId = streamName.replace(/\s+/g, '-');
+  const videoCell = document.querySelector(`.video-cell[data-stream="${streamId}"]`);
+  
+  if (!videoCell) return;
+  
+  // Find all controls within this cell
+  const controls = videoCell.querySelector('.stream-controls');
+  if (controls) {
+    // Ensure controls are above the canvas overlay
+    controls.style.position = 'relative';
+    controls.style.zIndex = '30'; // Higher than the canvas overlay
+    controls.style.pointerEvents = 'auto'; // Ensure clicks are registered
+    
+    // Remove any fullscreen button as it's redundant
+    const fullscreenBtn = controls.querySelector('.fullscreen-btn');
+    if (fullscreenBtn) {
+      fullscreenBtn.remove();
+    }
+  }
+  
+  // Find and fix snapshot button specifically
+  const snapshotBtn = videoCell.querySelector('.snapshot-btn');
+  if (snapshotBtn) {
+    snapshotBtn.style.position = 'relative';
+    snapshotBtn.style.zIndex = '30';
+    snapshotBtn.style.pointerEvents = 'auto';
+  }
+  
+  // Find and fix all buttons in the video cell
+  const allButtons = videoCell.querySelectorAll('button');
+  allButtons.forEach(button => {
+    button.style.position = 'relative';
+    button.style.zIndex = '30';
+    button.style.pointerEvents = 'auto';
+  });
+  
+  // Make sure the video element itself doesn't block clicks
+  const video = videoCell.querySelector('video');
+  if (video) {
+    video.style.pointerEvents = 'none';
+  }
+}
+
+/**
+ * Initialize detection overlay for a stream
+ * @param {string} streamName - Name of the stream
+ * @param {HTMLCanvasElement} canvasOverlay - Canvas element for drawing detection boxes
+ * @param {HTMLVideoElement} videoElement - Video element
+ * @param {Object} detectionIntervals - Reference to store interval IDs
+ */
+export function initializeDetectionOverlay(streamName, canvasOverlay, videoElement, detectionIntervals) {
+  // Ensure the canvas is properly positioned
+  canvasOverlay.style.position = 'absolute';
+  canvasOverlay.style.top = '0';
+  canvasOverlay.style.left = '0';
+  canvasOverlay.style.width = '100%';
+  canvasOverlay.style.height = '100%';
+  canvasOverlay.style.pointerEvents = 'none'; // Allow clicks to pass through
+  canvasOverlay.style.zIndex = '5'; // Above video but below controls
+  
+  // Find the parent container and ensure proper stacking context
+  const parentContainer = canvasOverlay.parentElement;
+  if (parentContainer) {
+    parentContainer.style.position = 'relative'; // Create stacking context
+  }
+  
+  // Ensure controls are visible
+  ensureControlsVisibility(streamName);
+  
+  // Add fullscreen change listener
+  document.addEventListener('fullscreenchange', (event) => {
+    handleFullscreenChange(event, canvasOverlay, videoElement);
+    
+    // Re-ensure controls visibility after fullscreen change
+    setTimeout(() => ensureControlsVisibility(streamName), 200);
+  });
+  
+  // Start detection polling
+  return startDetectionPolling(streamName, canvasOverlay, videoElement, detectionIntervals);
+}
+
+/**
+ * Add snapshot functionality to detection overlay
+ * @param {string} streamName - Name of the stream
+ * @param {HTMLCanvasElement} canvasOverlay - Canvas element for drawing detection boxes
+ * @param {HTMLVideoElement} videoElement - Video element
+ */
+export function addSnapshotWithDetections(streamName, canvasOverlay, videoElement) {
+  const streamId = streamName.replace(/\s+/g, '-');
+  const videoCell = document.querySelector(`.video-cell[data-stream="${streamId}"]`);
+  
+  if (!videoCell) return;
+  
+  // Find the snapshot button
+  const snapshotBtn = videoCell.querySelector(`.snapshot-btn[data-id="${streamId}"]`);
+  if (!snapshotBtn) return;
+  
+  // Create a wrapper for the original click handler
+  const originalOnClick = snapshotBtn.onclick;
+  
+  // Replace with our enhanced version that includes detections
+  snapshotBtn.onclick = function(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    // Create a combined canvas with video and detections
+    const combinedCanvas = document.createElement('canvas');
+    combinedCanvas.width = videoElement.videoWidth;
+    combinedCanvas.height = videoElement.videoHeight;
+    const ctx = combinedCanvas.getContext('2d');
+    
+    // Draw the video frame
+    ctx.drawImage(videoElement, 0, 0, combinedCanvas.width, combinedCanvas.height);
+    
+    // Draw the detections from the overlay canvas
+    if (canvasOverlay.width > 0 && canvasOverlay.height > 0) {
+      ctx.drawImage(canvasOverlay, 0, 0, canvasOverlay.width, canvasOverlay.height, 
+                   0, 0, combinedCanvas.width, combinedCanvas.height);
+    }
+    
+    // Store the canvas for the snapshot functionality
+    window.__snapshotCanvas = combinedCanvas;
+    
+    // Generate a filename
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const fileName = `snapshot-${streamName.replace(/\s+/g, '-')}-${timestamp}.jpg`;
+    window.__snapshotFileName = fileName;
+    
+    // Show the standard preview
+    const dataUrl = combinedCanvas.toDataURL('image/jpeg', 0.95);
+    showSnapshotPreview(dataUrl, `Snapshot: ${streamName}`);
+    
+    // Call the original handler if it exists
+    if (typeof originalOnClick === 'function') {
+      originalOnClick.call(this, event);
+    }
+    
+    return false;
+  };
+  
+  // Make sure the button is visible
+  snapshotBtn.style.position = 'relative';
+  snapshotBtn.style.zIndex = '30';
+  snapshotBtn.style.pointerEvents = 'auto';
+  
+  console.log('Enhanced snapshot button with detection overlay capability');
 }

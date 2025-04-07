@@ -22,6 +22,30 @@ export function initializeVideoPlayer(stream, videoPlayers, detectionIntervals) 
   
   if (!videoElement || !videoCell) return;
   
+  // Ensure proper stacking context for the video cell
+  videoCell.style.position = 'relative';
+  
+  // Make sure video doesn't block clicks to controls
+  videoElement.style.pointerEvents = 'none';
+  
+  // Add stream name overlay to the upper left corner
+  let streamNameOverlay = videoCell.querySelector('.stream-name-overlay');
+  if (!streamNameOverlay) {
+    streamNameOverlay = document.createElement('div');
+    streamNameOverlay.className = 'stream-name-overlay';
+    streamNameOverlay.textContent = stream.name;
+    streamNameOverlay.style.position = 'absolute';
+    streamNameOverlay.style.top = '10px';
+    streamNameOverlay.style.left = '10px';
+    streamNameOverlay.style.padding = '5px 10px';
+    streamNameOverlay.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+    streamNameOverlay.style.color = 'white';
+    streamNameOverlay.style.borderRadius = '4px';
+    streamNameOverlay.style.fontSize = '14px';
+    streamNameOverlay.style.zIndex = '15'; // Above video but below controls
+    videoCell.appendChild(streamNameOverlay);
+  }
+  
   // Create canvas overlay for detection bounding boxes
   const canvasId = `canvas-${stream.name.replace(/\s+/g, '-')}`;
   let canvasOverlay = document.getElementById(canvasId);
@@ -36,8 +60,12 @@ export function initializeVideoPlayer(stream, videoPlayers, detectionIntervals) 
     canvasOverlay.style.width = '100%';
     canvasOverlay.style.height = '100%';
     canvasOverlay.style.pointerEvents = 'none'; // Allow clicks to pass through
+    canvasOverlay.style.zIndex = '5'; // Above video but below controls
     videoCell.appendChild(canvasOverlay);
   }
+  
+  // Ensure all controls are visible and clickable
+  ensureControlsVisibility(videoCell);
   
   // Start detection polling if detection is enabled for this stream
   console.log(`Stream ${stream.name} detection settings:`, {
@@ -410,6 +438,52 @@ export function initializeVideoPlayer(stream, videoPlayers, detectionIntervals) 
 }
 
 /**
+ * Ensure all controls in the video cell are visible and clickable
+ * @param {HTMLElement} videoCell - The video cell element
+ */
+function ensureControlsVisibility(videoCell) {
+  if (!videoCell) return;
+  
+  // Find all controls within this cell
+  const controls = videoCell.querySelector('.stream-controls');
+  if (controls) {
+    controls.style.position = 'absolute';
+    controls.style.zIndex = '30';
+    controls.style.pointerEvents = 'auto';
+    
+    // Remove any duplicate fullscreen button if needed
+    const fullscreenBtns = controls.querySelectorAll('.fullscreen-btn');
+    if (fullscreenBtns.length > 1) {
+      fullscreenBtns[1].remove();
+    }
+  }
+  
+  // Find and fix all buttons in the video cell
+  const allButtons = videoCell.querySelectorAll('button');
+  allButtons.forEach(button => {
+    button.style.position = 'relative';
+    button.style.zIndex = '30';
+    button.style.pointerEvents = 'auto';
+  });
+  
+  // Find and fix snapshot button specifically
+  const snapshotBtn = videoCell.querySelector('.snapshot-btn');
+  if (snapshotBtn) {
+    snapshotBtn.style.position = 'relative';
+    snapshotBtn.style.zIndex = '30';
+    snapshotBtn.style.pointerEvents = 'auto';
+  }
+  
+  // Make sure loading and error indicators are visible
+  const indicators = videoCell.querySelectorAll('.loading-indicator, .error-indicator');
+  indicators.forEach(indicator => {
+    indicator.style.position = 'absolute';
+    indicator.style.zIndex = '20';
+    indicator.style.pointerEvents = 'auto';
+  });
+}
+
+/**
  * Add play button overlay
  * @param {HTMLElement} videoCell - Video cell element
  * @param {HTMLVideoElement} videoElement - Video element
@@ -420,44 +494,43 @@ export function addPlayButtonOverlay(videoCell, videoElement) {
     return;
   }
   
+  // Create play button overlay
   const playOverlay = document.createElement('div');
   playOverlay.className = 'play-overlay';
+  playOverlay.style.position = 'absolute';
+  playOverlay.style.top = '0';
+  playOverlay.style.left = '0';
+  playOverlay.style.width = '100%';
+  playOverlay.style.height = '100%';
+  playOverlay.style.display = 'flex';
+  playOverlay.style.justifyContent = 'center';
+  playOverlay.style.alignItems = 'center';
+  playOverlay.style.backgroundColor = 'rgba(0, 0, 0, 0.3)';
+  playOverlay.style.cursor = 'pointer';
+  playOverlay.style.zIndex = '25'; // Above video but below controls
   
+  // Create play button
   const playButton = document.createElement('div');
   playButton.className = 'play-button';
-  playButton.innerHTML = `
-    <svg class="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-      <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"></path>
-    </svg>
-  `;
-  
-  // Add tap/click message for mobile
-  if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-    const tapMessage = document.createElement('div');
-    tapMessage.className = 'tap-message';
-    tapMessage.textContent = 'Tap to play';
-    tapMessage.style.color = 'white';
-    tapMessage.style.marginTop = '10px';
-    tapMessage.style.fontSize = '14px';
-    playButton.appendChild(tapMessage);
-  }
-  
+  playButton.innerHTML = '<svg width="64" height="64" viewBox="0 0 24 24"><path fill="white" d="M8 5v14l11-7z"/></svg>';
   playOverlay.appendChild(playButton);
+  
+  // Add to video cell
   videoCell.appendChild(playOverlay);
   
-  // Use both click and touchend events for better mobile response
-  const playHandler = function() {
-    // Disable the overlay immediately to prevent multiple taps
-    playOverlay.style.pointerEvents = 'none';
-    
+  // Get loading indicator
+  const loadingIndicator = videoCell.querySelector('.loading-indicator');
+  
+  // Add click handler
+  playOverlay.onclick = function() {
     // Show loading indicator
-    const loadingIndicator = videoCell.querySelector('.loading-indicator');
     if (loadingIndicator) {
       loadingIndicator.style.display = 'flex';
     }
     
-    // Add a visual feedback that the tap was registered
-    playButton.style.transform = 'scale(0.9)';
+    // Disable overlay while attempting to play
+    playOverlay.style.pointerEvents = 'none';
+    playButton.style.transform = 'scale(0.8)';
     
     videoElement.play()
       .then(() => {
@@ -487,13 +560,6 @@ export function addPlayButtonOverlay(videoCell, videoElement) {
         }
       });
   };
-  
-  // Add both event listeners for better mobile compatibility
-  playOverlay.addEventListener('click', playHandler);
-  playOverlay.addEventListener('touchend', function(e) {
-    e.preventDefault(); // Prevent default touch behavior
-    playHandler();
-  });
 }
 
 /**
@@ -644,4 +710,162 @@ export function stopAllStreams(streams, videoPlayers, detectionIntervals) {
   streams.forEach(stream => {
     cleanupVideoPlayer(stream.name, videoPlayers, detectionIntervals);
   });
+}
+
+/**
+ * Update video grid based on layout and streams with staggered loading
+ * @param {HTMLElement} videoGridRef - Reference to video grid element
+ * @param {Array} streams - Array of stream objects
+ * @param {string} layout - Layout type ('1', '4', '9', '16')
+ * @param {string} selectedStream - Selected stream name for single view
+ * @param {Object} videoPlayers - Reference to video player instances
+ * @param {Object} detectionIntervals - Reference to detection intervals
+ */
+export function updateVideoGrid(
+  videoGridRef, 
+  streams, 
+  layout, 
+  selectedStream, 
+  videoPlayers, 
+  detectionIntervals
+) {
+  if (!videoGridRef) return;
+  
+  // Clear existing content except placeholder
+  const placeholder = videoGridRef.querySelector('.placeholder');
+  videoGridRef.innerHTML = '';
+  
+  // If placeholder exists and no streams, add it back
+  if (placeholder && streams.length === 0) {
+    videoGridRef.appendChild(placeholder);
+    return;
+  }
+  
+  // Filter streams based on layout and selected stream
+  let streamsToShow = streams;
+  if (layout === '1' && selectedStream) {
+    streamsToShow = streams.filter(stream => stream.name === selectedStream);
+  }
+  
+  // Create video cells for all streams first (for UI responsiveness)
+  streamsToShow.forEach(stream => {
+    createVideoCell(videoGridRef, stream);
+  });
+  
+  // Then initialize players with staggered timing
+  streamsToShow.forEach((stream, index) => {
+    setTimeout(() => {
+      const videoCell = videoGridRef.querySelector(`.video-cell[data-stream-name="${stream.name}"]`);
+      if (videoCell) {
+        const videoElement = videoCell.querySelector('.video-element');
+        if (videoElement) {
+          initializeVideoPlayer(stream, videoPlayers, detectionIntervals);
+        }
+      }
+    }, index * 500); // 500ms delay between each stream initialization
+  });
+}
+
+/**
+ * Create video cell without initializing player
+ * @param {HTMLElement} videoGridRef - Reference to video grid element
+ * @param {Object} stream - Stream object
+ */
+function createVideoCell(videoGridRef, stream) {
+  // Ensure we have an ID for the stream (use name as fallback if needed)
+  const streamId = stream.id || stream.name;
+  
+  const videoCell = document.createElement('div');
+  videoCell.className = 'video-cell';
+  videoCell.dataset.streamName = stream.name;
+  
+  // Create video element with object-fit: cover to fill available space
+  const videoElement = document.createElement('video');
+  videoElement.id = `video-${stream.name.replace(/\s+/g, '-')}`;
+  videoElement.className = 'video-element';
+  videoElement.playsInline = true;
+  videoElement.autoplay = true;
+  videoElement.muted = true;
+  videoElement.style.objectFit = 'cover'; // Ensure video fills the space
+  
+  // Add loading indicator
+  const loadingIndicator = document.createElement('div');
+  loadingIndicator.className = 'loading-indicator';
+  loadingIndicator.innerHTML = '<div class="spinner"></div><span>Preparing stream...</span>';
+  
+  // Add error indicator (hidden by default)
+  const errorIndicator = document.createElement('div');
+  errorIndicator.className = 'error-indicator';
+  errorIndicator.style.display = 'none';
+  errorIndicator.innerHTML = '<p>Connection failed</p><button class="retry-button">Retry</button>';
+  
+  // Add stream name overlay - make it more compact
+  const streamNameOverlay = document.createElement('div');
+  streamNameOverlay.className = 'stream-name-overlay';
+  streamNameOverlay.textContent = stream.name;
+  streamNameOverlay.style.padding = '0.25rem 0.5rem';
+  streamNameOverlay.style.fontSize = '0.9rem';
+  streamNameOverlay.style.opacity = '0.8';
+  
+  // Add stream controls (snapshot and fullscreen buttons) - make more compact
+  const streamControls = document.createElement('div');
+  streamControls.className = 'stream-controls';
+  streamControls.style.padding = '0.25rem';
+  streamControls.innerHTML = `
+    <button class="snapshot-btn" data-id="${streamId}" data-name="${stream.name}">
+      <span>📷</span>
+    </button>
+    <button class="fullscreen-btn" data-id="${streamId}" data-name="${stream.name}">
+      <span>⛶</span>
+    </button>
+  `;
+  
+  // Add canvas for detection overlay
+  const canvasOverlay = document.createElement('canvas');
+  canvasOverlay.id = `canvas-${stream.name.replace(/\s+/g, '-')}`;
+  canvasOverlay.className = 'detection-overlay';
+  
+  // Assemble the video cell
+  videoCell.appendChild(videoElement);
+  videoCell.appendChild(loadingIndicator);
+  videoCell.appendChild(errorIndicator);
+  videoCell.appendChild(streamNameOverlay);
+  videoCell.appendChild(streamControls);
+  videoCell.appendChild(canvasOverlay);
+  
+  // Add to grid
+  videoGridRef.appendChild(videoCell);
+  
+  // Add event listeners for buttons
+  const snapshotBtn = videoCell.querySelector('.snapshot-btn');
+  if (snapshotBtn) {
+    snapshotBtn.addEventListener('click', () => {
+      // Import from SnapshotManager.js
+      const { takeSnapshot } = window.AugmentCode || {};
+      if (typeof takeSnapshot === 'function') {
+        takeSnapshot(streamId);
+      } else {
+        // Fallback to global function if module import not available
+        if (typeof window.takeSnapshot === 'function') {
+          window.takeSnapshot(streamId);
+        }
+      }
+    });
+  }
+  
+  const fullscreenBtn = videoCell.querySelector('.fullscreen-btn');
+  if (fullscreenBtn) {
+    fullscreenBtn.addEventListener('click', () => {
+      // Import from FullscreenManager.js
+      const { toggleStreamFullscreen } = window.AugmentCode || {};
+      if (typeof toggleStreamFullscreen === 'function') {
+        toggleStreamFullscreen(stream.name);
+      } else {
+        // Fallback to global function if module import not available
+        if (typeof window.toggleStreamFullscreen === 'function') {
+          window.toggleStreamFullscreen(stream.name);
+        }
+      }
+    });
+  }
 }

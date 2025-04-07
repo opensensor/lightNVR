@@ -303,66 +303,154 @@ export function WebRTCView() {
       const endIdx = Math.min(startIdx + maxStreams, streams.length);
       streamsToShow = streams.slice(startIdx, endIdx);
     }
+
+    // Stagger initialization of WebRTC connections
+    streamsToShow.forEach((stream, index) => {
+      // Create video cell immediately for UI responsiveness
+      createVideoCell(stream);
+      
+      // Stagger the actual WebRTC initialization
+      setTimeout(() => {
+        initializeWebRTCPlayer(stream);
+      }, index * 500); // 500ms delay between each stream initialization
+    });
+  };
+
+  /**
+   * Create video cell without initializing WebRTC
+   * @param {Object} stream - Stream object
+   */
+  const createVideoCell = (stream) => {
+    // Ensure we have an ID for the stream (use name as fallback if needed)
+    const streamId = stream.id || stream.name;
     
-    // Get names of streams that should be shown
-    const streamsToShowNames = streamsToShow.map(stream => stream.name);
+    const videoCell = document.createElement('div');
+    videoCell.className = 'video-cell';
+    videoCell.dataset.streamName = stream.name;
+    videoCell.style.position = 'relative'; // Create stacking context
     
-    // Clean up connections for streams that are no longer visible
-    Object.keys(webrtcConnections.current).forEach(streamName => {
-      if (!streamsToShowNames.includes(streamName)) {
-        console.log(`Cleaning up WebRTC connection for stream ${streamName} (not visible in current view)`);
-        cleanupWebRTCPlayer(streamName);
-      }
+    // Create video element
+    const videoElement = document.createElement('video');
+    videoElement.id = `video-${stream.name.replace(/\s+/g, '-')}`;
+    videoElement.className = 'video-element';
+    videoElement.playsInline = true;
+    videoElement.autoplay = true;
+    videoElement.muted = true;
+    videoElement.style.pointerEvents = 'none'; // Allow clicks to pass through to controls
+    
+    // Create loading indicator
+    const loadingIndicator = document.createElement('div');
+    loadingIndicator.className = 'loading-indicator';
+    loadingIndicator.innerHTML = `
+      <div class="spinner"></div>
+      <p>Connecting...</p>
+    `;
+    loadingIndicator.style.position = 'absolute';
+    loadingIndicator.style.top = '0';
+    loadingIndicator.style.left = '0';
+    loadingIndicator.style.width = '100%';
+    loadingIndicator.style.height = '100%';
+    loadingIndicator.style.display = 'flex';
+    loadingIndicator.style.flexDirection = 'column';
+    loadingIndicator.style.justifyContent = 'center';
+    loadingIndicator.style.alignItems = 'center';
+    loadingIndicator.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+    loadingIndicator.style.color = 'white';
+    loadingIndicator.style.zIndex = '20'; // Above video but below controls
+    
+    // Create error indicator (hidden by default)
+    const errorIndicator = document.createElement('div');
+    errorIndicator.className = 'error-indicator';
+    errorIndicator.style.display = 'none';
+    errorIndicator.style.position = 'absolute';
+    errorIndicator.style.top = '0';
+    errorIndicator.style.left = '0';
+    errorIndicator.style.width = '100%';
+    errorIndicator.style.height = '100%';
+    errorIndicator.style.flexDirection = 'column';
+    errorIndicator.style.justifyContent = 'center';
+    errorIndicator.style.alignItems = 'center';
+    errorIndicator.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+    errorIndicator.style.color = 'white';
+    errorIndicator.style.zIndex = '20'; // Above video but below controls
+    
+    // Create stream name overlay
+    const streamNameOverlay = document.createElement('div');
+    streamNameOverlay.className = 'stream-name-overlay';
+    streamNameOverlay.textContent = stream.name;
+    streamNameOverlay.style.position = 'absolute';
+    streamNameOverlay.style.top = '10px';
+    streamNameOverlay.style.left = '10px';
+    streamNameOverlay.style.padding = '5px 10px';
+    streamNameOverlay.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+    streamNameOverlay.style.color = 'white';
+    streamNameOverlay.style.borderRadius = '4px';
+    streamNameOverlay.style.fontSize = '14px';
+    streamNameOverlay.style.zIndex = '15'; // Above video but below controls
+    
+    // Create stream controls
+    const streamControls = document.createElement('div');
+    streamControls.className = 'stream-controls';
+    streamControls.innerHTML = `
+      <button class="snapshot-btn" title="Take Snapshot" data-id="${streamId}" data-name="${stream.name}">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+      </button>
+      <button class="fullscreen-btn" title="Toggle Fullscreen" data-id="${streamId}" data-name="${stream.name}">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
+      </button>
+    `;
+    streamControls.style.position = 'absolute';
+    streamControls.style.bottom = '10px';
+    streamControls.style.right = '10px';
+    streamControls.style.display = 'flex';
+    streamControls.style.gap = '10px';
+    streamControls.style.zIndex = '30'; // Above everything else
+    
+    // Add canvas for detection overlay
+    const canvasOverlay = document.createElement('canvas');
+    canvasOverlay.id = `canvas-${stream.name.replace(/\s+/g, '-')}`;
+    canvasOverlay.className = 'detection-overlay';
+    canvasOverlay.style.position = 'absolute';
+    canvasOverlay.style.top = '0';
+    canvasOverlay.style.left = '0';
+    canvasOverlay.style.width = '100%';
+    canvasOverlay.style.height = '100%';
+    canvasOverlay.style.pointerEvents = 'none'; // Allow clicks to pass through
+    canvasOverlay.style.zIndex = '5'; // Above video but below controls
+    
+    // Assemble the video cell
+    videoCell.appendChild(videoElement);
+    videoCell.appendChild(loadingIndicator);
+    videoCell.appendChild(errorIndicator);
+    videoCell.appendChild(streamNameOverlay);
+    videoCell.appendChild(streamControls);
+    videoCell.appendChild(canvasOverlay);
+    
+    // Add to grid
+    videoGridRef.current.appendChild(videoCell);
+    
+    // Make sure all buttons have proper z-index and pointer events
+    const allButtons = videoCell.querySelectorAll('button');
+    allButtons.forEach(button => {
+      button.style.position = 'relative';
+      button.style.zIndex = '30';
+      button.style.pointerEvents = 'auto';
     });
     
-    // Add video elements for each stream
-    streamsToShow.forEach(stream => {
-      // Ensure we have an ID for the stream (use name as fallback if needed)
-      const streamId = stream.id || stream.name;
-      
-      const videoCell = document.createElement('div');
-      videoCell.className = 'video-cell';
-      
-      videoCell.innerHTML = `
-        <video id="video-${stream.name.replace(/\s+/g, '-')}" autoplay muted></video>
-        <div class="stream-info">
-          <span>${stream.name}</span>
-          <span>${stream.width}x${stream.height} · ${stream.fps}fps</span>
-          <div class="stream-controls">
-            <button class="snapshot-btn" data-id="${streamId}" data-name="${stream.name}">
-              <span>📷</span> Snapshot
-            </button>
-            <button class="fullscreen-btn" data-id="${streamId}" data-name="${stream.name}">
-              <span>⛶</span> Fullscreen
-            </button>
-          </div>
-        </div>
-        <div class="loading-indicator">
-          <div class="loading-spinner"></div>
-          <span>Connecting WebRTC...</span>
-        </div>
-      `;
-      
-      videoGridRef.current.appendChild(videoCell);
-      
-      // Initialize WebRTC player
-      initializeWebRTCPlayer(stream);
-      
-      // Add event listeners for buttons
-      const snapshotBtn = videoCell.querySelector('.snapshot-btn');
-      if (snapshotBtn) {
-        snapshotBtn.addEventListener('click', () => {
-          takeSnapshot(streamId);
-        });
-      }
-      
-      const fullscreenBtn = videoCell.querySelector('.fullscreen-btn');
-      if (fullscreenBtn) {
-        fullscreenBtn.addEventListener('click', () => {
-          toggleStreamFullscreen(stream.name);
-        });
-      }
-    });
+    // Add event listeners for buttons
+    const snapshotBtn = videoCell.querySelector('.snapshot-btn');
+    if (snapshotBtn) {
+      snapshotBtn.addEventListener('click', (event) => {
+        takeSnapshot(streamId, event);
+      });
+    }
+    
+    const fullscreenBtn = videoCell.querySelector('.fullscreen-btn');
+    if (fullscreenBtn) {
+      fullscreenBtn.addEventListener('click', () => {
+        toggleStreamFullscreen(stream.name);
+      });
+    }
   };
   
   /**
@@ -628,10 +716,14 @@ export function WebRTCView() {
    * @param {string} message - Error message
    */
   const handleWebRTCError = (streamName, message) => {
+    console.error(`WebRTC error for stream ${streamName}:`, message);
+    
+    // Find the video cell
     const videoElementId = `video-${streamName.replace(/\s+/g, '-')}`;
     const videoElement = document.getElementById(videoElementId);
-    const videoCell = videoElement ? videoElement.closest('.video-cell') : null;
+    if (!videoElement) return;
     
+    const videoCell = videoElement.closest('.video-cell');
     if (!videoCell) return;
     
     // Hide loading indicator
@@ -645,6 +737,18 @@ export function WebRTCView() {
     if (!errorIndicator) {
       errorIndicator = document.createElement('div');
       errorIndicator.className = 'error-indicator';
+      errorIndicator.style.position = 'absolute';
+      errorIndicator.style.top = '0';
+      errorIndicator.style.left = '0';
+      errorIndicator.style.width = '100%';
+      errorIndicator.style.height = '100%';
+      errorIndicator.style.display = 'flex';
+      errorIndicator.style.flexDirection = 'column';
+      errorIndicator.style.justifyContent = 'center';
+      errorIndicator.style.alignItems = 'center';
+      errorIndicator.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+      errorIndicator.style.color = 'white';
+      errorIndicator.style.zIndex = '20'; // Above video but below controls
       videoCell.appendChild(errorIndicator);
     }
     
@@ -653,12 +757,17 @@ export function WebRTCView() {
       <p>${message || 'WebRTC connection failed'}</p>
       <button class="retry-button mt-4 px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">Retry</button>
     `;
+    errorIndicator.style.display = 'flex';
     
-    // Add retry button handler
+    // Make sure retry button is clickable
     const retryButton = errorIndicator.querySelector('.retry-button');
     if (retryButton) {
+      retryButton.style.position = 'relative';
+      retryButton.style.zIndex = '30';
+      retryButton.style.pointerEvents = 'auto';
+      
       retryButton.addEventListener('click', () => {
-        // Show loading indicator again
+        // Show loading indicator
         if (loadingIndicator) {
           loadingIndicator.style.display = 'flex';
         }
@@ -732,17 +841,27 @@ export function WebRTCView() {
  * @param {string} streamId - Stream ID
  */
 const takeSnapshot = (streamId) => {
-  // Find the stream by ID or name
+  // Find the stream by button element
   const streamElement = document.querySelector(`.snapshot-btn[data-id="${streamId}"]`);
-  if (!streamElement) {
-    console.error('Stream element not found for ID:', streamId);
-    return;
+  let streamName;
+  
+  if (streamElement) {
+    // Get the stream name from the data attribute
+    streamName = streamElement.getAttribute('data-name');
+  } else {
+    // If we can't find by data-id (which might be missing in the new UI),
+    // try to find the parent video cell and get the stream name
+    const clickedButton = event.currentTarget || event.target;
+    const videoCell = clickedButton.closest('.video-cell');
+    
+    if (videoCell) {
+      streamName = videoCell.dataset.streamName;
+    }
   }
-
-  // Get the stream name from the data attribute
-  const streamName = streamElement.getAttribute('data-name');
+  
   if (!streamName) {
-    console.error('Stream name not found for ID:', streamId);
+    console.error('Stream name not found for snapshot');
+    showStatusMessage('Cannot take snapshot: Stream not identified');
     return;
   }
 
@@ -751,6 +870,7 @@ const takeSnapshot = (streamId) => {
   const videoElement = document.getElementById(videoElementId);
   if (!videoElement) {
     console.error('Video element not found for stream:', streamName);
+    showStatusMessage('Cannot take snapshot: Video element not found');
     return;
   }
 
