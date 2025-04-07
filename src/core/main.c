@@ -963,6 +963,10 @@ int main(int argc, char *argv[]) {
 
     log_info("Mongoose web server started on port %d", config.web_port);
 
+    // Initialize health check system
+    init_health_check_system();
+    log_info("Health check system initialized");
+
     // No need to register API handlers with the Mongoose server
     // Direct handlers are registered in register_api_handlers
 
@@ -1226,6 +1230,10 @@ cleanup:
         // Shutdown ONVIF discovery
         log_info("Shutting down ONVIF discovery module...");
         shutdown_onvif_discovery();
+
+        // Clean up health check system
+        log_info("Cleaning up health check system...");
+        cleanup_health_check_system();
 
         // Now shut down other components
         log_info("Shutting down web server...");

@@ -377,4 +377,9 @@ bool check_server_restart_needed(void);
 void mark_server_for_restart(void);
 void reset_server_restart_flag(void);
 
+// Health check thread functions
+void start_health_check_thread(void);
+void stop_health_check_thread(void);
+void cleanup_health_check_system(void);
+
 #endif /* API_HANDLERS_H */
