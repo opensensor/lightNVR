@@ -107,6 +107,11 @@ int ensure_hls_directory(const char *output_dir, const char *stream_name) {
         strncpy(parent_dir, output_dir, parent_len);
         parent_dir[parent_len] = '\0';
         
+        // Create directory with proper handling of spaces
+        char mkdir_cmd[MAX_PATH_LENGTH * 2];
+        snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p \"%s\"", parent_dir);
+        system(mkdir_cmd);
+        
         // Create a test file in the parent directory
         char test_file[MAX_PATH_LENGTH];
         snprintf(test_file, sizeof(test_file), "%s/.hls_parent_check", parent_dir);

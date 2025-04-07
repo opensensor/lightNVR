@@ -691,7 +691,7 @@ int monitor_hls_segments_for_detection(const char *stream_name) {
         
         // Create the directory
         char cmd[MAX_PATH_LENGTH * 2];
-        snprintf(cmd, sizeof(cmd), "mkdir -p %s", hls_dir);
+        snprintf(cmd, sizeof(cmd), "mkdir -p \"%s\"", hls_dir);
         system(cmd);
     }
     
@@ -888,7 +888,7 @@ int monitor_hls_segments_for_detection(const char *stream_name) {
             
             // Create the directory with all parent directories
             char cmd[MAX_PATH_LENGTH * 2];
-            snprintf(cmd, sizeof(cmd), "mkdir -p %s", hls_dir);
+            snprintf(cmd, sizeof(cmd), "mkdir -p \"%s\"", hls_dir);
             int result = system(cmd);
             
             if (result != 0) {
@@ -924,7 +924,7 @@ int monitor_hls_segments_for_detection(const char *stream_name) {
             if (stat(hls_dir, &st_dir) != 0) {
                 log_warn("HLS directory does not exist, creating it: %s", hls_dir);
                 char cmd[MAX_PATH_LENGTH * 2];
-                snprintf(cmd, sizeof(cmd), "mkdir -p %s", hls_dir);
+                snprintf(cmd, sizeof(cmd), "mkdir -p \"%s\"", hls_dir);
                 system(cmd);
             }
             

@@ -357,11 +357,44 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     }
 
     // Add the JPEG file to the form
-    curl_formadd(&formpost, &lastptr,
-                CURLFORM_COPYNAME, "file",
-                CURLFORM_FILE, image_filename,
-                CURLFORM_CONTENTTYPE, "image/jpeg",
-                CURLFORM_END);
+    // CRITICAL FIX: Check if image_filename exists before adding to form
+    struct stat image_stat;
+    memory_struct_t chunk = {0};
+    chunk.memory = NULL;
+    struct curl_slist *headers = NULL;
+    if (stat(image_filename, &image_stat) == 0 && image_stat.st_size > 0) {
+        CURLFORMcode form_result = curl_formadd(&formpost, &lastptr,
+                    CURLFORM_COPYNAME, "file",
+                    CURLFORM_FILE, image_filename,
+                    CURLFORM_CONTENTTYPE, "image/jpeg",
+                    CURLFORM_END);
+                    
+        if (form_result != CURL_FORMADD_OK) {
+            log_error("API Detection: Failed to add JPEG file to form (error code: %d)", form_result);
+            free(chunk.memory);
+            curl_formfree(formpost);
+            curl_slist_free_all(headers);
+            remove(temp_filename);
+            remove(image_filename);
+            result->count = 0;
+            return -1;
+        }
+        
+        log_info("API Detection: Successfully added JPEG file to form: %s", image_filename);
+    } else {
+        log_error("API Detection: JPEG file missing or empty: %s", image_filename);
+        // Now we can safely free them
+        if (chunk.memory) free(chunk.memory);
+        if (formpost) curl_formfree(formpost);
+        if (headers) curl_slist_free_all(headers);
+        
+        remove(temp_filename);
+        if (stat(image_filename, &image_stat) == 0) {
+            remove(image_filename);
+        }
+        result->count = 0;
+        return -1;
+    }
 
     // Construct the URL with query parameters
     char url_with_params[1024];
@@ -375,12 +408,10 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     curl_easy_setopt(curl_handle, CURLOPT_HTTPPOST, formpost);
 
     // Add the accept header
-    struct curl_slist *headers = NULL;
     headers = curl_slist_append(headers, "accept: application/json");
     curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, headers);
 
     // Set up the response buffer
-    memory_struct_t chunk;
     chunk.memory = malloc(1);
     chunk.size = 0;
 

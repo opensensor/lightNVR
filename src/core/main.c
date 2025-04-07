@@ -50,6 +50,7 @@ void init_recordings_system(void);
 #include "web/http_server.h"
 #include "web/mongoose_server.h"
 #include "web/api_handlers.h"
+#include "web/api_handlers_health.h"
 #include "web/websocket_manager.h"
 #include "mongoose.h"
 
@@ -995,6 +996,41 @@ int main(int argc, char *argv[]) {
             last_recording_check_time = now;
         }
 
+        // Check web server health
+        static time_t last_web_health_check_time = 0;
+        if (now - last_web_health_check_time > 30) {  // Check every 30 seconds
+            last_web_health_check_time = now;
+            
+            // Check if web server is healthy
+            if (!is_web_server_healthy()) {
+                log_warn("Web server health check failed");
+                
+                // If we've had multiple consecutive failures, restart the web server
+                if (get_failed_health_checks() >= 3) {
+                    log_error("Web server has failed health checks %d times, restarting...", 
+                             get_failed_health_checks());
+                    
+                    // Stop the web server
+                    log_info("Stopping web server for restart...");
+                    http_server_stop(http_server);
+                    
+                    // Wait a moment for resources to be released
+                    usleep(1000000);  // 1 second
+                    
+                    // Reset health metrics
+                    reset_health_metrics();
+                    
+                    // Restart the web server
+                    log_info("Restarting web server...");
+                    if (http_server_start(http_server) != 0) {
+                        log_error("Failed to restart web server");
+                    } else {
+                        log_info("Web server restarted successfully");
+                    }
+                }
+            }
+        }
+        
         // Process events, monitor system health, etc.
         sleep(1);
     }

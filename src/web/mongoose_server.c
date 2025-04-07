@@ -25,6 +25,7 @@
 #include "web/api_handlers_recordings.h"
 #include "web/api_handlers_go2rtc_proxy.h"
 #include "web/api_handlers_users.h"
+#include "web/api_handlers_health.h"
 
 // Forward declarations for timeline API handlers
 void mg_handle_get_timeline_segments(struct mg_connection *c, struct mg_http_message *hm);
@@ -106,6 +107,7 @@ static const mg_api_route_t s_api_routes[] = {
     {"POST", "/api/system/logs/clear", mg_handle_post_system_logs_clear},
     {"POST", "/api/system/backup", mg_handle_post_system_backup},
     {"GET", "/api/system/status", mg_handle_get_system_status},
+    {"GET", "/api/health", mg_handle_get_health},
     
     // Recordings API
     {"GET", "/api/recordings", mg_handle_get_recordings},
@@ -261,6 +263,9 @@ http_server_handle_t http_server_init(const http_server_config_t *config) {
     
     // Initialize route table
     init_route_table();
+    
+    // Initialize health check system
+    init_health_check_system();
     
     // Register WebSocket handlers
     log_info("Registering WebSocket handlers");

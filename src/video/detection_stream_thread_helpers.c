@@ -45,7 +45,7 @@ bool should_run_detection_check(stream_detection_thread_t *thread, time_t curren
     // Check if we're still in the startup delay period with safety checks
     if (global_startup_delay_end > 0 && current_time < global_startup_delay_end) {
         log_info("[Stream %s] In startup delay period, waiting %ld more seconds before processing segments",
-                thread->stream_name ? thread->stream_name : "unknown", global_startup_delay_end - current_time);
+                thread->stream_name, global_startup_delay_end - current_time);
         return false;
     }
 
@@ -61,7 +61,7 @@ bool should_run_detection_check(stream_detection_thread_t *thread, time_t curren
         time_t detection_time = current_time - thread->last_detection_time;
         if (detection_time > 60) {  // 60 seconds timeout
             log_warn("[Stream %s] Detection has been running for %ld seconds, which is too long. Resetting flag.",
-                    thread->stream_name ? thread->stream_name : "unknown", detection_time);
+                    thread->stream_name, detection_time);
             atomic_store(&thread->detection_in_progress, 0);
             detection_running = 0;  // Update local variable to reflect the change
         }
@@ -252,7 +252,7 @@ bool find_hls_directory(stream_detection_thread_t *thread, time_t current_time,
 
         // Create the directory
         char cmd[MAX_PATH_LENGTH * 2];
-        snprintf(cmd, sizeof(cmd), "mkdir -p %s", standard_path);
+        snprintf(cmd, sizeof(cmd), "mkdir -p \"%s\"", standard_path);
         system(cmd);
     }
 
