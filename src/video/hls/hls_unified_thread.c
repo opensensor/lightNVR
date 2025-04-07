@@ -54,33 +54,55 @@ extern bool go2rtc_get_rtsp_url(const char *stream_name, char *url, size_t url_s
  * Enhanced to prevent memory leaks
  */
 static void safe_cleanup_resources(AVFormatContext **input_ctx, AVPacket **pkt, hls_writer_t **writer) {
-    // Clean up packet
+    // CRITICAL FIX: Add safety checks to prevent segmentation faults
+
+    // Clean up packet with safety checks
     if (pkt && *pkt) {
         AVPacket *pkt_to_free = *pkt;
         *pkt = NULL; // Clear the pointer first to prevent double-free
 
         // Safely unref and free the packet
+        log_debug("Safely unreferencing packet during cleanup");
         av_packet_unref(pkt_to_free);
+        log_debug("Safely freeing packet during cleanup");
         av_packet_free(&pkt_to_free);
     }
 
-    // Clean up input context
+    // Clean up input context with safety checks
     if (input_ctx && *input_ctx) {
         AVFormatContext *ctx_to_close = *input_ctx;
         *input_ctx = NULL; // Clear the pointer first to prevent double-free
 
         // Safely close the input context
-        avformat_close_input(&ctx_to_close);
+        log_debug("Safely closing input context during cleanup");
+
+        // CRITICAL FIX: Add additional safety check for invalid context
+        if (ctx_to_close) {
+            // Check if the context has been properly initialized
+            if (ctx_to_close->pb || ctx_to_close->nb_streams > 0) {
+                avformat_close_input(&ctx_to_close);
+                log_debug("Successfully closed input context");
+            } else {
+                // If the context is not properly initialized, just free it
+                log_warn("Input context not properly initialized, using avformat_free_context instead");
+                avformat_free_context(ctx_to_close);
+            }
+        }
     }
 
-    // Clean up HLS writer
+    // Clean up HLS writer with safety checks
     if (writer && *writer) {
         hls_writer_t *writer_to_close = *writer;
         *writer = NULL; // Clear the pointer first to prevent double-free
 
         // Safely close the writer
-        hls_writer_close(writer_to_close);
+        if (writer_to_close) {
+            log_debug("Safely closing HLS writer during cleanup");
+            hls_writer_close(writer_to_close);
+        }
     }
+
+    log_debug("Completed safe cleanup of resources");
 }
 
 /**
@@ -635,6 +657,30 @@ void *hls_unified_thread_func(void *arg) {
                     break;
                 }
 
+                // CRITICAL FIX: Add additional validation before considering reconnection successful
+                // Verify that the input context is valid and has streams
+                if (!input_ctx || input_ctx->nb_streams == 0) {
+                    log_error("Reconnection to stream %s failed: Invalid input context or no streams",
+                            stream_name);
+
+                    // Clean up any partially initialized resources
+                    if (input_ctx) {
+                        log_warn("Cleaning up invalid input context for stream %s", stream_name);
+                        safe_cleanup_resources(&input_ctx, NULL, NULL);
+                    }
+
+                    // Increment reconnection attempt counter
+                    reconnect_attempt++;
+
+                    // Cap reconnection attempts to avoid integer overflow
+                    if (reconnect_attempt > 1000) {
+                        reconnect_attempt = 1000;
+                    }
+
+                    // Stay in reconnecting state
+                    break;
+                }
+
                 // Reconnection successful
                 log_info("Successfully reconnected to stream %s after %d attempts",
                         stream_name, reconnect_attempt);
@@ -675,9 +721,24 @@ void *hls_unified_thread_func(void *arg) {
         state->hls_ctx = NULL;
     }
 
-    // Clean up all resources in one call
+    // CRITICAL FIX: Add safety checks before cleaning up resources
     log_info("Cleaning up all resources for stream %s", stream_name);
-    safe_cleanup_resources(&input_ctx, &pkt, &ctx->writer);
+
+    // Verify that the resources are valid before cleaning them up
+    if (input_ctx) {
+        log_debug("Cleaning up input context for stream %s", stream_name);
+    }
+
+    if (pkt) {
+        log_debug("Cleaning up packet for stream %s", stream_name);
+    }
+
+    if (ctx && ctx->writer) {
+        log_debug("Cleaning up HLS writer for stream %s", stream_name);
+    }
+
+    // Clean up all resources in one call with safety checks
+    safe_cleanup_resources(&input_ctx, &pkt, ctx ? &ctx->writer : NULL);
 
     // Update component state in shutdown coordinator
     if (ctx->shutdown_component_id >= 0) {

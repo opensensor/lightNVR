@@ -106,17 +106,6 @@ void shutdown_api_detection_system(void) {
     log_info("API detection system shutdown complete");
 }
 
-// Include go2rtc headers for integration
-#ifdef USE_GO2RTC
-#include "video/go2rtc/go2rtc_stream.h"
-#include "video/go2rtc/go2rtc_api.h"
-
-// Define GO2RTC_API_PORT if not already defined
-#ifndef GO2RTC_API_PORT
-#define GO2RTC_API_PORT 1984  // Default go2rtc API port
-#endif
-#endif
-
 /**
  * Detect objects using the API
  */
@@ -129,26 +118,6 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         return -1;
     }
 
-    // Check if the stream still exists - but only in non-test builds
-    // This avoids undefined references in test builds that don't link with stream_manager.c
-#ifndef BUILDING_TEST
-    if (stream_name && stream_name[0] != '\0') {
-        stream_handle_t stream = get_stream_by_name(stream_name);
-        if (!stream) {
-            log_info("API Detection: Stream %s no longer exists, skipping detection", stream_name);
-            return -1;
-        }
-
-        // Check if the stream is still running
-        stream_status_t status = get_stream_status(stream);
-        if (status != STREAM_STATUS_RUNNING && status != STREAM_STATUS_STARTING) {
-            log_info("API Detection: Stream %s is not running (status: %d), but will continue with detection",
-                    stream_name, status);
-            // Don't return -1 here, continue with detection
-            // This allows detection to work with go2rtc even if the stream status isn't RUNNING
-        }
-    }
-#endif // BUILDING_TEST
     // CRITICAL FIX: Check if api_url is the special "api-detection" string
     // If so, get the actual URL from the global config
     const char *actual_api_url = api_url;
@@ -194,233 +163,205 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         return -1;
     }
 
-    // Flag to track if we're using a go2rtc snapshot
-    bool using_go2rtc_snapshot = false;
     char image_filename[256];
     snprintf(image_filename, sizeof(image_filename), "%s.jpg", temp_filename);
 
-    // Try to get a snapshot from go2rtc if enabled and we have a stream name
-    #ifdef USE_GO2RTC
-    if (stream_name && stream_name[0] != '\0') {
-        log_info("API Detection: Checking if go2rtc is available for stream %s", stream_name);
-
-        // CRITICAL FIX: Add safety check to prevent memory corruption
-        bool go2rtc_ready = false;
-
-        // Use a try/catch block to handle potential segfaults
-        __attribute__((unused)) volatile int go2rtc_check_result = 0;
-
-        // Safely check if go2rtc is ready
-        go2rtc_ready = go2rtc_stream_is_ready();
-
-        if (go2rtc_ready) {
-            log_info("API Detection: go2rtc is available, trying to get snapshot for stream %s", stream_name);
-
-            // Get the go2rtc API port with safety checks
-            int api_port = GO2RTC_API_PORT; // Default from CMake
-
-            // Try to get the port from the go2rtc API with safety checks
-            int rtsp_port = 0;
-            bool server_info_success = false;
-
-            // Safely get server info
-            server_info_success = go2rtc_api_get_server_info(&rtsp_port);
-
-            if (server_info_success) {
-                // If we can get the RTSP port, we're using the configured API port
-                log_info("API Detection: Using go2rtc API port from config: %d", api_port);
-            } else {
-                log_warn("API Detection: Could not get server info, using default API port: %d", api_port);
-            }
-
-            // Construct the go2rtc snapshot URL
-            char go2rtc_url[1024];
-            snprintf(go2rtc_url, sizeof(go2rtc_url), "http://localhost:%d/api/frame.jpeg?src=%s",
-                    api_port, stream_name);
-            log_info("API Detection: Using go2rtc snapshot URL: %s", go2rtc_url);
-
-            // CRITICAL FIX: Use a separate curl handle with proper error handling
-            CURL *snapshot_curl = NULL;
-            FILE *image_file = NULL;
-            bool snapshot_success = false;
-
-            // Safely initialize curl
-            snapshot_curl = curl_easy_init();
-            if (snapshot_curl) {
-                // Safely open the image file for writing
-                image_file = fopen(image_filename, "wb");
-                if (image_file) {
-                    // Set up curl options with safety checks
-                    curl_easy_setopt(snapshot_curl, CURLOPT_URL, go2rtc_url);
-                    curl_easy_setopt(snapshot_curl, CURLOPT_WRITEFUNCTION, NULL); // Use default write function
-                    curl_easy_setopt(snapshot_curl, CURLOPT_WRITEDATA, image_file);
-                    curl_easy_setopt(snapshot_curl, CURLOPT_TIMEOUT, 5); // 5 second timeout
-                    curl_easy_setopt(snapshot_curl, CURLOPT_NOSIGNAL, 1L); // Prevent SIGPIPE signals
-                    curl_easy_setopt(snapshot_curl, CURLOPT_FAILONERROR, 1L); // Fail on HTTP errors
-
-                    // Perform the request with safety checks
-                    log_info("API Detection: Downloading go2rtc snapshot from %s", go2rtc_url);
-                    CURLcode res = curl_easy_perform(snapshot_curl);
-
-                    // Close the file safely
-                    if (image_file) {
-                        fclose(image_file);
-                        image_file = NULL;
-                    }
-
-                    // Check if the download was successful with safety checks
-                    if (res == CURLE_OK) {
-                        // Check if the file has content with safety checks
-                        struct stat st;
-                        if (stat(image_filename, &st) == 0 && st.st_size > 0) {
-                            log_info("API Detection: Successfully downloaded go2rtc snapshot: %s (size: %ld bytes)",
-                                    image_filename, (long)st.st_size);
-                            using_go2rtc_snapshot = true;
-                            snapshot_success = true;
-                        } else {
-                            log_warn("API Detection: go2rtc snapshot file is empty, falling back to frame conversion");
-                            // Remove the empty file to avoid confusion
-                            remove(image_filename);
-                        }
-                    } else {
-                        log_warn("API Detection: Failed to download go2rtc snapshot: %s, falling back to frame conversion",
-                                curl_easy_strerror(res));
-                        // Remove any partially downloaded file
-                        remove(image_filename);
-                    }
-                } else {
-                    log_warn("API Detection: Failed to open image file for writing: %s", image_filename);
-                }
-
-                // Clean up curl safely
-                if (snapshot_curl) {
-                    curl_easy_cleanup(snapshot_curl);
-                    snapshot_curl = NULL;
-                }
-            } else {
-                log_warn("API Detection: Failed to initialize curl for go2rtc snapshot");
-            }
-
-            // If snapshot failed, log and continue with frame conversion
-            if (!snapshot_success) {
-                log_warn("API Detection: Failed to download go2rtc snapshot, falling back to frame conversion");
-            }
-        } else {
-            log_info("API Detection: go2rtc is not available, using frame conversion");
-        }
+    // Convert file descriptor to FILE pointer
+    FILE *temp_file = fdopen(temp_fd, "wb");
+    if (!temp_file) {
+        log_error("Failed to open temporary file for writing: %s", strerror(errno));
+        close(temp_fd);
+        unlink(temp_filename);
+        return -1;
     }
-    #endif
 
-    // If we didn't get a go2rtc snapshot, convert the raw frame data
-    if (!using_go2rtc_snapshot) {
-        // Convert file descriptor to FILE pointer
-        FILE *temp_file = fdopen(temp_fd, "wb");
-        if (!temp_file) {
-            log_error("Failed to open temporary file for writing: %s", strerror(errno));
-            close(temp_fd);
-            unlink(temp_filename);
-            return -1;
-        }
+    // Write the raw image data to the file
+    size_t bytes_written = fwrite(frame_data, 1, width * height * channels, temp_file);
+    fclose(temp_file);
 
-        // Write the raw image data to the file
-        size_t bytes_written = fwrite(frame_data, 1, width * height * channels, temp_file);
-        fclose(temp_file);
+    if (bytes_written != width * height * channels) {
+        log_error("Failed to write image data to temporary file");
+        remove(temp_filename);
+        return -1;
+    }
 
-        if (bytes_written != width * height * channels) {
-            log_error("Failed to write image data to temporary file");
-            remove(temp_filename);
-            return -1;
-        }
+    // CRITICAL FIX: Modify the request to match the API server's expected format
+    // Based on working curl examples:
+    // curl -X 'POST' 'http://127.0.0.1:9001/api/v1/detect?backend=tflite&confidence_threshold=.5&return_image=false'
+    //   -H 'accept: application/json' -H 'Content-Type: multipart/form-data'
+    //   -F 'file=@image.jpg;type=image/jpeg'
 
-        // CRITICAL FIX: Modify the request to match the API server's expected format
-        // Based on working curl examples:
-        // curl -X 'POST' 'http://127.0.0.1:9001/api/v1/detect?backend=tflite&confidence_threshold=.5&return_image=false'
-        //   -H 'accept: application/json' -H 'Content-Type: multipart/form-data'
-        //   -F 'file=@image.jpg;type=image/jpeg'
+    // CRITICAL FIX: Determine the correct ImageMagick parameters based on channels with safety checks
+    const char *pixel_format = NULL;
 
-        // Determine the correct ImageMagick parameters based on channels
-        const char *pixel_format;
+    // Validate channels to prevent segmentation faults
+    if (channels <= 0 || channels > 4) {
+        log_error("API Detection: Invalid number of channels: %d (must be 1, 3, or 4)", channels);
+        remove(temp_filename);
+        return -1;
+    }
+
+    // Set pixel format based on validated channels
+    if (channels == 1) {
+        pixel_format = "gray";
+        log_info("API Detection: Using grayscale pixel format for %d channel", channels);
+    } else if (channels == 3) {
+        pixel_format = "rgb";
+        log_info("API Detection: Using RGB pixel format for %d channels", channels);
+    } else if (channels == 4) {
+        pixel_format = "rgba";
+        log_info("API Detection: Using RGBA pixel format for %d channels", channels);
+    }
+
+    // Double-check that pixel_format is set
+    if (!pixel_format) {
+        log_error("API Detection: Failed to determine pixel format for %d channels", channels);
+        remove(temp_filename);
+        return -1;
+    }
+
+    // CRITICAL FIX: Use system command to convert the raw data to JPEG using ImageMagick with safety checks
+    // The -depth 8 parameter specifies 8 bits per channel
+    // The -size WxH parameter specifies the dimensions of the input image
+    // The pixel_format: parameter specifies the pixel format of the input image
+    char convert_cmd[1024] = {0}; // Initialize to zeros
+
+    // Validate width and height to prevent buffer overflows
+    if (width <= 0 || width > 10000 || height <= 0 || height > 10000) {
+        log_error("API Detection: Invalid image dimensions: %dx%d", width, height);
+        remove(temp_filename);
+        return -1;
+    }
+
+    // Format the command with safety checks
+    int cmd_result = snprintf(convert_cmd, sizeof(convert_cmd),
+             "convert -size %dx%d -depth 8 %s:%s -quality 90 %s",
+             width, height, pixel_format, temp_filename, image_filename);
+
+    // Check for buffer overflow
+    if (cmd_result < 0 || cmd_result >= (int)sizeof(convert_cmd)) {
+        log_error("API Detection: Command buffer overflow when formatting ImageMagick command");
+        remove(temp_filename);
+        return -1;
+    }
+
+    log_info("API Detection: Converting raw data to JPEG: %s", convert_cmd);
+
+    int convert_result = system(convert_cmd);
+    if (convert_result != 0) {
+        log_error("API Detection: Failed to convert raw data to JPEG (error code: %d)", convert_result);
+
+        // Try an alternative approach using ffmpeg with safety checks
+        log_info("API Detection: Trying alternative conversion with ffmpeg");
+        char ffmpeg_cmd[1024] = {0}; // Initialize to zeros
+
+        // Determine the correct ffmpeg pixel format with safety checks
+        const char *ffmpeg_pixel_format = NULL;
         if (channels == 1) {
-            pixel_format = "gray";
+            ffmpeg_pixel_format = "gray";
         } else if (channels == 3) {
-            pixel_format = "rgb";
+            ffmpeg_pixel_format = "rgb24";
         } else if (channels == 4) {
-            pixel_format = "rgba";
+            ffmpeg_pixel_format = "rgba";
         } else {
-            log_error("API Detection: Unsupported number of channels: %d", channels);
+            log_error("API Detection: Invalid number of channels for ffmpeg: %d", channels);
             remove(temp_filename);
             return -1;
         }
 
-        // Use system command to convert the raw data to JPEG using ImageMagick
-        // The -depth 8 parameter specifies 8 bits per channel
-        // The -size WxH parameter specifies the dimensions of the input image
-        // The pixel_format: parameter specifies the pixel format of the input image
-        char convert_cmd[1024];
-        snprintf(convert_cmd, sizeof(convert_cmd),
-                 "convert -size %dx%d -depth 8 %s:%s -quality 90 %s",
-                 width, height, pixel_format, temp_filename, image_filename);
-        log_info("API Detection: Converting raw data to JPEG: %s", convert_cmd);
+        // Format the command with safety checks
+        cmd_result = snprintf(ffmpeg_cmd, sizeof(ffmpeg_cmd),
+                "ffmpeg -f rawvideo -pixel_format %s -video_size %dx%d -i %s -y %s",
+                ffmpeg_pixel_format, width, height, temp_filename, image_filename);
 
-        int convert_result = system(convert_cmd);
-        if (convert_result != 0) {
-            log_error("API Detection: Failed to convert raw data to JPEG (error code: %d)", convert_result);
+        // Check for buffer overflow
+        if (cmd_result < 0 || cmd_result >= (int)sizeof(ffmpeg_cmd)) {
+            log_error("API Detection: Command buffer overflow when formatting ffmpeg command");
+            remove(temp_filename);
+            return -1;
+        }
 
-            // Try an alternative approach using ffmpeg
-            log_info("API Detection: Trying alternative conversion with ffmpeg");
-            char ffmpeg_cmd[1024];
-            snprintf(ffmpeg_cmd, sizeof(ffmpeg_cmd),
-                    "ffmpeg -f rawvideo -pixel_format %s -video_size %dx%d -i %s -y %s",
-                    channels == 3 ? "rgb24" : (channels == 4 ? "rgba" : "gray"),
-                    width, height, temp_filename, image_filename);
-            log_info("API Detection: Running ffmpeg command: %s", ffmpeg_cmd);
+        log_info("API Detection: Running ffmpeg command: %s", ffmpeg_cmd);
 
-            int ffmpeg_result = system(ffmpeg_cmd);
-            if (ffmpeg_result != 0) {
-                log_error("API Detection: Failed to convert with ffmpeg (error code: %d)", ffmpeg_result);
-                log_info("API Detection: Falling back to raw data with application/octet-stream MIME type");
+        int ffmpeg_result = system(ffmpeg_cmd);
+        if (ffmpeg_result != 0) {
+            log_error("API Detection: Failed to convert with ffmpeg (error code: %d)", ffmpeg_result);
+            log_info("API Detection: Falling back to raw data with application/octet-stream MIME type");
 
-                // Add the file to the form with the correct field name 'file' (not 'image')
-                curl_formadd(&formpost, &lastptr,
-                            CURLFORM_COPYNAME, "file",
-                            CURLFORM_FILE, temp_filename,
-                            CURLFORM_CONTENTTYPE, "application/octet-stream",
-                            CURLFORM_END);
-            } else {
-                log_info("API Detection: Successfully converted raw data to JPEG with ffmpeg: %s", image_filename);
-                using_go2rtc_snapshot = true; // We're using the converted image
+            // CRITICAL FIX: Verify that temp_filename exists before adding it to the form
+            struct stat temp_stat;
+            if (stat(temp_filename, &temp_stat) != 0 || temp_stat.st_size == 0) {
+                log_error("API Detection: Temporary file is missing or empty: %s", temp_filename);
+                remove(temp_filename);
+                return -1;
+            }
+
+            // Add the file to the form with the correct field name 'file' (not 'image')
+            CURLFORMcode form_result = curl_formadd(&formpost, &lastptr,
+                        CURLFORM_COPYNAME, "file",
+                        CURLFORM_FILE, temp_filename,
+                        CURLFORM_CONTENTTYPE, "application/octet-stream",
+                        CURLFORM_END);
+
+            // Check for curl form errors
+            if (form_result != CURL_FORMADD_OK) {
+                log_error("API Detection: Failed to add file to form (error code: %d)", form_result);
+                remove(temp_filename);
+                return -1;
             }
         } else {
-            log_info("API Detection: Successfully converted raw data to JPEG with ImageMagick: %s", image_filename);
+            log_info("API Detection: Successfully converted raw data to JPEG with ffmpeg: %s", image_filename);
 
-            // Verify the file was created and has a non-zero size
-            struct stat st;
-            if (stat(image_filename, &st) == 0 && st.st_size > 0) {
-                log_info("API Detection: JPEG file size: %ld bytes", (long)st.st_size);
-                using_go2rtc_snapshot = true; // We're using the converted image
-            } else {
-                log_error("API Detection: JPEG file was not created or has zero size");
-                log_info("API Detection: Falling back to raw data with application/octet-stream MIME type");
+            // CRITICAL FIX: Verify that image_filename exists before using it
+            struct stat image_stat;
+            if (stat(image_filename, &image_stat) != 0 || image_stat.st_size == 0) {
+                log_error("API Detection: Converted image file is missing or empty: %s", image_filename);
+                remove(temp_filename);
+                return -1;
+            }
+        }
+    } else
+    {
+        log_info("API Detection: Successfully converted raw data to JPEG with ImageMagick: %s", image_filename);
 
-                // Add the file to the form with the correct field name 'file' (not 'image')
-                curl_formadd(&formpost, &lastptr,
-                            CURLFORM_COPYNAME, "file",
-                            CURLFORM_FILE, temp_filename,
-                            CURLFORM_CONTENTTYPE, "application/octet-stream",
-                            CURLFORM_END);
+        // CRITICAL FIX: Verify the file was created and has a non-zero size with safety checks
+        struct stat st;
+        if (stat(image_filename, &st) == 0 && st.st_size > 0) {
+            log_info("API Detection: JPEG file size: %ld bytes", (long)st.st_size);
+        } else {
+            log_error("API Detection: JPEG file was not created or has zero size");
+            log_info("API Detection: Falling back to raw data with application/octet-stream MIME type");
+
+            // CRITICAL FIX: Verify that temp_filename exists before adding it to the form
+            struct stat temp_stat;
+            if (stat(temp_filename, &temp_stat) != 0 || temp_stat.st_size == 0) {
+                log_error("API Detection: Temporary file is missing or empty: %s", temp_filename);
+                remove(temp_filename);
+                return -1;
+            }
+
+            // Add the file to the form with the correct field name 'file' (not 'image')
+            CURLFORMcode form_result = curl_formadd(&formpost, &lastptr,
+                        CURLFORM_COPYNAME, "file",
+                        CURLFORM_FILE, temp_filename,
+                        CURLFORM_CONTENTTYPE, "application/octet-stream",
+                        CURLFORM_END);
+
+            // Check for curl form errors
+            if (form_result != CURL_FORMADD_OK) {
+                log_error("API Detection: Failed to add file to form (error code: %d)", form_result);
+                remove(temp_filename);
+                return -1;
             }
         }
     }
 
-    // If we have a valid JPEG image (either from go2rtc or conversion), use it
-    if (using_go2rtc_snapshot) {
-        // Add the JPEG file to the form
-        curl_formadd(&formpost, &lastptr,
-                    CURLFORM_COPYNAME, "file",
-                    CURLFORM_FILE, image_filename,
-                    CURLFORM_CONTENTTYPE, "image/jpeg",
-                    CURLFORM_END);
-    }
+    // Add the JPEG file to the form
+    curl_formadd(&formpost, &lastptr,
+                CURLFORM_COPYNAME, "file",
+                CURLFORM_FILE, image_filename,
+                CURLFORM_CONTENTTYPE, "image/jpeg",
+                CURLFORM_END);
 
     // Construct the URL with query parameters
     char url_with_params[1024];
