@@ -116,11 +116,15 @@ export function TimelineSegments() {
     let foundSegment = false;
     for (let i = 0; i < segments.length; i++) {
       const segment = segments[i];
-      if (clickTimestamp >= segment.start_timestamp && clickTimestamp <= segment.end_timestamp) {
+      // Use local timestamps if available, otherwise fall back to regular timestamps
+      const startTimestamp = segment.local_start_timestamp || segment.start_timestamp;
+      const endTimestamp = segment.local_end_timestamp || segment.end_timestamp;
+      
+      if (clickTimestamp >= startTimestamp && clickTimestamp <= endTimestamp) {
         console.log(`TimelineSegments: Found segment ${i} containing timestamp`);
         
         // Calculate relative time within the segment
-        const relativeTime = clickTimestamp - segment.start_timestamp;
+        const relativeTime = clickTimestamp - startTimestamp;
         
         // Update current segment index
         setCurrentSegmentIndex(i);
@@ -141,8 +145,12 @@ export function TimelineSegments() {
         
         for (let i = 0; i < segments.length; i++) {
           const segment = segments[i];
-          const startDistance = Math.abs(segment.start_timestamp - clickTimestamp);
-          const endDistance = Math.abs(segment.end_timestamp - clickTimestamp);
+          // Use local timestamps if available, otherwise fall back to regular timestamps
+          const startTimestamp = segment.local_start_timestamp || segment.start_timestamp;
+          const endTimestamp = segment.local_end_timestamp || segment.end_timestamp;
+          
+          const startDistance = Math.abs(startTimestamp - clickTimestamp);
+          const endDistance = Math.abs(endTimestamp - clickTimestamp);
           const distance = Math.min(startDistance, endDistance);
           
           if (distance < minDistance) {
@@ -179,10 +187,13 @@ export function TimelineSegments() {
     
     const segment = segments[index];
     
+    // Use local timestamps if available, otherwise fall back to regular timestamps
+    const startTimestamp = segment.local_start_timestamp || segment.start_timestamp;
+    
     // Calculate absolute timestamp for currentTime
     const absoluteTime = relativeTime !== null 
-      ? segment.start_timestamp + relativeTime 
-      : segment.start_timestamp;
+      ? startTimestamp + relativeTime 
+      : startTimestamp;
     
     // First, pause any current playback and reset the segment index
     timelineState.setState({ 
@@ -240,9 +251,13 @@ export function TimelineSegments() {
     
     // First pass: collect all segments by hour
     segments.forEach((segment, index) => {
+      // Use local timestamps if available, otherwise fall back to regular timestamps
+      const startTimestamp = segment.local_start_timestamp || segment.start_timestamp;
+      const endTimestamp = segment.local_end_timestamp || segment.end_timestamp;
+      
       // Convert timestamps to Date objects
-      const startTime = new Date(segment.start_timestamp * 1000);
-      const endTime = new Date(segment.end_timestamp * 1000);
+      const startTime = new Date(startTimestamp * 1000);
+      const endTime = new Date(endTimestamp * 1000);
       
       // Calculate position and width
       const startHourFloat = startTime.getHours() + (startTime.getMinutes() / 60) + (startTime.getSeconds() / 3600);
@@ -271,8 +286,12 @@ export function TimelineSegments() {
     const mergedSegments = [];
     let currentMergedSegment = null;
     
-    // Sort segments by start time
-    const sortedSegments = [...segments].sort((a, b) => a.start_timestamp - b.start_timestamp);
+    // Sort segments by start time (using local timestamps if available)
+    const sortedSegments = [...segments].sort((a, b) => {
+      const aStart = a.local_start_timestamp || a.start_timestamp;
+      const bStart = b.local_start_timestamp || b.start_timestamp;
+      return aStart - bStart;
+    });
     
     // Merge adjacent segments (no gap or very small gap)
     sortedSegments.forEach((segment, index) => {
@@ -281,12 +300,20 @@ export function TimelineSegments() {
         currentMergedSegment = { ...segment, originalIndices: [index] };
       } else {
         // Check if this segment is adjacent to the current merged segment
+        // Use local timestamps if available, otherwise fall back to regular timestamps
+        const segmentStart = segment.local_start_timestamp || segment.start_timestamp;
+        const mergedEnd = currentMergedSegment.local_end_timestamp || currentMergedSegment.end_timestamp;
+        
         // Allow a small gap (1 second) to account for rounding errors
-        const gap = segment.start_timestamp - currentMergedSegment.end_timestamp;
+        const gap = segmentStart - mergedEnd;
         
         if (gap <= 1) {
           // Merge with current segment
+          // Update both regular and local timestamps
           currentMergedSegment.end_timestamp = segment.end_timestamp;
+          if (segment.local_end_timestamp) {
+            currentMergedSegment.local_end_timestamp = segment.local_end_timestamp;
+          }
           currentMergedSegment.originalIndices.push(index);
           
           // If this segment has detection, mark the merged segment as having detection
@@ -310,9 +337,13 @@ export function TimelineSegments() {
     
     // Second pass: add visible segments
     mergedSegments.forEach((segment, mergedIndex) => {
+      // Use local timestamps if available, otherwise fall back to regular timestamps
+      const segStartTimestamp = segment.local_start_timestamp || segment.start_timestamp;
+      const segEndTimestamp = segment.local_end_timestamp || segment.end_timestamp;
+      
       // Convert timestamps to Date objects
-      const startTime = new Date(segment.start_timestamp * 1000);
-      const endTime = new Date(segment.end_timestamp * 1000);
+      const startTime = new Date(segStartTimestamp * 1000);
+      const endTime = new Date(segEndTimestamp * 1000);
       
       // Calculate position and width
       const startHourFloat = startTime.getHours() + (startTime.getMinutes() / 60) + (startTime.getSeconds() / 3600);
@@ -332,7 +363,7 @@ export function TimelineSegments() {
       const widthPercent = ((visibleEndHour - visibleStartHour) / (endHour - startHour)) * 100;
       
       // Format duration for tooltip
-      const duration = Math.round(segment.end_timestamp - segment.start_timestamp);
+      const duration = Math.round(segEndTimestamp - segStartTimestamp);
       const durationStr = `${duration}s`;
       
       // Format times for tooltip

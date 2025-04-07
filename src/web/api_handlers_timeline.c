@@ -248,19 +248,19 @@ void mg_handle_get_timeline_segments(struct mg_connection *c, struct mg_http_mes
     // Add metadata
     cJSON_AddStringToObject(response, "stream", stream_name);
     
-    // Format timestamps for display in UTC
+    // Format timestamps for display in local time
     char start_time_display[32] = {0};
     char end_time_display[32] = {0};
     struct tm *tm_info;
     
-    tm_info = gmtime(&start_time);
+    tm_info = localtime(&start_time);
     if (tm_info) {
-        strftime(start_time_display, sizeof(start_time_display), "%Y-%m-%d %H:%M:%S UTC", tm_info);
+        strftime(start_time_display, sizeof(start_time_display), "%Y-%m-%d %H:%M:%S", tm_info);
     }
     
-    tm_info = gmtime(&end_time);
+    tm_info = localtime(&end_time);
     if (tm_info) {
-        strftime(end_time_display, sizeof(end_time_display), "%Y-%m-%d %H:%M:%S UTC", tm_info);
+        strftime(end_time_display, sizeof(end_time_display), "%Y-%m-%d %H:%M:%S", tm_info);
     }
     
     cJSON_AddStringToObject(response, "start_time", start_time_display);
@@ -275,18 +275,18 @@ void mg_handle_get_timeline_segments(struct mg_connection *c, struct mg_http_mes
             continue;
         }
         
-        // Format timestamps in UTC
+        // Format timestamps in local time
         char segment_start_time[32] = {0};
         char segment_end_time[32] = {0};
         
-        tm_info = gmtime(&segments[i].start_time);
+        tm_info = localtime(&segments[i].start_time);
         if (tm_info) {
-            strftime(segment_start_time, sizeof(segment_start_time), "%Y-%m-%d %H:%M:%S UTC", tm_info);
+            strftime(segment_start_time, sizeof(segment_start_time), "%Y-%m-%d %H:%M:%S", tm_info);
         }
         
-        tm_info = gmtime(&segments[i].end_time);
+        tm_info = localtime(&segments[i].end_time);
         if (tm_info) {
-            strftime(segment_end_time, sizeof(segment_end_time), "%Y-%m-%d %H:%M:%S UTC", tm_info);
+            strftime(segment_end_time, sizeof(segment_end_time), "%Y-%m-%d %H:%M:%S", tm_info);
         }
         
         // Calculate duration in seconds
@@ -313,8 +313,20 @@ void mg_handle_get_timeline_segments(struct mg_connection *c, struct mg_http_mes
         cJSON_AddBoolToObject(segment, "has_detection", segments[i].has_detection);
         
         // Add Unix timestamps for easier frontend processing
+        // Convert to local timezone by adding the timezone offset
+        struct tm *tm_start = localtime(&segments[i].start_time);
+        struct tm *tm_end = localtime(&segments[i].end_time);
+        
+        // Calculate timezone offset in seconds
+        time_t timezone_offset = tm_start->tm_gmtoff;
+        
+        // Add timestamps adjusted for local timezone
         cJSON_AddNumberToObject(segment, "start_timestamp", (double)segments[i].start_time);
         cJSON_AddNumberToObject(segment, "end_timestamp", (double)segments[i].end_time);
+        
+        // Add local timestamps (adjusted for timezone)
+        cJSON_AddNumberToObject(segment, "local_start_timestamp", (double)segments[i].start_time - timezone_offset);
+        cJSON_AddNumberToObject(segment, "local_end_timestamp", (double)segments[i].end_time - timezone_offset);
         
         cJSON_AddItemToArray(segments_array, segment);
     }
@@ -513,8 +525,8 @@ void mg_handle_timeline_manifest(struct mg_connection *c, struct mg_http_message
             strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%S.000", &tm) != NULL ||
             strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%SZ", &tm) != NULL) {
             
-            // Convert to UTC timestamp - assume input is already in UTC
-            tm.tm_isdst = 0; // No DST for UTC
+            // Convert to local timestamp
+            tm.tm_isdst = -1; // Let mktime determine if DST is in effect
             start_time = mktime(&tm);
             log_info("Parsed start time: %ld", (long)start_time);
         } else if (strptime(decoded_start_time, "%Y-%m-%d", &tm) != NULL) {
@@ -523,7 +535,7 @@ void mg_handle_timeline_manifest(struct mg_connection *c, struct mg_http_message
             tm.tm_hour = 0;
             tm.tm_min = 0;
             tm.tm_sec = 0;
-            tm.tm_isdst = 0; // No DST for UTC
+            tm.tm_isdst = -1; // Let mktime determine if DST is in effect
             start_time = mktime(&tm);
             log_info("Parsed date-only start time: %ld", (long)start_time);
         } else {
@@ -555,8 +567,8 @@ void mg_handle_timeline_manifest(struct mg_connection *c, struct mg_http_message
             strptime(decoded_end_time, "%Y-%m-%dT%H:%M:%S.000", &tm) != NULL ||
             strptime(decoded_end_time, "%Y-%m-%dT%H:%M:%SZ", &tm) != NULL) {
             
-            // Convert to UTC timestamp - assume input is already in UTC
-            tm.tm_isdst = 0; // No DST for UTC
+            // Convert to local timestamp
+            tm.tm_isdst = -1; // Let mktime determine if DST is in effect
             end_time = mktime(&tm);
             log_info("Parsed end time: %ld", (long)end_time);
         } else if (strptime(decoded_end_time, "%Y-%m-%d", &tm) != NULL) {
@@ -565,7 +577,7 @@ void mg_handle_timeline_manifest(struct mg_connection *c, struct mg_http_message
             tm.tm_hour = 23;
             tm.tm_min = 59;
             tm.tm_sec = 59;
-            tm.tm_isdst = 0; // No DST for UTC
+            tm.tm_isdst = -1; // Let mktime determine if DST is in effect
             end_time = mktime(&tm);
             log_info("Parsed date-only end time: %ld", (long)end_time);
         } else {

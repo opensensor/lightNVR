@@ -66,10 +66,13 @@ export function TimelinePlayer() {
     // This prevents constant reloading
     const needsReload = segmentChanged;
     
+    // Use local timestamps if available, otherwise fall back to regular timestamps
+    const startTimestamp = segment.local_start_timestamp || segment.start_timestamp;
+    
     // Calculate relative time within the segment
     const relativeTime = state.currentTime !== null && 
-                         state.currentTime >= segment.start_timestamp
-      ? state.currentTime - segment.start_timestamp
+                         state.currentTime >= startTimestamp
+      ? state.currentTime - startTimestamp
       : 0;
     
     // Only update the video if:
@@ -162,10 +165,14 @@ export function TimelinePlayer() {
       const nextIndex = currentSegmentIndex + 1;
       console.log(`Playing next segment ${nextIndex}`);
       
+      // Use local timestamps if available, otherwise fall back to regular timestamps
+      const nextSegment = segments[nextIndex];
+      const startTimestamp = nextSegment.local_start_timestamp || nextSegment.start_timestamp;
+      
       // Update timeline state
       timelineState.setState({
         currentSegmentIndex: nextIndex,
-        currentTime: segments[nextIndex].start_timestamp,
+        currentTime: startTimestamp,
         isPlaying: true,
         forceReload: true
       });
@@ -196,8 +203,11 @@ export function TimelinePlayer() {
     const segment = segments[currentSegmentIndex];
     if (!segment) return;
     
+    // Use local timestamps if available, otherwise fall back to regular timestamps
+    const startTimestamp = segment.local_start_timestamp || segment.start_timestamp;
+    
     // Calculate current timestamp
-    const currentTime = segment.start_timestamp + video.currentTime;
+    const currentTime = startTimestamp + video.currentTime;
     
     // Directly update the time display as well
     updateTimeDisplay(currentTime);

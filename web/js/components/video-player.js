@@ -13,6 +13,33 @@ function initializeVideoPlayer(stream) {
 
     if (!videoElement || !videoCell) return;
     
+    // Add stream name overlay to the upper left corner if it doesn't exist
+    let streamNameOverlay = videoCell.querySelector('.stream-name-overlay');
+    if (!streamNameOverlay) {
+        streamNameOverlay = document.createElement('div');
+        streamNameOverlay.className = 'stream-name-overlay';
+        streamNameOverlay.textContent = stream.name;
+        streamNameOverlay.style.position = 'absolute';
+        streamNameOverlay.style.top = '10px';
+        streamNameOverlay.style.left = '10px';
+        streamNameOverlay.style.padding = '5px 10px';
+        streamNameOverlay.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+        streamNameOverlay.style.color = 'white';
+        streamNameOverlay.style.borderRadius = '4px';
+        streamNameOverlay.style.fontSize = '14px';
+        streamNameOverlay.style.zIndex = '15';
+        videoCell.appendChild(streamNameOverlay);
+    }
+    
+    // Remove stream name from stream-info if it exists
+    const streamInfo = videoCell.querySelector('.stream-info');
+    if (streamInfo) {
+        const streamNameElement = streamInfo.querySelector('span:first-child');
+        if (streamNameElement && streamNameElement.textContent === stream.name) {
+            streamNameElement.remove();
+        }
+    }
+    
     // Create canvas overlay for detection bounding boxes
     const canvasId = `canvas-${stream.name.replace(/\s+/g, '-')}`;
     let canvasOverlay = document.getElementById(canvasId);

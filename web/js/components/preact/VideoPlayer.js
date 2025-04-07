@@ -799,13 +799,20 @@ function createVideoCell(videoGridRef, stream) {
   errorIndicator.style.display = 'none';
   errorIndicator.innerHTML = '<p>Connection failed</p><button class="retry-button">Retry</button>';
   
-  // Add stream name overlay - make it more compact
+  // Add stream name overlay to the upper left corner only
   const streamNameOverlay = document.createElement('div');
   streamNameOverlay.className = 'stream-name-overlay';
   streamNameOverlay.textContent = stream.name;
   streamNameOverlay.style.padding = '0.25rem 0.5rem';
   streamNameOverlay.style.fontSize = '0.9rem';
   streamNameOverlay.style.opacity = '0.8';
+  streamNameOverlay.style.position = 'absolute';
+  streamNameOverlay.style.top = '10px';
+  streamNameOverlay.style.left = '10px';
+  streamNameOverlay.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+  streamNameOverlay.style.color = 'white';
+  streamNameOverlay.style.borderRadius = '4px';
+  streamNameOverlay.style.zIndex = '15';
   
   // Add stream controls (snapshot and fullscreen buttons) - make more compact
   const streamControls = document.createElement('div');
