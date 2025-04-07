@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <curl/curl.h>
 #include <cJSON.h>
+#include <pthread.h>
 
 #include "core/logger.h"
 #include "core/config.h"
@@ -20,6 +21,7 @@
 // Global variables
 static bool initialized = false;
 static CURL *curl_handle = NULL;
+static pthread_mutex_t curl_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // Structure to hold memory for curl response
 typedef struct {
@@ -118,6 +120,18 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         return -1;
     }
 
+    // CRITICAL FIX: Add thread safety for curl operations
+    pthread_mutex_lock(&curl_mutex);
+    
+    // Initialize result to empty at the beginning to prevent segmentation fault
+    if (result) {
+        memset(result, 0, sizeof(detection_result_t));
+    } else {
+        log_error("API Detection: NULL result pointer provided");
+        pthread_mutex_unlock(&curl_mutex);
+        return -1;
+    }
+    
     // CRITICAL FIX: Check if api_url is the special "api-detection" string
     // If so, get the actual URL from the global config
     const char *actual_api_url = api_url;
@@ -134,22 +148,22 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
 
     if (!initialized || !curl_handle) {
         log_error("API detection system not initialized");
+        pthread_mutex_unlock(&curl_mutex);
         return -1;
     }
 
     if (!actual_api_url || !frame_data || !result) {
         log_error("Invalid parameters for detect_objects_api");
+        pthread_mutex_unlock(&curl_mutex);
         return -1;
     }
 
     // Check if the URL is valid (must start with http:// or https://)
     if (strncmp(actual_api_url, "http://", 7) != 0 && strncmp(actual_api_url, "https://", 8) != 0) {
         log_error("API Detection: Invalid URL format: %s (must start with http:// or https://)", actual_api_url);
+        pthread_mutex_unlock(&curl_mutex);
         return -1;
     }
-
-    // Initialize result
-    result->count = 0;
 
     // Set up curl for multipart/form-data
     struct curl_httppost *formpost = NULL;
@@ -160,6 +174,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     int temp_fd = mkstemp(temp_filename);
     if (temp_fd < 0) {
         log_error("Failed to create temporary file: %s", strerror(errno));
+        pthread_mutex_unlock(&curl_mutex);
         return -1;
     }
 
@@ -172,6 +187,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         log_error("Failed to open temporary file for writing: %s", strerror(errno));
         close(temp_fd);
         unlink(temp_filename);
+        pthread_mutex_unlock(&curl_mutex);
         return -1;
     }
 
@@ -182,6 +198,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     if (bytes_written != width * height * channels) {
         log_error("Failed to write image data to temporary file");
         remove(temp_filename);
+        pthread_mutex_unlock(&curl_mutex);
         return -1;
     }
 
@@ -198,6 +215,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     if (channels <= 0 || channels > 4) {
         log_error("API Detection: Invalid number of channels: %d (must be 1, 3, or 4)", channels);
         remove(temp_filename);
+        pthread_mutex_unlock(&curl_mutex);
         return -1;
     }
 
@@ -217,6 +235,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     if (!pixel_format) {
         log_error("API Detection: Failed to determine pixel format for %d channels", channels);
         remove(temp_filename);
+        pthread_mutex_unlock(&curl_mutex);
         return -1;
     }
 
@@ -230,6 +249,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     if (width <= 0 || width > 10000 || height <= 0 || height > 10000) {
         log_error("API Detection: Invalid image dimensions: %dx%d", width, height);
         remove(temp_filename);
+        pthread_mutex_unlock(&curl_mutex);
         return -1;
     }
 
@@ -242,6 +262,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     if (cmd_result < 0 || cmd_result >= (int)sizeof(convert_cmd)) {
         log_error("API Detection: Command buffer overflow when formatting ImageMagick command");
         remove(temp_filename);
+        pthread_mutex_unlock(&curl_mutex);
         return -1;
     }
 
@@ -266,6 +287,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         } else {
             log_error("API Detection: Invalid number of channels for ffmpeg: %d", channels);
             remove(temp_filename);
+            pthread_mutex_unlock(&curl_mutex);
             return -1;
         }
 
@@ -278,6 +300,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         if (cmd_result < 0 || cmd_result >= (int)sizeof(ffmpeg_cmd)) {
             log_error("API Detection: Command buffer overflow when formatting ffmpeg command");
             remove(temp_filename);
+            pthread_mutex_unlock(&curl_mutex);
             return -1;
         }
 
@@ -293,6 +316,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
             if (stat(temp_filename, &temp_stat) != 0 || temp_stat.st_size == 0) {
                 log_error("API Detection: Temporary file is missing or empty: %s", temp_filename);
                 remove(temp_filename);
+                pthread_mutex_unlock(&curl_mutex);
                 return -1;
             }
 
@@ -307,6 +331,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
             if (form_result != CURL_FORMADD_OK) {
                 log_error("API Detection: Failed to add file to form (error code: %d)", form_result);
                 remove(temp_filename);
+                pthread_mutex_unlock(&curl_mutex);
                 return -1;
             }
         } else {
@@ -317,6 +342,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
             if (stat(image_filename, &image_stat) != 0 || image_stat.st_size == 0) {
                 log_error("API Detection: Converted image file is missing or empty: %s", image_filename);
                 remove(temp_filename);
+                pthread_mutex_unlock(&curl_mutex);
                 return -1;
             }
         }
@@ -337,6 +363,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
             if (stat(temp_filename, &temp_stat) != 0 || temp_stat.st_size == 0) {
                 log_error("API Detection: Temporary file is missing or empty: %s", temp_filename);
                 remove(temp_filename);
+                pthread_mutex_unlock(&curl_mutex);
                 return -1;
             }
 
@@ -351,6 +378,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
             if (form_result != CURL_FORMADD_OK) {
                 log_error("API Detection: Failed to add file to form (error code: %d)", form_result);
                 remove(temp_filename);
+                pthread_mutex_unlock(&curl_mutex);
                 return -1;
             }
         }
@@ -377,6 +405,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
             remove(temp_filename);
             remove(image_filename);
             result->count = 0;
+            pthread_mutex_unlock(&curl_mutex);
             return -1;
         }
         
@@ -393,6 +422,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
             remove(image_filename);
         }
         result->count = 0;
+        pthread_mutex_unlock(&curl_mutex);
         return -1;
     }
 
@@ -442,6 +472,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
 
         // Initialize result to empty to prevent segmentation fault
         result->count = 0;
+        pthread_mutex_unlock(&curl_mutex);
         return -1;
     }
 
@@ -491,6 +522,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
 
         // Initialize result to empty to prevent segmentation fault
         result->count = 0;
+        pthread_mutex_unlock(&curl_mutex);
         return -1;
     }
 
@@ -503,6 +535,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         free(chunk.memory);
         curl_formfree(formpost);
         curl_slist_free_all(headers);
+        pthread_mutex_unlock(&curl_mutex);
         return -1;
     }
 
@@ -515,6 +548,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         curl_slist_free_all(headers);
         // Initialize result to empty to prevent segmentation fault
         result->count = 0;
+        pthread_mutex_unlock(&curl_mutex);
         return -1;
     }
 
@@ -544,6 +578,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         curl_slist_free_all(headers);
         // Initialize result to empty to prevent segmentation fault
         result->count = 0;
+        pthread_mutex_unlock(&curl_mutex);
         return -1;
     }
 
@@ -563,6 +598,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         curl_slist_free_all(headers);
         // Initialize result to empty to prevent segmentation fault
         result->count = 0;
+        pthread_mutex_unlock(&curl_mutex);
         return -1;
     }
 
@@ -645,5 +681,6 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     curl_formfree(formpost);
     curl_slist_free_all(headers);
 
+    pthread_mutex_unlock(&curl_mutex);
     return 0;
 }
