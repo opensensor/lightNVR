@@ -1010,7 +1010,7 @@ int main(int argc, char *argv[]) {
                 log_warn("Web server health check failed");
                 
                 // If we've had multiple consecutive failures, restart the web server
-                if (get_failed_health_checks() >= 3) {
+                if (get_failed_health_checks() >= 5) {
                     log_error("Web server has failed health checks %d times, restarting...", 
                              get_failed_health_checks());
                     

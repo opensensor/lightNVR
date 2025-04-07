@@ -18,6 +18,11 @@ int mongoose_server_basic_auth_check(struct mg_http_message *hm, http_server_t *
         return 0; // Authentication not required
     }
     
+    // Allow health check endpoint without authentication
+    if (mg_http_match_uri(hm, "/api/health")) {
+        return 0; // No authentication required for health check
+    }
+    
     // Extract URI to check for login endpoint
     char uri[256];
     size_t uri_len = hm->uri.len < sizeof(uri) - 1 ? hm->uri.len : sizeof(uri) - 1;
