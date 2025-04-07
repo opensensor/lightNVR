@@ -365,4 +365,16 @@ char* mg_parse_json_string(const cJSON *json, const char *key);
  */
 int mg_json_has_key(const cJSON *json, const char *key);
 
+// Health check functions
+void init_health_check_system(void);
+void update_health_metrics(bool request_succeeded);
+bool is_web_server_healthy(void);
+int get_failed_health_checks(void);
+void reset_health_metrics(void);
+
+// Server restart functions
+bool check_server_restart_needed(void);
+void mark_server_for_restart(void);
+void reset_server_restart_flag(void);
+
 #endif /* API_HANDLERS_H */

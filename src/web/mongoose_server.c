@@ -1018,8 +1018,39 @@ static void *mongoose_server_event_loop(void *arg) {
             break;
         }
         
+        // Check if server needs restart due to health check failures
+        if (check_server_restart_needed()) {
+            log_info("Attempting to restart server due to health check failures");
+            
+            // Stop the server
+            server->running = false;
+            
+            // Wait a moment for connections to close
+            usleep(500000); // 500ms
+            
+            // Reset restart flag
+            reset_server_restart_flag();
+            
+            // Reset health metrics
+            reset_health_metrics();
+            
+            // Restart the server by recreating it
+            http_server_stop(server);
+            
+            // Wait a moment before restarting
+            usleep(1000000); // 1 second
+            
+            // Start the server again
+            if (http_server_start(server) == 0) {
+                log_info("Server successfully restarted");
+                server->running = true;
+            } else {
+                log_error("Failed to restart server");
+                break;
+            }
+        }
+        
         // Poll for events with a shorter timeout to be more responsive
-        // Reduced from 100ms to 10ms for better responsiveness
         mg_mgr_poll(server->mgr, 10);
         
         poll_count++;
