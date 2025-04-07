@@ -643,7 +643,12 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
         if (out_pkt.dts < dts_tracker->last_dts) {
             // Fix backwards DTS
             int64_t fixed_dts = dts_tracker->last_dts + 1;
-            int64_t pts_dts_diff = out_pkt.pts - out_pkt.dts;
+            int64_t pts_dts_diff = 0;
+            
+            // Safely calculate PTS-DTS difference to avoid arithmetic exceptions
+            if (out_pkt.pts != AV_NOPTS_VALUE && out_pkt.dts != AV_NOPTS_VALUE) {
+                pts_dts_diff = out_pkt.pts - out_pkt.dts;
+            }
 
             log_debug("Fixing backwards DTS in stream %s: last=%lld, current=%lld, fixed=%lld",
                      writer->stream_name,
@@ -652,10 +657,12 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
                      (long long)fixed_dts);
 
             out_pkt.dts = fixed_dts;
-            out_pkt.pts = fixed_dts + pts_dts_diff;
+            if (out_pkt.pts != AV_NOPTS_VALUE) {
+                out_pkt.pts = fixed_dts + pts_dts_diff;
+            }
 
             // Ensure PTS >= DTS after correction
-            if (out_pkt.pts < out_pkt.dts) {
+            if (out_pkt.pts != AV_NOPTS_VALUE && out_pkt.pts < out_pkt.dts) {
                 out_pkt.pts = out_pkt.dts;
             }
         }
@@ -719,9 +726,11 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
     }
 
     // Cap unreasonable PTS/DTS differences
-    int64_t pts_dts_diff = out_pkt.pts - out_pkt.dts;
-    if (pts_dts_diff > 90000 * 10) {
-        out_pkt.pts = out_pkt.dts + 90000 * 5; // 5 seconds max difference
+    if (out_pkt.pts != AV_NOPTS_VALUE && out_pkt.dts != AV_NOPTS_VALUE) {
+        int64_t pts_dts_diff = out_pkt.pts - out_pkt.dts;
+        if (pts_dts_diff > 90000 * 10) {
+            out_pkt.pts = out_pkt.dts + 90000 * 5; // 5 seconds max difference
+        }
     }
 
     // Log key frames for diagnostics
