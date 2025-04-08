@@ -194,9 +194,16 @@ export function StreamsView() {
 
   // Mutation for deleting stream
   const deleteStreamMutation = useMutation({
-    mutationFn: async (streamId) => {
-      return await fetchJSON(`/api/streams/${encodeURIComponent(streamId)}`, {
+    mutationFn: async ({ streamId, permanent }) => {
+      const url = permanent 
+        ? `/api/streams/${encodeURIComponent(streamId)}?permanent=true` 
+        : `/api/streams/${encodeURIComponent(streamId)}`;
+      
+      return await fetchJSON(url, {
         method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        },
         timeout: 10000,
         retries: 1,
         retryDelay: 1000
@@ -409,7 +416,7 @@ export function StreamsView() {
 
   // Delete stream (permanent)
   const deleteStream = (streamId) => {
-    deleteStreamMutation.mutate(streamId);
+    deleteStreamMutation.mutate({ streamId, permanent: true });
   };
 
   // Enable/disable stream

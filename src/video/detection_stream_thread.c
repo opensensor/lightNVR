@@ -34,6 +34,10 @@
 #include "video/api_detection.h"
 #include "video/go2rtc/go2rtc_stream.h"
 
+// Add signal handler to catch floating point exceptions
+#include <fenv.h>
+#include <signal.h>
+
 // Array of stream detection threads
 static stream_detection_thread_t stream_threads[MAX_STREAM_THREADS] = {0};
 static pthread_mutex_t stream_threads_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -361,6 +365,9 @@ int process_segment_for_detection(stream_detection_thread_t *thread, const char 
         return 0;
     }
 
+    // Initialize frame_count at the beginning of the function
+    int frame_count = 0;
+
     // Calculate segment duration with safety checks
     float segment_duration = 0;
     if (format_ctx->duration != AV_NOPTS_VALUE) {
@@ -379,17 +386,19 @@ int process_segment_for_detection(stream_detection_thread_t *thread, const char 
         segment_duration = 2.0f; // Use a reasonable default
     }
 
-    // Calculate frames per second with safety checks
-    float frames_per_second = 25.0f; // Default value
-
-    // CRITICAL FIX: Validate frame rate to prevent division by zero
-    if (format_ctx->streams[video_stream_idx]->avg_frame_rate.den > 0 &&
-        format_ctx->streams[video_stream_idx]->avg_frame_rate.num > 0) {
-        frames_per_second = format_ctx->streams[video_stream_idx]->avg_frame_rate.num /
-                           (float)format_ctx->streams[video_stream_idx]->avg_frame_rate.den;
+    // Since we haven't counted frames yet, use a reasonable estimate for frames_per_second
+    double frames_per_second = 0.0;
+    // Get the frame rate from the stream if available
+    AVRational frame_rate = av_guess_frame_rate(format_ctx, format_ctx->streams[video_stream_idx], NULL);
+    if (frame_rate.num > 0 && frame_rate.den > 0) {
+        frames_per_second = (double)frame_rate.num / frame_rate.den;
+        log_info("[Stream %s] Using stream frame rate: %.2f fps", 
+                 thread->stream_name, frames_per_second);
     } else {
-        log_warn("[Stream %s] Invalid frame rate in segment file: %s, using default: %.2f fps",
-                thread->stream_name, segment_path, frames_per_second);
+        // Use a reasonable default if we can't get the frame rate
+        frames_per_second = 25.0;
+        log_warn("[Stream %s] Couldn't determine frame rate, using default: %.2f fps",
+                 thread->stream_name, frames_per_second);
     }
 
     // Validate frames per second
@@ -409,14 +418,10 @@ int process_segment_for_detection(stream_detection_thread_t *thread, const char 
         total_frames = 50; // Use a reasonable default
     }
 
-    log_info("[Stream %s] OPTIMIZATION: Processing only key frames (I-frames) to reduce CPU usage",
-             thread->stream_name);
-
-    log_info("[Stream %s] Segment duration: %.2f seconds, FPS: %.2f, Total frames: %d",
+    log_info("[Stream %s] Segment duration: %.2f seconds, FPS: %.2f, Estimated total frames: %d",
              thread->stream_name, segment_duration, frames_per_second, total_frames);
 
     // Read frames with safety checks
-    int frame_count = 0;
     int processed_frames = 0;
     int error_frames = 0;
     int max_errors = 10; // Maximum number of errors before giving up

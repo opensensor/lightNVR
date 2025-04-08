@@ -760,7 +760,9 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
             // Reset DTS tracker on timestamp errors or invalid data
             log_warn("Resetting DTS tracker for stream %s due to error: %s", writer->stream_name, error_buf);
             dts_tracker->initialized = 0;
-
+            dts_tracker->last_dts = 0;
+            // No dts_step member in the struct, so we don't modify it
+            
             // For invalid data errors, return 0 instead of the error code
             // This allows the stream processing to continue despite occasional bad packets
             if (strstr(error_buf, "Invalid data found when processing input") != NULL) {
