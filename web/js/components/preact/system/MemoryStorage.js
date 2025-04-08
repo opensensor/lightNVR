@@ -3,7 +3,7 @@
  * Displays memory and storage information with progress bars
  */
 
-import { h } from '../../../preact.min.js';
+
 import { html } from '../../../html-helper.js';
 
 /**

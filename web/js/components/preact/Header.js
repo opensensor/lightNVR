@@ -3,8 +3,8 @@
  * Preact component for the site header
  */
 
-import { h } from '../../preact.min.js';
-import { useState } from '../../preact.hooks.module.js';
+import { h } from 'preact';
+import { useState, useEffect } from 'preact/hooks';
 import { html } from '../../html-helper.js';
 import { fetchSystemVersion } from './utils.js';
 
@@ -20,7 +20,7 @@ export function Header({ activeNav = '', version = '' }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Get the currently logged in username from localStorage
-  useState(() => {
+  useEffect(() => {
     const auth = localStorage.getItem('auth');
     if (auth) {
       try {
@@ -62,9 +62,23 @@ export function Header({ activeNav = '', version = '' }) {
     setMobileMenuOpen(!mobileMenuOpen);
   };
 
-  // Navigation items
+  // Special handling for Live View link to handle both index.html and root URL
+  const getLiveViewHref = () => {
+    // Check if we're on the root URL or index.html
+    const isRoot = window.location.pathname === '/' || window.location.pathname.endsWith('/');
+    
+    // If we're on the root URL, stay on the root URL
+    if (isRoot) {
+      return './';
+    }
+    
+    // Otherwise, default to index.html
+    return 'index.html';
+  };
+
+  // Navigation items - don't preserve query parameters when navigating via header
   const navItems = [
-    { id: 'nav-live', href: 'index.html', label: 'Live View' },
+    { id: 'nav-live', href: getLiveViewHref(), label: 'Live View' },
     { id: 'nav-recordings', href: 'recordings.html', label: 'Recordings' },
     { id: 'nav-streams', href: 'streams.html', label: 'Streams' },
     { id: 'nav-settings', href: 'settings.html', label: 'Settings' },
@@ -153,21 +167,12 @@ export function loadHeader(activeNav = '') {
   const headerContainer = document.getElementById('header-container');
   if (!headerContainer) return;
 
-  // First render the header with an empty version to ensure it appears immediately
-  import('../../preact.min.js').then(({ render }) => {
-    render(html`<${Header} activeNav=${activeNav} version="" />`, headerContainer);
+  // Get the version
+  const version = fetchSystemVersion();
 
-    // Then fetch the version and update the header
-    fetchSystemVersion()
-      .then(version => {
-        if (version) {
-          render(html`<${Header} activeNav=${activeNav} version=${version} />`, headerContainer);
-        }
-      })
-      .catch(error => {
-        console.error('Error loading system version:', error);
-        // Header is already rendered with empty version, so no need to re-render
-      });
+  // Render the header with version
+  import('preact').then(({ render }) => {
+    render(html`<${Header} activeNav=${activeNav} version=${version} />`, headerContainer);
   }).catch(error => {
     console.error('Error importing Preact:', error);
   });

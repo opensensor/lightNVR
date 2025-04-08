@@ -3,9 +3,9 @@
  * Handles video playback for the timeline
  */
 
-import { h } from '../../../preact.min.js';
+
 import { html } from '../../../html-helper.js';
-import { useState, useEffect, useRef } from '../../../preact.hooks.module.js';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import { timelineState } from './TimelinePage.js';
 import { SpeedControls } from './SpeedControls.js';
 import { showStatusMessage } from '../UI.js';

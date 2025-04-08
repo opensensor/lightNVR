@@ -12,22 +12,6 @@
 void mg_handle_get_onvif_discovery_status(struct mg_connection *c, struct mg_http_message *hm);
 
 /**
- * @brief Handle POST request to start ONVIF discovery
- * 
- * @param c Mongoose connection
- * @param hm Mongoose HTTP message
- */
-void mg_handle_post_start_onvif_discovery(struct mg_connection *c, struct mg_http_message *hm);
-
-/**
- * @brief Handle POST request to stop ONVIF discovery
- * 
- * @param c Mongoose connection
- * @param hm Mongoose HTTP message
- */
-void mg_handle_post_stop_onvif_discovery(struct mg_connection *c, struct mg_http_message *hm);
-
-/**
  * @brief Handle GET request for discovered ONVIF devices
  * 
  * @param c Mongoose connection

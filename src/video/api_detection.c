@@ -255,12 +255,13 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
 
     // Format the command with safety checks
     int cmd_result = snprintf(convert_cmd, sizeof(convert_cmd),
-             "convert -size %dx%d -depth 8 %s:%s -quality 90 %s",
-             width, height, pixel_format, temp_filename, image_filename);
+             "ffmpeg -f rawvideo -pixel_format %s -video_size %dx%d -i %s -y %s",
+             channels == 1 ? "gray" : (channels == 3 ? "rgb24" : "rgba"),
+             width, height, temp_filename, image_filename);
 
     // Check for buffer overflow
     if (cmd_result < 0 || cmd_result >= (int)sizeof(convert_cmd)) {
-        log_error("API Detection: Command buffer overflow when formatting ImageMagick command");
+        log_error("API Detection: Command buffer overflow when formatting ffmpeg command");
         remove(temp_filename);
         pthread_mutex_unlock(&curl_mutex);
         return -1;
@@ -345,9 +346,12 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
                 pthread_mutex_unlock(&curl_mutex);
                 return -1;
             }
+            
+            // CRITICAL FIX: We need to continue to the next section to add the JPEG file to the form
+            // No need for an else branch here as we'll handle the JPEG file in the next section
         }
-    } else
-    {
+    } else {
+        // ImageMagick conversion succeeded
         log_info("API Detection: Successfully converted raw data to JPEG with ImageMagick: %s", image_filename);
 
         // CRITICAL FIX: Verify the file was created and has a non-zero size with safety checks

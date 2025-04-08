@@ -2,7 +2,7 @@
  * Users Table Component
  */
 
-import { h } from '../../../preact.min.js';
+
 import { html } from '../../../html-helper.js';
 import { USER_ROLES } from './UserRoles.js';
 

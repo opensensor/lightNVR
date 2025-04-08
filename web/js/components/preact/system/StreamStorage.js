@@ -3,7 +3,6 @@
  * Displays storage usage per stream with slivers in a progress bar
  */
 
-import { h } from '../../../preact.min.js';
 import { html } from '../../../html-helper.js';
 
 /**

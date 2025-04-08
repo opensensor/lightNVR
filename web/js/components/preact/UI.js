@@ -2,7 +2,7 @@
  * UI utility functions for LiveView
  */
 
-import { h } from '../../preact.min.js';
+
 import { html } from '../../html-helper.js';
 
 /**

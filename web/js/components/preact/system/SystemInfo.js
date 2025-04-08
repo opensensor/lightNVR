@@ -3,7 +3,6 @@
  * Displays basic system information like version, uptime, and CPU details
  */
 
-import { h } from '../../../preact.min.js';
 import { html } from '../../../html-helper.js';
 
 /**

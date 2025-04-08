@@ -65,7 +65,6 @@ export function toggleFullscreen(isFullscreen, setIsFullscreen) {
     return;
   }
   
-  // Check the actual DOM state rather than relying on the React state
   const isCurrentlyInFullscreen = livePage.classList.contains('fullscreen-mode');
   console.log("DOM check for fullscreen mode:", isCurrentlyInFullscreen);
   

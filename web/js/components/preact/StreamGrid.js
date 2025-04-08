@@ -8,13 +8,14 @@ import { toggleStreamFullscreen } from './FullscreenManager.js';
 import { showStatusMessage } from './UI.js';
 
 /**
- * Update video grid based on layout and streams
+ * Update video grid based on layout, streams, and pagination
  * @param {HTMLElement} videoGridRef - Reference to video grid element
  * @param {Array} streams - Array of stream objects
  * @param {string} layout - Layout type ('1', '4', '9', '16')
  * @param {string} selectedStream - Selected stream name for single view
  * @param {Object} videoPlayers - Reference to video player instances
  * @param {Object} detectionIntervals - Reference to detection intervals
+ * @param {number} currentPage - Current page number (0-based)
  */
 export function updateVideoGrid(
   videoGridRef, 
@@ -22,7 +23,8 @@ export function updateVideoGrid(
   layout, 
   selectedStream, 
   videoPlayers, 
-  detectionIntervals
+  detectionIntervals,
+  currentPage = 0
 ) {
   if (!videoGridRef) return;
   
@@ -40,7 +42,45 @@ export function updateVideoGrid(
   let streamsToShow = streams;
   if (layout === '1' && selectedStream) {
     streamsToShow = streams.filter(stream => stream.name === selectedStream);
+  } else {
+    // Apply pagination
+    const maxStreams = parseInt(layout);
+    const totalPages = Math.ceil(streams.length / maxStreams);
+    
+    // Ensure current page is valid
+    if (currentPage >= totalPages) {
+      console.warn(`Current page ${currentPage} is invalid, max page is ${totalPages - 1}`);
+      currentPage = Math.max(0, totalPages - 1);
+    }
+    
+    // Get streams for current page
+    const startIdx = currentPage * maxStreams;
+    const endIdx = Math.min(startIdx + maxStreams, streams.length);
+    streamsToShow = streams.slice(startIdx, endIdx);
   }
+  
+  // Get the names of streams that should be shown
+  const streamsToShowNames = streamsToShow.map(stream => stream.name);
+  
+  // Clean up video players for streams that are no longer visible
+  Object.keys(videoPlayers).forEach(streamName => {
+    if (!streamsToShowNames.includes(streamName)) {
+      console.log(`Cleaning up video player for stream ${streamName} as it's not on the current page`);
+      
+      // Stop the video player
+      const videoPlayer = videoPlayers[streamName];
+      if (videoPlayer && videoPlayer.hls) {
+        videoPlayer.hls.destroy();
+        delete videoPlayers[streamName];
+      }
+      
+      // Clean up detection intervals
+      if (detectionIntervals[streamName]) {
+        clearInterval(detectionIntervals[streamName]);
+        delete detectionIntervals[streamName];
+      }
+    }
+  });
   
   // Add video elements for each stream
   streamsToShow.forEach(stream => {

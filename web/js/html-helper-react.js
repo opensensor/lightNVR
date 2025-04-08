@@ -1,11 +1,11 @@
 /**
  * LightNVR Web Interface HTML Helper
- * Provides the html template literal function for React components
+ * Provides the html template literal function for Preact components
  */
 
 // Import htm as a module
 import htm from './htm.module.js';
+import { h } from 'preact';
 
-// React is loaded as a UMD module and is available as a global variable
-// Initialize htm with React's createElement
-export const html = htm.bind(React.createElement);
+// Initialize htm with Preact's createElement (h)
+export const html = htm.bind(h);

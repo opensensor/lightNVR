@@ -7,6 +7,10 @@
 #include <unistd.h>
 #include <regex.h>
 
+#ifndef MIN
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#endif
+
 #include "web/mongoose_server.h"
 #include "web/http_server.h"
 #include "core/logger.h"
@@ -144,8 +148,6 @@ static const mg_api_route_t s_api_routes[] = {
     {"GET", "/api/onvif/discovery/status", mg_handle_get_onvif_discovery_status},
     {"GET", "/api/onvif/devices", mg_handle_get_discovered_onvif_devices},
     {"GET", "/api/onvif/device/profiles", mg_handle_get_onvif_device_profiles},
-    {"POST", "/api/onvif/discovery/start", mg_handle_post_start_onvif_discovery},
-    {"POST", "/api/onvif/discovery/stop", mg_handle_post_stop_onvif_discovery},
     {"POST", "/api/onvif/discovery/discover", mg_handle_post_discover_onvif_devices},
     {"POST", "/api/onvif/device/add", mg_handle_post_add_onvif_device_as_stream},
     {"POST", "/api/onvif/device/test", mg_handle_post_test_onvif_connection},
@@ -901,10 +903,19 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
                 log_info("Serving index file for root path using mg_http_serve_file: %s", index_path);
                 mg_http_serve_file(c, hm, index_path, &opts);
             } else {
-                // If index.html doesn't exist, redirect to index.html
-                log_info("Index file not found, redirecting to /index.html");
+                // If index.html doesn't exist, redirect to /index.html with query parameters preserved
+                char redirect_url[MAX_PATH_LENGTH * 2] = "/index.html";
+                
+                // Extract query string if present
+                if (hm->query.len > 0) {
+                    strncat(redirect_url, "?", sizeof(redirect_url) - strlen(redirect_url) - 1);
+                    strncat(redirect_url, hm->query.buf, 
+                           MIN(hm->query.len, sizeof(redirect_url) - strlen(redirect_url) - 1));
+                }
+                
+                log_info("Index file not found, redirecting to %s", redirect_url);
                 mg_printf(c, "HTTP/1.1 302 Found\r\n");
-                mg_printf(c, "Location: /index.html\r\n");
+                mg_printf(c, "Location: %s\r\n", redirect_url);
                 mg_printf(c, "Content-Length: 0\r\n");
                 mg_printf(c, "\r\n");
             }

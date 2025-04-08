@@ -2,7 +2,7 @@
  * FiltersSidebar component for RecordingsView
  */
 
-import { h } from '../../../preact.min.js';
+
 import { html } from '../../../html-helper.js';
 
 /**

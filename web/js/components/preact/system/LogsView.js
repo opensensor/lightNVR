@@ -3,7 +3,6 @@
  * Displays and manages system logs
  */
 
-import { h } from '../../../preact.min.js';
 import { html } from '../../../html-helper.js';
 
 /**

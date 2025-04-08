@@ -13,6 +13,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@preact-signals/query": "^2.1.1",
+    "@preact/compat": "^17.x",
     "hls.js": "^1.6.0",
     "htm": "^3.1.1",
     "preact": "^10.15.1",

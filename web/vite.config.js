@@ -8,21 +8,24 @@ import legacy from '@vitejs/plugin-legacy';
 export default defineConfig({
   // Base public path when served in production
   base: './',
-  
+
   // Configure the build
   build: {
     // Output directory for the build (equivalent to Snowpack's out)
     outDir: 'dist',
-    
+
     // Enable source maps
     sourcemap: true,
-    
+
     // Ensure assets are correctly referenced
     assetsDir: 'assets',
-    
+
     // Clean the output directory before building
     emptyOutDir: true,
-    
+
+    // Ensure CSS is properly extracted and included
+    cssCodeSplit: true,
+
     // Rollup options
     rollupOptions: {
       input: {
@@ -37,18 +40,29 @@ export default defineConfig({
         users: resolve(__dirname, 'users.html'),
         hls: resolve(__dirname, 'hls.html'),
       },
+      output: {
+        // Ensure CSS files are properly named and placed
+        assetFileNames: (assetInfo) => {
+          const info = assetInfo.name.split('.');
+          const ext = info[info.length - 1];
+          if (/\.(css)$/i.test(assetInfo.name)) {
+            return `css/[name][extname]`;
+          }
+          return `assets/[name][extname]`;
+        },
+      },
     },
   },
-  
+
   // Configure the dev server
   server: {
     // Set the port for the dev server (same as Snowpack)
     port: 8080,
-    
+
     // Don't open the browser on start
     open: false,
   },
-  
+
   // Configure plugins
   plugins: [
     // Add legacy browser support
@@ -61,25 +75,68 @@ export default defineConfig({
       transformIndexHtml(html) {
         // Replace dist/js/ references with ./js/ for Vite to process them
         return html
-          .replace(/src="dist\/js\//g, 'src="./js/')
-          .replace(/href="dist\/css\//g, 'href="./css/')
-          .replace(/src="dist\/img\//g, 'src="./img/')
-          .replace(/href="dist\/img\//g, 'href="./img/')
-          .replace(/src="dist\/fonts\//g, 'src="./fonts/')
-          .replace(/href="dist\/fonts\//g, 'href="./fonts/');
+            .replace(/src="dist\/js\//g, 'src="./js/')
+            .replace(/href="dist\/css\//g, 'href="./css/')
+            .replace(/src="dist\/img\//g, 'src="./img/')
+            .replace(/href="dist\/img\//g, 'href="./img/')
+            .replace(/src="dist\/fonts\//g, 'src="./fonts/')
+            .replace(/href="dist\/fonts\//g, 'href="./fonts/')
+            // Also handle direct CSS references without dist/ prefix
+            .replace(/href="css\//g, 'href="./css/');
+      }
+    },
+    {
+      name: 'handle-missing-app-js',
+      resolveId(id, importer) {
+        if (id === './js/app.js' && importer && importer.includes('streams.html')) {
+          // Return false to signal that this import should be treated as external
+          // This will prevent Vite from trying to resolve it during build
+          return false;
+        }
+      }
+    },
+    // Custom plugin to copy CSS files
+    {
+      name: 'copy-css-files',
+      async writeBundle() {
+        const fs = await import('fs/promises');
+        const path = await import('path');
+
+        try {
+          // Create dist/css directory if it doesn't exist
+          await fs.mkdir('dist/css', { recursive: true });
+
+          // Read all files from web/css
+          const cssFiles = await fs.readdir('css');
+
+          // Copy each CSS file to dist/css
+          for (const file of cssFiles) {
+            if (file.endsWith('.css')) {
+              await fs.copyFile(
+                  path.join('css', file),
+                  path.join('dist/css', file)
+              );
+              console.log(`Copied ${file} to dist/css/`);
+            }
+          }
+        } catch (error) {
+          console.error('Error copying CSS files:', error);
+        }
       }
     }
   ],
-  
+
   // Configure CSS
   css: {
     // PostCSS configuration is loaded from postcss.config.js
     postcss: true,
+    // Ensure CSS files are properly processed
+    devSourcemap: true,
   },
-  
+
   // Preserve the directory structure
   publicDir: 'public',
-  
+
   // Resolve configuration
   resolve: {
     alias: {
@@ -88,6 +145,12 @@ export default defineConfig({
       'dist/css': resolve(__dirname, 'css'),
       'dist/img': resolve(__dirname, 'img'),
       'dist/fonts': resolve(__dirname, 'fonts'),
+
+      // Add React to Preact aliases
+      'react': '@preact/compat',
+      'react-dom/test-utils': '@preact/compat/test-utils',
+      'react-dom': '@preact/compat',
+      'react/jsx-runtime': '@preact/compat/jsx-runtime'
     },
   },
 });

@@ -3,7 +3,7 @@
  * Loads the Timeline page component into the main content area
  */
 
-import { h, render } from '../../../preact.min.js';
+import { render } from 'preact';
 import { html } from '../../../html-helper.js';
 import { TimelinePage } from './TimelinePage.js';
 

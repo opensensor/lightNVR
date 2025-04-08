@@ -3,9 +3,9 @@
  * Main component for the timeline view
  */
 
-import { h } from '../../../preact.min.js';
+
 import { html } from '../../../html-helper.js';
-import { useState, useEffect, useRef } from '../../../preact.hooks.module.js';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import { TimelineControls } from './TimelineControls.js';
 import { TimelineRuler } from './TimelineRuler.js';
 import { TimelineSegments } from './TimelineSegments.js';

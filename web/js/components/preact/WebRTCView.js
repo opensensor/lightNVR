@@ -3,9 +3,9 @@
  * Preact component for the WebRTC view page
  */
 
-import { h } from '../../preact.min.js';
+
 import { html } from '../../html-helper.js';
-import { useState, useEffect, useRef } from '../../preact.hooks.module.js';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import { showStatusMessage, showSnapshotPreview, setupModals, addStatusMessageStyles, addModalStyles } from './UI.js';
 import { toggleFullscreen, exitFullscreenMode } from './FullscreenManager.js';
 import { startDetectionPolling, cleanupDetectionPolling } from './DetectionOverlay.js';
@@ -20,7 +20,13 @@ export function WebRTCView() {
   const [selectedStream, setSelectedStream] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [currentPage, setCurrentPage] = useState(0);
+  // Initialize currentPage from URL if available (URL uses 1-based indexing, internal state uses 0-based)
+  const [currentPage, setCurrentPage] = useState(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const pageParam = urlParams.get('page');
+    // Convert from 1-based (URL) to 0-based (internal)
+    return pageParam ? Math.max(0, parseInt(pageParam, 10) - 1) : 0;
+  });
   const videoGridRef = useRef(null);
   const webrtcConnections = useRef({});
   const detectionIntervals = useRef({});
@@ -161,6 +167,21 @@ export function WebRTCView() {
   useEffect(() => {
     updateVideoGrid();
   }, [layout, selectedStream, streams, currentPage]);
+  
+  // Update URL when page changes
+  useEffect(() => {
+    // Update URL with current page (convert from 0-based internal to 1-based URL)
+    const url = new URL(window.location);
+    if (currentPage === 0) {
+      url.searchParams.delete('page');
+    } else {
+      // Add 1 to convert from 0-based (internal) to 1-based (URL)
+      url.searchParams.set('page', currentPage + 1);
+    }
+    
+    // Update URL without reloading the page
+    window.history.replaceState({}, '', url);
+  }, [currentPage]);
   
   /**
    * Load streams from API
@@ -304,15 +325,31 @@ export function WebRTCView() {
       streamsToShow = streams.slice(startIdx, endIdx);
     }
 
+    // Get the names of streams that should be shown
+    const streamsToShowNames = streamsToShow.map(stream => stream.name);
+    
+    // Clean up connections for streams that are no longer visible
+    Object.keys(webrtcConnections.current).forEach(streamName => {
+      if (!streamsToShowNames.includes(streamName)) {
+        console.log(`Cleaning up WebRTC connection for stream ${streamName} as it's not on the current page`);
+        cleanupWebRTCPlayer(streamName);
+      }
+    });
+
     // Stagger initialization of WebRTC connections
     streamsToShow.forEach((stream, index) => {
       // Create video cell immediately for UI responsiveness
       createVideoCell(stream);
       
-      // Stagger the actual WebRTC initialization
-      setTimeout(() => {
-        initializeWebRTCPlayer(stream);
-      }, index * 500); // 500ms delay between each stream initialization
+      // Only initialize WebRTC if it's not already connected
+      if (!webrtcConnections.current[stream.name]) {
+        // Stagger the actual WebRTC initialization
+        setTimeout(() => {
+          initializeWebRTCPlayer(stream);
+        }, index * 500); // 500ms delay between each stream initialization
+      } else {
+        console.log(`WebRTC connection for stream ${stream.name} already exists, reusing`);
+      }
     });
   };
 
@@ -1045,7 +1082,7 @@ export function loadWebRTCView() {
   if (!mainContent) return;
   
   // Render the WebRTCView component to the container
-  import('../../preact.min.js').then(({ render }) => {
+  import('preact').then(({ render }) => {
     render(html`<${WebRTCView} />`, mainContent);
   });
 }

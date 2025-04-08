@@ -1,39 +1,36 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Streams - LightNVR</title>
-    <link rel="icon" href="./img/favicon.ico" type="image/x-icon">
-  <script type="module" crossorigin src="./assets/streams-C1QX4uYQ.js"></script>
-  <link rel="modulepreload" crossorigin href="./assets/preact-app-CkdDI2CE.js">
-  <link rel="stylesheet" crossorigin href="./assets/preact-app-B50Zg-w-.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Streams - LightNVR</title>
+  <link rel="icon" href="img/favicon.ico" type="image/x-icon">
+  <script type="module" crossorigin src="./assets/streams-DLSf8bm5.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/preact-app-DLK-1h92.js">
+  <link rel="stylesheet" crossorigin href="./css/preact-app.css">
+  <link rel="stylesheet" crossorigin href="./css/layout.css">
   <script type="module">import.meta.url;import("_").catch(()=>1);(async function*(){})().next();if(location.protocol!="file:"){window.__vite_is_modern_browser=true}</script>
   <script type="module">!function(){if(window.__vite_is_modern_browser)return;console.warn("vite: loading legacy chunks, syntax error above and the same error below should be ignored");var e=document.getElementById("vite-legacy-polyfill"),n=document.createElement("script");n.src=e.src,n.onload=function(){System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))},document.body.appendChild(n)}();</script>
 </head>
 <body class="flex flex-col min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
-<div class="container mx-auto px-4 flex flex-col min-h-screen">
+  <div class="container mx-auto px-4 flex flex-col min-h-screen w-full">
     <header id="header-container">
-        <!-- Header content will be loaded by JavaScript -->
+      <!-- Header content will be loaded by JavaScript -->
     </header>
-
+    
     <main id="main-content" class="flex-grow">
-        <!-- StreamsView component will be rendered here -->
+      <!-- StreamsView component will be rendered here -->
     </main>
-
+    
     <footer id="footer-container" class="mt-auto">
-        <!-- Footer content will be loaded by JavaScript -->
+      <!-- Footer content will be loaded by JavaScript -->
     </footer>
-</div>
-
-<!-- UI components will be rendered here -->
-<div id="status-message-container"></div>
-<div id="snapshot-modal-container"></div>
-<div id="video-modal-container"></div>
-
-<!-- Scripts -->
+  </div>
+  
+  <!-- Status message container -->
+  <div id="status-message" class="fixed bottom-4 right-4 hidden"></div>
   <script nomodule>!function(){var e=document,t=e.createElement("script");if(!("noModule"in t)&&"onbeforeload"in t){var n=!1;e.addEventListener("beforeload",(function(e){if(e.target===t)n=!0;else if(!e.target.hasAttribute("nomodule")||!n)return;e.preventDefault()}),!0),t.type="module",t.src=".",e.head.appendChild(t),t.remove()}}();</script>
-  <script nomodule crossorigin id="vite-legacy-polyfill" src="./assets/polyfills-legacy-BE947TIT.js"></script>
-  <script nomodule crossorigin id="vite-legacy-entry" data-src="./assets/streams-legacy-Bla8WCiC.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>
+  <script nomodule crossorigin id="vite-legacy-polyfill" src="./assets/polyfills-legacy-BXW9S1Mc.js"></script>
+  <script nomodule crossorigin id="vite-legacy-entry" data-src="./assets/streams-legacy-CEu6scOv.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>
 </body>
 </html>

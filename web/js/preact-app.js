@@ -3,13 +3,19 @@
  * Main entry point for the Preact application
  */
 
-import { h, render } from './preact.min.js';
+// Import from preact for better compatibility
+import { createElement as h, render } from 'preact';
 import { html } from './html-helper.js';
 // Import WebSocketClient class directly
 import { WebSocketClient, BatchDeleteRecordingsClient } from './websocket-client.js';
+// Add React compatibility layer
+import * as React from '@preact/compat';
+window.React = React; // Make React available globally
+
 import { loadHeader } from './components/preact/Header.js';
 import { loadFooter } from './components/preact/Footer.js';
 import { setupModals, addStatusMessageStyles, addModalStyles } from './components/preact/UI.js';
+import { QueryClientProvider, queryClient } from './query-client.js';
 
 // Initialize WebSocket client at the parent level
 // This ensures a single WebSocket connection is shared across all components
@@ -169,14 +175,16 @@ if (window.wsClient) {
  * Initialize the application
  */
 function initApp() {
-  // Get current page
+  // Get current page and query parameters
   const currentPage = window.location.pathname.split('/').pop();
+  const currentQuery = window.location.search;
   
   // Load header with active navigation
   let activeNav = '';
   
   switch (currentPage) {
     case 'index.html':
+    case '': // Handle root URL (/) as index.html
       activeNav = 'nav-live';
       break;
     case 'recordings.html':
@@ -196,6 +204,29 @@ function initApp() {
       activeNav = 'nav-system';
       break;
   }
+  
+  // Ensure we have an app-root element
+  let appRoot = document.getElementById('app-root');
+  if (!appRoot) {
+    // Create app-root if it doesn't exist
+    appRoot = document.createElement('div');
+    appRoot.id = 'app-root';
+    const mainContent = document.getElementById('main-content');
+    if (mainContent) {
+      mainContent.appendChild(appRoot);
+    } else {
+      document.body.appendChild(appRoot);
+    }
+    console.log('Created app-root element for Preact Query provider');
+  }
+  
+  // Wrap the app with QueryClientProvider
+  render(
+    h(QueryClientProvider, { client: queryClient }, 
+      h('div', { id: 'app-content' })
+    ),
+    appRoot
+  );
   
   // Load header and footer
   loadHeader(activeNav);

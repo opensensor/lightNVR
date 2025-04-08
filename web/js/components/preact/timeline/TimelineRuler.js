@@ -3,9 +3,8 @@
  * Displays the time ruler with hour markers
  */
 
-import { h } from '../../../preact.min.js';
 import { html } from '../../../html-helper.js';
-import { useState, useEffect } from '../../../preact.hooks.module.js';
+import { useState, useEffect } from 'preact/hooks';
 import { timelineState } from './TimelinePage.js';
 
 /**

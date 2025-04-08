@@ -3,12 +3,11 @@
  * Preact component for the settings page
  */
 
-import { h } from '../../preact.min.js';
 import { html } from '../../html-helper.js';
-import { useState, useEffect, useRef } from '../../preact.hooks.module.js';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import { showStatusMessage } from './UI.js';
 import { ContentLoader } from './LoadingIndicator.js';
-import { fetchJSON, enhancedFetch, createRequestController } from '../../fetch-utils.js';
+import { useQuery, useMutation, fetchJSON } from '../../query-client.js';
 
 /**
  * SettingsView component
@@ -36,61 +35,72 @@ export function SettingsView() {
     defaultPostBuffer: 10
   });
   
-  // State for loading and data status
-  const [isLoading, setIsLoading] = useState(true);
-  const [hasData, setHasData] = useState(false);
+  // Fetch settings using useQuery
+  const { 
+    data: settingsData, 
+    isLoading, 
+    error,
+    refetch 
+  } = useQuery(
+    ['settings'], 
+    '/api/settings',
+    {
+      timeout: 15000, // 15 second timeout
+      retries: 2,     // Retry twice
+      retryDelay: 1000 // 1 second between retries
+    }
+  );
 
-  // Request controller for cancelling requests on unmount
-  const requestControllerRef = useRef(null);
-
-  // Load settings on mount
-  useEffect(() => {
-    // Create a new request controller
-    requestControllerRef.current = createRequestController();
-    
-    loadSettings();
-    
-    // Clean up and cancel pending requests on unmount
-    return () => {
-      if (requestControllerRef.current) {
-        requestControllerRef.current.abort();
-      }
-    };
-  }, []);
-  
-  // Load settings from API
-  const loadSettings = async () => {
-    try {
-      setIsLoading(true);
-      
-      const data = await fetchJSON('/api/settings', {
-        signal: requestControllerRef.current?.signal,
-        timeout: 15000, // 15 second timeout
-        retries: 2,     // Retry twice
-        retryDelay: 1000 // 1 second between retries
+  // Save settings mutation
+  const saveSettingsMutation = useMutation({
+    mutationKey: ['saveSettings'],
+    mutationFn: async (mappedSettings) => {
+      return await fetchJSON('/api/settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(mappedSettings),
+        timeout: 20000, // 20 second timeout for saving settings
+        retries: 1,     // Retry once
+        retryDelay: 2000 // 2 seconds between retries
       });
-      console.log('Settings loaded:', data);
+    },
+    onSuccess: () => {
+      showStatusMessage('Settings saved successfully');
+      refetch(); // Refresh settings after saving
+    },
+    onError: (error) => {
+      console.error('Error saving settings:', error);
+      showStatusMessage(`Error saving settings: ${error.message}`);
+    }
+  });
+
+  // Update settings state when data is loaded
+  useEffect(() => {
+    if (settingsData) {
+      console.log('Settings loaded:', settingsData);
       
       // Map backend property names to frontend property names
       const mappedData = {
-        logLevel: data.log_level?.toString() || '',
-        storagePath: data.storage_path || '',
-        storagePathHls: data.storage_path_hls || '', // Map the HLS storage path
-        maxStorage: data.max_storage_size?.toString() || '',
-        retention: data.retention_days?.toString() || '',
-        autoDelete: data.auto_delete_oldest || false,
-        dbPath: data.db_path || '',
-        webPort: data.web_port?.toString() || '',
-        authEnabled: data.web_auth_enabled || false,
-        username: data.web_username || '',
-        password: data.web_password || '',
-        bufferSize: data.buffer_size?.toString() || '',
-        useSwap: data.use_swap || false,
-        swapSize: data.swap_size?.toString() || '',
-        detectionModelsPath: data.models_path || '',
-        defaultDetectionThreshold: data.default_detection_threshold || 50,
-        defaultPreBuffer: data.pre_detection_buffer?.toString() || '5',
-        defaultPostBuffer: data.post_detection_buffer?.toString() || '10'
+        logLevel: settingsData.log_level?.toString() || '',
+        storagePath: settingsData.storage_path || '',
+        storagePathHls: settingsData.storage_path_hls || '', // Map the HLS storage path
+        maxStorage: settingsData.max_storage_size?.toString() || '',
+        retention: settingsData.retention_days?.toString() || '',
+        autoDelete: settingsData.auto_delete_oldest || false,
+        dbPath: settingsData.db_path || '',
+        webPort: settingsData.web_port?.toString() || '',
+        authEnabled: settingsData.web_auth_enabled || false,
+        username: settingsData.web_username || '',
+        password: settingsData.web_password || '',
+        bufferSize: settingsData.buffer_size?.toString() || '',
+        useSwap: settingsData.use_swap || false,
+        swapSize: settingsData.swap_size?.toString() || '',
+        detectionModelsPath: settingsData.models_path || '',
+        defaultDetectionThreshold: settingsData.default_detection_threshold || 50,
+        defaultPreBuffer: settingsData.pre_detection_buffer?.toString() || '5',
+        defaultPostBuffer: settingsData.post_detection_buffer?.toString() || '10'
       };
       
       // Update state with loaded settings
@@ -98,59 +108,35 @@ export function SettingsView() {
         ...prev,
         ...mappedData
       }));
-      
-      setHasData(true);
-    } catch (error) {
-      console.error('Error loading settings:', error);
-      showStatusMessage('Error loading settings: ' + error.message);
-      setHasData(false);
-    } finally {
-      setIsLoading(false);
     }
-  };
+  }, [settingsData]);
   
   // Save settings
-  const saveSettings = async () => {
-    try {
-      // Map frontend property names to backend property names
-      const mappedSettings = {
-        log_level: parseInt(settings.logLevel, 10),
-        storage_path: settings.storagePath,
-        storage_path_hls: settings.storagePathHls, // Include the HLS storage path
-        max_storage_size: parseInt(settings.maxStorage, 10),
-        retention_days: parseInt(settings.retention, 10),
-        auto_delete_oldest: settings.autoDelete,
-        db_path: settings.dbPath,
-        web_port: parseInt(settings.webPort, 10),
-        web_auth_enabled: settings.authEnabled,
-        web_username: settings.username,
-        web_password: settings.password,
-        buffer_size: parseInt(settings.bufferSize, 10),
-        use_swap: settings.useSwap,
-        swap_size: parseInt(settings.swapSize, 10),
-        models_path: settings.detectionModelsPath,
-        default_detection_threshold: settings.defaultDetectionThreshold,
-        pre_detection_buffer: parseInt(settings.defaultPreBuffer, 10),
-        post_detection_buffer: parseInt(settings.defaultPostBuffer, 10)
-      };
-      
-      await enhancedFetch('/api/settings', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(mappedSettings),
-        signal: requestControllerRef.current?.signal,
-        timeout: 20000, // 20 second timeout for saving settings
-        retries: 1,     // Retry once
-        retryDelay: 2000 // 2 seconds between retries
-      });
-      
-      showStatusMessage('Settings saved successfully');
-    } catch (error) {
-      console.error('Error saving settings:', error);
-      showStatusMessage('Error saving settings: ' + error.message);
-    }
+  const saveSettings = () => {
+    // Map frontend property names to backend property names
+    const mappedSettings = {
+      log_level: parseInt(settings.logLevel, 10),
+      storage_path: settings.storagePath,
+      storage_path_hls: settings.storagePathHls, // Include the HLS storage path
+      max_storage_size: parseInt(settings.maxStorage, 10),
+      retention_days: parseInt(settings.retention, 10),
+      auto_delete_oldest: settings.autoDelete,
+      db_path: settings.dbPath,
+      web_port: parseInt(settings.webPort, 10),
+      web_auth_enabled: settings.authEnabled,
+      web_username: settings.username,
+      web_password: settings.password,
+      buffer_size: parseInt(settings.bufferSize, 10),
+      use_swap: settings.useSwap,
+      swap_size: parseInt(settings.swapSize, 10),
+      models_path: settings.detectionModelsPath,
+      default_detection_threshold: settings.defaultDetectionThreshold,
+      pre_detection_buffer: parseInt(settings.defaultPreBuffer, 10),
+      post_detection_buffer: parseInt(settings.defaultPostBuffer, 10)
+    };
+    
+    // Use mutation to save settings
+    saveSettingsMutation.mutate(mappedSettings);
   };
   
   // Handle input change
@@ -189,7 +175,7 @@ export function SettingsView() {
       
       <${ContentLoader}
         isLoading=${isLoading}
-        hasData=${hasData}
+        hasData=${!!settingsData}
         loadingMessage="Loading settings..."
         emptyMessage="No settings available. Please try again later."
       >
@@ -482,7 +468,12 @@ export function loadSettingsView() {
   if (!mainContent) return;
   
   // Render the SettingsView component to the container
-  import('../../preact.min.js').then(({ render }) => {
-    render(html`<${SettingsView} />`, mainContent);
+  import('preact').then(({ render }) => {
+    import('../../query-client.js').then(({ QueryClientProvider, queryClient }) => {
+      render(
+        html`<${QueryClientProvider} client=${queryClient}><${SettingsView} /></${QueryClientProvider}>`, 
+        mainContent
+      );
+    });
   });
 }

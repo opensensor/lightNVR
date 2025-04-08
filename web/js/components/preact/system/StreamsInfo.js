@@ -3,7 +3,7 @@
  * Displays information about streams and recordings
  */
 
-import { h } from '../../../preact.min.js';
+
 import { html } from '../../../html-helper.js';
 
 /**

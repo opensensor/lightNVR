@@ -3,11 +3,9 @@
  * Displays recording segments on the timeline
  */
 
-import { h } from '../../../preact.min.js';
 import { html } from '../../../html-helper.js';
-import { useState, useEffect, useRef } from '../../../preact.hooks.module.js';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import { timelineState } from './TimelinePage.js';
-import { showStatusMessage } from '../UI.js';
 
 /**
  * TimelineSegments component

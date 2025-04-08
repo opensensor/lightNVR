@@ -3,9 +3,8 @@
  * Preact component for the index/dashboard page
  */
 
-import { h } from '../../preact.min.js';
 import { html } from '../../html-helper.js';
-import { useState, useEffect, useRef } from '../../preact.hooks.module.js';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import { showStatusMessage } from './UI.js';
 import { fetchJSON, createRequestController } from '../../fetch-utils.js';
 
@@ -259,7 +258,7 @@ export function loadIndexView() {
   if (!mainContent) return;
   
   // Render the IndexView component to the container
-  import('../../preact.min.js').then(({ render }) => {
+  import('preact').then(({ render }) => {
     render(html`<${IndexView} />`, mainContent);
   });
 }

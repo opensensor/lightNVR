@@ -3,7 +3,7 @@
  * Displays a loading spinner and optional message
  */
 
-import { h } from '../../preact.min.js';
+
 import { html } from '../../html-helper.js';
 
 /**

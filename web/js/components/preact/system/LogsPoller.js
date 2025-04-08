@@ -3,9 +3,9 @@
  * Handles polling for logs via WebSocket instead of automatic updates
  */
 
-import { h } from '../../../preact.min.js';
+
 import { html } from '../../../html-helper.js';
-import { useState, useEffect, useRef } from '../../../preact.hooks.module.js';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import { log_level_meets_minimum } from './SystemUtils.js';
 import { fetchJSON } from '../../../fetch-utils.js';
 

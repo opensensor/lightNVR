@@ -3,9 +3,10 @@
  * Preact component for the site footer
  */
 
-import { h } from '../../preact.min.js';
-import { useState } from '../../preact.hooks.module.js';
+import { h } from 'preact';
+import { useState } from 'preact/hooks';
 import { html } from '../../html-helper.js';
+import { fetchSystemVersion } from './utils.js';
 
 /**
  * Footer component
@@ -36,21 +37,12 @@ export function loadFooter() {
   const footerContainer = document.getElementById('footer-container');
   if (!footerContainer) return;
 
-  // First render the footer with an empty version to ensure it appears immediately
-  import('../../preact.min.js').then(({ render }) => {
-    render(html`<${Footer} />`, footerContainer);
+  // Get the version
+  const version = fetchSystemVersion();
 
-    // Then fetch the version and update the footer
-    fetchSystemVersion()
-      .then(version => {
-        if (version) {
-          render(html`<${Footer} />`, footerContainer);
-        }
-      })
-      .catch(error => {
-        console.error('Error loading system version for footer:', error);
-        // Footer is already rendered with empty version, so no need to re-render
-      });
+  // Render the footer with version
+  import('preact').then(({ render }) => {
+    render(html`<${Footer} version=${version} />`, footerContainer);
   }).catch(error => {
     console.error('Error importing Preact for footer:', error);
   });

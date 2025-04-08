@@ -3,9 +3,9 @@
  * Preact component for the recordings page
  */
 
-import { h } from '../../preact.min.js';
+import { h } from 'preact';
 import { html } from '../../html-helper.js';
-import { useState, useEffect, useRef } from '../../preact.hooks.module.js';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import { showStatusMessage, showVideoModal, DeleteConfirmationModal } from './UI.js';
 import { ContentLoader } from './LoadingIndicator.js';
 
@@ -746,7 +746,12 @@ export function loadRecordingsView() {
   if (!mainContent) return;
   
   // Render the RecordingsView component to the container
-  import('../../preact.min.js').then(({ render }) => {
-    render(html`<${RecordingsView} />`, mainContent);
+  import('preact').then(({ render }) => {
+    import('../../query-client.js').then(({ QueryClientProvider, queryClient }) => {
+      render(
+        html`<${QueryClientProvider} client=${queryClient}><${RecordingsView} /></${QueryClientProvider}>`, 
+        mainContent
+      );
+    });
   });
 }

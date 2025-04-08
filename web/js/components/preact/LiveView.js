@@ -3,9 +3,9 @@
  * Preact component for the live view page
  */
 
-import { h } from '../../preact.min.js';
+
 import { html } from '../../html-helper.js';
-import { useState, useEffect, useRef } from '../../preact.hooks.module.js';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import { LoadingIndicator } from './LoadingIndicator.js';
 
 // Import modular components
@@ -23,6 +23,13 @@ export function LiveView() {
   const [selectedStream, setSelectedStream] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  // Initialize currentPage from URL if available (URL uses 1-based indexing, internal state uses 0-based)
+  const [currentPage, setCurrentPage] = useState(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const pageParam = urlParams.get('page');
+    // Convert from 1-based (URL) to 0-based (internal)
+    return pageParam ? Math.max(0, parseInt(pageParam, 10) - 1) : 0;
+  });
   const videoGridRef = useRef(null);
   const videoPlayers = useRef({});
   const detectionIntervals = useRef({});
@@ -78,7 +85,7 @@ export function LiveView() {
     }
   }, [videoGridRef.current]);
   
-  // Update video grid when layout or streams change
+  // Update video grid when layout, page, or streams change
   useEffect(() => {
     updateVideoGrid(
       videoGridRef.current, 
@@ -86,9 +93,25 @@ export function LiveView() {
       layout, 
       selectedStream, 
       videoPlayers.current, 
-      detectionIntervals.current
+      detectionIntervals.current,
+      currentPage
     );
-  }, [layout, selectedStream, streams]);
+  }, [layout, selectedStream, streams, currentPage]);
+  
+  // Update URL when page changes
+  useEffect(() => {
+    // Update URL with current page (convert from 0-based internal to 1-based URL)
+    const url = new URL(window.location);
+    if (currentPage === 0) {
+      url.searchParams.delete('page');
+    } else {
+      // Add 1 to convert from 0-based (internal) to 1-based (URL)
+      url.searchParams.set('page', currentPage + 1);
+    }
+    
+    // Update URL without reloading the page
+    window.history.replaceState({}, '', url);
+  }, [currentPage]);
   
   return html`
     <section id="live-page" class="page">
@@ -140,22 +163,46 @@ export function LiveView() {
         </div>
       </div>
       
-      <div 
-        id="video-grid" 
-        class=${`video-container layout-${layout}`}
-        ref=${videoGridRef}
-      >
-        ${isLoading ? html`
-          <div class="flex justify-center items-center col-span-full row-span-full h-64 w-full">
-            <${LoadingIndicator} message="Loading streams..." size="lg" />
-          </div>
-        ` : streams.length === 0 ? html`
-          <div class="placeholder flex flex-col justify-center items-center col-span-full row-span-full bg-white dark:bg-gray-800 rounded-lg shadow-md text-center p-8">
-            <p class="mb-6 text-gray-600 dark:text-gray-300 text-lg">No streams configured</p>
-            <a href="streams.html" class="btn-primary px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">Configure Streams</a>
+      <div class="flex flex-col space-y-4">
+        <div 
+          id="video-grid" 
+          class=${`video-container layout-${layout}`}
+          ref=${videoGridRef}
+        >
+          ${isLoading ? html`
+            <div class="flex justify-center items-center col-span-full row-span-full h-64 w-full">
+              <${LoadingIndicator} message="Loading streams..." size="lg" />
+            </div>
+          ` : streams.length === 0 ? html`
+            <div class="placeholder flex flex-col justify-center items-center col-span-full row-span-full bg-white dark:bg-gray-800 rounded-lg shadow-md text-center p-8">
+              <p class="mb-6 text-gray-600 dark:text-gray-300 text-lg">No streams configured</p>
+              <a href="streams.html" class="btn-primary px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">Configure Streams</a>
+            </div>
+          ` : null}
+          <!-- Video cells will be dynamically added by the updateVideoGrid function -->
+        </div>
+        
+        ${layout !== '1' && streams.length > parseInt(layout) ? html`
+          <div class="pagination-controls flex justify-center items-center space-x-4 mt-4">
+            <button 
+              class="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick=${() => setCurrentPage(Math.max(0, currentPage - 1))}
+              disabled=${currentPage === 0}
+            >
+              Previous
+            </button>
+            <span class="text-gray-700 dark:text-gray-300">
+              Page ${currentPage + 1} of ${Math.ceil(streams.length / parseInt(layout))}
+            </span>
+            <button 
+              class="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick=${() => setCurrentPage(Math.min(Math.ceil(streams.length / parseInt(layout)) - 1, currentPage + 1))}
+              disabled=${currentPage >= Math.ceil(streams.length / parseInt(layout)) - 1}
+            >
+              Next
+            </button>
           </div>
         ` : null}
-        <!-- Video cells will be dynamically added by the updateVideoGrid function -->
       </div>
     </section>
   `;
@@ -169,7 +216,7 @@ export function loadLiveView() {
   if (!mainContent) return;
   
   // Render the LiveView component to the container
-  import('../../preact.min.js').then(({ render }) => {
+  import('preact').then(({ render }) => {
     render(html`<${LiveView} />`, mainContent);
   });
 }

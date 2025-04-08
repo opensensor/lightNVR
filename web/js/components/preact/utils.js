@@ -9,9 +9,9 @@ import { VERSION } from '../../version.js';
 /**
  * Get system version from the static version file
  * This version is extracted from CMakeLists.txt during the build process
- * @returns {Promise<string>} Promise that resolves to the system version
+ * @returns {string} The system version
  */
-export async function fetchSystemVersion() {
+export function fetchSystemVersion() {
   // Return the static version from the imported module
   return VERSION;
 }

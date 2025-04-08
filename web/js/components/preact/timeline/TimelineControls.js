@@ -3,9 +3,9 @@
  * Handles play/pause and zoom controls for the timeline
  */
 
-import { h } from '../../../preact.min.js';
+
 import { html } from '../../../html-helper.js';
-import { useState, useEffect } from '../../../preact.hooks.module.js';
+import { useState, useEffect } from 'preact/hooks';
 import { timelineState } from './TimelinePage.js';
 import { showStatusMessage } from '../UI.js';
 

@@ -3,11 +3,11 @@
  * Preact component for the user management page
  */
 
-import { h } from '../../preact.min.js';
-import { useState, useEffect, useRef, useCallback } from '../../preact.hooks.module.js';
+
+import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { html } from '../../html-helper.js';
 import { showStatusMessage } from './UI.js';
-import { fetchJSON, enhancedFetch, createRequestController } from '../../fetch-utils.js';
+import { useQuery, useMutation, fetchJSON } from '../../query-client.js';
 
 // Import user components
 import { USER_ROLES } from './users/UserRoles.js';
@@ -22,11 +22,6 @@ import { ApiKeyModal } from './users/ApiKeyModal.js';
  * @returns {JSX.Element} UsersView component
  */
 export function UsersView() {
-  // State for users data and loading status
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  
   // State for modal visibility
   const [activeModal, setActiveModal] = useState(null); // 'add', 'edit', 'delete', 'apiKey', or null
   
@@ -43,9 +38,6 @@ export function UsersView() {
     is_active: true
   });
 
-  // Request controller for cancelling requests on unmount
-  const requestControllerRef = useRef(null);
-
   /**
    * Get auth headers for requests
    * @returns {Object} Headers object with Authorization if available
@@ -55,48 +47,26 @@ export function UsersView() {
     return auth ? { 'Authorization': 'Basic ' + auth } : {};
   }, []);
 
-  /**
-   * Fetch users from the API
-   */
-  const fetchUsers = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await fetchJSON('/api/auth/users', {
-        headers: getAuthHeaders(),
-        cache: 'no-store',
-        signal: requestControllerRef.current?.signal,
-        timeout: 15000, // 15 second timeout
-        retries: 2,     // Retry twice
-        retryDelay: 1000 // 1 second between retries
-      });
-      
-      setUsers(data.users || []); // Extract users array from response
-      setError(null);
-    } catch (error) {
-      // Only show error if the request wasn't cancelled
-      if (error.message !== 'Request was cancelled') {
-        console.error('Error fetching users:', error);
-        setError('Failed to load users. Please try again.');
-      }
-    } finally {
-      setLoading(false);
+  // Fetch users using useQuery
+  const { 
+    data: usersData, 
+    isLoading: loading, 
+    error,
+    refetch: refetchUsers 
+  } = useQuery(
+    ['users'], 
+    '/api/auth/users',
+    {
+      headers: getAuthHeaders(),
+      cache: 'no-store',
+      timeout: 15000, // 15 second timeout
+      retries: 2,     // Retry twice
+      retryDelay: 1000 // 1 second between retries
     }
-  }, [getAuthHeaders]);
+  );
 
-  // Fetch users on component mount
-  useEffect(() => {
-    // Create a new request controller
-    requestControllerRef.current = createRequestController();
-    
-    fetchUsers();
-    
-    // Clean up and cancel pending requests on unmount
-    return () => {
-      if (requestControllerRef.current) {
-        requestControllerRef.current.abort();
-      }
-    };
-  }, [fetchUsers]);
+  // Extract users array from response
+  const users = usersData?.users || [];
 
   // Add event listener for the add user button
   useEffect(() => {
@@ -137,134 +107,158 @@ export function UsersView() {
     }));
   }, []);
 
-  /**
-   * Handle form submission for adding a user
-   * @param {Event} e - Form submit event
-   */
-  const handleAddUser = useCallback(async (e) => {
-    if (e) e.preventDefault();
-    
-    try {
-      console.log('Adding user:', formData.username);
-      
-      await fetchJSON('/api/auth/users', {
+  // Add user mutation
+  const addUserMutation = useMutation({
+    mutationFn: async (userData) => {
+      return await fetchJSON('/api/auth/users', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...getAuthHeaders()
         },
-        body: JSON.stringify(formData),
-        signal: requestControllerRef.current?.signal,
+        body: JSON.stringify(userData),
         timeout: 15000, // 15 second timeout
         retries: 1,     // Retry once
         retryDelay: 1000 // 1 second between retries
       });
-      
+    },
+    onSuccess: () => {
       // Close modal and show success message
       setActiveModal(null);
       showStatusMessage('User added successfully', 'success', 5000);
       
       // Refresh users list
-      await fetchUsers();
-    } catch (err) {
-      console.error('Error adding user:', err);
-      showStatusMessage(`Error adding user: ${err.message}`, 'error', 8000);
+      refetchUsers();
+    },
+    onError: (error) => {
+      console.error('Error adding user:', error);
+      showStatusMessage(`Error adding user: ${error.message}`, 'error', 8000);
     }
-  }, [formData, getAuthHeaders, fetchUsers]);
+  });
 
-  /**
-   * Handle form submission for editing a user
-   * @param {Event} e - Form submit event
-   */
-  const handleEditUser = useCallback(async (e) => {
-    if (e) e.preventDefault();
-    
-    try {
-      console.log('Editing user:', selectedUser.id, selectedUser.username);
-      
-      await fetchJSON(`/api/auth/users/${selectedUser.id}`, {
+  // Edit user mutation
+  const editUserMutation = useMutation({
+    mutationFn: async ({ userId, userData }) => {
+      return await fetchJSON(`/api/auth/users/${userId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           ...getAuthHeaders()
         },
-        body: JSON.stringify(formData),
-        signal: requestControllerRef.current?.signal,
+        body: JSON.stringify(userData),
         timeout: 15000, // 15 second timeout
         retries: 1,     // Retry once
         retryDelay: 1000 // 1 second between retries
       });
-      
+    },
+    onSuccess: () => {
       // Close modal and show success message
       setActiveModal(null);
       showStatusMessage('User updated successfully', 'success', 5000);
       
       // Refresh users list
-      await fetchUsers();
-    } catch (err) {
-      console.error('Error updating user:', err);
-      showStatusMessage(`Error updating user: ${err.message}`, 'error', 8000);
+      refetchUsers();
+    },
+    onError: (error) => {
+      console.error('Error updating user:', error);
+      showStatusMessage(`Error updating user: ${error.message}`, 'error', 8000);
     }
-  }, [selectedUser, formData, getAuthHeaders, fetchUsers]);
+  });
 
-  /**
-   * Handle user deletion
-   */
-  const handleDeleteUser = useCallback(async () => {
-    try {
-      console.log('Deleting user:', selectedUser.id, selectedUser.username);
-      
-      await enhancedFetch(`/api/auth/users/${selectedUser.id}`, {
+  // Delete user mutation
+  const deleteUserMutation = useMutation({
+    mutationFn: async (userId) => {
+      return await fetchJSON(`/api/auth/users/${userId}`, {
         method: 'DELETE',
         headers: getAuthHeaders(),
-        signal: requestControllerRef.current?.signal,
         timeout: 15000, // 15 second timeout
         retries: 1,     // Retry once
         retryDelay: 1000 // 1 second between retries
       });
-      
+    },
+    onSuccess: () => {
       // Close modal and show success message
       setActiveModal(null);
       showStatusMessage('User deleted successfully', 'success', 5000);
       
       // Refresh users list
-      await fetchUsers();
-    } catch (err) {
-      console.error('Error deleting user:', err);
-      showStatusMessage(`Error deleting user: ${err.message}`, 'error', 8000);
+      refetchUsers();
+    },
+    onError: (error) => {
+      console.error('Error deleting user:', error);
+      showStatusMessage(`Error deleting user: ${error.message}`, 'error', 8000);
     }
-  }, [selectedUser, getAuthHeaders, fetchUsers]);
+  });
 
-  /**
-   * Handle generating a new API key for a user
-   */
-  const handleGenerateApiKey = useCallback(async () => {
-    // Show loading state
-    setApiKey('Generating...');
-    
-    try {
-      console.log('Generating API key for user:', selectedUser.id, selectedUser.username);
-      
-      const data = await fetchJSON(`/api/auth/users/${selectedUser.id}/api-key`, {
+  // Generate API key mutation
+  const generateApiKeyMutation = useMutation({
+    mutationFn: async (userId) => {
+      return await fetchJSON(`/api/auth/users/${userId}/api-key`, {
         method: 'POST',
         headers: getAuthHeaders(),
-        signal: requestControllerRef.current?.signal,
         timeout: 20000, // 20 second timeout for key generation
         retries: 1,     // Retry once
         retryDelay: 2000 // 2 seconds between retries
       });
-      
+    },
+    onMutate: () => {
+      // Show loading state
+      setApiKey('Generating...');
+    },
+    onSuccess: (data) => {
       setApiKey(data.api_key);
       showStatusMessage('API key generated successfully', 'success');
       
       // Refresh users list
-      await fetchUsers();
-    } catch (err) {
-      console.error('Error generating API key:', err);
+      refetchUsers();
+    },
+    onError: (error) => {
+      console.error('Error generating API key:', error);
       setApiKey('');
-      showStatusMessage(`Error generating API key: ${err.message}`, 'error');
+      showStatusMessage(`Error generating API key: ${error.message}`, 'error');
     }
-  }, [selectedUser, getAuthHeaders, fetchUsers]);
+  });
+
+  /**
+   * Handle form submission for adding a user
+   * @param {Event} e - Form submit event
+   */
+  const handleAddUser = useCallback((e) => {
+    if (e) e.preventDefault();
+    
+    console.log('Adding user:', formData.username);
+    addUserMutation.mutate(formData);
+  }, [formData]);
+
+  /**
+   * Handle form submission for editing a user
+   * @param {Event} e - Form submit event
+   */
+  const handleEditUser = useCallback((e) => {
+    if (e) e.preventDefault();
+    
+    console.log('Editing user:', selectedUser.id, selectedUser.username);
+    editUserMutation.mutate({ 
+      userId: selectedUser.id, 
+      userData: formData 
+    });
+  }, [selectedUser, formData]);
+
+  /**
+   * Handle user deletion
+   */
+  const handleDeleteUser = useCallback(() => {
+    console.log('Deleting user:', selectedUser.id, selectedUser.username);
+    deleteUserMutation.mutate(selectedUser.id);
+  }, [selectedUser]);
+
+  /**
+   * Handle generating a new API key for a user
+   */
+  const handleGenerateApiKey = useCallback(() => {
+    console.log('Generating API key for user:', selectedUser.id, selectedUser.username);
+    generateApiKeyMutation.mutate(selectedUser.id);
+  }, [selectedUser]);
 
   /**
    * Copy API key to clipboard
@@ -410,7 +404,12 @@ export function loadUsersView() {
   const container = document.getElementById('users-container');
   if (!container) return;
   
-  import('../../preact.min.js').then(({ render }) => {
-    render(html`<${UsersView} />`, container);
+  import('preact').then(({ render }) => {
+    import('../../query-client.js').then(({ QueryClientProvider, queryClient }) => {
+      render(
+        html`<${QueryClientProvider} client=${queryClient}><${UsersView} /></${QueryClientProvider}>`, 
+        container
+      );
+    });
   });
 }

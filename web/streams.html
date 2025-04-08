@@ -1,33 +1,32 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Streams - LightNVR</title>
-    <link rel="stylesheet" href="dist/css/main.css">
-    <link rel="icon" href="dist/img/favicon.ico" type="image/x-icon">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Streams - LightNVR</title>
+  <link rel="stylesheet" href="./css/base.css">
+  <link rel="stylesheet" href="./css/main.css">
+  <link rel="stylesheet" href="./css/components.css">
+  <link rel="stylesheet" href="./css/layout.css">
+  <link rel="icon" href="img/favicon.ico" type="image/x-icon">
+  <script type="module" src="./js/preact-app.js"></script>
 </head>
 <body class="flex flex-col min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
-<div class="container mx-auto px-4 flex flex-col min-h-screen">
+  <div class="container mx-auto px-4 flex flex-col min-h-screen w-full">
     <header id="header-container">
-        <!-- Header content will be loaded by JavaScript -->
+      <!-- Header content will be loaded by JavaScript -->
     </header>
-
+    
     <main id="main-content" class="flex-grow">
-        <!-- StreamsView component will be rendered here -->
+      <!-- StreamsView component will be rendered here -->
     </main>
-
+    
     <footer id="footer-container" class="mt-auto">
-        <!-- Footer content will be loaded by JavaScript -->
+      <!-- Footer content will be loaded by JavaScript -->
     </footer>
-</div>
-
-<!-- UI components will be rendered here -->
-<div id="status-message-container"></div>
-<div id="snapshot-modal-container"></div>
-<div id="video-modal-container"></div>
-
-<!-- Scripts -->
-<script type="module" src="dist/js/preact-app.js"></script>
+  </div>
+  
+  <!-- Status message container -->
+  <div id="status-message" class="fixed bottom-4 right-4 hidden"></div>
 </body>
 </html>

@@ -3,7 +3,7 @@
  * Provides system restart and shutdown controls
  */
 
-import { h } from '../../../preact.min.js';
+
 import { html } from '../../../html-helper.js';
 
 /**

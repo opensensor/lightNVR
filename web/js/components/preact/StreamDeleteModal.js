@@ -3,9 +3,8 @@
  * Preact component for the stream delete modal
  */
 
-import { h } from '../../preact.min.js';
 import { html } from '../../html-helper.js';
-import { useState } from '../../preact.hooks.module.js';
+import { useState } from 'preact/hooks';
 
 /**
  * StreamDeleteModal component
