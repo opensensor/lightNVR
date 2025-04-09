@@ -129,7 +129,7 @@ static int calculate_reconnect_delay(int attempt) {
  * @return 0 on success, negative on error
  */
 static int check_rtsp_connection(const char *rtsp_url, char *host, int *port) {
-    if (!rtsp_url || strncmp(rtsp_url, "rtsp://", 7) != 0) {
+    if (!rtsp_url || !host || !port || strncmp(rtsp_url, "rtsp://", 7) != 0) {
         return -1;
     }
 
@@ -151,10 +151,14 @@ static int check_rtsp_connection(const char *rtsp_url, char *host, int *port) {
         }
     }
 
-    // Copy the host part
+    // Copy the host part with bounds checking
     size_t host_len = host_end - host_start;
     if (host_len >= 256) {
         host_len = 255;
+    }
+    if (host_len == 0) {
+        // Empty hostname
+        return -1;
     }
     memcpy(host, host_start, host_len);
     host[host_len] = '\0';
@@ -162,15 +166,20 @@ static int check_rtsp_connection(const char *rtsp_url, char *host, int *port) {
     // Extract the port if specified
     *port = 554; // Default RTSP port
     if (*host_end == ':') {
-        *port = atoi(host_end + 1);
-        if (*port <= 0) {
-            *port = 554; // Default RTSP port
+        const char *port_start = host_end + 1;
+        char *port_end;
+        long port_val = strtol(port_start, &port_end, 10);
+        if (port_start == port_end || port_val <= 0 || port_val > 65535) {
+            *port = 554; // Invalid port, use default
+        } else {
+            *port = (int)port_val;
         }
     }
 
-    // Create a socket
+    // Create a socket with error handling
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) {
+        log_error("Failed to create socket for RTSP connection check: %s", strerror(errno));
         return -1;
     }
 
@@ -178,8 +187,11 @@ static int check_rtsp_connection(const char *rtsp_url, char *host, int *port) {
     struct timeval tv;
     tv.tv_sec = 1;
     tv.tv_usec = 0;
-    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
-    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof tv);
+    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0 ||
+        setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) < 0) {
+        log_warn("Failed to set socket timeout: %s", strerror(errno));
+        // Continue anyway
+    }
 
     // Connect to the server
     struct sockaddr_in server_addr;
