@@ -94,6 +94,20 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
     log_info("Registering stream with go2rtc: id=%s, url=%s, username=%s",
              stream_id, stream_url, username ? username : "none");
 
+    // URL encode the stream ID to handle spaces and special characters
+    char encoded_stream_id[URL_BUFFER_SIZE];
+    char *encoded = curl_easy_escape(NULL, stream_id, 0);
+    if (encoded) {
+        strncpy(encoded_stream_id, encoded, URL_BUFFER_SIZE - 1);
+        encoded_stream_id[URL_BUFFER_SIZE - 1] = '\0';
+        curl_free(encoded);
+        log_info("URL encoded stream ID: %s -> %s", stream_id, encoded_stream_id);
+    } else {
+        log_warn("Failed to URL encode stream ID, using original: %s", stream_id);
+        strncpy(encoded_stream_id, stream_id, URL_BUFFER_SIZE - 1);
+        encoded_stream_id[URL_BUFFER_SIZE - 1] = '\0';
+    }
+
     // Ensure go2rtc is running
     if (!go2rtc_stream_is_ready()) {
         log_info("go2rtc not running, starting service");
@@ -157,13 +171,13 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
     }
 
     // Register stream with go2rtc
-    bool result = go2rtc_api_add_stream(stream_id, modified_url,
+    bool result = go2rtc_api_add_stream(encoded_stream_id, modified_url,
                                        username && password ? stream_options : NULL);
 
     if (result) {
-        log_info("Successfully registered stream with go2rtc: %s", stream_id);
+        log_info("Successfully registered stream with go2rtc: %s", encoded_stream_id);
     } else {
-        log_error("Failed to register stream with go2rtc: %s", stream_id);
+        log_error("Failed to register stream with go2rtc: %s", encoded_stream_id);
     }
 
     return result;

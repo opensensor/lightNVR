@@ -172,9 +172,31 @@ if (window.wsClient) {
 }
 
 /**
+ * Set up global fetch error handler for authentication
+ */
+function setupGlobalAuthHandler() {
+  // Override fetch to handle 401 responses globally
+  const originalFetch = window.fetch;
+  window.fetch = async function(url, options) {
+    const response = await originalFetch.apply(this, arguments);
+    
+    if (response.status === 401 && !window.location.pathname.includes('login.html')) {
+      console.log('401 detected, redirecting to login');
+      const currentPath = window.location.pathname + window.location.search;
+      window.location.href = '/login.html?redirect=' + encodeURIComponent(currentPath);
+    }
+    
+    return response;
+  };
+}
+
+/**
  * Initialize the application
  */
 function initApp() {
+  // Set up global authentication handler
+  setupGlobalAuthHandler();
+  
   // Get current page and query parameters
   const currentPage = window.location.pathname.split('/').pop();
   const currentQuery = window.location.search;

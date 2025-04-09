@@ -100,14 +100,15 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         // Extract stream name from URI
         // URI format: /hls/{stream_name}/{file}
         char stream_name[MAX_STREAM_NAME];
+        char decoded_stream_name[MAX_STREAM_NAME];
         const char *stream_start = uri + 5; // Skip "/hls/"
         const char *file_part = strchr(stream_start, '/');
-        
+
         if (!file_part) {
             mg_http_reply(c, 404, "", "{\"error\": \"Invalid HLS path\"}\n");
             return;
         }
-        
+
         // Extract stream name
         size_t name_len = file_part - stream_start;
         if (name_len >= MAX_STREAM_NAME) {
@@ -115,14 +116,16 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         }
         strncpy(stream_name, stream_start, name_len);
         stream_name[name_len] = '\0';
-        
-        // Even if the stream is using go2rtc for HLS, we'll serve the files directly from our filesystem
-        // since we've configured go2rtc to write its HLS segments to our HLS directory
+
+        // URL decode the stream name
+        mg_url_decode(stream_name, strlen(stream_name), decoded_stream_name, sizeof(decoded_stream_name), 0);
+
+        // Use decoded_stream_name for file path construction
         #ifdef USE_GO2RTC
         char go2rtc_hls_url[URL_BUFFER_SIZE];
-        if (go2rtc_integration_get_hls_url(stream_name, go2rtc_hls_url, sizeof(go2rtc_hls_url))) {
+        if (go2rtc_integration_get_hls_url(decoded_stream_name, go2rtc_hls_url, sizeof(go2rtc_hls_url))) {
             // Stream is using go2rtc for HLS, but we'll serve the files directly
-            log_info("Stream %s is using go2rtc for HLS, but serving files directly from filesystem", stream_name);
+            log_info("Stream %s is using go2rtc for HLS, but serving files directly from filesystem", decoded_stream_name);
             // No redirection needed as go2rtc writes HLS segments to our HLS directory
         }
         #endif
@@ -136,11 +139,11 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         // Use storage_path_hls if specified, otherwise fall back to storage_path
         if (global_config->storage_path_hls[0] != '\0') {
             snprintf(hls_file_path, sizeof(hls_file_path), "%s/hls/%s/%s", 
-                    global_config->storage_path_hls, stream_name, file_name);
+                    global_config->storage_path_hls, decoded_stream_name, file_name);
             log_info("Using HLS-specific storage path: %s", global_config->storage_path_hls);
         } else {
             snprintf(hls_file_path, sizeof(hls_file_path), "%s/hls/%s/%s", 
-                    global_config->storage_path, stream_name, file_name);
+                    global_config->storage_path, decoded_stream_name, file_name);
             log_info("Using default storage path for HLS: %s", global_config->storage_path);
         }
         

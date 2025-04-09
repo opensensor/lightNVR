@@ -32,8 +32,22 @@ export function LoginView() {
   // Request controller for cancelling requests
   const requestControllerRef = useRef(null);
 
+  // Handle successful login
+  const handleSuccessfulLogin = () => {
+    // Get redirect URL from query parameter if it exists
+    const urlParams = new URLSearchParams(window.location.search);
+    const redirectUrl = urlParams.get('redirect');
+
+    // Redirect to the original URL or index page
+    if (redirectUrl) {
+      window.location.href = redirectUrl;
+    } else {
+      window.location.href = '/index.html?t=' + new Date().getTime();
+    }
+  };
+
   // Handle login form submission
-  const handleLogin = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
     if (!username || !password) {
@@ -42,37 +56,27 @@ export function LoginView() {
     }
     
     setIsLoggingIn(true);
-    
-    // Create a new request controller
-    requestControllerRef.current = createRequestController();
-    
-    // Store credentials in localStorage for future requests
-    const auth = btoa(`${username}:${password}`);
-    localStorage.setItem('auth', auth);
+    setErrorMessage('');
     
     try {
-      // Make a fetch request to the login API using enhanced fetch
-      const response = await enhancedFetch('/api/auth/login', {
+      // Store credentials in localStorage for future requests
+      const authString = btoa(`${username}:${password}`);
+      localStorage.setItem('auth', authString);
+      
+      // Make login request
+      const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Basic ' + auth,
-          // Add additional headers for Firefox compatibility
-          'X-Requested-With': 'XMLHttpRequest',
-          'Accept': 'application/json'
+          'Authorization': `Basic ${authString}`
         },
         body: JSON.stringify({ username, password }),
-        credentials: 'include',
-        mode: 'same-origin', // Explicitly set mode for Firefox
-        signal: requestControllerRef.current?.signal,
-        timeout: 5000,     // 5 second timeout
-        retries: 1,        // Retry once
-        retryDelay: 1000   // 1 second between retries
+        timeout: 10000
       });
       
       if (response.ok || response.status === 302) {
-        // Successful login - redirect to live page
-        window.location.href = '/index.html?t=' + new Date().getTime();
+        // Successful login
+        handleSuccessfulLogin();
       } else {
         // Failed login
         setIsLoggingIn(false);
@@ -85,12 +89,12 @@ export function LoginView() {
       // If it's a timeout error, proceed anyway with stored credentials
       if (error.message === 'Request timed out' && localStorage.getItem('auth')) {
         console.log('Login request timed out, proceeding with stored credentials');
-        window.location.href = '/index.html?t=' + new Date().getTime();
+        handleSuccessfulLogin();
       } 
       // For other errors, also try to proceed if we have credentials
       else if (localStorage.getItem('auth')) {
         console.log('Login API error, but proceeding with stored credentials');
-        window.location.href = '/index.html?t=' + new Date().getTime();
+        handleSuccessfulLogin();
       } else {
         setIsLoggingIn(false);
         setErrorMessage('Login failed. Please try again.');
@@ -112,7 +116,7 @@ export function LoginView() {
           </div>
         `}
         
-        <form id="login-form" class="space-y-6" action="/api/auth/login" method="POST" onSubmit=${handleLogin}>
+        <form id="login-form" class="space-y-6" action="/api/auth/login" method="POST" onSubmit=${handleSubmit}>
           <div class="form-group">
             <label for="username" class="block text-sm font-medium mb-1">Username</label>
             <input 

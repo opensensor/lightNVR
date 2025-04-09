@@ -53,14 +53,11 @@ export function IndexView() {
   // Load streams from API
   const loadStreams = async () => {
     try {
-      // Create a new controller for this specific request
-      const controller = createRequestController();
-      
       const data = await fetchJSON('/api/streams', {
         signal: requestControllerRef.current?.signal,
-        timeout: 15000, // 15 second timeout
-        retries: 2,     // Retry twice
-        retryDelay: 1000 // 1 second between retries
+        timeout: sessionStorage.getItem('auth_confirmed') ? 15000 : 60000, // Longer timeout if auth might be needed
+        retries: 2,
+        retryDelay: 1000
       });
       
       setStreams(data || []);
@@ -68,7 +65,16 @@ export function IndexView() {
       // Only show error if the request wasn't cancelled
       if (error.message !== 'Request was cancelled') {
         console.error('Error loading streams:', error);
-        showStatusMessage('Error loading streams: ' + error.message);
+        
+        // Special handling for auth errors
+        if (error.status === 401) {
+          console.log('Authentication required, redirecting to login page');
+          const currentPath = window.location.pathname + window.location.search;
+          window.location.href = '/login.html?redirect=' + encodeURIComponent(currentPath);
+          return; // Stop execution
+        } else {
+          showStatusMessage('Error loading streams: ' + error.message);
+        }
       }
     }
   };
@@ -78,9 +84,9 @@ export function IndexView() {
     try {
       const data = await fetchJSON('/api/system/info', {
         signal: requestControllerRef.current?.signal,
-        timeout: 10000, // 10 second timeout
-        retries: 1,     // Retry once
-        retryDelay: 500 // 0.5 second between retries
+        timeout: sessionStorage.getItem('auth_confirmed') ? 10000 : 60000, // Longer timeout if auth might be needed
+        retries: 1,
+        retryDelay: 500
       });
       
       setSystemInfo(data);
@@ -88,6 +94,14 @@ export function IndexView() {
       // Only log error if the request wasn't cancelled
       if (error.message !== 'Request was cancelled') {
         console.error('Error loading system info:', error);
+        
+        // Handle authentication errors
+        if (error.status === 401) {
+          console.log('Authentication required, redirecting to login page');
+          const currentPath = window.location.pathname + window.location.search;
+          window.location.href = '/login.html?redirect=' + encodeURIComponent(currentPath);
+          return; // Stop execution
+        }
         // Don't show error message for this, just log it
       }
     }

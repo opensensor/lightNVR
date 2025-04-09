@@ -22,14 +22,18 @@ void mg_handle_hls_master_playlist(struct mg_connection *c, struct mg_http_messa
     size_t uri_len = hm->uri.len < sizeof(uri) - 1 ? hm->uri.len : sizeof(uri) - 1;
     memcpy(uri, hm->uri.buf, uri_len);
     uri[uri_len] = '\0';
-    
+
     // Parse the URI to extract stream name
     char stream_name[MAX_STREAM_NAME] = {0};
+    char decoded_stream_name[MAX_STREAM_NAME] = {0};
     if (sscanf(uri, "/api/streaming/%[^/]/hls/", stream_name) != 1) {
         log_error("Failed to extract stream name from URI: %s", uri);
         mg_http_reply(c, 400, "", "{\"error\": \"Invalid URI format\"}\n");
         return;
     }
+
+    // URL decode the stream name
+    mg_url_decode(stream_name, strlen(stream_name), decoded_stream_name, sizeof(decoded_stream_name), 0);
     
     // Get the config to find the storage path
     config_t *global_config = get_streaming_config();
@@ -40,11 +44,11 @@ void mg_handle_hls_master_playlist(struct mg_connection *c, struct mg_http_messa
     // Use storage_path_hls if specified, otherwise fall back to storage_path
     if (global_config->storage_path_hls[0] != '\0') {
         snprintf(hls_file_path, sizeof(hls_file_path), "%s/hls/%s/index.m3u8", 
-                global_config->storage_path_hls, stream_name);
+                global_config->storage_path_hls, decoded_stream_name);
         log_info("Using HLS-specific storage path: %s", global_config->storage_path_hls);
     } else {
         snprintf(hls_file_path, sizeof(hls_file_path), "%s/hls/%s/index.m3u8", 
-                global_config->storage_path, stream_name);
+                global_config->storage_path, decoded_stream_name);
         log_info("Using default storage path for HLS: %s", global_config->storage_path);
     }
     
@@ -84,14 +88,18 @@ void mg_handle_hls_media_playlist(struct mg_connection *c, struct mg_http_messag
     size_t uri_len = hm->uri.len < sizeof(uri) - 1 ? hm->uri.len : sizeof(uri) - 1;
     memcpy(uri, hm->uri.buf, uri_len);
     uri[uri_len] = '\0';
-    
+
     // Parse the URI to extract stream name
     char stream_name[MAX_STREAM_NAME] = {0};
+    char decoded_stream_name[MAX_STREAM_NAME] = {0};
     if (sscanf(uri, "/api/streaming/%[^/]/hls/", stream_name) != 1) {
         log_error("Failed to extract stream name from URI: %s", uri);
         mg_http_reply(c, 400, "", "{\"error\": \"Invalid URI format\"}\n");
         return;
     }
+
+    // URL decode the stream name
+    mg_url_decode(stream_name, strlen(stream_name), decoded_stream_name, sizeof(decoded_stream_name), 0);
     
     // Get the config to find the storage path
     config_t *global_config = get_streaming_config();
@@ -102,11 +110,11 @@ void mg_handle_hls_media_playlist(struct mg_connection *c, struct mg_http_messag
     // Use storage_path_hls if specified, otherwise fall back to storage_path
     if (global_config->storage_path_hls[0] != '\0') {
         snprintf(hls_file_path, sizeof(hls_file_path), "%s/hls/%s/stream.m3u8", 
-                global_config->storage_path_hls, stream_name);
+                global_config->storage_path_hls, decoded_stream_name);
         log_info("Using HLS-specific storage path: %s", global_config->storage_path_hls);
     } else {
         snprintf(hls_file_path, sizeof(hls_file_path), "%s/hls/%s/stream.m3u8", 
-                global_config->storage_path, stream_name);
+                global_config->storage_path, decoded_stream_name);
         log_info("Using default storage path for HLS: %s", global_config->storage_path);
     }
     
@@ -149,15 +157,16 @@ void mg_handle_direct_hls_request(struct mg_connection *c, struct mg_http_messag
     // Extract stream name from URI
     // URI format: /hls/{stream_name}/{file}
     char stream_name[MAX_STREAM_NAME] = {0};
+    char decoded_stream_name[MAX_STREAM_NAME] = {0};
     const char *stream_start = uri + 5; // Skip "/hls/"
     const char *file_part = strchr(stream_start, '/');
-    
+
     if (!file_part) {
         log_error("Failed to extract stream name from URI: %s", uri);
         mg_http_reply(c, 400, "", "{\"error\": \"Invalid HLS path\"}\n");
         return;
     }
-    
+
     // Extract stream name
     size_t name_len = file_part - stream_start;
     if (name_len >= MAX_STREAM_NAME) {
@@ -165,7 +174,10 @@ void mg_handle_direct_hls_request(struct mg_connection *c, struct mg_http_messag
     }
     strncpy(stream_name, stream_start, name_len);
     stream_name[name_len] = '\0';
-    
+
+    // URL decode the stream name
+    mg_url_decode(stream_name, strlen(stream_name), decoded_stream_name, sizeof(decoded_stream_name), 0);
+
     // Extract file name (everything after the stream name)
     const char *file_name = file_part + 1; // Skip "/"
     
@@ -178,11 +190,11 @@ void mg_handle_direct_hls_request(struct mg_connection *c, struct mg_http_messag
     // Use storage_path_hls if specified, otherwise fall back to storage_path
     if (global_config->storage_path_hls[0] != '\0') {
         snprintf(hls_file_path, sizeof(hls_file_path), "%s/hls/%s/%s", 
-                global_config->storage_path_hls, stream_name, file_name);
+                global_config->storage_path_hls, decoded_stream_name, file_name);
         log_info("Using HLS-specific storage path: %s", global_config->storage_path_hls);
     } else {
         snprintf(hls_file_path, sizeof(hls_file_path), "%s/hls/%s/%s", 
-                global_config->storage_path, stream_name, file_name);
+                global_config->storage_path, decoded_stream_name, file_name);
         log_info("Using default storage path for HLS: %s", global_config->storage_path);
     }
     
@@ -253,14 +265,18 @@ void mg_handle_hls_segment(struct mg_connection *c, struct mg_http_message *hm) 
     size_t uri_len = hm->uri.len < sizeof(uri) - 1 ? hm->uri.len : sizeof(uri) - 1;
     memcpy(uri, hm->uri.buf, uri_len);
     uri[uri_len] = '\0';
-    
+
     // Parse the URI to extract stream name
     char stream_name[MAX_STREAM_NAME] = {0};
+    char decoded_stream_name[MAX_STREAM_NAME] = {0};
     if (sscanf(uri, "/api/streaming/%[^/]/hls/", stream_name) != 1) {
         log_error("Failed to extract stream name from URI: %s", uri);
         mg_http_reply(c, 400, "", "{\"error\": \"Invalid URI format\"}\n");
         return;
     }
+
+    // URL decode the stream name
+    mg_url_decode(stream_name, strlen(stream_name), decoded_stream_name, sizeof(decoded_stream_name), 0);
     
     // Extract the segment filename (everything after the last /)
     const char *segment_filename = strrchr(uri, '/');
@@ -280,11 +296,11 @@ void mg_handle_hls_segment(struct mg_connection *c, struct mg_http_message *hm) 
     // Use storage_path_hls if specified, otherwise fall back to storage_path
     if (global_config->storage_path_hls[0] != '\0') {
         snprintf(hls_file_path, sizeof(hls_file_path), "%s/hls/%s/%s", 
-                global_config->storage_path_hls, stream_name, segment_filename);
+                global_config->storage_path_hls, decoded_stream_name, segment_filename);
         log_info("Using HLS-specific storage path: %s", global_config->storage_path_hls);
     } else {
         snprintf(hls_file_path, sizeof(hls_file_path), "%s/hls/%s/%s", 
-                global_config->storage_path, stream_name, segment_filename);
+                global_config->storage_path, decoded_stream_name, segment_filename);
         log_info("Using default storage path for HLS: %s", global_config->storage_path);
     }
     

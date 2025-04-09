@@ -4,13 +4,9 @@
  */
 
 /**
- * Enhanced fetch function with timeout, cancellation, and retry capabilities
- * @param {string} url - The URL to fetch
+ * Enhanced fetch function with timeout, retries and error handling
+ * @param {string} url - URL to fetch
  * @param {Object} options - Fetch options
- * @param {number} [options.timeout=30000] - Timeout in milliseconds
- * @param {number} [options.retries=1] - Number of retry attempts
- * @param {number} [options.retryDelay=1000] - Delay between retries in milliseconds
- * @param {AbortSignal} [options.signal] - AbortSignal to cancel the request
  * @returns {Promise<Response>} - Fetch response
  */
 export async function enhancedFetch(url, options = {}) {
@@ -34,7 +30,7 @@ export async function enhancedFetch(url, options = {}) {
   // Create a timeout controller if timeout is specified
   const timeoutController = new AbortController();
   let timeoutId;
-  
+
   if (timeout) {
     timeoutId = setTimeout(() => {
       console.warn(`enhancedFetch: Timeout reached for ${url}, aborting request`);
@@ -60,32 +56,32 @@ export async function enhancedFetch(url, options = {}) {
     try {
       console.debug(`enhancedFetch: Attempt ${attempt + 1}/${retries + 1} for ${url}`);
       const response = await fetch(url, optionsWithSignal);
-      
+
       // Clear the timeout
       if (timeoutId) {
         clearTimeout(timeoutId);
       }
-      
+
       // Log the response
       console.log(`enhancedFetch response: ${response.status} ${response.statusText} for ${url}`);
-      
+
       // Check if the response is ok
       if (!response.ok) {
         throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
       }
-      
+
       return response;
     } catch (error) {
       lastError = error;
-      
+
       // Clear the timeout
       if (timeoutId) {
         clearTimeout(timeoutId);
       }
-      
+
       // Log the error
       console.error(`enhancedFetch error (attempt ${attempt + 1}/${retries + 1}):`, error);
-      
+
       // If the request was aborted, don't retry
       if (error.name === 'AbortError') {
         if (externalSignal && externalSignal.aborted) {
@@ -96,17 +92,17 @@ export async function enhancedFetch(url, options = {}) {
           throw new Error('Request timed out');
         }
       }
-      
+
       // If this was the last retry, throw the error
       if (attempt >= retries) {
         console.error(`enhancedFetch: All ${retries + 1} attempts failed for ${url}`);
         break;
       }
-      
+
       // Wait before retrying
       console.log(`enhancedFetch: Waiting ${retryDelay}ms before retry ${attempt + 1} for ${url}`);
       await new Promise(resolve => setTimeout(resolve, retryDelay));
-      
+
       // Reset the timeout for the next attempt
       if (timeout) {
         timeoutController.abort(); // Abort the previous timeout
@@ -115,11 +111,11 @@ export async function enhancedFetch(url, options = {}) {
           newTimeoutController.abort();
         }, timeout);
       }
-      
+
       attempt++;
     }
   }
-  
+
   throw lastError;
 }
 
@@ -170,12 +166,10 @@ export function createRequestController() {
  * @returns {Promise<any>} - Parsed JSON data
  */
 export async function fetchJSON(url, options = {}) {
-  console.log(`fetchJSON: ${options.method || 'GET'} ${url}`);
   try {
     const response = await enhancedFetch(url, options);
     console.log(`fetchJSON: Parsing JSON response from ${url}`);
     const data = await response.json();
-    console.log(`fetchJSON: Successfully parsed JSON from ${url}`);
     return data;
   } catch (error) {
     console.error(`fetchJSON: Error fetching or parsing JSON from ${url}:`, error);

@@ -97,83 +97,52 @@ void mg_handle_go2rtc_webrtc_offer_worker(struct mg_connection *c, struct mg_htt
     log_info("Request body length: %zu", hm->body.len);
     
     // Extract stream name from query parameter
-    struct mg_str src_param_str = mg_str("src");
+    char stream_name[MAX_STREAM_NAME] = {0};
+    int result = mg_http_get_var(&hm->query, "src", stream_name, sizeof(stream_name));
     
-    // Extract query parameters
-    for (int i = 0; i < MG_MAX_HTTP_HEADERS; i++) {
-        if (hm->query.len == 0) break;
-        
-        // Find the src parameter in the query string
-        const char *query_str = hm->query.buf;
-        size_t query_len = hm->query.len;
-        
-        // Simple parsing to find src=value in the query string
-        const char *src_pos = strstr(hm->query.buf, "src=");
-        if (src_pos) {
-            // Found src parameter
-            const char *value_start = src_pos + src_param_str.len + 1; // +1 for '='
-            const char *value_end = strchr(value_start, '&');
-            if (!value_end) {
-                value_end = query_str + query_len;
-            }
-            
-            // Allocate memory for the parameter value
-            size_t value_len = value_end - value_start;
-            param_value = malloc(value_len + 1);
-            if (!param_value) {
-                log_error("Failed to allocate memory for query parameter");
-                mg_send_json_error(c, 500, "Internal server error");
-                goto cleanup;
-            }
-            
-            // Copy the parameter value
-            memcpy(param_value, value_start, value_len);
-            param_value[value_len] = '\0';
-            
-            // Create a mg_str for the parameter value
-            src_param = malloc(sizeof(struct mg_str));
-            if (!src_param) {
-                log_error("Failed to allocate memory for query parameter");
-                mg_send_json_error(c, 500, "Internal server error");
-                goto cleanup;
-            }
-            
-            src_param->buf = param_value;
-            src_param->len = value_len;
-            break;
-        }
-    }
-    
-    if (!src_param || src_param->len == 0) {
-        log_error("Missing 'src' query parameter");
-        mg_send_json_error(c, 400, "Missing 'src' query parameter");
+    if (result <= 0) {
+        log_error("Missing 'src' parameter in WebRTC offer request");
+        mg_send_json_error(c, 400, "Missing 'src' parameter");
         goto cleanup;
     }
     
-    // Extract the stream name
-    char stream_name[MAX_STREAM_NAME];
-    if (src_param->len >= sizeof(stream_name)) {
-        log_error("Stream name too long");
-        mg_send_json_error(c, 400, "Stream name too long");
-        goto cleanup;
-    }
-    
-    memcpy(stream_name, src_param->buf, src_param->len);
-    stream_name[src_param->len] = '\0';
+    log_info("Extracted src parameter: %s", stream_name);
     
     // URL decode the stream name
     char decoded_name[MAX_STREAM_NAME];
     mg_url_decode(stream_name, strlen(stream_name), decoded_name, sizeof(decoded_name), 0);
     
-    log_info("WebRTC offer request for stream: %s", decoded_name);
+    log_info("Looking for stream with name: '%s'", decoded_name);
     
-    // Check if stream exists
-    stream_handle_t stream = get_stream_by_name(decoded_name);
+    // Trim leading and trailing whitespace from decoded name
+    char trimmed_name[MAX_STREAM_NAME];
+    strncpy(trimmed_name, decoded_name, sizeof(trimmed_name) - 1);
+    trimmed_name[sizeof(trimmed_name) - 1] = '\0';
+    
+    // Trim leading whitespace
+    char *start = trimmed_name;
+    while (*start && isspace(*start)) start++;
+    
+    // Trim trailing whitespace
+    char *end = start + strlen(start) - 1;
+    while (end > start && isspace(*end)) *end-- = '\0';
+    
+    // Move the trimmed string back to the beginning if needed
+    if (start != trimmed_name) {
+        memmove(trimmed_name, start, strlen(start) + 1);
+    }
+    
+    log_info("Trimmed stream name: '%s'", trimmed_name);
+    
+    // Check if stream exists using the trimmed name
+    stream_handle_t stream = get_stream_by_name(trimmed_name);
     if (!stream) {
-        log_error("Stream not found: %s", decoded_name);
+        log_error("Stream not found: '%s'", trimmed_name);
         mg_send_json_error(c, 404, "Stream not found");
         goto cleanup;
     }
+    
+    log_info("Stream found: '%s'", trimmed_name);
     
     // Get the request body (WebRTC offer)
     log_info("WebRTC offer length: %zu", hm->body.len);
@@ -204,7 +173,11 @@ void mg_handle_go2rtc_webrtc_offer_worker(struct mg_connection *c, struct mg_htt
     
     // Construct the URL for the go2rtc API
     char url[URL_BUFFER_SIZE];
-    snprintf(url, sizeof(url), "http://localhost:1984/api/webrtc?src=%s", decoded_name);
+    char encoded_name[MAX_STREAM_NAME * 3]; // Triple size to account for URL encoding expansion
+
+    // URL encode the stream name for the go2rtc API
+    mg_url_encode(trimmed_name, strlen(trimmed_name), encoded_name, sizeof(encoded_name));
+    snprintf(url, sizeof(url), "http://localhost:1984/api/webrtc?src=%s", encoded_name);
     
     // Set curl options
     if (curl_easy_setopt(curl, CURLOPT_URL, url) != CURLE_OK) {
@@ -324,7 +297,7 @@ void mg_handle_go2rtc_webrtc_offer_worker(struct mg_connection *c, struct mg_htt
         mg_send_json_error(c, (int)http_code, response.data ? response.data : "Error from go2rtc API");
     }
     
-    log_info("Successfully handled WebRTC offer request for stream: %s", decoded_name);
+    log_info("Successfully handled WebRTC offer request for stream: %s", trimmed_name);
 
 cleanup:
     // Free all allocated resources
@@ -495,7 +468,11 @@ void mg_handle_go2rtc_webrtc_ice_worker(struct mg_connection *c, struct mg_http_
     
     // Construct the URL for the go2rtc API
     char url[URL_BUFFER_SIZE];
-    snprintf(url, sizeof(url), "http://localhost:1984/api/webrtc/ice?src=%s", decoded_name);
+    char encoded_name[MAX_STREAM_NAME * 3]; // Triple size to account for URL encoding expansion
+    
+    // URL encode the stream name for the go2rtc API
+    mg_url_encode(decoded_name, strlen(decoded_name), encoded_name, sizeof(encoded_name));
+    snprintf(url, sizeof(url), "http://localhost:1984/api/webrtc/ice?src=%s", encoded_name);
     
     // Set curl options
     if (curl_easy_setopt(curl, CURLOPT_URL, url) != CURLE_OK) {

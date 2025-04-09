@@ -825,7 +825,6 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
             if (server->config.auth_enabled && !has_auth_header && !has_auth_cookie && !has_session_cookie) {
                 log_info("Authentication required for HLS request but no auth provided");
                 mg_printf(c, "HTTP/1.1 401 Unauthorized\r\n");
-                mg_printf(c, "WWW-Authenticate: Basic realm=\"LightNVR\"\r\n");
                 mg_printf(c, "Content-Type: application/json\r\n");
                 mg_printf(c, "Content-Length: 29\r\n");
                 mg_printf(c, "\r\n");
@@ -838,10 +837,9 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
             // Authentication failed
             log_info("Authentication failed for request: %s", uri);
             
-            // For API requests, return 401 Unauthorized
+            // For API requests, return 401 Unauthorized but don't prompt for basic auth
             if (strncmp(uri, "/api/", 5) == 0) {
                 mg_printf(c, "HTTP/1.1 401 Unauthorized\r\n");
-                mg_printf(c, "WWW-Authenticate: Basic realm=\"LightNVR\"\r\n");
                 mg_printf(c, "Content-Type: application/json\r\n");
                 mg_printf(c, "Content-Length: 29\r\n");
                 mg_printf(c, "\r\n");
