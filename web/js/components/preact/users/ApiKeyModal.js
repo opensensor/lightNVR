@@ -21,11 +21,25 @@ export function ApiKeyModal({ currentUser, newApiKey, handleGenerateApiKey, copy
     e.stopPropagation();
   };
 
+  // Log the API key for debugging
+  console.log('API Key Modal - newApiKey:', newApiKey);
+
+  // Create a custom close handler that prevents closing if an API key is displayed
+  const handleClose = (e) => {
+    // If we have an API key, prevent closing when clicking outside
+    if (newApiKey && newApiKey !== 'Generating...') {
+      // Only allow closing via the close button
+      return;
+    }
+    // Otherwise, proceed with normal close
+    onClose(e);
+  };
+
   return html`
-    <div class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" onClick=${onClose}>
+    <div class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" onClick=${handleClose}>
       <div class="bg-white rounded-lg p-6 max-w-md w-full dark:bg-gray-800 dark:text-white" onClick=${stopPropagation}>
         <h2 class="text-xl font-bold mb-4">API Key for ${currentUser.username}</h2>
-        
+
         <div class="mb-6">
           ${newApiKey ? html`
             <div class="mb-4">
@@ -62,13 +76,13 @@ export function ApiKeyModal({ currentUser, newApiKey, handleGenerateApiKey, copy
             </button>
           `}
         </div>
-        
+
         <div class="flex justify-end">
           <button
-            class="px-4 py-2 bg-gray-300 text-gray-800 dark:bg-gray-600 dark:text-white rounded hover:bg-gray-400 dark:hover:bg-gray-500"
+            class="${newApiKey && newApiKey !== 'Generating...' ? 'px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700' : 'px-4 py-2 bg-gray-300 text-gray-800 dark:bg-gray-600 dark:text-white rounded hover:bg-gray-400 dark:hover:bg-gray-500'}"
             onClick=${onClose}
           >
-            Close
+            ${newApiKey && newApiKey !== 'Generating...' ? 'Done' : 'Close'}
           </button>
         </div>
       </div>

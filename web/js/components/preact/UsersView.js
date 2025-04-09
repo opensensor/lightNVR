@@ -24,11 +24,11 @@ import { ApiKeyModal } from './users/ApiKeyModal.js';
 export function UsersView() {
   // State for modal visibility
   const [activeModal, setActiveModal] = useState(null); // 'add', 'edit', 'delete', 'apiKey', or null
-  
+
   // State for selected user and API key
   const [selectedUser, setSelectedUser] = useState(null);
   const [apiKey, setApiKey] = useState('');
-  
+
   // Form state for adding/editing users
   const [formData, setFormData] = useState({
     username: '',
@@ -48,13 +48,13 @@ export function UsersView() {
   }, []);
 
   // Fetch users using useQuery
-  const { 
-    data: usersData, 
-    isLoading: loading, 
+  const {
+    data: usersData,
+    isLoading: loading,
     error,
-    refetch: refetchUsers 
+    refetch: refetchUsers
   } = useQuery(
-    ['users'], 
+    ['users'],
     '/api/auth/users',
     {
       headers: getAuthHeaders(),
@@ -83,9 +83,9 @@ export function UsersView() {
         });
         setActiveModal('add');
       };
-      
+
       addUserBtn.addEventListener('click', handleAddUserClick);
-      
+
       return () => {
         if (addUserBtn) {
           addUserBtn.removeEventListener('click', handleAddUserClick);
@@ -100,7 +100,7 @@ export function UsersView() {
    */
   const handleInputChange = useCallback((e) => {
     const { name, value, type, checked } = e.target;
-    
+
     setFormData(prevData => ({
       ...prevData,
       [name]: type === 'checkbox' ? checked : (name === 'role' ? parseInt(value, 10) : value)
@@ -126,7 +126,7 @@ export function UsersView() {
       // Close modal and show success message
       setActiveModal(null);
       showStatusMessage('User added successfully', 'success', 5000);
-      
+
       // Refresh users list
       refetchUsers();
     },
@@ -155,7 +155,7 @@ export function UsersView() {
       // Close modal and show success message
       setActiveModal(null);
       showStatusMessage('User updated successfully', 'success', 5000);
-      
+
       // Refresh users list
       refetchUsers();
     },
@@ -180,7 +180,7 @@ export function UsersView() {
       // Close modal and show success message
       setActiveModal(null);
       showStatusMessage('User deleted successfully', 'success', 5000);
-      
+
       // Refresh users list
       refetchUsers();
     },
@@ -206,11 +206,15 @@ export function UsersView() {
       setApiKey('Generating...');
     },
     onSuccess: (data) => {
+      // Set the API key and ensure the modal stays open
       setApiKey(data.api_key);
       showStatusMessage('API key generated successfully', 'success');
-      
-      // Refresh users list
-      refetchUsers();
+
+      // Refresh users list without affecting the modal
+      // We'll use a separate function to avoid closing the modal
+      setTimeout(() => {
+        refetchUsers();
+      }, 100);
     },
     onError: (error) => {
       console.error('Error generating API key:', error);
@@ -225,7 +229,7 @@ export function UsersView() {
    */
   const handleAddUser = useCallback((e) => {
     if (e) e.preventDefault();
-    
+
     console.log('Adding user:', formData.username);
     addUserMutation.mutate(formData);
   }, [formData]);
@@ -236,11 +240,11 @@ export function UsersView() {
    */
   const handleEditUser = useCallback((e) => {
     if (e) e.preventDefault();
-    
+
     console.log('Editing user:', selectedUser.id, selectedUser.username);
-    editUserMutation.mutate({ 
-      userId: selectedUser.id, 
-      userData: formData 
+    editUserMutation.mutate({
+      userId: selectedUser.id,
+      userData: formData
     });
   }, [selectedUser, formData]);
 
@@ -276,7 +280,7 @@ export function UsersView() {
       })
       .catch((err) => {
         console.error('Error copying API key:', err);
-        
+
         // Use global toast function if available
         if (window.showErrorToast) {
           window.showErrorToast('Failed to copy API key');
@@ -346,11 +350,11 @@ export function UsersView() {
         <h4 class="font-bold mb-2">No Users Found</h4>
         <p>Click the "Add User" button to create your first user.</p>
       </div>
-      ${activeModal === 'add' && html`<${AddUserModal} 
-        formData=${formData} 
-        handleInputChange=${handleInputChange} 
-        handleAddUser=${handleAddUser} 
-        onClose=${closeModal} 
+      ${activeModal === 'add' && html`<${AddUserModal}
+        formData=${formData}
+        handleInputChange=${handleInputChange}
+        handleAddUser=${handleAddUser}
+        onClose=${closeModal}
       />`}
     `;
   }
@@ -358,40 +362,40 @@ export function UsersView() {
   // Render users table with modals
   return html`
     <div>
-      <${UsersTable} 
-        users=${users} 
-        onEdit=${openEditModal} 
-        onDelete=${openDeleteModal} 
-        onApiKey=${openApiKeyModal} 
+      <${UsersTable}
+        users=${users}
+        onEdit=${openEditModal}
+        onDelete=${openDeleteModal}
+        onApiKey=${openApiKeyModal}
       />
-      
-      ${activeModal === 'add' && html`<${AddUserModal} 
-        formData=${formData} 
-        handleInputChange=${handleInputChange} 
-        handleAddUser=${handleAddUser} 
-        onClose=${closeModal} 
+
+      ${activeModal === 'add' && html`<${AddUserModal}
+        formData=${formData}
+        handleInputChange=${handleInputChange}
+        handleAddUser=${handleAddUser}
+        onClose=${closeModal}
       />`}
-      
-      ${activeModal === 'edit' && html`<${EditUserModal} 
-        currentUser=${selectedUser} 
-        formData=${formData} 
-        handleInputChange=${handleInputChange} 
-        handleEditUser=${handleEditUser} 
-        onClose=${closeModal} 
+
+      ${activeModal === 'edit' && html`<${EditUserModal}
+        currentUser=${selectedUser}
+        formData=${formData}
+        handleInputChange=${handleInputChange}
+        handleEditUser=${handleEditUser}
+        onClose=${closeModal}
       />`}
-      
-      ${activeModal === 'delete' && html`<${DeleteUserModal} 
-        currentUser=${selectedUser} 
-        handleDeleteUser=${handleDeleteUser} 
-        onClose=${closeModal} 
+
+      ${activeModal === 'delete' && html`<${DeleteUserModal}
+        currentUser=${selectedUser}
+        handleDeleteUser=${handleDeleteUser}
+        onClose=${closeModal}
       />`}
-      
-      ${activeModal === 'apiKey' && html`<${ApiKeyModal} 
-        currentUser=${selectedUser} 
-        newApiKey=${apiKey} 
-        handleGenerateApiKey=${handleGenerateApiKey} 
-        copyApiKey=${copyApiKey} 
-        onClose=${closeModal} 
+
+      ${activeModal === 'apiKey' && html`<${ApiKeyModal}
+        currentUser=${selectedUser}
+        newApiKey=${apiKey}
+        handleGenerateApiKey=${handleGenerateApiKey}
+        copyApiKey=${copyApiKey}
+        onClose=${closeModal}
       />`}
     </div>
   `;
@@ -403,11 +407,11 @@ export function UsersView() {
 export function loadUsersView() {
   const container = document.getElementById('users-container');
   if (!container) return;
-  
+
   import('preact').then(({ render }) => {
     import('../../query-client.js').then(({ QueryClientProvider, queryClient }) => {
       render(
-        html`<${QueryClientProvider} client=${queryClient}><${UsersView} /></${QueryClientProvider}>`, 
+        html`<${QueryClientProvider} client=${queryClient}><${UsersView} /></${QueryClientProvider}>`,
         container
       );
     });

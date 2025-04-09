@@ -6,6 +6,7 @@
 import { render } from 'preact';
 import { html } from '../../../html-helper.js';
 import { TimelinePage } from './TimelinePage.js';
+import { QueryClientProvider, queryClient } from '../../../query-client.js';
 
 /**
  * Load TimelineView component
@@ -17,6 +18,11 @@ export function loadTimelineView() {
   // Clear any existing content
   mainContent.innerHTML = '';
 
-  // Render the TimelinePage component to the container
-  render(html`<${TimelinePage} />`, mainContent);
+  // Render the TimelinePage component to the container wrapped with QueryClientProvider
+  render(
+    html`<${QueryClientProvider} client=${queryClient}>
+      <${TimelinePage} />
+    <//>`,
+    mainContent
+  );
 }

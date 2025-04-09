@@ -23,7 +23,7 @@ if (typeof WebSocketClient !== 'undefined') {
   // Create a global WebSocket client instance
   window.wsClient = new WebSocketClient();
   console.log('WebSocket client initialized at application level');
-  
+
   // Add additional event listeners for debugging
   if (window.wsClient) {
     // Log initial connection state
@@ -31,12 +31,12 @@ if (typeof WebSocketClient !== 'undefined') {
       connected: window.wsClient.isConnected(),
       clientId: window.wsClient.getClientId()
     });
-    
+
     // Add socket event listeners when socket is created
     const originalConnect = window.wsClient.connect;
     window.wsClient.connect = function() {
       const result = originalConnect.apply(this, arguments);
-      
+
       // Add event listeners to the new socket
       if (this.socket) {
         const originalOnOpen = this.socket.onopen;
@@ -44,19 +44,19 @@ if (typeof WebSocketClient !== 'undefined') {
           console.log('WebSocket connection opened at application level');
           if (originalOnOpen) originalOnOpen.call(this, event);
         };
-        
+
         const originalOnError = this.socket.onerror;
         this.socket.onerror = (error) => {
           console.error('WebSocket error at application level:', error);
           if (originalOnError) originalOnError.call(this, error);
         };
-        
+
         const originalOnClose = this.socket.onclose;
         this.socket.onclose = (event) => {
           console.log(`WebSocket connection closed at application level: ${event.code} ${event.reason}`);
           if (originalOnClose) originalOnClose.call(this, event);
         };
-        
+
         const originalOnMessage = this.socket.onmessage;
         this.socket.onmessage = (event) => {
           // Only log non-welcome messages at application level to reduce noise
@@ -66,24 +66,24 @@ if (typeof WebSocketClient !== 'undefined') {
           if (originalOnMessage) originalOnMessage.call(this, event);
         };
       }
-      
+
       return result;
     };
-    
+
     // Override handleMessage to log when client ID is set
     const originalHandleMessage = window.wsClient.handleMessage;
     window.wsClient.handleMessage = function(data) {
       const clientIdBefore = this.clientId;
       originalHandleMessage.call(this, data);
       const clientIdAfter = this.clientId;
-      
+
       // Log when client ID changes
       if (clientIdBefore !== clientIdAfter && clientIdAfter) {
         console.log(`WebSocket client ID changed at application level: ${clientIdAfter}`);
       }
     };
   }
-  
+
   // Initialize batch delete client if needed
   if (typeof BatchDeleteRecordingsClient !== 'undefined') {
     window.batchDeleteClient = new BatchDeleteRecordingsClient(window.wsClient);
@@ -99,7 +99,7 @@ if (typeof WebSocketClient !== 'undefined') {
 function createStore(initialState = {}) {
   let state = { ...initialState };
   const listeners = new Set();
-  
+
   return {
     getState: () => state,
     setState: (newState) => {
@@ -108,13 +108,13 @@ function createStore(initialState = {}) {
       } else {
         state = { ...state, ...newState };
       }
-      
+
       // Notify listeners
       listeners.forEach(listener => listener(state));
     },
     subscribe: (listener) => {
       listeners.add(listener);
-      
+
       // Return unsubscribe function
       return () => {
         listeners.delete(listener);
@@ -156,12 +156,12 @@ if (window.wsClient) {
     if (window.wsClient) {
       const connected = window.wsClient.isConnected();
       const clientId = window.wsClient.getClientId();
-      
+
       websocketStore.setState({
         connected,
         clientId
       });
-      
+
       // If not connected and not already reconnecting, try to reconnect
       if (!connected && !window.wsClient.connecting && window.wsClient.reconnectAttempts < window.wsClient.maxReconnectAttempts) {
         console.log('WebSocket not connected, attempting to reconnect from application level');
@@ -179,13 +179,13 @@ function setupGlobalAuthHandler() {
   const originalFetch = window.fetch;
   window.fetch = async function(url, options) {
     const response = await originalFetch.apply(this, arguments);
-    
+
     if (response.status === 401 && !window.location.pathname.includes('login.html')) {
       console.log('401 detected, redirecting to login');
       const currentPath = window.location.pathname + window.location.search;
       window.location.href = '/login.html?redirect=' + encodeURIComponent(currentPath);
     }
-    
+
     return response;
   };
 }
@@ -196,14 +196,14 @@ function setupGlobalAuthHandler() {
 function initApp() {
   // Set up global authentication handler
   setupGlobalAuthHandler();
-  
+
   // Get current page and query parameters
   const currentPage = window.location.pathname.split('/').pop();
   const currentQuery = window.location.search;
-  
+
   // Load header with active navigation
   let activeNav = '';
-  
+
   switch (currentPage) {
     case 'index.html':
     case '': // Handle root URL (/) as index.html
@@ -226,7 +226,7 @@ function initApp() {
       activeNav = 'nav-system';
       break;
   }
-  
+
   // Ensure we have an app-root element
   let appRoot = document.getElementById('app-root');
   if (!appRoot) {
@@ -241,26 +241,26 @@ function initApp() {
     }
     console.log('Created app-root element for Preact Query provider');
   }
-  
+
   // Wrap the app with QueryClientProvider
   render(
-    h(QueryClientProvider, { client: queryClient }, 
+    h(QueryClientProvider, { client: queryClient },
       h('div', { id: 'app-content' })
     ),
     appRoot
   );
-  
+
   // Load header and footer
   loadHeader(activeNav);
   loadFooter();
-  
+
   // Load page-specific content using dynamic imports
   if (currentPage === 'index.html') {
     import('./components/preact/WebRTCView.js').then(module => {
       module.loadWebRTCView();
     });
   } else if (currentPage === 'hls.html') {
-    import('./components/preact/LiveView.js').then(module => {
+    import('./components/preact/LiveViewQuery.js').then(module => {
       module.loadLiveView();
     });
   } else if (currentPage === 'recordings.html') {
@@ -296,28 +296,28 @@ function initApp() {
       module.loadWebRTCView();
     });
   }
-  
+
   // Setup UI components
   setupModals();
   addStatusMessageStyles();
   addModalStyles();
-  
+
   // Initialize toast container
   import('./components/preact/toast.js').then(({ initToastContainer }) => {
     // Initialize the toast container without showing a test message
     initToastContainer(false);
-    
+
     // Log success
     console.log('Toast container initialized from preact-app.js');
-    
+
     // Add a global function to test toasts
     window.testToastFromApp = (type = 'info') => {
       const message = `App test ${type} toast at ${new Date().toLocaleTimeString()}`;
-      
+
       if (window.showToast) {
         window.showToast(message, type);
       }
-      
+
       return 'App toast triggered';
     };
   }).catch(error => {

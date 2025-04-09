@@ -1,6 +1,6 @@
 /* Live Video Styles - Hybrid approach with Tailwind and custom CSS */
 
-/* 
+/*
  * This file contains styles for the live video page.
  * Using a hybrid approach to ensure detection overlays work correctly
  * while still leveraging Tailwind where appropriate.
@@ -53,22 +53,22 @@
         grid-template-columns: repeat(2, 1fr);
         grid-template-rows: 1fr;
     }
-    
+
     .video-container.layout-4 {
         grid-template-columns: repeat(2, 1fr);
         grid-template-rows: repeat(2, 1fr);
     }
-    
+
     .video-container.layout-6 {
         grid-template-columns: repeat(2, 1fr);
         grid-template-rows: repeat(3, 1fr);
     }
-    
+
     .video-container.layout-9 {
         grid-template-columns: repeat(3, 1fr);
         grid-template-rows: repeat(3, 1fr);
     }
-    
+
     .video-container.layout-16 {
         grid-template-columns: repeat(4, 1fr);
         grid-template-rows: repeat(4, 1fr);
@@ -115,7 +115,8 @@
     padding: 0;
 }
 
-.video-cell .stream-info {
+/* New stream info bar with proper layout */
+.video-cell .stream-info-bar {
     position: absolute;
     bottom: 0;
     left: 0;
@@ -135,16 +136,46 @@
     z-index: 20;
 }
 
-.video-cell:hover .stream-info {
+.video-cell .stream-details {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.video-cell .stream-name {
+    font-weight: bold;
+    margin-bottom: 0.25rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.video-cell .stream-resolution {
+    font-size: 0.8rem;
+    opacity: 0.8;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.video-cell:hover .stream-info-bar {
     opacity: 1;
     transform: translateY(0);
 }
 
 .video-cell .stream-controls {
     display: flex;
-    justify-content: center;
-    gap: 1rem;
+    justify-content: flex-end;
+    gap: 0.5rem;
     margin-left: auto;
+    flex-shrink: 0;
+    min-width: 85px; /* Ensure minimum width for the controls */
 }
 
 .video-cell .stream-controls button {
@@ -152,17 +183,22 @@
     border: none;
     color: white;
     cursor: pointer;
-    padding: 0.5rem 0.75rem;
+    padding: 0.5rem;
     font-size: 0.9rem;
     border-radius: 4px;
-    transition: background-color 0.2s ease;
+    transition: all 0.2s ease;
     display: flex;
     align-items: center;
-    gap: 0.25rem;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    position: relative;
 }
 
 .video-cell .stream-controls button:hover {
     background-color: rgba(255, 255, 255, 0.3);
+    transform: scale(1.1);
 }
 
 .placeholder {
@@ -254,58 +290,61 @@
         height: auto;
         min-height: auto;
     }
-    
+
     .video-cell {
         aspect-ratio: 16 / 9;
         margin-bottom: 0.5rem;
     }
-    
+
     /* Always show controls on touch devices */
-    .video-cell .stream-info,
-    .video-cell .stream-controls {
+    .video-cell .stream-info-bar {
         opacity: 1;
         transform: translateY(0);
     }
-    
-    .video-cell .stream-info {
+
+    .video-cell .stream-controls {
+        gap: 0.75rem;
+    }
+
+    .video-cell .stream-info-bar {
         padding: 0.5rem;
         font-size: 0.8rem;
     }
-    
+
     .video-cell .stream-controls {
         padding: 0.5rem;
     }
-    
+
     .video-cell .stream-controls button {
         padding: 0.35rem 0.5rem;
         font-size: 0.8rem;
     }
-    
+
     /* Larger play button for mobile */
     .play-button {
         width: 5rem;
         height: 5rem;
     }
-    
+
     /* Larger touch targets for mobile */
     .video-cell .stream-controls button {
         min-height: 44px; /* Apple's recommended minimum touch target size */
         min-width: 44px;
     }
-    
+
     /* Improve loading indicator visibility on mobile */
     .loading-indicator {
         background-color: rgba(0, 0, 0, 0.5);
         padding: 1rem;
         border-radius: 8px;
     }
-    
+
     /* Improve error indicator visibility on mobile */
     .error-indicator {
         width: 80%;
         max-width: 300px;
     }
-    
+
     /* Ensure retry button is large enough for touch */
     .retry-button {
         min-height: 44px;
@@ -322,9 +361,9 @@
         position: relative;
         z-index: 1;
     }
-    
+
     /* Ensure controls are more visible on iOS */
-    .video-cell .stream-info {
+    .video-cell .stream-info-bar {
         background-color: rgba(0, 0, 0, 0.8);
     }
 }

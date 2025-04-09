@@ -195,10 +195,10 @@ export function StreamsView() {
   // Mutation for deleting stream
   const deleteStreamMutation = useMutation({
     mutationFn: async ({ streamId, permanent }) => {
-      const url = permanent 
-        ? `/api/streams/${encodeURIComponent(streamId)}?permanent=true` 
+      const url = permanent
+        ? `/api/streams/${encodeURIComponent(streamId)}?permanent=true`
         : `/api/streams/${encodeURIComponent(streamId)}`;
-      
+
       return await fetchJSON(url, {
         method: 'DELETE',
         headers: {
@@ -411,7 +411,7 @@ export function StreamsView() {
 
   // Disable stream (soft delete)
   const disableStream = (streamId) => {
-    disableStreamMutation.mutate(streamId);
+    deleteStreamMutation.mutate({ streamId, permanent: false });
   };
 
   // Delete stream (permanent)
@@ -526,26 +526,7 @@ export function StreamsView() {
     }
   });
 
-  // Disable stream mutation
-  const disableStreamMutation = useMutation({
-    mutationFn: async (streamId) => {
-      return await fetchJSON(`/api/streams/${encodeURIComponent(streamId)}/disable`, {
-        method: 'POST',
-        timeout: 10000,
-        retries: 1,
-        retryDelay: 1000
-      });
-    },
-    onSuccess: () => {
-      showStatusMessage('Stream disabled successfully');
-      closeDeleteModal();
-      // Invalidate and refetch streams data
-      queryClient.invalidateQueries({ queryKey: ['streams'] });
-    },
-    onError: (error) => {
-      showStatusMessage(`Error disabling stream: ${error.message}`, 5000, 'error');
-    }
-  });
+
 
   // Submit ONVIF device
   const submitOnvifDevice = () => {
@@ -1292,7 +1273,7 @@ export function loadStreamsView() {
   import('preact').then(({ render }) => {
     import('../../query-client.js').then(({ QueryClientProvider, queryClient }) => {
       render(
-        html`<${QueryClientProvider} client=${queryClient}><${StreamsView} /></${QueryClientProvider}>`, 
+        html`<${QueryClientProvider} client=${queryClient}><${StreamsView} /></${QueryClientProvider}>`,
         mainContent
       );
     });

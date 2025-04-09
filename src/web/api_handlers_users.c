@@ -1087,32 +1087,16 @@ void mg_handle_users_generate_api_key(struct mg_connection *c, struct mg_http_me
         return;
     }
     
-    // Send an immediate response to the client before processing the request
-    mg_send_json_response(c, 202, "{\"success\":true,\"message\":\"Processing request\"}");
-    
-    // Create a thread data structure
-    struct mg_thread_data *data = calloc(1, sizeof(struct mg_thread_data));
-    if (!data) {
-        log_error("Failed to allocate memory for thread data");
-        mg_http_reply(c, 500, "", "Internal Server Error\n");
+    // Create a user API task and process it directly
+    user_api_task_t *task = create_user_api_task(c, hm);
+    if (!task) {
+        log_error("Failed to create user API task");
+        mg_send_json_error(c, 500, "Failed to create user API task");
         return;
     }
     
-    // Copy the HTTP message
-    data->message = mg_strdup(hm->message);
-    if (data->message.len == 0) {
-        log_error("Failed to duplicate HTTP message");
-        free(data);
-        return;
-    }
+    // Process the task directly instead of in a worker thread
+    users_generate_api_key_task_function(task);
     
-    // Set connection ID, manager, and handler function
-    data->conn_id = c->id;
-    data->mgr = c->mgr;
-    data->handler_func = users_generate_api_key_handler;
-    
-    // Start thread
-    mg_start_thread(mg_thread_function, data);
-    
-    log_info("User generate API key task started in a worker thread");
+    log_info("User generate API key task completed");
 }

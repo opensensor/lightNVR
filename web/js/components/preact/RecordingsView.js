@@ -19,6 +19,7 @@ import { PaginationControls } from './recordings/PaginationControls.js';
 import { formatUtils } from './recordings/formatUtils.js';
 import { recordingsAPI } from './recordings/recordingsAPI.js';
 import { urlUtils } from './recordings/urlUtils.js';
+import { useQueryClient, invalidateQueries } from '../../query-client.js';
 
 /**
  * RecordingsView component
@@ -54,119 +55,121 @@ export function RecordingsView() {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteMode, setDeleteMode] = useState('selected'); // 'selected' or 'all'
   const recordingsTableBodyRef = useRef(null);
-  
+
+  // Get query client for invalidating queries
+  const queryClient = useQueryClient();
+
+  // Fetch streams using preact-query
+  const {
+    data: streamsData,
+    isLoading: isLoadingStreams,
+    error: streamsError
+  } = recordingsAPI.hooks.useStreams();
+
+  // Update streams state when data is loaded
+  useEffect(() => {
+    if (streamsData && Array.isArray(streamsData)) {
+      setStreams(streamsData);
+    }
+  }, [streamsData]);
+
+  // Handle streams error
+  useEffect(() => {
+    if (streamsError) {
+      console.error('Error loading streams for filter:', streamsError);
+      showStatusMessage('Error loading streams: ' + streamsError.message);
+    }
+  }, [streamsError]);
+
   // Initialize component
   useEffect(() => {
     // Set default date range
     setDefaultDateRange();
-    
-    // First load streams to populate the filter dropdown
-    loadStreams().then(() => {
-      // Check for URL parameters
-      const urlFilters = urlUtils.getFiltersFromUrl();
-      
-      if (urlFilters) {
-        console.log('Found URL filters:', urlFilters);
-        
-        // Check specifically for detection parameter
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.has('detection') && urlParams.get('detection') === '1') {
-          // Ensure recordingType is set to 'detection'
-          urlFilters.filters.recordingType = 'detection';
-        }
-        
-        // Update state with URL filters
-        setFilters(urlFilters.filters);
-        setPagination(prev => ({
-          ...prev,
-          currentPage: urlFilters.page || 1,
-          pageSize: urlFilters.limit || 20
-        }));
-        setSortField(urlFilters.sort || 'start_time');
-        setSortDirection(urlFilters.order || 'desc');
-        
-        // Make a direct API call with the URL filters to avoid state update timing issues
-        const paginationWithPage = {
-          ...pagination,
-          currentPage: urlFilters.page || 1,
-          pageSize: urlFilters.limit || 20
-        };
-        
-        console.log('Making direct API call with filters:', urlFilters.filters);
-        
-        // Load recordings directly with the URL filters
-        recordingsAPI.loadRecordings(
-          urlFilters.filters, 
-          paginationWithPage, 
-          urlFilters.sort || 'start_time', 
-          urlFilters.order || 'desc'
-        ).then(data => {
-          // Store recordings in the component state
-          const recordings = data.recordings || [];
-          setRecordings(recordings);
-          setHasData(recordings.length > 0);
-          
-          // Update pagination
-          updatePaginationFromResponse(data, urlFilters.page || 1);
-          
-          // Set loading state
-          setIsLoading(false);
-        }).catch(error => {
-          console.error('Error loading recordings:', error);
-          showStatusMessage('Error loading recordings: ' + error.message);
-          setHasData(false);
-          setIsLoading(false);
-        });
-        
-        // Set loading state
-        setIsLoading(true);
-        setHasData(false);
-        setRecordings([]);
-      } else {
-        // No URL filters, just load with default settings
-        loadRecordings();
+
+    // Check for URL parameters
+    const urlFilters = urlUtils.getFiltersFromUrl();
+
+    if (urlFilters) {
+      console.log('Found URL filters:', urlFilters);
+
+      // Check specifically for detection parameter
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.has('detection') && urlParams.get('detection') === '1') {
+        // Ensure recordingType is set to 'detection'
+        urlFilters.filters.recordingType = 'detection';
       }
-    });
-    
+
+      // Update state with URL filters
+      setFilters(urlFilters.filters);
+      setPagination(prev => ({
+        ...prev,
+        currentPage: urlFilters.page || 1,
+        pageSize: urlFilters.limit || 20
+      }));
+      setSortField(urlFilters.sort || 'start_time');
+      setSortDirection(urlFilters.order || 'desc');
+    }
+
     // Handle responsive behavior
     handleResponsiveFilters();
     window.addEventListener('resize', handleResponsiveFilters);
-    
+
     // Cleanup
     return () => {
       window.removeEventListener('resize', handleResponsiveFilters);
     };
   }, []);
-  
+
   // Update active filters when filters change
   useEffect(() => {
     updateActiveFilters();
   }, [filters]);
-  
+
   // Set default date range
   const setDefaultDateRange = () => {
     const now = new Date();
     const sevenDaysAgo = new Date(now);
     sevenDaysAgo.setDate(now.getDate() - 7);
-    
+
     setFilters(prev => ({
       ...prev,
       endDate: now.toISOString().split('T')[0],
       startDate: sevenDaysAgo.toISOString().split('T')[0]
     }));
   };
-  
-  // Load streams from API
-  const loadStreams = async () => {
-    try {
-      const data = await recordingsAPI.loadStreams();
-      setStreams(data);
-    } catch (error) {
-      console.error('Error loading streams for filter:', error);
-      showStatusMessage('Error loading streams: ' + error.message);
+
+  // Fetch recordings using preact-query
+  const {
+    data: recordingsData,
+    isLoading: isLoadingRecordings,
+    error: recordingsError,
+    refetch: refetchRecordings
+  } = recordingsAPI.hooks.useRecordings(filters, pagination, sortField, sortDirection);
+
+  // Update recordings state when data is loaded
+  useEffect(() => {
+    if (recordingsData) {
+      // Store recordings in the component state
+      const recordingsArray = recordingsData.recordings || [];
+      setRecordings(recordingsArray);
+      setHasData(recordingsArray.length > 0);
+
+      // Update pagination
+      if (recordingsData.pagination) {
+        updatePaginationFromResponse(recordingsData, pagination.currentPage);
+      }
     }
-  };
-  
+  }, [recordingsData]);
+
+  // Handle recordings error
+  useEffect(() => {
+    if (recordingsError) {
+      console.error('Error loading recordings:', recordingsError);
+      showStatusMessage('Error loading recordings: ' + recordingsError.message);
+      setHasData(false);
+    }
+  }, [recordingsError]);
+
   // Load filters from URL
   const loadFiltersFromUrl = () => {
     const urlFilters = urlUtils.getFiltersFromUrl();
@@ -177,7 +180,7 @@ export function RecordingsView() {
         // Ensure recordingType is set to 'detection'
         urlFilters.filters.recordingType = 'detection';
       }
-      
+
       setFilters(urlFilters.filters);
       setPagination(prev => ({
         ...prev,
@@ -186,7 +189,7 @@ export function RecordingsView() {
       }));
       setSortField(urlFilters.sort || 'start_time');
       setSortDirection(urlFilters.order || 'desc');
-      
+
       // If detection parameter is present, ensure it's included in the URL when we update it
       if (urlParams.has('detection') && urlParams.get('detection') === '1') {
         setTimeout(() => {
@@ -197,12 +200,12 @@ export function RecordingsView() {
           }
         }, 0);
       }
-      
+
       return urlFilters; // Return the filters so we can use them directly
     }
     return null;
   };
-  
+
   // Handle responsive filters
   const handleResponsiveFilters = () => {
     // On mobile, hide filters by default
@@ -212,75 +215,54 @@ export function RecordingsView() {
       setFiltersVisible(true);
     }
   };
-  
+
   // Toggle filters visibility
   const toggleFilters = () => {
     setFiltersVisible(!filtersVisible);
   };
-  
-  // State for loading and data status
-  const [isLoading, setIsLoading] = useState(false);
+
+  // State for data status
   const [hasData, setHasData] = useState(false);
 
-  // Load recordings
-  const loadRecordings = async (page = pagination.currentPage, updateUrl = true) => {
+  // Load recordings (now just updates pagination and URL)
+  const loadRecordings = (page = pagination.currentPage, updateUrl = true) => {
     // Debug log to check filters
     console.log('Loading recordings with filters:', JSON.stringify(filters));
-    try {
-      // Show loading state
-      setIsLoading(true);
-      setHasData(false);
-      setRecordings([]);
-      
-      // Create a pagination object with the specified page
-      const paginationWithPage = {
-        ...pagination,
-        currentPage: page
-      };
-      
-      // Update URL with filters if requested
-      if (updateUrl) {
-        urlUtils.updateUrlWithFilters(filters, paginationWithPage, sortField, sortDirection);
-      }
-      
-      // Load recordings from API
-      const data = await recordingsAPI.loadRecordings(filters, paginationWithPage, sortField, sortDirection);
-      
-      // Store recordings in the component state
-      const recordings = data.recordings || [];
-      setRecordings(recordings);
-      setHasData(recordings.length > 0);
-      
-      // Update pagination
-      updatePaginationFromResponse(data, page);
-    } catch (error) {
-      console.error('Error loading recordings:', error);
-      showStatusMessage('Error loading recordings: ' + error.message);
-      setHasData(false);
-    } finally {
-      setIsLoading(false);
+
+    // Create a pagination object with the specified page
+    const paginationWithPage = {
+      ...pagination,
+      currentPage: page
+    };
+
+    // Update pagination state
+    setPagination(paginationWithPage);
+
+    // Update URL with filters if requested
+    if (updateUrl) {
+      urlUtils.updateUrlWithFilters(filters, paginationWithPage, sortField, sortDirection);
     }
   };
-  
+
   // Update pagination from API response
   const updatePaginationFromResponse = (data, currentPage) => {
     // Use the provided page parameter instead of the state
     currentPage = currentPage || pagination.currentPage;
-    
+
     if (data.pagination) {
       const pageSize = data.pagination.limit || 20;
       const totalItems = data.pagination.total || 0;
       const totalPages = data.pagination.pages || 1;
-      
+
       // Calculate start and end items based on current page
       let startItem = 0;
       let endItem = 0;
-      
+
       if (data.recordings.length > 0) {
         startItem = (currentPage - 1) * pageSize + 1;
         endItem = Math.min(startItem + data.recordings.length - 1, totalItems);
       }
-      
+
       console.log('Pagination update:', {
         currentPage,
         pageSize,
@@ -290,7 +272,7 @@ export function RecordingsView() {
         endItem,
         recordingsLength: data.recordings.length
       });
-      
+
       setPagination(prev => ({
         ...prev,
         totalItems,
@@ -304,16 +286,16 @@ export function RecordingsView() {
       const pageSize = pagination.pageSize;
       const totalItems = data.total || 0;
       const totalPages = Math.ceil(totalItems / pageSize) || 1;
-      
+
       // Calculate start and end items based on current page
       let startItem = 0;
       let endItem = 0;
-      
+
       if (data.recordings.length > 0) {
         startItem = (currentPage - 1) * pageSize + 1;
         endItem = Math.min(startItem + data.recordings.length - 1, totalItems);
       }
-      
+
       console.log('Pagination update (fallback):', {
         currentPage,
         pageSize,
@@ -323,7 +305,7 @@ export function RecordingsView() {
         endItem,
         recordingsLength: data.recordings.length
       });
-      
+
       setPagination(prev => ({
         ...prev,
         totalItems,
@@ -333,23 +315,23 @@ export function RecordingsView() {
       }));
     }
   };
-  
+
   // Handle date range change
   const handleDateRangeChange = (e) => {
     const newDateRange = e.target.value;
-    
+
     setFilters(prev => ({
       ...prev,
       dateRange: newDateRange
     }));
-    
+
     if (newDateRange === 'custom') {
       // If custom is selected, make sure we have default dates
       if (!filters.startDate || !filters.endDate) {
         const now = new Date();
         const sevenDaysAgo = new Date(now);
         sevenDaysAgo.setDate(now.getDate() - 7);
-        
+
         setFilters(prev => ({
           ...prev,
           endDate: now.toISOString().split('T')[0],
@@ -358,14 +340,14 @@ export function RecordingsView() {
       }
     }
   };
-  
+
   // Update active filters
   const updateActiveFilters = () => {
     const activeFilters = urlUtils.getActiveFiltersDisplay(filters);
     setHasActiveFilters(activeFilters.length > 0);
     setActiveFiltersDisplay(activeFilters);
   };
-  
+
   // Apply filters
   const applyFilters = (resetToFirstPage = true) => {
     // Reset to first page when applying filters (unless specified otherwise)
@@ -375,11 +357,16 @@ export function RecordingsView() {
         currentPage: 1
       }));
     }
-    
-    // Make the API call with current filters
-    loadRecordings(resetToFirstPage ? 1 : pagination.currentPage);
+
+    // Update URL with filters
+    urlUtils.updateUrlWithFilters(
+      filters,
+      resetToFirstPage ? {...pagination, currentPage: 1} : pagination,
+      sortField,
+      sortDirection
+    );
   };
-  
+
   // Reset filters
   const resetFilters = () => {
     // Create default filters
@@ -392,50 +379,33 @@ export function RecordingsView() {
       streamId: 'all',
       recordingType: 'all'
     };
-    
+
     // Get default date range
     const now = new Date();
     const sevenDaysAgo = new Date(now);
     sevenDaysAgo.setDate(now.getDate() - 7);
-    
+
     defaultFilters.endDate = now.toISOString().split('T')[0];
     defaultFilters.startDate = sevenDaysAgo.toISOString().split('T')[0];
-    
+
     // Reset filter state
     setFilters(defaultFilters);
-    
-    // Create default pagination
-    const defaultPagination = {
-      ...pagination,
-      currentPage: 1
-    };
-    
+
     // Reset pagination to first page
     setPagination(prev => ({
       ...prev,
       currentPage: 1
     }));
-    
+
+    // Reset sort
+    setSortField('start_time');
+    setSortDirection('desc');
+
     // Clear all URL parameters by replacing the current URL with the base URL
     const baseUrl = window.location.pathname;
     window.history.pushState({ path: baseUrl }, '', baseUrl);
-    
-    // Load recordings with default settings
-    // Use a direct API call to avoid state update delays
-    recordingsAPI.loadRecordings(defaultFilters, defaultPagination, 'start_time', 'desc')
-      .then(data => {
-        // Store recordings in the component state
-        setRecordings(data.recordings || []);
-        
-        // Update pagination
-        updatePaginationFromResponse(data, 1);
-      })
-      .catch(error => {
-        console.error('Error loading recordings:', error);
-        showStatusMessage('Error loading recordings: ' + error.message);
-      });
   };
-  
+
   // Remove filter
   const removeFilter = (key) => {
     switch (key) {
@@ -458,10 +428,10 @@ export function RecordingsView() {
         }));
         break;
     }
-    
+
     applyFilters();
   };
-  
+
   // Sort by field
   const sortBy = (field) => {
     if (sortField === field) {
@@ -472,35 +442,36 @@ export function RecordingsView() {
       setSortDirection(field === 'start_time' ? 'desc' : 'asc');
       setSortField(field);
     }
-    
-    loadRecordings();
+
+    // Reset to first page
+    setPagination(prev => ({
+      ...prev,
+      currentPage: 1
+    }));
+
+    // Update URL with new sort parameters
+    urlUtils.updateUrlWithFilters(
+      filters,
+      {...pagination, currentPage: 1},
+      field,
+      field === sortField ? (sortDirection === 'asc' ? 'desc' : 'asc') : (field === 'start_time' ? 'desc' : 'asc')
+    );
   };
-  
+
   // Go to page
   const goToPage = (page) => {
     if (page < 1 || page > pagination.totalPages) return;
-    
+
     // Set the current page in pagination state
     setPagination(prev => ({
       ...prev,
       currentPage: page
     }));
-    
-    // Create a new pagination object with the updated page
-    const updatedPagination = {
-      ...pagination,
-      currentPage: page
-    };
-    
+
     // Update URL with all filters and the new page
-    urlUtils.updateUrlWithFilters(filters, updatedPagination, sortField, sortDirection);
-    
-    // Use setTimeout to ensure the pagination state is updated before loading recordings
-    setTimeout(() => {
-      loadRecordings(page, false); // Don't update URL again in loadRecordings
-    }, 0);
+    urlUtils.updateUrlWithFilters(filters, {...pagination, currentPage: page}, sortField, sortDirection);
   };
-  
+
   // Toggle selection of a recording
   const toggleRecordingSelection = (recordingId) => {
     setSelectedRecordings(prev => ({
@@ -513,7 +484,7 @@ export function RecordingsView() {
   const toggleSelectAll = () => {
     const newSelectAll = !selectAll;
     setSelectAll(newSelectAll);
-    
+
     const newSelectedRecordings = {};
     if (newSelectAll) {
       // Select all recordings
@@ -541,57 +512,71 @@ export function RecordingsView() {
     setIsDeleteModalOpen(false);
   };
 
+  // Delete selected recordings using preact-query mutation
+  const { mutate: batchDeleteMutation } = recordingsAPI.hooks.useBatchDeleteRecordings();
+
   // Handle delete confirmation
-  const handleDeleteConfirm = async () => {
+  const handleDeleteConfirm = () => {
     closeDeleteModal();
-    
-    // Save current URL parameters before deletion
-    const currentUrlParams = new URLSearchParams(window.location.search);
-    const currentSortField = currentUrlParams.get('sort') || sortField;
-    const currentSortDirection = currentUrlParams.get('order') || sortDirection;
-    const currentPage = parseInt(currentUrlParams.get('page'), 10) || pagination.currentPage;
-    
+
     if (deleteMode === 'selected') {
-      // Use the recordingsAPI to delete selected recordings
-      const result = await recordingsAPI.deleteSelectedRecordings(selectedRecordings);
-      
+      // Get selected IDs
+      const selectedIds = Object.entries(selectedRecordings)
+        .filter(([_, isSelected]) => isSelected)
+        .map(([id, _]) => parseInt(id, 10));
+
+      // Call the mutation with the selected IDs
+      batchDeleteMutation({ ids: selectedIds });
+
       // Reset selection
       setSelectedRecordings({});
       setSelectAll(false);
-      
-      // Only reload if some recordings were deleted successfully
-      if (result.succeeded > 0) {
-        // Reload recordings with preserved parameters
-        reloadRecordingsWithPreservedParams(currentSortField, currentSortDirection, currentPage);
-      }
     } else {
-      // Use the recordingsAPI to delete all filtered recordings
-      const result = await recordingsAPI.deleteAllFilteredRecordings(filters);
-      
+      // Create filter object for deleting all filtered recordings
+      const filter = {};
+
+      // Add date range filters
+      if (filters.dateRange === 'custom') {
+        filter.start = `${filters.startDate}T${filters.startTime}:00`;
+        filter.end = `${filters.endDate}T${filters.endTime}:00`;
+      } else {
+        // Convert predefined range to actual dates
+        const { start, end } = recordingsAPI.getDateRangeFromPreset(filters.dateRange);
+        filter.start = start;
+        filter.end = end;
+      }
+
+      // Add stream filter
+      if (filters.streamId !== 'all') {
+        filter.stream_name = filters.streamId;
+      }
+
+      // Add recording type filter
+      if (filters.recordingType === 'detection') {
+        filter.detection = 1;
+      }
+
+      // Call the mutation with the filter
+      batchDeleteMutation({ filter });
+
       // Reset selection
       setSelectedRecordings({});
       setSelectAll(false);
-      
-      // Only reload if some recordings were deleted successfully
-      if (result.succeeded > 0) {
-        // Reload recordings
-        loadRecordings();
-      }
     }
   };
-  
+
   // Helper function to reload recordings with preserved parameters
   const reloadRecordingsWithPreservedParams = (sortField, sortDirection, page) => {
     // Set the sort parameters directly
     setSortField(sortField);
     setSortDirection(sortDirection);
-    
+
     // Update pagination with the preserved page
     setPagination(prev => ({
       ...prev,
       currentPage: page
     }));
-    
+
     // Wait for state to update
     setTimeout(() => {
       // Create a new pagination object with the updated page
@@ -599,18 +584,18 @@ export function RecordingsView() {
         ...pagination,
         currentPage: page
       };
-      
+
       // Update URL with all filters and the preserved parameters
       urlUtils.updateUrlWithFilters(filters, updatedPagination, sortField, sortDirection);
-      
+
       // Load recordings from API
       recordingsAPI.loadRecordings(filters, updatedPagination, sortField, sortDirection)
         .then(data => {
           console.log('Recordings data received:', data);
-          
+
           // Store recordings in the component state
           setRecordings(data.recordings || []);
-          
+
           // Update pagination without changing the current page
           updatePaginationFromResponse(data, page);
         })
@@ -621,37 +606,29 @@ export function RecordingsView() {
     }, 0);
   };
 
+  // Delete recording using preact-query mutation
+  const { mutate: deleteRecordingMutation } = recordingsAPI.hooks.useDeleteRecording();
+
   // Delete a single recording
-  const deleteRecording = async (recording) => {
+  const deleteRecording = (recording) => {
     if (!confirm(`Are you sure you want to delete this recording from ${recording.stream}?`)) {
       return;
     }
-    
-    // Save current URL parameters before deletion
-    const currentUrlParams = new URLSearchParams(window.location.search);
-    const currentSortField = currentUrlParams.get('sort') || sortField;
-    const currentSortDirection = currentUrlParams.get('order') || sortDirection;
-    const currentPage = parseInt(currentUrlParams.get('page'), 10) || pagination.currentPage;
-    
-    // Delete the recording
-    const success = await recordingsAPI.deleteRecording(recording);
-    
-    if (success) {
-      // Reload recordings with preserved parameters
-      reloadRecordingsWithPreservedParams(currentSortField, currentSortDirection, currentPage);
-    }
+
+    // Call the mutation with the recording ID
+    deleteRecordingMutation(recording.id);
   };
-  
+
   // Play recording
   const playRecording = (recording) => {
     recordingsAPI.playRecording(recording, showVideoModal);
   };
-  
+
   // Download recording
   const downloadRecording = (recording) => {
     recordingsAPI.downloadRecording(recording);
   };
-  
+
   return html`
     <section id="recordings-page" class="page">
       <div class="page-header flex justify-between items-center mb-4 p-4 bg-white dark:bg-gray-800 rounded-lg shadow">
@@ -662,7 +639,7 @@ export function RecordingsView() {
             <a href="timeline.html" class="px-3 py-1 bg-gray-300 text-gray-700 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-400 dark:hover:bg-gray-600 rounded-r-md">Timeline View</a>
           </div>
         </div>
-        <button id="toggle-filters-btn" 
+        <button id="toggle-filters-btn"
                 class="p-2 rounded-full bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 focus:outline-none"
                 title="Toggle Filters"
                 onClick=${toggleFilters}>
@@ -671,7 +648,7 @@ export function RecordingsView() {
           </svg>
         </button>
       </div>
-      
+
       <div class="recordings-layout flex flex-col md:flex-row gap-4 w-full">
         <!-- Sidebar for filters -->
         <${FiltersSidebar}
@@ -686,7 +663,7 @@ export function RecordingsView() {
           handleDateRangeChange=${handleDateRangeChange}
           setDefaultDateRange=${setDefaultDateRange}
         />
-        
+
         <!-- Main content area -->
         <div class="recordings-content flex-1">
           <${ActiveFilters}
@@ -694,9 +671,9 @@ export function RecordingsView() {
             removeFilter=${removeFilter}
             hasActiveFilters=${hasActiveFilters}
           />
-          
+
           <${ContentLoader}
-            isLoading=${isLoading}
+            isLoading=${isLoadingRecordings}
             hasData=${hasData}
             loadingMessage="Loading recordings..."
             emptyMessage="No recordings found matching your criteria"
@@ -718,7 +695,7 @@ export function RecordingsView() {
               recordingsTableBodyRef=${recordingsTableBodyRef}
               pagination=${pagination}
             />
-            
+
             <${PaginationControls}
               pagination=${pagination}
               goToPage=${goToPage}
@@ -726,7 +703,7 @@ export function RecordingsView() {
           <//>
         </div>
       </div>
-      
+
       <${DeleteConfirmationModal}
         isOpen=${isDeleteModalOpen}
         onClose=${closeDeleteModal}
@@ -744,12 +721,12 @@ export function RecordingsView() {
 export function loadRecordingsView() {
   const mainContent = document.getElementById('main-content');
   if (!mainContent) return;
-  
+
   // Render the RecordingsView component to the container
   import('preact').then(({ render }) => {
     import('../../query-client.js').then(({ QueryClientProvider, queryClient }) => {
       render(
-        html`<${QueryClientProvider} client=${queryClient}><${RecordingsView} /></${QueryClientProvider}>`, 
+        html`<${QueryClientProvider} client=${queryClient}><${RecordingsView} /></${QueryClientProvider}>`,
         mainContent
       );
     });
