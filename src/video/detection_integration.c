@@ -120,9 +120,6 @@ void cleanup_detection_resources(void) {
         active_detections = 0;
     }
 
-    // Cleanup buffer pool
-    cleanup_buffer_pool();
-
     // Shutdown the stream detection system
     shutdown_stream_detection_system();
     log_info("Stream detection system shutdown");
@@ -138,12 +135,7 @@ void cleanup_detection_resources(void) {
     
     // Shutdown the API detection system
     shutdown_api_detection_system();
-    log_info("API detection system shutdown");
-
-    // Explicitly call memory cleanup for any remaining buffers
-    emergency_buffer_pool_cleanup();
-
-    log_info("Detection resources cleaned up successfully");
+    log_info("API detection system has shutdown");
 }
 
 /**

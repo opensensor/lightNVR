@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -392,7 +393,7 @@ int process_segment_for_detection(stream_detection_thread_t *thread, const char 
     AVRational frame_rate = av_guess_frame_rate(format_ctx, format_ctx->streams[video_stream_idx], NULL);
     if (frame_rate.num > 0 && frame_rate.den > 0) {
         frames_per_second = (double)frame_rate.num / frame_rate.den;
-        log_info("[Stream %s] Using stream frame rate: %.2f fps", 
+        log_info("[Stream %s] Using stream frame rate: %.2f fps",
                  thread->stream_name, frames_per_second);
     } else {
         // Use a reasonable default if we can't get the frame rate
@@ -1083,9 +1084,34 @@ void shutdown_stream_detection_system(void) {
                 log_info("Model cleanup completed during shutdown for stream %s", stream_threads[i].stream_name);
             }
 
-            // Now stop the thread
+            // CRITICAL FIX: Improved thread stopping process
+            // First signal the thread to stop
             stream_threads[i].running = false;
+
+            // Signal the condition variable to wake up the thread if it's waiting
+            pthread_mutex_lock(&stream_threads[i].mutex);
+            pthread_cond_signal(&stream_threads[i].cond);
+            pthread_mutex_unlock(&stream_threads[i].mutex);
+
+            // Add a small delay to allow the thread to start its shutdown process
+            usleep(10000); // 10ms
+
+            // Now join the thread with a timeout to prevent hanging
+            struct timespec timeout;
+            clock_gettime(CLOCK_REALTIME, &timeout);
+            timeout.tv_sec += 5; // 5 second timeout
+
+            #if defined(__linux__) && defined(_GNU_SOURCE)
+            int join_result = pthread_timedjoin_np(stream_threads[i].thread, NULL, &timeout);
+            if (join_result != 0) {
+                log_warn("Failed to join detection thread for stream %s within timeout: %s",
+                        stream_threads[i].stream_name, strerror(join_result));
+                // Continue anyway - we'll clean up resources
+            }
+            #else
+            // Regular join as fallback
             pthread_join(stream_threads[i].thread, NULL);
+            #endif
 
             // Cleanup resources
             pthread_mutex_destroy(&stream_threads[i].mutex);

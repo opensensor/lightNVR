@@ -749,11 +749,24 @@ void *hls_unified_thread_func(void *arg) {
         log_debug("Cleaning up HLS writer for stream %s", stream_name);
     }
 
-    // Clean up all resources in one call with safety checks
-    safe_cleanup_resources(&input_ctx, &pkt, ctx ? &ctx->writer : NULL);
+    // CRITICAL FIX: Add memory barrier before cleanup to ensure all threads see consistent state
+    __sync_synchronize();
+
+    // Make local copies of pointers to prevent race conditions during cleanup
+    AVFormatContext *input_ctx_local = input_ctx;
+    AVPacket *pkt_local = pkt;
+    hls_writer_t *writer_local = ctx ? ctx->writer : NULL;
+
+    // Clear original pointers immediately to prevent double-free
+    input_ctx = NULL;
+    pkt = NULL;
+    if (ctx) ctx->writer = NULL;
+
+    // Clean up all resources using local copies
+    safe_cleanup_resources(&input_ctx_local, &pkt_local, &writer_local);
 
     // Update component state in shutdown coordinator
-    if (ctx->shutdown_component_id >= 0) {
+    if (ctx && ctx->shutdown_component_id >= 0) {
         update_component_state(ctx->shutdown_component_id, COMPONENT_STOPPED);
         log_info("Updated unified HLS thread %s state to STOPPED in shutdown coordinator", stream_name);
     }
