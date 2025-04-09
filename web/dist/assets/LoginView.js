@@ -19,13 +19,17 @@ export function LoginView() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   
-  // Check URL for error or auth_required parameter
+  // Check URL for error, auth_required, or logout parameter
   useState(() => {
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.has('error')) {
       setErrorMessage('Invalid username or password');
+    } else if (urlParams.has('auth_required') && urlParams.has('logout')) {
+      setErrorMessage('You have been successfully logged out.');
     } else if (urlParams.has('auth_required')) {
       setErrorMessage('Authentication required. Please log in to continue.');
+    } else if (urlParams.has('logout')) {
+      setErrorMessage('You have been successfully logged out.');
     }
   }, []);
   
@@ -111,7 +115,11 @@ export function LoginView() {
         </div>
         
         ${errorMessage && html`
-          <div class="mb-4 p-3 bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200 rounded-lg">
+          <div class=${`mb-4 p-3 rounded-lg ${
+            errorMessage.includes('successfully logged out') 
+              ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200' 
+              : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200'
+          }`}>
             ${errorMessage}
           </div>
         `}

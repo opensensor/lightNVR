@@ -189,6 +189,9 @@ int process_frame_for_stream_detection(const char *stream_name, const uint8_t *f
     return 0;
 }
 
+
+// Forward declarations for functions from other modules
+
 /**
  * Process an HLS segment file for detection
  */
@@ -199,6 +202,7 @@ int process_segment_for_detection(stream_detection_thread_t *thread, const char 
         return -1;
     }
 
+    // CRITICAL FIX: Initialize all pointers to NULL to prevent use-after-free and double-free issues
     AVFormatContext *format_ctx = NULL;
     AVCodecContext *codec_ctx = NULL;
     AVFrame *frame = NULL;
@@ -232,6 +236,10 @@ int process_segment_for_detection(stream_detection_thread_t *thread, const char 
         return 0;
     }
 
+    // CRITICAL FIX: Initialize format_ctx to NULL before calling avformat_open_input
+    // This prevents potential double-free issues if avformat_open_input fails
+    format_ctx = NULL;
+
     // Open input file with safety checks
     int open_result = avformat_open_input(&format_ctx, segment_path, NULL, NULL);
     if (open_result != 0) {
@@ -239,9 +247,20 @@ int process_segment_for_detection(stream_detection_thread_t *thread, const char 
         av_strerror(open_result, err_buf, sizeof(err_buf));
         log_error("[Stream %s] Could not open segment file: %s (error: %s)",
                  thread->stream_name, segment_path, err_buf);
+
+        // CRITICAL FIX: Ensure format_ctx is properly cleaned up if avformat_open_input fails
+        // This prevents memory leaks and segmentation faults
+        if (format_ctx) {
+            avformat_close_input(&format_ctx);
+            format_ctx = NULL;
+        }
+
         log_info("[Stream %s] Continuing detection thread despite failure to open segment", thread->stream_name);
+        // No cleanup handler to pop
         return 0;
     }
+
+    // Format context is now allocated
 
     // CRITICAL FIX: Verify that format_ctx is valid
     if (!format_ctx) {
@@ -315,8 +334,11 @@ int process_segment_for_detection(stream_detection_thread_t *thread, const char 
                  thread->stream_name, segment_path);
         safe_avformat_cleanup(&format_ctx); // Use our safe cleanup function
         log_info("[Stream %s] Continuing detection thread despite failure to allocate codec context", thread->stream_name);
+        // No cleanup handler to pop
         return 0;
     }
+
+    // Codec context is now allocated
 
     // Copy codec parameters with safety checks
     int copy_params_result = avcodec_parameters_to_context(codec_ctx, format_ctx->streams[video_stream_idx]->codecpar);
@@ -352,8 +374,11 @@ int process_segment_for_detection(stream_detection_thread_t *thread, const char 
         avcodec_free_context(&codec_ctx);
         safe_avformat_cleanup(&format_ctx); // Use our safe cleanup function
         log_info("[Stream %s] Continuing detection thread despite failure to allocate frame", thread->stream_name);
+        // No cleanup handler to pop
         return 0;
     }
+
+    // Frame is now allocated
 
     pkt = av_packet_alloc();
     if (!pkt) {
@@ -363,8 +388,11 @@ int process_segment_for_detection(stream_detection_thread_t *thread, const char 
         avcodec_free_context(&codec_ctx);
         safe_avformat_cleanup(&format_ctx); // Use our safe cleanup function
         log_info("[Stream %s] Continuing detection thread despite failure to allocate packet", thread->stream_name);
+        // No cleanup handler to pop
         return 0;
     }
+
+    // Packet is now allocated
 
     // Initialize frame_count at the beginning of the function
     int frame_count = 0;
@@ -550,6 +578,8 @@ int process_segment_for_detection(stream_detection_thread_t *thread, const char 
                         continue;
                     }
 
+                    // SwsContext is now allocated
+
                     // Allocate buffer for RGB frame
                     uint8_t *rgb_buffer = (uint8_t *)malloc(target_width * target_height * channels);
                     if (!rgb_buffer) {
@@ -706,6 +736,8 @@ int process_segment_for_detection(stream_detection_thread_t *thread, const char 
     }
 
     log_debug("[Stream %s] Completed comprehensive cleanup of FFmpeg resources", thread->stream_name);
+
+    // No cleanup handler to pop
 
     return 0;
 }
@@ -1367,23 +1399,3 @@ int get_stream_detection_status(const char *stream_name, bool *has_thread,
     return -1;
 }
 
-static void cleanup_detection_resources(void *p) {
-    struct {
-        AVFormatContext *format_ctx;
-        AVCodecContext *codec_ctx;
-        AVFrame *frame;
-        AVPacket *pkt;
-        struct SwsContext *sws_ctx;
-    } *cleanup = p;
-
-    if (cleanup->sws_ctx)
-        sws_freeContext(cleanup->sws_ctx);
-    if (cleanup->frame)
-        av_frame_free(&cleanup->frame);
-    if (cleanup->pkt)
-        av_packet_free(&cleanup->pkt);
-    if (cleanup->codec_ctx)
-        avcodec_free_context(&cleanup->codec_ctx);
-    if (cleanup->format_ctx)
-        avformat_close_input(&cleanup->format_ctx);
-}

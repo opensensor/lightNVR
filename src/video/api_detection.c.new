@@ -1,0 +1,25 @@
+// CRITICAL FIX: Add additional validation for width, height, and channels to prevent floating point exceptions
+// Check for valid dimensions that won't cause arithmetic errors
+if (width <= 0 || width > 8192 || height <= 0 || height > 8192) {
+    log_error("API Detection: Invalid image dimensions: %dx%d (must be positive and <= 8192)", width, height);
+    remove(temp_filename);
+    pthread_mutex_unlock(&curl_mutex);
+    return -1;
+}
+
+// Check for valid channel count
+if (channels != 1 && channels != 3 && channels != 4) {
+    log_error("API Detection: Invalid channel count: %d (must be 1, 3, or 4)", channels);
+    remove(temp_filename);
+    pthread_mutex_unlock(&curl_mutex);
+    return -1;
+}
+
+// CRITICAL FIX: Verify that the raw data size is correct to prevent buffer overflows
+size_t expected_size = width * height * channels;
+if (expected_size == 0 || expected_size > 100000000) { // 100MB sanity check
+    log_error("API Detection: Invalid data size: %zu bytes", expected_size);
+    remove(temp_filename);
+    pthread_mutex_unlock(&curl_mutex);
+    return -1;
+}

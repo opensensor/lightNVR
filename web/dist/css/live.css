@@ -27,6 +27,11 @@
     grid-auto-rows: 1fr;
 }
 
+/* Ensure both streams are visible in fullscreen mode for layout-2 */
+.fullscreen-mode .video-container.layout-2 {
+    grid-template-columns: repeat(2, 1fr);
+}
+
 .video-container.layout-4 {
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 450px), 1fr));
     grid-auto-rows: 1fr;

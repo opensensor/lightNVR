@@ -957,7 +957,7 @@ const takeSnapshot = (streamId) => {
   };
 
   return html`
-    <section id="live-page" class="page">
+    <section id="live-page" class="page ${isFullscreen ? 'fullscreen-mode' : ''}">
       <div class="page-header flex justify-between items-center mb-4 p-4 bg-white dark:bg-gray-800 rounded-lg shadow">
         <div class="flex items-center space-x-2">
           <h2 class="text-xl font-bold mr-4">Live View</h2>

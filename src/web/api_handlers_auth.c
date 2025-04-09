@@ -174,10 +174,10 @@ void mg_handle_auth_logout(struct mg_connection *c, struct mg_http_message *hm) 
         // For API requests, return a JSON success response
         cJSON *response = cJSON_CreateObject();
         cJSON_AddBoolToObject(response, "success", 1);
-        cJSON_AddStringToObject(response, "redirect", "/login.html");
+        cJSON_AddStringToObject(response, "redirect", "/login.html?auth_required=true&logout=true");
         
         // Send JSON response with cleared cookies
-        mg_printf(c, "HTTP/1.1 200 OK\r\n");
+        mg_printf(c, "HTTP/1.1 401 Unauthorized\r\n");  // Use 401 to help clear browser auth cache
         mg_printf(c, "Content-Type: application/json\r\n");
         mg_printf(c, "Set-Cookie: auth=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict\r\n");
         mg_printf(c, "Set-Cookie: session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict\r\n");
@@ -198,7 +198,7 @@ void mg_handle_auth_logout(struct mg_connection *c, struct mg_http_message *hm) 
     } else {
         // For form submissions, send a redirect response
         mg_printf(c, "HTTP/1.1 302 Found\r\n"
-                "Location: /login.html\r\n"
+                "Location: /login.html?auth_required=true&logout=true\r\n"
                 "Set-Cookie: auth=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict\r\n"
                 "Set-Cookie: session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict\r\n"
                 // Add WWW-Authenticate header with an invalid realm to clear browser's auth cache

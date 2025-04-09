@@ -387,6 +387,10 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
     av_dict_set(&input_options, "analyzeduration", "10000000", 0); // 10 seconds (increased from default)
     av_dict_set(&input_options, "probesize", "10000000", 0); // 10MB (increased from default 5MB)
 
+    // CRITICAL FIX: Ensure local_ctx is NULL before calling avformat_open_input
+    // This prevents potential double-free issues if avformat_open_input fails
+    local_ctx = NULL;
+
     // Open the input stream
     ret = avformat_open_input(&local_ctx, url, NULL, &input_options);
 
@@ -421,8 +425,12 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
             // The function already sets the pointer to NULL
         }
 
-        // Ensure the output parameter is set to NULL to prevent use-after-free
-        *input_ctx = NULL;
+        // CRITICAL FIX: Always ensure the output parameter is set to NULL to prevent use-after-free
+        // This is essential for preventing segmentation faults during shutdown
+        if (input_ctx) {
+            *input_ctx = NULL;
+            log_debug("Set input_ctx to NULL after failed connection to prevent segmentation fault");
+        }
 
         return ret;
     }
@@ -444,24 +452,68 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
     ret = avformat_find_stream_info(*input_ctx, NULL);
     if (ret < 0) {
         log_ffmpeg_error(ret, "Could not find stream info");
-        avformat_close_input(input_ctx);
+
+        // CRITICAL FIX: Use comprehensive cleanup instead of just avformat_close_input
+        // This ensures all resources are properly freed, preventing memory leaks
+        AVFormatContext *ctx_to_cleanup = *input_ctx;
+        *input_ctx = NULL; // Clear the pointer first to prevent use-after-free
+
+        // Use our comprehensive cleanup function
+        comprehensive_ffmpeg_cleanup(&ctx_to_cleanup, NULL, NULL, NULL);
+
+        log_debug("Comprehensive cleanup completed after find_stream_info failure");
         return ret;
     }
 
-    // Log successful stream opening
+    // Log successful stream opening with safety checks
     if (*input_ctx && (*input_ctx)->nb_streams > 0) {
-        log_info("Successfully opened input stream: %s with %d streams",
-                url, (*input_ctx)->nb_streams);
+        // CRITICAL FIX: Sanitize the URL before logging to prevent displaying non-printable characters
+        // This prevents potential issues with corrupted stream names
+        char sanitized_url[1024] = {0};
+        size_t i;
 
-        // Log information about detected streams
+        // Copy and sanitize the URL
+        for (i = 0; i < sizeof(sanitized_url) - 1 && url[i] != '\0'; i++) {
+            // Check if character is printable (ASCII 32-126 plus tab and newline)
+            if ((url[i] >= 32 && url[i] <= 126) || url[i] == '\t' || url[i] == '\n') {
+                sanitized_url[i] = url[i];
+            } else {
+                sanitized_url[i] = '?'; // Replace non-printable characters
+            }
+        }
+        sanitized_url[i] = '\0'; // Ensure null termination
+
+        log_info("Successfully opened input stream: %s with %d streams",
+                sanitized_url, (*input_ctx)->nb_streams);
+
+        // Log information about detected streams with safety checks
         for (unsigned int i = 0; i < (*input_ctx)->nb_streams; i++) {
+            // CRITICAL FIX: Add safety checks to prevent segmentation faults
+            if (!(*input_ctx)->streams[i]) {
+                log_warn("Stream %d is NULL, skipping", i);
+                continue;
+            }
+
             AVStream *stream = (*input_ctx)->streams[i];
+
+            // CRITICAL FIX: Check if codecpar is valid
+            if (!stream->codecpar) {
+                log_warn("Stream %d has NULL codecpar, skipping", i);
+                continue;
+            }
+
             if (stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
                 log_info("Stream %d: Video stream detected (codec: %d, width: %d, height: %d)",
                         i, stream->codecpar->codec_id, stream->codecpar->width, stream->codecpar->height);
             } else if (stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
-                log_info("Stream %d: Audio stream detected (codec: %d, channels: %d, sample_rate: %d)",
-                        i, stream->codecpar->codec_id, stream->codecpar->ch_layout.nb_channels, stream->codecpar->sample_rate);
+                // CRITICAL FIX: Use the correct field for channels based on FFmpeg version
+                #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
+                    log_info("Stream %d: Audio stream detected (codec: %d, channels: %d, sample_rate: %d)",
+                            i, stream->codecpar->codec_id, stream->codecpar->ch_layout.nb_channels, stream->codecpar->sample_rate);
+                #else
+                    log_info("Stream %d: Audio stream detected (codec: %d, channels: %d, sample_rate: %d)",
+                            i, stream->codecpar->codec_id, stream->codecpar->channels, stream->codecpar->sample_rate);
+                #endif
             } else {
                 log_info("Stream %d: Other stream type detected (type: %d)",
                         i, stream->codecpar->codec_type);

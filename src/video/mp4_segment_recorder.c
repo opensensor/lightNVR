@@ -1076,17 +1076,28 @@ cleanup:
         // CRITICAL FIX: Check if input_ctx is NULL before trying to access it
         // This prevents segmentation fault when RTSP connection fails
         if (input_ctx) {
-            // Clean up all streams before closing
-            for (unsigned int i = 0; i < input_ctx->nb_streams; i++) {
-                if (input_ctx->streams[i]) {
-                    // Free any codec parameters
-                    if (input_ctx->streams[i]->codecpar) {
-                        avcodec_parameters_free(&input_ctx->streams[i]->codecpar);
+            // CRITICAL FIX: Use a safer approach to clean up FFmpeg resources
+            // First check if the context is valid and has streams
+            if (input_ctx->nb_streams > 0) {
+                // Clean up all streams before closing
+                for (unsigned int i = 0; i < input_ctx->nb_streams; i++) {
+                    if (input_ctx->streams && input_ctx->streams[i]) {
+                        // Free any codec parameters
+                        if (input_ctx->streams[i]->codecpar) {
+                            avcodec_parameters_free(&input_ctx->streams[i]->codecpar);
+                        }
                     }
                 }
             }
 
+            // Flush any pending data
+            if (input_ctx->pb) {
+                avio_flush(input_ctx->pb);
+            }
+
+            // Close the input context
             avformat_close_input(&input_ctx);
+            input_ctx = NULL;  // Ensure the pointer is NULL after closing
         } else {
             log_debug("Input context is NULL, nothing to clean up");
         }

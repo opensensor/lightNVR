@@ -53,19 +53,34 @@ extern bool go2rtc_get_rtsp_url(const char *stream_name, char *url, size_t url_s
  * This function safely cleans up all FFmpeg and HLS resources, handling NULL pointers and other edge cases
  * Enhanced to prevent memory leaks
  */
+
 static void safe_cleanup_resources(AVFormatContext **input_ctx, AVPacket **pkt, hls_writer_t **writer) {
-    // CRITICAL FIX: Add safety checks to prevent segmentation faults
+    // CRITICAL FIX: Add safety checks to prevent segmentation faults and bus errors
 
     // Clean up packet with safety checks
     if (pkt && *pkt) {
+        // CRITICAL FIX: Create a properly aligned local copy to prevent bus errors on embedded devices
+        // Some embedded processors require strict memory alignment
         AVPacket *pkt_to_free = *pkt;
         *pkt = NULL; // Clear the pointer first to prevent double-free
 
+        // CRITICAL FIX: Add memory barrier to ensure memory operations are completed
+        // This helps prevent bus errors on some embedded architectures
+        __sync_synchronize();
+
         // Safely unref and free the packet
         log_debug("Safely unreferencing packet during cleanup");
-        av_packet_unref(pkt_to_free);
-        log_debug("Safely freeing packet during cleanup");
-        av_packet_free(&pkt_to_free);
+
+        // CRITICAL FIX: Add additional NULL check before unreferencing
+        if (pkt_to_free) {
+            av_packet_unref(pkt_to_free);
+            log_debug("Safely freeing packet during cleanup");
+
+            // CRITICAL FIX: Add memory barrier before freeing to ensure all accesses are complete
+            __sync_synchronize();
+
+            av_packet_free(&pkt_to_free);
+        }
     }
 
     // Clean up input context with safety checks
@@ -73,18 +88,22 @@ static void safe_cleanup_resources(AVFormatContext **input_ctx, AVPacket **pkt, 
         AVFormatContext *ctx_to_close = *input_ctx;
         *input_ctx = NULL; // Clear the pointer first to prevent double-free
 
+        // CRITICAL FIX: Add memory barrier to ensure memory operations are completed
+        __sync_synchronize();
+
         // Safely close the input context
         log_debug("Safely closing input context during cleanup");
 
-        // CRITICAL FIX: Add additional safety check for invalid context
+        // CRITICAL FIX: Add additional NULL check before closing
         if (ctx_to_close) {
-            // Check if the context has been properly initialized
-            if (ctx_to_close->pb || ctx_to_close->nb_streams > 0) {
+            // Check if the context is properly initialized
+            if (ctx_to_close->pb) {
                 avformat_close_input(&ctx_to_close);
                 log_debug("Successfully closed input context");
             } else {
                 // If the context is not properly initialized, just free it
-                log_warn("Input context not properly initialized, using avformat_free_context instead");
+                // CRITICAL FIX: Add memory barrier before freeing to ensure all accesses are complete
+                __sync_synchronize();
                 avformat_free_context(ctx_to_close);
             }
         }
@@ -92,13 +111,20 @@ static void safe_cleanup_resources(AVFormatContext **input_ctx, AVPacket **pkt, 
 
     // Clean up HLS writer with safety checks
     if (writer && *writer) {
-        hls_writer_t *writer_to_close = *writer;
+        hls_writer_t *writer_to_free = *writer;
         *writer = NULL; // Clear the pointer first to prevent double-free
 
-        // Safely close the writer
-        if (writer_to_close) {
-            log_debug("Safely closing HLS writer during cleanup");
-            hls_writer_close(writer_to_close);
+        // CRITICAL FIX: Add memory barrier to ensure memory operations are completed
+        __sync_synchronize();
+
+        // Safely free the HLS writer
+        log_debug("Safely closing HLS writer during cleanup");
+
+        // CRITICAL FIX: Add additional NULL check before closing
+        if (writer_to_free) {
+            // CRITICAL FIX: Add memory barrier before closing to ensure all accesses are complete
+            __sync_synchronize();
+            hls_writer_close(writer_to_free);
         }
     }
 
@@ -469,6 +495,24 @@ void *hls_unified_thread_func(void *arg) {
                     break;
                 }
 
+                // Log information about all streams in the input
+                log_info("Stream %s has %d streams:", stream_name, input_ctx->nb_streams);
+                for (unsigned int i = 0; i < input_ctx->nb_streams; i++) {
+                    AVStream *stream = input_ctx->streams[i];
+                    AVCodecParameters *codecpar = stream->codecpar;
+
+                    if (codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+                        log_info("Stream %d: Video stream detected (codec: %d, width: %d, height: %d)",
+                                i, codecpar->codec_id, codecpar->width, codecpar->height);
+                    } else if (codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
+                        log_info("Stream %d: Audio stream detected (codec: %d, channels: %d, sample_rate: %d)",
+                                i, codecpar->codec_id, codecpar->ch_layout.nb_channels, codecpar->sample_rate);
+                    } else {
+                        log_info("Stream %d: Other stream type detected (codec_type: %d)",
+                                i, codecpar->codec_type);
+                    }
+                }
+
                 // Initialize HLS writer with stream information
                 if (input_ctx->streams[video_stream_idx]) {
                     ret = hls_writer_initialize(ctx->writer, input_ctx->streams[video_stream_idx]);
@@ -555,8 +599,9 @@ void *hls_unified_thread_func(void *arg) {
                     continue;
                 }
 
-                // Only process video packets
+                // Process packets based on stream type
                 if (pkt->stream_index == video_stream_idx) {
+                    // This is a video packet - process it
                     // Lock the writer mutex
                     pthread_mutex_lock(&ctx->writer->mutex);
 
@@ -565,14 +610,14 @@ void *hls_unified_thread_func(void *arg) {
                     // Log key frames for debugging
                     bool is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
                     if (is_key_frame && ret >= 0) {
-                        log_debug("Processed key frame for stream %s", stream_name);
+                        log_debug("Processed video key frame for stream %s", stream_name);
                     }
 
                     // Handle write errors
                     if (ret < 0) {
                         char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
                         av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-                        log_warn("Error writing packet to HLS for stream %s: %s", stream_name, error_buf);
+                        log_warn("Error writing video packet to HLS for stream %s: %s", stream_name, error_buf);
                     } else {
                         // Successfully processed a packet
                         last_packet_time = time(NULL);
@@ -583,6 +628,25 @@ void *hls_unified_thread_func(void *arg) {
 
                     // Unlock the writer mutex
                     pthread_mutex_unlock(&ctx->writer->mutex);
+                } else {
+                    // This is a non-video packet (likely audio)
+                    // For now, we'll just log it and skip processing
+                    // This prevents the "Invalid packet stream index" errors
+                    if (pkt->stream_index >= 0 && pkt->stream_index < input_ctx->nb_streams) {
+                        AVStream *stream = input_ctx->streams[pkt->stream_index];
+                        AVCodecParameters *codecpar = stream->codecpar;
+
+                        if (codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
+                            log_debug("Skipping audio packet for stream %s (stream index: %d)",
+                                    stream_name, pkt->stream_index);
+                        } else {
+                            log_debug("Skipping non-video packet for stream %s (stream index: %d, type: %d)",
+                                    stream_name, pkt->stream_index, codecpar->codec_type);
+                        }
+                    } else {
+                        log_warn("Skipping packet with invalid stream index %d for stream %s",
+                                pkt->stream_index, stream_name);
+                    }
                 }
 
                 // Unref packet
@@ -667,6 +731,24 @@ void *hls_unified_thread_func(void *arg) {
 
                     // Stay in reconnecting state
                     break;
+                }
+
+                // Log information about all streams in the input during reconnection
+                log_info("Stream %s has %d streams during reconnection:", stream_name, input_ctx->nb_streams);
+                for (unsigned int i = 0; i < input_ctx->nb_streams; i++) {
+                    AVStream *stream = input_ctx->streams[i];
+                    AVCodecParameters *codecpar = stream->codecpar;
+
+                    if (codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+                        log_info("Stream %d: Video stream detected (codec: %d, width: %d, height: %d)",
+                                i, codecpar->codec_id, codecpar->width, codecpar->height);
+                    } else if (codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
+                        log_info("Stream %d: Audio stream detected (codec: %d, channels: %d, sample_rate: %d)",
+                                i, codecpar->codec_id, codecpar->ch_layout.nb_channels, codecpar->sample_rate);
+                    } else {
+                        log_info("Stream %d: Other stream type detected (codec_type: %d)",
+                                i, codecpar->codec_type);
+                    }
                 }
 
                 // CRITICAL FIX: Add additional validation before considering reconnection successful

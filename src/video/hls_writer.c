@@ -593,15 +593,33 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
                 // Calculate a reasonable increment based on the stream's framerate if available
                 int64_t increment = 1;
 
+                // CRITICAL FIX: Add additional safety checks to prevent division by zero
                 if (input_stream->avg_frame_rate.num > 0 && input_stream->avg_frame_rate.den > 0 &&
                     input_stream->time_base.num > 0 && input_stream->time_base.den > 0) {
+
                     // Calculate frame duration in stream timebase units
                     AVRational tb = input_stream->time_base;
                     AVRational fr = input_stream->avg_frame_rate;
-                    increment = av_rescale_q(1, av_inv_q(fr), tb);
 
-                    // Ensure increment is at least 1
-                    if (increment < 1) increment = 1;
+                    // CRITICAL FIX: Check for potential division by zero in av_inv_q
+                    if (fr.num > 0) {
+                        // Safely invert the frame rate
+                        AVRational inv_fr = av_make_q(fr.den, fr.num);
+
+                        // Only proceed if the inverted frame rate is valid
+                        if (inv_fr.num > 0 && inv_fr.den > 0 && tb.den > 0) {
+                            increment = av_rescale_q(1, inv_fr, tb);
+
+                            // Ensure increment is at least 1
+                            if (increment < 1) increment = 1;
+                        } else {
+                            log_warn("Invalid inverted frame rate or timebase for stream %s, using default increment",
+                                   writer->stream_name);
+                        }
+                    } else {
+                        log_warn("Cannot invert frame rate with zero numerator for stream %s",
+                               writer->stream_name);
+                    }
                 }
 
                 out_pkt.dts = dts_tracker->last_dts + increment;
@@ -644,7 +662,7 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
             // Fix backwards DTS
             int64_t fixed_dts = dts_tracker->last_dts + 1;
             int64_t pts_dts_diff = 0;
-            
+
             // Safely calculate PTS-DTS difference to avoid arithmetic exceptions
             if (out_pkt.pts != AV_NOPTS_VALUE && out_pkt.dts != AV_NOPTS_VALUE) {
                 pts_dts_diff = out_pkt.pts - out_pkt.dts;
@@ -762,7 +780,7 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
             dts_tracker->initialized = 0;
             dts_tracker->last_dts = 0;
             // No dts_step member in the struct, so we don't modify it
-            
+
             // For invalid data errors, return 0 instead of the error code
             // This allows the stream processing to continue despite occasional bad packets
             if (strstr(error_buf, "Invalid data found when processing input") != NULL) {

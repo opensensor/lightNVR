@@ -8,18 +8,41 @@
     <script>
         // Redirect to index.html if already authenticated
         document.addEventListener('DOMContentLoaded', function() {
-            // Check if we're being redirected due to auth requirements
+            // Check URL parameters
             const urlParams = new URLSearchParams(window.location.search);
             const authRequired = urlParams.has('auth_required');
+            const logoutRequested = urlParams.has('logout');
             
-            // If auth is required, don't auto-redirect even if we have credentials
-            // This prevents redirect loops when credentials are invalid
-            if (authRequired) {
-                console.log('Auth required, staying on login page');
+            // If auth is required or logout was requested, don't auto-redirect even if we have credentials
+            // This prevents redirect loops when credentials are invalid or after logout
+            if (authRequired || logoutRequested) {
+                console.log('Auth required or logout requested, staying on login page');
                 // Clear any potentially invalid credentials
                 localStorage.removeItem('auth');
                 document.cookie = "auth=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict";
                 document.cookie = "session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict";
+                
+                // For Chrome, we need to make a request with invalid credentials to clear the auth cache
+                if (logoutRequested) {
+                    console.log('Attempting to clear browser auth cache');
+                    // Create an iframe to make a request with invalid credentials
+                    const iframe = document.createElement('iframe');
+                    iframe.style.display = 'none';
+                    document.body.appendChild(iframe);
+                    
+                    // Try to load a protected resource with invalid credentials in the iframe
+                    if (iframe.contentWindow) {
+                        iframe.contentWindow.location.href = '/api/auth/verify';
+                        
+                        // Remove the iframe after a short delay
+                        setTimeout(() => {
+                            if (document.body.contains(iframe)) {
+                                document.body.removeChild(iframe);
+                            }
+                        }, 1000);
+                    }
+                }
+                
                 return;
             }
             
@@ -41,8 +64,8 @@
             }
         });
     </script>
-  <script type="module" crossorigin src="./assets/login-DIpDyT5q.js"></script>
-  <link rel="modulepreload" crossorigin href="./assets/preact-app-BK3T3Wjb.js">
+  <script type="module" crossorigin src="./assets/login-DeaHBE6N.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/preact-app-rsOoHNHv.js">
   <link rel="stylesheet" crossorigin href="./css/preact-app.css">
   <link rel="stylesheet" crossorigin href="./css/layout.css">
   <script type="module">import.meta.url;import("_").catch(()=>1);(async function*(){})().next();if(location.protocol!="file:"){window.__vite_is_modern_browser=true}</script>
@@ -77,6 +100,6 @@
 </script>
   <script nomodule>!function(){var e=document,t=e.createElement("script");if(!("noModule"in t)&&"onbeforeload"in t){var n=!1;e.addEventListener("beforeload",(function(e){if(e.target===t)n=!0;else if(!e.target.hasAttribute("nomodule")||!n)return;e.preventDefault()}),!0),t.type="module",t.src=".",e.head.appendChild(t),t.remove()}}();</script>
   <script nomodule crossorigin id="vite-legacy-polyfill" src="./assets/polyfills-legacy-BXW9S1Mc.js"></script>
-  <script nomodule crossorigin id="vite-legacy-entry" data-src="./assets/login-legacy-BeM8KxWv.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>
+  <script nomodule crossorigin id="vite-legacy-entry" data-src="./assets/login-legacy-Cpk1rF8M.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>
 </body>
 </html>

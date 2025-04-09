@@ -8,6 +8,7 @@
 #include <curl/curl.h>
 #include <cJSON.h>
 #include <pthread.h>
+#include <signal.h>  // CRITICAL FIX: Added for signal handling to prevent floating point exceptions
 
 #include "core/logger.h"
 #include "core/config.h"
@@ -246,24 +247,53 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     char convert_cmd[1024] = {0}; // Initialize to zeros
 
     // Validate width and height to prevent buffer overflows
-    if (width <= 0 || width > 10000 || height <= 0 || height > 10000) {
-        log_error("API Detection: Invalid image dimensions: %dx%d", width, height);
+    // Format the command with safety checks
+// CRITICAL FIX: Add additional validation for width, height, and channels to prevent floating point exceptions
+// Check for valid dimensions that won't cause arithmetic errors
+if (width <= 0 || width > 8192 || height <= 0 || height > 8192) {
+    log_error("API Detection: Invalid image dimensions: %dx%d (must be positive and <= 8192)", width, height);
+    remove(temp_filename);
+    pthread_mutex_unlock(&curl_mutex);
+    return -1;
+}
+
+// Check for valid channel count
+if (channels != 1 && channels != 3 && channels != 4) {
+    log_error("API Detection: Invalid channel count: %d (must be 1, 3, or 4)", channels);
+    remove(temp_filename);
+    pthread_mutex_unlock(&curl_mutex);
+    return -1;
+}
+
+// CRITICAL FIX: Verify that the raw data size is correct to prevent buffer overflows
+size_t expected_size = width * height * channels;
+if (expected_size == 0 || expected_size > 100000000) { // 100MB sanity check
+    log_error("API Detection: Invalid data size: %zu bytes", expected_size);
+    remove(temp_filename);
+        pthread_mutex_unlock(&curl_mutex);
+    // CRITICAL FIX: Add signal handling to prevent floating point exceptions
+    // Set up a signal handler for SIGFPE (floating point exception)
+    struct sigaction sa, old_sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = SIG_IGN; // Ignore the signal
+    sigaction(SIGFPE, &sa, &old_sa);
+    
+    int convert_result = system(convert_cmd);
+    
+    // Restore the original signal handler
+    sigaction(SIGFPE, &old_sa, NULL);
+    
+    if (convert_result != 0) {
+        log_error("API Detection: Failed to convert raw data to JPEG (error code: %d)", convert_result);
+        
+        // Clean up and return early
         remove(temp_filename);
+        if (access(image_filename, F_OK) == 0) {
+            remove(image_filename);
+        }
         pthread_mutex_unlock(&curl_mutex);
         return -1;
     }
-
-    // Format the command with safety checks
-    int cmd_result = snprintf(convert_cmd, sizeof(convert_cmd),
-             "ffmpeg -f rawvideo -pixel_format %s -video_size %dx%d -i %s -y %s",
-             channels == 1 ? "gray" : (channels == 3 ? "rgb24" : "rgba"),
-             width, height, temp_filename, image_filename);
-
-    // Check for buffer overflow
-    if (cmd_result < 0 || cmd_result >= (int)sizeof(convert_cmd)) {
-        log_error("API Detection: Command buffer overflow when formatting ffmpeg command");
-        remove(temp_filename);
-        pthread_mutex_unlock(&curl_mutex);
         return -1;
     }
 

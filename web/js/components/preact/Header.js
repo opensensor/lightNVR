@@ -45,15 +45,33 @@ export function Header({ activeNav = '', version = '' }) {
     // Clear localStorage
     localStorage.removeItem('auth');
 
+    // Clear cookies
+    document.cookie = "auth=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict";
+    document.cookie = "session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict";
+
     // Call the logout endpoint to clear browser's basic auth cache
     fetch('/api/auth/logout', {
       method: 'POST'
     }).then(() => {
-      // Redirect to login page
-      window.location.href = 'login.html?logout=true';
+      // For Chrome, we need to make a request with invalid credentials to clear the auth cache
+      // Create an iframe to make a request with invalid credentials
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      document.body.appendChild(iframe);
+      
+      // Set a timeout to redirect after attempting to clear auth cache
+      setTimeout(() => {
+        // Redirect to login page with auth_required parameter to prevent auto-redirect
+        window.location.href = 'login.html?auth_required=true&logout=true';
+      }, 100);
+
+      // Try to load a protected resource with invalid credentials in the iframe
+      if (iframe.contentWindow) {
+        iframe.contentWindow.location.href = '/api/auth/verify';
+      }
     }).catch(() => {
       // Redirect even if the request fails
-      window.location.href = 'login.html?logout=true';
+      window.location.href = 'login.html?auth_required=true&logout=true';
     });
   };
 
