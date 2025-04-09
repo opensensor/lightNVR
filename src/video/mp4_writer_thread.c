@@ -261,9 +261,17 @@ static void *mp4_writer_rtsp_thread(void *arg) {
         }
 
         // Variables for retry mechanism and resource management
+        // CRITICAL FIX: These static variables should be initialized at the beginning of each call
+        // to prevent using uninitialized values during shutdown
         static int segment_retry_count = 0;
         static time_t last_segment_retry_time = 0;
         static int segment_count = 0;
+
+        // Initialize static variables at the beginning of each segment recording
+        // This ensures they have valid values even during shutdown
+        segment_retry_count = 0;
+        last_segment_retry_time = 0;
+        // Don't reset segment_count as it's used for logging purposes
 
         // Increment segment count and log it periodically to track memory usage
         segment_count++;

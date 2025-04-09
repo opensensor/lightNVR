@@ -95,7 +95,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
     AVFormatContext *output_ctx = NULL;
     AVDictionary *opts = NULL;
     AVDictionary *out_opts = NULL;
-    AVPacket *pkt;
+    AVPacket *pkt = NULL;  // CRITICAL FIX: Initialize to NULL to prevent using uninitialized value
     int video_stream_idx = -1;
     int audio_stream_idx = -1;
     AVStream *out_video_stream = NULL;
@@ -110,11 +110,13 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
     int64_t last_audio_pts = 0;
     int audio_packet_count = 0;
     int video_packet_count = 0;
-    int64_t start_time;
+    int64_t start_time = 0;  // CRITICAL FIX: Initialize to 0 to prevent using uninitialized value
     time_t last_progress = 0;
     int segment_index = 0;
 
-    // Initialize static variable for tracking waiting time for keyframes
+    // CRITICAL FIX: Initialize static variable for tracking waiting time for keyframes
+    // This variable is used to track how long we've been waiting for a keyframe
+    // It must be properly initialized to prevent using uninitialized values
     static int64_t waiting_start_time = 0;
     waiting_start_time = 0;  // Reset for each new segment to prevent using stale values
 
