@@ -272,121 +272,30 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     int convert_result = system(convert_cmd);
     if (convert_result != 0) {
         log_error("API Detection: Failed to convert raw data to JPEG (error code: %d)", convert_result);
-
-        // Try an alternative approach using ffmpeg with safety checks
-        log_info("API Detection: Trying alternative conversion with ffmpeg");
-        char ffmpeg_cmd[1024] = {0}; // Initialize to zeros
-
-        // Determine the correct ffmpeg pixel format with safety checks
-        const char *ffmpeg_pixel_format = NULL;
-        if (channels == 1) {
-            ffmpeg_pixel_format = "gray";
-        } else if (channels == 3) {
-            ffmpeg_pixel_format = "rgb24";
-        } else if (channels == 4) {
-            ffmpeg_pixel_format = "rgba";
-        } else {
-            log_error("API Detection: Invalid number of channels for ffmpeg: %d", channels);
-            remove(temp_filename);
-            pthread_mutex_unlock(&curl_mutex);
-            return -1;
+        
+        // Clean up and return early
+        remove(temp_filename);
+        if (access(image_filename, F_OK) == 0) {
+            remove(image_filename);
         }
-
-        // Format the command with safety checks
-        cmd_result = snprintf(ffmpeg_cmd, sizeof(ffmpeg_cmd),
-                "ffmpeg -f rawvideo -pixel_format %s -video_size %dx%d -i %s -y %s",
-                ffmpeg_pixel_format, width, height, temp_filename, image_filename);
-
-        // Check for buffer overflow
-        if (cmd_result < 0 || cmd_result >= (int)sizeof(ffmpeg_cmd)) {
-            log_error("API Detection: Command buffer overflow when formatting ffmpeg command");
-            remove(temp_filename);
-            pthread_mutex_unlock(&curl_mutex);
-            return -1;
-        }
-
-        log_info("API Detection: Running ffmpeg command: %s", ffmpeg_cmd);
-
-        int ffmpeg_result = system(ffmpeg_cmd);
-        if (ffmpeg_result != 0) {
-            log_error("API Detection: Failed to convert with ffmpeg (error code: %d)", ffmpeg_result);
-            log_info("API Detection: Falling back to raw data with application/octet-stream MIME type");
-
-            // CRITICAL FIX: Verify that temp_filename exists before adding it to the form
-            struct stat temp_stat;
-            if (stat(temp_filename, &temp_stat) != 0 || temp_stat.st_size == 0) {
-                log_error("API Detection: Temporary file is missing or empty: %s", temp_filename);
-                remove(temp_filename);
-                pthread_mutex_unlock(&curl_mutex);
-                return -1;
-            }
-
-            // Add the file to the form with the correct field name 'file' (not 'image')
-            CURLFORMcode form_result = curl_formadd(&formpost, &lastptr,
-                        CURLFORM_COPYNAME, "file",
-                        CURLFORM_FILE, temp_filename,
-                        CURLFORM_CONTENTTYPE, "application/octet-stream",
-                        CURLFORM_END);
-
-            // Check for curl form errors
-            if (form_result != CURL_FORMADD_OK) {
-                log_error("API Detection: Failed to add file to form (error code: %d)", form_result);
-                remove(temp_filename);
-                pthread_mutex_unlock(&curl_mutex);
-                return -1;
-            }
-        } else {
-            log_info("API Detection: Successfully converted raw data to JPEG with ffmpeg: %s", image_filename);
-
-            // CRITICAL FIX: Verify that image_filename exists before using it
-            struct stat image_stat;
-            if (stat(image_filename, &image_stat) != 0 || image_stat.st_size == 0) {
-                log_error("API Detection: Converted image file is missing or empty: %s", image_filename);
-                remove(temp_filename);
-                pthread_mutex_unlock(&curl_mutex);
-                return -1;
-            }
-            
-            // CRITICAL FIX: We need to continue to the next section to add the JPEG file to the form
-            // No need for an else branch here as we'll handle the JPEG file in the next section
-        }
-    } else {
-        // ImageMagick conversion succeeded
-        log_info("API Detection: Successfully converted raw data to JPEG with ImageMagick: %s", image_filename);
-
-        // CRITICAL FIX: Verify the file was created and has a non-zero size with safety checks
-        struct stat st;
-        if (stat(image_filename, &st) == 0 && st.st_size > 0) {
-            log_info("API Detection: JPEG file size: %ld bytes", (long)st.st_size);
-        } else {
-            log_error("API Detection: JPEG file was not created or has zero size");
-            log_info("API Detection: Falling back to raw data with application/octet-stream MIME type");
-
-            // CRITICAL FIX: Verify that temp_filename exists before adding it to the form
-            struct stat temp_stat;
-            if (stat(temp_filename, &temp_stat) != 0 || temp_stat.st_size == 0) {
-                log_error("API Detection: Temporary file is missing or empty: %s", temp_filename);
-                remove(temp_filename);
-                pthread_mutex_unlock(&curl_mutex);
-                return -1;
-            }
-
-            // Add the file to the form with the correct field name 'file' (not 'image')
-            CURLFORMcode form_result = curl_formadd(&formpost, &lastptr,
-                        CURLFORM_COPYNAME, "file",
-                        CURLFORM_FILE, temp_filename,
-                        CURLFORM_CONTENTTYPE, "application/octet-stream",
-                        CURLFORM_END);
-
-            // Check for curl form errors
-            if (form_result != CURL_FORMADD_OK) {
-                log_error("API Detection: Failed to add file to form (error code: %d)", form_result);
-                remove(temp_filename);
-                pthread_mutex_unlock(&curl_mutex);
-                return -1;
-            }
-        }
+        pthread_mutex_unlock(&curl_mutex);
+        return -1;
     }
+    
+    // Verify the JPEG file exists and has content before proceeding
+    struct stat jpeg_stat;
+    if (stat(image_filename, &jpeg_stat) != 0 || jpeg_stat.st_size == 0) {
+        log_error("API Detection: JPEG file was not created or has zero size: %s", image_filename);
+        remove(temp_filename);
+        if (access(image_filename, F_OK) == 0) {
+            remove(image_filename);
+        }
+        pthread_mutex_unlock(&curl_mutex);
+        return -1;
+    }
+    
+    log_info("API Detection: Successfully converted raw data to JPEG: %s (size: %ld bytes)", 
+             image_filename, (long)jpeg_stat.st_size);
 
     // Add the JPEG file to the form
     // CRITICAL FIX: Check if image_filename exists before adding to form
@@ -453,7 +362,8 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)&chunk);
 
     // Set a timeout
-    curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 10);
+    curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT, 5L); // 5 seconds connection timeout
+    curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 10L);       // 10 seconds total timeout
 
     // Perform the request
     log_info("API Detection: Sending request to %s", url_with_params);
@@ -482,48 +392,27 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
 
     CURLcode res = curl_easy_perform(curl_handle);
 
-    // Clean up the temporary files
+    // Clean up the temporary files first to ensure they're always removed
     remove(temp_filename);
-    // Remove the JPEG file if it was created by either ImageMagick or ffmpeg
-    struct stat st;
-    if (stat(image_filename, &st) == 0) {
+    if (access(image_filename, F_OK) == 0) {
         log_info("API Detection: Removing temporary JPEG file: %s", image_filename);
         remove(image_filename);
     }
-
-    // Check for errors
+    
+    // Check for errors with detailed logging
     if (res != CURLE_OK) {
         log_error("API Detection: curl_easy_perform() failed: %s", curl_easy_strerror(res));
-
-        // Check if it's a connection error
-        if (res == CURLE_COULDNT_CONNECT) {
-            log_error("API Detection: Could not connect to server at %s. Is the API server running?", url_with_params);
-        } else if (res == CURLE_OPERATION_TIMEDOUT) {
-            log_error("API Detection: Connection to %s timed out. Server might be slow or unreachable.", url_with_params);
-        } else if (res == CURLE_COULDNT_RESOLVE_HOST) {
-            log_error("API Detection: Could not resolve host %s. Check your network connection and DNS settings.", url_with_params);
-        } else if (res == CURLE_FAILED_INIT) {
-            log_error("API Detection: Curl initialization failed. Reinitializing curl handle...");
-
-            // Attempt to reinitialize curl
-            if (curl_handle) {
-                curl_easy_cleanup(curl_handle);
-                curl_handle = NULL;
-            }
-
-            curl_handle = curl_easy_init();
-            if (!curl_handle) {
-                log_error("API Detection: Failed to reinitialize curl handle");
-                initialized = false; // Mark as uninitialized to force reinitialization next time
-            } else {
-                log_info("API Detection: Successfully reinitialized curl handle");
-            }
+        
+        // Handle specific error cases
+        if (res == CURLE_COULDNT_CONNECT || res == CURLE_OPERATION_TIMEDOUT) {
+            log_error("API Detection: Could not connect to API server at %s. Is the server running?", actual_api_url);
         }
-
-        free(chunk.memory);
-        curl_formfree(formpost);
-        curl_slist_free_all(headers);
-
+        
+        // Clean up resources
+        if (chunk.memory) free(chunk.memory);
+        if (formpost) curl_formfree(formpost);
+        if (headers) curl_slist_free_all(headers);
+        
         // Initialize result to empty to prevent segmentation fault
         result->count = 0;
         pthread_mutex_unlock(&curl_mutex);
