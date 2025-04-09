@@ -116,7 +116,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 
     // Initialize static variable for tracking waiting time for keyframes
     static int64_t waiting_start_time = 0;
-    waiting_start_time = 0;  // Reset for each new segment
+    waiting_start_time = 0;  // Reset for each new segment to prevent using stale values
 
     // Thread-safe access to static segment info
     pthread_mutex_lock(&static_vars_mutex);
@@ -170,6 +170,13 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
     }
 
     // Log input stream info
+    // CRITICAL FIX: Check if input_ctx is NULL before accessing its members
+    if (!input_ctx) {
+        log_error("Input context is NULL, cannot proceed with recording");
+        ret = -1;
+        goto cleanup;
+    }
+
     log_debug("Input format: %s", input_ctx->iformat->name);
     log_debug("Number of streams: %d", input_ctx->nb_streams);
 
@@ -340,6 +347,13 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
     bool waiting_for_final_keyframe = false;
     // Flag to track if shutdown was detected
     bool shutdown_detected = false;
+
+    // CRITICAL FIX: Ensure input_ctx is valid before entering the main loop
+    if (!input_ctx) {
+        log_error("Input context is NULL before main recording loop, cannot proceed");
+        ret = -1;
+        goto cleanup;
+    }
 
     // Main recording loop
     while (1) {
@@ -1057,17 +1071,23 @@ cleanup:
         // If there was an error, close the input context
         log_debug("Closing input context due to error");
 
-        // Clean up all streams before closing
-        for (unsigned int i = 0; i < input_ctx->nb_streams; i++) {
-            if (input_ctx->streams[i]) {
-                // Free any codec parameters
-                if (input_ctx->streams[i]->codecpar) {
-                    avcodec_parameters_free(&input_ctx->streams[i]->codecpar);
+        // CRITICAL FIX: Check if input_ctx is NULL before trying to access it
+        // This prevents segmentation fault when RTSP connection fails
+        if (input_ctx) {
+            // Clean up all streams before closing
+            for (unsigned int i = 0; i < input_ctx->nb_streams; i++) {
+                if (input_ctx->streams[i]) {
+                    // Free any codec parameters
+                    if (input_ctx->streams[i]->codecpar) {
+                        avcodec_parameters_free(&input_ctx->streams[i]->codecpar);
+                    }
                 }
             }
-        }
 
-        avformat_close_input(&input_ctx);
+            avformat_close_input(&input_ctx);
+        } else {
+            log_debug("Input context is NULL, nothing to clean up");
+        }
         log_debug("Closed input context due to error");
     }
 
