@@ -1366,3 +1366,24 @@ int get_stream_detection_status(const char *stream_name, bool *has_thread,
     pthread_mutex_unlock(&stream_threads_mutex);
     return -1;
 }
+
+static void cleanup_detection_resources(void *p) {
+    struct {
+        AVFormatContext *format_ctx;
+        AVCodecContext *codec_ctx;
+        AVFrame *frame;
+        AVPacket *pkt;
+        struct SwsContext *sws_ctx;
+    } *cleanup = p;
+
+    if (cleanup->sws_ctx)
+        sws_freeContext(cleanup->sws_ctx);
+    if (cleanup->frame)
+        av_frame_free(&cleanup->frame);
+    if (cleanup->pkt)
+        av_packet_free(&cleanup->pkt);
+    if (cleanup->codec_ctx)
+        avcodec_free_context(&cleanup->codec_ctx);
+    if (cleanup->format_ctx)
+        avformat_close_input(&cleanup->format_ctx);
+}

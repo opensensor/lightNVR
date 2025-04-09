@@ -41,6 +41,21 @@
  */
 static void *mp4_writer_rtsp_thread(void *arg) {
     mp4_writer_thread_t *thread_ctx = (mp4_writer_thread_t *)arg;
+    if (!thread_ctx || !thread_ctx->writer) {
+        return NULL;
+    }
+
+    // Set running flag at start of thread
+    thread_ctx->running = 1;
+
+    // Create a local copy of needed values to prevent use-after-free
+    char rtsp_url[MAX_PATH_LENGTH];
+    strncpy(rtsp_url, thread_ctx->rtsp_url, sizeof(rtsp_url) - 1);
+    rtsp_url[sizeof(rtsp_url) - 1] = '\0';
+
+    int segment_duration = thread_ctx->segment_duration;
+    mp4_writer_t *writer = thread_ctx->writer;
+
     AVFormatContext *input_ctx = NULL;
     AVPacket *pkt = NULL;
     int video_stream_idx = -1;
@@ -433,44 +448,35 @@ static void *mp4_writer_rtsp_thread(void *arg) {
  * This function creates a new thread that handles all the recording logic
  */
 int mp4_writer_start_recording_thread(mp4_writer_t *writer, const char *rtsp_url) {
-    if (!writer || !rtsp_url || rtsp_url[0] == '\0') {
-        log_error("Invalid parameters passed to mp4_writer_start_recording_thread");
+    if (!writer || !rtsp_url) {
         return -1;
     }
 
-    // Check if there's already a thread context (should be cleaned up)
-    if (writer->thread_ctx) {
-        log_warn("Thread context already exists for %s, stopping existing thread first",
-                writer->stream_name ? writer->stream_name : "unknown");
-        mp4_writer_stop_recording_thread(writer);
-    }
-
-    // Create thread context
-    mp4_writer_thread_t *thread_ctx = calloc(1, sizeof(mp4_writer_thread_t));
-    if (!thread_ctx) {
-        log_error("Failed to allocate memory for thread context");
+    // Allocate and initialize thread context
+    writer->thread_ctx = (mp4_writer_thread_t *)calloc(1, sizeof(mp4_writer_thread_t));
+    if (!writer->thread_ctx) {
         return -1;
     }
 
     // Initialize thread context
-    thread_ctx->running = 1;
-    thread_ctx->shutdown_requested = 0;
-    thread_ctx->writer = writer;
-    strncpy(thread_ctx->rtsp_url, rtsp_url, MAX_PATH_LENGTH - 1);
-    thread_ctx->rtsp_url[MAX_PATH_LENGTH - 1] = '\0';
-    thread_ctx->auto_restart = true;  // Enable auto-restart by default
-    thread_ctx->retry_count = 0;
-    thread_ctx->last_retry_time = 0;
+    writer->thread_ctx->writer = writer;
+    writer->thread_ctx->running = 0;
+    atomic_store(&writer->thread_ctx->shutdown_requested, 0);
+    strncpy(writer->thread_ctx->rtsp_url, rtsp_url, sizeof(writer->thread_ctx->rtsp_url) - 1);
+    writer->thread_ctx->rtsp_url[sizeof(writer->thread_ctx->rtsp_url) - 1] = '\0';
 
-    // Create thread
-    if (pthread_create(&thread_ctx->thread, NULL, mp4_writer_rtsp_thread, thread_ctx) != 0) {
-        log_error("Failed to create RTSP reading thread for %s", writer->stream_name);
-        free(thread_ctx);
+    // Create thread with proper error handling
+    int ret = pthread_create(&writer->thread_ctx->thread, NULL, mp4_writer_rtsp_thread, writer->thread_ctx);
+    if (ret != 0) {
+        free(writer->thread_ctx);
+        writer->thread_ctx = NULL;
         return -1;
     }
 
-    // Store thread context in writer
-    writer->thread_ctx = thread_ctx;
+    // Wait for thread to start
+    while (!writer->thread_ctx->running) {
+        usleep(1000);  // Sleep for 1ms
+    }
 
     // Register with shutdown coordinator
     writer->shutdown_component_id = register_component(
@@ -497,58 +503,35 @@ int mp4_writer_start_recording_thread(mp4_writer_t *writer, const char *rtsp_url
  * This function signals the recording thread to stop and waits for it to exit
  */
 void mp4_writer_stop_recording_thread(mp4_writer_t *writer) {
-    if (!writer) {
-        log_warn("NULL writer passed to mp4_writer_stop_recording_thread");
+    if (!writer || !writer->thread_ctx) {
         return;
     }
-
-    mp4_writer_thread_t *thread_ctx = (mp4_writer_thread_t *)writer->thread_ctx;
-    if (!thread_ctx) {
-        log_warn("No thread context found for writer %s", writer->stream_name ? writer->stream_name : "unknown");
-        return;
-    }
-
-    // Make a local copy of the stream name for logging
-    char stream_name[MAX_STREAM_NAME];
-    if (writer->stream_name && writer->stream_name[0] != '\0') {
-        strncpy(stream_name, writer->stream_name, MAX_STREAM_NAME - 1);
-        stream_name[MAX_STREAM_NAME - 1] = '\0';
-    } else {
-        strncpy(stream_name, "unknown", MAX_STREAM_NAME - 1);
-    }
-
-    log_info("Signaling RTSP reading thread for %s to stop", stream_name);
 
     // Signal thread to stop
-    thread_ctx->running = 0;
-    thread_ctx->shutdown_requested = 1;
+    atomic_store(&writer->thread_ctx->shutdown_requested, 1);
 
-    // Wait for thread to exit with timeout
-    #include "video/thread_utils.h"
-    int join_result = pthread_join_with_timeout(thread_ctx->thread, NULL, 5);
-    if (join_result != 0) {
-        log_warn("Failed to join RTSP reading thread for %s within timeout: %s",
-                stream_name, strerror(join_result));
-
-        // Detach the thread to let it clean up itself when it eventually exits
-        pthread_detach(thread_ctx->thread);
-        free(thread_ctx);
-        writer->thread_ctx = NULL;
-    } else {
-        log_info("Successfully joined RTSP reading thread for %s", stream_name);
-
-        // Free thread context after successful join
-        free(thread_ctx);
-        writer->thread_ctx = NULL;
+    // Wait for thread to finish
+    if (writer->thread_ctx->running) {
+        pthread_join(writer->thread_ctx->thread, NULL);
+        writer->thread_ctx->running = 0;
     }
+
+    // CRITICAL: Only free resources after thread has completely stopped
+    if (writer->thread_ctx->rtsp_url[0] != '\0') {
+        memset(writer->thread_ctx->rtsp_url, 0, sizeof(writer->thread_ctx->rtsp_url));
+    }
+
+    // Free thread context
+    free(writer->thread_ctx);
+    writer->thread_ctx = NULL;
 
     // Update component state in shutdown coordinator
     if (writer->shutdown_component_id >= 0) {
         update_component_state(writer->shutdown_component_id, COMPONENT_STOPPED);
-        log_info("Updated MP4 writer component state to STOPPED for %s", stream_name);
+        log_info("Updated MP4 writer component state to STOPPED for %s", writer->stream_name);
     }
 
-    log_info("Stopped RTSP reading thread for %s", stream_name);
+    log_info("Stopped RTSP reading thread for %s", writer->stream_name);
 }
 
 /**

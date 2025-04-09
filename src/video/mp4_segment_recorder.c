@@ -114,6 +114,10 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
     time_t last_progress = 0;
     int segment_index = 0;
 
+    // Initialize static variable for tracking waiting time for keyframes
+    static int64_t waiting_start_time = 0;
+    waiting_start_time = 0;  // Reset for each new segment
+
     // Thread-safe access to static segment info
     pthread_mutex_lock(&static_vars_mutex);
     segment_index = segment_info.segment_index + 1;
@@ -416,7 +420,6 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
             // If we're waiting for the final key frame to end recording
             if (waiting_for_final_keyframe) {
                 // Check if this is a key frame or if we've been waiting too long
-                static int64_t waiting_start_time = 0;
 
                 // Initialize waiting start time if not set
                 if (waiting_start_time == 0) {

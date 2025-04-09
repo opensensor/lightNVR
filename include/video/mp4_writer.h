@@ -5,12 +5,15 @@
 #ifndef MP4_WRITER_H
 #define MP4_WRITER_H
 
+#include <stddef.h>
 #include <libavformat/avformat.h>
 #include <pthread.h>
 #include "core/config.h"  // For MAX_PATH_LENGTH and MAX_STREAM_NAME
+#include "video/mp4_writer_thread.h"
 
-// Forward declaration of the MP4 writer structure
-typedef struct mp4_writer mp4_writer_t;
+/**
+ * MP4 writer structure
+ */
 
 // Audio stream state structure - completely separate from video
 typedef struct {
@@ -24,7 +27,6 @@ typedef struct {
     pthread_mutex_t mutex;    // Mutex to protect audio state
 } mp4_audio_state_t;
 
-// Full definition of the MP4 writer structure
 struct mp4_writer {
     char output_path[MAX_PATH_LENGTH];
     char stream_name[MAX_STREAM_NAME];
@@ -41,17 +43,17 @@ struct mp4_writer {
     mp4_audio_state_t audio;  // Audio state - completely separate from video
     pthread_mutex_t mutex;    // Mutex to protect video state
     uint64_t current_recording_id; // ID of the current recording in the database
-    
+
     // Segment-related fields
     int segment_duration;     // Duration of each segment in seconds
     time_t last_rotation_time;// Time of the last rotation
     int waiting_for_keyframe; // Flag indicating if we're waiting for a keyframe to rotate
     int is_rotating;          // Flag indicating if rotation is in progress
     char output_dir[MAX_PATH_LENGTH]; // Directory where MP4 files are stored
-    
+
     // RTSP thread context
-    void *thread_ctx;         // Opaque pointer to thread context
-    
+    mp4_writer_thread_t *thread_ctx;  // Changed from void* to proper type
+
     // Shutdown coordination
     int shutdown_component_id; // ID assigned by the shutdown coordinator
 };
