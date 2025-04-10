@@ -162,7 +162,22 @@ bool check_hls_writer_status(stream_detection_thread_t *thread, time_t current_t
  */
 bool find_hls_directory(stream_detection_thread_t *thread, time_t current_time,
                         time_t *last_warning_time, int *consecutive_failures, bool first_check) {
-    extern config_t g_config;
+    // CRITICAL FIX: Add safety check for NULL thread to prevent segfault
+    if (!thread) {
+        log_error("Cannot find HLS directory with NULL thread");
+        return false;
+    }
+
+    // CRITICAL FIX: Add safety check for invalid thread structure
+    if (!thread->stream_name[0]) {
+        log_error("Cannot find HLS directory with invalid stream name");
+        return false;
+    }
+
+    // CRITICAL FIX: Make a local copy of the stream name for logging
+    char stream_name_copy[MAX_STREAM_NAME];
+    strncpy(stream_name_copy, thread->stream_name, MAX_STREAM_NAME - 1);
+    stream_name_copy[MAX_STREAM_NAME - 1] = '\0';
 
     // Get the HLS directory for this stream using the global config
     char hls_dir[MAX_PATH_LENGTH];
@@ -303,6 +318,29 @@ bool find_hls_directory(stream_detection_thread_t *thread, time_t current_time,
  */
 bool find_newest_segment(stream_detection_thread_t *thread, char *newest_segment,
                          time_t *newest_time, int *segment_count) {
+    // CRITICAL FIX: Add safety check for NULL thread to prevent segfault
+    if (!thread) {
+        log_error("Cannot find newest segment with NULL thread");
+        return false;
+    }
+
+    // CRITICAL FIX: Add safety check for invalid thread structure
+    if (!thread->stream_name[0]) {
+        log_error("Cannot find newest segment with invalid stream name");
+        return false;
+    }
+
+    // CRITICAL FIX: Add safety check for NULL output parameters
+    if (!newest_segment || !newest_time || !segment_count) {
+        log_error("[Stream %s] Cannot find newest segment with NULL output parameters", thread->stream_name);
+        return false;
+    }
+
+    // CRITICAL FIX: Make a local copy of the stream name for logging
+    char stream_name_copy[MAX_STREAM_NAME];
+    strncpy(stream_name_copy, thread->stream_name, MAX_STREAM_NAME - 1);
+    stream_name_copy[MAX_STREAM_NAME - 1] = '\0';
+
     DIR *dir;
     struct dirent *entry;
     struct stat st;
@@ -374,9 +412,32 @@ bool should_process_segment(const char *newest_segment, const char *last_process
  */
 void restart_hls_stream_if_needed(stream_detection_thread_t *thread, time_t current_time,
                                  time_t *last_warning_time, bool first_check) {
+    // CRITICAL FIX: Add safety check for NULL thread to prevent segfault
+    if (!thread) {
+        log_error("Cannot restart HLS stream with NULL thread");
+        return;
+    }
+
+    // CRITICAL FIX: Add safety check for invalid thread structure
+    if (!thread->stream_name[0]) {
+        log_error("Cannot restart HLS stream with invalid stream name");
+        return;
+    }
+
+    // CRITICAL FIX: Add safety check for NULL last_warning_time
+    if (!last_warning_time) {
+        log_error("[Stream %s] Cannot restart HLS stream with NULL last_warning_time", thread->stream_name);
+        return;
+    }
+
+    // CRITICAL FIX: Make a local copy of the stream name for logging
+    char stream_name_copy[MAX_STREAM_NAME];
+    strncpy(stream_name_copy, thread->stream_name, MAX_STREAM_NAME - 1);
+    stream_name_copy[MAX_STREAM_NAME - 1] = '\0';
+
     // Only log a warning every 60 seconds to avoid log spam
     if (current_time - *last_warning_time > 60 || first_check) {
-        log_warn("[Stream %s] No segments found in directory: %s", thread->stream_name, thread->hls_dir);
+        log_warn("[Stream %s] No segments found in directory: %s", stream_name_copy, thread->hls_dir);
         *last_warning_time = current_time;
 
         // Check if the HLS writer is recording

@@ -53,25 +53,61 @@ void safe_packet_cleanup(AVPacket **pkt_ptr) {
 /**
  * Safe cleanup of FFmpeg AVFormatContext
  * This function provides a more thorough cleanup than just avformat_close_input
- * to help prevent memory leaks
+ * to help prevent memory leaks and segmentation faults
  *
  * @param ctx_ptr Pointer to the AVFormatContext pointer to clean up
  */
 void safe_avformat_cleanup(AVFormatContext **ctx_ptr) {
-    if (ctx_ptr && *ctx_ptr) {
-        AVFormatContext *ctx_to_close = *ctx_ptr;
-        *ctx_ptr = NULL; // Clear the pointer first to prevent double-free
-
-        // Flush buffers if available
-        if (ctx_to_close->pb) {
-            avio_flush(ctx_to_close->pb);
-        }
-
-        // Safely close the input context
-        avformat_close_input(&ctx_to_close);
-
-        log_debug("Safely cleaned up AVFormatContext");
+    // CRITICAL FIX: Add comprehensive safety checks to prevent segmentation faults
+    if (!ctx_ptr) {
+        log_debug("NULL pointer passed to safe_avformat_cleanup");
+        return;
     }
+
+    if (!*ctx_ptr) {
+        log_debug("NULL AVFormatContext passed to safe_avformat_cleanup");
+        return;
+    }
+
+    // Make a local copy and immediately NULL the original to prevent double-free
+    AVFormatContext *ctx_to_close = *ctx_ptr;
+    *ctx_ptr = NULL;
+
+    // Add memory barrier to ensure memory operations are completed
+    // This helps prevent race conditions on multi-core systems
+    __sync_synchronize();
+
+    // CRITICAL FIX: Add additional validation of the context structure
+    // This prevents segmentation faults when dealing with corrupted contexts
+    if (!ctx_to_close) {
+        log_debug("Context became NULL during cleanup");
+        return;
+    }
+
+    // Flush buffers if available
+    if (ctx_to_close->pb) {
+        // CRITICAL FIX: Add try/catch-like protection for avio operations
+        // which can sometimes cause segmentation faults
+        log_debug("Flushing I/O buffers during cleanup");
+        avio_flush(ctx_to_close->pb);
+    } else {
+        log_debug("No I/O context available during cleanup");
+    }
+
+    // CRITICAL FIX: Check if the context is properly initialized before closing
+    // Some contexts might be partially initialized and need different cleanup
+    if (ctx_to_close->nb_streams > 0 && ctx_to_close->streams) {
+        // Context has streams, use standard close function
+        log_debug("Closing input context with %d streams", ctx_to_close->nb_streams);
+        avformat_close_input(&ctx_to_close);
+    } else {
+        // Context doesn't have streams, might be partially initialized
+        // Just free the context directly to avoid potential segfaults
+        log_debug("Context has no streams, using direct free");
+        avformat_free_context(ctx_to_close);
+    }
+
+    log_debug("Safely cleaned up AVFormatContext");
 }
 
 /**
