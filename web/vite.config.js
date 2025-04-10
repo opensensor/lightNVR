@@ -5,7 +5,40 @@ import { defineConfig } from 'vite';
 import { resolve } from 'path';
 import legacy from '@vitejs/plugin-legacy';
 
+// Custom plugin to remove "use client" directives
+const removeUseClientDirective = () => {
+  return {
+    name: 'remove-use-client-directive',
+    transform(code, id) {
+      // Only target files from @preact-signals/query package
+      if (id.includes('@preact-signals/query')) {
+        // Check for "use client" directive with various possible formats
+        const useClientRegex = /^(['"]use client['"])/;
+        if (useClientRegex.test(code)) {
+          // Remove the "use client" directive and return the modified code
+          return {
+            code: code.replace(useClientRegex, ''),
+            map: null // We're not generating a sourcemap for this transformation
+          };
+        }
+      }
+      return null; // Return null to indicate no transformation needed
+    }
+  };
+};
+
 export default defineConfig({
+  // Configure esbuild to handle "use client" directives
+  esbuild: {
+    supported: {
+      'top-level-await': true, // Enable top level await
+    },
+    legalComments: 'none', // Remove all legal comments
+    // Ignore specific warnings
+    logOverride: {
+      'module-level-directive': 'silent', // Silence module level directive warnings
+    },
+  },
   // Base public path when served in production
   base: './',
 
@@ -25,6 +58,15 @@ export default defineConfig({
 
     // Ensure CSS is properly extracted and included
     cssCodeSplit: true,
+
+    // Configure esbuild to handle "use client" directives
+    commonjsOptions: {
+      transformMixedEsModules: true
+    },
+    
+    // Configure esbuild to ignore specific warnings
+    minify: 'esbuild',
+    // Removed target: 'es2015' as it's handled by the legacy plugin
 
     // Rollup options
     rollupOptions: {
@@ -65,9 +107,12 @@ export default defineConfig({
 
   // Configure plugins
   plugins: [
-    // Add legacy browser support
+    // Custom plugin to remove "use client" directives
+    removeUseClientDirective(),
+    // Add legacy browser support with explicit targets
     legacy({
-      targets: ['defaults', 'not IE 11']
+      targets: ['defaults', 'not IE 11'],
+      modernPolyfills: true
     }),
     // Custom plugin to handle non-module scripts
     {

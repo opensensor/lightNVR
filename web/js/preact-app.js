@@ -180,11 +180,11 @@ function setupGlobalAuthHandler() {
   window.fetch = async function(url, options) {
     const response = await originalFetch.apply(this, arguments);
 
-    if (response.status === 401 && !window.location.pathname.includes('login.html')) {
-      console.log('401 detected, redirecting to login');
-      const currentPath = window.location.pathname + window.location.search;
-      window.location.href = '/login.html?redirect=' + encodeURIComponent(currentPath);
-    }
+  if (response.status === 401 && !window.location.pathname.includes('login.html')) {
+    console.log('401 detected, redirecting to login');
+    const currentPath = window.location.pathname + window.location.search;
+    window.location.href = '/login.html?redirect=' + encodeURIComponent(currentPath) + '&from_redirect=true';
+  }
 
     return response;
   };
@@ -256,9 +256,14 @@ function initApp() {
 
   // Load page-specific content using dynamic imports
   if (currentPage === 'index.html') {
-    import('./components/preact/WebRTCView.js').then(module => {
-      module.loadWebRTCView();
-    });
+    // Ensure the QueryClientProvider is fully initialized before loading WebRTCView
+    setTimeout(() => {
+      import('./components/preact/WebRTCView.js').then(module => {
+        module.loadWebRTCView();
+      }).catch(error => {
+        console.error('Error loading WebRTCView:', error);
+      });
+    }, 300); // Small delay to ensure proper initialization
   } else if (currentPage === 'hls.html') {
     import('./components/preact/LiveViewQuery.js').then(module => {
       module.loadLiveView();

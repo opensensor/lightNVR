@@ -118,7 +118,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     // CRITICAL FIX: Check if we're in shutdown mode or if the stream has been stopped
     if (is_shutdown_initiated()) {
         log_info("API Detection: System shutdown in progress, skipping detection");
-        return -1;
+        return 0;
     }
 
     // CRITICAL FIX: Add thread safety for curl operations
@@ -130,7 +130,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     } else {
         log_error("API Detection: NULL result pointer provided");
         pthread_mutex_unlock(&curl_mutex);
-        return -1;
+        return 0;
     }
     
     // CRITICAL FIX: Check if api_url is the special "api-detection" string
@@ -150,20 +150,20 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     if (!initialized || !curl_handle) {
         log_error("API detection system not initialized");
         pthread_mutex_unlock(&curl_mutex);
-        return -1;
+        return 0;
     }
 
     if (!actual_api_url || !frame_data || !result) {
         log_error("Invalid parameters for detect_objects_api");
         pthread_mutex_unlock(&curl_mutex);
-        return -1;
+        return 0;
     }
 
     // Check if the URL is valid (must start with http:// or https://)
     if (strncmp(actual_api_url, "http://", 7) != 0 && strncmp(actual_api_url, "https://", 8) != 0) {
         log_error("API Detection: Invalid URL format: %s (must start with http:// or https://)", actual_api_url);
         pthread_mutex_unlock(&curl_mutex);
-        return -1;
+        return 0;
     }
 
     // Set up curl for multipart/form-data
@@ -176,7 +176,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     if (temp_fd < 0) {
         log_error("Failed to create temporary file: %s", strerror(errno));
         pthread_mutex_unlock(&curl_mutex);
-        return -1;
+        return 0;
     }
 
     char image_filename[256];
@@ -189,7 +189,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         close(temp_fd);
         unlink(temp_filename);
         pthread_mutex_unlock(&curl_mutex);
-        return -1;
+        return 0;
     }
 
     // Write the raw image data to the file
@@ -200,7 +200,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         log_error("Failed to write image data to temporary file");
         remove(temp_filename);
         pthread_mutex_unlock(&curl_mutex);
-        return -1;
+        return 0;
     }
 
     // CRITICAL FIX: Modify the request to match the API server's expected format
@@ -217,7 +217,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         log_error("API Detection: Invalid number of channels: %d (must be 1, 3, or 4)", channels);
         remove(temp_filename);
         pthread_mutex_unlock(&curl_mutex);
-        return -1;
+        return 0;
     }
 
     // Set pixel format based on validated channels
@@ -237,7 +237,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         log_error("API Detection: Failed to determine pixel format for %d channels", channels);
         remove(temp_filename);
         pthread_mutex_unlock(&curl_mutex);
-        return -1;
+        return 0;
     }
 
     // CRITICAL FIX: Use system command to convert the raw data to JPEG using ImageMagick with safety checks
@@ -254,7 +254,7 @@ if (width <= 0 || width > 8192 || height <= 0 || height > 8192) {
     log_error("API Detection: Invalid image dimensions: %dx%d (must be positive and <= 8192)", width, height);
     remove(temp_filename);
     pthread_mutex_unlock(&curl_mutex);
-    return -1;
+    return 0;
 }
 
 // Check for valid channel count
@@ -262,7 +262,7 @@ if (channels != 1 && channels != 3 && channels != 4) {
     log_error("API Detection: Invalid channel count: %d (must be 1, 3, or 4)", channels);
     remove(temp_filename);
     pthread_mutex_unlock(&curl_mutex);
-    return -1;
+    return 0;
 }
 
 // CRITICAL FIX: Verify that the raw data size is correct to prevent buffer overflows
@@ -292,9 +292,9 @@ if (expected_size == 0 || expected_size > 100000000) { // 100MB sanity check
             remove(image_filename);
         }
         pthread_mutex_unlock(&curl_mutex);
-        return -1;
+        return 0;
     }
-        return -1;
+        return 0;
     }
 
     log_info("API Detection: Converting raw data to JPEG: %s", convert_cmd);
@@ -309,7 +309,7 @@ if (expected_size == 0 || expected_size > 100000000) { // 100MB sanity check
             remove(image_filename);
         }
         pthread_mutex_unlock(&curl_mutex);
-        return -1;
+        return 0;
     }
     
     // Verify the JPEG file exists and has content before proceeding
@@ -321,7 +321,7 @@ if (expected_size == 0 || expected_size > 100000000) { // 100MB sanity check
             remove(image_filename);
         }
         pthread_mutex_unlock(&curl_mutex);
-        return -1;
+        return 0;
     }
     
     log_info("API Detection: Successfully converted raw data to JPEG: %s (size: %ld bytes)", 
@@ -349,7 +349,7 @@ if (expected_size == 0 || expected_size > 100000000) { // 100MB sanity check
             remove(image_filename);
             result->count = 0;
             pthread_mutex_unlock(&curl_mutex);
-            return -1;
+            return 0;
         }
         
         log_info("API Detection: Successfully added JPEG file to form: %s", image_filename);
@@ -366,7 +366,7 @@ if (expected_size == 0 || expected_size > 100000000) { // 100MB sanity check
         }
         result->count = 0;
         pthread_mutex_unlock(&curl_mutex);
-        return -1;
+        return 0;
     }
 
     // Construct the URL with query parameters
@@ -417,7 +417,7 @@ if (expected_size == 0 || expected_size > 100000000) { // 100MB sanity check
         // Initialize result to empty to prevent segmentation fault
         result->count = 0;
         pthread_mutex_unlock(&curl_mutex);
-        return -1;
+        return 0;
     }
 
     CURLcode res = curl_easy_perform(curl_handle);
@@ -446,7 +446,7 @@ if (expected_size == 0 || expected_size > 100000000) { // 100MB sanity check
         // Initialize result to empty to prevent segmentation fault
         result->count = 0;
         pthread_mutex_unlock(&curl_mutex);
-        return -1;
+        return 0;
     }
 
     // Get the HTTP response code
@@ -459,7 +459,7 @@ if (expected_size == 0 || expected_size > 100000000) { // 100MB sanity check
         curl_formfree(formpost);
         curl_slist_free_all(headers);
         pthread_mutex_unlock(&curl_mutex);
-        return -1;
+        return 0;
     }
 
     // Parse the JSON response
@@ -472,7 +472,7 @@ if (expected_size == 0 || expected_size > 100000000) { // 100MB sanity check
         // Initialize result to empty to prevent segmentation fault
         result->count = 0;
         pthread_mutex_unlock(&curl_mutex);
-        return -1;
+        return 0;
     }
 
     // Log the first few bytes of the response for debugging
@@ -502,7 +502,7 @@ if (expected_size == 0 || expected_size > 100000000) { // 100MB sanity check
         // Initialize result to empty to prevent segmentation fault
         result->count = 0;
         pthread_mutex_unlock(&curl_mutex);
-        return -1;
+        return 0;
     }
 
     // Extract the detections
@@ -522,7 +522,7 @@ if (expected_size == 0 || expected_size > 100000000) { // 100MB sanity check
         // Initialize result to empty to prevent segmentation fault
         result->count = 0;
         pthread_mutex_unlock(&curl_mutex);
-        return -1;
+        return 0;
     }
 
     // Process each detection

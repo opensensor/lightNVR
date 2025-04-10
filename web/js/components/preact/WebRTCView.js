@@ -508,7 +508,7 @@ export function WebRTCView() {
       canvasOverlay.style.pointerEvents = 'none'; // Allow clicks to pass through
       videoCell.appendChild(canvasOverlay);
     }
-
+    
     // Create a new RTCPeerConnection with ICE servers
     const pc = new RTCPeerConnection({
       iceServers: [

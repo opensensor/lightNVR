@@ -16,6 +16,7 @@
             const urlParams = new URLSearchParams(window.location.search);
             const authRequired = urlParams.has('auth_required');
             const logoutRequested = urlParams.has('logout');
+            const fromRedirect = urlParams.has('from_redirect');
             
             // If auth is required or logout was requested, don't auto-redirect even if we have credentials
             // This prevents redirect loops when credentials are invalid or after logout
@@ -50,6 +51,13 @@
                 return;
             }
             
+            // If we were redirected from index.html, don't redirect back to prevent loops
+            // This is especially important for Chrome mobile
+            if (fromRedirect) {
+                console.log('Detected redirect from index.html, staying on login page to prevent loop');
+                return;
+            }
+            
             const auth = localStorage.getItem('auth');
             
             // Firefox has stricter cookie handling, so we need to be more careful
@@ -62,8 +70,37 @@
             console.log('Login page - Auth cookie found:', hasAuthCookie);
             console.log('Login page - Session cookie found:', hasSessionCookie);
             
-            if (auth || hasAuthCookie || hasSessionCookie) {
-                // Already authenticated, redirect to index.html
+            // Check if we're on a mobile device
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            const isChrome = /Chrome/i.test(navigator.userAgent) && !/Edge|Edg/i.test(navigator.userAgent);
+            
+            // For Chrome mobile, we need to be more careful to prevent redirect loops
+            if (isMobile && isChrome) {
+                console.log('Chrome mobile detected, performing auth verification before redirect');
+                
+                // For Chrome mobile, verify auth with the server before redirecting
+                fetch('/api/auth/verify', {
+                    method: 'GET',
+                    credentials: 'include',
+                    headers: auth ? { 'Authorization': `Basic ${auth}` } : {}
+                })
+                .then(response => {
+                    if (response.ok) {
+                        // Auth is valid, redirect to index
+                        window.location.href = '/index.html?t=' + new Date().getTime();
+                    } else {
+                        // Auth is invalid, stay on login page
+                        console.log('Auth verification failed, staying on login page');
+                        // Clear any invalid credentials
+                        localStorage.removeItem('auth');
+                    }
+                })
+                .catch(error => {
+                    console.error('Auth verification error:', error);
+                    // On error, don't redirect to be safe
+                });
+            } else if (auth || hasAuthCookie || hasSessionCookie) {
+                // For other browsers, redirect if we have credentials
                 window.location.href = '/index.html?t=' + new Date().getTime();
             }
         });

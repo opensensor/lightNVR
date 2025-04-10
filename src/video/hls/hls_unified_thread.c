@@ -815,20 +815,33 @@ void *hls_unified_thread_func(void *arg) {
         state->hls_ctx = NULL;
     }
 
+    // CRITICAL FIX: Store stream name in local buffer before cleanup
+    char stream_name_buf[MAX_STREAM_NAME];
+    strncpy(stream_name_buf, stream_name, MAX_STREAM_NAME - 1);
+    stream_name_buf[MAX_STREAM_NAME - 1] = '\0';
+
     // CRITICAL FIX: Add safety checks before cleaning up resources
-    log_info("Cleaning up all resources for stream %s", stream_name);
+    log_info("Cleaning up all resources for stream %s", stream_name_buf);
 
     // Verify that the resources are valid before cleaning them up
     if (input_ctx) {
-        log_debug("Cleaning up input context for stream %s", stream_name);
+        log_debug("Cleaning up input context for stream %s", stream_name_buf);
     }
 
     if (pkt) {
-        log_debug("Cleaning up packet for stream %s", stream_name);
+        log_debug("Cleaning up packet for stream %s", stream_name_buf);
     }
 
-    if (ctx && ctx->writer) {
-        log_debug("Cleaning up HLS writer for stream %s", stream_name);
+    // CRITICAL FIX: Check ctx before accessing its members
+    hls_writer_t *writer_to_cleanup = NULL;
+    int shutdown_id = -1;
+
+    if (ctx) {
+        if (ctx->writer) {
+            log_debug("Cleaning up HLS writer for stream %s", stream_name_buf);
+            writer_to_cleanup = ctx->writer;
+        }
+        shutdown_id = ctx->shutdown_component_id;
     }
 
     // CRITICAL FIX: Add memory barrier before cleanup to ensure all threads see consistent state
@@ -837,7 +850,6 @@ void *hls_unified_thread_func(void *arg) {
     // Make local copies of pointers to prevent race conditions during cleanup
     AVFormatContext *input_ctx_local = input_ctx;
     AVPacket *pkt_local = pkt;
-    hls_writer_t *writer_local = ctx ? ctx->writer : NULL;
 
     // Clear original pointers immediately to prevent double-free
     input_ctx = NULL;
@@ -845,19 +857,23 @@ void *hls_unified_thread_func(void *arg) {
     if (ctx) ctx->writer = NULL;
 
     // Clean up all resources using local copies
-    safe_cleanup_resources(&input_ctx_local, &pkt_local, &writer_local);
+    safe_cleanup_resources(&input_ctx_local, &pkt_local, &writer_to_cleanup);
 
-    // Update component state in shutdown coordinator
-    if (ctx && ctx->shutdown_component_id >= 0) {
-        update_component_state(ctx->shutdown_component_id, COMPONENT_STOPPED);
-        log_info("Updated unified HLS thread %s state to STOPPED in shutdown coordinator", stream_name);
+    // Update component state in shutdown coordinator only if we have a valid ID
+    if (shutdown_id >= 0) {
+        update_component_state(shutdown_id, COMPONENT_STOPPED);
+        log_info("Updated unified HLS thread %s state to STOPPED in shutdown coordinator", stream_name_buf);
     }
 
     // Unmark the stream as stopping to indicate we've completed our shutdown
-    unmark_stream_stopping(stream_name);
-    log_info("Unmarked stream %s as stopping before thread exit", stream_name);
+    unmark_stream_stopping(stream_name_buf);
+    log_info("Unmarked stream %s as stopping before thread exit", stream_name_buf);
 
-    log_info("Unified HLS thread for stream %s exited", stream_name);
+    // Free the context if it exists
+    free(ctx);
+    ctx = NULL;
+
+    log_info("Unified HLS thread for stream %s exited", stream_name_buf);
     return NULL;
 }
 
