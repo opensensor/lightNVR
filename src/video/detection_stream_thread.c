@@ -38,53 +38,7 @@
 // Add signal handler to catch floating point exceptions
 #include <fenv.h>
 #include <signal.h>
-#include <execinfo.h>
 #include <unistd.h>
-
-// Maximum size for backtrace
-#define BACKTRACE_SIZE 32
-
-/**
- * Segfault handler to print a backtrace when a segmentation fault occurs
- * This helps with debugging crashes in the detection thread
- */
-static void segfault_handler(int sig) {
-    void *array[BACKTRACE_SIZE];
-    size_t size;
-    char **strings;
-
-    // Get the backtrace addresses
-    size = backtrace(array, BACKTRACE_SIZE);
-
-    // Print the signal information
-    log_error("=========================================");
-    log_error("Caught signal %d (%s)", sig, strsignal(sig));
-    log_error("Backtrace:");
-
-    // Print directly to stderr in case logging system is compromised
-    fprintf(stderr, "\nSegmentation fault detected! Signal %d (%s)\n", sig, strsignal(sig));
-    fprintf(stderr, "Backtrace:\n");
-
-    // Print the backtrace to stderr
-    backtrace_symbols_fd(array, size, STDERR_FILENO);
-
-    // Also try to get symbol names if possible
-    strings = backtrace_symbols(array, size);
-    if (strings) {
-        for (size_t i = 0; i < size; i++) {
-            log_error("[%zu] %s", i, strings[i]);
-        }
-        free(strings);
-    } else {
-        log_error("Failed to get backtrace symbols");
-    }
-
-    log_error("=========================================");
-
-    // Re-raise the signal to generate a core dump
-    signal(sig, SIG_DFL);
-    raise(sig);
-}
 
 // Array of stream detection threads
 static stream_detection_thread_t stream_threads[MAX_STREAM_THREADS] = {0};
@@ -893,19 +847,7 @@ static void *stream_detection_thread_func(void *arg) {
 
     log_info("[Stream %s] Detection thread started", thread->stream_name);
 
-    // Set up thread-specific signal handlers for better debugging
-    struct sigaction sa;
-    memset(&sa, 0, sizeof(sa));
-    sa.sa_handler = segfault_handler;
-    sigemptyset(&sa.sa_mask);
-
-    // Register for common crash signals in this thread
-    if (sigaction(SIGSEGV, &sa, NULL) == -1) {
-        log_error("[Stream %s] Failed to register thread-specific SIGSEGV handler: %s",
-                 thread->stream_name, strerror(errno));
-    } else {
-        log_info("[Stream %s] Registered thread-specific SIGSEGV handler", thread->stream_name);
-    }
+    // Thread initialization
 
     // Register with shutdown coordinator
     char component_name[128];
@@ -1191,47 +1133,12 @@ int init_stream_detection_system(void) {
         pthread_cond_init(&stream_threads[i].cond, NULL);
     }
 
-    // Register signal handlers for segmentation faults and other critical signals
-    struct sigaction sa;
-    memset(&sa, 0, sizeof(sa));
-    sa.sa_handler = segfault_handler;
-    sigemptyset(&sa.sa_mask);
-
-    // Register for common crash signals
-    if (sigaction(SIGSEGV, &sa, NULL) == -1) {
-        log_error("Failed to register SIGSEGV handler: %s", strerror(errno));
-    } else {
-        log_info("Registered SIGSEGV handler for backtrace printing");
-    }
-
-    if (sigaction(SIGABRT, &sa, NULL) == -1) {
-        log_error("Failed to register SIGABRT handler: %s", strerror(errno));
-    } else {
-        log_info("Registered SIGABRT handler for backtrace printing");
-    }
-
-    if (sigaction(SIGFPE, &sa, NULL) == -1) {
-        log_error("Failed to register SIGFPE handler: %s", strerror(errno));
-    } else {
-        log_info("Registered SIGFPE handler for backtrace printing");
-    }
-
-    if (sigaction(SIGILL, &sa, NULL) == -1) {
-        log_error("Failed to register SIGILL handler: %s", strerror(errno));
-    } else {
-        log_info("Registered SIGILL handler for backtrace printing");
-    }
-
-    if (sigaction(SIGBUS, &sa, NULL) == -1) {
-        log_error("Failed to register SIGBUS handler: %s", strerror(errno));
-    } else {
-        log_info("Registered SIGBUS handler for backtrace printing");
-    }
+    // System initialization complete
 
     system_initialized = true;
     pthread_mutex_unlock(&stream_threads_mutex);
 
-    log_info("Stream detection system initialized with crash handlers");
+    log_info("Stream detection system initialized");
     return 0;
 }
 

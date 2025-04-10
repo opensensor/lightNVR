@@ -70,6 +70,9 @@ int web_server_socket = -1;
 // global config
 config_t config;
 
+// Global HTTP server handle
+http_server_handle_t http_server = NULL;
+
 // Function to set the web server socket
 void set_web_server_socket(int socket_fd) {
     web_server_socket = socket_fd;
@@ -949,7 +952,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Use the direct mongoose server implementation
-    http_server_handle_t http_server = mongoose_server_init(&server_config);
+    http_server = mongoose_server_init(&server_config);
     if (!http_server) {
         log_error("Failed to initialize Mongoose web server");
         goto cleanup;
@@ -962,10 +965,6 @@ int main(int argc, char *argv[]) {
     }
 
     log_info("Mongoose web server started on port %d", config.web_port);
-
-    // Initialize health check system
-    init_health_check_system();
-    log_info("Health check system initialized");
 
     // No need to register API handlers with the Mongoose server
     // Direct handlers are registered in register_api_handlers
@@ -1004,37 +1003,10 @@ int main(int argc, char *argv[]) {
         static time_t last_web_health_check_time = 0;
         if (now - last_web_health_check_time > 30) {  // Check every 30 seconds
             last_web_health_check_time = now;
-            
-            // Check if web server is healthy
-            if (!is_web_server_healthy()) {
-                log_warn("Web server health check failed");
-                
-                // If we've had multiple consecutive failures, restart the web server
-                if (get_failed_health_checks() >= 5) {
-                    log_error("Web server has failed health checks %d times, restarting...", 
-                             get_failed_health_checks());
-                    
-                    // Stop the web server
-                    log_info("Stopping web server for restart...");
-                    http_server_stop(http_server);
-                    
-                    // Wait a moment for resources to be released
-                    usleep(1000000);  // 1 second
-                    
-                    // Reset health metrics
-                    reset_health_metrics();
-                    
-                    // Restart the web server
-                    log_info("Restarting web server...");
-                    if (http_server_start(http_server) != 0) {
-                        log_error("Failed to restart web server");
-                    } else {
-                        log_info("Web server restarted successfully");
-                    }
-                }
-            }
+
+            // The health check system now handles web server health checks and restarts automatically
         }
-        
+
         // Process events, monitor system health, etc.
         sleep(1);
     }
@@ -1231,14 +1203,14 @@ cleanup:
         log_info("Shutting down ONVIF discovery module...");
         shutdown_onvif_discovery();
 
-        // Clean up health check system
-        log_info("Cleaning up health check system...");
-        cleanup_health_check_system();
-
-        // Now shut down other components
+        // Now shut down components
         log_info("Shutting down web server...");
         http_server_stop(http_server);
         http_server_destroy(http_server);
+
+        // Clean up health check system after web server is stopped
+        log_info("Cleaning up health check system...");
+        cleanup_health_check_system();
 
         log_info("Shutting down stream manager...");
         shutdown_stream_manager();
@@ -1345,6 +1317,10 @@ cleanup:
         // Shut down remaining components
         http_server_stop(http_server);
         http_server_destroy(http_server);
+
+        // Clean up health check system after web server is stopped
+        cleanup_health_check_system();
+
         shutdown_stream_manager();
         shutdown_stream_state_adapter();
         shutdown_stream_state_manager();
