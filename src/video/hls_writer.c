@@ -820,6 +820,14 @@ void hls_writer_close(hls_writer_t *writer) {
     }
     in_writer_close = true;
 
+    // CRITICAL FIX: Use atomic operations to check if this writer is already being freed
+    static pthread_mutex_t close_mutex = PTHREAD_MUTEX_INITIALIZER;
+    if (pthread_mutex_trylock(&close_mutex) != 0) {
+        log_warn("Another thread is already closing an HLS writer, aborting to prevent race condition");
+        in_writer_close = false;
+        return;
+    }
+
     // CRITICAL FIX: Use a memory barrier to ensure all memory operations are completed
     // This helps prevent segmentation faults on some architectures
     __sync_synchronize();
@@ -1044,4 +1052,7 @@ void hls_writer_close(hls_writer_t *writer) {
 
     // Reset the recursive call prevention flag
     in_writer_close = false;
+
+    // CRITICAL FIX: Unlock the close mutex
+    pthread_mutex_unlock(&close_mutex);
 }

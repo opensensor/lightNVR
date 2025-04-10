@@ -23,6 +23,10 @@
 extern pthread_mutex_t unified_contexts_mutex;
 extern hls_unified_thread_ctx_t *unified_contexts[MAX_STREAMS];
 
+// Forward declarations for memory management functions
+extern void mark_context_as_freed(void *ctx);
+extern void *safe_free(void *ptr);
+
 /**
  * Initialize HLS streaming backend
  */
@@ -157,7 +161,14 @@ void cleanup_hls_streaming_backend(void) {
 
                             // Free the context
                             log_warn("Forcing cleanup of HLS context for stream %s", stream_names[i]);
-                            free(unified_contexts[j]);
+
+                            // CRITICAL FIX: Mark the context as freed before actually freeing it
+                            extern void mark_context_as_freed(void *ctx);
+                            mark_context_as_freed(unified_contexts[j]);
+
+                            // CRITICAL FIX: Use safe_free to free the context
+                            extern void *safe_free(void *ptr);
+                            safe_free(unified_contexts[j]);
                             unified_contexts[j] = NULL;
                             break;
                         }
@@ -200,7 +211,14 @@ void cleanup_hls_streaming_backend(void) {
             __sync_synchronize();
 
             // Free the context
-            free(unified_contexts[i]);
+
+            // CRITICAL FIX: Mark the context as freed before actually freeing it
+            extern void mark_context_as_freed(void *ctx);
+            mark_context_as_freed(unified_contexts[i]);
+
+            // CRITICAL FIX: Use safe_free to free the context
+            extern void *safe_free(void *ptr);
+            safe_free(unified_contexts[i]);
             unified_contexts[i] = NULL;
         }
     }

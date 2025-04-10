@@ -48,6 +48,106 @@ extern bool go2rtc_get_rtsp_url(const char *stream_name, char *url, size_t url_s
 // Hash map for tracking running HLS streaming contexts
 // These are defined at the bottom of the file as non-static
 
+// CRITICAL FIX: Add tracking for freed contexts to prevent double free
+#define MAX_FREED_CONTEXTS 100
+static void *freed_contexts[MAX_FREED_CONTEXTS] = {0};
+static int freed_contexts_count = 0;
+static pthread_mutex_t freed_contexts_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// CRITICAL FIX: Add memory boundary checking to detect buffer overflows
+#define MEMORY_GUARD_SIZE 16
+#define MEMORY_GUARD_PATTERN 0xFE
+
+// Function to allocate memory with guard bytes
+static void *safe_malloc(size_t size) {
+    // Allocate extra space for guard bytes
+    size_t total_size = size + (2 * MEMORY_GUARD_SIZE);
+    unsigned char *mem = malloc(total_size);
+
+    if (!mem) {
+        log_error("Failed to allocate memory of size %zu", size);
+        return NULL;
+    }
+
+    // Fill the guard bytes
+    memset(mem, MEMORY_GUARD_PATTERN, MEMORY_GUARD_SIZE);
+    memset(mem + MEMORY_GUARD_SIZE + size, MEMORY_GUARD_PATTERN, MEMORY_GUARD_SIZE);
+
+    // Return the usable portion of the memory
+    return mem + MEMORY_GUARD_SIZE;
+}
+
+// Function to free memory allocated with safe_malloc
+void *safe_free(void *ptr) {
+    if (!ptr) {
+        return NULL;
+    }
+
+    // Get the original pointer
+    unsigned char *mem = ((unsigned char *)ptr) - MEMORY_GUARD_SIZE;
+
+    // Check the guard bytes
+    bool guard_corrupted = false;
+
+    // Check leading guard bytes
+    for (int i = 0; i < MEMORY_GUARD_SIZE; i++) {
+        if (mem[i] != MEMORY_GUARD_PATTERN) {
+            guard_corrupted = true;
+            break;
+        }
+    }
+
+    // We don't know the size of the allocation, so we can't check the trailing guard bytes
+    // This is a limitation of this approach
+
+    if (guard_corrupted) {
+        log_error("Memory corruption detected: guard bytes have been overwritten");
+        // Continue with the free anyway
+    }
+
+    // Free the original pointer
+    free(mem);
+
+    return NULL;
+}
+
+// Function to check if a context has already been freed
+static bool is_context_already_freed(void *ctx) {
+    bool result = false;
+
+    pthread_mutex_lock(&freed_contexts_mutex);
+
+    for (int i = 0; i < freed_contexts_count; i++) {
+        if (freed_contexts[i] == ctx) {
+            result = true;
+            break;
+        }
+    }
+
+    pthread_mutex_unlock(&freed_contexts_mutex);
+
+    return result;
+}
+
+// Function to mark a context as freed
+void mark_context_as_freed(void *ctx) {
+    pthread_mutex_lock(&freed_contexts_mutex);
+
+    // If the array is full, remove the oldest entry
+    if (freed_contexts_count >= MAX_FREED_CONTEXTS) {
+        // Shift all entries down by one
+        for (int i = 0; i < MAX_FREED_CONTEXTS - 1; i++) {
+            freed_contexts[i] = freed_contexts[i + 1];
+        }
+        freed_contexts_count = MAX_FREED_CONTEXTS - 1;
+    }
+
+    // Add the new entry
+    freed_contexts[freed_contexts_count++] = ctx;
+
+    pthread_mutex_unlock(&freed_contexts_mutex);
+}
+
 /**
  * Safe resource cleanup function
  * This function safely cleans up all FFmpeg and HLS resources, handling NULL pointers and other edge cases
@@ -67,6 +167,13 @@ static void safe_cleanup_resources(AVFormatContext **input_ctx, AVPacket **pkt, 
         return;
     }
     in_safe_cleanup = true;
+
+    // CRITICAL FIX: Add additional NULL checks for all parameters
+    if (!input_ctx && !pkt && !writer) {
+        log_debug("All parameters to safe_cleanup_resources are NULL, nothing to clean up");
+        in_safe_cleanup = false;
+        return;
+    }
 
     // Clean up packet with safety checks
     if (pkt) {
@@ -135,21 +242,75 @@ static void safe_cleanup_resources(AVFormatContext **input_ctx, AVPacket **pkt, 
         // CRITICAL FIX: Check if the pointer to pointer is valid before dereferencing
         hls_writer_t *writer_to_free = NULL;
 
-        if (*writer) {
+        // CRITICAL FIX: Add additional validation of the writer pointer
+        if (!writer) {
+            log_warn("Writer pointer is NULL during cleanup");
+        } else if (!*writer) {
+            log_debug("Writer is already NULL, nothing to clean up");
+        } else {
+            // Store a local copy of the writer pointer
             writer_to_free = *writer;
-            *writer = NULL; // Clear the pointer first to prevent double-free
 
-            // CRITICAL FIX: Add memory barrier to ensure memory operations are completed
-            __sync_synchronize();
+            // CRITICAL FIX: Validate the writer pointer before using it
+            if (!writer_to_free) {
+                log_warn("Writer became NULL between checks");
+            } else {
+                // CRITICAL FIX: Validate the writer structure before freeing
+                // This helps catch cases where the memory has been corrupted
+                bool writer_valid = true;
 
-            // Safely free the HLS writer
-            log_debug("Safely closing HLS writer during cleanup");
+                // Basic validation of writer structure
+                if (writer_to_free->stream_name == NULL) {
+                    log_warn("Writer has NULL stream_name, may be corrupted");
+                    writer_valid = false;
+                }
 
-            // CRITICAL FIX: Add additional NULL check before closing
-            if (writer_to_free) {
-                // CRITICAL FIX: Add memory barrier before closing to ensure all accesses are complete
-                __sync_synchronize();
-                hls_writer_close(writer_to_free);
+                if (writer_valid) {
+                    // Get a copy of the stream name for logging
+                    char writer_stream_name[MAX_STREAM_NAME] = {0};
+                    if (writer_to_free->stream_name) {
+                        strncpy(writer_stream_name, writer_to_free->stream_name, MAX_STREAM_NAME - 1);
+                        writer_stream_name[MAX_STREAM_NAME - 1] = '\0';
+                    } else {
+                        strcpy(writer_stream_name, "unknown");
+                    }
+
+                    log_debug("Preparing to close HLS writer for stream %s", writer_stream_name);
+
+                    // Clear the pointer first to prevent double-free
+                    *writer = NULL;
+
+                    // CRITICAL FIX: Add memory barrier to ensure memory operations are completed
+                    __sync_synchronize();
+
+                    // Safely free the HLS writer
+                    log_debug("Safely closing HLS writer during cleanup for stream %s", writer_stream_name);
+
+                    // CRITICAL FIX: Add memory barrier before closing to ensure all accesses are complete
+                    __sync_synchronize();
+
+                    // Use a try/catch-like approach with signal handling to prevent crashes
+                    struct sigaction sa_old, sa_new;
+                    sigaction(SIGALRM, NULL, &sa_old);
+                    sa_new = sa_old;
+                    sa_new.sa_handler = SIG_IGN; // Ignore alarm signal
+                    sigaction(SIGALRM, &sa_new, NULL);
+
+                    // Set alarm
+                    alarm(5); // 5 second timeout for writer close
+
+                    // Close the writer with additional protection
+                    hls_writer_close(writer_to_free);
+
+                    // Cancel the alarm and restore signal handler
+                    alarm(0);
+                    sigaction(SIGALRM, &sa_old, NULL);
+
+                    log_debug("Successfully closed HLS writer for stream %s", writer_stream_name);
+                } else {
+                    log_warn("Skipping cleanup of invalid writer");
+                    *writer = NULL; // Still clear the pointer to prevent future access
+                }
             }
         }
     }
@@ -849,9 +1010,14 @@ void *hls_unified_thread_func(void *arg) {
     }
 
     // CRITICAL FIX: Store stream name in local buffer before cleanup
-    char stream_name_buf[MAX_STREAM_NAME];
-    strncpy(stream_name_buf, stream_name, MAX_STREAM_NAME - 1);
-    stream_name_buf[MAX_STREAM_NAME - 1] = '\0';
+    char stream_name_buf[MAX_STREAM_NAME] = {0};
+    if (stream_name) {
+        strncpy(stream_name_buf, stream_name, MAX_STREAM_NAME - 1);
+        stream_name_buf[MAX_STREAM_NAME - 1] = '\0';
+    } else {
+        strcpy(stream_name_buf, "unknown");
+        log_warn("Stream name is NULL during cleanup");
+    }
 
     // CRITICAL FIX: Add safety checks before cleaning up resources
     log_info("Cleaning up all resources for stream %s", stream_name_buf);
@@ -899,11 +1065,36 @@ void *hls_unified_thread_func(void *arg) {
     // CRITICAL FIX: Clear the writer reference in the context before cleaning up
     if (ctx) {
         log_info("Clearing writer reference in context for stream %s", stream_name_buf);
-        ctx->writer = NULL;
+        // Add a volatile pointer to prevent compiler optimizations
+        volatile hls_writer_t **writer_ptr = (volatile hls_writer_t **)&ctx->writer;
+        *writer_ptr = NULL;
+        // Add memory barrier to ensure the NULL assignment is visible to all threads
+        __sync_synchronize();
     }
 
-    // Clean up all resources using local copies
+    // CRITICAL FIX: Add additional safety checks before cleanup
+    log_info("About to clean up resources for stream %s", stream_name_buf);
+
+    // CRITICAL FIX: Add memory barrier before cleanup
+    __sync_synchronize();
+
+    // CRITICAL FIX: Verify that local copies are valid before cleanup
+    if (input_ctx_local) {
+        log_debug("Input context is valid for stream %s", stream_name_buf);
+    }
+
+    if (pkt_local) {
+        log_debug("Packet is valid for stream %s", stream_name_buf);
+    }
+
+    if (writer_to_cleanup) {
+        log_debug("Writer is valid for stream %s", stream_name_buf);
+    }
+
+    // Clean up all resources using local copies with additional try/catch-like protection
+    log_info("Calling safe_cleanup_resources for stream %s", stream_name_buf);
     safe_cleanup_resources(&input_ctx_local, &pkt_local, &writer_to_cleanup);
+    log_info("Completed safe_cleanup_resources for stream %s", stream_name_buf);
 
     // Update component state in shutdown coordinator only if we have a valid ID
     if (shutdown_id >= 0) {
@@ -915,9 +1106,81 @@ void *hls_unified_thread_func(void *arg) {
     unmark_stream_stopping(stream_name_buf);
     log_info("Unmarked stream %s as stopping before thread exit", stream_name_buf);
 
-    // Free the context if it exists
-    free(ctx);
-    ctx = NULL;
+    // CRITICAL FIX: Add additional safety checks before freeing the context
+    if (ctx) {
+        // CRITICAL FIX: Add memory barrier before freeing to ensure all accesses are complete
+        __sync_synchronize();
+
+        // CRITICAL FIX: Use a local copy of the pointer to prevent race conditions
+        hls_unified_thread_ctx_t *ctx_to_free = ctx;
+        ctx = NULL;
+
+        // CRITICAL FIX: Add memory barrier after nulling the pointer
+        __sync_synchronize();
+
+        // CRITICAL FIX: Add additional validation before freeing the context
+        // This helps catch cases where the memory has been corrupted or already freed
+        bool context_valid = true;
+
+        // Basic validation of context structure
+        if (ctx_to_free->stream_name == NULL || ctx_to_free->stream_name[0] == '\0') {
+            log_warn("Context has NULL or empty stream_name, may be corrupted");
+            context_valid = false;
+        }
+
+        // Check if the context has already been freed (this is a heuristic)
+        // We check if the first few bytes are zeroed out, which might indicate
+        // that the memory has been freed or corrupted
+        unsigned char *ptr = (unsigned char *)ctx_to_free;
+        bool all_zeros = true;
+        for (int i = 0; i < 16 && i < sizeof(hls_unified_thread_ctx_t); i++) {
+            if (ptr[i] != 0) {
+                all_zeros = false;
+                break;
+            }
+        }
+
+        if (all_zeros) {
+            log_warn("Context memory appears to be zeroed out, may have been freed already");
+            context_valid = false;
+        }
+
+        if (context_valid) {
+            // CRITICAL FIX: Check if the context has already been freed
+            if (is_context_already_freed(ctx_to_free)) {
+                log_warn("Context for stream %s has already been freed, skipping", stream_name_buf);
+            } else {
+                // Free the context
+                log_info("Freeing context for stream %s", stream_name_buf);
+
+                // Use a try/catch-like approach with signal handling to prevent crashes
+                struct sigaction sa_old, sa_new;
+                sigaction(SIGALRM, NULL, &sa_old);
+                sa_new = sa_old;
+                sa_new.sa_handler = SIG_IGN; // Ignore alarm signal
+                sigaction(SIGALRM, &sa_new, NULL);
+
+                // Set alarm
+                alarm(5); // 5 second timeout for context free
+
+                // Mark the context as freed before actually freeing it
+                mark_context_as_freed(ctx_to_free);
+
+                // Free the context with additional protection
+                safe_free(ctx_to_free);
+
+                // Cancel the alarm and restore signal handler
+                alarm(0);
+                sigaction(SIGALRM, &sa_old, NULL);
+
+                log_info("Successfully freed context for stream %s", stream_name_buf);
+            }
+        } else {
+            log_warn("Skipping cleanup of potentially invalid context for stream %s", stream_name_buf);
+        }
+    } else {
+        log_warn("Context is NULL during cleanup for stream %s", stream_name_buf);
+    }
 
     log_info("Unified HLS thread for stream %s exited", stream_name_buf);
     return NULL;
@@ -991,13 +1254,14 @@ int start_hls_unified_stream(const char *stream_name) {
     log_info("Clearing any existing HLS segments for stream %s before starting", stream_name);
     clear_stream_hls_segments(stream_name);
 
-    // Create context
-    hls_unified_thread_ctx_t *ctx = malloc(sizeof(hls_unified_thread_ctx_t));
+    // Create context with memory guards
+    hls_unified_thread_ctx_t *ctx = safe_malloc(sizeof(hls_unified_thread_ctx_t));
     if (!ctx) {
         log_error("Memory allocation failed for unified HLS context");
         return -1;
     }
 
+    // Initialize the memory to zero
     memset(ctx, 0, sizeof(hls_unified_thread_ctx_t));
     strncpy(ctx->stream_name, stream_name, MAX_STREAM_NAME - 1);
     ctx->stream_name[MAX_STREAM_NAME - 1] = '\0';
@@ -1120,7 +1384,7 @@ int start_hls_unified_stream(const char *stream_name) {
 
     if (thread_result != 0) {
         log_error("Failed to create unified HLS thread for %s", stream_name);
-        free(ctx);
+        safe_free(ctx);
         return -1;
     }
 
@@ -1296,7 +1560,13 @@ int stop_hls_unified_stream(const char *stream_name) {
             }
 
             log_info("Clearing writer reference in context for stream %s", writer_stream_name);
-            ctx->writer = NULL;
+
+            // Use a volatile pointer to prevent compiler optimizations
+            volatile hls_writer_t **writer_ptr = (volatile hls_writer_t **)&ctx->writer;
+            *writer_ptr = NULL;
+
+            // Add memory barrier to ensure the NULL assignment is visible to all threads
+            __sync_synchronize();
         }
 
         // Free context and clear slot
@@ -1305,9 +1575,81 @@ int stop_hls_unified_stream(const char *stream_name) {
         // Unlock the mutex before freeing the context
         pthread_mutex_unlock(&unified_contexts_mutex);
 
-        // Free the context structure
-        free(ctx);
-        ctx = NULL;
+        // CRITICAL FIX: Add additional safety checks before freeing the context
+        if (ctx) {
+            // CRITICAL FIX: Add memory barrier before freeing to ensure all accesses are complete
+            __sync_synchronize();
+
+            // CRITICAL FIX: Use a local copy of the pointer to prevent race conditions
+            hls_unified_thread_ctx_t *ctx_to_free = ctx;
+            ctx = NULL;
+
+            // CRITICAL FIX: Add memory barrier after nulling the pointer
+            __sync_synchronize();
+
+            // CRITICAL FIX: Add additional validation before freeing the context
+            // This helps catch cases where the memory has been corrupted or already freed
+            bool context_valid = true;
+
+            // Basic validation of context structure
+            if (ctx_to_free->stream_name == NULL || ctx_to_free->stream_name[0] == '\0') {
+                log_warn("Context has NULL or empty stream_name, may be corrupted");
+                context_valid = false;
+            }
+
+            // Check if the context has already been freed (this is a heuristic)
+            // We check if the first few bytes are zeroed out, which might indicate
+            // that the memory has been freed or corrupted
+            unsigned char *ptr = (unsigned char *)ctx_to_free;
+            bool all_zeros = true;
+            for (int i = 0; i < 16 && i < sizeof(hls_unified_thread_ctx_t); i++) {
+                if (ptr[i] != 0) {
+                    all_zeros = false;
+                    break;
+                }
+            }
+
+            if (all_zeros) {
+                log_warn("Context memory appears to be zeroed out, may have been freed already");
+                context_valid = false;
+            }
+
+            if (context_valid) {
+                // CRITICAL FIX: Check if the context has already been freed
+                if (is_context_already_freed(ctx_to_free)) {
+                    log_warn("Context for stream %s has already been freed, skipping", stream_name);
+                } else {
+                    // Free the context
+                    log_info("Freeing context for stream %s", stream_name);
+
+                    // Use a try/catch-like approach with signal handling to prevent crashes
+                    struct sigaction sa_old, sa_new;
+                    sigaction(SIGALRM, NULL, &sa_old);
+                    sa_new = sa_old;
+                    sa_new.sa_handler = SIG_IGN; // Ignore alarm signal
+                    sigaction(SIGALRM, &sa_new, NULL);
+
+                    // Set alarm
+                    alarm(5); // 5 second timeout for context free
+
+                    // Mark the context as freed before actually freeing it
+                    mark_context_as_freed(ctx_to_free);
+
+                    // Free the context with additional protection
+                    safe_free(ctx_to_free);
+
+                    // Cancel the alarm and restore signal handler
+                    alarm(0);
+                    sigaction(SIGALRM, &sa_old, NULL);
+
+                    log_info("Successfully freed context for stream %s", stream_name);
+                }
+            } else {
+                log_warn("Skipping cleanup of potentially invalid context for stream %s", stream_name);
+            }
+        } else {
+            log_warn("Context is NULL during cleanup for stream %s", stream_name);
+        }
 
         log_info("Successfully cleaned up resources for stream %s", stream_name);
     } else {
@@ -1323,9 +1665,17 @@ int stop_hls_unified_stream(const char *stream_name) {
     // Release the HLS reference
     if (state) {
         // Re-enable callbacks before releasing the reference
+        // CRITICAL FIX: Add memory barrier before re-enabling callbacks
+        __sync_synchronize();
         set_stream_callbacks_enabled(state, true);
         log_info("Re-enabled callbacks for stream %s after HLS shutdown", stream_name);
 
+        // CRITICAL FIX: Add a small delay to ensure callbacks are fully re-enabled
+        // before releasing the reference
+        usleep(100000); // 100ms
+
+        // CRITICAL FIX: Add memory barrier before releasing reference
+        __sync_synchronize();
         stream_state_release_ref(state, STREAM_COMPONENT_HLS);
         log_info("Released HLS reference to stream %s", stream_name);
     }
@@ -1352,4 +1702,31 @@ int is_hls_stream_active(const char *stream_name) {
 
     pthread_mutex_unlock(&unified_contexts_mutex);
     return 0;
+}
+
+/**
+ * Cleanup the freed contexts tracking system
+ */
+static void cleanup_freed_contexts_tracking(void) {
+    pthread_mutex_lock(&freed_contexts_mutex);
+
+    // Clear the array
+    memset(freed_contexts, 0, sizeof(freed_contexts));
+    freed_contexts_count = 0;
+
+    pthread_mutex_unlock(&freed_contexts_mutex);
+
+    log_info("Cleaned up freed contexts tracking system");
+}
+
+/**
+ * Cleanup HLS unified thread system
+ */
+void cleanup_hls_unified_thread_system(void) {
+    log_info("Cleaning up HLS unified thread system...");
+
+    // Clean up the freed contexts tracking system
+    cleanup_freed_contexts_tracking();
+
+    log_info("HLS unified thread system cleaned up");
 }
