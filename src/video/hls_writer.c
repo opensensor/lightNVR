@@ -803,12 +803,22 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
  * This function is thread-safe and handles all cleanup operations with improved robustness
  * to ensure safe operation with go2rtc integration
  */
+// Flag to prevent recursive calls to hls_writer_close
+static __thread bool in_writer_close = false;
+
 void hls_writer_close(hls_writer_t *writer) {
     // CRITICAL FIX: Add additional NULL check at the beginning
     if (!writer) {
         log_warn("Attempted to close NULL HLS writer");
         return;
     }
+
+    // CRITICAL FIX: Prevent recursive calls that can cause double free
+    if (in_writer_close) {
+        log_warn("Recursive call to hls_writer_close detected, aborting to prevent double free");
+        return;
+    }
+    in_writer_close = true;
 
     // CRITICAL FIX: Use a memory barrier to ensure all memory operations are completed
     // This helps prevent segmentation faults on some architectures
@@ -828,14 +838,11 @@ void hls_writer_close(hls_writer_t *writer) {
 
     log_info("Starting to close HLS writer for stream %s", stream_name);
 
-    // First, stop any running writer thread to ensure clean shutdown
-    // CRITICAL FIX: Add additional safety check before accessing thread_ctx
+    // CRITICAL FIX: Don't call stop_hls_stream from here to prevent recursive calls
+    // Instead, just clear the thread_ctx pointer to prevent future recursive calls
     if (writer && writer->thread_ctx) {
-        log_info("Stopping HLS writer thread for stream %s during writer close", stream_name);
-        // CRITICAL FIX: Use the local copy of stream name to prevent segfault
-        // Call the function from hls_unified_thread.h
-        stop_hls_stream(stream_name);
-        // thread_ctx should now be NULL
+        log_info("Clearing thread context reference for stream %s during writer close", stream_name);
+        writer->thread_ctx = NULL;
     }
 
     // Try to acquire the mutex with a timeout approach
@@ -1034,4 +1041,7 @@ void hls_writer_close(hls_writer_t *writer) {
     // Finally free the writer structure
     free(writer);
     log_info("Freed HLS writer structure for stream %s", stream_name);
+
+    // Reset the recursive call prevention flag
+    in_writer_close = false;
 }

@@ -54,9 +54,19 @@ extern bool go2rtc_get_rtsp_url(const char *stream_name, char *url, size_t url_s
  * Enhanced to prevent memory leaks
  */
 
+// Flag to prevent recursive calls to safe_cleanup_resources
+static __thread bool in_safe_cleanup = false;
+
 static void safe_cleanup_resources(AVFormatContext **input_ctx, AVPacket **pkt, hls_writer_t **writer) {
     // CRITICAL FIX: Add safety checks to prevent segmentation faults and bus errors
     // This function is designed to be robust against NULL pointers and partially initialized structures
+
+    // CRITICAL FIX: Prevent recursive calls that can cause double free
+    if (in_safe_cleanup) {
+        log_warn("Recursive call to safe_cleanup_resources detected, aborting to prevent double free");
+        return;
+    }
+    in_safe_cleanup = true;
 
     // Clean up packet with safety checks
     if (pkt) {
@@ -145,6 +155,9 @@ static void safe_cleanup_resources(AVFormatContext **input_ctx, AVPacket **pkt, 
     }
 
     log_debug("Completed safe cleanup of resources");
+
+    // Reset the recursive call prevention flag
+    in_safe_cleanup = false;
 }
 
 /**
@@ -860,6 +873,14 @@ void *hls_unified_thread_func(void *arg) {
         if (ctx->writer) {
             log_debug("Cleaning up HLS writer for stream %s", stream_name_buf);
             writer_to_cleanup = ctx->writer;
+
+            // CRITICAL FIX: Store a local copy of the stream name for logging
+            char writer_stream_name[MAX_STREAM_NAME] = {0};
+            if (ctx->writer->stream_name) {
+                strncpy(writer_stream_name, ctx->writer->stream_name, MAX_STREAM_NAME - 1);
+                writer_stream_name[MAX_STREAM_NAME - 1] = '\0';
+                log_info("Preparing to clean up HLS writer for stream %s", writer_stream_name);
+            }
         }
         shutdown_id = ctx->shutdown_component_id;
     }
@@ -874,7 +895,12 @@ void *hls_unified_thread_func(void *arg) {
     // Clear original pointers immediately to prevent double-free
     input_ctx = NULL;
     pkt = NULL;
-    if (ctx) ctx->writer = NULL;
+
+    // CRITICAL FIX: Clear the writer reference in the context before cleaning up
+    if (ctx) {
+        log_info("Clearing writer reference in context for stream %s", stream_name_buf);
+        ctx->writer = NULL;
+    }
 
     // Clean up all resources using local copies
     safe_cleanup_resources(&input_ctx_local, &pkt_local, &writer_to_cleanup);
@@ -1258,6 +1284,21 @@ int stop_hls_unified_stream(const char *stream_name) {
 
     // Verify context is still valid
     if (index >= 0 && index < MAX_STREAMS && unified_contexts[index] == ctx) {
+        // CRITICAL FIX: Clear the writer reference in the context before freeing to prevent double free
+        if (ctx && ctx->writer) {
+            // Store a local copy of the stream name for logging
+            char writer_stream_name[MAX_STREAM_NAME] = {0};
+            if (ctx->writer->stream_name) {
+                strncpy(writer_stream_name, ctx->writer->stream_name, MAX_STREAM_NAME - 1);
+                writer_stream_name[MAX_STREAM_NAME - 1] = '\0';
+            } else {
+                strcpy(writer_stream_name, "unknown");
+            }
+
+            log_info("Clearing writer reference in context for stream %s", writer_stream_name);
+            ctx->writer = NULL;
+        }
+
         // Free context and clear slot
         unified_contexts[index] = NULL;
 
