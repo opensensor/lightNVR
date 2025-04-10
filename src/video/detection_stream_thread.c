@@ -202,6 +202,14 @@ int process_segment_for_detection(stream_detection_thread_t *thread, const char 
         return -1;
     }
 
+    // CRITICAL FIX: Make a local copy of the stream name for logging
+    char stream_name_buf[MAX_STREAM_NAME];
+    strncpy(stream_name_buf, thread->stream_name, MAX_STREAM_NAME - 1);
+    stream_name_buf[MAX_STREAM_NAME - 1] = '\0';
+
+    log_info("[Stream %s] Processing HLS segment for detection: %s",
+             stream_name_buf, segment_path);
+
     // CRITICAL FIX: Initialize all pointers to NULL to prevent use-after-free and double-free issues
     AVFormatContext *format_ctx = NULL;
     AVCodecContext *codec_ctx = NULL;
@@ -748,6 +756,18 @@ int process_segment_for_detection(stream_detection_thread_t *thread, const char 
  * Added retry mechanism and improved robustness for handling HLS writer failures
  */
 static void check_for_new_segments(stream_detection_thread_t *thread) {
+    // CRITICAL FIX: Add safety check for NULL thread to prevent segfault
+    if (!thread) {
+        log_error("Cannot check for segments with NULL thread");
+        return;
+    }
+
+    // CRITICAL FIX: Add safety check for invalid thread structure
+    if (!thread->stream_name[0]) {
+        log_error("Cannot check for segments with invalid stream name");
+        return;
+    }
+
     time_t current_time = time(NULL);
     static time_t last_warning_time = 0;
     static int consecutive_failures = 0;
@@ -755,6 +775,11 @@ static void check_for_new_segments(stream_detection_thread_t *thread) {
     char newest_segment[MAX_PATH_LENGTH] = {0};
     time_t newest_time = 0;
     int segment_count = 0;
+
+    // CRITICAL FIX: Make a local copy of the stream name for logging
+    char stream_name_copy[MAX_STREAM_NAME];
+    strncpy(stream_name_copy, thread->stream_name, MAX_STREAM_NAME - 1);
+    stream_name_copy[MAX_STREAM_NAME - 1] = '\0';
 
     // Check if we should run detection based on startup delay, detection in progress and time interval
     bool should_run_detection = should_run_detection_check(thread, current_time);
@@ -802,7 +827,20 @@ static void check_for_new_segments(stream_detection_thread_t *thread) {
  * Improved with better error handling and retry logic
  */
 static void *stream_detection_thread_func(void *arg) {
+    // CRITICAL FIX: Add safety check for NULL argument to prevent segfault
+    if (!arg) {
+        log_error("Detection thread started with NULL argument");
+        return NULL;
+    }
+
     stream_detection_thread_t *thread = (stream_detection_thread_t *)arg;
+
+    // CRITICAL FIX: Add safety check for invalid thread structure
+    if (!thread->stream_name[0]) {
+        log_error("Detection thread started with invalid stream name");
+        return NULL;
+    }
+
     int model_load_retries = 0;
     const int MAX_MODEL_LOAD_RETRIES = 5;
 
@@ -913,12 +951,34 @@ static void *stream_detection_thread_func(void *arg) {
     global_startup_delay_end = startup_time + 10;
 
     while (thread->running) {
+        // CRITICAL FIX: Add safety check for thread validity
+        if (!thread || !thread->stream_name[0]) {
+            log_error("Detection thread has invalid state, exiting");
+            break;
+        }
+
         log_info("[Stream %s] Checking for new segments in HLS directory", thread->stream_name);
 
         // Check if shutdown has been initiated
         if (is_shutdown_initiated()) {
             log_info("[Stream %s] Stopping due to system shutdown", thread->stream_name);
             break;
+        }
+
+        // CRITICAL FIX: Check if HLS directory exists and is accessible
+        if (!thread->hls_dir[0]) {
+            log_error("[Stream %s] HLS directory path is empty", thread->stream_name);
+            usleep(1000000); // Sleep for 1 second before checking again
+            continue;
+        }
+
+        // Check if the HLS directory exists
+        struct stat st;
+        if (stat(thread->hls_dir, &st) != 0) {
+            log_warn("[Stream %s] HLS directory does not exist: %s (error: %s)",
+                    thread->stream_name, thread->hls_dir, strerror(errno));
+            usleep(1000000); // Sleep for 1 second before checking again
+            continue;
         }
 
         time_t current_time = time(NULL);
@@ -1016,26 +1076,40 @@ static void *stream_detection_thread_func(void *arg) {
         log_info("[Stream %s] Updated state to STOPPED in shutdown coordinator", thread->stream_name);
     }
 
+    // CRITICAL FIX: Add safety check for thread validity before cleanup
+    if (!thread) {
+        log_error("Cannot clean up NULL thread");
+        return NULL;
+    }
+
+    // CRITICAL FIX: Store stream name in local buffer before cleanup
+    char stream_name_buf[MAX_STREAM_NAME];
+    strncpy(stream_name_buf, thread->stream_name, MAX_STREAM_NAME - 1);
+    stream_name_buf[MAX_STREAM_NAME - 1] = '\0';
+
     // Unload the model with enhanced cleanup for SOD models
     pthread_mutex_lock(&thread->mutex);
     if (thread->model) {
-        log_info("[Stream %s] Unloading detection model", thread->stream_name);
+        log_info("[Stream %s] Unloading detection model", stream_name_buf);
 
         // Get the model type to check if it's a SOD model
         const char *model_type = get_model_type_from_handle(thread->model);
 
         // Use our enhanced cleanup for SOD models to prevent memory leaks
-        if (strcmp(model_type, MODEL_TYPE_SOD) == 0) {
-            log_info("[Stream %s] Using enhanced SOD model cleanup to prevent memory leaks", thread->stream_name);
+        if (model_type && strcmp(model_type, MODEL_TYPE_SOD) == 0) {
+            log_info("[Stream %s] Using enhanced SOD model cleanup to prevent memory leaks", stream_name_buf);
             ensure_sod_model_cleanup(thread->model);
         } else {
             // For non-SOD models, use the standard unload function
+            log_info("[Stream %s] Using standard model cleanup", stream_name_buf);
             unload_detection_model(thread->model);
         }
 
         thread->model = NULL;
     }
     pthread_mutex_unlock(&thread->mutex);
+
+    log_info("Cleaning up all resources for stream %s", stream_name_buf);
 
     log_info("[Stream %s] Detection thread exiting", thread->stream_name);
     return NULL;

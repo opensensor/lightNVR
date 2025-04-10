@@ -804,14 +804,22 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
  * to ensure safe operation with go2rtc integration
  */
 void hls_writer_close(hls_writer_t *writer) {
+    // CRITICAL FIX: Add additional NULL check at the beginning
     if (!writer) {
         log_warn("Attempted to close NULL HLS writer");
         return;
     }
 
+    // CRITICAL FIX: Use a memory barrier to ensure all memory operations are completed
+    // This helps prevent segmentation faults on some architectures
+    __sync_synchronize();
+
     // Store stream name for logging - use a local copy to avoid potential race conditions
     char stream_name[MAX_STREAM_NAME] = {0};
-    if (writer->stream_name[0] != '\0') {
+
+    // CRITICAL FIX: Add additional safety check before accessing stream_name
+    // This prevents segfaults when the writer structure is partially initialized or corrupted
+    if (writer && writer->stream_name && writer->stream_name[0] != '\0') {
         strncpy(stream_name, writer->stream_name, MAX_STREAM_NAME - 1);
         stream_name[MAX_STREAM_NAME - 1] = '\0';
     } else {
@@ -821,10 +829,12 @@ void hls_writer_close(hls_writer_t *writer) {
     log_info("Starting to close HLS writer for stream %s", stream_name);
 
     // First, stop any running writer thread to ensure clean shutdown
-    if (writer->thread_ctx) {
+    // CRITICAL FIX: Add additional safety check before accessing thread_ctx
+    if (writer && writer->thread_ctx) {
         log_info("Stopping HLS writer thread for stream %s during writer close", stream_name);
+        // CRITICAL FIX: Use the local copy of stream name to prevent segfault
         // Call the function from hls_unified_thread.h
-        stop_hls_stream(writer->stream_name);
+        stop_hls_stream(stream_name);
         // thread_ctx should now be NULL
     }
 
@@ -833,19 +843,31 @@ void hls_writer_close(hls_writer_t *writer) {
     clock_gettime(CLOCK_REALTIME, &timeout);
     timeout.tv_sec += 5; // Increased to 5 second timeout for better reliability with go2rtc
 
-    int mutex_result = pthread_mutex_timedlock(&writer->mutex, &timeout);
-    if (mutex_result != 0) {
-        log_warn("Could not acquire HLS writer mutex for stream %s within timeout, proceeding with forced close (error: %s)",
-                stream_name, strerror(mutex_result));
-        // Continue with the close operation even if we couldn't acquire the mutex
+    // CRITICAL FIX: Add additional safety check before accessing mutex
+    int mutex_result = EOWNERDEAD; // Default to error state
+    if (writer) {
+        // CRITICAL FIX: Use a memory barrier before accessing the mutex
+        __sync_synchronize();
+
+        mutex_result = pthread_mutex_timedlock(&writer->mutex, &timeout);
+        if (mutex_result != 0) {
+            log_warn("Could not acquire HLS writer mutex for stream %s within timeout, proceeding with forced close (error: %s)",
+                    stream_name, strerror(mutex_result));
+            // Continue with the close operation even if we couldn't acquire the mutex
+        } else {
+            log_info("Successfully acquired mutex for HLS writer for stream %s", stream_name);
+        }
     } else {
-        log_info("Successfully acquired mutex for HLS writer for stream %s", stream_name);
+        log_warn("Writer became NULL during mutex acquisition for stream %s", stream_name);
     }
 
     // Check if already closed - with additional safety check
-    if (!writer->output_ctx) {
+    // CRITICAL FIX: Add additional NULL check before accessing output_ctx
+    if (!writer || !writer->output_ctx) {
         log_warn("Attempted to close already closed HLS writer for stream %s", stream_name);
-        if (mutex_result == 0) {
+        if (writer && mutex_result == 0) {
+            // CRITICAL FIX: Add memory barrier before unlocking mutex
+            __sync_synchronize();
             pthread_mutex_unlock(&writer->mutex);
         }
         return;

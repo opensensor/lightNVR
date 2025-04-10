@@ -123,7 +123,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
 
     // CRITICAL FIX: Add thread safety for curl operations
     pthread_mutex_lock(&curl_mutex);
-    
+
     // Initialize result to empty at the beginning to prevent segmentation fault
     if (result) {
         memset(result, 0, sizeof(detection_result_t));
@@ -132,7 +132,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         pthread_mutex_unlock(&curl_mutex);
         return 0;
     }
-    
+
     // CRITICAL FIX: Check if api_url is the special "api-detection" string
     // If so, get the actual URL from the global config
     const char *actual_api_url = api_url;
@@ -248,44 +248,54 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
 
     // Validate width and height to prevent buffer overflows
     // Format the command with safety checks
-// CRITICAL FIX: Add additional validation for width, height, and channels to prevent floating point exceptions
-// Check for valid dimensions that won't cause arithmetic errors
-if (width <= 0 || width > 8192 || height <= 0 || height > 8192) {
-    log_error("API Detection: Invalid image dimensions: %dx%d (must be positive and <= 8192)", width, height);
-    remove(temp_filename);
-    pthread_mutex_unlock(&curl_mutex);
-    return 0;
-}
-
-// Check for valid channel count
-if (channels != 1 && channels != 3 && channels != 4) {
-    log_error("API Detection: Invalid channel count: %d (must be 1, 3, or 4)", channels);
-    remove(temp_filename);
-    pthread_mutex_unlock(&curl_mutex);
-    return 0;
-}
-
-// CRITICAL FIX: Verify that the raw data size is correct to prevent buffer overflows
-size_t expected_size = width * height * channels;
-if (expected_size == 0 || expected_size > 100000000) { // 100MB sanity check
-    log_error("API Detection: Invalid data size: %zu bytes", expected_size);
-    remove(temp_filename);
+    // CRITICAL FIX: Add additional validation for width, height, and channels to prevent floating point exceptions
+    // Check for valid dimensions that won't cause arithmetic errors
+    if (width <= 0 || width > 8192 || height <= 0 || height > 8192) {
+        log_error("API Detection: Invalid image dimensions: %dx%d (must be positive and <= 8192)", width, height);
+        remove(temp_filename);
         pthread_mutex_unlock(&curl_mutex);
+        return 0;
+    }
+
+    // Check for valid channel count
+    if (channels != 1 && channels != 3 && channels != 4) {
+        log_error("API Detection: Invalid channel count: %d (must be 1, 3, or 4)", channels);
+        remove(temp_filename);
+        pthread_mutex_unlock(&curl_mutex);
+        return 0;
+    }
+
+    // CRITICAL FIX: Verify that the raw data size is correct to prevent buffer overflows
+    size_t expected_size = width * height * channels;
+    if (expected_size == 0 || expected_size > 100000000) { // 100MB sanity check
+        log_error("API Detection: Invalid data size: %zu bytes", expected_size);
+        remove(temp_filename);
+        pthread_mutex_unlock(&curl_mutex);
+        return 0;
+    }
+
+    // CRITICAL FIX: Format the convert command with safety checks
+    snprintf(convert_cmd, sizeof(convert_cmd),
+             "convert -depth 8 -size %dx%d %s:%s %s",
+             width, height, pixel_format, temp_filename, image_filename);
+
+    log_info("API Detection: Converting raw data to JPEG: %s", convert_cmd);
+
     // CRITICAL FIX: Add signal handling to prevent floating point exceptions
     // Set up a signal handler for SIGFPE (floating point exception)
     struct sigaction sa, old_sa;
     memset(&sa, 0, sizeof(sa));
     sa.sa_handler = SIG_IGN; // Ignore the signal
     sigaction(SIGFPE, &sa, &old_sa);
-    
+
     int convert_result = system(convert_cmd);
-    
+
     // Restore the original signal handler
     sigaction(SIGFPE, &old_sa, NULL);
-    
+
     if (convert_result != 0) {
         log_error("API Detection: Failed to convert raw data to JPEG (error code: %d)", convert_result);
-        
+
         // Clean up and return early
         remove(temp_filename);
         if (access(image_filename, F_OK) == 0) {
@@ -294,24 +304,7 @@ if (expected_size == 0 || expected_size > 100000000) { // 100MB sanity check
         pthread_mutex_unlock(&curl_mutex);
         return 0;
     }
-        return 0;
-    }
 
-    log_info("API Detection: Converting raw data to JPEG: %s", convert_cmd);
-
-    int convert_result = system(convert_cmd);
-    if (convert_result != 0) {
-        log_error("API Detection: Failed to convert raw data to JPEG (error code: %d)", convert_result);
-        
-        // Clean up and return early
-        remove(temp_filename);
-        if (access(image_filename, F_OK) == 0) {
-            remove(image_filename);
-        }
-        pthread_mutex_unlock(&curl_mutex);
-        return 0;
-    }
-    
     // Verify the JPEG file exists and has content before proceeding
     struct stat jpeg_stat;
     if (stat(image_filename, &jpeg_stat) != 0 || jpeg_stat.st_size == 0) {
@@ -323,8 +316,8 @@ if (expected_size == 0 || expected_size > 100000000) { // 100MB sanity check
         pthread_mutex_unlock(&curl_mutex);
         return 0;
     }
-    
-    log_info("API Detection: Successfully converted raw data to JPEG: %s (size: %ld bytes)", 
+
+    log_info("API Detection: Successfully converted raw data to JPEG: %s (size: %ld bytes)",
              image_filename, (long)jpeg_stat.st_size);
 
     // Add the JPEG file to the form
@@ -339,7 +332,7 @@ if (expected_size == 0 || expected_size > 100000000) { // 100MB sanity check
                     CURLFORM_FILE, image_filename,
                     CURLFORM_CONTENTTYPE, "image/jpeg",
                     CURLFORM_END);
-                    
+
         if (form_result != CURL_FORMADD_OK) {
             log_error("API Detection: Failed to add JPEG file to form (error code: %d)", form_result);
             free(chunk.memory);
@@ -351,7 +344,7 @@ if (expected_size == 0 || expected_size > 100000000) { // 100MB sanity check
             pthread_mutex_unlock(&curl_mutex);
             return 0;
         }
-        
+
         log_info("API Detection: Successfully added JPEG file to form: %s", image_filename);
     } else {
         log_error("API Detection: JPEG file missing or empty: %s", image_filename);
@@ -359,7 +352,7 @@ if (expected_size == 0 || expected_size > 100000000) { // 100MB sanity check
         if (chunk.memory) free(chunk.memory);
         if (formpost) curl_formfree(formpost);
         if (headers) curl_slist_free_all(headers);
-        
+
         remove(temp_filename);
         if (stat(image_filename, &image_stat) == 0) {
             remove(image_filename);
@@ -428,21 +421,21 @@ if (expected_size == 0 || expected_size > 100000000) { // 100MB sanity check
         log_info("API Detection: Removing temporary JPEG file: %s", image_filename);
         remove(image_filename);
     }
-    
+
     // Check for errors with detailed logging
     if (res != CURLE_OK) {
         log_error("API Detection: curl_easy_perform() failed: %s", curl_easy_strerror(res));
-        
+
         // Handle specific error cases
         if (res == CURLE_COULDNT_CONNECT || res == CURLE_OPERATION_TIMEDOUT) {
             log_error("API Detection: Could not connect to API server at %s. Is the server running?", actual_api_url);
         }
-        
+
         // Clean up resources
         if (chunk.memory) free(chunk.memory);
         if (formpost) curl_formfree(formpost);
         if (headers) curl_slist_free_all(headers);
-        
+
         // Initialize result to empty to prevent segmentation fault
         result->count = 0;
         pthread_mutex_unlock(&curl_mutex);

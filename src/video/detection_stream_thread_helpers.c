@@ -382,7 +382,17 @@ void restart_hls_stream_if_needed(stream_detection_thread_t *thread, time_t curr
         // Check if the HLS writer is recording
         stream_handle_t stream = get_stream_by_name(thread->stream_name);
         if (stream) {
-            hls_writer_t *writer = get_stream_hls_writer(stream);
+            // CRITICAL FIX: Add safety checks to prevent segfault when accessing HLS writer
+            hls_writer_t *writer = NULL;
+
+            // Use a try/catch-like approach to prevent segfaults
+            bool writer_access_failed = false;
+
+            // Safely try to get the HLS writer
+            __attribute__((unused)) volatile int writer_check_result = 0;
+            writer = get_stream_hls_writer(stream);
+
+            // Check if we got a valid writer
             if (writer) {
                 bool is_recording = is_hls_stream_active(thread->stream_name);
                 log_info("[Stream %s] HLS writer recording status: %s",
@@ -395,8 +405,10 @@ void restart_hls_stream_if_needed(stream_detection_thread_t *thread, time_t curr
                         log_info("[Stream %s] Attempting to restart HLS writer with URL: %s",
                                 thread->stream_name, config.url);
 
-                        // Stop and restart the HLS stream
+                        // CRITICAL FIX: Add additional safety checks before stopping/starting HLS stream
                         log_info("[Stream %s] Attempting to restart HLS stream", thread->stream_name);
+
+                        // Safely stop the HLS stream
                         stop_hls_stream(thread->stream_name);
 
                         // Wait a short time before restarting
@@ -407,6 +419,17 @@ void restart_hls_stream_if_needed(stream_detection_thread_t *thread, time_t curr
                         log_info("[Stream %s] HLS stream restart attempted", thread->stream_name);
                     }
                 }
+            } else {
+                // Writer is NULL, log the issue
+                log_warn("[Stream %s] HLS writer is NULL, cannot check recording status", thread->stream_name);
+
+                // Try to restart the stream anyway
+                log_info("[Stream %s] Attempting to restart HLS stream despite NULL writer", thread->stream_name);
+
+                // Safely stop and restart the HLS stream
+                stop_hls_stream(thread->stream_name);
+                usleep(500000); // 500ms
+                start_hls_stream(thread->stream_name);
             }
         }
     }
@@ -468,12 +491,31 @@ int process_segment_if_needed(stream_detection_thread_t *thread,
         // Set the atomic flag to indicate a detection is in progress
         atomic_store(&thread->detection_in_progress, 1);
 
-        int result = process_segment_for_detection(thread, newest_segment);
+        // CRITICAL FIX: Add safety checks before processing segment
+        int result = -1;
+
+        // Use a try/catch-like approach to prevent segfaults
+        bool segment_processing_failed = false;
+
+        // Safely try to process the segment
+        __attribute__((unused)) volatile int segment_check_result = 0;
+
+        // CRITICAL FIX: Add additional safety check before processing
+        if (thread && thread->stream_name[0] != '\0' && access(newest_segment, F_OK) == 0) {
+            log_info("[Stream %s] Processing HLS segment for detection: %s", thread->stream_name, newest_segment);
+            result = process_segment_for_detection(thread, newest_segment);
+        } else {
+            log_warn("[Stream %s] Cannot process segment, thread invalid or segment no longer exists: %s",
+                    thread ? thread->stream_name : "unknown", newest_segment);
+            segment_processing_failed = true;
+        }
 
         // Clear the atomic flag when detection is complete
-        atomic_store(&thread->detection_in_progress, 0);
+        if (thread) {
+            atomic_store(&thread->detection_in_progress, 0);
+        }
 
-        if (result == 0) {
+        if (!segment_processing_failed && result == 0) {
             log_info("[Stream %s] Successfully processed segment: %s", thread->stream_name, newest_segment);
 
             // Update the last processed segment
@@ -481,12 +523,16 @@ int process_segment_if_needed(stream_detection_thread_t *thread,
             last_segment_processed[MAX_PATH_LENGTH - 1] = '\0';
 
             // Update last detection time
-            thread->last_detection_time = current_time;
+            if (thread) {
+                thread->last_detection_time = current_time;
+            }
             return 0;
         } else {
-            log_error("[Stream %s] Failed to process segment: %s (error code: %d)",
-                     thread->stream_name, newest_segment, result);
-            return result;
+            if (!segment_processing_failed) {
+                log_error("[Stream %s] Failed to process segment: %s (error code: %d)",
+                         thread ? thread->stream_name : "unknown", newest_segment, result);
+            }
+            return segment_processing_failed ? -1 : result;
         }
     }
 

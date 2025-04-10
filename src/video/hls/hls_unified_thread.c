@@ -56,75 +56,91 @@ extern bool go2rtc_get_rtsp_url(const char *stream_name, char *url, size_t url_s
 
 static void safe_cleanup_resources(AVFormatContext **input_ctx, AVPacket **pkt, hls_writer_t **writer) {
     // CRITICAL FIX: Add safety checks to prevent segmentation faults and bus errors
+    // This function is designed to be robust against NULL pointers and partially initialized structures
 
     // Clean up packet with safety checks
-    if (pkt && *pkt) {
-        // CRITICAL FIX: Create a properly aligned local copy to prevent bus errors on embedded devices
-        // Some embedded processors require strict memory alignment
-        AVPacket *pkt_to_free = *pkt;
-        *pkt = NULL; // Clear the pointer first to prevent double-free
+    if (pkt) {
+        // CRITICAL FIX: Check if the pointer to pointer is valid before dereferencing
+        AVPacket *pkt_to_free = NULL;
 
-        // CRITICAL FIX: Add memory barrier to ensure memory operations are completed
-        // This helps prevent bus errors on some embedded architectures
-        __sync_synchronize();
+        if (*pkt) {
+            // CRITICAL FIX: Create a properly aligned local copy to prevent bus errors on embedded devices
+            // Some embedded processors require strict memory alignment
+            pkt_to_free = *pkt;
+            *pkt = NULL; // Clear the pointer first to prevent double-free
 
-        // Safely unref and free the packet
-        log_debug("Safely unreferencing packet during cleanup");
-
-        // CRITICAL FIX: Add additional NULL check before unreferencing
-        if (pkt_to_free) {
-            av_packet_unref(pkt_to_free);
-            log_debug("Safely freeing packet during cleanup");
-
-            // CRITICAL FIX: Add memory barrier before freeing to ensure all accesses are complete
+            // CRITICAL FIX: Add memory barrier to ensure memory operations are completed
+            // This helps prevent bus errors on some embedded architectures
             __sync_synchronize();
 
-            av_packet_free(&pkt_to_free);
+            // Safely unref and free the packet
+            log_debug("Safely unreferencing packet during cleanup");
+
+            // CRITICAL FIX: Add additional NULL check before unreferencing
+            if (pkt_to_free) {
+                av_packet_unref(pkt_to_free);
+                log_debug("Safely freeing packet during cleanup");
+
+                // CRITICAL FIX: Add memory barrier before freeing to ensure all accesses are complete
+                __sync_synchronize();
+
+                av_packet_free(&pkt_to_free);
+            }
         }
     }
 
     // Clean up input context with safety checks
-    if (input_ctx && *input_ctx) {
-        AVFormatContext *ctx_to_close = *input_ctx;
-        *input_ctx = NULL; // Clear the pointer first to prevent double-free
+    if (input_ctx) {
+        // CRITICAL FIX: Check if the pointer to pointer is valid before dereferencing
+        AVFormatContext *ctx_to_close = NULL;
 
-        // CRITICAL FIX: Add memory barrier to ensure memory operations are completed
-        __sync_synchronize();
+        if (*input_ctx) {
+            ctx_to_close = *input_ctx;
+            *input_ctx = NULL; // Clear the pointer first to prevent double-free
 
-        // Safely close the input context
-        log_debug("Safely closing input context during cleanup");
+            // CRITICAL FIX: Add memory barrier to ensure memory operations are completed
+            __sync_synchronize();
 
-        // CRITICAL FIX: Add additional NULL check before closing
-        if (ctx_to_close) {
-            // Check if the context is properly initialized
-            if (ctx_to_close->pb) {
-                avformat_close_input(&ctx_to_close);
-                log_debug("Successfully closed input context");
-            } else {
-                // If the context is not properly initialized, just free it
-                // CRITICAL FIX: Add memory barrier before freeing to ensure all accesses are complete
-                __sync_synchronize();
-                avformat_free_context(ctx_to_close);
+            // Safely close the input context
+            log_debug("Safely closing input context during cleanup");
+
+            // CRITICAL FIX: Add additional NULL check before closing
+            if (ctx_to_close) {
+                // Check if the context is properly initialized
+                if (ctx_to_close->pb) {
+                    avformat_close_input(&ctx_to_close);
+                    log_debug("Successfully closed input context");
+                } else {
+                    // If the context is not properly initialized, just free it
+                    // CRITICAL FIX: Add memory barrier before freeing to ensure all accesses are complete
+                    __sync_synchronize();
+                    avformat_free_context(ctx_to_close);
+                }
             }
         }
     }
 
     // Clean up HLS writer with safety checks
-    if (writer && *writer) {
-        hls_writer_t *writer_to_free = *writer;
-        *writer = NULL; // Clear the pointer first to prevent double-free
+    if (writer) {
+        // CRITICAL FIX: Check if the pointer to pointer is valid before dereferencing
+        hls_writer_t *writer_to_free = NULL;
 
-        // CRITICAL FIX: Add memory barrier to ensure memory operations are completed
-        __sync_synchronize();
+        if (*writer) {
+            writer_to_free = *writer;
+            *writer = NULL; // Clear the pointer first to prevent double-free
 
-        // Safely free the HLS writer
-        log_debug("Safely closing HLS writer during cleanup");
-
-        // CRITICAL FIX: Add additional NULL check before closing
-        if (writer_to_free) {
-            // CRITICAL FIX: Add memory barrier before closing to ensure all accesses are complete
+            // CRITICAL FIX: Add memory barrier to ensure memory operations are completed
             __sync_synchronize();
-            hls_writer_close(writer_to_free);
+
+            // Safely free the HLS writer
+            log_debug("Safely closing HLS writer during cleanup");
+
+            // CRITICAL FIX: Add additional NULL check before closing
+            if (writer_to_free) {
+                // CRITICAL FIX: Add memory barrier before closing to ensure all accesses are complete
+                __sync_synchronize();
+                hls_writer_close(writer_to_free);
+            }
         }
     }
 
@@ -807,11 +823,15 @@ void *hls_unified_thread_func(void *arg) {
         }
     }
 
-    // Mark connection as invalid
-    atomic_store(&ctx->connection_valid, 0);
+    // CRITICAL FIX: Add safety checks before accessing ctx members
+    if (ctx) {
+        // Mark connection as invalid
+        atomic_store(&ctx->connection_valid, 0);
+    }
 
     // Clear the reference in the stream state
-    if (state && state->hls_ctx == ctx->writer) {
+    // CRITICAL FIX: Add additional safety checks to prevent segfault
+    if (state && ctx && ctx->writer && state->hls_ctx == ctx->writer) {
         state->hls_ctx = NULL;
     }
 
