@@ -72,8 +72,9 @@ static void cleanup_old_segments(const char *output_dir, int max_segments) {
         return;
     }
 
-    // Allocate array for segment info
-    segments = (segment_info_t *)malloc(segment_count * sizeof(segment_info_t));
+    // Allocate array for segment info with proper alignment
+    // Use calloc instead of malloc to ensure memory is initialized to zero
+    segments = (segment_info_t *)calloc(segment_count, sizeof(segment_info_t));
     if (!segments) {
         log_error("Failed to allocate memory for segment cleanup");
         closedir(dir);
@@ -120,13 +121,17 @@ static void cleanup_old_segments(const char *output_dir, int max_segments) {
 
     // Delete oldest segments beyond our limit
     int to_delete = actual_count - max_segments;
-    if (to_delete > 0) {
-        for (int j = 0; j < to_delete; j++) {
-            snprintf(filepath, sizeof(filepath), "%s/%s", output_dir, segments[j].filename);
-            if (unlink(filepath) == 0) {
-                log_debug("Deleted old HLS segment: %s", segments[j].filename);
-            } else {
-                log_warn("Failed to delete old HLS segment: %s", segments[j].filename);
+    if (to_delete > 0 && to_delete <= actual_count) { // Safety check to prevent out-of-bounds access
+        for (int j = 0; j < to_delete && j < actual_count; j++) { // Additional bounds check
+            // Ensure filename is valid before using it
+            if (segments[j].filename[0] != '\0') {
+                snprintf(filepath, sizeof(filepath), "%s/%s", output_dir, segments[j].filename);
+                if (unlink(filepath) == 0) {
+                    log_debug("Deleted old HLS segment: %s", segments[j].filename);
+                } else {
+                    log_warn("Failed to delete old HLS segment: %s (error: %s)",
+                            segments[j].filename, strerror(errno));
+                }
             }
         }
     }
@@ -380,22 +385,34 @@ static int ensure_output_directory(hls_writer_t *writer) {
         log_warn("HLS output directory does not exist or is not a directory: %s", dir_path);
 
         // Create directory with parent directories if needed
-        char mkdir_cmd[MAX_PATH_LENGTH * 2];
-        snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p %s", dir_path);
+        // Use direct C functions instead of system() calls to avoid spawning processes
+        char temp_path[MAX_PATH_LENGTH];
+        strncpy(temp_path, dir_path, MAX_PATH_LENGTH - 1);
+        temp_path[MAX_PATH_LENGTH - 1] = '\0';
 
-        if (system(mkdir_cmd) != 0) {
-            log_error("Failed to create HLS output directory: %s", dir_path);
+        // Create parent directories one by one
+        for (char *p = temp_path + 1; *p; p++) {
+            if (*p == '/') {
+                *p = '\0';
+                if (mkdir(temp_path, 0755) != 0 && errno != EEXIST) {
+                    log_error("Failed to create parent directory: %s (error: %s)", temp_path, strerror(errno));
+                }
+                *p = '/';
+            }
+        }
+
+        // Create the final directory
+        if (mkdir(temp_path, 0755) != 0 && errno != EEXIST) {
+            log_error("Failed to create HLS output directory: %s (error: %s)", temp_path, strerror(errno));
             return -1;
         }
 
         log_info("Created HLS output directory: %s", dir_path);
 
         // Set permissions to ensure FFmpeg can write files
-        // Use 755 instead of 777 for better security
-        snprintf(mkdir_cmd, sizeof(mkdir_cmd), "chmod -R 755 %s", dir_path);
-        int ret_chmod = system(mkdir_cmd);
-        if (ret_chmod != 0) {
-            log_warn("Failed to set permissions on directory: %s (return code: %d)", dir_path, ret_chmod);
+        // Use direct chmod instead of system() call
+        if (chmod(dir_path, 0755) != 0) {
+            log_warn("Failed to set permissions on directory: %s (error: %s)", dir_path, strerror(errno));
         }
     }
 
@@ -403,12 +420,9 @@ static int ensure_output_directory(hls_writer_t *writer) {
     if (access(dir_path, W_OK) != 0) {
         log_error("HLS output directory is not writable: %s", dir_path);
 
-        // Try to fix permissions
-        char chmod_cmd[MAX_PATH_LENGTH * 2];
-        snprintf(chmod_cmd, sizeof(chmod_cmd), "chmod -R 777 %s", dir_path);
-        int ret_chmod = system(chmod_cmd);
-        if (ret_chmod != 0) {
-            log_warn("Failed to set permissions on directory: %s (return code: %d)", dir_path, ret_chmod);
+        // Try to fix permissions using direct chmod instead of system() call
+        if (chmod(dir_path, 0777) != 0) {
+            log_warn("Failed to set permissions on directory: %s (error: %s)", dir_path, strerror(errno));
         }
 
         // Check again
@@ -474,9 +488,13 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
     }
 
     // Clone the packet with additional safety checks
-    AVPacket out_pkt;
-    // Initialize the packet without using deprecated av_init_packet
-    memset(&out_pkt, 0, sizeof(out_pkt));
+    // Use av_packet_alloc instead of stack allocation to ensure proper alignment
+    AVPacket *out_pkt_ptr = av_packet_alloc();
+    if (!out_pkt_ptr) {
+        log_error("Failed to allocate packet for stream %s", writer->stream_name);
+        return -1;
+    }
+    // out_pkt_ptr is already initialized by av_packet_alloc
 
     // Verify packet data is valid before referencing
     if (!pkt->data || pkt->size <= 0) {
@@ -485,8 +503,9 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
         return -1;
     }
 
-    if (av_packet_ref(&out_pkt, pkt) < 0) {
+    if (av_packet_ref(out_pkt_ptr, pkt) < 0) {
         log_error("Failed to reference packet for stream %s", writer->stream_name);
+        av_packet_free(&out_pkt_ptr);
         return -1;
     }
 
@@ -502,54 +521,55 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
 
         // Check if the packet already has start codes (Annex B format)
         bool has_start_code = false;
-        if (out_pkt.size >= 4) {
-            has_start_code = (out_pkt.data[0] == 0x00 &&
-                             out_pkt.data[1] == 0x00 &&
-                             out_pkt.data[2] == 0x00 &&
-                             out_pkt.data[3] == 0x01);
+        if (out_pkt_ptr->size >= 4) {
+            has_start_code = (out_pkt_ptr->data[0] == 0x00 &&
+                             out_pkt_ptr->data[1] == 0x00 &&
+                             out_pkt_ptr->data[2] == 0x00 &&
+                             out_pkt_ptr->data[3] == 0x01);
         }
 
         if (!has_start_code) {
     // Create a new packet with space for the start code
-    AVPacket new_pkt;
-    // Initialize the packet without using deprecated av_init_packet
-    memset(&new_pkt, 0, sizeof(new_pkt));
-    new_pkt.data = NULL;
-    new_pkt.size = 0;
-
-    // Allocate a new buffer with space for the start code
-    if (av_new_packet(&new_pkt, out_pkt.size + 4) < 0) {
+    AVPacket *new_pkt_ptr = av_packet_alloc();
+    if (!new_pkt_ptr) {
         log_error("Failed to allocate new packet for H.264 conversion for stream %s",
                  writer->stream_name);
-        av_packet_unref(&out_pkt);
+        av_packet_free(&out_pkt_ptr);
+        return -1;
+    }
+
+    // Allocate a new buffer with space for the start code
+    if (av_new_packet(new_pkt_ptr, out_pkt_ptr->size + 4) < 0) {
+        log_error("Failed to allocate new packet for H.264 conversion for stream %s",
+                 writer->stream_name);
+        av_packet_free(&new_pkt_ptr);
+        av_packet_free(&out_pkt_ptr);
         return -1;
     }
 
     // Add start code
-    new_pkt.data[0] = 0x00;
-    new_pkt.data[1] = 0x00;
-    new_pkt.data[2] = 0x00;
-    new_pkt.data[3] = 0x01;
+    new_pkt_ptr->data[0] = 0x00;
+    new_pkt_ptr->data[1] = 0x00;
+    new_pkt_ptr->data[2] = 0x00;
+    new_pkt_ptr->data[3] = 0x01;
 
     // Copy the packet data
-    memcpy(new_pkt.data + 4, out_pkt.data, out_pkt.size);
+    memcpy(new_pkt_ptr->data + 4, out_pkt_ptr->data, out_pkt_ptr->size);
 
     // Copy other packet properties
-    new_pkt.pts = out_pkt.pts;
-    new_pkt.dts = out_pkt.dts;
-    new_pkt.flags = out_pkt.flags;
-    new_pkt.stream_index = out_pkt.stream_index;
-    new_pkt.duration = out_pkt.duration;
-    new_pkt.pos = out_pkt.pos;
+    new_pkt_ptr->pts = out_pkt_ptr->pts;
+    new_pkt_ptr->dts = out_pkt_ptr->dts;
+    new_pkt_ptr->flags = out_pkt_ptr->flags;
+    new_pkt_ptr->stream_index = out_pkt_ptr->stream_index;
+    new_pkt_ptr->duration = out_pkt_ptr->duration;
+    new_pkt_ptr->pos = out_pkt_ptr->pos;
 
     // Unref the original packet
-    av_packet_unref(&out_pkt);
+    av_packet_free(&out_pkt_ptr);
 
-    // Move the new packet to the output packet and ensure proper cleanup
-    av_packet_move_ref(&out_pkt, &new_pkt);
-
-    // Ensure new_pkt is properly cleaned up after move_ref
-    av_packet_unref(&new_pkt);
+    // Use the new packet as our output packet
+    out_pkt_ptr = new_pkt_ptr;
+    new_pkt_ptr = NULL; // Prevent double-free
 
             log_debug("Added H.264 start code for stream %s", writer->stream_name);
         }
@@ -587,8 +607,8 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
     }
 
     // Fix invalid timestamps
-    if (out_pkt.pts == AV_NOPTS_VALUE || out_pkt.dts == AV_NOPTS_VALUE) {
-        if (out_pkt.pts == AV_NOPTS_VALUE && out_pkt.dts == AV_NOPTS_VALUE) {
+    if (out_pkt_ptr->pts == AV_NOPTS_VALUE || out_pkt_ptr->dts == AV_NOPTS_VALUE) {
+        if (out_pkt_ptr->pts == AV_NOPTS_VALUE && out_pkt_ptr->dts == AV_NOPTS_VALUE) {
             if (dts_tracker->last_dts != AV_NOPTS_VALUE) {
                 // Calculate a reasonable increment based on the stream's framerate if available
                 int64_t increment = 1;
@@ -622,99 +642,99 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
                     }
                 }
 
-                out_pkt.dts = dts_tracker->last_dts + increment;
-                out_pkt.pts = out_pkt.dts;
+                out_pkt_ptr->dts = dts_tracker->last_dts + increment;
+                out_pkt_ptr->pts = out_pkt_ptr->dts;
 
                 log_debug("Generated timestamps for stream %s: pts=%lld, dts=%lld (increment=%lld)",
-                         writer->stream_name, (long long)out_pkt.pts, (long long)out_pkt.dts,
+                         writer->stream_name, (long long)out_pkt_ptr->pts, (long long)out_pkt_ptr->dts,
                          (long long)increment);
             } else {
-                out_pkt.dts = 1;
-                out_pkt.pts = 1;
+                out_pkt_ptr->dts = 1;
+                out_pkt_ptr->pts = 1;
                 log_debug("Set initial timestamps for stream %s with no previous reference",
                          writer->stream_name);
             }
-        } else if (out_pkt.pts == AV_NOPTS_VALUE) {
-            out_pkt.pts = out_pkt.dts;
-        } else if (out_pkt.dts == AV_NOPTS_VALUE) {
-            out_pkt.dts = out_pkt.pts;
+        } else if (out_pkt_ptr->pts == AV_NOPTS_VALUE) {
+            out_pkt_ptr->pts = out_pkt_ptr->dts;
+        } else if (out_pkt_ptr->dts == AV_NOPTS_VALUE) {
+            out_pkt_ptr->dts = out_pkt_ptr->pts;
         }
     }
 
     // Ensure timestamps are positive
-    if (out_pkt.pts <= 0 || out_pkt.dts <= 0) {
-        if (out_pkt.pts <= 0) {
-            out_pkt.pts = out_pkt.dts > 0 ? out_pkt.dts : 1;
+    if (out_pkt_ptr->pts <= 0 || out_pkt_ptr->dts <= 0) {
+        if (out_pkt_ptr->pts <= 0) {
+            out_pkt_ptr->pts = out_pkt_ptr->dts > 0 ? out_pkt_ptr->dts : 1;
             log_debug("Corrected non-positive PTS for stream %s: new pts=%lld",
-                     writer->stream_name, (long long)out_pkt.pts);
+                     writer->stream_name, (long long)out_pkt_ptr->pts);
         }
 
-        if (out_pkt.dts <= 0) {
-            out_pkt.dts = out_pkt.pts > 0 ? out_pkt.pts : 1;
+        if (out_pkt_ptr->dts <= 0) {
+            out_pkt_ptr->dts = out_pkt_ptr->pts > 0 ? out_pkt_ptr->pts : 1;
             log_debug("Corrected non-positive DTS for stream %s: new dts=%lld",
-                     writer->stream_name, (long long)out_pkt.dts);
+                     writer->stream_name, (long long)out_pkt_ptr->dts);
         }
     }
 
     // Handle timestamp discontinuities
     if (dts_tracker->last_dts != AV_NOPTS_VALUE) {
-        if (out_pkt.dts < dts_tracker->last_dts) {
+        if (out_pkt_ptr->dts < dts_tracker->last_dts) {
             // Fix backwards DTS
             int64_t fixed_dts = dts_tracker->last_dts + 1;
             int64_t pts_dts_diff = 0;
 
             // Safely calculate PTS-DTS difference to avoid arithmetic exceptions
-            if (out_pkt.pts != AV_NOPTS_VALUE && out_pkt.dts != AV_NOPTS_VALUE) {
-                pts_dts_diff = out_pkt.pts - out_pkt.dts;
+            if (out_pkt_ptr->pts != AV_NOPTS_VALUE && out_pkt_ptr->dts != AV_NOPTS_VALUE) {
+                pts_dts_diff = out_pkt_ptr->pts - out_pkt_ptr->dts;
             }
 
             log_debug("Fixing backwards DTS in stream %s: last=%lld, current=%lld, fixed=%lld",
                      writer->stream_name,
                      (long long)dts_tracker->last_dts,
-                     (long long)out_pkt.dts,
+                     (long long)out_pkt_ptr->dts,
                      (long long)fixed_dts);
 
-            out_pkt.dts = fixed_dts;
-            if (out_pkt.pts != AV_NOPTS_VALUE) {
-                out_pkt.pts = fixed_dts + pts_dts_diff;
+            out_pkt_ptr->dts = fixed_dts;
+            if (out_pkt_ptr->pts != AV_NOPTS_VALUE) {
+                out_pkt_ptr->pts = fixed_dts + pts_dts_diff;
             }
 
             // Ensure PTS >= DTS after correction
-            if (out_pkt.pts != AV_NOPTS_VALUE && out_pkt.pts < out_pkt.dts) {
-                out_pkt.pts = out_pkt.dts;
+            if (out_pkt_ptr->pts != AV_NOPTS_VALUE && out_pkt_ptr->pts < out_pkt_ptr->dts) {
+                out_pkt_ptr->pts = out_pkt_ptr->dts;
             }
         }
         // Handle large DTS jumps by normalizing the timestamps
-        else if (out_pkt.dts > dts_tracker->last_dts + 90000) {
+        else if (out_pkt_ptr->dts > dts_tracker->last_dts + 90000) {
             // log_debug("HLS large DTS jump in stream %s: last=%lld, current=%lld, diff=%lld",
             //         writer->stream_name,
             //         (long long)dts_tracker->last_dts,
-            //         (long long)out_pkt.dts,
-            //         (long long)(out_pkt.dts - dts_tracker->last_dts));
+            //         (long long)out_pkt_ptr->dts,
+            //         (long long)(out_pkt_ptr->dts - dts_tracker->last_dts));
 
             // CRITICAL FIX: Normalize timestamps to prevent exceeding MP4 format limits
             // The MP4 format has a limit of 0x7fffffff (2,147,483,647) for DTS values
             // We'll reset the DTS to a small value after the last DTS to maintain continuity
             int64_t fixed_dts = dts_tracker->last_dts + 3000; // Add 3000 ticks (about 1/10 second at 90kHz)
-            int64_t pts_dts_diff = out_pkt.pts - out_pkt.dts;
+            int64_t pts_dts_diff = out_pkt_ptr->pts - out_pkt_ptr->dts;
             //
             // log_debug("Normalizing timestamps for stream %s: old_dts=%lld, new_dts=%lld",
-            //         writer->stream_name, (long long)out_pkt.dts, (long long)fixed_dts);
+            //         writer->stream_name, (long long)out_pkt_ptr->dts, (long long)fixed_dts);
 
-            out_pkt.dts = fixed_dts;
-            out_pkt.pts = fixed_dts + (pts_dts_diff > 0 ? pts_dts_diff : 0);
+            out_pkt_ptr->dts = fixed_dts;
+            out_pkt_ptr->pts = fixed_dts + (pts_dts_diff > 0 ? pts_dts_diff : 0);
 
             // Ensure PTS >= DTS after correction
-            if (out_pkt.pts < out_pkt.dts) {
-                out_pkt.pts = out_pkt.dts;
+            if (out_pkt_ptr->pts < out_pkt_ptr->dts) {
+                out_pkt_ptr->pts = out_pkt_ptr->dts;
             }
 
             // Ensure timestamps don't exceed MP4 format limits
-            if (out_pkt.dts > 0x7fffffff || out_pkt.pts > 0x7fffffff) {
+            if (out_pkt_ptr->dts > 0x7fffffff || out_pkt_ptr->pts > 0x7fffffff) {
                 // Reset timestamps to small values if they're getting too large
                 log_warn("Timestamps exceeding MP4 format limits for stream %s, resetting", writer->stream_name);
-                out_pkt.dts = 1000;
-                out_pkt.pts = 1000;
+                out_pkt_ptr->dts = 1000;
+                out_pkt_ptr->pts = 1000;
                 dts_tracker->first_dts = 1000;
                 dts_tracker->last_dts = 1000;
             }
@@ -722,46 +742,46 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
     }
 
     // Update last DTS
-    dts_tracker->last_dts = out_pkt.dts;
+    dts_tracker->last_dts = out_pkt_ptr->dts;
 
     // Validate writer context before rescaling
     if (!writer->output_ctx || !writer->output_ctx->streams || !writer->output_ctx->streams[0]) {
         log_warn("hls_writer_write_packet: Writer context invalid for stream %s", writer->stream_name);
-        av_packet_unref(&out_pkt);
+        av_packet_free(&out_pkt_ptr);
         return -1;
     }
 
     // Rescale timestamps to output timebase
-    av_packet_rescale_ts(&out_pkt, input_stream->time_base,
+    av_packet_rescale_ts(out_pkt_ptr, input_stream->time_base,
                         writer->output_ctx->streams[0]->time_base);
 
     // CRITICAL FIX: Ensure PTS >= DTS with a small buffer to prevent ghosting artifacts
     // This is essential for HLS format compliance and prevents visual artifacts
-    if (out_pkt.pts < out_pkt.dts) {
+    if (out_pkt_ptr->pts < out_pkt_ptr->dts) {
         log_debug("Fixing HLS packet with PTS < DTS: PTS=%lld, DTS=%lld",
-                 (long long)out_pkt.pts, (long long)out_pkt.dts);
-        out_pkt.pts = out_pkt.dts;
+                 (long long)out_pkt_ptr->pts, (long long)out_pkt_ptr->dts);
+        out_pkt_ptr->pts = out_pkt_ptr->dts;
     }
 
     // Cap unreasonable PTS/DTS differences
-    if (out_pkt.pts != AV_NOPTS_VALUE && out_pkt.dts != AV_NOPTS_VALUE) {
-        int64_t pts_dts_diff = out_pkt.pts - out_pkt.dts;
+    if (out_pkt_ptr->pts != AV_NOPTS_VALUE && out_pkt_ptr->dts != AV_NOPTS_VALUE) {
+        int64_t pts_dts_diff = out_pkt_ptr->pts - out_pkt_ptr->dts;
         if (pts_dts_diff > 90000 * 10) {
-            out_pkt.pts = out_pkt.dts + 90000 * 5; // 5 seconds max difference
+            out_pkt_ptr->pts = out_pkt_ptr->dts + 90000 * 5; // 5 seconds max difference
         }
     }
 
     // Log key frames for diagnostics
-    bool is_key_frame = (out_pkt.flags & AV_PKT_FLAG_KEY) != 0;
+    bool is_key_frame = (out_pkt_ptr->flags & AV_PKT_FLAG_KEY) != 0;
     if (is_key_frame) {
         log_debug("Writing key frame to HLS for stream %s: pts=%lld, dts=%lld, size=%d",
-                 writer->stream_name, (long long)out_pkt.pts, (long long)out_pkt.dts, out_pkt.size);
+                 writer->stream_name, (long long)out_pkt_ptr->pts, (long long)out_pkt_ptr->dts, out_pkt_ptr->size);
     }
 
-    result = av_interleaved_write_frame(writer->output_ctx, &out_pkt);
+    result = av_interleaved_write_frame(writer->output_ctx, out_pkt_ptr);
 
     // Clean up packet
-    av_packet_unref(&out_pkt);
+    av_packet_free(&out_pkt_ptr);
 
     // Handle write errors
     if (result < 0) {
