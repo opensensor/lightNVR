@@ -203,14 +203,6 @@ int process_segment_for_detection(stream_detection_thread_t *thread, const char 
         return -1;
     }
 
-    // CRITICAL FIX: Make a local copy of the stream name for logging
-    char stream_name_buf[MAX_STREAM_NAME];
-    strncpy(stream_name_buf, thread->stream_name, MAX_STREAM_NAME - 1);
-    stream_name_buf[MAX_STREAM_NAME - 1] = '\0';
-
-    log_info("[Stream %s] Processing HLS segment for detection: %s",
-             stream_name_buf, segment_path);
-
     // CRITICAL FIX: Initialize all pointers to NULL to prevent use-after-free and double-free issues
     AVFormatContext *format_ctx = NULL;
     AVCodecContext *codec_ctx = NULL;
@@ -777,11 +769,6 @@ static void check_for_new_segments(stream_detection_thread_t *thread) {
     time_t newest_time = 0;
     int segment_count = 0;
 
-    // CRITICAL FIX: Make a local copy of the stream name for logging
-    char stream_name_copy[MAX_STREAM_NAME];
-    strncpy(stream_name_copy, thread->stream_name, MAX_STREAM_NAME - 1);
-    stream_name_copy[MAX_STREAM_NAME - 1] = '\0';
-
     // Check if we should run detection based on startup delay, detection in progress and time interval
     bool should_run_detection = should_run_detection_check(thread, current_time);
 
@@ -1084,27 +1071,20 @@ static void *stream_detection_thread_func(void *arg) {
         log_error("Cannot clean up NULL thread");
         return NULL;
     }
-
-    // CRITICAL FIX: Store stream name in local buffer before cleanup
-    char stream_name_buf[MAX_STREAM_NAME];
-    strncpy(stream_name_buf, thread->stream_name, MAX_STREAM_NAME - 1);
-    stream_name_buf[MAX_STREAM_NAME - 1] = '\0';
-
     // Unload the model with enhanced cleanup for SOD models
     pthread_mutex_lock(&thread->mutex);
     if (thread->model) {
-        log_info("[Stream %s] Unloading detection model", stream_name_buf);
+        log_info("[Stream %s] Unloading detection model", thread->stream_name);
 
         // Get the model type to check if it's a SOD model
         const char *model_type = get_model_type_from_handle(thread->model);
 
         // Use our enhanced cleanup for SOD models to prevent memory leaks
-        if (model_type && strcmp(model_type, MODEL_TYPE_SOD) == 0) {
-            log_info("[Stream %s] Using enhanced SOD model cleanup to prevent memory leaks", stream_name_buf);
+        if (strcmp(model_type, MODEL_TYPE_SOD) == 0) {
+            log_info("[Stream %s] Using enhanced SOD model cleanup to prevent memory leaks", thread->stream_name);
             ensure_sod_model_cleanup(thread->model);
         } else {
             // For non-SOD models, use the standard unload function
-            log_info("[Stream %s] Using standard model cleanup", stream_name_buf);
             unload_detection_model(thread->model);
         }
 
@@ -1112,7 +1092,7 @@ static void *stream_detection_thread_func(void *arg) {
     }
     pthread_mutex_unlock(&thread->mutex);
 
-    log_info("Cleaning up all resources for stream %s", stream_name_buf);
+    log_info("[Stream %s] Detection thread exiting", thread->stream_name);
     return NULL;
 }
 
@@ -1132,8 +1112,6 @@ int init_stream_detection_system(void) {
         pthread_mutex_init(&stream_threads[i].mutex, NULL);
         pthread_cond_init(&stream_threads[i].cond, NULL);
     }
-
-    // System initialization complete
 
     system_initialized = true;
     pthread_mutex_unlock(&stream_threads_mutex);

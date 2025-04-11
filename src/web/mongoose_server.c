@@ -54,6 +54,7 @@ typedef struct {
     const char *method;     // HTTP method (GET, POST, etc.)
     const char *uri;        // URI pattern
     mg_api_handler_t handler; // Handler function
+    bool no_auto_threading;  // If true, don't automatically thread this handler
 } mg_api_route_t;
 
 // Forward declarations
@@ -79,87 +80,87 @@ void mg_handle_websocket_close(struct mg_connection *c);
 // API routes table
 static const mg_api_route_t s_api_routes[] = {
     // Auth API
-    {"POST", "/api/auth/login", mg_handle_auth_login},
-    {"POST", "/api/auth/logout", mg_handle_auth_logout},
-    {"GET", "/api/auth/verify", mg_handle_auth_verify},
+    {"POST", "/api/auth/login", mg_handle_auth_login, false},
+    {"POST", "/api/auth/logout", mg_handle_auth_logout, false},
+    {"GET", "/api/auth/verify", mg_handle_auth_verify, false},
 
     // User Management API
-    {"GET", "/api/auth/users", mg_handle_users_list},
-    {"GET", "/api/auth/users/#", mg_handle_users_get},
-    {"POST", "/api/auth/users", mg_handle_users_create},
-    {"PUT", "/api/auth/users/#", mg_handle_users_update},
-    {"DELETE", "/api/auth/users/#", mg_handle_users_delete},
-    {"POST", "/api/auth/users/#/api-key", mg_handle_users_generate_api_key},
+    {"GET", "/api/auth/users", mg_handle_users_list, false},
+    {"GET", "/api/auth/users/#", mg_handle_users_get, false},
+    {"POST", "/api/auth/users", mg_handle_users_create, false},
+    {"PUT", "/api/auth/users/#", mg_handle_users_update, true},  // Already uses threading
+    {"DELETE", "/api/auth/users/#", mg_handle_users_delete, true},  // Already uses threading
+    {"POST", "/api/auth/users/#/api-key", mg_handle_users_generate_api_key, true},  // Already uses threading
 
     // Streams API
-    {"GET", "/api/streams", mg_handle_get_streams},
-    {"POST", "/api/streams", mg_handle_post_stream},
-    {"POST", "/api/streams/test", mg_handle_test_stream},
-    {"GET", "/api/streams/#", mg_handle_get_stream},
-    {"PUT", "/api/streams/#", mg_handle_put_stream},
-    {"DELETE", "/api/streams/#", mg_handle_delete_stream},
+    {"GET", "/api/streams", mg_handle_get_streams, false},
+    {"POST", "/api/streams", mg_handle_post_stream, false},
+    {"POST", "/api/streams/test", mg_handle_test_stream, false},
+    {"GET", "/api/streams/#", mg_handle_get_stream, false},
+    {"PUT", "/api/streams/#", mg_handle_put_stream, false},
+    {"DELETE", "/api/streams/#", mg_handle_delete_stream, false},
 
     // Settings API
-    {"GET", "/api/settings", mg_handle_get_settings},
-    {"POST", "/api/settings", mg_handle_post_settings},
+    {"GET", "/api/settings", mg_handle_get_settings, false},
+    {"POST", "/api/settings", mg_handle_post_settings, false},
 
     // System API
-    {"GET", "/api/system", mg_handle_get_system_info},
-    {"GET", "/api/system/info", mg_handle_get_system_info}, // Keep for backward compatibility
-    {"GET", "/api/system/logs", mg_handle_get_system_logs},
-    {"POST", "/api/system/restart", mg_handle_post_system_restart},
-    {"POST", "/api/system/shutdown", mg_handle_post_system_shutdown},
-    {"POST", "/api/system/logs/clear", mg_handle_post_system_logs_clear},
-    {"POST", "/api/system/backup", mg_handle_post_system_backup},
-    {"GET", "/api/system/status", mg_handle_get_system_status},
-    {"GET", "/api/health", mg_handle_get_health},
+    {"GET", "/api/system", mg_handle_get_system_info, false},
+    {"GET", "/api/system/info", mg_handle_get_system_info, false}, // Keep for backward compatibility
+    {"GET", "/api/system/logs", mg_handle_get_system_logs, false},
+    {"POST", "/api/system/restart", mg_handle_post_system_restart, false},
+    {"POST", "/api/system/shutdown", mg_handle_post_system_shutdown, false},
+    {"POST", "/api/system/logs/clear", mg_handle_post_system_logs_clear, false},
+    {"POST", "/api/system/backup", mg_handle_post_system_backup, false},
+    {"GET", "/api/system/status", mg_handle_get_system_status, false},
+    {"GET", "/api/health", mg_handle_get_health, false},
 
     // Recordings API
-    {"GET", "/api/recordings", mg_handle_get_recordings},
-    {"GET", "/api/recordings/play/#", mg_handle_play_recording},
-    {"GET", "/api/recordings/download/#", mg_handle_download_recording},
-    {"GET", "/api/recordings/files/check", mg_handle_check_recording_file},
-    {"DELETE", "/api/recordings/files", mg_handle_delete_recording_file},
-    {"GET", "/api/recordings/#", mg_handle_get_recording},
-    {"DELETE", "/api/recordings/#", mg_handle_delete_recording},
-    {"POST", "/api/recordings/batch-delete", mg_handle_batch_delete_recordings},
-    {"POST", "/api/recordings/batch-delete-ws", mg_handle_batch_delete_recordings_ws},
-    {"GET", "/api/ws", mg_handle_websocket_upgrade},
+    {"GET", "/api/recordings", mg_handle_get_recordings, false},
+    {"GET", "/api/recordings/play/#", mg_handle_play_recording, false},
+    {"GET", "/api/recordings/download/#", mg_handle_download_recording, false},
+    {"GET", "/api/recordings/files/check", mg_handle_check_recording_file, true},  // Already uses threading
+    {"DELETE", "/api/recordings/files", mg_handle_delete_recording_file, true},  // Already uses threading
+    {"GET", "/api/recordings/#", mg_handle_get_recording, false},
+    {"DELETE", "/api/recordings/#", mg_handle_delete_recording, true},  // Already uses threading
+    {"POST", "/api/recordings/batch-delete", mg_handle_batch_delete_recordings, true},  // Already uses threading
+    {"POST", "/api/recordings/batch-delete-ws", mg_handle_batch_delete_recordings_ws, true},  // Already uses threading
+    {"GET", "/api/ws", mg_handle_websocket_upgrade, false},
 
     // Streaming API - HLS
-    {"GET", "/api/streaming/#/hls/index.m3u8", mg_handle_hls_master_playlist},
-    {"GET", "/api/streaming/#/hls/stream.m3u8", mg_handle_hls_media_playlist},
-    {"GET", "/api/streaming/#/hls/segment_#.ts", mg_handle_hls_segment},
-    {"GET", "/api/streaming/#/hls/segment_#.m4s", mg_handle_hls_segment},
-    {"GET", "/api/streaming/#/hls/init.mp4", mg_handle_hls_segment},
+    {"GET", "/api/streaming/#/hls/index.m3u8", mg_handle_hls_master_playlist, false},
+    {"GET", "/api/streaming/#/hls/stream.m3u8", mg_handle_hls_media_playlist, false},
+    {"GET", "/api/streaming/#/hls/segment_#.ts", mg_handle_hls_segment, false},
+    {"GET", "/api/streaming/#/hls/segment_#.m4s", mg_handle_hls_segment, false},
+    {"GET", "/api/streaming/#/hls/init.mp4", mg_handle_hls_segment, false},
 
     // No direct HLS access handler - handled by static file handler
 
     // go2rtc WebRTC API
-    {"POST", "/api/webrtc", mg_handle_go2rtc_webrtc_offer},
-    {"POST", "/api/webrtc/ice", mg_handle_go2rtc_webrtc_ice},
-    {"OPTIONS", "/api/webrtc", mg_handle_go2rtc_webrtc_options},
-    {"OPTIONS", "/api/webrtc/ice", mg_handle_go2rtc_webrtc_ice_options},
+    {"POST", "/api/webrtc", mg_handle_go2rtc_webrtc_offer, false},
+    {"POST", "/api/webrtc/ice", mg_handle_go2rtc_webrtc_ice, false},
+    {"OPTIONS", "/api/webrtc", mg_handle_go2rtc_webrtc_options, false},
+    {"OPTIONS", "/api/webrtc/ice", mg_handle_go2rtc_webrtc_ice_options, false},
 
     // Detection API
-    {"GET", "/api/detection/results/#", mg_handle_get_detection_results},
-    {"GET", "/api/detection/models", mg_handle_get_detection_models},
+    {"GET", "/api/detection/results/#", mg_handle_get_detection_results, false},
+    {"GET", "/api/detection/models", mg_handle_get_detection_models, false},
 
     // ONVIF API
-    {"GET", "/api/onvif/discovery/status", mg_handle_get_onvif_discovery_status},
-    {"GET", "/api/onvif/devices", mg_handle_get_discovered_onvif_devices},
-    {"GET", "/api/onvif/device/profiles", mg_handle_get_onvif_device_profiles},
-    {"POST", "/api/onvif/discovery/discover", mg_handle_post_discover_onvif_devices},
-    {"POST", "/api/onvif/device/add", mg_handle_post_add_onvif_device_as_stream},
-    {"POST", "/api/onvif/device/test", mg_handle_post_test_onvif_connection},
+    {"GET", "/api/onvif/discovery/status", mg_handle_get_onvif_discovery_status, false},
+    {"GET", "/api/onvif/devices", mg_handle_get_discovered_onvif_devices, false},
+    {"GET", "/api/onvif/device/profiles", mg_handle_get_onvif_device_profiles, false},
+    {"POST", "/api/onvif/discovery/discover", mg_handle_post_discover_onvif_devices, true},  // Already uses threading
+    {"POST", "/api/onvif/device/add", mg_handle_post_add_onvif_device_as_stream, false},
+    {"POST", "/api/onvif/device/test", mg_handle_post_test_onvif_connection, false},
 
     // Timeline API
-    {"GET", "/api/timeline/segments", mg_handle_get_timeline_segments},
-    {"GET", "/api/timeline/manifest", mg_handle_timeline_manifest},
-    {"GET", "/api/timeline/play", mg_handle_timeline_playback},
+    {"GET", "/api/timeline/segments", mg_handle_get_timeline_segments, false},
+    {"GET", "/api/timeline/manifest", mg_handle_timeline_manifest, false},
+    {"GET", "/api/timeline/play", mg_handle_timeline_playback, false},
 
     // End of table marker
-    {NULL, NULL, NULL}
+    {NULL, NULL, NULL, false}
 };
 
 /**
@@ -191,10 +192,48 @@ static bool handle_api_request(struct mg_connection *c, struct mg_http_message *
         // Route matched
         log_info("API route matched: %s %s", method_buf, uri_buf);
 
-        // Call handler directly
-        log_info("Handling API request directly: %s %s", method_buf, uri_buf);
-        s_api_routes[route_index].handler(c, hm);
-        return true;
+        // Check if this handler should be automatically threaded
+        if (use_threading && !s_api_routes[route_index].no_auto_threading) {
+            // Handle in a separate thread using mg_thread_function
+            log_info("Handling API request in a worker thread: %s %s", method_buf, uri_buf);
+
+            // Create a thread data structure
+            struct mg_thread_data *data = calloc(1, sizeof(struct mg_thread_data));
+            if (!data) {
+                log_error("Failed to allocate memory for thread data");
+                mg_http_reply(c, 500, "", "Internal Server Error\n");
+                return true;
+            }
+
+            // Copy the HTTP message
+            data->message = mg_strdup(hm->message);
+            if (data->message.len == 0) {
+                log_error("Failed to duplicate HTTP message");
+                free(data);
+                mg_http_reply(c, 500, "", "Internal Server Error\n");
+                return true;
+            }
+
+            // Set connection ID, manager, and handler function
+            data->conn_id = c->id;
+            data->mgr = c->mgr;
+            data->handler_func = s_api_routes[route_index].handler;
+
+            // Start thread
+            mg_start_thread(mg_thread_function, data);
+
+            log_info("API request started in a worker thread: %s %s", method_buf, uri_buf);
+            return true;
+        } else {
+            // Either threading is disabled or this handler has opted out of auto-threading
+            if (s_api_routes[route_index].no_auto_threading) {
+                log_info("Handler has opted out of auto-threading: %s %s", method_buf, uri_buf);
+            }
+            // Call handler directly
+            log_info("Handling API request directly: %s %s", method_buf, uri_buf);
+            s_api_routes[route_index].handler(c, hm);
+            return true;
+        }
     }
 
     // No route matched
@@ -266,9 +305,6 @@ http_server_handle_t http_server_init(const http_server_config_t *config) {
 
     // Initialize route table
     init_route_table();
-
-    // Initialize health check system
-    init_health_check_system();
 
     // Register WebSocket handlers
     log_info("Registering WebSocket handlers");
@@ -925,8 +961,9 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
             handled = true;
         }
         else if (is_api_request) {
-            // For API requests, use the API request handler - always handle directly
-            handled = handle_api_request(c, hm, false);
+            // For API requests, use the API request handler with threading
+            // This will make all API requests run in separate threads
+            handled = handle_api_request(c, hm, true);
         } else if (is_direct_hls) {
             // For direct HLS requests, use the HLS handler
             log_debug("Handling direct HLS request: %s", uri);
@@ -1030,38 +1067,6 @@ static void *mongoose_server_event_loop(void *arg) {
             log_info("Shutdown initiated, stopping Mongoose event loop");
             server->running = false;
             break;
-        }
-
-        // Check if server needs restart due to health check failures
-        if (check_server_restart_needed()) {
-            log_info("Attempting to restart server due to health check failures");
-
-            // Stop the server
-            server->running = false;
-
-            // Wait a moment for connections to close
-            usleep(500000); // 500ms
-
-            // Reset restart flag
-            reset_server_restart_flag();
-
-            // Reset health metrics
-            reset_health_metrics();
-
-            // Restart the server by recreating it
-            http_server_stop(server);
-
-            // Wait a moment before restarting
-            usleep(1000000); // 1 second
-
-            // Start the server again
-            if (http_server_start(server) == 0) {
-                log_info("Server successfully restarted");
-                server->running = true;
-            } else {
-                log_error("Failed to restart server");
-                break;
-            }
         }
 
         // Poll for events with a shorter timeout to be more responsive

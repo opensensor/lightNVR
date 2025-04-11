@@ -13,6 +13,9 @@ import {
   useQuery,
   useMutation,
   useQueryClient,
+  usePostMutation,
+  usePutMutation,
+  useDeleteMutation,
   fetchJSON
 } from '../../query-client.js';
 
@@ -102,33 +105,31 @@ export function StreamsView() {
   const detectionModels = detectionModelsData?.models || [];
 
   // Mutations for saving stream (create or update)
-  const createStreamMutation = useMutation({
-    mutationFn: async (streamData) => {
-      return await fetchJSON('/api/streams', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(streamData),
-        timeout: 15000,
-        retries: 1,
-        retryDelay: 1000
-      });
+  const createStreamMutation = usePostMutation(
+    '/api/streams',
+    {
+      timeout: 15000,
+      retries: 1,
+      retryDelay: 1000
     },
-    onSuccess: () => {
-      showStatusMessage('Stream added successfully');
-      closeModal();
-      // Invalidate and refetch streams data
-      queryClient.invalidateQueries({ queryKey: ['streams'] });
-    },
-    onError: (error) => {
-      showStatusMessage(`Error adding stream: ${error.message}`, 5000, 'error');
+    {
+      onSuccess: () => {
+        showStatusMessage('Stream added successfully');
+        closeModal();
+        // Invalidate and refetch streams data
+        queryClient.invalidateQueries({ queryKey: ['streams'] });
+      },
+      onError: (error) => {
+        showStatusMessage(`Error adding stream: ${error.message}`, 5000, 'error');
+      }
     }
-  });
+  );
 
   const updateStreamMutation = useMutation({
-    mutationFn: async (streamData) => {
-      return await fetchJSON(`/api/streams/${encodeURIComponent(streamData.name)}`, {
+    mutationFn: async (data) => {
+      const { streamName, ...streamData } = data;
+      const url = `/api/streams/${encodeURIComponent(streamName)}`;
+      return await fetchJSON(url, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
@@ -154,7 +155,11 @@ export function StreamsView() {
   const saveStreamMutation = {
     mutate: (streamData, options) => {
       if (isEditing) {
-        updateStreamMutation.mutate(streamData, options);
+        // For PUT requests, we need to include the streamName parameter
+        updateStreamMutation.mutate({
+          ...streamData,
+          streamName: streamData.name
+        }, options);
       } else {
         createStreamMutation.mutate(streamData, options);
       }
@@ -162,55 +167,44 @@ export function StreamsView() {
   };
 
   // Mutation for testing stream connection
-  const testStreamMutation = useMutation({
-    mutationFn: async (streamData) => {
-      showStatusMessage('Testing stream connection...');
-
-      return await fetchJSON('/api/streams/test', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          url: streamData.url,
-          protocol: parseInt(streamData.protocol, 10)
-        }),
-        timeout: 20000,
-        retries: 1,
-        retryDelay: 2000
-      });
+  const testStreamMutation = usePostMutation(
+    '/api/streams/test',
+    {
+      timeout: 20000,
+      retries: 1,
+      retryDelay: 2000
     },
-    onSuccess: (data) => {
-      if (data.success) {
-        showStatusMessage('Stream connection successful!', 3000, 'success');
-      } else {
-        showStatusMessage(`Stream connection failed: ${data.message}`, 5000, 'error');
+    {
+      onMutate: () => {
+        showStatusMessage('Testing stream connection...');
+      },
+      onSuccess: (data) => {
+        if (data.success) {
+          showStatusMessage('Stream connection successful!', 3000, 'success');
+        } else {
+          showStatusMessage(`Stream connection failed: ${data.message}`, 5000, 'error');
+        }
+      },
+      onError: (error) => {
+        showStatusMessage(`Error testing stream: ${error.message}`, 5000, 'error');
       }
-    },
-    onError: (error) => {
-      showStatusMessage(`Error testing stream: ${error.message}`, 5000, 'error');
     }
-  });
+  );
 
   // Mutation for deleting stream
   const deleteStreamMutation = useMutation({
-    mutationFn: async ({ streamId, permanent }) => {
-      const url = permanent
-        ? `/api/streams/${encodeURIComponent(streamId)}?permanent=true`
-        : `/api/streams/${encodeURIComponent(streamId)}`;
-
+    mutationFn: async (params) => {
+      const { streamId } = params;
+      const url = `/api/streams/${encodeURIComponent(streamId)}?permanent=true`;
       return await fetchJSON(url, {
         method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        timeout: 10000,
+        timeout: 15000,
         retries: 1,
         retryDelay: 1000
       });
     },
     onSuccess: () => {
-      showStatusMessage('Stream deleted successfully');
+      showStatusMessage('Stream successfully deleted.');
       closeDeleteModal();
       // Invalidate and refetch streams data
       queryClient.invalidateQueries({ queryKey: ['streams'] });
@@ -220,27 +214,25 @@ export function StreamsView() {
     }
   });
 
-  // Mutation for toggling stream enabled state
-  const toggleStreamEnabledMutation = useMutation({
-    mutationFn: async ({ streamId, enabled }) => {
-      return await fetchJSON(`/api/streams/${encodeURIComponent(streamId)}/enable`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ enabled: !enabled }),
-        timeout: 10000,
+  const disableStreamMutation = useMutation({
+    mutationFn: async (params) => {
+      const { streamId } = params;
+      const url = `/api/streams/${encodeURIComponent(streamId)}`;
+      return await fetchJSON(url, {
+        method: 'DELETE',
+        timeout: 15000,
         retries: 1,
         retryDelay: 1000
       });
     },
-    onSuccess: (_, variables) => {
-      showStatusMessage(`Stream ${variables.enabled ? 'disabled' : 'enabled'} successfully`);
+    onSuccess: () => {
+      showStatusMessage('Stream successfully disabled.');
+      closeDeleteModal();
       // Invalidate and refetch streams data
       queryClient.invalidateQueries({ queryKey: ['streams'] });
     },
     onError: (error) => {
-      showStatusMessage(`Error toggling stream state: ${error.message}`, 5000, 'error');
+      showStatusMessage(`Error disabling stream: ${error.message}`, 5000, 'error');
     }
   });
 
@@ -287,7 +279,10 @@ export function StreamsView() {
 
   // Test stream connection
   const testStreamConnection = () => {
-    testStreamMutation.mutate(currentStream);
+    testStreamMutation.mutate({
+      url: currentStream.url,
+      protocol: parseInt(currentStream.protocol, 10)
+    });
   };
 
   // Open delete modal
@@ -300,13 +295,6 @@ export function StreamsView() {
   const closeDeleteModal = () => {
     setDeleteModalVisible(false);
     setStreamToDelete(null);
-  };
-
-  // Handle delete confirmation
-  const confirmDelete = () => {
-    if (streamToDelete) {
-      deleteStreamMutation.mutate(streamToDelete.name);
-    }
   };
 
   // Open add stream modal
@@ -411,17 +399,16 @@ export function StreamsView() {
 
   // Disable stream (soft delete)
   const disableStream = (streamId) => {
-    deleteStreamMutation.mutate({ streamId, permanent: false });
+    disableStreamMutation.mutate({
+      streamId,
+    });
   };
 
   // Delete stream (permanent)
   const deleteStream = (streamId) => {
-    deleteStreamMutation.mutate({ streamId, permanent: true });
-  };
-
-  // Enable/disable stream
-  const toggleStreamEnabled = (streamId, enabled) => {
-    toggleStreamEnabledMutation.mutate({ streamId, enabled });
+    deleteStreamMutation.mutate({
+      streamId,
+    });
   };
 
   // Handle ONVIF credential input change
@@ -448,39 +435,45 @@ export function StreamsView() {
   };
 
   // ONVIF discovery mutation
-  const onvifDiscoveryMutation = useMutation({
-    mutationFn: async () => {
-      setIsDiscovering(true);
-      return await fetchJSON('/api/onvif/discovery/discover', {
-        method: 'POST',
-        timeout: 120000,
-        retries: 0,
-        body: JSON.stringify({})
-      });
+  const onvifDiscoveryMutation = usePostMutation(
+    '/api/onvif/discovery/discover',
+    {
+      timeout: 120000,
+      retries: 0
     },
-    onSuccess: (data) => {
-      setDiscoveredDevices(data.devices || []);
-      setIsDiscovering(false);
-    },
-    onError: (error) => {
-      showStatusMessage(`Error discovering ONVIF devices: ${error.message}`, 5000, 'error');
-      setIsDiscovering(false);
+    {
+      onMutate: () => {
+        setIsDiscovering(true);
+      },
+      onSuccess: (data) => {
+        setDiscoveredDevices(data.devices || []);
+        setIsDiscovering(false);
+      },
+      onError: (error) => {
+        showStatusMessage(`Error discovering ONVIF devices: ${error.message}`, 5000, 'error');
+        setIsDiscovering(false);
+      }
     }
-  });
+  );
 
   // Get device profiles mutation
   const getDeviceProfilesMutation = useMutation({
-    mutationFn: async ({ device, credentials }) => {
+    mutationFn: ({ device, credentials }) => {
       setIsLoadingProfiles(true);
-      return await fetchJSON('/api/onvif/device/profiles', {
+
+      // Make a simple GET request
+      return fetch('/api/onvif/device/profiles', {
         method: 'GET',
         headers: {
           'X-Device-URL': `http://${device.ip_address}/onvif/device_service`,
           'X-Username': credentials.username,
           'X-Password': credentials.password
-        },
-        timeout: 20000,
-        retries: 0
+        }
+      }).then(response => {
+        if (!response.ok) {
+          throw new Error(`HTTP error ${response.status}`);
+        }
+        return response.json();
       });
     },
     onSuccess: (data) => {
@@ -494,37 +487,35 @@ export function StreamsView() {
   });
 
   // Test ONVIF connection mutation
-  const testOnvifConnectionMutation = useMutation({
-    mutationFn: async (device) => {
-      setIsLoadingProfiles(true);
-      return await fetchJSON('/api/onvif/device/test', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          url: `http://${device.ip_address}/onvif/device_service`,
-          username: onvifCredentials.username,
-          password: onvifCredentials.password
-        }),
-        timeout: 15000,
-        retries: 0
-      });
+  const testOnvifConnectionMutation = usePostMutation(
+    '/api/onvif/device/test',
+    {
+      timeout: 15000,
+      retries: 0
     },
-    onSuccess: (data, variables) => {
-      if (data.success) {
-        showStatusMessage('Connection successful!', 3000, 'success');
-        getDeviceProfiles(variables);
-      } else {
-        showStatusMessage(`Connection failed: ${data.message}`, 5000, 'error');
+    {
+      onMutate: () => {
+        setIsLoadingProfiles(true);
+      },
+      onSuccess: (data, variables) => {
+        if (data.success) {
+          showStatusMessage('Connection successful!', 3000, 'success');
+          // The device object is no longer passed directly in variables
+          // We need to use the selectedDevice state instead
+          if (selectedDevice) {
+            getDeviceProfiles(selectedDevice);
+          }
+        } else {
+          showStatusMessage(`Connection failed: ${data.message}`, 5000, 'error');
+          setIsLoadingProfiles(false);
+        }
+      },
+      onError: (error) => {
+        showStatusMessage(`Error testing connection: ${error.message}`, 5000, 'error');
         setIsLoadingProfiles(false);
       }
-    },
-    onError: (error) => {
-      showStatusMessage(`Error testing connection: ${error.message}`, 5000, 'error');
-      setIsLoadingProfiles(false);
     }
-  });
+  );
 
 
 
@@ -574,7 +565,7 @@ export function StreamsView() {
 
   // Start ONVIF discovery
   const startOnvifDiscovery = () => {
-    onvifDiscoveryMutation.mutate();
+    onvifDiscoveryMutation.mutate({});
   };
 
   // Get ONVIF device profiles
@@ -601,7 +592,15 @@ export function StreamsView() {
 
   // Test ONVIF connection
   const testOnvifConnection = (device) => {
-    testOnvifConnectionMutation.mutate(device);
+    // Store the selected device first
+    setSelectedDevice(device);
+
+    // Then make the API call
+    testOnvifConnectionMutation.mutate({
+      url: `http://${device.ip_address}/onvif/device_service`,
+      username: onvifCredentials.username,
+      password: onvifCredentials.password
+    });
   };
 
   return html`

@@ -50,7 +50,6 @@ void init_recordings_system(void);
 #include "web/http_server.h"
 #include "web/mongoose_server.h"
 #include "web/api_handlers.h"
-#include "web/api_handlers_health.h"
 #include "web/websocket_manager.h"
 #include "mongoose.h"
 
@@ -999,14 +998,6 @@ int main(int argc, char *argv[]) {
             last_recording_check_time = now;
         }
 
-        // Check web server health
-        static time_t last_web_health_check_time = 0;
-        if (now - last_web_health_check_time > 30) {  // Check every 30 seconds
-            last_web_health_check_time = now;
-
-            // The health check system now handles web server health checks and restarts automatically
-        }
-
         // Process events, monitor system health, etc.
         sleep(1);
     }
@@ -1208,10 +1199,6 @@ cleanup:
         http_server_stop(http_server);
         http_server_destroy(http_server);
 
-        // Clean up health check system after web server is stopped
-        log_info("Cleaning up health check system...");
-        cleanup_health_check_system();
-
         log_info("Shutting down stream manager...");
         shutdown_stream_manager();
 
@@ -1317,9 +1304,6 @@ cleanup:
         // Shut down remaining components
         http_server_stop(http_server);
         http_server_destroy(http_server);
-
-        // Clean up health check system after web server is stopped
-        cleanup_health_check_system();
 
         shutdown_stream_manager();
         shutdown_stream_state_adapter();
