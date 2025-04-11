@@ -18,8 +18,18 @@ import { toggleFullscreen, exitFullscreenMode } from './FullscreenManager.js';
  * @returns {JSX.Element} LiveView component
  */
 export function LiveView() {
-  const [layout, setLayout] = useState('4');
-  const [selectedStream, setSelectedStream] = useState('');
+  // Initialize layout from URL if available
+  const [layout, setLayout] = useState(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('layout') || '4';
+  });
+
+  // Initialize selectedStream from URL if available
+  const [selectedStream, setSelectedStream] = useState(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('stream') || '';
+  });
+
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [detailedStreams, setDetailedStreams] = useState([]);
 
@@ -72,9 +82,19 @@ export function LiveView() {
         // Store filtered streams in state
         setDetailedStreams(filteredStreams || []);
 
-        // If we have filtered streams, set the first one as selected for single view
-        if (filteredStreams.length > 0 && !selectedStream) {
-          setSelectedStream(filteredStreams[0].name);
+        // Handle selectedStream based on URL parameter
+        if (filteredStreams.length > 0) {
+          // Check if the selectedStream from URL exists in the loaded streams
+          const urlParams = new URLSearchParams(window.location.search);
+          const streamParam = urlParams.get('stream');
+
+          if (streamParam && filteredStreams.some(stream => stream.name === streamParam)) {
+            // If the stream from URL exists in the loaded streams, use it
+            setSelectedStream(streamParam);
+          } else if (!selectedStream || !filteredStreams.some(stream => stream.name === selectedStream)) {
+            // Otherwise use the first stream if selectedStream is not set or invalid
+            setSelectedStream(filteredStreams[0].name);
+          }
         }
       };
 
@@ -129,6 +149,41 @@ export function LiveView() {
     }
   }, [layout, selectedStream, detailedStreams, currentPage]);
 
+  // Update URL when layout or selectedStream changes
+  useEffect(() => {
+    // Don't update URL during initial load
+    if (detailedStreams.length === 0) return;
+
+    const url = new URL(window.location.href);
+
+    // Handle layout parameter
+    if (layout !== '4') {
+      // Only set layout in URL if it's not the default
+      url.searchParams.set('layout', layout);
+    } else {
+      // Remove layout parameter if it's the default value
+      url.searchParams.delete('layout');
+    }
+
+    // Handle stream parameter
+    if (layout === '1' && selectedStream) {
+      url.searchParams.set('stream', selectedStream);
+    } else {
+      // Remove stream parameter if not in single stream mode
+      url.searchParams.delete('stream');
+    }
+
+    // Handle page parameter
+    if (currentPage === 0) {
+      url.searchParams.delete('page');
+    } else {
+      // Add 1 to convert from 0-based (internal) to 1-based (URL)
+      url.searchParams.set('page', (currentPage + 1).toString());
+    }
+
+    window.history.replaceState({}, '', url);
+  }, [layout, selectedStream, currentPage, detailedStreams.length]);
+
   // Handle layout change
   const handleLayoutChange = (e) => {
     const newLayout = e.target.value;
@@ -137,11 +192,7 @@ export function LiveView() {
     // Reset to first page when changing layout
     setCurrentPage(0);
 
-    // Update URL
-    const url = new URL(window.location.href);
-    url.searchParams.set('layout', newLayout);
-    url.searchParams.set('page', '1'); // Reset to page 1 (1-based for URL)
-    window.history.replaceState({}, '', url);
+    // URL will be updated by the useEffect hook
   };
 
   // Handle stream selection change
@@ -149,10 +200,7 @@ export function LiveView() {
     const newStream = e.target.value;
     setSelectedStream(newStream);
 
-    // Update URL
-    const url = new URL(window.location.href);
-    url.searchParams.set('stream', newStream);
-    window.history.replaceState({}, '', url);
+    // URL will be updated by the useEffect hook
   };
 
   // Handle page change
@@ -167,10 +215,7 @@ export function LiveView() {
 
     setCurrentPage(newPage);
 
-    // Update URL (convert from 0-based to 1-based for URL)
-    const url = new URL(window.location.href);
-    url.searchParams.set('page', (newPage + 1).toString());
-    window.history.replaceState({}, '', url);
+    // URL will be updated by the useEffect hook
   };
 
   // Handle fullscreen toggle
