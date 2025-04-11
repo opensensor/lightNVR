@@ -16,8 +16,16 @@ import { startDetectionPolling, cleanupDetectionPolling } from './DetectionOverl
  */
 export function WebRTCView() {
   const [streams, setStreams] = useState([]);
-  const [layout, setLayout] = useState('4');
-  const [selectedStream, setSelectedStream] = useState('');
+  // Initialize layout from URL if available
+  const [layout, setLayout] = useState(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('layout') || '4';
+  });
+  // Initialize selectedStream from URL if available
+  const [selectedStream, setSelectedStream] = useState(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('stream') || '';
+  });
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   // Initialize currentPage from URL if available (URL uses 1-based indexing, internal state uses 0-based)
@@ -134,7 +142,18 @@ export function WebRTCView() {
           clearTimeout(timeoutId);
           if (streamData && streamData.length > 0) {
             setStreams(streamData);
-            setSelectedStream(streamData[0].name);
+
+            // Set selectedStream based on URL parameter if it exists and is valid
+            const urlParams = new URLSearchParams(window.location.search);
+            const streamParam = urlParams.get('stream');
+
+            if (streamParam && streamData.some(stream => stream.name === streamParam)) {
+              // If the stream from URL exists in the loaded streams, use it
+              setSelectedStream(streamParam);
+            } else if (!selectedStream || !streamData.some(stream => stream.name === selectedStream)) {
+              // Otherwise use the first stream if selectedStream is not set or invalid
+              setSelectedStream(streamData[0].name);
+            }
           } else {
             console.warn('No streams returned from API');
           }
@@ -153,7 +172,7 @@ export function WebRTCView() {
     updateVideoGrid();
   }, [layout, selectedStream, streams, currentPage]);
 
-  // Update URL when page changes
+  // Update URL when page, layout, or selectedStream changes
   useEffect(() => {
     // Update URL with current page (convert from 0-based internal to 1-based URL)
     const url = new URL(window.location);
@@ -164,9 +183,25 @@ export function WebRTCView() {
       url.searchParams.set('page', currentPage + 1);
     }
 
+    // Ensure layout parameter is preserved
+    if (layout && layout !== '4') { // Only set if not the default
+      url.searchParams.set('layout', layout);
+    } else if (layout === '4') {
+      // Remove layout parameter if it's the default value
+      url.searchParams.delete('layout');
+    }
+
+    // Handle selectedStream parameter
+    if (layout === '1' && selectedStream) {
+      url.searchParams.set('stream', selectedStream);
+    } else {
+      // Remove stream parameter if not in single stream mode
+      url.searchParams.delete('stream');
+    }
+
     // Update URL without reloading the page
     window.history.replaceState({}, '', url);
-  }, [currentPage]);
+  }, [currentPage, layout, selectedStream]);
 
   /**
    * Load streams from API
@@ -508,7 +543,7 @@ export function WebRTCView() {
       canvasOverlay.style.pointerEvents = 'none'; // Allow clicks to pass through
       videoCell.appendChild(canvasOverlay);
     }
-    
+
     // Create a new RTCPeerConnection with ICE servers
     const pc = new RTCPeerConnection({
       iceServers: [
@@ -979,8 +1014,10 @@ const takeSnapshot = (streamId) => {
               class="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600"
               value=${layout}
               onChange=${(e) => {
-                setLayout(e.target.value);
+                const newLayout = e.target.value;
+                setLayout(newLayout);
                 setCurrentPage(0); // Reset to first page when layout changes
+                // URL will be updated by the useEffect hook
               }}
             >
               <option value="1">1 Stream</option>
@@ -999,7 +1036,11 @@ const takeSnapshot = (streamId) => {
                 id="stream-selector"
                 class="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600"
                 value=${selectedStream}
-                onChange=${(e) => setSelectedStream(e.target.value)}
+                onChange=${(e) => {
+                  const newStream = e.target.value;
+                  setSelectedStream(newStream);
+                  // URL will be updated by the useEffect hook
+                }}
               >
                 ${streams.map(stream => html`
                   <option key=${stream.name} value=${stream.name}>${stream.name}</option>
