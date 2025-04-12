@@ -87,9 +87,6 @@ list(APPEND SSL_INCLUDE_DIRS ${MBEDTLS_INCLUDE_DIRS})
 list(APPEND SSL_LIBRARIES ${MBEDTLS_LIBRARIES})
 message(STATUS "ONVIF and authentication system enabled, linking with mbedTLS for cryptographic functions")
 
-# Mongoose is required for web server implementation
-add_definitions(-DUSE_MONGOOSE)
-
 # Find cJSON
 find_package(cJSON QUIET)
 if(NOT cJSON_FOUND)
@@ -97,8 +94,6 @@ if(NOT cJSON_FOUND)
     pkg_check_modules(CJSON cjson)
     if(NOT CJSON_FOUND)
         message(STATUS "cJSON not found via find_package or pkg-config, will use bundled version")
-        set(CJSON_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/cjson")
-        set(CJSON_LIBRARIES "cjson")
         set(CJSON_BUNDLED TRUE)
     endif()
 endif()
@@ -138,14 +133,16 @@ if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose/mongoose.c")
             SHOW_PROGRESS
     )
 endif()
-set(MONGOOSE_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose")
 set(MONGOOSE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose/mongoose.c")
+add_library(mongoose_lib STATIC ${MONGOOSE_SOURCES})
+target_include_directories(mongoose_lib INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose")
 
 # Set up cJSON if using bundled version
 if(CJSON_BUNDLED)
+    set(CJSON_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/cjson")
     # Check if cJSON is already in external directory, if not download it
     if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/cjson/cJSON.c")
-        message(STATUS "cJSON not found, will download it")
+        message(STATUS "Bundled cJSON source not found, will download it")
         file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/external/cjson")
         file(DOWNLOAD
                 "https://raw.githubusercontent.com/DaveGamble/cJSON/master/cJSON.c"
@@ -159,10 +156,14 @@ if(CJSON_BUNDLED)
         )
     endif()
     set(CJSON_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/external/cjson/cJSON.c")
+    add_library(cjson_lib STATIC ${CJSON_SOURCES})
+    target_include_directories(cjson_lib INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/external/cjson")
 endif()
 
 # Set up inih library
-set(INIH_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/inih")
+set(INIH_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/external/inih/ini.c")
+add_library(inih_lib STATIC ${INIH_SOURCES})
+target_include_directories(inih_lib INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/external/inih")
 
 # Define all include directories in one place
 set(LIGHTNVR_INCLUDE_DIRS
@@ -173,7 +174,6 @@ set(LIGHTNVR_INCLUDE_DIRS
         ${CURL_INCLUDE_DIRS}
         ${SSL_INCLUDE_DIRS}
         ${EZXML_INCLUDE_DIR}
-        ${INIH_INCLUDE_DIR}
 )
 
 # Add conditional include directories
@@ -181,13 +181,8 @@ if(ENABLE_SOD)
     list(APPEND LIGHTNVR_INCLUDE_DIRS ${SOD_INCLUDE_DIR})
 endif()
 
-# Mongoose is required, always include it
-list(APPEND LIGHTNVR_INCLUDE_DIRS ${MONGOOSE_INCLUDE_DIR})
-
 if(CJSON_FOUND AND NOT CJSON_BUNDLED)
     list(APPEND LIGHTNVR_INCLUDE_DIRS ${CJSON_INCLUDE_DIRS})
-else()
-    list(APPEND LIGHTNVR_INCLUDE_DIRS ${CJSON_INCLUDE_DIR})
 endif()
 
 # Apply include directories
@@ -236,7 +231,7 @@ if(ENABLE_GO2RTC)
     message(STATUS "go2rtc API port: ${GO2RTC_API_PORT}")
 endif()
 
-# Combine all sources
+# Combine all sources (excluding mongoose, inih, bundled cjson)
 set(SOURCES
         ${CORE_SOURCES}
         ${DATABASE_SOURCES}
@@ -247,7 +242,6 @@ set(SOURCES
         ${HLS_UNIFIED_THREAD_SOURCES}
         ${WEB_SOURCES}
         ${ROOT_SOURCES}
-        "${INIH_INCLUDE_DIR}/ini.c"
         include/utils/strings.h
 )
 
@@ -256,21 +250,27 @@ if(ENABLE_GO2RTC)
     list(APPEND SOURCES ${GO2RTC_SOURCES})
 endif()
 
-# Add Mongoose source (required component)
-list(APPEND SOURCES ${MONGOOSE_SOURCES})
+# Add cJSON source ONLY if using bundled version AND library wasn't defined
+# (This case shouldn't happen with current logic, but added for robustness)
+# if(CJSON_BUNDLED AND NOT TARGET cjson_lib)
+#    list(APPEND SOURCES ${CJSON_SOURCES})
+# endif()
 
-# Add ezxml source
-list(APPEND SOURCES ${EZXML_SOURCES})
-
-# Add cJSON source if using bundled version
+# Define the shared library
+add_library(lightnvr_lib STATIC ${SOURCES})
+target_include_directories(lightnvr_lib PUBLIC ${LIGHTNVR_INCLUDE_DIRS})
+target_include_directories(lightnvr_lib PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose"
+    "${CMAKE_CURRENT_SOURCE_DIR}/external/inih"
+)
 if(CJSON_BUNDLED)
-    list(APPEND SOURCES ${CJSON_SOURCES})
+    target_include_directories(lightnvr_lib PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/external/cjson")
 endif()
 
 # Define the main executable
-add_executable(lightnvr ${SOURCES})
+add_executable(lightnvr src/core/main.c)
 
-# Define source files for rebuild_recordings utility
+# Define source files for rebuild_recordings utility (excluding inih)
 set(REBUILD_RECORDINGS_SOURCES
     src/utils/rebuild_recordings.c
     src/core/config.c
@@ -283,7 +283,6 @@ set(REBUILD_RECORDINGS_SOURCES
     src/database/db_schema_cache.c
     src/database/db_backup.c
     src/database/db_transaction.c
-    "${INIH_INCLUDE_DIR}/ini.c"
 )
 
 # Define the rebuild_recordings utility
@@ -296,6 +295,9 @@ set_target_properties(lightnvr rebuild_recordings PROPERTIES
 
 # Link libraries for main executable
 target_link_libraries(lightnvr
+        lightnvr_lib
+        mongoose_lib
+        inih_lib
         ${FFMPEG_LIBRARIES}
         ${SQLITE_LIBRARIES}
         ${CURL_LIBRARIES}
@@ -308,6 +310,9 @@ target_link_libraries(lightnvr
 
 # Link libraries for rebuild_recordings utility
 target_link_libraries(rebuild_recordings
+        lightnvr_lib
+        mongoose_lib
+        inih_lib
         ${FFMPEG_LIBRARIES}
         ${SQLITE_LIBRARIES}
         pthread
@@ -315,9 +320,13 @@ target_link_libraries(rebuild_recordings
         m
 )
 
-# Link cJSON if not using bundled version
-if(NOT CJSON_BUNDLED AND CJSON_FOUND)
+# Link cJSON (either system or bundled static lib)
+if(CJSON_BUNDLED)
+    target_link_libraries(lightnvr cjson_lib)
+    target_link_libraries(rebuild_recordings cjson_lib)
+elseif(CJSON_FOUND)
     target_link_libraries(lightnvr ${CJSON_LIBRARIES})
+    target_link_libraries(rebuild_recordings ${CJSON_LIBRARIES})
 endif()
 
 # Link SOD library if enabled
@@ -405,7 +414,3 @@ if(ENABLE_GO2RTC)
     message(STATUS "  - go2rtc API port: ${GO2RTC_API_PORT}")
 endif()
 message(STATUS "- Embedded A1 device optimizations: ${EMBEDDED_A1_DEVICE}")
-message(STATUS "- Include directories:")
-foreach(dir ${LIGHTNVR_INCLUDE_DIRS})
-    message(STATUS "  * ${dir}")
-endforeach()
