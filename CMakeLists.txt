@@ -29,8 +29,8 @@ set(MG_TLS_BUILTIN 3)
 set(MG_TLS_WOLFSSL 5)
 
 # Compiler flags for optimization and memory usage
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O2 -ffunction-sections -fdata-sections -Wl,--gc-sections -pthread")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -ffunction-sections -fdata-sections -Wl,--gc-sections -pthread")
+add_compile_options(-O2 -ffunction-sections -fdata-sections)
+add_link_options(-Wl,--gc-sections)
 
 # Option to build for embedded A1 device
 option(EMBEDDED_A1_DEVICE "Build for embedded A1 device with limited memory" OFF)
@@ -50,6 +50,7 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(FFMPEG REQUIRED libavcodec libavformat libavutil libswscale)
 pkg_check_modules(SQLITE REQUIRED sqlite3)
 pkg_check_modules(CURL REQUIRED libcurl)
+find_package(Threads REQUIRED)
 
 # SSL/TLS configuration for Mongoose
 if(ENABLE_SSL)
