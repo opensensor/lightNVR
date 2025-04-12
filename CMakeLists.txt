@@ -32,6 +32,17 @@ set(MG_TLS_WOLFSSL 5)
 add_compile_options(-O2 -ffunction-sections -fdata-sections)
 add_link_options(-Wl,--gc-sections)
 
+# Add ASan/UBSan flags for Debug builds with GCC/Clang
+if(CMAKE_BUILD_TYPE MATCHES "^[Dd][Ee][Bb][Uu][Gg]$")
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        message(STATUS "Enabling AddressSanitizer and UndefinedBehaviorSanitizer for Debug build")
+        add_compile_options(-fsanitize=address,undefined)
+        add_link_options(-fsanitize=address,undefined)
+    else()
+        message(STATUS "Compiler (${CMAKE_C_COMPILER_ID}/${CMAKE_CXX_COMPILER_ID}) does not support sanitizers or build type is not Debug, skipping sanitizer flags.")
+    endif()
+endif()
+
 # Option to build for embedded A1 device
 option(EMBEDDED_A1_DEVICE "Build for embedded A1 device with limited memory" OFF)
 if(EMBEDDED_A1_DEVICE)
