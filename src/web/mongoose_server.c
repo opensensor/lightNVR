@@ -127,14 +127,7 @@ static const mg_api_route_t s_api_routes[] = {
     {"POST", "/api/recordings/batch-delete-ws", mg_handle_batch_delete_recordings_ws, true},  // Already uses threading
     {"GET", "/api/ws", mg_handle_websocket_upgrade, false},
 
-    // Streaming API - HLS
-    {"GET", "/api/streaming/#/hls/index.m3u8", mg_handle_hls_master_playlist, false},
-    {"GET", "/api/streaming/#/hls/stream.m3u8", mg_handle_hls_media_playlist, false},
-    {"GET", "/api/streaming/#/hls/segment_#.ts", mg_handle_hls_segment, false},
-    {"GET", "/api/streaming/#/hls/segment_#.m4s", mg_handle_hls_segment, false},
-    {"GET", "/api/streaming/#/hls/init.mp4", mg_handle_hls_segment, false},
-
-    // No direct HLS access handler - handled by static file handler
+    // No direct HLS handlers - handled by static file handler
 
     // go2rtc WebRTC API
     {"POST", "/api/webrtc", mg_handle_go2rtc_webrtc_offer, false},

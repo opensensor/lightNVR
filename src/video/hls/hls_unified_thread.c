@@ -1,3 +1,14 @@
+/**
+ * HLS Unified Thread Implementation
+ *
+ * This file implements the unified thread approach for HLS streaming.
+ *
+ * CRITICAL FIX (2025-04-11): Fixed segmentation fault issues related to thread safety
+ * in the writer cleanup process. The main issue was that the hls_writer was being accessed
+ * after it had been freed by another thread. The fix uses atomic operations to ensure
+ * thread-safe access to the writer pointer.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -248,8 +259,9 @@ static void safe_cleanup_resources(AVFormatContext **input_ctx, AVPacket **pkt, 
         } else if (!*writer) {
             log_debug("Writer is already NULL, nothing to clean up");
         } else {
-            // Store a local copy of the writer pointer
-            writer_to_free = *writer;
+            // CRITICAL FIX: Use atomic pointer exchange to safely get and clear the writer pointer
+            // This ensures that no other thread can access the writer after we've taken ownership of it
+            writer_to_free = __atomic_exchange_n(writer, NULL, __ATOMIC_SEQ_CST);
 
             // CRITICAL FIX: Validate the writer pointer before using it
             if (!writer_to_free) {
@@ -1038,12 +1050,15 @@ void *hls_unified_thread_func(void *arg) {
     if (ctx) {
         if (ctx->writer) {
             log_debug("Cleaning up HLS writer for stream %s", stream_name_buf);
-            writer_to_cleanup = ctx->writer;
+
+            // CRITICAL FIX: Use atomic exchange to safely get and clear the writer pointer
+            // This ensures that no other thread can access the writer after we've taken ownership of it
+            writer_to_cleanup = __atomic_exchange_n(&ctx->writer, NULL, __ATOMIC_SEQ_CST);
 
             // CRITICAL FIX: Store a local copy of the stream name for logging
             char writer_stream_name[MAX_STREAM_NAME] = {0};
-            if (ctx->writer->stream_name) {
-                strncpy(writer_stream_name, ctx->writer->stream_name, MAX_STREAM_NAME - 1);
+            if (writer_to_cleanup && writer_to_cleanup->stream_name) {
+                strncpy(writer_stream_name, writer_to_cleanup->stream_name, MAX_STREAM_NAME - 1);
                 writer_stream_name[MAX_STREAM_NAME - 1] = '\0';
                 log_info("Preparing to clean up HLS writer for stream %s", writer_stream_name);
             }
@@ -1062,15 +1077,8 @@ void *hls_unified_thread_func(void *arg) {
     input_ctx = NULL;
     pkt = NULL;
 
-    // CRITICAL FIX: Clear the writer reference in the context before cleaning up
-    if (ctx) {
-        log_info("Clearing writer reference in context for stream %s", stream_name_buf);
-        // Add a volatile pointer to prevent compiler optimizations
-        volatile hls_writer_t **writer_ptr = (volatile hls_writer_t **)&ctx->writer;
-        *writer_ptr = NULL;
-        // Add memory barrier to ensure the NULL assignment is visible to all threads
-        __sync_synchronize();
-    }
+    // CRITICAL FIX: Writer reference has already been cleared using atomic exchange
+    // No need to clear it again
 
     // CRITICAL FIX: Add additional safety checks before cleanup
     log_info("About to clean up resources for stream %s", stream_name_buf);
@@ -1550,10 +1558,13 @@ int stop_hls_unified_stream(const char *stream_name) {
     if (index >= 0 && index < MAX_STREAMS && unified_contexts[index] == ctx) {
         // CRITICAL FIX: Clear the writer reference in the context before freeing to prevent double free
         if (ctx && ctx->writer) {
+            // Store a local copy of the writer pointer for logging
+            hls_writer_t *writer_to_cleanup = ctx->writer;
+
             // Store a local copy of the stream name for logging
             char writer_stream_name[MAX_STREAM_NAME] = {0};
-            if (ctx->writer->stream_name) {
-                strncpy(writer_stream_name, ctx->writer->stream_name, MAX_STREAM_NAME - 1);
+            if (writer_to_cleanup && writer_to_cleanup->stream_name) {
+                strncpy(writer_stream_name, writer_to_cleanup->stream_name, MAX_STREAM_NAME - 1);
                 writer_stream_name[MAX_STREAM_NAME - 1] = '\0';
             } else {
                 strcpy(writer_stream_name, "unknown");
@@ -1561,12 +1572,15 @@ int stop_hls_unified_stream(const char *stream_name) {
 
             log_info("Clearing writer reference in context for stream %s", writer_stream_name);
 
-            // Use a volatile pointer to prevent compiler optimizations
-            volatile hls_writer_t **writer_ptr = (volatile hls_writer_t **)&ctx->writer;
-            *writer_ptr = NULL;
+            // CRITICAL FIX: Use atomic exchange to safely get and clear the writer pointer
+            // This ensures that no other thread can access the writer after we've taken ownership of it
+            __atomic_exchange_n(&ctx->writer, NULL, __ATOMIC_SEQ_CST);
 
-            // Add memory barrier to ensure the NULL assignment is visible to all threads
-            __sync_synchronize();
+            // CRITICAL FIX: Safely close the writer if needed
+            if (writer_to_cleanup) {
+                // We don't free the writer here - the thread should handle that
+                log_info("Writer reference cleared for stream %s", writer_stream_name);
+            }
         }
 
         // Free context and clear slot

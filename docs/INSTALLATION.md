@@ -395,31 +395,6 @@ docker run -d \
   lightnvr/lightnvr:latest
 ```
 
-### Upgrading Package Installation
-
-#### Debian/Ubuntu
-
-```bash
-sudo apt-get update
-sudo apt-get upgrade lightnvr
-```
-
-#### Fedora/RHEL/CentOS
-
-```bash
-sudo dnf upgrade lightnvr
-```
-
-#### Arch Linux
-
-```bash
-# Using yay
-yay -Syu lightnvr
-
-# Or using pacman if installed from AUR
-sudo pacman -Syu
-```
-
 ## Uninstallation
 
 ### Uninstalling Source Installation
@@ -456,22 +431,3 @@ docker rmi lightnvr/lightnvr:latest
 rm -rf /path/to/config
 rm -rf /path/to/recordings
 ```
-
-### Uninstalling Package Installation
-
-#### Debian/Ubuntu
-
-```bash
-sudo apt-get remove --purge lightnvr
-```
-
-#### Fedora/RHEL/CentOS
-
-```bash
-sudo dnf remove lightnvr
-```
-
-#### Arch Linux
-
-```bash
-sudo pacman -Rs lightnvr
