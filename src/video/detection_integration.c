@@ -25,7 +25,6 @@
 
 // Include our new modules
 #include "video/detection_config.h"
-#include "video/detection_buffer.h"
 #include "video/detection_embedded.h"
 #include "video/detection_integration.h"
 #include "video/detection_frame_processing.h"
@@ -46,12 +45,6 @@ int init_detection_integration(void) {
     // Initialize configuration
     if (init_detection_config() != 0) {
         log_error("Failed to initialize detection configuration");
-        return -1;
-    }
-
-    // Initialize buffer pool
-    if (init_buffer_pool() != 0) {
-        log_error("Failed to initialize buffer pool");
         return -1;
     }
 
