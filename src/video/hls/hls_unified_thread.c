@@ -635,7 +635,7 @@ static void safe_cleanup_resources(AVFormatContext **input_ctx, AVPacket **pkt, 
                     sigaction(SIGALRM, &sa_new, NULL);
 
                     // Set alarm
-                    alarm(5); // 5 second timeout for writer close
+                    alarm(15); // 15 second timeout for writer close
 
                     // Close the writer with additional protection
                     hls_writer_close(writer_to_free);
@@ -903,8 +903,8 @@ void *hls_unified_thread_func(void *arg) {
         // The old writer will be cleaned up during shutdown
     }
 
-    // Create HLS writer with appropriate segment duration
-    ctx->writer = hls_writer_create(ctx->output_path, stream_name, ctx->segment_duration);
+    // Create HLS writer with 5-second segments
+    ctx->writer = hls_writer_create(ctx->output_path, stream_name, 5);
     if (!ctx->writer) {
         log_error("Failed to create HLS writer for %s", stream_name);
 
@@ -1839,7 +1839,7 @@ void *hls_unified_thread_func(void *arg) {
         sigaction(SIGALRM, &sa_new, NULL);
 
         // Set alarm
-        alarm(5); // 5 second timeout for writer close
+        alarm(15); // 15 second timeout for writer close
 
         // Close the writer with additional protection
         hls_writer_close(writer_to_cleanup);
@@ -1928,7 +1928,7 @@ void *hls_unified_thread_func(void *arg) {
                 sigaction(SIGALRM, &sa_new, NULL);
 
                 // Set alarm
-                alarm(5); // 5 second timeout for context free
+                alarm(15); // 15 second timeout for context free
 
                 // Mark the context as pending deletion to signal the thread
                 mark_context_pending_deletion(ctx_to_free);
@@ -2587,7 +2587,7 @@ int stop_hls_unified_stream(const char *stream_name) {
                     sigaction(SIGALRM, &sa_new, NULL);
 
                     // Set alarm
-                    alarm(5); // 5 second timeout for context free
+                    alarm(15); // 15 second timeout for context free
 
                     // Mark the context as pending deletion to signal the thread
                     mark_context_pending_deletion(ctx_to_free);

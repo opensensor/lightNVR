@@ -209,6 +209,26 @@ void comprehensive_ffmpeg_cleanup(AVFormatContext **input_ctx, AVCodecContext **
                             if (codecpar->ch_layout.nb_channels > 0) {
                                 codecpar->ch_layout.nb_channels = 0;
                             }
+
+                            // ENHANCED FIX: Create a temporary codec context to force cleanup of internal allocations
+                            // This is a workaround for FFmpeg's internal memory management issues
+                            const AVCodec *codec = avcodec_find_decoder(codecpar->codec_id);
+                            if (codec) {
+                                AVCodecContext *temp_ctx = avcodec_alloc_context3(codec);
+                                if (temp_ctx) {
+                                    // Copy parameters to the context
+                                    int ret = avcodec_parameters_to_context(temp_ctx, codecpar);
+                                    if (ret >= 0) {
+                                        // Now copy back to parameters - this will reallocate and clean up any leaks
+                                        avcodec_parameters_from_context(codecpar, temp_ctx);
+                                    }
+                                    // Free the temporary context
+                                    avcodec_free_context(&temp_ctx);
+                                }
+                            }
+
+                            // Zero out the entire structure to ensure no pointers remain
+                            memset(codecpar, 0, sizeof(AVCodecParameters));
                         }
                     }
                 }

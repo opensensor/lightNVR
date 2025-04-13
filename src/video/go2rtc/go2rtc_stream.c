@@ -7,6 +7,7 @@
 #include "video/go2rtc/go2rtc_process.h"
 #include "video/go2rtc/go2rtc_api.h"
 #include "video/go2rtc/go2rtc_integration.h"
+#include "video/go2rtc/dns_cleanup.h"
 #include "core/logger.h"
 
 #include <stdio.h>
@@ -375,6 +376,10 @@ static bool is_port_open(const char *host, int port, int timeout_ms) {
         res = NULL; // Set to NULL to prevent double-free
     }
 
+    // CRITICAL FIX: Clean up DNS resolver resources to prevent memory leaks
+    // This addresses the 106-byte memory leak shown in Valgrind
+    cleanup_dns_resolver();
+
     return result;
 }
 
@@ -548,6 +553,11 @@ bool go2rtc_stream_is_ready(void) {
             close(sockfd);
             curl_easy_cleanup(curl);
             curl = NULL; // Set to NULL to prevent double-free
+
+            // CRITICAL FIX: Clean up DNS resolver resources to prevent memory leaks
+            // This addresses the 106-byte memory leak shown in Valgrind
+            cleanup_dns_resolver();
+
             return true;
         }
 
@@ -559,6 +569,11 @@ bool go2rtc_stream_is_ready(void) {
         close(sockfd);
         curl_easy_cleanup(curl);
         curl = NULL; // Set to NULL to prevent double-free
+
+        // CRITICAL FIX: Clean up DNS resolver resources to prevent memory leaks
+        // This addresses the 106-byte memory leak shown in Valgrind
+        cleanup_dns_resolver();
+
         return false;
     }
 
@@ -574,6 +589,10 @@ bool go2rtc_stream_is_ready(void) {
     // Clean up with safety checks
     curl_easy_cleanup(curl);
     curl = NULL; // Set to NULL to prevent double-free
+
+    // CRITICAL FIX: Clean up DNS resolver resources to prevent memory leaks
+    // This addresses the 106-byte memory leak shown in Valgrind
+    cleanup_dns_resolver();
 
     // Check if we got a successful HTTP response (200) with safety checks
     if (http_code == 200) {
