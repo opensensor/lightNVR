@@ -64,11 +64,6 @@ export function Header({ activeNav = '', version = '' }) {
         // Redirect to login page with auth_required parameter to prevent auto-redirect
         window.location.href = 'login.html?auth_required=true&logout=true';
       }, 100);
-
-      // Try to load a protected resource with invalid credentials in the iframe
-      if (iframe.contentWindow) {
-        iframe.contentWindow.location.href = '/api/auth/verify';
-      }
     }).catch(() => {
       // Redirect even if the request fails
       window.location.href = 'login.html?auth_required=true&logout=true';

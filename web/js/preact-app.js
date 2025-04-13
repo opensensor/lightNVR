@@ -172,19 +172,54 @@ if (window.wsClient) {
 }
 
 /**
- * Set up global fetch error handler for authentication
+ * Patch for the setupGlobalAuthHandler function in preact-app.js
+ * Add this at the beginning of your setupGlobalAuthHandler function
  */
 function setupGlobalAuthHandler() {
+  // Create a flag to prevent redirect loops
+  window.preventAuthRedirects = false;
+
+  // Check for auth pending flag on page load
+  if (localStorage.getItem('authPending')) {
+    console.log('Auth pending detected, skipping auth redirect check');
+    window.preventAuthRedirects = true;
+    // Remove the flag after a short delay
+    setTimeout(() => {
+      localStorage.removeItem('authPending');
+      window.preventAuthRedirects = false;
+    }, 5000);
+  }
+
   // Override fetch to handle 401 responses globally
   const originalFetch = window.fetch;
   window.fetch = async function(url, options) {
+    // Check if this is a POST request with auth_token
+    const isAuthForm = options &&
+        options.body instanceof FormData &&
+        options.body.has('auth_token');
+
+    // Skip auth checking during form submission redirect
+    if (isAuthForm || window.preventAuthRedirects) {
+      console.log('Skipping auth check for auth form submission');
+      return originalFetch.apply(this, arguments);
+    }
+
+    // Normal fetch with response check
     const response = await originalFetch.apply(this, arguments);
 
-  if (response.status === 401 && !window.location.pathname.includes('login.html')) {
-    console.log('401 detected, redirecting to login');
-    const currentPath = window.location.pathname + window.location.search;
-    window.location.href = '/login.html?redirect=' + encodeURIComponent(currentPath) + '&from_redirect=true';
-  }
+    // Only process 401 if we're not in the login page and not currently preventing redirects
+    if (response.status === 401 &&
+        !window.location.pathname.includes('login.html') &&
+        !window.preventAuthRedirects) {
+
+      console.log('401 detected, redirecting to login');
+
+      // Save current path for redirect after login
+      const currentPath = window.location.pathname + window.location.search;
+
+      // Simple redirect to login page
+      window.location.href = '/login.html?redirect=' + encodeURIComponent(currentPath);
+    }
 
     return response;
   };

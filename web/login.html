@@ -17,7 +17,7 @@
             const authRequired = urlParams.has('auth_required');
             const logoutRequested = urlParams.has('logout');
             const fromRedirect = urlParams.has('from_redirect');
-            
+
             // If auth is required or logout was requested, don't auto-redirect even if we have credentials
             // This prevents redirect loops when credentials are invalid or after logout
             if (authRequired || logoutRequested) {
@@ -26,7 +26,7 @@
                 localStorage.removeItem('auth');
                 document.cookie = "auth=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict";
                 document.cookie = "session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict";
-                
+
                 // For Chrome, we need to make a request with invalid credentials to clear the auth cache
                 if (logoutRequested) {
                     console.log('Attempting to clear browser auth cache');
@@ -34,11 +34,11 @@
                     const iframe = document.createElement('iframe');
                     iframe.style.display = 'none';
                     document.body.appendChild(iframe);
-                    
+
                     // Try to load a protected resource with invalid credentials in the iframe
                     if (iframe.contentWindow) {
                         iframe.contentWindow.location.href = '/api/auth/verify';
-                        
+
                         // Remove the iframe after a short delay
                         setTimeout(() => {
                             if (document.body.contains(iframe)) {
@@ -47,61 +47,130 @@
                         }, 1000);
                     }
                 }
-                
+
                 return;
             }
-            
+
             // If we were redirected from index.html, don't redirect back to prevent loops
             // This is especially important for Chrome mobile
             if (fromRedirect) {
                 console.log('Detected redirect from index.html, staying on login page to prevent loop');
                 return;
             }
-            
+
             const auth = localStorage.getItem('auth');
-            
+
             // Firefox has stricter cookie handling, so we need to be more careful
             const cookies = document.cookie.split(';').map(cookie => cookie.trim());
             const hasAuthCookie = cookies.some(cookie => cookie.startsWith('auth='));
             const hasSessionCookie = cookies.some(cookie => cookie.startsWith('session='));
-            
+
             // Debug cookie information
             console.log('Login page - Cookies available:', document.cookie ? 'Yes' : 'No');
             console.log('Login page - Auth cookie found:', hasAuthCookie);
             console.log('Login page - Session cookie found:', hasSessionCookie);
-            
+
             // Check if we're on a mobile device
             const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
             const isChrome = /Chrome/i.test(navigator.userAgent) && !/Edge|Edg/i.test(navigator.userAgent);
-            
+
             // For Chrome mobile, we need to be more careful to prevent redirect loops
             if (isMobile && isChrome) {
                 console.log('Chrome mobile detected, performing auth verification before redirect');
-                
+
                 // For Chrome mobile, verify auth with the server before redirecting
                 fetch('/api/auth/verify', {
                     method: 'GET',
                     credentials: 'include',
                     headers: auth ? { 'Authorization': `Basic ${auth}` } : {}
                 })
-                .then(response => {
-                    if (response.ok) {
-                        // Auth is valid, redirect to index
-                        window.location.href = '/index.html?t=' + new Date().getTime();
-                    } else {
-                        // Auth is invalid, stay on login page
-                        console.log('Auth verification failed, staying on login page');
-                        // Clear any invalid credentials
-                        localStorage.removeItem('auth');
-                    }
-                })
-                .catch(error => {
-                    console.error('Auth verification error:', error);
-                    // On error, don't redirect to be safe
-                });
+                    .then(response => {
+                        if (response.ok) {
+                            // Auth is valid, redirect to index
+                            redirectToIndex();
+                        } else {
+                            // Auth is invalid, stay on login page
+                            console.log('Auth verification failed, staying on login page');
+                            // Clear any invalid credentials
+                            localStorage.removeItem('auth');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Auth verification error:', error);
+                        // On error, don't redirect to be safe
+                    });
             } else if (auth || hasAuthCookie || hasSessionCookie) {
                 // For other browsers, redirect if we have credentials
-                window.location.href = '/index.html?t=' + new Date().getTime();
+                redirectToIndex();
+            }
+
+            // Function to handle the redirection to index with fallbacks
+            function redirectToIndex() {
+                const timestamp = Date.now();
+                const targetUrl = `/index.html?t=${timestamp}`;
+                console.log('Redirecting to index page:', targetUrl);
+
+                // Method 1: Try location.href (most common)
+                try {
+                    window.location.href = targetUrl;
+                } catch (error) {
+                    console.error('Error redirecting via location.href:', error);
+                }
+
+                // Set a fallback timeout to check if redirection happened
+                setTimeout(function() {
+                    if (window.location.pathname.includes('/login.html')) {
+                        console.log('Still on login page, trying alternate redirection method');
+
+                        // Method 2: Try location.assign
+                        try {
+                            window.location.assign(targetUrl);
+                        } catch (assignError) {
+                            console.error('Error redirecting via location.assign:', assignError);
+
+                            // Method 3: Try location.replace
+                            try {
+                                window.location.replace(targetUrl);
+                            } catch (replaceError) {
+                                console.error('Error redirecting via location.replace:', replaceError);
+
+                                // Method 4: Create a visible button for the user
+                                console.log('Creating manual redirect button');
+                                const redirectButton = document.createElement('button');
+                                redirectButton.textContent = 'Click here to continue to dashboard';
+                                redirectButton.style.position = 'fixed';
+                                redirectButton.style.top = '50%';
+                                redirectButton.style.left = '50%';
+                                redirectButton.style.transform = 'translate(-50%, -50%)';
+                                redirectButton.style.padding = '1rem 2rem';
+                                redirectButton.style.backgroundColor = '#1e88e5';
+                                redirectButton.style.color = 'white';
+                                redirectButton.style.border = 'none';
+                                redirectButton.style.borderRadius = '0.25rem';
+                                redirectButton.style.fontSize = '1rem';
+                                redirectButton.style.cursor = 'pointer';
+                                redirectButton.style.zIndex = '9999';
+
+                                redirectButton.onclick = function() {
+                                    window.location = targetUrl;
+                                };
+
+                                document.body.appendChild(redirectButton);
+
+                                // Create a message explaining what happened
+                                const message = document.createElement('div');
+                                message.textContent = 'Login successful, but automatic redirection failed.';
+                                message.style.position = 'fixed';
+                                message.style.top = 'calc(50% - 60px)';
+                                message.style.left = '50%';
+                                message.style.transform = 'translateX(-50%)';
+                                message.style.color = '#333';
+                                message.style.fontWeight = 'bold';
+                                document.body.appendChild(message);
+                            }
+                        }
+                    }
+                }, 500);
             }
         });
     </script>
