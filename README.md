@@ -85,7 +85,7 @@ docker run -d \
   -p 8080:8080 \
   -v /path/to/config:/etc/lightnvr \
   -v /path/to/recordings:/var/lib/lightnvr/recordings \
-  lightnvr/lightnvr:latest
+  ghcr.io/opensensor/lightnvr:latest
 ```
 
 ## Documentation
