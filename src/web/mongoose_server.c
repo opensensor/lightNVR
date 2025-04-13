@@ -117,14 +117,14 @@ static const mg_api_route_t s_api_routes[] = {
 
     // Recordings API
     {"GET", "/api/recordings", mg_handle_get_recordings, false},
-    {"GET", "/api/recordings/play/#", mg_handle_play_recording, false},
-    {"GET", "/api/recordings/download/#", mg_handle_download_recording, false},
+    {"GET", "/api/recordings/play/#", mg_handle_play_recording, true},  // Opt out of auto-threading to prevent hanging
+    {"GET", "/api/recordings/download/#", mg_handle_download_recording, true},  // Opt out of auto-threading to prevent hanging
     {"GET", "/api/recordings/files/check", mg_handle_check_recording_file, true},  // Already uses threading
     {"DELETE", "/api/recordings/files", mg_handle_delete_recording_file, true},  // Already uses threading
     {"GET", "/api/recordings/#", mg_handle_get_recording, false},
     {"DELETE", "/api/recordings/#", mg_handle_delete_recording, true},  // Already uses threading
     {"POST", "/api/recordings/batch-delete", mg_handle_batch_delete_recordings, true},  // Already uses threading
-    {"POST", "/api/recordings/batch-delete-ws", mg_handle_batch_delete_recordings_ws, true},  // Already uses threading
+    {"POST", "/api/recordings/batch-delete-ws", mg_handle_batch_delete_recordings_ws, false},  // Already uses threading
     {"GET", "/api/ws", mg_handle_websocket_upgrade, false},
 
     // No direct HLS handlers - handled by static file handler
@@ -177,7 +177,7 @@ static bool handle_api_request(struct mg_connection *c, struct mg_http_message *
     memcpy(method_buf, hm->method.buf, method_len);
     method_buf[method_len] = '\0';
 
-    log_info("API request received: %s %s", method_buf, uri_buf);
+    log_info("API request received: %s %s, threading=%s", method_buf, uri_buf, use_threading ? "enabled" : "disabled");
 
     // Find matching route
     int route_index = match_route(hm);
@@ -738,24 +738,24 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
         // Set Connection: close header for all responses to prevent connection reuse
         c->data[1] = 'C';  // Mark connection to add "Connection: close" header
 
-} else if (ev == MG_EV_WS_OPEN) {
-    // WebSocket connection opened
-    log_info("WebSocket connection opened");
+    } else if (ev == MG_EV_WS_OPEN) {
+        // WebSocket connection opened
+        log_info("WebSocket connection opened");
 
-    // Mark the connection as a WebSocket client
-    c->data[0] = 'W';  // Mark as WebSocket client
+        // Mark the connection as a WebSocket client
+        c->data[0] = 'W';  // Mark as WebSocket client
 
-    // Note: The WebSocket connection is now handled directly in mg_handle_websocket_upgrade
+        // Note: The WebSocket connection is now handled directly in mg_handle_websocket_upgrade
 
-} else if (ev == MG_EV_WS_MSG) {
-    // WebSocket message received
-    struct mg_ws_message *wm = (struct mg_ws_message *)ev_data;
+    } else if (ev == MG_EV_WS_MSG) {
+        // WebSocket message received
+        struct mg_ws_message *wm = (struct mg_ws_message *)ev_data;
 
-    // Log the message for debugging
-    log_debug("WebSocket message received: %.*s", (int)wm->data.len, wm->data.buf);
+        // Log the message for debugging
+        log_debug("WebSocket message received: %.*s", (int)wm->data.len, wm->data.buf);
 
-    // Call the WebSocket message handler directly
-    mg_handle_websocket_message(c, wm);
+        // Call the WebSocket message handler directly
+        mg_handle_websocket_message(c, wm);
 
     } else if (ev == MG_EV_WAKEUP) {
         // Wakeup event from worker thread
@@ -954,9 +954,31 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
             handled = true;
         }
         else if (is_api_request) {
-            // For API requests, use the API request handler with threading
-            // This will make all API requests run in separate threads
-            handled = handle_api_request(c, hm, true);
+            // Check if this is a WebSocket upgrade request
+            struct mg_str *upgrade_header = mg_http_get_header(hm, "Upgrade");
+            bool is_websocket = false;
+            if (upgrade_header != NULL) {
+                // Extract the header value as a C string for comparison
+                char upgrade_value[32] = {0};
+                size_t len = upgrade_header->len < sizeof(upgrade_value) - 1 ? upgrade_header->len : sizeof(upgrade_value) - 1;
+                memcpy(upgrade_value, upgrade_header->buf, len);
+                upgrade_value[len] = '\0';
+
+                // Case-insensitive comparison
+                is_websocket = (mg_casecmp(upgrade_value, "websocket") == 0);
+            }
+
+            // Special handling for WebSocket upgrade endpoint
+            if (is_websocket && mg_http_match_uri(hm, "/api/ws")) {
+                log_info("Detected WebSocket upgrade request to /api/ws endpoint");
+                // Handle WebSocket upgrade directly without threading
+                // This ensures the upgrade process completes properly
+                mg_handle_websocket_upgrade(c, hm);
+                handled = true;
+            } else {
+                // For other API requests, use the API request handler with threading
+                handled = handle_api_request(c, hm, true);
+            }
         } else if (is_direct_hls) {
             // For direct HLS requests, use the HLS handler
             log_debug("Handling direct HLS request: %s", uri);
@@ -1054,6 +1076,7 @@ static void *mongoose_server_event_loop(void *arg) {
 
     // Run event loop until server is stopped
     int poll_count = 0;
+    uint64_t last_cleanup_time = mg_millis();
     while (server->running) {
         // Check if shutdown has been initiated
         if (is_shutdown_initiated()) {

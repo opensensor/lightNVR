@@ -438,11 +438,30 @@ static void *mp4_writer_rtsp_thread(void *arg) {
             log_debug("Flushed input context buffers");
         }
 
+        // Ensure all packets are properly reference counted before closing
+        // This helps prevent use-after-free errors during shutdown
+        for (unsigned int i = 0; i < ctx_to_close->nb_streams; i++) {
+            if (ctx_to_close->streams[i] && ctx_to_close->streams[i]->codecpar) {
+                // Clear any cached packets
+                if (ctx_to_close->streams[i]->codecpar->extradata) {
+                    log_debug("Clearing extradata for stream %d", i);
+                    // Make sure extradata is properly freed
+                    av_freep(&ctx_to_close->streams[i]->codecpar->extradata);
+                    ctx_to_close->streams[i]->codecpar->extradata_size = 0;
+                }
+            }
+        }
+
+        // Now safely close the input context
         avformat_close_input(&ctx_to_close);
 
         // Log that we've closed the input context to help with debugging
         log_info("Closed input context for stream %s to prevent memory leaks", stream_name);
     }
+
+    // 3. Notify the segment recorder that we're shutting down
+    // This helps ensure proper cleanup of shared resources
+    mp4_segment_recorder_cleanup();
 
     // Log that we've completed cleanup
     log_info("Completed cleanup of FFmpeg resources for stream %s", stream_name);

@@ -11,7 +11,7 @@
 function showStatusMessage(message, duration = 3000) {
     // Check if a status message container already exists
     let statusContainer = document.getElementById('status-message-container');
-    
+
     // Create container if it doesn't exist
     if (!statusContainer) {
         statusContainer = document.createElement('div');
@@ -19,31 +19,31 @@ function showStatusMessage(message, duration = 3000) {
         statusContainer.className = 'fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 flex flex-col items-center';
         document.body.appendChild(statusContainer);
     }
-    
+
     // Create message element
     const messageElement = document.createElement('div');
     messageElement.className = 'bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg mb-2 transition-all duration-300 opacity-0 transform translate-y-2';
     messageElement.textContent = message;
-    
+
     // Add to container
     statusContainer.appendChild(messageElement);
-    
+
     // Trigger animation to show message
     setTimeout(() => {
         messageElement.classList.remove('opacity-0', 'translate-y-2');
     }, 10);
-    
+
     // Set timeout to remove message
     setTimeout(() => {
         // Trigger animation to hide message
         messageElement.classList.add('opacity-0', 'translate-y-2');
-        
+
         // Remove element after animation completes
         setTimeout(() => {
             if (messageElement.parentNode === statusContainer) {
                 statusContainer.removeChild(messageElement);
             }
-            
+
             // Remove container if no more messages
             if (statusContainer.children.length === 0) {
                 document.body.removeChild(statusContainer);
@@ -58,10 +58,10 @@ function showStatusMessage(message, duration = 3000) {
  */
 function showLoading(element) {
     if (!element) return;
-    
+
     // Add loading class
     element.classList.add('loading');
-    
+
     // Create loading overlay if it doesn't exist
     let loadingOverlay = element.querySelector('.loading-overlay');
     if (!loadingOverlay) {
@@ -70,7 +70,7 @@ function showLoading(element) {
         loadingOverlay.innerHTML = '<div class="loading-spinner"></div>';
         element.appendChild(loadingOverlay);
     }
-    
+
     // Show loading overlay
     loadingOverlay.style.display = 'flex';
 }
@@ -81,10 +81,10 @@ function showLoading(element) {
  */
 function hideLoading(element) {
     if (!element) return;
-    
+
     // Remove loading class
     element.classList.remove('loading');
-    
+
     // Hide loading overlay
     const loadingOverlay = element.querySelector('.loading-overlay');
     if (loadingOverlay) {
@@ -254,24 +254,27 @@ function resetBatchDeleteModal() {
 
 /**
  * Update batch delete progress
- * 
+ *
  * @param {Object} progress Progress data from WebSocket
  */
-function updateBatchDeleteProgress(progress) {
+window.updateBatchDeleteProgress = function(progress) {
     console.log('Updating batch delete progress UI:', progress);
-    
+
+    // Make sure the modal is visible
+    showBatchDeleteModal();
+
     // Update progress bar
     const progressBar = document.getElementById('batch-delete-progress-bar');
     if (progressBar) {
         console.log(`Updating progress bar: current=${progress.current}, total=${progress.total}`);
-        
+
         if (progress.total > 0) {
             // We have a known total, show percentage
             const percent = Math.round((progress.current / progress.total) * 100);
             console.log(`Setting progress bar width to ${percent}%`);
             progressBar.style.width = `${percent}%`;
             progressBar.classList.remove('animate-pulse');
-            
+
             // Force a reflow to ensure the browser updates the UI
             void progressBar.offsetWidth;
         } else if (progress.current > 0) {
@@ -281,7 +284,7 @@ function updateBatchDeleteProgress(progress) {
             console.log(`Setting progress bar width to ${estimatedPercent}% (estimated)`);
             progressBar.style.width = `${estimatedPercent}%`;
             progressBar.classList.add('animate-pulse');
-            
+
             // Force a reflow to ensure the browser updates the UI
             void progressBar.offsetWidth;
         } else if (progress.complete) {
@@ -289,7 +292,7 @@ function updateBatchDeleteProgress(progress) {
             console.log('Setting progress bar to 100% (complete)');
             progressBar.style.width = '100%';
             progressBar.classList.remove('animate-pulse');
-            
+
             // Force a reflow to ensure the browser updates the UI
             void progressBar.offsetWidth;
         } else {
@@ -297,9 +300,18 @@ function updateBatchDeleteProgress(progress) {
             console.log('Setting progress bar to 50% (indeterminate)');
             progressBar.style.width = '50%';
             progressBar.classList.add('animate-pulse');
-            
+
             // Force a reflow to ensure the browser updates the UI
             void progressBar.offsetWidth;
+        }
+
+        // If there's an error, change the color of the progress bar to red
+        if (progress.error) {
+            progressBar.classList.add('bg-red-500');
+            progressBar.classList.remove('bg-blue-500');
+        } else {
+            progressBar.classList.add('bg-blue-500');
+            progressBar.classList.remove('bg-red-500');
         }
     }
 
@@ -358,7 +370,7 @@ function updateBatchDeleteProgress(progress) {
         if (status && (!progress.status || progress.status === 'Preparing to delete recordings...')) {
             status.textContent = 'Batch delete operation complete';
         }
-        
+
         // Ensure progress bar shows 100%
         if (progressBar) {
             progressBar.style.width = '100%';
@@ -367,8 +379,7 @@ function updateBatchDeleteProgress(progress) {
     }
 }
 
-// Make updateBatchDeleteProgress globally accessible
-window.updateBatchDeleteProgress = updateBatchDeleteProgress;
+// updateBatchDeleteProgress is already globally accessible
 
 /**
  * Cancel batch delete operation
@@ -383,7 +394,7 @@ function cancelBatchDelete() {
 
 /**
  * Initialize batch delete client
- * 
+ *
  * @returns {BatchDeleteRecordingsClient} Batch delete client
  */
 function initBatchDeleteClient() {
@@ -409,35 +420,56 @@ function initBatchDeleteClient() {
 
         window.batchDeleteClient.onResult((payload) => {
             console.log('Batch delete result:', payload);
+
+            // Make sure we have valid data
+            const total = payload.total || 0;
+            const succeeded = payload.succeeded || 0;
+            const failed = payload.failed || 0;
+
             // Update final progress
             updateBatchDeleteProgress({
-                current: payload.total,
-                total: payload.total,
-                succeeded: payload.succeeded,
-                failed: payload.failed,
+                current: total,
+                total: total,
+                succeeded: succeeded,
+                failed: failed,
+                status: 'Batch delete operation complete',
                 complete: true
             });
 
             // Show status message
             const message = payload.success
-                ? `Successfully deleted ${payload.succeeded} recordings`
-                : `Deleted ${payload.succeeded} recordings with ${payload.failed} failures`;
-            
+                ? `Successfully deleted ${succeeded} recordings`
+                : `Deleted ${succeeded} recordings with ${failed} failures`;
+
             showStatusMessage(message, 5000);
 
             // Reload recordings after a short delay
             setTimeout(() => {
-                loadRecordings();
+                if (typeof loadRecordings === 'function') {
+                    loadRecordings();
+                }
             }, 1000);
         });
 
         window.batchDeleteClient.onError((payload) => {
             console.error('Batch delete error:', payload);
+
+            // Update progress UI to show error
+            updateBatchDeleteProgress({
+                current: 0,
+                total: 0,
+                succeeded: 0,
+                failed: 0,
+                status: `Error: ${payload.error || 'Unknown error'}`,
+                complete: true,
+                error: true
+            });
+
             // Show error message
             showStatusMessage(`Error: ${payload.error || 'Unknown error'}`, 5000);
 
-            // Close modal
-            closeBatchDeleteModal();
+            // Don't close the modal immediately, let the user see the error
+            // They can close it with the Done button
         });
     }
 
@@ -446,26 +478,34 @@ function initBatchDeleteClient() {
 
 /**
  * Delete recordings by HTTP request (fallback when WebSocket is not available)
- * 
+ *
  * @param {Object} params Delete parameters (ids or filter)
  * @returns {Promise<Object>} Promise that resolves when the operation is complete
  */
-function batchDeleteRecordingsByHttpRequest(params) {
+window.batchDeleteRecordingsByHttpRequest = function(params) {
     console.log('Using HTTP fallback for batch delete with params:', params);
-    
+
     return new Promise((resolve, reject) => {
         // Show modal
         showBatchDeleteModal();
-        
+
+        // Calculate total count for progress bar
+        let totalCount = 0;
+        if (params.ids) {
+            totalCount = params.ids.length;
+        } else if (params.filter && params.totalCount) {
+            totalCount = params.totalCount;
+        }
+
         // Update progress to show we're using HTTP
         updateBatchDeleteProgress({
             current: 0,
-            total: params.ids ? params.ids.length : 0,
+            total: totalCount,
             status: 'Using HTTP fallback for batch delete operation',
             succeeded: 0,
             failed: 0
         });
-        
+
         // Send HTTP request
         fetch('/api/recordings/batch-delete', {
             method: 'POST',
@@ -482,41 +522,58 @@ function batchDeleteRecordingsByHttpRequest(params) {
         })
         .then(result => {
             console.log('HTTP batch delete result:', result);
-            
+
+            // Make sure we have valid data
+            const total = result.total || totalCount || 0;
+            const succeeded = result.succeeded || 0;
+            const failed = result.failed || 0;
+
             // Update final progress
             updateBatchDeleteProgress({
-                current: result.total || 0,
-                total: result.total || 0,
-                succeeded: result.succeeded || 0,
-                failed: result.failed || 0,
+                current: total,
+                total: total,
+                succeeded: succeeded,
+                failed: failed,
+                status: 'Batch delete operation complete',
                 complete: true
             });
-            
+
             // Show status message
             const message = result.success
-                ? `Successfully deleted ${result.succeeded} recordings`
-                : `Deleted ${result.succeeded} recordings with ${result.failed} failures`;
-            
+                ? `Successfully deleted ${succeeded} recordings`
+                : `Deleted ${succeeded} recordings with ${failed} failures`;
+
             showStatusMessage(message, 5000);
-            
+
             // Reload recordings after a short delay
             setTimeout(() => {
                 if (typeof loadRecordings === 'function') {
                     loadRecordings();
                 }
             }, 1000);
-            
+
             resolve(result);
         })
         .catch(error => {
             console.error('HTTP batch delete error:', error);
-            
+
+            // Update progress UI to show error
+            updateBatchDeleteProgress({
+                current: 0,
+                total: 0,
+                succeeded: 0,
+                failed: 0,
+                status: `Error: ${error.message || 'Unknown error'}`,
+                complete: true,
+                error: true
+            });
+
             // Show error message
             showStatusMessage(`Error: ${error.message || 'Unknown error'}`, 5000);
-            
-            // Close modal
-            closeBatchDeleteModal();
-            
+
+            // Don't close the modal immediately, let the user see the error
+            // They can close it with the Done button
+
             reject(error);
         });
     });
@@ -524,7 +581,7 @@ function batchDeleteRecordingsByHttpRequest(params) {
 
 /**
  * Delete multiple recordings by IDs
- * 
+ *
  * @param {Array<number>} ids Recording IDs to delete
  */
 function batchDeleteRecordings(ids) {
@@ -555,7 +612,7 @@ function batchDeleteRecordings(ids) {
 
 /**
  * Delete recordings by filter
- * 
+ *
  * @param {Object} filter Filter to delete by
  */
 function batchDeleteRecordingsByFilter(filter) {
@@ -588,7 +645,7 @@ function batchDeleteRecordingsByFilter(filter) {
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Initializing batch delete modal');
     initBatchDeleteModal();
-    
+
     // Make sure the modal is visible in the DOM
     const modalContainer = document.getElementById('batch-delete-modal-container');
     if (!modalContainer) {
@@ -598,13 +655,13 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.appendChild(container);
         initBatchDeleteModal();
     }
-    
+
     // Make sure the global function is available
     if (typeof window.updateBatchDeleteProgress !== 'function') {
         console.error('updateBatchDeleteProgress function not available, setting it up');
         window.updateBatchDeleteProgress = updateBatchDeleteProgress;
     }
-    
+
     // Make sure the global function is available
     if (typeof window.showBatchDeleteModal !== 'function') {
         console.error('showBatchDeleteModal function not available, setting it up');

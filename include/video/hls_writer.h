@@ -66,4 +66,19 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
  */
 void hls_writer_close(hls_writer_t *writer);
 
+/**
+ * Clean up all HLS writers during shutdown
+ * This function should be called during application shutdown
+ */
+void cleanup_all_hls_writers(void);
+
+/**
+ * Check if an HLS writer for a stream name already exists
+ * This helps prevent duplicate writers for the same stream
+ *
+ * @param stream_name Name of the stream to check
+ * @return Pointer to existing writer, or NULL if none exists
+ */
+hls_writer_t *find_hls_writer_by_stream_name(const char *stream_name);
+
 #endif /* HLS_WRITER_H */

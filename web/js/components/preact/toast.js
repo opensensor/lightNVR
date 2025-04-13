@@ -10,8 +10,11 @@
  * @param {number} duration - Duration in milliseconds
  */
 export function createDirectToast(message, type = 'info', duration = 4000) {
-  console.log('Creating direct DOM toast:', message);
-  
+  // Ensure message is a string and handle undefined/null values
+  const safeMessage = message !== undefined && message !== null ? String(message) : 'Operation completed';
+
+  console.log('Creating direct DOM toast:', safeMessage);
+
   // Get or create container
   let container = document.getElementById('direct-toast-container');
   if (!container) {
@@ -28,10 +31,10 @@ export function createDirectToast(message, type = 'info', duration = 4000) {
     document.body.appendChild(container);
     console.log('Created direct toast container');
   }
-  
+
   // Create toast element
   const toast = document.createElement('div');
-  toast.textContent = message;
+  toast.textContent = safeMessage;
   toast.style.padding = '10px 15px';
   toast.style.borderRadius = '4px';
   toast.style.marginBottom = '10px';
@@ -39,7 +42,7 @@ export function createDirectToast(message, type = 'info', duration = 4000) {
   toast.style.minWidth = '250px';
   toast.style.textAlign = 'center';
   toast.style.color = 'white';
-  
+
   // Set color based on type
   switch (type) {
     case 'success':
@@ -55,18 +58,18 @@ export function createDirectToast(message, type = 'info', duration = 4000) {
       toast.style.backgroundColor = '#3b82f6'; // blue-500
       break;
   }
-  
+
   // Add to container
   container.appendChild(toast);
   console.log('Added toast to direct container');
-  
+
   // Remove after specified duration
   setTimeout(() => {
     if (container.contains(toast)) {
       container.removeChild(toast);
       console.log('Removed direct toast');
     }
-    
+
     // Remove container if empty
     if (container.children.length === 0) {
       document.body.removeChild(container);
@@ -130,7 +133,7 @@ export function showToast(message, type = 'info', duration = 4000) {
 export function showStatusMessage(message, type = 'info', duration = 4000) {
   // Map type strings to the new format
   let toastType = 'info';
-  
+
   if (type === 'success') {
     toastType = 'success';
   } else if (type === 'error') {
@@ -138,7 +141,7 @@ export function showStatusMessage(message, type = 'info', duration = 4000) {
   } else if (type === 'warning') {
     toastType = 'warning';
   }
-  
+
   createDirectToast(message, toastType, duration);
 }
 
@@ -148,7 +151,7 @@ export function showStatusMessage(message, type = 'info', duration = 4000) {
  */
 export function initToastContainer(showInitMessage = false) {
   console.log('Initializing simple toast system...');
-  
+
   // Only show initialization message if explicitly requested
   if (showInitMessage) {
     setTimeout(() => {
@@ -167,10 +170,10 @@ if (typeof window !== 'undefined') {
   window.showToast = showToast;
   window.showStatusMessage = showStatusMessage;
   window.createDirectToast = createDirectToast;
-  
+
   // Log for debugging
   console.log('Toast functions exported to window object');
-  
+
   // Add a test function to the window object
   window.testToast = (type = 'info') => {
     const message = `Test ${type} toast at ${new Date().toLocaleTimeString()}`;

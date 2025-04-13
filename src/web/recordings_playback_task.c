@@ -25,7 +25,7 @@
 
 /**
  * @brief Create a playback recording task
- * 
+ *
  * @param c Mongoose connection
  * @param id Recording ID
  * @param hm HTTP message
@@ -37,11 +37,11 @@ playback_recording_task_t *playback_recording_task_create(struct mg_connection *
         log_error("Failed to allocate memory for playback recording task");
         return NULL;
     }
-    
+
     task->connection = c;
     task->id = id;
     task->hm = hm;
-    
+
     // Check for Range header
     struct mg_str *range_header = mg_http_get_header(hm, "Range");
     if (range_header && range_header->len > 0) {
@@ -51,15 +51,15 @@ playback_recording_task_t *playback_recording_task_create(struct mg_connection *
             task->range_header[range_header->len] = '\0';
         }
     }
-    
+
     return task;
 }
 
 /**
  * @brief Free a playback recording task
- * 
+ *
  * @param task Task to free
- * @param free_http_message Whether to free the HTTP message
+ * @param free_http_message Whether to free the HTTP message (ignored - HTTP message is never freed)
  */
 void playback_recording_task_free(playback_recording_task_t *task, bool free_http_message) {
     if (task) {
@@ -67,14 +67,11 @@ void playback_recording_task_free(playback_recording_task_t *task, bool free_htt
             free(task->range_header);
             task->range_header = NULL; // Prevent use-after-free
         }
-        
-        // Free the HTTP message if it was dynamically allocated and we're instructed to free it
-        // This is the case when we create a copy in mg_handle_play_recording
-        if (free_http_message && task->hm) {
-            free(task->hm);
-            task->hm = NULL; // Prevent use-after-free
-        }
-        
+
+        // IMPORTANT: We never free the HTTP message (hm) because it's allocated on the stack
+        // by Mongoose and not dynamically allocated. Attempting to free it causes memory errors.
+        // The free_http_message parameter is kept for backward compatibility.
+
         free(task);
     }
 }
@@ -125,7 +122,7 @@ void playback_recording_task_function(void *arg) {
     // Get recording from database
     recording_metadata_t recording;
     memset(&recording, 0, sizeof(recording_metadata_t));
-    
+
     // Set proper headers for CORS and caching
     const char *headers = "Content-Type: application/json\r\n"
                          "Access-Control-Allow-Origin: *\r\n"
@@ -135,7 +132,7 @@ void playback_recording_task_function(void *arg) {
                          "Cache-Control: no-cache, no-store, must-revalidate\r\n"
                          "Pragma: no-cache\r\n"
                          "Expires: 0\r\n";
-                         
+
     if (get_recording_metadata_by_id(id, &recording) != 0) {
         log_error("Recording not found: %llu", (unsigned long long)id);
         mg_http_reply(c, 404, headers, "{\"error\":\"Recording not found\"}");
@@ -228,15 +225,15 @@ static struct {
 // Initialize the active requests table
 static void init_active_requests(void) {
     static bool initialized = false;
-    
+
     if (!initialized) {
         pthread_mutex_lock(&g_playback_mutex);
-        
+
         if (!initialized) {
             memset(g_active_requests, 0, sizeof(g_active_requests));
             initialized = true;
         }
-        
+
         pthread_mutex_unlock(&g_playback_mutex);
     }
 }
@@ -244,27 +241,27 @@ static void init_active_requests(void) {
 // Check if a request is already being processed
 static bool is_request_active(uint64_t id) {
     bool active = false;
-    
+
     pthread_mutex_lock(&g_playback_mutex);
-    
+
     for (int i = 0; i < MAX_ACTIVE_REQUESTS; i++) {
         if (g_active_requests[i].id == id && g_active_requests[i].active) {
             active = true;
             break;
         }
     }
-    
+
     pthread_mutex_unlock(&g_playback_mutex);
-    
+
     return active;
 }
 
 // Mark a request as active
 static bool mark_request_active(uint64_t id) {
     bool success = false;
-    
+
     pthread_mutex_lock(&g_playback_mutex);
-    
+
     // First check if already active
     for (int i = 0; i < MAX_ACTIVE_REQUESTS; i++) {
         if (g_active_requests[i].id == id && g_active_requests[i].active) {
@@ -273,7 +270,7 @@ static bool mark_request_active(uint64_t id) {
             return false;
         }
     }
-    
+
     // Find a free slot
     for (int i = 0; i < MAX_ACTIVE_REQUESTS; i++) {
         if (!g_active_requests[i].active) {
@@ -283,31 +280,31 @@ static bool mark_request_active(uint64_t id) {
             break;
         }
     }
-    
+
     pthread_mutex_unlock(&g_playback_mutex);
-    
+
     return success;
 }
 
 // Mark a request as inactive
 static void mark_request_inactive(uint64_t id) {
     pthread_mutex_lock(&g_playback_mutex);
-    
+
     for (int i = 0; i < MAX_ACTIVE_REQUESTS; i++) {
         if (g_active_requests[i].id == id && g_active_requests[i].active) {
             g_active_requests[i].active = false;
             break;
         }
     }
-    
+
     pthread_mutex_unlock(&g_playback_mutex);
 }
 
 /**
  * @brief Handler function for playback recording
- * 
+ *
  * This function is called by the multithreading system.
- * 
+ *
  * @param c Mongoose connection
  * @param hm HTTP message
  */
@@ -319,7 +316,7 @@ void playback_recording_handler(struct mg_connection *c, struct mg_http_message 
         mg_send_json_error(c, 400, "Invalid request path");
         return;
     }
-    
+
     // Convert ID to integer
     uint64_t id = strtoull(id_str, NULL, 10);
     if (id == 0) {
@@ -327,25 +324,25 @@ void playback_recording_handler(struct mg_connection *c, struct mg_http_message 
         mg_send_json_error(c, 400, "Invalid recording ID");
         return;
     }
-    
+
     // Check if this request is already being processed
     if (is_request_active(id)) {
-        log_warn("Request for recording %llu already being processed, skipping duplicate", 
+        log_warn("Request for recording %llu already being processed, skipping duplicate",
                 (unsigned long long)id);
         // Instead of just returning, send an error to the client
         mg_send_json_error(c, 429, "This recording is already being processed");
         return;
     }
-    
+
     // Mark this request as active
     if (!mark_request_active(id)) {
         log_error("Failed to mark request as active, too many concurrent requests");
         mg_send_json_error(c, 503, "Too many concurrent requests");
         return;
     }
-    
+
     log_info("Handling GET /api/recordings/play/%llu request in worker thread", (unsigned long long)id);
-    
+
     // Create task
     playback_recording_task_t *task = playback_recording_task_create(c, id, hm);
     if (!task) {
@@ -354,7 +351,7 @@ void playback_recording_handler(struct mg_connection *c, struct mg_http_message 
         mg_send_json_error(c, 500, "Failed to create playback recording task");
         return;
     }
-    
+
     // Call the task function directly
     playback_recording_task_function(task);
 }
@@ -373,10 +370,10 @@ void mg_handle_play_recording(struct mg_connection *c, struct mg_http_message *h
             return;
         }
     }
-    
+
     // Initialize active requests tracking
     init_active_requests();
-    
+
     // Extract recording ID from URL
     char id_str[32];
     if (mg_extract_path_param(hm, "/api/recordings/play/", id_str, sizeof(id_str)) != 0) {
@@ -384,7 +381,7 @@ void mg_handle_play_recording(struct mg_connection *c, struct mg_http_message *h
         mg_send_json_error(c, 400, "Invalid request path");
         return;
     }
-    
+
     // Convert ID to integer
     uint64_t id = strtoull(id_str, NULL, 10);
     if (id == 0) {
@@ -392,25 +389,25 @@ void mg_handle_play_recording(struct mg_connection *c, struct mg_http_message *h
         mg_send_json_error(c, 400, "Invalid recording ID");
         return;
     }
-    
+
     log_info("Handling GET /api/recordings/play/%llu request", (unsigned long long)id);
-    
+
     // Check if this request is already being processed
     if (is_request_active(id)) {
-        log_warn("Request for recording %llu already being processed, skipping duplicate", 
+        log_warn("Request for recording %llu already being processed, skipping duplicate",
                 (unsigned long long)id);
         // Instead of just returning, send an error to the client
         mg_send_json_error(c, 429, "This recording is already being processed");
         return;
     }
-    
+
     // Mark this request as active
     if (!mark_request_active(id)) {
         log_error("Failed to mark request as active, too many concurrent requests");
         mg_send_json_error(c, 503, "Too many concurrent requests");
         return;
     }
-    
+
     // Create task directly
     playback_recording_task_t *task = playback_recording_task_create(c, id, hm);
     if (!task) {
@@ -419,9 +416,9 @@ void mg_handle_play_recording(struct mg_connection *c, struct mg_http_message *h
         mg_send_json_error(c, 500, "Failed to create playback recording task");
         return;
     }
-    
+
     // Call the task function directly without creating a worker thread
     playback_recording_task_function(task);
-    
+
     log_info("Playback recording task completed");
 }

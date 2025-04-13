@@ -16,7 +16,7 @@ typedef struct {
 
 /**
  * @brief Create a playback recording task
- * 
+ *
  * @param c Mongoose connection
  * @param id Recording ID
  * @param hm HTTP message
@@ -26,7 +26,7 @@ playback_recording_task_t *playback_recording_task_create(struct mg_connection *
 
 /**
  * @brief Free a playback recording task
- * 
+ *
  * @param task Task to free
  * @param free_http_message Whether to free the HTTP message
  */
@@ -34,7 +34,7 @@ void playback_recording_task_free(playback_recording_task_t *task, bool free_htt
 
 /**
  * @brief Playback recording task function
- * 
+ *
  * @param arg Task argument (playback_recording_task_t*)
  */
 void playback_recording_task_function(void *arg);

@@ -1,6 +1,7 @@
 #include "video/stream_protocol.h"
 #include "core/logger.h"
 #include "video/ffmpeg_utils.h"
+#include "video/ffmpeg_leak_detector.h"
 #include <string.h>
 #include <stdio.h>
 #include <ctype.h>
@@ -437,6 +438,9 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
 
     // If we got here, the open was successful, so assign the local context to the output parameter
     *input_ctx = local_ctx;
+
+    // Track the AVFormatContext to detect memory leaks
+    TRACK_AVFORMAT_CTX(local_ctx);
 
     // Free options
     av_dict_free(&input_options);

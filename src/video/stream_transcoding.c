@@ -4,6 +4,7 @@
 #include "video/stream_protocol.h"
 #include "video/timestamp_manager.h"
 #include "video/packet_processor.h"
+#include "video/ffmpeg_leak_detector.h"
 #include "core/logger.h"
 
 /**
@@ -13,7 +14,7 @@
 void init_transcoding_backend(void) {
     // Initialize FFmpeg
     init_ffmpeg();
-    
+
     // Initialize timestamp trackers
     init_timestamp_trackers();
 
@@ -27,7 +28,7 @@ void init_transcoding_backend(void) {
 void cleanup_transcoding_backend(void) {
     // Cleanup timestamp trackers
     cleanup_timestamp_trackers();
-    
+
     // Cleanup FFmpeg
     cleanup_ffmpeg();
 

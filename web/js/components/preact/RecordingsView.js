@@ -512,56 +512,42 @@ export function RecordingsView() {
     setIsDeleteModalOpen(false);
   };
 
-  // Delete selected recordings using preact-query mutation
-  const { mutate: batchDeleteMutation } = recordingsAPI.hooks.useBatchDeleteRecordings();
-
   // Handle delete confirmation
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     closeDeleteModal();
-
+    
+    // Save current URL parameters before deletion
+    const currentUrlParams = new URLSearchParams(window.location.search);
+    const currentSortField = currentUrlParams.get('sort') || sortField;
+    const currentSortDirection = currentUrlParams.get('order') || sortDirection;
+    const currentPage = parseInt(currentUrlParams.get('page'), 10) || pagination.currentPage;
+    
     if (deleteMode === 'selected') {
-      // Get selected IDs
-      const selectedIds = Object.entries(selectedRecordings)
-        .filter(([_, isSelected]) => isSelected)
-        .map(([id, _]) => parseInt(id, 10));
-
-      // Call the mutation with the selected IDs
-      batchDeleteMutation({ ids: selectedIds });
-
+      // Use the recordingsAPI to delete selected recordings
+      const result = await recordingsAPI.deleteSelectedRecordings(selectedRecordings);
+      
       // Reset selection
       setSelectedRecordings({});
       setSelectAll(false);
+      
+      // Only reload if some recordings were deleted successfully
+      if (result.succeeded > 0) {
+        // Reload recordings with preserved parameters
+        reloadRecordingsWithPreservedParams(currentSortField, currentSortDirection, currentPage);
+      }
     } else {
-      // Create filter object for deleting all filtered recordings
-      const filter = {};
-
-      // Add date range filters
-      if (filters.dateRange === 'custom') {
-        filter.start = `${filters.startDate}T${filters.startTime}:00`;
-        filter.end = `${filters.endDate}T${filters.endTime}:00`;
-      } else {
-        // Convert predefined range to actual dates
-        const { start, end } = recordingsAPI.getDateRangeFromPreset(filters.dateRange);
-        filter.start = start;
-        filter.end = end;
-      }
-
-      // Add stream filter
-      if (filters.streamId !== 'all') {
-        filter.stream_name = filters.streamId;
-      }
-
-      // Add recording type filter
-      if (filters.recordingType === 'detection') {
-        filter.detection = 1;
-      }
-
-      // Call the mutation with the filter
-      batchDeleteMutation({ filter });
-
+      // Use the recordingsAPI to delete all filtered recordings
+      const result = await recordingsAPI.deleteAllFilteredRecordings(filters);
+      
       // Reset selection
       setSelectedRecordings({});
       setSelectAll(false);
+      
+      // Only reload if some recordings were deleted successfully
+      if (result.succeeded > 0) {
+        // Reload recordings
+        loadRecordings();
+      }
     }
   };
 

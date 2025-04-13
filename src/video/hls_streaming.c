@@ -51,26 +51,42 @@ void cleanup_hls_streaming_backend(void) {
     log_info("Cleaning up HLS streaming backend...");
 
     // Create a local copy of all stream names that need to be stopped
+    // CRITICAL FIX: Use a more robust approach to track unique stream names
     char stream_names[MAX_STREAMS][MAX_STREAM_NAME];
     int stream_count = 0;
+    bool stream_already_added[MAX_STREAMS] = {false};
 
-    // Collect all stream names first with mutex protection
+    // Collect all unique stream names first with mutex protection
     pthread_mutex_lock(&unified_contexts_mutex);
     for (int i = 0; i < MAX_STREAMS; i++) {
-        if (unified_contexts[i]) {
-            strncpy(stream_names[stream_count], unified_contexts[i]->stream_name, MAX_STREAM_NAME - 1);
-            stream_names[stream_count][MAX_STREAM_NAME - 1] = '\0';
+        if (unified_contexts[i] && unified_contexts[i]->stream_name[0] != '\0') {
+            // Check if this stream name is already in our list
+            bool already_added = false;
+            for (int j = 0; j < stream_count; j++) {
+                if (strcmp(stream_names[j], unified_contexts[i]->stream_name) == 0) {
+                    already_added = true;
+                    log_warn("Found duplicate HLS thread for stream %s during shutdown",
+                             unified_contexts[i]->stream_name);
+                    break;
+                }
+            }
+
+            // Only add unique stream names to our list
+            if (!already_added && stream_count < MAX_STREAMS) {
+                strncpy(stream_names[stream_count], unified_contexts[i]->stream_name, MAX_STREAM_NAME - 1);
+                stream_names[stream_count][MAX_STREAM_NAME - 1] = '\0';
+                stream_already_added[stream_count] = true;
+                stream_count++;
+            }
 
             // Mark as not running to ensure threads exit even if stop_hls_stream fails
             atomic_store(&unified_contexts[i]->running, 0);
-
-            stream_count++;
         }
     }
     pthread_mutex_unlock(&unified_contexts_mutex);
 
-    // Log how many streams we need to stop
-    log_info("Found %d active HLS streams to stop during shutdown", stream_count);
+    // Log how many unique streams we need to stop
+    log_info("Found %d active unique HLS streams to stop during shutdown", stream_count);
 
     // First, mark all streams as stopping to prevent new packet processing
     for (int i = 0; i < stream_count; i++) {
@@ -126,13 +142,20 @@ void cleanup_hls_streaming_backend(void) {
             } else {
                 // Check if the stream is already stopped
                 bool already_stopped = true;
+                int contexts_found = 0;
                 pthread_mutex_lock(&unified_contexts_mutex);
                 for (int j = 0; j < MAX_STREAMS; j++) {
-                    if (unified_contexts[j] &&
+                    if (unified_contexts[j] && unified_contexts[j]->stream_name[0] != '\0' &&
                         strcmp(unified_contexts[j]->stream_name, stream_names[i]) == 0) {
                         already_stopped = false;
-                        break;
+                        contexts_found++;
                     }
+                }
+
+                // CRITICAL FIX: If we found multiple contexts for the same stream, log a warning
+                if (contexts_found > 1) {
+                    log_warn("Found %d HLS contexts for stream %s during shutdown",
+                             contexts_found, stream_names[i]);
                 }
                 pthread_mutex_unlock(&unified_contexts_mutex);
 

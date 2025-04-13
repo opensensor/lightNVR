@@ -29,8 +29,10 @@
 extern int is_detection_stream_reader_running(const char *stream_name);
 extern int get_detection_interval(const char *stream_name);
 
-// Forward declaration for internal function
+// Forward declarations for internal functions
 static int ensure_output_directory(hls_writer_t *writer);
+static void register_hls_writer(hls_writer_t *writer);
+static void unregister_hls_writer(hls_writer_t *writer);
 
 /**
  * Clean up old HLS segments that are no longer in the playlist
@@ -142,6 +144,16 @@ static void cleanup_old_segments(const char *output_dir, int max_segments) {
 }
 
 hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name, int segment_duration) {
+    // Check if a writer for this stream already exists
+    hls_writer_t *existing_writer = find_hls_writer_by_stream_name(stream_name);
+    if (existing_writer) {
+        log_warn("HLS writer for stream %s already exists. Closing existing writer to prevent duplicates.", stream_name);
+        // Close the existing writer to prevent duplicates
+        hls_writer_close(existing_writer);
+        // Wait a bit to ensure resources are released
+        usleep(100000); // 100ms
+    }
+
     // Allocate writer structure
     hls_writer_t *writer = (hls_writer_t *)calloc(1, sizeof(hls_writer_t));
     if (!writer) {
@@ -251,6 +263,10 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
 
     log_info("Created HLS writer for stream %s at %s with segment duration %d seconds",
             stream_name, output_dir, segment_duration);
+
+    // Register the writer for global tracking
+    register_hls_writer(writer);
+
     return writer;
 }
 
@@ -809,6 +825,144 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
     return result;
 }
 
+// Global array to track all created HLS writers for cleanup during shutdown
+#define MAX_HLS_WRITERS 32
+static hls_writer_t *g_hls_writers[MAX_HLS_WRITERS] = {0};
+static pthread_mutex_t g_hls_writers_mutex = PTHREAD_MUTEX_INITIALIZER;
+static int g_hls_writers_count = 0;
+
+/**
+ * Check if an HLS writer for a stream name already exists
+ * This helps prevent duplicate writers for the same stream
+ *
+ * @param stream_name Name of the stream to check
+ * @return Pointer to existing writer, or NULL if none exists
+ */
+hls_writer_t *find_hls_writer_by_stream_name(const char *stream_name) {
+    if (!stream_name) return NULL;
+
+    pthread_mutex_lock(&g_hls_writers_mutex);
+
+    hls_writer_t *existing_writer = NULL;
+    for (int i = 0; i < MAX_HLS_WRITERS; i++) {
+        if (g_hls_writers[i] && g_hls_writers[i]->stream_name &&
+            strcmp(g_hls_writers[i]->stream_name, stream_name) == 0) {
+            existing_writer = g_hls_writers[i];
+            break;
+        }
+    }
+
+    pthread_mutex_unlock(&g_hls_writers_mutex);
+    return existing_writer;
+}
+
+/**
+ * Register an HLS writer for global tracking
+ * This allows us to clean up all writers during shutdown
+ * Enhanced to prevent duplicate writers for the same stream
+ */
+static void register_hls_writer(hls_writer_t *writer) {
+    if (!writer) return;
+
+    pthread_mutex_lock(&g_hls_writers_mutex);
+
+    // Find an empty slot or check if already registered
+    bool already_registered = false;
+    int empty_slot = -1;
+    bool duplicate_stream_name = false;
+    hls_writer_t *existing_writer = NULL;
+
+    for (int i = 0; i < MAX_HLS_WRITERS; i++) {
+        if (g_hls_writers[i] == writer) {
+            already_registered = true;
+            break;
+        }
+        // Check for duplicate stream name
+        if (g_hls_writers[i] && g_hls_writers[i]->stream_name &&
+            writer->stream_name &&
+            strcmp(g_hls_writers[i]->stream_name, writer->stream_name) == 0) {
+            duplicate_stream_name = true;
+            existing_writer = g_hls_writers[i];
+            log_warn("Found duplicate HLS writer for stream %s during registration", writer->stream_name);
+        }
+        if (g_hls_writers[i] == NULL && empty_slot == -1) {
+            empty_slot = i;
+        }
+    }
+
+    // If we found a duplicate stream name, log a warning but still register the new writer
+    // The caller should handle the duplicate by stopping the old writer
+    if (duplicate_stream_name && existing_writer) {
+        log_warn("Multiple HLS writers detected for stream %s. This may cause issues.", writer->stream_name);
+    }
+
+    // Add to tracking if not already registered and we have an empty slot
+    if (!already_registered && empty_slot != -1) {
+        g_hls_writers[empty_slot] = writer;
+        g_hls_writers_count++;
+        log_debug("Registered HLS writer %p for stream %s for global tracking (total: %d)",
+                 (void*)writer, writer->stream_name, g_hls_writers_count);
+    }
+
+    pthread_mutex_unlock(&g_hls_writers_mutex);
+}
+
+/**
+ * Unregister an HLS writer from global tracking
+ */
+static void unregister_hls_writer(hls_writer_t *writer) {
+    if (!writer) return;
+
+    pthread_mutex_lock(&g_hls_writers_mutex);
+
+    for (int i = 0; i < MAX_HLS_WRITERS; i++) {
+        if (g_hls_writers[i] == writer) {
+            g_hls_writers[i] = NULL;
+            g_hls_writers_count--;
+            log_debug("Unregistered HLS writer %p for stream %s from global tracking (remaining: %d)",
+                     (void*)writer, writer->stream_name, g_hls_writers_count);
+            break;
+        }
+    }
+
+    pthread_mutex_unlock(&g_hls_writers_mutex);
+}
+
+/**
+ * Clean up all HLS writers during shutdown
+ * This function should be called during application shutdown
+ */
+void cleanup_all_hls_writers(void) {
+    log_info("Cleaning up all HLS writers...");
+
+    pthread_mutex_lock(&g_hls_writers_mutex);
+
+    // Make a copy of the writers array to avoid issues with concurrent modification
+    hls_writer_t *writers_to_close[MAX_HLS_WRITERS] = {0};
+    int writers_count = 0;
+
+    for (int i = 0; i < MAX_HLS_WRITERS; i++) {
+        if (g_hls_writers[i] != NULL) {
+            writers_to_close[writers_count++] = g_hls_writers[i];
+            g_hls_writers[i] = NULL; // Clear the entry to prevent double-free
+        }
+    }
+
+    g_hls_writers_count = 0;
+    pthread_mutex_unlock(&g_hls_writers_mutex);
+
+    // Close each writer
+    for (int i = 0; i < writers_count; i++) {
+        if (writers_to_close[i]) {
+            log_info("Closing HLS writer %d/%d during global cleanup: %s",
+                    i+1, writers_count, writers_to_close[i]->stream_name);
+            hls_writer_close(writers_to_close[i]);
+        }
+    }
+
+    log_info("Completed cleanup of %d HLS writers", writers_count);
+}
+
 /**
  * Close HLS writer and free resources
  * This function is thread-safe and handles all cleanup operations with improved robustness
@@ -1044,18 +1198,54 @@ void hls_writer_close(hls_writer_t *writer) {
     // Perform one final check to ensure all FFmpeg resources are properly freed
     if (writer->output_ctx) {
         log_warn("Output context still exists during final cleanup for stream %s", stream_name);
+
+        // Write trailer if not already written
+        if (writer->initialized) {
+            log_info("Writing trailer for stream %s during cleanup", stream_name);
+            av_write_trailer(writer->output_ctx);
+            writer->initialized = 0;
+        }
+
+        // Close AVIO context if it exists
         if (writer->output_ctx->pb) {
+            log_info("Closing AVIO context during final cleanup for stream %s", stream_name);
             avio_closep(&writer->output_ctx->pb);
         }
+
+        // Free all streams in the output context
+        for (unsigned int i = 0; i < writer->output_ctx->nb_streams; i++) {
+            if (writer->output_ctx->streams[i]) {
+                // Free codec parameters
+                if (writer->output_ctx->streams[i]->codecpar) {
+                    avcodec_parameters_free(&writer->output_ctx->streams[i]->codecpar);
+                }
+
+                // Free any other stream resources
+                if (writer->output_ctx->streams[i]->metadata) {
+                    av_dict_free(&writer->output_ctx->streams[i]->metadata);
+                }
+            }
+        }
+
+        // Free format context
         avformat_free_context(writer->output_ctx);
         writer->output_ctx = NULL;
     }
 
+    // Free bitstream filter context if it exists
     if (writer->bsf_ctx) {
         log_warn("Bitstream filter context still exists during final cleanup for stream %s", stream_name);
         av_bsf_free(&writer->bsf_ctx);
         writer->bsf_ctx = NULL;
     }
+
+    // Reset DTS tracker
+    writer->dts_tracker.first_dts = 0;
+    writer->dts_tracker.last_dts = 0;
+    writer->dts_tracker.initialized = 0;
+
+    // Unregister the writer from global tracking
+    unregister_hls_writer(writer);
 
     // Finally free the writer structure
     free(writer);

@@ -83,22 +83,13 @@ export const recordingsAPI = {
           retryDelay: 1000 // 1 second between retries
         },
         {
-          onSuccess: async (data) => {
-            // Check for detections for each recording
+          onSuccess: (data) => {
+            // Set has_detections to false by default instead of making API calls
+            // This prevents unnecessary detection API calls on the recordings page
             if (data.recordings && data.recordings.length > 0) {
-              // Process recordings in batches to avoid too many parallel requests
-              const batchSize = 5;
-              for (let i = 0; i < data.recordings.length; i += batchSize) {
-                const batch = data.recordings.slice(i, i + batchSize);
-                await Promise.all(batch.map(async (recording) => {
-                  try {
-                    recording.has_detections = await recordingsAPI.checkRecordingHasDetections(recording);
-                  } catch (error) {
-                    console.error(`Error checking detections for recording ${recording.id}:`, error);
-                    recording.has_detections = false;
-                  }
-                }));
-              }
+              data.recordings.forEach(recording => {
+                recording.has_detections = false;
+              });
             }
           }
         }
@@ -326,7 +317,8 @@ export const recordingsAPI = {
 
       console.log('Recordings data received:', data);
 
-      // Check for detections for each recording
+      // Set has_detections to false by default instead of making API calls
+      // This prevents unnecessary detection API calls on the recordings page
       if (data.recordings && data.recordings.length > 0) {
         // Process recordings in batches to avoid too many parallel requests
         const batchSize = 5;
@@ -391,12 +383,19 @@ export const recordingsAPI = {
 
     try {
       // Check if WebSocket client is available
-      if (window.wsClient && window.wsClient.isConnected()) {
+      if (window.wsClient) {
         console.log('Using WebSocket for batch delete operation');
+
+        // Connect the WebSocket client if not already connected
+        if (!window.wsClient.isConnected()) {
+          console.log('WebSocket not connected, connecting now...');
+          window.wsClient.connect();
+        }
 
         // Initialize batch delete client if needed
         if (!window.batchDeleteClient) {
           if (typeof BatchDeleteRecordingsClient !== 'undefined') {
+            console.log('Creating new BatchDeleteRecordingsClient');
             window.batchDeleteClient = new BatchDeleteRecordingsClient(window.wsClient);
           } else {
             console.warn('BatchDeleteRecordingsClient not available, falling back to HTTP');
@@ -410,9 +409,10 @@ export const recordingsAPI = {
         }
 
         // Use WebSocket for batch delete
+        // The client ID will be obtained by the batch delete client
         return await window.batchDeleteClient.deleteWithProgress({ ids: selectedIds });
       } else {
-        console.log('WebSocket not connected, using HTTP for batch delete');
+        console.log('WebSocket client not available, using HTTP for batch delete');
         return recordingsAPI.deleteSelectedRecordingsHttp(selectedIds);
       }
     } catch (error) {
@@ -593,18 +593,28 @@ export const recordingsAPI = {
       };
 
         // Check if WebSocket client is available
-        if (window.wsClient && window.wsClient.isConnected()) {
+        if (window.wsClient) {
           console.log('Using WebSocket for batch delete with filter');
+
+          // Connect the WebSocket client if not already connected
+          if (!window.wsClient.isConnected()) {
+            console.log('WebSocket not connected, connecting now...');
+            window.wsClient.connect();
+          }
 
           // Initialize batch delete client if needed
           if (!window.batchDeleteClient) {
             if (typeof BatchDeleteRecordingsClient !== 'undefined') {
+              console.log('Creating new BatchDeleteRecordingsClient for filtered delete');
               window.batchDeleteClient = new BatchDeleteRecordingsClient(window.wsClient);
             } else {
               console.warn('BatchDeleteRecordingsClient not available, falling back to HTTP');
               return recordingsAPI.deleteAllFilteredRecordingsHttp(filter);
             }
           }
+
+          // Log the client ID being used
+          console.log('Using WebSocket client ID for filtered batch delete:', window.wsClient.getClientId());
 
           // Set up a timeout to handle server crashes
           const timeoutPromise = new Promise((_, reject) => {
@@ -638,7 +648,7 @@ export const recordingsAPI = {
             return handleOperationError(wsError);
           }
         } else {
-          console.log('WebSocket not connected, using HTTP for batch delete with filter');
+          console.log('WebSocket client not available, using HTTP for batch delete with filter');
           return recordingsAPI.deleteAllFilteredRecordingsHttp(filter);
         }
     } catch (error) {

@@ -42,4 +42,24 @@ int websocket_handler_find_by_topic(const char *topic);
  */
 bool websocket_handler_call(const char *topic, const char *client_id, const char *message);
 
+/**
+ * @brief Get the number of registered WebSocket handlers
+ * 
+ * @return int Number of registered handlers
+ */
+int get_websocket_handler_count(void);
+
+/**
+ * @brief Get the topic of a WebSocket handler by index
+ * 
+ * @param index Handler index
+ * @return const char* Topic name or NULL if not found
+ */
+const char *get_websocket_handler_topic(int index);
+
+/**
+ * @brief Debug function to print all registered WebSocket handlers
+ */
+void debug_print_websocket_handlers(void);
+
 #endif /* WEBSOCKET_HANDLER_H */

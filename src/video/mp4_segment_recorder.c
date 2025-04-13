@@ -70,7 +70,7 @@ void mp4_segment_recorder_init(void) {
 
 /**
  * Set up RTSP connection for streaming
- * 
+ *
  * @param rtsp_url The URL of the RTSP stream to connect to
  * @param opts Pointer to AVDictionary for options (will be populated)
  * @return AVFormatContext* on success, NULL on error
@@ -78,7 +78,7 @@ void mp4_segment_recorder_init(void) {
 static AVFormatContext* setup_rtsp_connection(const char *rtsp_url, AVDictionary **opts) {
     int ret = 0;
     AVFormatContext *input_ctx = NULL;
-    
+
     // Set up RTSP options for low latency
     av_dict_set(opts, "rtsp_transport", "tcp", 0);  // Use TCP for RTSP (more reliable than UDP)
     av_dict_set(opts, "fflags", "nobuffer", 0);     // Reduce buffering
@@ -102,13 +102,13 @@ static AVFormatContext* setup_rtsp_connection(const char *rtsp_url, AVDictionary
         avformat_close_input(&input_ctx);
         return NULL;
     }
-    
+
     return input_ctx;
 }
 
 /**
  * Find video and audio streams in the input context
- * 
+ *
  * @param input_ctx The input format context
  * @param video_stream_idx Pointer to store video stream index
  * @param audio_stream_idx Pointer to store audio stream index
@@ -165,13 +165,13 @@ static int find_streams(AVFormatContext *input_ctx, int *video_stream_idx, int *
         log_error("No video stream found");
         return -1;
     }
-    
+
     return 0;
 }
 
 /**
  * Set up the output MP4 context
- * 
+ *
  * @param output_file The path to the output MP4 file
  * @param input_ctx The input format context
  * @param video_stream_idx The video stream index
@@ -182,9 +182,9 @@ static int find_streams(AVFormatContext *input_ctx, int *video_stream_idx, int *
  * @param out_opts Pointer to AVDictionary for options
  * @return AVFormatContext* on success, NULL on error
  */
-static AVFormatContext* setup_output_context(const char *output_file, 
+static AVFormatContext* setup_output_context(const char *output_file,
                                             AVFormatContext *input_ctx,
-                                            int video_stream_idx, 
+                                            int video_stream_idx,
                                             int audio_stream_idx,
                                             int has_audio,
                                             AVStream **out_video_stream,
@@ -192,7 +192,7 @@ static AVFormatContext* setup_output_context(const char *output_file,
                                             AVDictionary **out_opts) {
     int ret = 0;
     AVFormatContext *output_ctx = NULL;
-    
+
     // Create output context
     ret = avformat_alloc_output_context2(&output_ctx, NULL, "mp4", output_file);
     if (ret < 0 || !output_ctx) {
@@ -235,25 +235,80 @@ static AVFormatContext* setup_output_context(const char *output_file,
 
     // Add audio stream if available and audio is enabled
     if (audio_stream_idx >= 0 && has_audio) {
-        log_info("Including audio stream in MP4 recording");
-        *out_audio_stream = avformat_new_stream(output_ctx, NULL);
-        if (!*out_audio_stream) {
-            log_error("Failed to create output audio stream");
-            avformat_free_context(output_ctx);
-            return NULL;
+        // Validate audio stream and its codec parameters
+        if (audio_stream_idx >= (int)input_ctx->nb_streams ||
+            !input_ctx->streams[audio_stream_idx] ||
+            !input_ctx->streams[audio_stream_idx]->codecpar) {
+            log_error("Invalid audio stream index or codec parameters");
+            log_warn("Disabling audio for this recording due to invalid audio stream");
+            has_audio = 0;
+        } else {
+            log_info("Including audio stream in MP4 recording");
+            *out_audio_stream = avformat_new_stream(output_ctx, NULL);
+            if (!*out_audio_stream) {
+                log_error("Failed to create output audio stream");
+                avformat_free_context(output_ctx);
+                return NULL;
+            }
+
+            // Copy audio codec parameters
+            ret = avcodec_parameters_copy((*out_audio_stream)->codecpar,
+                                         input_ctx->streams[audio_stream_idx]->codecpar);
+            if (ret < 0) {
+                log_error("Failed to copy audio codec parameters: %d", ret);
+                avformat_free_context(output_ctx);
+                return NULL;
+            }
         }
 
-        // Copy audio codec parameters
-        ret = avcodec_parameters_copy((*out_audio_stream)->codecpar,
-                                     input_ctx->streams[audio_stream_idx]->codecpar);
-        if (ret < 0) {
-            log_error("Failed to copy audio codec parameters: %d", ret);
-            avformat_free_context(output_ctx);
-            return NULL;
+        // CRITICAL FIX: Ensure audio codec frame size is set
+        // This prevents the "track 1: codec frame size is not set" error
+        if ((*out_audio_stream)->codecpar->frame_size == 0) {
+            // Set a default frame size based on codec
+            int default_frame_size = 1024; // Default for most audio codecs
+
+            // Adjust based on specific codecs if needed
+            switch ((*out_audio_stream)->codecpar->codec_id) {
+                case AV_CODEC_ID_AAC:
+                    default_frame_size = 1024;
+                    break;
+                case AV_CODEC_ID_MP3:
+                    default_frame_size = 1152;
+                    break;
+                case AV_CODEC_ID_OPUS:
+                    default_frame_size = 960;
+                    break;
+                default:
+                    // Use the default
+                    break;
+            }
+
+            (*out_audio_stream)->codecpar->frame_size = default_frame_size;
+            log_info("Setting audio codec frame_size to %d for codec %s",
+                    default_frame_size, avcodec_get_name((*out_audio_stream)->codecpar->codec_id));
+        }
+
+        // Ensure sample rate is valid
+        if ((*out_audio_stream)->codecpar->sample_rate <= 0) {
+            log_warn("Invalid sample rate for audio stream, setting to 48000");
+            (*out_audio_stream)->codecpar->sample_rate = 48000;
+        }
+
+        // Ensure format is valid
+        if ((*out_audio_stream)->codecpar->format < 0) {
+            log_warn("Invalid format for audio stream, setting to S16");
+            (*out_audio_stream)->codecpar->format = AV_SAMPLE_FMT_S16;
         }
 
         // Set audio stream time base
         (*out_audio_stream)->time_base = input_ctx->streams[audio_stream_idx]->time_base;
+
+        // Ensure time base is valid
+        if ((*out_audio_stream)->time_base.num <= 0 || (*out_audio_stream)->time_base.den <= 0) {
+            log_warn("Invalid audio time base, setting to 1/48000");
+            (*out_audio_stream)->time_base.num = 1;
+            (*out_audio_stream)->time_base.den = 48000;
+        }
     }
 
     // Disable faststart to prevent segmentation faults
@@ -302,7 +357,7 @@ static AVFormatContext* setup_output_context(const char *output_file,
 
 /**
  * Process a video packet for MP4 recording
- * 
+ *
  * @param pkt The packet to process
  * @param input_ctx The input format context
  * @param output_ctx The output format context
@@ -317,7 +372,7 @@ static AVFormatContext* setup_output_context(const char *output_file,
  * @param max_timestamp_errors Maximum allowed consecutive timestamp errors
  * @return 0 on success, negative value on error
  */
-static int process_video_packet(AVPacket *pkt, 
+static int process_video_packet(AVPacket *pkt,
                                AVFormatContext *input_ctx,
                                AVFormatContext *output_ctx,
                                int video_stream_idx,
@@ -330,7 +385,7 @@ static int process_video_packet(AVPacket *pkt,
                                int *consecutive_timestamp_errors,
                                int max_timestamp_errors) {
     int ret = 0;
-    
+
     // Initialize first DTS if not set
     if (*first_video_dts == AV_NOPTS_VALUE && pkt->dts != AV_NOPTS_VALUE) {
         *first_video_dts = pkt->dts;
@@ -489,7 +544,7 @@ static int process_video_packet(AVPacket *pkt,
 
                 // Reset the error counter
                 *consecutive_timestamp_errors = 0;
-                
+
                 // Return a special error code to indicate timestamp reset is needed
                 return -2;
             } else {
@@ -508,7 +563,7 @@ static int process_video_packet(AVPacket *pkt,
 
 /**
  * Process an audio packet for MP4 recording
- * 
+ *
  * @param pkt The packet to process
  * @param input_ctx The input format context
  * @param output_ctx The output format context
@@ -524,7 +579,7 @@ static int process_video_packet(AVPacket *pkt,
  * @param max_timestamp_errors Maximum allowed consecutive timestamp errors
  * @return 0 on success, negative value on error
  */
-static int process_audio_packet(AVPacket *pkt, 
+static int process_audio_packet(AVPacket *pkt,
                                AVFormatContext *input_ctx,
                                AVFormatContext *output_ctx,
                                int audio_stream_idx,
@@ -538,7 +593,20 @@ static int process_audio_packet(AVPacket *pkt,
                                int *consecutive_timestamp_errors,
                                int max_timestamp_errors) {
     int ret = 0;
-    
+
+    // Validate parameters to prevent segmentation faults
+    if (!pkt || !input_ctx || !output_ctx || !out_audio_stream || audio_stream_idx < 0 ||
+        audio_stream_idx >= (int)input_ctx->nb_streams || !out_audio_stream->codecpar) {
+        log_error("Invalid parameters passed to process_audio_packet");
+        return -1;
+    }
+
+    // Validate that the audio stream index is valid
+    if (!input_ctx->streams[audio_stream_idx] || !input_ctx->streams[audio_stream_idx]->codecpar) {
+        log_error("Audio stream or its codec parameters are NULL");
+        return -1;
+    }
+
     // Initialize first audio DTS if not set
     if (*first_audio_dts == AV_NOPTS_VALUE && pkt->dts != AV_NOPTS_VALUE) {
         *first_audio_dts = pkt->dts;
@@ -636,6 +704,34 @@ static int process_audio_packet(AVPacket *pkt,
     // Set output stream index
     pkt->stream_index = out_audio_stream->index;
 
+    // CRITICAL FIX: Ensure audio codec frame size is set before writing packet
+    // This prevents the "track 1: codec frame size is not set" error
+    if (out_audio_stream->codecpar->frame_size == 0) {
+        // Set a default frame size based on codec
+        int default_frame_size = 1024; // Default for most audio codecs
+
+        // Adjust based on specific codecs if needed
+        switch (out_audio_stream->codecpar->codec_id) {
+            case AV_CODEC_ID_AAC:
+                default_frame_size = 1024;
+                break;
+            case AV_CODEC_ID_MP3:
+                default_frame_size = 1152;
+                break;
+            case AV_CODEC_ID_OPUS:
+                default_frame_size = 960;
+                log_info("Setting Opus codec frame_size to 960 for audio packet processing");
+                break;
+            default:
+                // Use the default
+                break;
+        }
+
+        log_warn("Audio codec frame_size not set before writing packet, setting to %d for codec %s",
+                default_frame_size, avcodec_get_name(out_audio_stream->codecpar->codec_id));
+        out_audio_stream->codecpar->frame_size = default_frame_size;
+    }
+
     // Write packet
     ret = av_interleaved_write_frame(output_ctx, pkt);
     if (ret < 0) {
@@ -658,7 +754,7 @@ static int process_audio_packet(AVPacket *pkt,
 
                 // Reset the error counter
                 *consecutive_timestamp_errors = 0;
-                
+
                 // Return a special error code to indicate timestamp reset is needed
                 return -2;
             } else {
@@ -685,13 +781,13 @@ static int process_audio_packet(AVPacket *pkt,
 
 /**
  * Finalize the output MP4 file
- * 
+ *
  * @param output_ctx The output format context
  * @return 0 on success, negative value on error
  */
 static int finalize_output(AVFormatContext *output_ctx) {
     int ret = 0;
-    
+
     if (!output_ctx) {
         log_error("Output context is NULL, cannot finalize output");
         return -1;
@@ -713,13 +809,13 @@ static int finalize_output(AVFormatContext *output_ctx) {
 
     // Free output context
     avformat_free_context(output_ctx);
-    
+
     return 0;
 }
 
 /**
  * Record a segment from an RTSP stream to an MP4 file
- * 
+ *
  * @param rtsp_url The URL of the RTSP stream
  * @param output_file The path to the output MP4 file
  * @param duration Maximum duration of the segment in seconds
@@ -753,7 +849,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
     int segment_index = 0;
     int waiting_for_keyframe = 1; // Always wait for keyframe by default
     int recording_started = 0;
-    
+
     // Check if we have a static input context from a previous recording
     pthread_mutex_lock(&static_vars_mutex);
     if (static_input_ctx) {
@@ -762,6 +858,14 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         segment_index = segment_info.segment_index;
         has_audio = segment_info.has_audio;
         waiting_for_keyframe = !segment_info.last_frame_was_key;
+
+        // Validate the static input context before using it
+        if (!input_ctx->pb || input_ctx->nb_streams == 0) {
+            log_warn("Static input context is invalid, creating a new one");
+            avformat_close_input(&input_ctx);
+            static_input_ctx = NULL;
+            input_ctx = NULL;
+        }
     }
     pthread_mutex_unlock(&static_vars_mutex);
 
@@ -793,18 +897,68 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         }
     } else {
         // Use the stream indices from the existing input context
-        for (unsigned int i = 0; i < input_ctx->nb_streams; i++) {
-            AVStream *stream = input_ctx->streams[i];
-            if (stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO && video_stream_idx < 0) {
-                video_stream_idx = i;
-            } else if (stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO && audio_stream_idx < 0) {
-                audio_stream_idx = i;
+        video_stream_idx = -1;
+        audio_stream_idx = -1;
+
+        // Safely iterate through streams with bounds checking
+        if (input_ctx && input_ctx->nb_streams > 0) {
+            for (unsigned int i = 0; i < input_ctx->nb_streams; i++) {
+                if (!input_ctx->streams[i] || !input_ctx->streams[i]->codecpar) {
+                    log_warn("Stream %d is invalid in static input context", i);
+                    continue;
+                }
+
+                AVStream *stream = input_ctx->streams[i];
+                if (stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO && video_stream_idx < 0) {
+                    video_stream_idx = i;
+                    log_debug("Found video stream at index %d in static context", i);
+                } else if (stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO && audio_stream_idx < 0) {
+                    audio_stream_idx = i;
+                    log_debug("Found audio stream at index %d in static context", i);
+                }
+            }
+        }
+
+        // Validate that we found the necessary streams
+        if (video_stream_idx < 0) {
+            log_error("No valid video stream found in static input context");
+            pthread_mutex_lock(&static_vars_mutex);
+            if (static_input_ctx) {
+                log_info("Closing invalid static input context");
+                avformat_close_input(&static_input_ctx);
+                static_input_ctx = NULL;
+            }
+            pthread_mutex_unlock(&static_vars_mutex);
+
+            // Try to create a new input context
+            input_ctx = setup_rtsp_connection(rtsp_url, &opts);
+            if (!input_ctx) {
+                log_error("Failed to set up RTSP connection after static context failure");
+                return -1;
+            }
+
+            // Find streams in the new context
+            ret = find_streams(input_ctx, &video_stream_idx, &audio_stream_idx);
+            if (ret < 0) {
+                log_error("Failed to find streams in new context");
+                avformat_close_input(&input_ctx);
+                return ret;
+            }
+
+            // Update has_audio flag based on stream availability
+            has_audio = has_audio && (audio_stream_idx >= 0);
+            if (has_audio) {
+                log_info("Audio stream found and enabled in new context");
+            } else if (audio_stream_idx >= 0) {
+                log_info("Audio stream found but disabled by configuration in new context");
+            } else {
+                log_info("No audio stream found in new context");
             }
         }
     }
 
     // Set up output context
-    output_ctx = setup_output_context(output_file, input_ctx, video_stream_idx, audio_stream_idx, 
+    output_ctx = setup_output_context(output_file, input_ctx, video_stream_idx, audio_stream_idx,
                                      has_audio, &out_video_stream, &out_audio_stream, &opts);
     if (!output_ctx) {
         log_error("Failed to set up output context");
@@ -812,6 +966,44 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
             avformat_close_input(&input_ctx);
         }
         return -1;
+    }
+
+    // CRITICAL FIX: Double-check audio codec frame size after setup
+    // This is a safety measure to prevent the "track 1: codec frame size is not set" error
+    if (has_audio && audio_stream_idx >= 0 && out_audio_stream) {
+        // Validate the audio stream and codec parameters
+        if (!out_audio_stream->codecpar) {
+            log_error("Audio stream codec parameters are NULL");
+            has_audio = 0; // Disable audio to prevent segmentation fault
+        } else if (out_audio_stream->codecpar->frame_size == 0) {
+            // Set a default frame size based on codec
+            int default_frame_size = 1024; // Default for most audio codecs
+
+            // Adjust based on specific codecs if needed
+            switch (out_audio_stream->codecpar->codec_id) {
+                case AV_CODEC_ID_AAC:
+                    default_frame_size = 1024;
+                    break;
+                case AV_CODEC_ID_MP3:
+                    default_frame_size = 1152;
+                    break;
+                case AV_CODEC_ID_OPUS:
+                    default_frame_size = 960;
+                    log_info("Setting audio codec frame_size to %d for Opus codec", default_frame_size);
+                    break;
+                default:
+                    // Use the default
+                    break;
+            }
+
+            log_warn("Audio codec frame_size still not set after setup, setting to %d for codec %s",
+                    default_frame_size, avcodec_get_name(out_audio_stream->codecpar->codec_id));
+            out_audio_stream->codecpar->frame_size = default_frame_size;
+        } else {
+            log_debug("Audio codec frame_size is set to %d for codec %s",
+                    out_audio_stream->codecpar->frame_size,
+                    avcodec_get_name(out_audio_stream->codecpar->codec_id));
+        }
     }
 
     // Free options dictionary
@@ -824,18 +1016,34 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
     while (!is_shutdown_initiated()) {
         // Check if we've reached the maximum duration
         current_time = av_gettime();
-        if (recording_started && duration > 0 && 
+        if (recording_started && duration > 0 &&
             (current_time - start_time) / 1000000 >= duration) {
             log_info("Maximum duration reached (%d seconds), stopping recording", duration);
             break;
         }
 
-        // Read packet
-        av_init_packet(&pkt);
+        // Read packet - use av_packet_alloc instead of av_init_packet for better memory management
+        av_packet_unref(&pkt); // Ensure any previous packet data is properly freed
         pkt.data = NULL;
         pkt.size = 0;
 
+        // Ensure input_ctx is still valid before reading
+        if (!input_ctx) {
+            log_error("Input context is NULL before av_read_frame");
+            break;
+        }
+
         ret = av_read_frame(input_ctx, &pkt);
+
+        // Ensure packet is reference counted to prevent use-after-free
+        if (ret >= 0) {
+            ret = av_packet_make_refcounted(&pkt);
+            if (ret < 0) {
+                log_error("Failed to make packet refcounted: %d", ret);
+                av_packet_unref(&pkt);
+                break;
+            }
+        }
         if (ret < 0) {
             if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
                 // End of file or temporary unavailability, wait and retry
@@ -855,7 +1063,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         if (pkt.stream_index == video_stream_idx) {
             // Check if this is a key frame
             int is_key_frame = (pkt.flags & AV_PKT_FLAG_KEY) != 0;
-            
+
             // If waiting for a key frame, skip non-key frames
             if (waiting_for_keyframe && !is_key_frame) {
                 av_packet_unref(&pkt);
@@ -872,7 +1080,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
             ret = process_video_packet(&pkt, input_ctx, output_ctx, video_stream_idx, out_video_stream,
                                       &first_video_dts, &first_video_pts, &last_video_dts, &last_video_pts,
                                       segment_index, &consecutive_timestamp_errors, max_timestamp_errors);
-            
+
             // Handle special error codes
             if (ret == -2) {
                 // Timestamp reset needed, reset all timestamp variables
@@ -892,20 +1100,27 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 
             // Update last frame key status for next segment
             segment_info.last_frame_was_key = is_key_frame;
-            
+
             // Increment video packet count
             video_packet_count++;
         }
         // Check if this is an audio packet and audio is enabled
-        else if (has_audio && pkt.stream_index == audio_stream_idx) {
+        else if (has_audio && pkt.stream_index == audio_stream_idx && audio_stream_idx >= 0) {
+            // Validate audio stream and output stream before processing
+            if (!out_audio_stream) {
+                log_error("Output audio stream is NULL, skipping audio packet");
+                av_packet_unref(&pkt);
+                continue;
+            }
+
             // Only process audio if recording has started
             if (recording_started) {
                 // Process audio packet
                 ret = process_audio_packet(&pkt, input_ctx, output_ctx, audio_stream_idx, out_audio_stream,
                                           &first_audio_dts, &first_audio_pts, &last_audio_dts, &last_audio_pts,
-                                          segment_index, audio_packet_count, &consecutive_timestamp_errors, 
+                                          segment_index, audio_packet_count, &consecutive_timestamp_errors,
                                           max_timestamp_errors);
-                
+
                 // Handle special error codes
                 if (ret == -2) {
                     // Timestamp reset needed, reset all timestamp variables
@@ -918,7 +1133,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                     log_error("Error processing audio packet: %d", ret);
                     // Continue processing, don't break the loop
                 }
-                
+
                 // Increment audio packet count
                 audio_packet_count++;
             }
@@ -934,11 +1149,47 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         log_error("Failed to finalize output: %d", ret);
     }
 
-    // Update static variables for next segment
+    // Update static variables for next segment with improved thread safety
     pthread_mutex_lock(&static_vars_mutex);
-    static_input_ctx = input_ctx;
-    segment_info.segment_index = segment_index + 1;
-    segment_info.has_audio = has_audio;
+    // If we already have a static input context, close it first to prevent memory leaks
+    if (static_input_ctx && static_input_ctx != input_ctx) {
+        log_info("Closing previous static input context to prevent memory leaks");
+        AVFormatContext *old_ctx = static_input_ctx;
+        static_input_ctx = NULL; // Clear before closing to prevent race conditions
+        avformat_close_input(&old_ctx);
+    }
+
+    // Validate input context before storing it
+    if (input_ctx && input_ctx->nb_streams > 0) {
+        // Check if the input context is still valid
+        int valid_context = 1;
+        for (unsigned int i = 0; i < input_ctx->nb_streams; i++) {
+            if (!input_ctx->streams[i] || !input_ctx->streams[i]->codecpar) {
+                valid_context = 0;
+                log_warn("Stream %d is invalid in input context, not saving as static context", i);
+                break;
+            }
+        }
+
+        if (valid_context) {
+            static_input_ctx = input_ctx;
+            segment_info.segment_index = segment_index + 1;
+            segment_info.has_audio = has_audio;
+            log_debug("Saved valid input context for next segment");
+        } else {
+            // Close the invalid context
+            log_warn("Not saving invalid input context");
+            avformat_close_input(&input_ctx);
+            static_input_ctx = NULL;
+            segment_info.segment_index = 0;
+            segment_info.has_audio = false;
+        }
+    } else {
+        log_warn("Input context is NULL or has no streams, not saving as static context");
+        static_input_ctx = NULL;
+        segment_info.segment_index = 0;
+        segment_info.has_audio = false;
+    }
     pthread_mutex_unlock(&static_vars_mutex);
 
     log_info("Segment recording completed: %s", output_file);
@@ -952,15 +1203,35 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
  * This function should be called during program shutdown
  */
 void mp4_segment_recorder_cleanup(void) {
+    log_info("Starting MP4 segment recorder cleanup");
+
     pthread_mutex_lock(&static_vars_mutex);
     if (static_input_ctx) {
-        avformat_close_input(&static_input_ctx);
+        log_info("Closing static input context during cleanup");
+        // Make a local copy of the pointer and NULL out the original to prevent race conditions
+        AVFormatContext *ctx_to_close = static_input_ctx;
         static_input_ctx = NULL;
+
+        // Flush buffers before closing to ensure clean shutdown
+        if (ctx_to_close->pb) {
+            avio_flush(ctx_to_close->pb);
+            log_debug("Flushed input context buffers");
+        }
+
+        // Close the input context
+        avformat_close_input(&ctx_to_close);
+        log_info("Closed static input context");
     }
+
+    // Reset segment info
     segment_info.segment_index = 0;
     segment_info.has_audio = false;
     segment_info.last_frame_was_key = false;
     pthread_mutex_unlock(&static_vars_mutex);
+
+    // Perform additional FFmpeg cleanup to prevent memory leaks
+    avformat_network_deinit();
+    log_info("Deinitialized FFmpeg network");
 
     log_info("MP4 segment recorder cleaned up");
 }

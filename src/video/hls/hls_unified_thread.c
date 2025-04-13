@@ -819,6 +819,13 @@ void *hls_unified_thread_func(void *arg) {
         return NULL;
     }
 
+    // Check if the stream state already has an HLS writer
+    if (state && state->hls_ctx && state->hls_ctx != ctx->writer) {
+        log_warn("Stream state for %s already has an HLS writer. Replacing it.", stream_name);
+        // We'll replace the existing writer with our new one
+        // The old writer will be cleaned up during shutdown
+    }
+
     // Store the HLS writer in the stream state for other components to access
     if (state) {
         state->hls_ctx = ctx->writer;
@@ -1580,13 +1587,68 @@ int start_hls_unified_stream(const char *stream_name) {
     stream_state_add_ref(state, STREAM_COMPONENT_HLS);
     log_info("Added HLS reference to stream %s", stream_name);
 
-    // Check if already running
+    // CRITICAL FIX: Hold the mutex during the entire thread creation process to prevent race conditions
+    // that could lead to multiple threads for the same stream
     pthread_mutex_lock(&unified_contexts_mutex);
+
+    // Check if already running and handle duplicate contexts
+    bool already_running = false;
+    int running_count = 0;
+    int running_indices[MAX_STREAMS];
+    int valid_connection_idx = -1;
+    int best_context_idx = -1;
+
+    // First pass: count running contexts and find any with valid connections
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (unified_contexts[i] && strcmp(unified_contexts[i]->stream_name, stream_name) == 0) {
+            running_indices[running_count++] = i;
+            already_running = true;
+
+            // Check if this context has a valid connection
+            if (atomic_load(&unified_contexts[i]->connection_valid)) {
+                valid_connection_idx = i;
+                log_info("Found running HLS context for stream %s with valid connection at index %d",
+                        stream_name, i);
+            }
+        }
+    }
+
+    // If we found any running instances
+    if (running_count > 0) {
+        log_info("Found %d running HLS contexts for stream %s", running_count, stream_name);
+
+        // If we have a valid connection, keep that one and stop all others
+        if (valid_connection_idx >= 0) {
+            best_context_idx = valid_connection_idx;
+            log_info("Keeping HLS context with valid connection for stream %s at index %d",
+                    stream_name, best_context_idx);
+        }
+        // If no valid connection, keep the first one and stop all others
+        else if (running_count > 0) {
+            best_context_idx = running_indices[0];
+            log_info("No valid connections found, keeping first HLS context for stream %s at index %d",
+                    stream_name, best_context_idx);
+        }
+
+        // Stop all contexts except the best one
+        for (int i = 0; i < running_count; i++) {
+            int idx = running_indices[i];
+            if (idx != best_context_idx) {
+                log_info("Stopping duplicate HLS context at index %d for stream %s", idx, stream_name);
+
+                // Mark as not running
+                atomic_store(&unified_contexts[idx]->running, 0);
+
+                // We'll let the thread clean itself up
+                // The context will be freed when the thread exits
+            }
+        }
+
+        // If we have a context to keep, return success
+        if (best_context_idx >= 0) {
+            log_info("Using existing HLS context for stream %s at index %d", stream_name, best_context_idx);
             pthread_mutex_unlock(&unified_contexts_mutex);
-            log_info("HLS stream %s already running", stream_name);
-            return 0;  // Already running
+            return 0;  // Using existing context
         }
     }
 
@@ -1600,11 +1662,12 @@ int start_hls_unified_stream(const char *stream_name) {
     }
 
     if (slot == -1) {
-        pthread_mutex_unlock(&unified_contexts_mutex);
         log_error("No slot available for new HLS stream");
+        pthread_mutex_unlock(&unified_contexts_mutex);
         return -1;
     }
-    pthread_mutex_unlock(&unified_contexts_mutex);
+
+    // CRITICAL FIX: Keep the mutex locked while we create the thread to prevent race conditions
 
     // Clear any existing HLS segments for this stream
     log_info("Clearing any existing HLS segments for stream %s before starting", stream_name);
@@ -1744,9 +1807,10 @@ int start_hls_unified_stream(const char *stream_name) {
         return -1;
     }
 
-    // Store context in the global array
-    pthread_mutex_lock(&unified_contexts_mutex);
+    // Store context in the global array (mutex is still locked from earlier)
     unified_contexts[slot] = ctx;
+
+    // CRITICAL FIX: Now we can safely unlock the mutex after the thread is created and the context is stored
     pthread_mutex_unlock(&unified_contexts_mutex);
 
     log_info("Started unified HLS thread for %s in slot %d", stream_name, slot);
@@ -1758,6 +1822,13 @@ int start_hls_unified_stream(const char *stream_name) {
  */
 int restart_hls_unified_stream(const char *stream_name) {
     log_info("Force restarting HLS stream for %s", stream_name);
+
+    // CRITICAL FIX: Check if the stream is in the process of being stopped
+    stream_state_manager_t *state = get_stream_state_by_name(stream_name);
+    if (state && is_stream_state_stopping(state)) {
+        log_warn("Cannot restart HLS stream %s while it is in the process of being stopped", stream_name);
+        return -1;
+    }
 
     // Clear the HLS segments before stopping the stream
     log_info("Clearing HLS segments for stream %s before restart", stream_name);
@@ -1839,13 +1910,35 @@ int stop_hls_unified_stream(const char *stream_name) {
 
     hls_unified_thread_ctx_t *ctx = NULL;
     int index = -1;
+    int contexts_found = 0;
+    int indices[MAX_STREAMS];
 
+    // CRITICAL FIX: Check for multiple contexts with the same stream name
     for (int i = 0; i < MAX_STREAMS; i++) {
-        if (unified_contexts[i] && strcmp(unified_contexts[i]->stream_name, stream_name) == 0) {
-            ctx = unified_contexts[i];
-            index = i;
+        if (unified_contexts[i] && unified_contexts[i]->stream_name[0] != '\0' &&
+            strcmp(unified_contexts[i]->stream_name, stream_name) == 0) {
+            if (contexts_found == 0) {
+                // Store the first one we find as the primary context to stop
+                ctx = unified_contexts[i];
+                index = i;
+            }
+            indices[contexts_found] = i;
+            contexts_found++;
             found = 1;
-            break;
+        }
+    }
+
+    // CRITICAL FIX: If we found multiple contexts, log a warning and mark all of them as stopping
+    if (contexts_found > 1) {
+        log_warn("Found %d HLS contexts for stream %s during stop operation", contexts_found, stream_name);
+
+        // Mark all contexts as not running except the primary one (which will be handled later)
+        for (int i = 1; i < contexts_found; i++) {
+            int idx = indices[i];
+            if (unified_contexts[idx] && unified_contexts[idx] != ctx) {
+                log_info("Marking additional HLS context %d for stream %s as stopping", i, stream_name);
+                atomic_store(&unified_contexts[idx]->running, 0);
+            }
         }
     }
 
@@ -2033,6 +2126,31 @@ int stop_hls_unified_stream(const char *stream_name) {
         pthread_mutex_unlock(&unified_contexts_mutex);
         log_warn("Context for stream %s was modified during cleanup", stream_name);
     }
+
+    // CRITICAL FIX: Check for any remaining contexts for this stream and clean them up
+    pthread_mutex_lock(&unified_contexts_mutex);
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (unified_contexts[i] && unified_contexts[i]->stream_name[0] != '\0' &&
+            strcmp(unified_contexts[i]->stream_name, stream_name) == 0) {
+            log_warn("Found additional HLS context for stream %s after primary context cleanup", stream_name);
+
+            // Mark as not running
+            atomic_store(&unified_contexts[i]->running, 0);
+
+            // Free the context
+            hls_unified_thread_ctx_t *extra_ctx = unified_contexts[i];
+            unified_contexts[i] = NULL;
+
+            // Mark the context as freed before actually freeing it
+            mark_context_as_freed(extra_ctx);
+
+            // Free the context
+            safe_free(extra_ctx);
+
+            log_info("Cleaned up additional HLS context for stream %s", stream_name);
+        }
+    }
+    pthread_mutex_unlock(&unified_contexts_mutex);
 
     // Remove from the stopping list
     unmark_stream_stopping(stream_name);

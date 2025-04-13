@@ -27,6 +27,7 @@
 #include "video/hls_streaming.h"
 #include "video/mp4_recording.h"
 #include "video/stream_transcoding.h"
+#include "video/hls_writer.h"
 #include "video/detection_stream.h"
 #include "video/detection.h"
 #include "video/detection_integration.h"
@@ -34,6 +35,7 @@
 #include "video/detection_stream_thread.h"
 #include "video/timestamp_manager.h"
 #include "video/onvif_discovery.h"
+#include "video/ffmpeg_leak_detector.h"
 
 // Include go2rtc headers if USE_GO2RTC is defined
 #ifdef USE_GO2RTC
@@ -979,6 +981,8 @@ int main(int argc, char *argv[]) {
         static time_t last_log_time = 0;
         static time_t last_status_time = 0;
         static time_t last_recording_check_time = 0;
+        static time_t last_ffmpeg_dump_time = 0;
+        static time_t last_ffmpeg_leak_check_time = 0;
         time_t now = time(NULL);
 
         if (now - last_log_time > 60) {
@@ -996,6 +1000,21 @@ int main(int argc, char *argv[]) {
         if (now - last_recording_check_time > 60) {
             check_and_ensure_recording();
             last_recording_check_time = now;
+        }
+
+        // Check for FFmpeg memory leaks every 10 minutes
+        if (now - last_ffmpeg_leak_check_time > 600) {
+            log_info("Checking for FFmpeg memory leaks...");
+            int allocation_count = ffmpeg_get_allocation_count();
+            log_info("Current FFmpeg allocations: %d", allocation_count);
+
+            // If there are more than 100 allocations, dump them to the log
+            if (allocation_count > 100) {
+                log_warn("Potential FFmpeg memory leak detected: %d allocations", allocation_count);
+                ffmpeg_dump_allocations();
+            }
+
+            last_ffmpeg_leak_check_time = now;
         }
 
         // Process events, monitor system health, etc.
@@ -1158,8 +1177,11 @@ cleanup:
         // Wait for detection streams to stop
         usleep(1000000);  // 1000ms
 
-        // Clean up HLS streaming before MP4 recording
-        // This is important because HLS streaming is used by MP4 recording
+        // Clean up all HLS writers first to ensure proper FFmpeg resource cleanup
+        log_info("Cleaning up all HLS writers...");
+        cleanup_all_hls_writers();
+
+        // Clean up HLS streaming backend
         log_info("Cleaning up HLS streaming backend...");
         cleanup_hls_streaming_backend();
 
