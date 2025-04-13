@@ -18,40 +18,18 @@
 
             // If auth is required or logout was requested, don't auto-redirect even if we have credentials
             // This prevents redirect loops when credentials are invalid or after logout
-            if (authRequired || logoutRequested) {
+            if (logoutRequested) {
                 console.log('Auth required or logout requested, staying on login page');
                 // Clear any potentially invalid credentials
                 localStorage.removeItem('auth');
                 document.cookie = "auth=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict";
                 document.cookie = "session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict";
-
-                // For Chrome, we need to make a request with invalid credentials to clear the auth cache
-                if (logoutRequested) {
-                    console.log('Attempting to clear browser auth cache');
-                    // Create an iframe to make a request with invalid credentials
-                    const iframe = document.createElement('iframe');
-                    iframe.style.display = 'none';
-                    document.body.appendChild(iframe);
-
-                    // Try to load a protected resource with invalid credentials in the iframe
-                    if (iframe.contentWindow) {
-                        iframe.contentWindow.location.href = '/api/auth/verify';
-
-                        // Remove the iframe after a short delay
-                        setTimeout(() => {
-                            if (document.body.contains(iframe)) {
-                                document.body.removeChild(iframe);
-                            }
-                        }, 1000);
-                    }
-                }
-
                 return;
             }
 
             // If we were redirected from index.html, don't redirect back to prevent loops
             // This is especially important for Chrome mobile
-            if (fromRedirect) {
+            if (logoutRequested || fromRedirect) {
                 console.log('Detected redirect from index.html, staying on login page to prevent loop');
                 return;
             }
@@ -68,36 +46,7 @@
             console.log('Login page - Auth cookie found:', hasAuthCookie);
             console.log('Login page - Session cookie found:', hasSessionCookie);
 
-            // Check if we're on a mobile device
-            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-            const isChrome = /Chrome/i.test(navigator.userAgent) && !/Edge|Edg/i.test(navigator.userAgent);
-
-            // For Chrome mobile, we need to be more careful to prevent redirect loops
-            if (isMobile && isChrome) {
-                console.log('Chrome mobile detected, performing auth verification before redirect');
-
-                // For Chrome mobile, verify auth with the server before redirecting
-                fetch('/api/auth/verify', {
-                    method: 'GET',
-                    credentials: 'include',
-                    headers: auth ? { 'Authorization': `Basic ${auth}` } : {}
-                })
-                    .then(response => {
-                        if (response.ok) {
-                            // Auth is valid, redirect to index
-                            redirectToIndex();
-                        } else {
-                            // Auth is invalid, stay on login page
-                            console.log('Auth verification failed, staying on login page');
-                            // Clear any invalid credentials
-                            localStorage.removeItem('auth');
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Auth verification error:', error);
-                        // On error, don't redirect to be safe
-                    });
-            } else if (auth || hasAuthCookie || hasSessionCookie) {
+            if (auth || hasAuthCookie) {
                 // For other browsers, redirect if we have credentials
                 redirectToIndex();
             }
@@ -172,8 +121,8 @@
             }
         });
     </script>
-  <script type="module" crossorigin src="./assets/login-CGU4bY6E.js"></script>
-  <link rel="modulepreload" crossorigin href="./assets/preact-app-BRV6dFC5.js">
+  <script type="module" crossorigin src="./assets/login-CtnkpA3s.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/preact-app-C6jwAYV4.js">
   <link rel="stylesheet" crossorigin href="./css/preact-app.css">
   <link rel="stylesheet" crossorigin href="./css/layout.css">
   <script type="module">import.meta.url;import("_").catch(()=>1);(async function*(){})().next();if(location.protocol!="file:"){window.__vite_is_modern_browser=true}</script>
@@ -208,6 +157,6 @@
 </script>
   <script nomodule>!function(){var e=document,t=e.createElement("script");if(!("noModule"in t)&&"onbeforeload"in t){var n=!1;e.addEventListener("beforeload",(function(e){if(e.target===t)n=!0;else if(!e.target.hasAttribute("nomodule")||!n)return;e.preventDefault()}),!0),t.type="module",t.src=".",e.head.appendChild(t),t.remove()}}();</script>
   <script nomodule crossorigin id="vite-legacy-polyfill" src="./assets/polyfills-legacy-CmMCgs_i.js"></script>
-  <script nomodule crossorigin id="vite-legacy-entry" data-src="./assets/login-legacy-CNz38XBL.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>
+  <script nomodule crossorigin id="vite-legacy-entry" data-src="./assets/login-legacy-BVpOmTXC.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>
 </body>
 </html>

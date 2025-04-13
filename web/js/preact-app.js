@@ -218,7 +218,7 @@ function setupGlobalAuthHandler() {
       const currentPath = window.location.pathname + window.location.search;
 
       // Simple redirect to login page
-      window.location.href = '/login.html?redirect=' + encodeURIComponent(currentPath);
+      window.location.href = '/login.html?logout=true&redirect=' + encodeURIComponent(currentPath);
     }
 
     return response;

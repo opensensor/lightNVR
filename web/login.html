@@ -20,40 +20,18 @@
 
             // If auth is required or logout was requested, don't auto-redirect even if we have credentials
             // This prevents redirect loops when credentials are invalid or after logout
-            if (authRequired || logoutRequested) {
+            if (logoutRequested) {
                 console.log('Auth required or logout requested, staying on login page');
                 // Clear any potentially invalid credentials
                 localStorage.removeItem('auth');
                 document.cookie = "auth=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict";
                 document.cookie = "session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict";
-
-                // For Chrome, we need to make a request with invalid credentials to clear the auth cache
-                if (logoutRequested) {
-                    console.log('Attempting to clear browser auth cache');
-                    // Create an iframe to make a request with invalid credentials
-                    const iframe = document.createElement('iframe');
-                    iframe.style.display = 'none';
-                    document.body.appendChild(iframe);
-
-                    // Try to load a protected resource with invalid credentials in the iframe
-                    if (iframe.contentWindow) {
-                        iframe.contentWindow.location.href = '/api/auth/verify';
-
-                        // Remove the iframe after a short delay
-                        setTimeout(() => {
-                            if (document.body.contains(iframe)) {
-                                document.body.removeChild(iframe);
-                            }
-                        }, 1000);
-                    }
-                }
-
                 return;
             }
 
             // If we were redirected from index.html, don't redirect back to prevent loops
             // This is especially important for Chrome mobile
-            if (fromRedirect) {
+            if (logoutRequested || fromRedirect) {
                 console.log('Detected redirect from index.html, staying on login page to prevent loop');
                 return;
             }
@@ -70,36 +48,7 @@
             console.log('Login page - Auth cookie found:', hasAuthCookie);
             console.log('Login page - Session cookie found:', hasSessionCookie);
 
-            // Check if we're on a mobile device
-            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-            const isChrome = /Chrome/i.test(navigator.userAgent) && !/Edge|Edg/i.test(navigator.userAgent);
-
-            // For Chrome mobile, we need to be more careful to prevent redirect loops
-            if (isMobile && isChrome) {
-                console.log('Chrome mobile detected, performing auth verification before redirect');
-
-                // For Chrome mobile, verify auth with the server before redirecting
-                fetch('/api/auth/verify', {
-                    method: 'GET',
-                    credentials: 'include',
-                    headers: auth ? { 'Authorization': `Basic ${auth}` } : {}
-                })
-                    .then(response => {
-                        if (response.ok) {
-                            // Auth is valid, redirect to index
-                            redirectToIndex();
-                        } else {
-                            // Auth is invalid, stay on login page
-                            console.log('Auth verification failed, staying on login page');
-                            // Clear any invalid credentials
-                            localStorage.removeItem('auth');
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Auth verification error:', error);
-                        // On error, don't redirect to be safe
-                    });
-            } else if (auth || hasAuthCookie || hasSessionCookie) {
+            if (auth || hasAuthCookie) {
                 // For other browsers, redirect if we have credentials
                 redirectToIndex();
             }
