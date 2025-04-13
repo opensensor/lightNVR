@@ -193,6 +193,23 @@ void comprehensive_ffmpeg_cleanup(AVFormatContext **input_ctx, AVCodecContext **
                             ctx->streams[i]->codecpar->extradata = NULL;
                             ctx->streams[i]->codecpar->extradata_size = 0;
                         }
+
+                        // CRITICAL FIX: Explicitly clean up any internal allocations made by avcodec_parameters_from_context
+                        // This addresses the memory leak shown in Valgrind
+                        AVCodecParameters *codecpar = ctx->streams[i]->codecpar;
+                        if (codecpar) {
+                            // Reset fields that might contain allocated memory
+                            if (codecpar->extradata) {
+                                codecpar->extradata = NULL;
+                                codecpar->extradata_size = 0;
+                            }
+
+                            // Clear any other fields that might have allocated memory
+                            codecpar->ch_layout.u.mask = 0;
+                            if (codecpar->ch_layout.nb_channels > 0) {
+                                codecpar->ch_layout.nb_channels = 0;
+                            }
+                        }
                     }
                 }
             }

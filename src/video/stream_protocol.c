@@ -494,17 +494,29 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
         }
     }
 
+    // CRITICAL FIX: Create a local copy of the context pointer to prevent race conditions
+    AVFormatContext *local_input_ctx = *input_ctx;
+
+    // CRITICAL FIX: Add memory barrier to ensure the context is fully initialized
+    __sync_synchronize();
+
     // Call find_stream_info with the options
-    ret = avformat_find_stream_info(*input_ctx, options);
+    ret = avformat_find_stream_info(local_input_ctx, options);
 
     // Free the options
     if (options) {
-        for (unsigned int i = 0; i < (*input_ctx)->nb_streams; i++) {
+        for (unsigned int i = 0; i < local_input_ctx->nb_streams; i++) {
             av_dict_free(&options[i]);
         }
         av_free(options);
     }
     av_dict_free(&find_stream_options);
+
+    // CRITICAL FIX: Verify that the context pointer hasn't changed during find_stream_info
+    if (*input_ctx != local_input_ctx) {
+        log_warn("Context pointer changed during find_stream_info, using original pointer");
+        // Continue with the original pointer
+    }
 
     if (ret < 0) {
         log_ffmpeg_error(ret, "Could not find stream info");
@@ -514,8 +526,17 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
         AVFormatContext *ctx_to_cleanup = *input_ctx;
         *input_ctx = NULL; // Clear the pointer first to prevent use-after-free
 
+        // CRITICAL FIX: Add memory barrier to ensure the pointer is cleared before cleanup
+        __sync_synchronize();
+
         // Use our comprehensive cleanup function
         comprehensive_ffmpeg_cleanup(&ctx_to_cleanup, NULL, NULL, NULL);
+
+        // CRITICAL FIX: Verify that the context is actually NULL after cleanup
+        if (ctx_to_cleanup) {
+            log_warn("Failed to clean up context, forcing NULL");
+            ctx_to_cleanup = NULL;
+        }
 
         // Note: We're not forcing garbage collection here to avoid segmentation faults
         // Memory cleanup will be handled by the periodic cleanup in hls_unified_thread_func

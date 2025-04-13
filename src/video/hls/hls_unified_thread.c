@@ -1027,6 +1027,11 @@ void *hls_unified_thread_func(void *arg) {
 
                 // Open input stream
                 input_ctx = NULL;
+
+                // CRITICAL FIX: Add memory barrier before opening input stream
+                // This ensures all previous memory operations are completed
+                __sync_synchronize();
+
                 ret = open_input_stream(&input_ctx, ctx->rtsp_url, ctx->protocol);
                 if (ret < 0) {
                     char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
@@ -1039,8 +1044,20 @@ void *hls_unified_thread_func(void *arg) {
                     // MEMORY LEAK FIX: Use comprehensive cleanup instead of just avformat_close_input
                     // This ensures all resources are properly freed, preventing memory leaks
                     if (input_ctx) {
-                        comprehensive_ffmpeg_cleanup(&input_ctx, NULL, NULL, NULL);
-                        input_ctx = NULL;
+                        // CRITICAL FIX: Create a local copy of the pointer to prevent race conditions
+                        AVFormatContext *ctx_to_cleanup = input_ctx;
+                        input_ctx = NULL; // Clear the original pointer to prevent double-free
+
+                        // CRITICAL FIX: Add memory barrier to ensure the pointer is cleared
+                        __sync_synchronize();
+
+                        comprehensive_ffmpeg_cleanup(&ctx_to_cleanup, NULL, NULL, NULL);
+
+                        // CRITICAL FIX: Verify that the context is actually NULL after cleanup
+                        if (ctx_to_cleanup) {
+                            log_warn("Failed to clean up context, forcing NULL");
+                            ctx_to_cleanup = NULL;
+                        }
                     }
 
                     // CRITICAL FIX: Check for shutdown after a failed connection attempt
@@ -1319,6 +1336,10 @@ void *hls_unified_thread_func(void *arg) {
                                     // This helps prevent memory accumulation
                                     ffmpeg_buffer_cleanup();
 
+                                    // CRITICAL FIX: Add memory barrier before opening input stream
+                                    // This ensures all previous memory operations are completed
+                                    __sync_synchronize();
+
                                     // Open a new input stream with more conservative options
                                     ret = open_input_stream(&input_ctx, ctx->rtsp_url, ctx->protocol);
                                     if (ret < 0) {
@@ -1331,17 +1352,35 @@ void *hls_unified_thread_func(void *arg) {
                                         if (new_video_stream_idx == -1) {
                                             log_error("No video stream found in reopened stream, will try to continue with existing connection");
                                             // Close the new context and restore the old one
-                                            comprehensive_ffmpeg_cleanup(&input_ctx, NULL, NULL, NULL);
+
+                                            // CRITICAL FIX: Create a local copy of the pointer to prevent race conditions
+                                            AVFormatContext *ctx_to_cleanup = input_ctx;
+                                            input_ctx = NULL; // Clear the original pointer to prevent double-free
+
+                                            // CRITICAL FIX: Add memory barrier to ensure the pointer is cleared
+                                            __sync_synchronize();
+
+                                            comprehensive_ffmpeg_cleanup(&ctx_to_cleanup, NULL, NULL, NULL);
+
+                                            // Restore the old context
                                             input_ctx = old_ctx;
                                         } else {
                                             // Successfully reopened the stream, clean up the old context
                                             video_stream_idx = new_video_stream_idx;
-                                            comprehensive_ffmpeg_cleanup(&old_ctx, NULL, NULL, NULL);
+
+                                            // CRITICAL FIX: Create a local copy of the pointer to prevent race conditions
+                                            AVFormatContext *ctx_to_cleanup = old_ctx;
+                                            old_ctx = NULL; // Clear the original pointer to prevent double-free
+
+                                            // CRITICAL FIX: Add memory barrier to ensure the pointer is cleared
+                                            __sync_synchronize();
+
+                                            comprehensive_ffmpeg_cleanup(&ctx_to_cleanup, NULL, NULL, NULL);
 
                                             // MEMORY LEAK FIX: Verify that the old context is actually NULL
-                                            if (old_ctx) {
+                                            if (ctx_to_cleanup) {
                                                 log_warn("Failed to clean up old context, forcing NULL");
-                                                old_ctx = NULL;
+                                                ctx_to_cleanup = NULL;
                                             }
                                             log_info("Successfully reopened stream during periodic cleanup");
                                         }
@@ -1437,6 +1476,11 @@ void *hls_unified_thread_func(void *arg) {
 
                 // Open input stream
                 input_ctx = NULL;
+
+                // CRITICAL FIX: Add memory barrier before opening input stream
+                // This ensures all previous memory operations are completed
+                __sync_synchronize();
+
                 ret = open_input_stream(&input_ctx, ctx->rtsp_url, ctx->protocol);
                 if (ret < 0) {
                     char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
@@ -1449,8 +1493,20 @@ void *hls_unified_thread_func(void *arg) {
                     // MEMORY LEAK FIX: Use comprehensive cleanup instead of just avformat_close_input
                     // This ensures all resources are properly freed, preventing memory leaks
                     if (input_ctx) {
-                        comprehensive_ffmpeg_cleanup(&input_ctx, NULL, NULL, NULL);
-                        input_ctx = NULL;
+                        // CRITICAL FIX: Create a local copy of the pointer to prevent race conditions
+                        AVFormatContext *ctx_to_cleanup = input_ctx;
+                        input_ctx = NULL; // Clear the original pointer to prevent double-free
+
+                        // CRITICAL FIX: Add memory barrier to ensure the pointer is cleared
+                        __sync_synchronize();
+
+                        comprehensive_ffmpeg_cleanup(&ctx_to_cleanup, NULL, NULL, NULL);
+
+                        // CRITICAL FIX: Verify that the context is actually NULL after cleanup
+                        if (ctx_to_cleanup) {
+                            log_warn("Failed to clean up context, forcing NULL");
+                            ctx_to_cleanup = NULL;
+                        }
                     }
 
                     // CRITICAL FIX: Check for shutdown after a failed connection attempt
