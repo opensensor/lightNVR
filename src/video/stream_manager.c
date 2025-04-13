@@ -61,9 +61,6 @@ int init_stream_manager(int max_streams) {
         }
     }
 
-    // Initialize stream reader backend
-    init_stream_reader_backend();
-
     initialized = true;
 
     // Create stream state managers for all existing streams
@@ -173,9 +170,6 @@ void shutdown_stream_manager(void) {
             streams[i].status = STREAM_STATUS_STOPPED;
         }
     }
-
-    // Cleanup stream reader backend
-    cleanup_stream_reader_backend();
 
     initialized = false;
 

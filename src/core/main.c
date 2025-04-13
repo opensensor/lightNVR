@@ -1006,19 +1006,7 @@ cleanup:
         // No need to register them again during shutdown
         log_info("Starting shutdown sequence for all components...");
 
-        // First, clear all packet callbacks to prevent further processing
-        log_info("Clearing all packet callbacks...");
-        for (int i = 0; i < MAX_STREAMS; i++) {
-            stream_reader_ctx_t *reader = get_stream_reader_by_index(i);
-            if (reader) {
-                // Safely clear the callback
-                set_packet_callback(reader, NULL, NULL);
-                log_info("Cleared packet callback for stream reader %d", i);
-            }
-        }
-
         // Wait a moment for callbacks to clear and any in-progress operations to complete
-        log_info("Waiting for callbacks to clear...");
         usleep(1000000);  // 1000ms (increased from 500ms)
 
         // Stop all detection stream readers first
@@ -1134,10 +1122,6 @@ cleanup:
         // Wait for MP4 recording to clean up
         usleep(1000000);  // 1000ms
 
-        // Clean up stream reader backend last to ensure all consumers are stopped
-        log_info("Cleaning up stream reader backend...");
-        cleanup_stream_reader_backend();
-
         // Clean up FFmpeg resources
         log_info("Cleaning up transcoding backend...");
         cleanup_transcoding_backend();
@@ -1229,16 +1213,6 @@ cleanup:
     } else {
         // Fork failed
         log_error("Failed to create watchdog process for cleanup timeout");
-        // Continue with cleanup anyway in a simplified manner
-
-        // Clear all packet callbacks
-        for (int i = 0; i < MAX_STREAMS; i++) {
-            stream_reader_ctx_t *reader = get_stream_reader_by_index(i);
-            if (reader) {
-                set_packet_callback(reader, NULL, NULL);
-            }
-        }
-
         // Stop all streams first
         for (int i = 0; i < config.max_streams; i++) {
             if (config.streams[i].name[0] != '\0') {
@@ -1259,7 +1233,6 @@ cleanup:
         shutdown_detection_stream_system();
         cleanup_mp4_recording_backend();
         cleanup_hls_streaming_backend();
-        cleanup_stream_reader_backend();
         cleanup_transcoding_backend();
 
         // Shut down remaining components

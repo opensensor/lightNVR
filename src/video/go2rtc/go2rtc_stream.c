@@ -297,12 +297,19 @@ static bool is_port_open(const char *host, int port, int timeout_ms) {
     char port_str[16];
     snprintf(port_str, sizeof(port_str), "%d", port);
 
+    // CRITICAL FIX: Use a local variable to track if we need to free addrinfo
+    // This ensures we always free the resources even if we return early
+    bool need_to_free_addrinfo = false;
+
     // Resolve hostname
     int status = getaddrinfo(host, port_str, &hints, &res);
     if (status != 0) {
         log_warn("is_port_open: getaddrinfo failed: %s", gai_strerror(status));
         return false;
     }
+
+    // CRITICAL FIX: Set the flag to indicate we need to free addrinfo
+    need_to_free_addrinfo = true;
 
     // Try each address until we successfully connect
     for (rp = res; rp != NULL; rp = rp->ai_next) {
@@ -362,9 +369,10 @@ static bool is_port_open(const char *host, int port, int timeout_ms) {
         break; // Exit the loop
     }
 
-    // Free the address info
-    if (res) {
+    // CRITICAL FIX: Always free the address info to prevent memory leaks
+    if (need_to_free_addrinfo && res) {
         freeaddrinfo(res);
+        res = NULL; // Set to NULL to prevent double-free
     }
 
     return result;
