@@ -41,7 +41,7 @@ extern bool daemon_mode;
 // Forward declarations from api_handlers_system_logs.c
 extern void mg_handle_get_system_logs(struct mg_connection *c, struct mg_http_message *hm);
 extern void mg_handle_post_system_logs_clear(struct mg_connection *c, struct mg_http_message *hm);
-extern void get_system_logs(char ***logs, int *count);
+extern int get_system_logs(char ***logs, int *count);
 
 /**
  * @brief Direct handler for GET /api/system/info

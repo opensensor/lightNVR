@@ -893,6 +893,22 @@ void *hls_unified_thread_func(void *arg) {
                         // Sleep before retrying
                         av_usleep(reconnect_delay_ms * 1000);
 
+                        // CRITICAL FIX: Check for shutdown conditions before continuing
+                        if (is_context_already_freed(ctx) || is_context_pending_deletion(ctx) ||
+                            !atomic_load(&ctx->running) || is_shutdown_initiated() ||
+                            (state && (is_stream_state_stopping(state) || !are_stream_callbacks_enabled(state)))) {
+                            log_info("Unified HLS thread for %s stopping during connection attempt due to %s",
+                                    stream_name,
+                                    is_context_already_freed(ctx) ? "context already freed" :
+                                    is_context_pending_deletion(ctx) ? "context pending deletion" :
+                                    !atomic_load(&ctx->running) ? "running flag cleared" :
+                                    is_shutdown_initiated() ? "system shutdown" :
+                                    is_stream_state_stopping(state) ? "stream state STOPPING" :
+                                    "callbacks disabled");
+                            thread_state = HLS_THREAD_STOPPING;
+                            break;
+                        }
+
                         // Stay in CONNECTING state and try again
                         break;
                     }
@@ -967,6 +983,22 @@ void *hls_unified_thread_func(void *arg) {
                     // Sleep before retrying
                     av_usleep(reconnect_delay_ms * 1000);
 
+                    // CRITICAL FIX: Check for shutdown conditions before continuing
+                    if (is_context_already_freed(ctx) || is_context_pending_deletion(ctx) ||
+                        !atomic_load(&ctx->running) || is_shutdown_initiated() ||
+                        (state && (is_stream_state_stopping(state) || !are_stream_callbacks_enabled(state)))) {
+                        log_info("Unified HLS thread for %s stopping during connection attempt due to %s",
+                                stream_name,
+                                is_context_already_freed(ctx) ? "context already freed" :
+                                is_context_pending_deletion(ctx) ? "context pending deletion" :
+                                !atomic_load(&ctx->running) ? "running flag cleared" :
+                                is_shutdown_initiated() ? "system shutdown" :
+                                is_stream_state_stopping(state) ? "stream state STOPPING" :
+                                "callbacks disabled");
+                        thread_state = HLS_THREAD_STOPPING;
+                        break;
+                    }
+
                     // Stay in CONNECTING state and try again
                     break;
                 }
@@ -1012,6 +1044,22 @@ void *hls_unified_thread_func(void *arg) {
 
                         // Sleep before retrying
                         av_usleep(reconnect_delay_ms * 1000);
+
+                        // CRITICAL FIX: Check for shutdown conditions before continuing
+                        if (is_context_already_freed(ctx) || is_context_pending_deletion(ctx) ||
+                            !atomic_load(&ctx->running) || is_shutdown_initiated() ||
+                            (state && (is_stream_state_stopping(state) || !are_stream_callbacks_enabled(state)))) {
+                            log_info("Unified HLS thread for %s stopping during connection attempt due to %s",
+                                    stream_name,
+                                    is_context_already_freed(ctx) ? "context already freed" :
+                                    is_context_pending_deletion(ctx) ? "context pending deletion" :
+                                    !atomic_load(&ctx->running) ? "running flag cleared" :
+                                    is_shutdown_initiated() ? "system shutdown" :
+                                    is_stream_state_stopping(state) ? "stream state STOPPING" :
+                                    "callbacks disabled");
+                            thread_state = HLS_THREAD_STOPPING;
+                            break;
+                        }
 
                         // Stay in CONNECTING state and try again
                         break;
@@ -1176,8 +1224,15 @@ void *hls_unified_thread_func(void *arg) {
                     break;
                 }
 
-                if (!atomic_load(&ctx->running)) {
-                    log_info("Unified HLS thread for %s stopping during reconnection", stream_name);
+                // CRITICAL FIX: Check for shutdown conditions
+                if (!atomic_load(&ctx->running) || is_shutdown_initiated() ||
+                    (state && (is_stream_state_stopping(state) || !are_stream_callbacks_enabled(state)))) {
+                    log_info("Unified HLS thread for %s stopping during reconnection due to %s",
+                            stream_name,
+                            !atomic_load(&ctx->running) ? "running flag cleared" :
+                            is_shutdown_initiated() ? "system shutdown" :
+                            is_stream_state_stopping(state) ? "stream state STOPPING" :
+                            "callbacks disabled");
                     thread_state = HLS_THREAD_STOPPING;
                     break;
                 }
@@ -1288,6 +1343,30 @@ void *hls_unified_thread_func(void *arg) {
                 log_info("Stopping unified HLS thread for stream %s", stream_name);
                 atomic_store(&ctx->running, 0);
                 atomic_store(&ctx->connection_valid, 0);
+
+                // CRITICAL FIX: Clean up resources before transitioning to STOPPED state
+                log_info("Cleaning up resources for stream %s before stopping", stream_name);
+
+                // Clean up input context and packet
+                safe_cleanup_resources(&input_ctx, &pkt, NULL);
+
+                // Clean up HLS writer if it exists
+                if (ctx->writer) {
+                    log_info("Closing HLS writer for stream %s during shutdown", stream_name);
+                    hls_writer_t *writer_to_cleanup = __atomic_exchange_n(&ctx->writer, NULL, __ATOMIC_SEQ_CST);
+                    if (writer_to_cleanup) {
+                        // Use a separate variable for the writer to prevent race conditions
+                        hls_writer_close(writer_to_cleanup);
+                        log_info("Successfully closed HLS writer for stream %s during shutdown", stream_name);
+                    }
+                }
+
+                // Update component state in shutdown coordinator
+                if (ctx->shutdown_component_id >= 0) {
+                    update_component_state(ctx->shutdown_component_id, COMPONENT_STOPPED);
+                    log_info("Updated component state to STOPPED for stream %s", stream_name);
+                }
+
                 thread_state = HLS_THREAD_STOPPED;
                 break;
 
@@ -1310,7 +1389,25 @@ void *hls_unified_thread_func(void *arg) {
     hls_unified_thread_ctx_t *ctx_for_exit = ctx;
     ctx = NULL;  // Clear the original pointer to prevent further access
 
+    // CRITICAL FIX: Ensure all resources are cleaned up before exiting
+    // This is a safety measure in case we exited the loop without proper cleanup
+    if (input_ctx != NULL || pkt != NULL) {
+        log_warn("Thread for stream %s exited loop without proper cleanup, cleaning up now", stream_name);
+        safe_cleanup_resources(&input_ctx, &pkt, NULL);
+    }
+
     if (ctx_for_exit) {
+        // CRITICAL FIX: Check if the writer still exists and clean it up
+        hls_writer_t *writer_to_cleanup = NULL;
+        if (ctx_for_exit->writer) {
+            log_warn("Writer for stream %s still exists after loop exit, cleaning up now", stream_name);
+            writer_to_cleanup = __atomic_exchange_n(&ctx_for_exit->writer, NULL, __ATOMIC_SEQ_CST);
+            if (writer_to_cleanup) {
+                hls_writer_close(writer_to_cleanup);
+                log_info("Successfully closed HLS writer for stream %s after loop exit", stream_name);
+            }
+        }
+
         // Mark thread as exited in the pending deletion list
         mark_thread_exited(ctx_for_exit);
 
@@ -1328,6 +1425,12 @@ void *hls_unified_thread_func(void *arg) {
 
             // Mark connection as invalid
             atomic_store(&ctx_for_exit->connection_valid, 0);
+
+            // CRITICAL FIX: Update component state in shutdown coordinator
+            if (ctx_for_exit->shutdown_component_id >= 0) {
+                update_component_state(ctx_for_exit->shutdown_component_id, COMPONENT_STOPPED);
+                log_info("Updated component state to STOPPED for stream %s after loop exit", stream_name);
+            }
 
             // Cancel the alarm and restore signal handler
             alarm(0);
@@ -1365,13 +1468,18 @@ void *hls_unified_thread_func(void *arg) {
     // CRITICAL FIX: Add safety checks before cleaning up resources
     log_info("Cleaning up all resources for stream %s", stream_name_buf);
 
-    // Verify that the resources are valid before cleaning them up
-    if (input_ctx) {
-        log_debug("Cleaning up input context for stream %s", stream_name_buf);
-    }
-
-    if (pkt) {
-        log_debug("Cleaning up packet for stream %s", stream_name_buf);
+    // CRITICAL FIX: Ensure all resources are cleaned up before exiting
+    // This is a final safety check to prevent memory leaks
+    if (input_ctx || pkt) {
+        log_info("Final cleanup of FFmpeg resources for stream %s", stream_name_buf);
+        if (input_ctx) {
+            log_debug("Cleaning up input context for stream %s", stream_name_buf);
+        }
+        if (pkt) {
+            log_debug("Cleaning up packet for stream %s", stream_name_buf);
+        }
+        // Clean up any remaining FFmpeg resources
+        safe_cleanup_resources(&input_ctx, &pkt, NULL);
     }
 
     // CRITICAL FIX: Check ctx before accessing its members
@@ -1415,45 +1523,61 @@ void *hls_unified_thread_func(void *arg) {
     // CRITICAL FIX: Add memory barrier before cleanup to ensure all threads see consistent state
     __sync_synchronize();
 
-    // Make local copies of pointers to prevent race conditions during cleanup
-    AVFormatContext *input_ctx_local = input_ctx;
-    AVPacket *pkt_local = pkt;
-
-    // Clear original pointers immediately to prevent double-free
-    input_ctx = NULL;
-    pkt = NULL;
+    // CRITICAL FIX: We've already cleaned up the FFmpeg resources above, so we only need to handle the writer
+    // No need to make local copies of input_ctx and pkt since they should be NULL at this point
 
     // CRITICAL FIX: Writer reference has already been cleared using atomic exchange
     // No need to clear it again
 
     // CRITICAL FIX: Add additional safety checks before cleanup
-    log_info("About to clean up resources for stream %s", stream_name_buf);
+    log_info("About to clean up remaining resources for stream %s", stream_name_buf);
 
     // CRITICAL FIX: Add memory barrier before cleanup
     __sync_synchronize();
 
-    // CRITICAL FIX: Verify that local copies are valid before cleanup
-    if (input_ctx_local) {
-        log_debug("Input context is valid for stream %s", stream_name_buf);
-    }
-
-    if (pkt_local) {
-        log_debug("Packet is valid for stream %s", stream_name_buf);
-    }
-
+    // CRITICAL FIX: Only clean up the writer if it's still valid
     if (writer_to_cleanup) {
-        log_debug("Writer is valid for stream %s", stream_name_buf);
-    }
+        log_debug("Writer is valid for stream %s, cleaning up", stream_name_buf);
 
-    // Clean up all resources using local copies with additional try/catch-like protection
-    log_info("Calling safe_cleanup_resources for stream %s", stream_name_buf);
-    safe_cleanup_resources(&input_ctx_local, &pkt_local, &writer_to_cleanup);
-    log_info("Completed safe_cleanup_resources for stream %s", stream_name_buf);
+        // Clean up the writer with additional try/catch-like protection
+        log_info("Closing HLS writer for stream %s", stream_name_buf);
+
+        // Use a try/catch-like approach with signal handling to prevent crashes
+        struct sigaction sa_old, sa_new;
+        sigaction(SIGALRM, NULL, &sa_old);
+        sa_new = sa_old;
+        sa_new.sa_handler = SIG_IGN; // Ignore alarm signal
+        sigaction(SIGALRM, &sa_new, NULL);
+
+        // Set alarm
+        alarm(5); // 5 second timeout for writer close
+
+        // Close the writer with additional protection
+        hls_writer_close(writer_to_cleanup);
+        writer_to_cleanup = NULL;
+
+        // Cancel the alarm and restore signal handler
+        alarm(0);
+        sigaction(SIGALRM, &sa_old, NULL);
+
+        log_info("Successfully closed HLS writer for stream %s", stream_name_buf);
+    } else {
+        log_debug("No writer to clean up for stream %s", stream_name_buf);
+    }
 
     // Update component state in shutdown coordinator only if we have a valid ID
     if (shutdown_id >= 0) {
+        // CRITICAL FIX: Ensure the component is marked as STOPPED in the shutdown coordinator
+        // This is critical to prevent the shutdown coordinator from waiting indefinitely
         update_component_state(shutdown_id, COMPONENT_STOPPED);
         log_info("Updated unified HLS thread %s state to STOPPED in shutdown coordinator", stream_name_buf);
+    }
+
+    // CRITICAL FIX: Ensure the thread is marked as exited in the pending deletion list
+    // This is a final safety check to prevent memory leaks and deadlocks
+    if (ctx_local) {
+        mark_thread_exited(ctx_local);
+        log_info("Final marking of thread as exited for stream %s", stream_name_buf);
     }
 
     // Unmark the stream as stopping to indicate we've completed our shutdown

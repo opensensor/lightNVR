@@ -39,6 +39,8 @@ export class WebSocketClient {
         this.subscriptionParams = new Map();
         // Store callbacks waiting for client ID
         this.clientIdCallbacks = [];
+        // Connection change listeners
+        this.connectionChangeListeners = [];
 
         console.log('WebSocket client initialized, waiting for server-assigned client ID');
 
@@ -51,6 +53,9 @@ export class WebSocketClient {
         this.unsubscribe = this.unsubscribe.bind(this);
         this.handleMessage = this.handleMessage.bind(this);
         this.processMessageQueue = this.processMessageQueue.bind(this);
+        this.addConnectionChangeListener = this.addConnectionChangeListener.bind(this);
+        this.removeConnectionChangeListener = this.removeConnectionChangeListener.bind(this);
+        this.notifyConnectionChangeListeners = this.notifyConnectionChangeListeners.bind(this);
 
         // Connect automatically
         this.connect();
@@ -108,6 +113,9 @@ export class WebSocketClient {
                 this.reconnectAttempts = 0;
                 this.reconnectDelay = 1000;
 
+                // Notify connection change listeners
+                this.notifyConnectionChangeListeners(true);
+
                 // Set a smaller buffer size for better compatibility with older systems
                 if (this.socket.bufferedAmount !== undefined) {
                     console.log(`Initial WebSocket buffered amount: ${this.socket.bufferedAmount}`);
@@ -145,6 +153,9 @@ export class WebSocketClient {
                 this.connected = false;
                 this.connecting = false;
 
+                // Notify connection change listeners
+                this.notifyConnectionChangeListeners(false);
+
                 // Check for specific close codes that indicate compatibility issues
                 if (event.code === 1006) {
                     console.warn('WebSocket closed abnormally (code 1006), possible compatibility issue');
@@ -166,6 +177,12 @@ export class WebSocketClient {
             this.socket.onerror = (error) => {
                 console.error('WebSocket error:', error);
                 this.connecting = false;
+
+                // If we were connected, notify listeners that we're disconnected
+                if (this.connected) {
+                    this.connected = false;
+                    this.notifyConnectionChangeListeners(false);
+                }
 
                 // On error, increment reconnect attempts
                 this.reconnectAttempts++;
@@ -190,6 +207,13 @@ export class WebSocketClient {
     fallbackToHttp() {
         console.warn('Falling back to HTTP for operations');
         this.usingHttpFallback = true;
+
+        // Make sure connected is set to false
+        if (this.connected) {
+            this.connected = false;
+            // Notify connection change listeners
+            this.notifyConnectionChangeListeners(false);
+        }
 
         // Dispatch an event that components can listen for
         const fallbackEvent = new CustomEvent('websocket-fallback', {
@@ -563,6 +587,61 @@ export class WebSocketClient {
     }
 
     /**
+     * Add a connection change listener
+     *
+     * @param {Function} listener Function to call when connection state changes
+     */
+    addConnectionChangeListener(listener) {
+        if (typeof listener !== 'function') {
+            console.error('Connection change listener must be a function');
+            return;
+        }
+
+        // Add listener if it doesn't already exist
+        if (!this.connectionChangeListeners.includes(listener)) {
+            this.connectionChangeListeners.push(listener);
+            console.log('Added connection change listener');
+
+            // Call the listener immediately with the current connection state
+            try {
+                listener(this.connected);
+            } catch (error) {
+                console.error('Error in connection change listener:', error);
+            }
+        }
+    }
+
+    /**
+     * Remove a connection change listener
+     *
+     * @param {Function} listener Function to remove
+     */
+    removeConnectionChangeListener(listener) {
+        const index = this.connectionChangeListeners.indexOf(listener);
+        if (index !== -1) {
+            this.connectionChangeListeners.splice(index, 1);
+            console.log('Removed connection change listener');
+        }
+    }
+
+    /**
+     * Notify all connection change listeners
+     *
+     * @param {boolean} connected Whether the connection is established
+     */
+    notifyConnectionChangeListeners(connected) {
+        console.log(`Notifying ${this.connectionChangeListeners.length} connection change listeners: connected=${connected}`);
+
+        for (const listener of this.connectionChangeListeners) {
+            try {
+                listener(connected);
+            } catch (error) {
+                console.error('Error in connection change listener:', error);
+            }
+        }
+    }
+
+    /**
      * Check if connected to the WebSocket server
      *
      * @returns {boolean} Whether connected to the WebSocket server
@@ -692,11 +771,11 @@ export class BatchDeleteRecordingsClient {
                 // Use an empty object as payload to avoid issues
                 if (!this.wsClient.subscriptions.has(this.topic)) {
                     console.log(`Subscribing to ${this.topic} before sending request`);
-                    
+
                     // Create a subscription message with client_id
                     const subscribePayload = { client_id: clientId };
                     console.log(`Subscription payload:`, subscribePayload);
-                    
+
                     // Send subscription directly to ensure it works
                     if (this.wsClient.socket && this.wsClient.socket.readyState === WebSocket.OPEN) {
                         const subscribeMsg = {
@@ -709,7 +788,7 @@ export class BatchDeleteRecordingsClient {
                     } else {
                         this.wsClient.send('subscribe', this.topic, subscribePayload);
                     }
-                    
+
                     this.wsClient.subscriptions.add(this.topic);
 
                     // Add a longer delay to ensure subscription is processed
@@ -789,7 +868,7 @@ export class BatchDeleteRecordingsClient {
 
         // Log the complete message
         console.log('Complete WebSocket message:', JSON.stringify(message, null, 2));
-        
+
         // Debug the client ID format
         console.log('Client ID format check:', {
             clientId,
@@ -831,7 +910,7 @@ export class BatchDeleteRecordingsClient {
                     console.warn('Client ID missing or incorrect in payload, fixing it');
                     message.payload.client_id = clientId;
                 }
-                
+
                 // Send directly to ensure it works
                 this.wsClient.socket.send(JSON.stringify(message));
                 console.log('Batch delete request sent successfully via direct socket send');
