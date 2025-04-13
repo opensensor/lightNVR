@@ -1066,7 +1066,8 @@ void websocket_handle_batch_delete_recordings(const char *client_id, const char 
             }
             mg_websocket_message_free(response);
         }
-        
+        free(json_str);
+
         return;
     }
     
