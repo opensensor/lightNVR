@@ -271,21 +271,30 @@ static AVFormatContext* setup_output_context(const char *output_file,
             switch ((*out_audio_stream)->codecpar->codec_id) {
                 case AV_CODEC_ID_AAC:
                     default_frame_size = 1024;
+                    (*out_audio_stream)->codecpar->frame_size = default_frame_size;
+                    log_info("Setting audio codec frame_size to %d for codec AAC",
+                            default_frame_size);
                     break;
                 case AV_CODEC_ID_MP3:
                     default_frame_size = 1152;
+                    (*out_audio_stream)->codecpar->frame_size = default_frame_size;
+                    log_info("Setting audio codec frame_size to %d for codec MP3",
+                            default_frame_size);
                     break;
                 case AV_CODEC_ID_OPUS:
-                    default_frame_size = 960;
+                    // For Opus, use a different frame size that works better with MP4
+                    default_frame_size = 1024; // Try a different value than 960
+                    (*out_audio_stream)->codecpar->frame_size = default_frame_size;
+                    log_info("Setting audio codec frame_size to %d for Opus codec (modified for MP4 compatibility)",
+                            default_frame_size);
                     break;
                 default:
-                    // Use the default
+                    // Use the default for other codecs
+                    (*out_audio_stream)->codecpar->frame_size = default_frame_size;
+                    log_info("Setting audio codec frame_size to %d for codec %s",
+                            default_frame_size, avcodec_get_name((*out_audio_stream)->codecpar->codec_id));
                     break;
             }
-
-            (*out_audio_stream)->codecpar->frame_size = default_frame_size;
-            log_info("Setting audio codec frame_size to %d for codec %s",
-                    default_frame_size, avcodec_get_name((*out_audio_stream)->codecpar->codec_id));
         }
 
         // Ensure sample rate is valid
@@ -704,33 +713,8 @@ static int process_audio_packet(AVPacket *pkt,
     // Set output stream index
     pkt->stream_index = out_audio_stream->index;
 
-    // CRITICAL FIX: Ensure audio codec frame size is set before writing packet
-    // This prevents the "track 1: codec frame size is not set" error
-    if (out_audio_stream->codecpar->frame_size == 0) {
-        // Set a default frame size based on codec
-        int default_frame_size = 1024; // Default for most audio codecs
-
-        // Adjust based on specific codecs if needed
-        switch (out_audio_stream->codecpar->codec_id) {
-            case AV_CODEC_ID_AAC:
-                default_frame_size = 1024;
-                break;
-            case AV_CODEC_ID_MP3:
-                default_frame_size = 1152;
-                break;
-            case AV_CODEC_ID_OPUS:
-                default_frame_size = 960;
-                log_info("Setting Opus codec frame_size to 960 for audio packet processing");
-                break;
-            default:
-                // Use the default
-                break;
-        }
-
-        log_warn("Audio codec frame_size not set before writing packet, setting to %d for codec %s",
-                default_frame_size, avcodec_get_name(out_audio_stream->codecpar->codec_id));
-        out_audio_stream->codecpar->frame_size = default_frame_size;
-    }
+    // We don't need to set the frame_size here as it's already set in setup_output_context
+    // and double-checked in record_segment. Setting it again here could cause memory corruption.
 
     // Write packet
     ret = av_interleaved_write_frame(output_ctx, pkt);
@@ -983,22 +967,27 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
             switch (out_audio_stream->codecpar->codec_id) {
                 case AV_CODEC_ID_AAC:
                     default_frame_size = 1024;
+                    log_warn("Audio codec frame_size still not set after setup, setting to %d for AAC codec", default_frame_size);
+                    out_audio_stream->codecpar->frame_size = default_frame_size;
                     break;
                 case AV_CODEC_ID_MP3:
                     default_frame_size = 1152;
+                    log_warn("Audio codec frame_size still not set after setup, setting to %d for MP3 codec", default_frame_size);
+                    out_audio_stream->codecpar->frame_size = default_frame_size;
                     break;
                 case AV_CODEC_ID_OPUS:
-                    default_frame_size = 960;
-                    log_info("Setting audio codec frame_size to %d for Opus codec", default_frame_size);
+                    // For Opus, use the same frame size as in setup_output_context
+                    default_frame_size = 1024;
+                    out_audio_stream->codecpar->frame_size = default_frame_size;
+                    log_info("Setting audio codec frame_size to %d for Opus codec in double-check", default_frame_size);
                     break;
                 default:
-                    // Use the default
+                    // Use the default for other codecs
+                    log_warn("Audio codec frame_size still not set after setup, setting to %d for codec %s",
+                            default_frame_size, avcodec_get_name(out_audio_stream->codecpar->codec_id));
+                    out_audio_stream->codecpar->frame_size = default_frame_size;
                     break;
             }
-
-            log_warn("Audio codec frame_size still not set after setup, setting to %d for codec %s",
-                    default_frame_size, avcodec_get_name(out_audio_stream->codecpar->codec_id));
-            out_audio_stream->codecpar->frame_size = default_frame_size;
         } else {
             log_debug("Audio codec frame_size is set to %d for codec %s",
                     out_audio_stream->codecpar->frame_size,
@@ -1149,18 +1138,38 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         log_error("Failed to finalize output: %d", ret);
     }
 
-    // Update static variables for next segment with improved thread safety
+    // IMPROVED CLEANUP: Handle static context with extra care to prevent memory corruption
     pthread_mutex_lock(&static_vars_mutex);
-    // If we already have a static input context, close it first to prevent memory leaks
+    
+    // Always close the previous static context if it's different from the current one
     if (static_input_ctx && static_input_ctx != input_ctx) {
         log_info("Closing previous static input context to prevent memory leaks");
         AVFormatContext *old_ctx = static_input_ctx;
         static_input_ctx = NULL; // Clear before closing to prevent race conditions
-        avformat_close_input(&old_ctx);
+        
+        // Extra safety: ensure the context is valid before closing
+        if (old_ctx && old_ctx->pb) {
+            avio_flush(old_ctx->pb);
+            avformat_close_input(&old_ctx);
+        } else if (old_ctx) {
+            avformat_free_context(old_ctx);
+        }
     }
 
-    // Validate input context before storing it
-    if (input_ctx && input_ctx->nb_streams > 0) {
+    // For Opus audio, don't reuse the context to avoid memory corruption
+    if (input_ctx && audio_stream_idx >= 0 && 
+        input_ctx->streams[audio_stream_idx] && 
+        input_ctx->streams[audio_stream_idx]->codecpar &&
+        input_ctx->streams[audio_stream_idx]->codecpar->codec_id == AV_CODEC_ID_OPUS) {
+        
+        log_info("Opus audio detected, not saving context for reuse to avoid memory corruption");
+        avformat_close_input(&input_ctx);
+        static_input_ctx = NULL;
+        segment_info.segment_index = 0;
+        segment_info.has_audio = false;
+    }
+    // For other codecs, validate and reuse the context if possible
+    else if (input_ctx && input_ctx->nb_streams > 0) {
         // Check if the input context is still valid
         int valid_context = 1;
         for (unsigned int i = 0; i < input_ctx->nb_streams; i++) {
@@ -1186,6 +1195,9 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         }
     } else {
         log_warn("Input context is NULL or has no streams, not saving as static context");
+        if (input_ctx) {
+            avformat_close_input(&input_ctx);
+        }
         static_input_ctx = NULL;
         segment_info.segment_index = 0;
         segment_info.has_audio = false;
