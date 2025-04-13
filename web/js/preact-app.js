@@ -255,7 +255,7 @@ function initApp() {
   loadFooter();
 
   // Load page-specific content using dynamic imports
-  if (currentPage === 'index.html') {
+  if (currentPage === 'index.html' || currentPage === '') {
     // Check if WebRTC is disabled before loading the view
     fetch('/api/settings')
       .then(response => response.json())
