@@ -38,6 +38,11 @@ if(CMAKE_BUILD_TYPE MATCHES "^[Dd][Ee][Bb][Uu][Gg]$")
         message(STATUS "Enabling AddressSanitizer and UndefinedBehaviorSanitizer for Debug build")
         add_compile_options(-fsanitize=address,undefined)
         add_link_options(-fsanitize=address,undefined)
+        add_compile_options(-ggdb3)
+
+        # improved debugging experience
+        add_compile_options(-fno-omit-frame-pointer -fno-optimize-sibling-calls)
+        add_compile_options(-fno-inline -fno-inline-functions)
     else()
         message(STATUS "Compiler (${CMAKE_C_COMPILER_ID}/${CMAKE_CXX_COMPILER_ID}) does not support sanitizers or build type is not Debug, skipping sanitizer flags.")
     endif()

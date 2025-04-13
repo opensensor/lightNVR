@@ -256,14 +256,33 @@ function initApp() {
 
   // Load page-specific content using dynamic imports
   if (currentPage === 'index.html') {
-    // Ensure the QueryClientProvider is fully initialized before loading WebRTCView
-    setTimeout(() => {
-      import('./components/preact/WebRTCView.js').then(module => {
-        module.loadWebRTCView();
-      }).catch(error => {
-        console.error('Error loading WebRTCView:', error);
+    // Check if WebRTC is disabled before loading the view
+    fetch('/api/settings')
+      .then(response => response.json())
+      .then(settings => {
+        if (settings.webrtc_disabled) {
+          // Load HLS view if WebRTC is disabled
+          import('./components/preact/LiveViewQuery.js').then(module => {
+            module.loadLiveView();
+          }).catch(error => {
+            console.error('Error loading LiveViewQuery:', error);
+          });
+        } else {
+          // Load WebRTC view if enabled
+          import('./components/preact/WebRTCView.js').then(module => {
+            module.loadWebRTCView();
+          }).catch(error => {
+            console.error('Error loading WebRTCView:', error);
+          });
+        }
+      })
+      .catch(error => {
+        console.error('Error checking WebRTC status:', error);
+        // Fall back to WebRTC view on error
+        import('./components/preact/WebRTCView.js').then(module => {
+          module.loadWebRTCView();
+        });
       });
-    }, 300); // Small delay to ensure proper initialization
   } else if (currentPage === 'hls.html') {
     import('./components/preact/LiveViewQuery.js').then(module => {
       module.loadLiveView();

@@ -73,7 +73,8 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
     // Special case for HLS streaming files
     if (strncmp(uri, "/hls/", 5) == 0) {
         // This is an HLS streaming request, serve it directly from the filesystem
-        config_t *global_config = get_streaming_config();
+        // Use the global configuration variable directly
+        config_t *global_config = &g_config;
         
         // Check for authentication
         log_info("Processing HLS request: %s", uri);
@@ -223,9 +224,33 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         }
     }
 
-    // Special handling for root path
-    if (strcmp(uri, "/") == 0) {
-        // Directly serve index.html for root path
+    // Special handling for root path or index.html
+    if (strcmp(uri, "/") == 0 || strcmp(uri, "/index.html") == 0) {
+        // Check if WebRTC is disabled in the configuration
+        config_t *global_config = &g_config;
+        if (global_config->webrtc_disabled) {
+            // WebRTC is disabled, serve hls.html directly
+            log_info("WebRTC is disabled, serving hls.html instead of index.html");
+            
+            // Use hls.html path instead
+            char index_path[MAX_PATH_LENGTH * 2];
+            snprintf(index_path, sizeof(index_path), "%s/hls.html", server->config.web_root);
+            
+            // Log the path we're trying to serve
+            log_info("Serving hls.html: %s", index_path);
+            
+            // Use Mongoose's built-in file serving capabilities
+            struct mg_http_serve_opts opts = {
+                .root_dir = server->config.web_root,
+                .mime_types = "html=text/html",
+                .extra_headers = "Connection: close\r\n"
+            };
+            
+            mg_http_serve_file(c, hm, index_path, &opts);
+            return;
+        }
+        
+        // WebRTC is enabled, serve index.html as normal
         char index_path[MAX_PATH_LENGTH * 2];
         
         // Add debug logging to help diagnose the issue
@@ -491,7 +516,29 @@ auth_success:
             }
         }
 
-        // For SPA routes, directly serve index.html without redirection
+        // Check if WebRTC is disabled in the configuration
+        config_t *global_config = &g_config;
+        if (global_config->webrtc_disabled) {
+            // WebRTC is disabled, redirect to hls.html
+            log_info("WebRTC is disabled, redirecting SPA route to hls.html");
+            
+            // Extract query string if present
+            char redirect_url[MAX_PATH_LENGTH * 2] = "/hls.html";
+            if (hm->query.len > 0) {
+                strncat(redirect_url, "?", sizeof(redirect_url) - strlen(redirect_url) - 1);
+                size_t remaining_space = sizeof(redirect_url) - strlen(redirect_url) - 1;
+                size_t copy_len = (hm->query.len < remaining_space) ? hm->query.len : remaining_space;
+                strncat(redirect_url, hm->query.buf, copy_len);
+            }
+            
+            mg_printf(c, "HTTP/1.1 302 Found\r\n");
+            mg_printf(c, "Location: %s\r\n", redirect_url);
+            mg_printf(c, "Content-Length: 0\r\n");
+            mg_printf(c, "\r\n");
+            return;
+        }
+        
+        // WebRTC is enabled, serve index.html as normal
         char index_path[MAX_PATH_LENGTH * 2];
         snprintf(index_path, sizeof(index_path), "%s/index.html", server->config.web_root);
         

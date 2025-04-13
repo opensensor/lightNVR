@@ -84,6 +84,7 @@ typedef struct {
     bool web_auth_enabled;
     char web_username[32];
     char web_password[32]; // Stored as hash in actual implementation
+    bool webrtc_disabled;  // Whether WebRTC is disabled (use HLS only)
     
     // Web optimization settings
     bool web_compression_enabled;    // Whether to enable gzip compression for text-based responses
@@ -213,5 +214,12 @@ const char* get_loaded_config_path(void);
 
 // Global configuration variable
 extern config_t g_config;
+
+/**
+ * Get a pointer to the global streaming configuration
+ * 
+ * @return Pointer to the global configuration
+ */
+config_t* get_streaming_config(void);
 
 #endif /* LIGHTNVR_CONFIG_H */

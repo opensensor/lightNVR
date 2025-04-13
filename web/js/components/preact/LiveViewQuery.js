@@ -10,6 +10,7 @@ import { QueryClientProvider, queryClient } from '../../query-client.js';
 
 // Import modular components
 import { useStreams, useStreamDetails, updateVideoGrid, filterStreamsForLiveView } from './StreamGridQuery.js';
+import { useQuery } from '../../query-client.js';
 import { stopAllStreams } from './VideoPlayer.js';
 import { toggleFullscreen, exitFullscreenMode } from './FullscreenManager.js';
 
@@ -44,6 +45,21 @@ export function LiveView() {
   const videoGridRef = useRef(null);
   const videoPlayers = useRef({});
   const detectionIntervals = useRef({});
+
+  // Fetch settings to check if WebRTC is disabled
+  const {
+    data: settings,
+    isLoading: isLoadingSettings
+  } = useQuery({
+    queryKey: ['settings'],
+    queryFn: async () => {
+      const response = await fetch('/api/settings');
+      if (!response.ok) {
+        throw new Error('Failed to fetch settings');
+      }
+      return response.json();
+    }
+  });
 
   // Fetch streams using preact-query
   const {
@@ -235,15 +251,17 @@ export function LiveView() {
       <div class="page-header flex justify-between items-center mb-4 p-4 bg-white dark:bg-gray-800 rounded-lg shadow">
         <div class="flex items-center space-x-2">
           <h2 class="text-xl font-bold mr-4">Live View</h2>
-          <div class="flex space-x-2">
-            <button
-              id="webrtc-toggle-btn"
-              class="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
-              onClick=${() => window.location.href = '/index.html'}
-            >
-              WebRTC View
-            </button>
-          </div>
+          ${!settings?.webrtc_disabled && html`
+            <div class="flex space-x-2">
+              <button
+                id="webrtc-toggle-btn"
+                class="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+                onClick=${() => window.location.href = '/index.html'}
+              >
+                WebRTC View
+              </button>
+            </div>
+          `}
         </div>
 
         <div class="flex space-x-4">

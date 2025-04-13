@@ -37,6 +37,7 @@ void mg_handle_get_settings(struct mg_connection *c, struct mg_http_message *hm)
     cJSON_AddStringToObject(settings, "web_root", g_config.web_root);
     cJSON_AddBoolToObject(settings, "web_auth_enabled", g_config.web_auth_enabled);
     cJSON_AddStringToObject(settings, "web_username", g_config.web_username);
+    cJSON_AddBoolToObject(settings, "webrtc_disabled", g_config.webrtc_disabled);
     
     // Don't include the password for security reasons
     cJSON_AddStringToObject(settings, "web_password", "********");
@@ -133,6 +134,14 @@ void mg_handle_post_settings(struct mg_connection *c, struct mg_http_message *hm
         g_config.web_password[sizeof(g_config.web_password) - 1] = '\0';
         settings_changed = true;
         log_info("Updated web_password");
+    }
+    
+    // WebRTC disabled
+    cJSON *webrtc_disabled = cJSON_GetObjectItem(settings, "webrtc_disabled");
+    if (webrtc_disabled && cJSON_IsBool(webrtc_disabled)) {
+        g_config.webrtc_disabled = cJSON_IsTrue(webrtc_disabled);
+        settings_changed = true;
+        log_info("Updated webrtc_disabled: %s", g_config.webrtc_disabled ? "true" : "false");
     }
     
     // Storage path

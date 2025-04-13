@@ -26,6 +26,7 @@ export function SettingsView() {
     authEnabled: true,
     username: 'admin',
     password: 'admin',
+    webrtcDisabled: false, // Whether WebRTC is disabled (use HLS only)
     bufferSize: '1024',
     useSwap: true,
     swapSize: '128',
@@ -94,6 +95,7 @@ export function SettingsView() {
         authEnabled: settingsData.web_auth_enabled || false,
         username: settingsData.web_username || '',
         password: settingsData.web_password || '',
+        webrtcDisabled: settingsData.webrtc_disabled || false,
         bufferSize: settingsData.buffer_size?.toString() || '',
         useSwap: settingsData.use_swap || false,
         swapSize: settingsData.swap_size?.toString() || '',
@@ -126,6 +128,7 @@ export function SettingsView() {
       web_auth_enabled: settings.authEnabled,
       web_username: settings.username,
       web_password: settings.password,
+      webrtc_disabled: settings.webrtcDisabled,
       buffer_size: parseInt(settings.bufferSize, 10),
       use_swap: settings.useSwap,
       swap_size: parseInt(settings.swapSize, 10),
@@ -327,6 +330,20 @@ export function SettingsView() {
               value=${settings.password}
               onChange=${handleInputChange}
             />
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-webrtc-disabled" class="font-medium">Disable WebRTC (Use HLS Only)</label>
+            <div class="col-span-2">
+              <input 
+                type="checkbox" 
+                id="setting-webrtc-disabled" 
+                name="webrtcDisabled"
+                class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 dark:bg-gray-700 dark:border-gray-600"
+                checked=${settings.webrtcDisabled}
+                onChange=${handleInputChange}
+              />
+              <span class="hint ml-2 text-sm text-gray-500 dark:text-gray-400">When enabled, all streams will use HLS instead of WebRTC</span>
+            </div>
           </div>
           </div>
           
