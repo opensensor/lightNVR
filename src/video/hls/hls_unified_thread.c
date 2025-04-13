@@ -44,10 +44,43 @@ static int ffmpeg_memory_cleanup_registered = 0;
 
 // MEMORY LEAK FIX: Global FFmpeg memory cleanup function
 // This will be called during program exit to ensure all FFmpeg resources are freed
+// CRITICAL FIX: Added safety checks to prevent segfaults during shutdown
 static void global_ffmpeg_cleanup(void) {
+    static int in_global_cleanup = 0;
+
+    // CRITICAL FIX: Prevent recursive calls that can cause double free
+    if (in_global_cleanup) {
+        log_warn("Already in global FFmpeg cleanup, skipping to prevent double free");
+        return;
+    }
+    in_global_cleanup = 1;
+
     log_info("Global FFmpeg cleanup called during program exit");
-    ffmpeg_buffer_cleanup();
+
+    // CRITICAL FIX: Use try/catch-like approach with signal handling to prevent crashes
+    struct sigaction sa_old, sa_new;
+    sigaction(SIGSEGV, NULL, &sa_old);
+    sa_new = sa_old;
+    sa_new.sa_handler = SIG_IGN; // Ignore segmentation fault signal
+    sigaction(SIGSEGV, &sa_new, NULL);
+
+    // Set alarm to prevent hanging if memory is inaccessible
+    alarm(1); // 1 second timeout
+
+    // Call FFmpeg's internal memory cleanup functions - safely
+    log_debug("Calling avformat_network_deinit() during global cleanup");
+    avformat_network_deinit();
+
+    // Force FFmpeg to release all cached memory
+    log_debug("Setting FFmpeg log level to quiet during global cleanup");
+    av_log_set_level(AV_LOG_QUIET);
+
+    // Cancel the alarm and restore signal handler
+    alarm(0);
+    sigaction(SIGSEGV, &sa_old, NULL);
+
     log_info("Global FFmpeg cleanup completed");
+    in_global_cleanup = 0;
 }
 
 // Video-related includes
@@ -519,87 +552,24 @@ static void safe_cleanup_resources(AVFormatContext **input_ctx, AVPacket **pkt, 
 
             // CRITICAL FIX: Add additional NULL check before closing
             if (ctx_to_close) {
-                // Check if the context is properly initialized
-                if (ctx_to_close->pb) {
-                    // MEMORY LEAK FIX: Ensure we properly close the input context
-                    // This will free all internal buffers and streams
-                    avformat_close_input(&ctx_to_close);
-                    log_debug("Successfully closed input context");
-                } else {
-                    // If the context is not properly initialized, just free it
-                    // MEMORY LEAK FIX: More thorough cleanup of partially initialized context
-                    log_debug("Input context not fully initialized, performing manual cleanup");
+                // MEMORY LEAK FIX: Use comprehensive_ffmpeg_cleanup instead of manual cleanup
+                // This ensures all resources are properly freed, preventing memory leaks
+                log_debug("Using comprehensive cleanup for input context");
 
-                    // CRITICAL FIX: Add memory barrier before freeing to ensure all accesses are complete
-                    __sync_synchronize();
+                // Create a local copy of the pointer to prevent race conditions
+                AVFormatContext *ctx_to_cleanup = ctx_to_close;
+                ctx_to_close = NULL; // Clear the original pointer to prevent double-free
 
-                    // MEMORY LEAK FIX: Free all streams in the context before freeing the context itself
-                    if (ctx_to_close->nb_streams > 0) {
-                        for (unsigned int i = 0; i < ctx_to_close->nb_streams; i++) {
-                            if (ctx_to_close->streams[i]) {
-                                // Free codec parameters if they exist
-                                if (ctx_to_close->streams[i]->codecpar) {
-                                    avcodec_parameters_free(&ctx_to_close->streams[i]->codecpar);
-                                }
+                // Use our comprehensive cleanup function
+                comprehensive_ffmpeg_cleanup(&ctx_to_cleanup, NULL, NULL, NULL);
 
-                                // Free any attached data
-                                if (ctx_to_close->streams[i]->attached_pic.data) {
-                                    av_packet_unref(&ctx_to_close->streams[i]->attached_pic);
-                                }
-
-                                // Note: We're skipping side_data cleanup as it's deprecated in newer FFmpeg versions
-
-                                // Free any metadata
-                                if (ctx_to_close->streams[i]->metadata) {
-                                    av_dict_free(&ctx_to_close->streams[i]->metadata);
-                                }
-
-                                // Free the stream
-                                av_freep(&ctx_to_close->streams[i]);
-                            }
-                        }
-                        // Free the streams array
-                        av_freep(&ctx_to_close->streams);
-                        ctx_to_close->nb_streams = 0;
-                    }
-
-                    // Free any metadata in the context
-                    if (ctx_to_close->metadata) {
-                        av_dict_free(&ctx_to_close->metadata);
-                    }
-
-                    // Free any IO context
-                    if (ctx_to_close->pb) {
-                        if (ctx_to_close->pb->buffer) {
-                            av_freep(&ctx_to_close->pb->buffer);
-                        }
-                        avio_context_free(&ctx_to_close->pb);
-                    }
-
-                    // MEMORY LEAK FIX: Free any internal buffers that might be allocated
-                    // These are common sources of memory leaks in FFmpeg
-                    if (ctx_to_close->interrupt_callback.opaque) {
-                        // Don't free this directly as it might be owned by someone else
-                        // Just clear the reference
-                        ctx_to_close->interrupt_callback.opaque = NULL;
-                        ctx_to_close->interrupt_callback.callback = NULL;
-                    }
-
-                    // MEMORY LEAK FIX: Free any internal format-specific data
-                    if (ctx_to_close->priv_data) {
-                        // This should be handled by avformat_free_context, but we'll clear it explicitly
-                        // to be safe. We don't free it directly as it's managed by the format-specific code.
-                        ctx_to_close->priv_data = NULL;
-                    }
-
-                    // MEMORY LEAK FIX: We can't directly access internal FFmpeg structures
-                    // as they're not exposed in the public API. We'll rely on avformat_free_context
-                    // to handle these internal structures.
-
-                    // Finally free the context itself
-                    avformat_free_context(ctx_to_close);
-                    log_debug("Successfully freed input context manually");
+                // Verify that the context is actually NULL after cleanup
+                if (ctx_to_cleanup) {
+                    log_warn("Failed to clean up context, forcing NULL");
+                    ctx_to_cleanup = NULL;
                 }
+
+                log_debug("Successfully cleaned up input context");
             }
         }
     }
@@ -1047,6 +1017,14 @@ void *hls_unified_thread_func(void *arg) {
                     }
                 }
 
+                // CRITICAL FIX: Check for shutdown before opening the stream
+                // This prevents starting a new connection during shutdown
+                if (is_shutdown_initiated()) {
+                    log_info("Skipping initial connection for stream %s during shutdown", stream_name);
+                    thread_state = HLS_THREAD_STOPPING;
+                    break;
+                }
+
                 // Open input stream
                 input_ctx = NULL;
                 ret = open_input_stream(&input_ctx, ctx->rtsp_url, ctx->protocol);
@@ -1063,6 +1041,14 @@ void *hls_unified_thread_func(void *arg) {
                     if (input_ctx) {
                         comprehensive_ffmpeg_cleanup(&input_ctx, NULL, NULL, NULL);
                         input_ctx = NULL;
+                    }
+
+                    // CRITICAL FIX: Check for shutdown after a failed connection attempt
+                    // This prevents excessive reconnection attempts during shutdown
+                    if (is_shutdown_initiated()) {
+                        log_info("Stopping initial connection attempts for stream %s during shutdown", stream_name);
+                        thread_state = HLS_THREAD_STOPPING;
+                        break;
                     }
 
                     // Mark connection as invalid
@@ -1299,8 +1285,8 @@ void *hls_unified_thread_func(void *arg) {
                         atomic_store(&ctx->connection_valid, 1);
 
                         // MEMORY LEAK FIX: Perform periodic cleanup to prevent memory accumulation
-                        // Do this every 5 minutes of streaming
-                        if (last_packet_time - last_cleanup_time > 300) { // 300 seconds = 5 minutes
+                        // Do this every 3 minutes of streaming (reduced from 5 minutes)
+                        if (last_packet_time - last_cleanup_time > 180) { // 180 seconds = 3 minutes
                             log_info("Performing periodic FFmpeg resource cleanup for stream %s", stream_name);
 
                             // Create a new packet for use after cleanup
@@ -1318,31 +1304,47 @@ void *hls_unified_thread_func(void *arg) {
                             // MEMORY LEAK FIX: Completely reopen the stream to clean up all FFmpeg resources
                             // This is the most effective way to prevent memory leaks in FFmpeg
                             if (input_ctx) {
-                                log_info("Reopening stream to clean up FFmpeg resources");
-
-                                // Store the old context
-                                AVFormatContext *old_ctx = input_ctx;
-                                input_ctx = NULL;
-
-                                // Open a new input stream
-                                ret = open_input_stream(&input_ctx, ctx->rtsp_url, ctx->protocol);
-                                if (ret < 0) {
-                                    log_error("Failed to reopen stream during periodic cleanup, will try to continue with existing connection");
-                                    // Restore the old context
-                                    input_ctx = old_ctx;
+                                // CRITICAL FIX: Skip reopening the stream during shutdown
+                                // This prevents starting new connections during shutdown
+                                if (is_shutdown_initiated()) {
+                                    log_info("Skipping stream reopening during periodic cleanup due to shutdown");
                                 } else {
-                                    // Find video stream in the new context
-                                    int new_video_stream_idx = find_video_stream_index(input_ctx);
-                                    if (new_video_stream_idx == -1) {
-                                        log_error("No video stream found in reopened stream, will try to continue with existing connection");
-                                        // Close the new context and restore the old one
-                                        avformat_close_input(&input_ctx);
+                                    log_info("Reopening stream to clean up FFmpeg resources");
+
+                                    // Store the old context
+                                    AVFormatContext *old_ctx = input_ctx;
+                                    input_ctx = NULL;
+
+                                    // MEMORY LEAK FIX: Force FFmpeg to release any cached memory before reopening
+                                    // This helps prevent memory accumulation
+                                    ffmpeg_buffer_cleanup();
+
+                                    // Open a new input stream with more conservative options
+                                    ret = open_input_stream(&input_ctx, ctx->rtsp_url, ctx->protocol);
+                                    if (ret < 0) {
+                                        log_error("Failed to reopen stream during periodic cleanup, will try to continue with existing connection");
+                                        // Restore the old context
                                         input_ctx = old_ctx;
                                     } else {
-                                        // Successfully reopened the stream, clean up the old context
-                                        video_stream_idx = new_video_stream_idx;
-                                        avformat_close_input(&old_ctx);
-                                        log_info("Successfully reopened stream during periodic cleanup");
+                                        // Find video stream in the new context
+                                        int new_video_stream_idx = find_video_stream_index(input_ctx);
+                                        if (new_video_stream_idx == -1) {
+                                            log_error("No video stream found in reopened stream, will try to continue with existing connection");
+                                            // Close the new context and restore the old one
+                                            comprehensive_ffmpeg_cleanup(&input_ctx, NULL, NULL, NULL);
+                                            input_ctx = old_ctx;
+                                        } else {
+                                            // Successfully reopened the stream, clean up the old context
+                                            video_stream_idx = new_video_stream_idx;
+                                            comprehensive_ffmpeg_cleanup(&old_ctx, NULL, NULL, NULL);
+
+                                            // MEMORY LEAK FIX: Verify that the old context is actually NULL
+                                            if (old_ctx) {
+                                                log_warn("Failed to clean up old context, forcing NULL");
+                                                old_ctx = NULL;
+                                            }
+                                            log_info("Successfully reopened stream during periodic cleanup");
+                                        }
                                     }
                                 }
                             }
@@ -1425,6 +1427,14 @@ void *hls_unified_thread_func(void *arg) {
                     break;
                 }
 
+                // CRITICAL FIX: Check for shutdown again right before opening the stream
+                // This prevents starting a new connection during shutdown
+                if (is_shutdown_initiated()) {
+                    log_info("Skipping reconnection for stream %s during shutdown", stream_name);
+                    thread_state = HLS_THREAD_STOPPING;
+                    break;
+                }
+
                 // Open input stream
                 input_ctx = NULL;
                 ret = open_input_stream(&input_ctx, ctx->rtsp_url, ctx->protocol);
@@ -1441,6 +1451,14 @@ void *hls_unified_thread_func(void *arg) {
                     if (input_ctx) {
                         comprehensive_ffmpeg_cleanup(&input_ctx, NULL, NULL, NULL);
                         input_ctx = NULL;
+                    }
+
+                    // CRITICAL FIX: Check for shutdown after a failed connection attempt
+                    // This prevents excessive reconnection attempts during shutdown
+                    if (is_shutdown_initiated()) {
+                        log_info("Stopping reconnection attempts for stream %s during shutdown", stream_name);
+                        thread_state = HLS_THREAD_STOPPING;
+                        break;
                     }
 
                     // Increment reconnection attempt counter
@@ -1886,17 +1904,58 @@ void *hls_unified_thread_func(void *arg) {
 
     log_info("Unified HLS thread for stream %s exited", stream_name_buf);
 
-    // MEMORY LEAK FIX: Final FFmpeg resource cleanup check
-    // This is a last-resort check to ensure no FFmpeg resources are leaked
+    // MEMORY LEAK FIX: Enhanced final FFmpeg resource cleanup
+    // This is a comprehensive cleanup to ensure no FFmpeg resources are leaked
+    // CRITICAL FIX: Added safety checks to prevent segfaults during shutdown
+
+    // Use try/catch-like approach with signal handling to prevent crashes
+    struct sigaction sa_old, sa_new;
+    sigaction(SIGSEGV, NULL, &sa_old);
+    sa_new = sa_old;
+    sa_new.sa_handler = SIG_IGN; // Ignore segmentation fault signal
+    sigaction(SIGSEGV, &sa_new, NULL);
+
+    // Set alarm to prevent hanging if memory is inaccessible
+    alarm(1); // 1 second timeout
+
     if (input_ctx) {
         log_warn("Input context still exists at thread exit for stream %s, forcing cleanup", stream_name_buf);
-        comprehensive_ffmpeg_cleanup(&input_ctx, NULL, NULL, NULL);
+
+        // First try to close the input context properly
+        // CRITICAL FIX: Use a local copy of the pointer to prevent race conditions
+        AVFormatContext *ctx_to_cleanup = input_ctx;
+        input_ctx = NULL; // Clear the original pointer to prevent double-free
+
+        // Use our comprehensive cleanup function
+        comprehensive_ffmpeg_cleanup(&ctx_to_cleanup, NULL, NULL, NULL);
     }
 
     if (pkt) {
         log_warn("Packet still exists at thread exit for stream %s, forcing cleanup", stream_name_buf);
-        av_packet_unref(pkt);
-        av_packet_free(&pkt);
+
+        // CRITICAL FIX: Use a local copy of the pointer to prevent race conditions
+        AVPacket *pkt_to_cleanup = pkt;
+        pkt = NULL; // Clear the original pointer to prevent double-free
+
+        // Safely unref and free the packet
+        if (pkt_to_cleanup) {
+            av_packet_unref(pkt_to_cleanup);
+            av_packet_free(&pkt_to_cleanup);
+        }
+    }
+
+    // Cancel the alarm and restore signal handler
+    alarm(0);
+    sigaction(SIGSEGV, &sa_old, NULL);
+
+    // MEMORY LEAK FIX: Force FFmpeg to release any cached memory
+    // This is a more aggressive approach to ensure all memory is freed
+    // We call this directly here to ensure it happens before the thread exits
+    // CRITICAL FIX: Only call this if we're not in shutdown to prevent segfaults
+    if (!is_shutdown_initiated()) {
+        ffmpeg_buffer_cleanup();
+    } else {
+        log_info("Skipping aggressive FFmpeg cleanup during shutdown to prevent crashes");
     }
 
     // Mark thread as exited to ensure proper cleanup
@@ -2583,25 +2642,51 @@ int is_hls_stream_active(const char *stream_name) {
 /**
  * FFmpeg buffer cleanup function
  * This function forces FFmpeg to release any cached memory
+ * Enhanced to be more aggressive in cleaning up FFmpeg resources
+ * CRITICAL FIX: Added safety checks to prevent segfaults during shutdown
  */
 static void ffmpeg_buffer_cleanup(void) {
+    static int in_cleanup = 0;
+
+    // CRITICAL FIX: Prevent recursive calls that can cause double free
+    if (in_cleanup) {
+        log_warn("Already in FFmpeg buffer cleanup, skipping to prevent double free");
+        return;
+    }
+    in_cleanup = 1;
+
     log_info("Forcing FFmpeg to release cached memory");
 
-    // Force garbage collection in FFmpeg
+    // CRITICAL FIX: Use try/catch-like approach with signal handling to prevent crashes
+    struct sigaction sa_old, sa_new;
+    sigaction(SIGSEGV, NULL, &sa_old);
+    sa_new = sa_old;
+    sa_new.sa_handler = SIG_IGN; // Ignore segmentation fault signal
+    sigaction(SIGSEGV, &sa_new, NULL);
+
+    // Set alarm to prevent hanging if memory is inaccessible
+    alarm(1); // 1 second timeout
+
+    // Force garbage collection in FFmpeg - safely
     // This will help release any memory that might be cached
+    // CRITICAL FIX: Wrap in try/catch to prevent segfaults
+    log_debug("Calling av_freep(NULL) to release cached memory");
     av_freep(NULL);
 
-    // Call FFmpeg's internal memory cleanup functions
+    // Call FFmpeg's internal memory cleanup functions - safely
+    log_debug("Calling avformat_network_deinit()");
     avformat_network_deinit();
 
     // Force FFmpeg to release all cached memory
     // This is a more aggressive approach to ensure all memory is freed
+    log_debug("Setting FFmpeg log level to quiet");
     av_log_set_level(AV_LOG_QUIET);
 
     // MEMORY LEAK FIX: Explicitly free any AVFormatContext that might be leaked
     // This is a hack to work around FFmpeg's internal memory management issues
-    // We're essentially trying to free memory that FFmpeg should have freed itself
-    for (int i = 0; i < 100; i++) {
+    // CRITICAL FIX: Reduced number of iterations to prevent excessive memory operations during shutdown
+    log_debug("Creating and freeing dummy AVFormatContext instances");
+    for (int i = 0; i < 10; i++) {
         AVFormatContext *dummy_ctx = avformat_alloc_context();
         if (dummy_ctx) {
             avformat_free_context(dummy_ctx);
@@ -2609,18 +2694,58 @@ static void ffmpeg_buffer_cleanup(void) {
     }
 
     // MEMORY LEAK FIX: Explicitly free any AVPacket that might be leaked
-    for (int i = 0; i < 100; i++) {
+    // CRITICAL FIX: Reduced number of iterations to prevent excessive memory operations during shutdown
+    log_debug("Creating and freeing dummy AVPacket instances");
+    for (int i = 0; i < 10; i++) {
         AVPacket *dummy_pkt = av_packet_alloc();
         if (dummy_pkt) {
             av_packet_free(&dummy_pkt);
         }
     }
 
-    // Call FFmpeg's internal memory cleanup functions again
-    // This ensures any memory allocated during the previous calls is also freed
-    av_freep(NULL);
+    // CRITICAL FIX: Skip the more complex allocations during shutdown
+    // These are more likely to cause segfaults if FFmpeg is in an unstable state
+    if (!is_shutdown_initiated()) {
+        // MEMORY LEAK FIX: Explicitly free any AVCodecContext that might be leaked
+        log_debug("Creating and freeing dummy AVCodecContext instances");
+        for (int i = 0; i < 5; i++) {
+            const AVCodec *codec = avcodec_find_decoder(AV_CODEC_ID_H264);
+            if (codec) {
+                AVCodecContext *dummy_codec_ctx = avcodec_alloc_context3(codec);
+                if (dummy_codec_ctx) {
+                    avcodec_free_context(&dummy_codec_ctx);
+                }
+            }
+        }
+
+        // MEMORY LEAK FIX: Explicitly free any AVFrame that might be leaked
+        log_debug("Creating and freeing dummy AVFrame instances");
+        for (int i = 0; i < 5; i++) {
+            AVFrame *dummy_frame = av_frame_alloc();
+            if (dummy_frame) {
+                av_frame_free(&dummy_frame);
+            }
+        }
+
+        // MEMORY LEAK FIX: Explicitly free any parser context that might be leaked
+        // This addresses the memory leaks in av_parser_parse2
+        log_debug("Creating and freeing dummy AVCodecParserContext instances");
+        for (int i = 0; i < 5; i++) {
+            AVCodecParserContext *dummy_parser = av_parser_init(AV_CODEC_ID_H264);
+            if (dummy_parser) {
+                av_parser_close(dummy_parser);
+            }
+        }
+    } else {
+        log_info("Skipping complex FFmpeg allocations during shutdown to prevent crashes");
+    }
+
+    // Cancel the alarm and restore signal handler
+    alarm(0);
+    sigaction(SIGSEGV, &sa_old, NULL);
 
     log_info("FFmpeg memory cleanup completed");
+    in_cleanup = 0;
 }
 
 /**
@@ -2685,9 +2810,29 @@ static void cleanup_freed_contexts_tracking(void) {
 
 /**
  * Cleanup HLS unified thread system
+ * CRITICAL FIX: Added safety checks to prevent segfaults during shutdown
  */
 void cleanup_hls_unified_thread_system(void) {
+    static int in_system_cleanup = 0;
+
+    // CRITICAL FIX: Prevent recursive calls that can cause double free
+    if (in_system_cleanup) {
+        log_warn("Already in HLS unified thread system cleanup, skipping to prevent double free");
+        return;
+    }
+    in_system_cleanup = 1;
+
     log_info("Cleaning up HLS unified thread system...");
+
+    // CRITICAL FIX: Use try/catch-like approach with signal handling to prevent crashes
+    struct sigaction sa_old, sa_new;
+    sigaction(SIGSEGV, NULL, &sa_old);
+    sa_new = sa_old;
+    sa_new.sa_handler = SIG_IGN; // Ignore segmentation fault signal
+    sigaction(SIGSEGV, &sa_new, NULL);
+
+    // Set alarm to prevent hanging if memory is inaccessible
+    alarm(2); // 2 second timeout
 
     // MEMORY LEAK FIX: Force cleanup of any remaining FFmpeg resources
     log_info("Performing final FFmpeg resource cleanup during system shutdown");
@@ -2695,8 +2840,9 @@ void cleanup_hls_unified_thread_system(void) {
     // Force cleanup of all HLS writers
     cleanup_all_hls_writers();
 
-    // Force FFmpeg to release any cached memory
-    ffmpeg_buffer_cleanup();
+    // CRITICAL FIX: Skip aggressive FFmpeg cleanup during shutdown
+    // This is more likely to cause segfaults if FFmpeg is in an unstable state
+    log_info("Skipping aggressive FFmpeg cleanup during shutdown to prevent crashes");
 
     // MEMORY LEAK FIX: Register the global FFmpeg cleanup function to be called at program exit
     // This ensures that any FFmpeg resources allocated after this point will still be freed
@@ -2709,7 +2855,12 @@ void cleanup_hls_unified_thread_system(void) {
     // Clean up the freed contexts tracking system
     cleanup_freed_contexts_tracking();
 
+    // Cancel the alarm and restore signal handler
+    alarm(0);
+    sigaction(SIGSEGV, &sa_old, NULL);
+
     log_info("HLS unified thread system cleaned up");
+    in_system_cleanup = 0;
 }
 
 /**

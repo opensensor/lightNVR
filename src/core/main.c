@@ -1322,6 +1322,12 @@ cleanup:
  * Function to check and ensure recording is active for streams that have recording enabled
  */
 static void check_and_ensure_services(void) {
+    // CRITICAL FIX: Skip starting new services during shutdown
+    // This prevents memory leaks caused by starting new threads during shutdown
+    if (is_shutdown_initiated()) {
+        log_debug("Skipping service check during shutdown");
+        return;
+    }
     for (int i = 0; i < config.max_streams; i++) {
         if (config.streams[i].name[0] != '\0' && config.streams[i].enabled && config.streams[i].record) {
             // Check if MP4 recording is active for this stream

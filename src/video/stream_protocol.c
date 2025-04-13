@@ -221,6 +221,14 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
     AVDictionary *input_options = NULL;
     bool is_multicast = false;
 
+    // CRITICAL FIX: Check for shutdown before opening a new input stream
+    // This prevents opening new connections during shutdown which can cause memory leaks
+    extern bool is_shutdown_initiated(void);
+    if (is_shutdown_initiated()) {
+        log_info("Skipping input stream open for %s during shutdown", url);
+        return AVERROR(EINTR); // Interrupted system call
+    }
+
     // Validate input parameters
     if (!input_ctx || !url || strlen(url) < 5) {
         log_error("Invalid parameters for open_input_stream: ctx=%p, url=%s",

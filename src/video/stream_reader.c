@@ -721,6 +721,14 @@ void cleanup_stream_reader_backend(void) {
  */
 stream_reader_ctx_t *start_stream_reader(const char *stream_name, int dedicated,
                                         packet_callback_t callback, void *user_data) {
+    // CRITICAL FIX: Check for shutdown before starting a new stream reader
+    // This prevents starting new threads during shutdown which can cause memory leaks
+    extern bool is_shutdown_initiated(void);
+    if (is_shutdown_initiated()) {
+        log_info("Skipping stream reader start for %s during shutdown", stream_name);
+        return NULL;
+    }
+
     stream_handle_t stream = get_stream_by_name(stream_name);
     if (!stream) {
         log_error("Stream %s not found for stream reader", stream_name);
