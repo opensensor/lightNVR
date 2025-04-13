@@ -914,13 +914,13 @@ int main(int argc, char *argv[]) {
     // Print initial detection stream status
     print_detection_stream_status();
 
+    check_and_ensure_services();
+
     // Main loop
     while (running) {
         // Log that the daemon is still running (maybe once per minute)
         static time_t last_log_time = 0;
         static time_t last_status_time = 0;
-        static time_t last_recording_check_time = 0;
-        static time_t last_ffmpeg_dump_time = 0;
         static time_t last_ffmpeg_leak_check_time = 0;
         time_t now = time(NULL);
 
@@ -933,12 +933,6 @@ int main(int argc, char *argv[]) {
         if (now - last_status_time > 300) {
             print_detection_stream_status();
             last_status_time = now;
-        }
-
-        // Check and ensure recording is active every minute
-        if (now - last_recording_check_time > 60) {
-            check_and_ensure_services();
-            last_recording_check_time = now;
         }
 
         // Check for FFmpeg memory leaks every 10 minutes

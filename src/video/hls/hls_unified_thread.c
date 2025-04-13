@@ -819,10 +819,6 @@ void *hls_unified_thread_func(void *arg) {
     int reconnect_attempt = 0;
     int reconnect_delay_ms = BASE_RECONNECT_DELAY_MS;
     time_t last_packet_time = 0;
-    bool resources_cleaned_up = false;
-
-    // MEMORY LEAK FIX: Track the last time we performed a periodic cleanup
-    time_t last_cleanup_time = time(NULL);
 
     // Validate context
     if (!ctx) {
@@ -1300,98 +1296,6 @@ void *hls_unified_thread_func(void *arg) {
                         atomic_store(&ctx->last_packet_time, (int_fast64_t)last_packet_time);
                         atomic_store(&ctx->consecutive_failures, 0);
                         atomic_store(&ctx->connection_valid, 1);
-
-                        // MEMORY LEAK FIX: Perform periodic cleanup to prevent memory accumulation
-                        // Do this every 3 minutes of streaming (reduced from 5 minutes)
-                        if (last_packet_time - last_cleanup_time > 180) { // 180 seconds = 3 minutes
-                            log_info("Performing periodic FFmpeg resource cleanup for stream %s", stream_name);
-
-                            // Create a new packet for use after cleanup
-                            AVPacket *new_pkt = av_packet_alloc();
-                            if (!new_pkt) {
-                                log_error("Failed to allocate new packet during periodic cleanup");
-                                // Continue with the old packet
-                            } else {
-                                // Free the old packet
-                                av_packet_unref(pkt);
-                                av_packet_free(&pkt);
-                                pkt = new_pkt;
-                            }
-
-                            // MEMORY LEAK FIX: Completely reopen the stream to clean up all FFmpeg resources
-                            // This is the most effective way to prevent memory leaks in FFmpeg
-                            if (input_ctx) {
-                                // CRITICAL FIX: Skip reopening the stream during shutdown
-                                // This prevents starting new connections during shutdown
-                                if (is_shutdown_initiated()) {
-                                    log_info("Skipping stream reopening during periodic cleanup due to shutdown");
-                                } else {
-                                    log_info("Reopening stream to clean up FFmpeg resources");
-
-                                    // Store the old context
-                                    AVFormatContext *old_ctx = input_ctx;
-                                    input_ctx = NULL;
-
-                                    // MEMORY LEAK FIX: Force FFmpeg to release any cached memory before reopening
-                                    // This helps prevent memory accumulation
-                                    ffmpeg_buffer_cleanup();
-
-                                    // CRITICAL FIX: Add memory barrier before opening input stream
-                                    // This ensures all previous memory operations are completed
-                                    __sync_synchronize();
-
-                                    // Open a new input stream with more conservative options
-                                    ret = open_input_stream(&input_ctx, ctx->rtsp_url, ctx->protocol);
-                                    if (ret < 0) {
-                                        log_error("Failed to reopen stream during periodic cleanup, will try to continue with existing connection");
-                                        // Restore the old context
-                                        input_ctx = old_ctx;
-                                    } else {
-                                        // Find video stream in the new context
-                                        int new_video_stream_idx = find_video_stream_index(input_ctx);
-                                        if (new_video_stream_idx == -1) {
-                                            log_error("No video stream found in reopened stream, will try to continue with existing connection");
-                                            // Close the new context and restore the old one
-
-                                            // CRITICAL FIX: Create a local copy of the pointer to prevent race conditions
-                                            AVFormatContext *ctx_to_cleanup = input_ctx;
-                                            input_ctx = NULL; // Clear the original pointer to prevent double-free
-
-                                            // CRITICAL FIX: Add memory barrier to ensure the pointer is cleared
-                                            __sync_synchronize();
-
-                                            comprehensive_ffmpeg_cleanup(&ctx_to_cleanup, NULL, NULL, NULL);
-
-                                            // Restore the old context
-                                            input_ctx = old_ctx;
-                                        } else {
-                                            // Successfully reopened the stream, clean up the old context
-                                            video_stream_idx = new_video_stream_idx;
-
-                                            // CRITICAL FIX: Create a local copy of the pointer to prevent race conditions
-                                            AVFormatContext *ctx_to_cleanup = old_ctx;
-                                            old_ctx = NULL; // Clear the original pointer to prevent double-free
-
-                                            // CRITICAL FIX: Add memory barrier to ensure the pointer is cleared
-                                            __sync_synchronize();
-
-                                            comprehensive_ffmpeg_cleanup(&ctx_to_cleanup, NULL, NULL, NULL);
-
-                                            // MEMORY LEAK FIX: Verify that the old context is actually NULL
-                                            if (ctx_to_cleanup) {
-                                                log_warn("Failed to clean up old context, forcing NULL");
-                                                ctx_to_cleanup = NULL;
-                                            }
-                                            log_info("Successfully reopened stream during periodic cleanup");
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Update the cleanup time
-                            last_cleanup_time = last_packet_time;
-                            log_info("Completed periodic FFmpeg resource cleanup for stream %s", stream_name);
-                        }
                     }
 
                     // Unlock the writer mutex
