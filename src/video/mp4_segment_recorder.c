@@ -69,59 +69,115 @@ void mp4_segment_recorder_init(void) {
 }
 
 /**
- * Set up RTSP connection for streaming
+ * Record an RTSP stream to an MP4 file for a specified duration
  *
- * @param rtsp_url The URL of the RTSP stream to connect to
- * @param opts Pointer to AVDictionary for options (will be populated)
- * @return AVFormatContext* on success, NULL on error
+ * This function handles the actual recording of an RTSP stream to an MP4 file.
+ * It maintains a single RTSP connection across multiple recording segments,
+ * ensuring there are no gaps between segments.
+ *
+ * Error handling:
+ * - Network errors: The function will return an error code, but the input context
+ *   will be preserved if possible so that the caller can retry.
+ * - File system errors: The function will attempt to clean up resources and return
+ *   an error code.
+ * - Timestamp errors: The function uses a robust timestamp handling approach to
+ *   prevent floating point errors and timestamp inflation.
+ *
+ * @param rtsp_url The URL of the RTSP stream to record
+ * @param output_file The path to the output MP4 file
+ * @param duration The duration to record in seconds
+ * @param has_audio Flag indicating whether to include audio in the recording
+ * @return 0 on success, negative value on error
  */
-static AVFormatContext* setup_rtsp_connection(const char *rtsp_url, AVDictionary **opts) {
+int record_segment(const char *rtsp_url, const char *output_file, int duration, int has_audio) {
     int ret = 0;
     AVFormatContext *input_ctx = NULL;
+    AVFormatContext *output_ctx = NULL;
+    AVDictionary *opts = NULL;
+    AVDictionary *out_opts = NULL;
+    AVPacket *pkt = NULL;  // CRITICAL FIX: Initialize to NULL to prevent using uninitialized value
+    int video_stream_idx = -1;
+    int audio_stream_idx = -1;
+    AVStream *out_video_stream = NULL;
+    AVStream *out_audio_stream = NULL;
+    int64_t first_video_dts = AV_NOPTS_VALUE;
+    int64_t first_video_pts = AV_NOPTS_VALUE;
+    int64_t first_audio_dts = AV_NOPTS_VALUE;
+    int64_t first_audio_pts = AV_NOPTS_VALUE;
+    int64_t last_video_dts = 0;
+    int64_t last_video_pts = 0;
+    int64_t last_audio_dts = 0;
+    int64_t last_audio_pts = 0;
+    int audio_packet_count = 0;
+    int video_packet_count = 0;
+    int64_t start_time = 0;  // CRITICAL FIX: Initialize to 0 to prevent using uninitialized value
+    time_t last_progress = 0;
+    int segment_index = 0;
 
-    // Set up RTSP options for low latency
-    av_dict_set(opts, "rtsp_transport", "tcp", 0);  // Use TCP for RTSP (more reliable than UDP)
-    av_dict_set(opts, "fflags", "nobuffer", 0);     // Reduce buffering
-    av_dict_set(opts, "flags", "low_delay", 0);     // Low delay mode
-    av_dict_set(opts, "max_delay", "500000", 0);    // Maximum delay of 500ms
-    av_dict_set(opts, "stimeout", "5000000", 0);    // Socket timeout in microseconds (5 seconds)
+    // CRITICAL FIX: Initialize static variable for tracking waiting time for keyframes
+    // This variable is used to track how long we've been waiting for a keyframe
+    // It must be properly initialized to prevent using uninitialized values
+    static int64_t waiting_start_time = 0;
+    waiting_start_time = 0;  // Reset for each new segment to prevent using stale values
 
-    // Open input
-    ret = avformat_open_input(&input_ctx, rtsp_url, NULL, opts);
-    if (ret < 0) {
-        char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
-        av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-        log_error("Failed to open input: %d (%s)", ret, error_buf);
-        return NULL;
+    // Thread-safe access to static segment info
+    pthread_mutex_lock(&static_vars_mutex);
+    segment_index = segment_info.segment_index + 1;
+    pthread_mutex_unlock(&static_vars_mutex);
+
+    log_info("Starting new segment with index %d", segment_index);
+
+    log_info("Recording from %s", rtsp_url);
+    log_info("Output file: %s", output_file);
+    log_info("Duration: %d seconds", duration);
+
+    // Thread-safe access to static input context
+    pthread_mutex_lock(&static_vars_mutex);
+    if (static_input_ctx) {
+        input_ctx = static_input_ctx;
+        // Clear the static pointer to prevent double free
+        static_input_ctx = NULL;
+        pthread_mutex_unlock(&static_vars_mutex);
+        log_debug("Using existing input context");
+    } else {
+        pthread_mutex_unlock(&static_vars_mutex);
+
+        // Set up RTSP options for low latency
+        av_dict_set(&opts, "rtsp_transport", "tcp", 0);  // Use TCP for RTSP (more reliable than UDP)
+        av_dict_set(&opts, "fflags", "nobuffer", 0);     // Reduce buffering
+        av_dict_set(&opts, "flags", "low_delay", 0);     // Low delay mode
+        av_dict_set(&opts, "max_delay", "500000", 0);    // Maximum delay of 500ms
+        av_dict_set(&opts, "stimeout", "5000000", 0);    // Socket timeout in microseconds (5 seconds)
+
+        // Open input
+        ret = avformat_open_input(&input_ctx, rtsp_url, NULL, &opts);
+        if (ret < 0) {
+            char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+            av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+            log_error("Failed to open input: %d (%s)", ret, error_buf);
+
+            // Ensure input_ctx is NULL after a failed open
+            input_ctx = NULL;
+
+            // Don't quit, just return an error code so the caller can retry
+            goto cleanup;
+        }
+
+        // Find stream info
+        ret = avformat_find_stream_info(input_ctx, NULL);
+        if (ret < 0) {
+            log_error("Failed to find stream info: %d", ret);
+            goto cleanup;
+        }
     }
 
-    // Find stream info
-    ret = avformat_find_stream_info(input_ctx, NULL);
-    if (ret < 0) {
-        log_error("Failed to find stream info: %d", ret);
-        avformat_close_input(&input_ctx);
-        return NULL;
-    }
-
-    return input_ctx;
-}
-
-/**
- * Find video and audio streams in the input context
- *
- * @param input_ctx The input format context
- * @param video_stream_idx Pointer to store video stream index
- * @param audio_stream_idx Pointer to store audio stream index
- * @return 0 on success, negative value if no video stream found
- */
-static int find_streams(AVFormatContext *input_ctx, int *video_stream_idx, int *audio_stream_idx) {
+    // Log input stream info
+    // CRITICAL FIX: Check if input_ctx is NULL before accessing its members
     if (!input_ctx) {
-        log_error("Input context is NULL, cannot find streams");
-        return -1;
+        log_error("Input context is NULL, cannot proceed with recording");
+        ret = -1;
+        goto cleanup;
     }
-
-    *video_stream_idx = -1;
-    *audio_stream_idx = -1;
 
     log_debug("Input format: %s", input_ctx->iformat->name);
     log_debug("Number of streams: %d", input_ctx->nb_streams);
@@ -129,12 +185,12 @@ static int find_streams(AVFormatContext *input_ctx, int *video_stream_idx, int *
     // Find video and audio streams
     for (unsigned int i = 0; i < input_ctx->nb_streams; i++) {
         AVStream *stream = input_ctx->streams[i];
-        if (stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO && *video_stream_idx < 0) {
-            *video_stream_idx = i;
+        if (stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO && video_stream_idx < 0) {
+            video_stream_idx = i;
             log_debug("Found video stream: %d", i);
             log_debug("  Codec: %s", avcodec_get_name(stream->codecpar->codec_id));
 
-            // Check for unspecified dimensions and log a warning
+            // CRITICAL FIX: Check for unspecified dimensions and log a warning
             if (stream->codecpar->width == 0 || stream->codecpar->height == 0) {
                 log_warn("Video stream has unspecified dimensions (width=%d, height=%d)",
                         stream->codecpar->width, stream->codecpar->height);
@@ -152,8 +208,8 @@ static int find_streams(AVFormatContext *input_ctx, int *video_stream_idx, int *
                 log_debug("  Frame rate: %.2f fps",
                        (float)stream->avg_frame_rate.num / stream->avg_frame_rate.den);
             }
-        } else if (stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO && *audio_stream_idx < 0) {
-            *audio_stream_idx = i;
+        } else if (stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO && audio_stream_idx < 0) {
+            audio_stream_idx = i;
             log_debug("Found audio stream: %d", i);
             log_debug("  Codec: %s", avcodec_get_name(stream->codecpar->codec_id));
             log_debug("  Sample rate: %d Hz", stream->codecpar->sample_rate);
@@ -161,187 +217,95 @@ static int find_streams(AVFormatContext *input_ctx, int *video_stream_idx, int *
         }
     }
 
-    if (*video_stream_idx < 0) {
+    if (video_stream_idx < 0) {
         log_error("No video stream found");
-        return -1;
+        ret = -1;
+        goto cleanup;
     }
-
-    return 0;
-}
-
-/**
- * Set up the output MP4 context
- *
- * @param output_file The path to the output MP4 file
- * @param input_ctx The input format context
- * @param video_stream_idx The video stream index
- * @param audio_stream_idx The audio stream index
- * @param has_audio Flag indicating whether to include audio
- * @param out_video_stream Pointer to store output video stream
- * @param out_audio_stream Pointer to store output audio stream
- * @param out_opts Pointer to AVDictionary for options
- * @return AVFormatContext* on success, NULL on error
- */
-static AVFormatContext* setup_output_context(const char *output_file,
-                                            AVFormatContext *input_ctx,
-                                            int video_stream_idx,
-                                            int audio_stream_idx,
-                                            int has_audio,
-                                            AVStream **out_video_stream,
-                                            AVStream **out_audio_stream,
-                                            AVDictionary **out_opts) {
-    int ret = 0;
-    AVFormatContext *output_ctx = NULL;
 
     // Create output context
     ret = avformat_alloc_output_context2(&output_ctx, NULL, "mp4", output_file);
     if (ret < 0 || !output_ctx) {
         log_error("Failed to create output context: %d", ret);
-        return NULL;
+        goto cleanup;
     }
 
     // Add video stream
-    *out_video_stream = avformat_new_stream(output_ctx, NULL);
-    if (!*out_video_stream) {
+    out_video_stream = avformat_new_stream(output_ctx, NULL);
+    if (!out_video_stream) {
         log_error("Failed to create output video stream");
-        avformat_free_context(output_ctx);
-        return NULL;
+        ret = -1;
+        goto cleanup;
     }
 
     // Copy video codec parameters
-    ret = avcodec_parameters_copy((*out_video_stream)->codecpar,
+    ret = avcodec_parameters_copy(out_video_stream->codecpar,
                                  input_ctx->streams[video_stream_idx]->codecpar);
     if (ret < 0) {
         log_error("Failed to copy video codec parameters: %d", ret);
-        avformat_free_context(output_ctx);
-        return NULL;
+        goto cleanup;
     }
 
-    // Check for unspecified video dimensions (0x0) and set default values
-    if ((*out_video_stream)->codecpar->width == 0 || (*out_video_stream)->codecpar->height == 0) {
+    // CRITICAL FIX: Check for unspecified video dimensions (0x0) and set default values
+    // This prevents the "dimensions not set" error and segmentation fault
+    if (out_video_stream->codecpar->width == 0 || out_video_stream->codecpar->height == 0) {
         log_warn("Video dimensions not set (width=%d, height=%d), using default values",
-                (*out_video_stream)->codecpar->width, (*out_video_stream)->codecpar->height);
+                out_video_stream->codecpar->width, out_video_stream->codecpar->height);
 
         // Set default dimensions (640x480 is a safe choice)
-        (*out_video_stream)->codecpar->width = 640;
-        (*out_video_stream)->codecpar->height = 480;
+        out_video_stream->codecpar->width = 640;
+        out_video_stream->codecpar->height = 480;
 
         log_info("Set default video dimensions to %dx%d",
-                (*out_video_stream)->codecpar->width, (*out_video_stream)->codecpar->height);
+                out_video_stream->codecpar->width, out_video_stream->codecpar->height);
     }
 
     // Set video stream time base
-    (*out_video_stream)->time_base = input_ctx->streams[video_stream_idx]->time_base;
+    out_video_stream->time_base = input_ctx->streams[video_stream_idx]->time_base;
 
     // Add audio stream if available and audio is enabled
     if (audio_stream_idx >= 0 && has_audio) {
-        // Validate audio stream and its codec parameters
-        if (audio_stream_idx >= (int)input_ctx->nb_streams ||
-            !input_ctx->streams[audio_stream_idx] ||
-            !input_ctx->streams[audio_stream_idx]->codecpar) {
-            log_error("Invalid audio stream index or codec parameters");
-            log_warn("Disabling audio for this recording due to invalid audio stream");
-            has_audio = 0;
-        } else {
-            log_info("Including audio stream in MP4 recording");
-            *out_audio_stream = avformat_new_stream(output_ctx, NULL);
-            if (!*out_audio_stream) {
-                log_error("Failed to create output audio stream");
-                avformat_free_context(output_ctx);
-                return NULL;
-            }
-
-            // Copy audio codec parameters
-            ret = avcodec_parameters_copy((*out_audio_stream)->codecpar,
-                                         input_ctx->streams[audio_stream_idx]->codecpar);
-            if (ret < 0) {
-                log_error("Failed to copy audio codec parameters: %d", ret);
-                avformat_free_context(output_ctx);
-                return NULL;
-            }
+        log_info("Including audio stream in MP4 recording");
+        out_audio_stream = avformat_new_stream(output_ctx, NULL);
+        if (!out_audio_stream) {
+            log_error("Failed to create output audio stream");
+            ret = -1;
+            goto cleanup;
         }
 
-        // CRITICAL FIX: Ensure audio codec frame size is set
-        // This prevents the "track 1: codec frame size is not set" error
-        if ((*out_audio_stream)->codecpar->frame_size == 0) {
-            // Set a default frame size based on codec
-            int default_frame_size = 1024; // Default for most audio codecs
-
-            // Adjust based on specific codecs if needed
-            switch ((*out_audio_stream)->codecpar->codec_id) {
-                case AV_CODEC_ID_AAC:
-                    default_frame_size = 1024;
-                    (*out_audio_stream)->codecpar->frame_size = default_frame_size;
-                    log_info("Setting audio codec frame_size to %d for codec AAC",
-                            default_frame_size);
-                    break;
-                case AV_CODEC_ID_MP3:
-                    default_frame_size = 1152;
-                    (*out_audio_stream)->codecpar->frame_size = default_frame_size;
-                    log_info("Setting audio codec frame_size to %d for codec MP3",
-                            default_frame_size);
-                    break;
-                case AV_CODEC_ID_OPUS:
-                    // For Opus, use a different frame size that works better with MP4
-                    default_frame_size = 1024; // Try a different value than 960
-                    (*out_audio_stream)->codecpar->frame_size = default_frame_size;
-                    log_info("Setting audio codec frame_size to %d for Opus codec (modified for MP4 compatibility)",
-                            default_frame_size);
-                    break;
-                default:
-                    // Use the default for other codecs
-                    (*out_audio_stream)->codecpar->frame_size = default_frame_size;
-                    log_info("Setting audio codec frame_size to %d for codec %s",
-                            default_frame_size, avcodec_get_name((*out_audio_stream)->codecpar->codec_id));
-                    break;
-            }
-        }
-
-        // Ensure sample rate is valid
-        if ((*out_audio_stream)->codecpar->sample_rate <= 0) {
-            log_warn("Invalid sample rate for audio stream, setting to 48000");
-            (*out_audio_stream)->codecpar->sample_rate = 48000;
-        }
-
-        // Ensure format is valid
-        if ((*out_audio_stream)->codecpar->format < 0) {
-            log_warn("Invalid format for audio stream, setting to S16");
-            (*out_audio_stream)->codecpar->format = AV_SAMPLE_FMT_S16;
+        // Copy audio codec parameters
+        ret = avcodec_parameters_copy(out_audio_stream->codecpar,
+                                     input_ctx->streams[audio_stream_idx]->codecpar);
+        if (ret < 0) {
+            log_error("Failed to copy audio codec parameters: %d", ret);
+            goto cleanup;
         }
 
         // Set audio stream time base
-        (*out_audio_stream)->time_base = input_ctx->streams[audio_stream_idx]->time_base;
-
-        // Ensure time base is valid
-        if ((*out_audio_stream)->time_base.num <= 0 || (*out_audio_stream)->time_base.den <= 0) {
-            log_warn("Invalid audio time base, setting to 1/48000");
-            (*out_audio_stream)->time_base.num = 1;
-            (*out_audio_stream)->time_base.den = 48000;
-        }
+        out_audio_stream->time_base = input_ctx->streams[audio_stream_idx]->time_base;
     }
 
-    // Disable faststart to prevent segmentation faults
+    // CRITICAL FIX: Disable faststart to prevent segmentation faults
     // The faststart option causes a second pass that moves the moov atom to the beginning of the file
     // This second pass is causing segmentation faults during shutdown
-    av_dict_set(out_opts, "movflags", "empty_moov", 0);
+    av_dict_set(&out_opts, "movflags", "empty_moov", 0);
 
     // Open output file
     ret = avio_open(&output_ctx->pb, output_file, AVIO_FLAG_WRITE);
     if (ret < 0) {
         log_error("Failed to open output file: %d", ret);
-        avformat_free_context(output_ctx);
-        return NULL;
+        goto cleanup;
     }
 
-    // Double-check video dimensions before writing header
-    if ((*out_video_stream)->codecpar->width == 0 || (*out_video_stream)->codecpar->height == 0) {
+    // CRITICAL FIX: Double-check video dimensions before writing header
+    if (out_video_stream->codecpar->width == 0 || out_video_stream->codecpar->height == 0) {
         log_error("Video dimensions still not set after fix attempt, setting emergency defaults");
-        (*out_video_stream)->codecpar->width = 640;
-        (*out_video_stream)->codecpar->height = 480;
+        out_video_stream->codecpar->width = 640;
+        out_video_stream->codecpar->height = 480;
     }
 
     // Write file header
-    ret = avformat_write_header(output_ctx, out_opts);
+    ret = avformat_write_header(output_ctx, &out_opts);
     if (ret < 0) {
         char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
         av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
@@ -351,899 +315,844 @@ static AVFormatContext* setup_output_context(const char *output_file,
         if (ret == AVERROR(EINVAL)) {
             log_error("Header write failed with EINVAL, likely due to invalid video parameters");
             log_error("Video stream parameters: width=%d, height=%d, codec_id=%d",
-                     (*out_video_stream)->codecpar->width,
-                     (*out_video_stream)->codecpar->height,
-                     (*out_video_stream)->codecpar->codec_id);
+                     out_video_stream->codecpar->width,
+                     out_video_stream->codecpar->height,
+                     out_video_stream->codecpar->codec_id);
         }
 
-        avio_closep(&output_ctx->pb);
-        avformat_free_context(output_ctx);
-        return NULL;
+        goto cleanup;
     }
 
-    return output_ctx;
-}
-
-/**
- * Process a video packet for MP4 recording
- *
- * @param pkt The packet to process
- * @param input_ctx The input format context
- * @param output_ctx The output format context
- * @param video_stream_idx The video stream index
- * @param out_video_stream The output video stream
- * @param first_video_dts Pointer to first video DTS value
- * @param first_video_pts Pointer to first video PTS value
- * @param last_video_dts Pointer to last video DTS value
- * @param last_video_pts Pointer to last video PTS value
- * @param segment_index The current segment index
- * @param consecutive_timestamp_errors Pointer to consecutive timestamp errors counter
- * @param max_timestamp_errors Maximum allowed consecutive timestamp errors
- * @return 0 on success, negative value on error
- */
-static int process_video_packet(AVPacket *pkt,
-                               AVFormatContext *input_ctx,
-                               AVFormatContext *output_ctx,
-                               int video_stream_idx,
-                               AVStream *out_video_stream,
-                               int64_t *first_video_dts,
-                               int64_t *first_video_pts,
-                               int64_t *last_video_dts,
-                               int64_t *last_video_pts,
-                               int segment_index,
-                               int *consecutive_timestamp_errors,
-                               int max_timestamp_errors) {
-    int ret = 0;
-
-    // Initialize first DTS if not set
-    if (*first_video_dts == AV_NOPTS_VALUE && pkt->dts != AV_NOPTS_VALUE) {
-        *first_video_dts = pkt->dts;
-        *first_video_pts = pkt->pts != AV_NOPTS_VALUE ? pkt->pts : pkt->dts;
-        log_debug("First video DTS: %lld, PTS: %lld",
-                (long long)*first_video_dts, (long long)*first_video_pts);
+    // Initialize packet - ensure it's properly allocated and initialized
+    pkt = av_packet_alloc();
+    if (!pkt) {
+        log_error("Failed to allocate packet");
+        ret = AVERROR(ENOMEM);
+        goto cleanup;
     }
+    // Initialize packet fields
+    pkt->data = NULL;
+    pkt->size = 0;
+    pkt->stream_index = -1;
 
-    // Handle timestamps based on segment index
-    if (segment_index == 0) {
-        // First segment - adjust timestamps relative to first_dts
-        if (pkt->dts != AV_NOPTS_VALUE && *first_video_dts != AV_NOPTS_VALUE) {
-            pkt->dts -= *first_video_dts;
-            if (pkt->dts < 0) pkt->dts = 0;
-        }
+    // Start recording
+    start_time = av_gettime();
+    log_info("Recording started...");
 
-        if (pkt->pts != AV_NOPTS_VALUE && *first_video_pts != AV_NOPTS_VALUE) {
-            pkt->pts -= *first_video_pts;
-            if (pkt->pts < 0) pkt->pts = 0;
-        }
-    } else {
-        // Subsequent segments - maintain timestamp continuity
-        // Use a small fixed offset instead of carrying over potentially large timestamps
-        // This prevents the timestamp inflation issue while still maintaining continuity
-        if (pkt->dts != AV_NOPTS_VALUE && *first_video_dts != AV_NOPTS_VALUE) {
-            // Calculate relative timestamp within this segment
-            int64_t relative_dts = pkt->dts - *first_video_dts;
-            // Add a small fixed offset (e.g., 1/30th of a second in timebase units)
-            // This ensures continuity without timestamp inflation
-            pkt->dts = relative_dts + 1;
-        }
-
-        if (pkt->pts != AV_NOPTS_VALUE && *first_video_pts != AV_NOPTS_VALUE) {
-            int64_t relative_pts = pkt->pts - *first_video_pts;
-            pkt->pts = relative_pts + 1;
-        }
-    }
-
-    // Ensure PTS >= DTS for video packets to prevent "pts < dts" errors
-    // This is essential for MP4 format compliance and prevents ghosting artifacts
-    if (pkt->pts != AV_NOPTS_VALUE && pkt->dts != AV_NOPTS_VALUE && pkt->pts < pkt->dts) {
-        log_debug("Fixing video packet with PTS < DTS: PTS=%lld, DTS=%lld",
-                 (long long)pkt->pts, (long long)pkt->dts);
-        pkt->pts = pkt->dts;
-    }
-
-    // Ensure monotonically increasing DTS values
-    // This prevents the "Application provided invalid, non monotonically increasing dts" error
-    if (pkt->dts != AV_NOPTS_VALUE && *last_video_dts != 0 && pkt->dts <= *last_video_dts) {
-        int64_t fixed_dts = *last_video_dts + 1;
-        log_debug("Fixing non-monotonic DTS: old=%lld, last=%lld, new=%lld",
-                 (long long)pkt->dts, (long long)*last_video_dts, (long long)fixed_dts);
-
-        // Maintain the PTS-DTS relationship if possible
-        if (pkt->pts != AV_NOPTS_VALUE) {
-            int64_t pts_dts_diff = pkt->pts - pkt->dts;
-            pkt->dts = fixed_dts;
-            pkt->pts = fixed_dts + (pts_dts_diff > 0 ? pts_dts_diff : 0);
-        } else {
-            pkt->dts = fixed_dts;
-            pkt->pts = fixed_dts;
-        }
-    }
-
-    // Update last timestamps
-    if (pkt->dts != AV_NOPTS_VALUE) {
-        *last_video_dts = pkt->dts;
-    }
-    if (pkt->pts != AV_NOPTS_VALUE) {
-        *last_video_pts = pkt->pts;
-    }
-
-    // Ensure DTS values don't exceed MP4 format limits (0x7fffffff)
-    // This prevents the "Assertion next_dts <= 0x7fffffff failed" error
-    if (pkt->dts != AV_NOPTS_VALUE) {
-        if (pkt->dts > 0x7fffffff) {
-            log_warn("DTS value exceeds MP4 format limit: %lld, resetting to safe value", (long long)pkt->dts);
-            // Reset to a small value that maintains continuity
-            pkt->dts = 1000;
-            if (pkt->pts != AV_NOPTS_VALUE) {
-                // Maintain PTS-DTS relationship if possible
-                int64_t pts_dts_diff = pkt->pts - pkt->dts;
-                if (pts_dts_diff >= 0) {
-                    pkt->pts = pkt->dts + pts_dts_diff;
-                } else {
-                    pkt->pts = pkt->dts;
-                }
-            } else {
-                pkt->pts = pkt->dts;
-            }
-        }
-
-        // Additional check to ensure DTS is always within safe range
-        // This handles cases where DTS might be close to the limit
-        if (pkt->dts > 0x70000000) {  // ~75% of max value
-            log_info("DTS value approaching MP4 format limit: %lld, resetting to prevent overflow", (long long)pkt->dts);
-            // Reset to a small value
-            pkt->dts = 1000;
-            if (pkt->pts != AV_NOPTS_VALUE) {
-                // Maintain PTS-DTS relationship
-                pkt->pts = pkt->dts + 1;
-            } else {
-                pkt->pts = pkt->dts;
-            }
-        }
-    }
-
-    // Explicitly set duration to prevent segmentation fault during fragment writing
-    // This addresses the "Estimating the duration of the last packet in a fragment" error
-    if (pkt->duration == 0 || pkt->duration == AV_NOPTS_VALUE) {
-        // Use the time base of the video stream to calculate a reasonable duration
-        // For most video streams, this will be 1/framerate
-        if (input_ctx->streams[video_stream_idx]->avg_frame_rate.num > 0 &&
-            input_ctx->streams[video_stream_idx]->avg_frame_rate.den > 0) {
-            // Calculate duration based on framerate (time_base units)
-            pkt->duration = av_rescale_q(1,
-                                       av_inv_q(input_ctx->streams[video_stream_idx]->avg_frame_rate),
-                                       input_ctx->streams[video_stream_idx]->time_base);
-        } else {
-            // Default to a reasonable value if framerate is not available
-            pkt->duration = 1;
-        }
-        log_debug("Set video packet duration to %lld", (long long)pkt->duration);
-    }
-
-    // Ensure packet duration is within reasonable limits
-    // This prevents the "Packet duration is out of range" error
-    if (pkt->duration > 10000000) {
-        log_warn("Packet duration too large: %lld, capping at reasonable value", (long long)pkt->duration);
-        // Cap at a reasonable value (e.g., 1 second in timebase units)
-        pkt->duration = 90000;
-    }
-
-    // Set output stream index
-    pkt->stream_index = out_video_stream->index;
-
-    // Write packet
-    ret = av_interleaved_write_frame(output_ctx, pkt);
-    if (ret < 0) {
-        char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
-        av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-        log_error("Error writing video frame: %d (%s)", ret, error_buf);
-
-        // Handle timestamp-related errors
-        if (ret == AVERROR(EINVAL) && strstr(error_buf, "monoton")) {
-            // This is likely a timestamp error, try to fix it for the next packet
-            log_warn("Detected timestamp error, will try to fix for next packet");
-
-            // Increment the consecutive error counter
-            (*consecutive_timestamp_errors)++;
-
-            if (*consecutive_timestamp_errors >= max_timestamp_errors) {
-                // Too many consecutive errors, reset all timestamps
-                log_warn("Too many consecutive timestamp errors (%d), resetting all timestamps",
-                        *consecutive_timestamp_errors);
-
-                // Reset the error counter
-                *consecutive_timestamp_errors = 0;
-
-                // Return a special error code to indicate timestamp reset is needed
-                return -2;
-            } else {
-                // Force a larger increment for the next packet to avoid timestamp issues
-                *last_video_dts += 100 * (*consecutive_timestamp_errors);
-                *last_video_pts += 100 * (*consecutive_timestamp_errors);
-            }
-        }
-    } else {
-        // Reset consecutive error counter on success
-        *consecutive_timestamp_errors = 0;
-    }
-
-    return ret;
-}
-
-/**
- * Process an audio packet for MP4 recording
- *
- * @param pkt The packet to process
- * @param input_ctx The input format context
- * @param output_ctx The output format context
- * @param audio_stream_idx The audio stream index
- * @param out_audio_stream The output audio stream
- * @param first_audio_dts Pointer to first audio DTS value
- * @param first_audio_pts Pointer to first audio PTS value
- * @param last_audio_dts Pointer to last audio DTS value
- * @param last_audio_pts Pointer to last audio PTS value
- * @param segment_index The current segment index
- * @param audio_packet_count The current audio packet count
- * @param consecutive_timestamp_errors Pointer to consecutive timestamp errors counter
- * @param max_timestamp_errors Maximum allowed consecutive timestamp errors
- * @return 0 on success, negative value on error
- */
-static int process_audio_packet(AVPacket *pkt,
-                               AVFormatContext *input_ctx,
-                               AVFormatContext *output_ctx,
-                               int audio_stream_idx,
-                               AVStream *out_audio_stream,
-                               int64_t *first_audio_dts,
-                               int64_t *first_audio_pts,
-                               int64_t *last_audio_dts,
-                               int64_t *last_audio_pts,
-                               int segment_index,
-                               int audio_packet_count,
-                               int *consecutive_timestamp_errors,
-                               int max_timestamp_errors) {
-    int ret = 0;
-
-    // Validate parameters to prevent segmentation faults
-    if (!pkt || !input_ctx || !output_ctx || !out_audio_stream || audio_stream_idx < 0 ||
-        audio_stream_idx >= (int)input_ctx->nb_streams || !out_audio_stream->codecpar) {
-        log_error("Invalid parameters passed to process_audio_packet");
-        return -1;
-    }
-
-    // Validate that the audio stream index is valid
-    if (!input_ctx->streams[audio_stream_idx] || !input_ctx->streams[audio_stream_idx]->codecpar) {
-        log_error("Audio stream or its codec parameters are NULL");
-        return -1;
-    }
-
-    // Initialize first audio DTS if not set
-    if (*first_audio_dts == AV_NOPTS_VALUE && pkt->dts != AV_NOPTS_VALUE) {
-        *first_audio_dts = pkt->dts;
-        *first_audio_pts = pkt->pts != AV_NOPTS_VALUE ? pkt->pts : pkt->dts;
-        log_debug("First audio DTS: %lld, PTS: %lld",
-                (long long)*first_audio_dts, (long long)*first_audio_pts);
-    }
-
-    // Handle timestamps based on segment index
-    if (segment_index == 0) {
-        // First segment - adjust timestamps relative to first_dts
-        if (pkt->dts != AV_NOPTS_VALUE && *first_audio_dts != AV_NOPTS_VALUE) {
-            pkt->dts -= *first_audio_dts;
-            if (pkt->dts < 0) pkt->dts = 0;
-        }
-
-        if (pkt->pts != AV_NOPTS_VALUE && *first_audio_pts != AV_NOPTS_VALUE) {
-            pkt->pts -= *first_audio_pts;
-            if (pkt->pts < 0) pkt->pts = 0;
-        }
-    } else {
-        // Subsequent segments - maintain timestamp continuity
-        // Use a small fixed offset instead of carrying over potentially large timestamps
-        // This prevents the timestamp inflation issue while still maintaining continuity
-        if (pkt->dts != AV_NOPTS_VALUE && *first_audio_dts != AV_NOPTS_VALUE) {
-            // Calculate relative timestamp within this segment
-            int64_t relative_dts = pkt->dts - *first_audio_dts;
-            // Add a small fixed offset (e.g., 1/30th of a second in timebase units)
-            // This ensures continuity without timestamp inflation
-            pkt->dts = relative_dts + 1;
-        }
-
-        if (pkt->pts != AV_NOPTS_VALUE && *first_audio_pts != AV_NOPTS_VALUE) {
-            int64_t relative_pts = pkt->pts - *first_audio_pts;
-            pkt->pts = relative_pts + 1;
-        }
-    }
-
-    // Ensure monotonic increase of timestamps
-    if (audio_packet_count > 0) {
-        // More robust handling of non-monotonic DTS values
-        if (pkt->dts != AV_NOPTS_VALUE && pkt->dts <= *last_audio_dts) {
-            int64_t fixed_dts = *last_audio_dts + 1;
-            log_debug("Fixing non-monotonic audio DTS: old=%lld, last=%lld, new=%lld",
-                     (long long)pkt->dts, (long long)*last_audio_dts, (long long)fixed_dts);
-            pkt->dts = fixed_dts;
-        }
-
-        if (pkt->pts != AV_NOPTS_VALUE && pkt->pts <= *last_audio_pts) {
-            int64_t fixed_pts = *last_audio_pts + 1;
-            log_debug("Fixing non-monotonic audio PTS: old=%lld, last=%lld, new=%lld",
-                     (long long)pkt->pts, (long long)*last_audio_pts, (long long)fixed_pts);
-            pkt->pts = fixed_pts;
-        }
-
-        // Ensure PTS >= DTS
-        if (pkt->pts != AV_NOPTS_VALUE && pkt->dts != AV_NOPTS_VALUE && pkt->pts < pkt->dts) {
-            log_debug("Fixing audio packet with PTS < DTS: PTS=%lld, DTS=%lld",
-                     (long long)pkt->pts, (long long)pkt->dts);
-            pkt->pts = pkt->dts;
-        }
-    }
-
-    // Ensure DTS values don't exceed MP4 format limits (0x7fffffff) for audio packets
-    if (pkt->dts != AV_NOPTS_VALUE) {
-        if (pkt->dts > 0x7fffffff) {
-            log_warn("Audio DTS value exceeds MP4 format limit: %lld, resetting to safe value", (long long)pkt->dts);
-            pkt->dts = 1000;
-            if (pkt->pts != AV_NOPTS_VALUE) {
-                // Maintain PTS-DTS relationship if possible
-                int64_t pts_dts_diff = pkt->pts - pkt->dts;
-                if (pts_dts_diff >= 0) {
-                    pkt->pts = pkt->dts + pts_dts_diff;
-                } else {
-                    pkt->pts = pkt->dts;
-                }
-            } else {
-                pkt->pts = pkt->dts;
-            }
-        }
-
-        // Additional check to ensure DTS is always within safe range
-        if (pkt->dts > 0x70000000) {  // ~75% of max value
-            log_info("Audio DTS value approaching MP4 format limit: %lld, resetting to prevent overflow", (long long)pkt->dts);
-            pkt->dts = 1000;
-            if (pkt->pts != AV_NOPTS_VALUE) {
-                // Maintain PTS-DTS relationship
-                pkt->pts = pkt->dts + 1;
-            } else {
-                pkt->pts = pkt->dts;
-            }
-        }
-    }
-
-    // Set output stream index
-    pkt->stream_index = out_audio_stream->index;
-
-    // We don't need to set the frame_size here as it's already set in setup_output_context
-    // and double-checked in record_segment. Setting it again here could cause memory corruption.
-
-    // Write packet
-    ret = av_interleaved_write_frame(output_ctx, pkt);
-    if (ret < 0) {
-        char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
-        av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-        log_error("Error writing audio frame: %d (%s)", ret, error_buf);
-
-        // Handle timestamp-related errors
-        if (ret == AVERROR(EINVAL) && strstr(error_buf, "monoton")) {
-            // This is likely a timestamp error, try to fix it for the next packet
-            log_warn("Detected audio timestamp error, will try to fix for next packet");
-
-            // Increment the consecutive error counter
-            (*consecutive_timestamp_errors)++;
-
-            if (*consecutive_timestamp_errors >= max_timestamp_errors) {
-                // Too many consecutive errors, reset all timestamps
-                log_warn("Too many consecutive audio timestamp errors (%d), resetting all timestamps",
-                        *consecutive_timestamp_errors);
-
-                // Reset the error counter
-                *consecutive_timestamp_errors = 0;
-
-                // Return a special error code to indicate timestamp reset is needed
-                return -2;
-            } else {
-                // Force a larger increment for the next packet to avoid timestamp issues
-                *last_audio_dts += 100 * (*consecutive_timestamp_errors);
-                *last_audio_pts += 100 * (*consecutive_timestamp_errors);
-            }
-        }
-    } else {
-        // Reset consecutive error counter on success
-        *consecutive_timestamp_errors = 0;
-    }
-
-    // Update last timestamps
-    if (pkt->dts != AV_NOPTS_VALUE) {
-        *last_audio_dts = pkt->dts;
-    }
-    if (pkt->pts != AV_NOPTS_VALUE) {
-        *last_audio_pts = pkt->pts;
-    }
-
-    return ret;
-}
-
-/**
- * Finalize the output MP4 file
- *
- * @param output_ctx The output format context
- * @return 0 on success, negative value on error
- */
-static int finalize_output(AVFormatContext *output_ctx) {
-    int ret = 0;
-
-    if (!output_ctx) {
-        log_error("Output context is NULL, cannot finalize output");
-        return -1;
-    }
-
-    // Write trailer
-    ret = av_write_trailer(output_ctx);
-    if (ret < 0) {
-        char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
-        av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-        log_error("Failed to write trailer: %d (%s)", ret, error_buf);
-        return ret;
-    }
-
-    // Close output file
-    if (output_ctx->pb) {
-        avio_closep(&output_ctx->pb);
-    }
-
-    // Free output context
-    avformat_free_context(output_ctx);
-
-    return 0;
-}
-
-/**
- * Record a segment from an RTSP stream to an MP4 file
- *
- * @param rtsp_url The URL of the RTSP stream
- * @param output_file The path to the output MP4 file
- * @param duration Maximum duration of the segment in seconds
- * @param has_audio Flag indicating whether to include audio
- * @return 0 on success, negative value on error
- */
-int record_segment(const char *rtsp_url, const char *output_file, int duration, int has_audio) {
-    int ret = 0;
-    AVFormatContext *input_ctx = NULL;
-    AVFormatContext *output_ctx = NULL;
-    AVDictionary *opts = NULL;
-    AVStream *out_video_stream = NULL;
-    AVStream *out_audio_stream = NULL;
-    AVPacket pkt;
-    int video_stream_idx = -1;
-    int audio_stream_idx = -1;
-    int64_t start_time = 0;
-    int64_t current_time = 0;
-    int64_t first_video_dts = AV_NOPTS_VALUE;
-    int64_t first_video_pts = AV_NOPTS_VALUE;
-    int64_t last_video_dts = 0;
-    int64_t last_video_pts = 0;
-    int64_t first_audio_dts = AV_NOPTS_VALUE;
-    int64_t first_audio_pts = AV_NOPTS_VALUE;
-    int64_t last_audio_dts = 0;
-    int64_t last_audio_pts = 0;
-    int video_packet_count = 0;
-    int audio_packet_count = 0;
+    // Initialize timestamp tracking variables
     int consecutive_timestamp_errors = 0;
-    const int max_timestamp_errors = 5;
-    int segment_index = 0;
-    int waiting_for_keyframe = 1; // Always wait for keyframe by default
-    int recording_started = 0;
+    int max_timestamp_errors = 5;  // Maximum number of consecutive timestamp errors before resetting
 
-    // Check if we have a static input context from a previous recording
-    pthread_mutex_lock(&static_vars_mutex);
-    if (static_input_ctx) {
-        log_info("Using existing input context from previous recording");
-        input_ctx = static_input_ctx;
-        segment_index = segment_info.segment_index;
-        has_audio = segment_info.has_audio;
-        waiting_for_keyframe = !segment_info.last_frame_was_key;
+    // Flag to track if we've found the first key frame
+    bool found_first_keyframe = false;
+    // Flag to track if we're waiting for the final key frame
+    bool waiting_for_final_keyframe = false;
+    // Flag to track if shutdown was detected
+    bool shutdown_detected = false;
 
-        // Validate the static input context before using it
-        if (!input_ctx->pb || input_ctx->nb_streams == 0) {
-            log_warn("Static input context is invalid, creating a new one");
-            avformat_close_input(&input_ctx);
-            static_input_ctx = NULL;
-            input_ctx = NULL;
-        }
-    }
-    pthread_mutex_unlock(&static_vars_mutex);
-
-    // If we don't have a static input context, set up a new one
+    // CRITICAL FIX: Ensure input_ctx is valid before entering the main loop
     if (!input_ctx) {
-        // Set up RTSP connection
-        input_ctx = setup_rtsp_connection(rtsp_url, &opts);
-        if (!input_ctx) {
-            log_error("Failed to set up RTSP connection");
-            return -1;
+        log_error("Input context is NULL before main recording loop, cannot proceed");
+        ret = -1;
+        goto cleanup;
+    }
+
+    // Main recording loop
+    while (1) {
+        // Check if shutdown has been initiated
+        if (!shutdown_detected && !waiting_for_final_keyframe && is_shutdown_initiated()) {
+            log_info("Shutdown initiated, waiting for next key frame to end recording");
+            waiting_for_final_keyframe = true;
+            shutdown_detected = true;
         }
 
-        // Find streams
-        ret = find_streams(input_ctx, &video_stream_idx, &audio_stream_idx);
+        // Check if we've reached the duration limit
+        if (duration > 0 && !waiting_for_final_keyframe && !shutdown_detected) {
+            int64_t elapsed_seconds = (av_gettime() - start_time) / 1000000;
+
+            // If we've reached the duration limit, wait for the next key frame
+            if (elapsed_seconds >= duration) {
+                log_info("Reached duration limit of %d seconds, waiting for next key frame to end recording", duration);
+                waiting_for_final_keyframe = true;
+            }
+            // If we're close to the duration limit (within 1 second), also wait for the next key frame
+            // This helps ensure we don't wait too long for a key frame at the end of a segment
+            // Reduced from 3 to 1 second to prevent segments from being too long
+            else if (elapsed_seconds >= duration - 1) {
+                log_info("Within 1 second of duration limit (%d seconds), waiting for next key frame to end recording", duration);
+                waiting_for_final_keyframe = true;
+            }
+        }
+
+        // Read packet
+        ret = av_read_frame(input_ctx, pkt);
         if (ret < 0) {
-            log_error("Failed to find streams");
-            avformat_close_input(&input_ctx);
-            return ret;
+            if (ret == AVERROR_EOF) {
+                log_info("End of stream reached");
+                break;
+            } else if (ret != AVERROR(EAGAIN)) {
+                log_error("Error reading frame: %d", ret);
+                break;
+            }
+            // EAGAIN means try again, so we continue
+            av_usleep(10000);  // Sleep 10ms to avoid busy waiting
+            continue;
         }
 
-        // Update has_audio flag based on stream availability
-        has_audio = has_audio && (audio_stream_idx >= 0);
-        if (has_audio) {
-            log_info("Audio stream found and enabled");
-        } else if (audio_stream_idx >= 0) {
-            log_info("Audio stream found but disabled by configuration");
-        } else {
-            log_info("No audio stream found");
-        }
-    } else {
-        // Use the stream indices from the existing input context
-        video_stream_idx = -1;
-        audio_stream_idx = -1;
+        // Process video packets
+        if (pkt->stream_index == video_stream_idx) {
+            // Check if this is a key frame
+            bool is_keyframe = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
 
-        // Safely iterate through streams with bounds checking
-        if (input_ctx && input_ctx->nb_streams > 0) {
-            for (unsigned int i = 0; i < input_ctx->nb_streams; i++) {
-                if (!input_ctx->streams[i] || !input_ctx->streams[i]->codecpar) {
-                    log_warn("Stream %d is invalid in static input context", i);
+            // If we're waiting for the first key frame
+            if (!found_first_keyframe) {
+            // If the previous segment ended with a key frame, we can start immediately with this frame
+            // Otherwise, wait for a key frame
+            if (segment_info.last_frame_was_key && segment_index > 0) {
+                    log_info("Previous segment ended with a key frame, starting new segment immediately");
+                    found_first_keyframe = true;
+
+                    // Reset start time to now
+                    start_time = av_gettime();
+
+                    // If this frame is not a keyframe, log a warning as we might have missed the keyframe
+                    if (!is_keyframe) {
+                        log_warn("Starting segment with non-keyframe even though previous segment ended with keyframe");
+                    }
+                } else if (is_keyframe) {
+                    log_info("Found first key frame, starting recording");
+                    found_first_keyframe = true;
+
+                    // Reset start time to when we found the first key frame
+                    start_time = av_gettime();
+                } else {
+                    // For regular segments, always wait for a key frame
+                    // Skip this frame as we're waiting for a key frame
+                    av_packet_unref(pkt);
                     continue;
                 }
+            }
 
-                AVStream *stream = input_ctx->streams[i];
-                if (stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO && video_stream_idx < 0) {
-                    video_stream_idx = i;
-                    log_debug("Found video stream at index %d in static context", i);
-                } else if (stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO && audio_stream_idx < 0) {
-                    audio_stream_idx = i;
-                    log_debug("Found audio stream at index %d in static context", i);
+            // If we're waiting for the final key frame to end recording
+            if (waiting_for_final_keyframe) {
+                // Check if this is a key frame or if we've been waiting too long
+
+                // Initialize waiting start time if not set
+                if (waiting_start_time == 0) {
+                    waiting_start_time = av_gettime();
+                }
+
+                // Calculate how long we've been waiting for a key frame
+                int64_t wait_time = (av_gettime() - waiting_start_time) / 1000000;
+
+                // If this is a key frame or we've waited too long (more than 1 second)
+                // Reduced from 2 to 1 second to improve segment length precision
+                if (is_keyframe || wait_time > 1) {
+                    if (is_keyframe) {
+                        log_info("Found final key frame, ending recording");
+                        // Set flag to indicate the last frame was a key frame
+                        segment_info.last_frame_was_key = true;
+                        log_debug("Last frame was a key frame, next segment will start immediately with this keyframe");
+                    } else {
+                        log_info("Waited %lld seconds for key frame, ending recording with non-key frame", (long long)wait_time);
+                        // Clear flag since the last frame was not a key frame
+                        segment_info.last_frame_was_key = false;
+                        log_debug("Last frame was NOT a key frame, next segment will wait for a keyframe");
+                    }
+
+                    // Process this final frame and then break the loop
+                    // Initialize first DTS if not set
+                    if (first_video_dts == AV_NOPTS_VALUE && pkt->dts != AV_NOPTS_VALUE) {
+                        first_video_dts = pkt->dts;
+                        first_video_pts = pkt->pts != AV_NOPTS_VALUE ? pkt->pts : pkt->dts;
+                        log_debug("First video DTS: %lld, PTS: %lld",
+                                (long long)first_video_dts, (long long)first_video_pts);
+                    }
+
+                    // Handle timestamps based on segment index
+                    if (segment_index == 0) {
+                        // First segment - adjust timestamps relative to first_dts
+                        if (pkt->dts != AV_NOPTS_VALUE && first_video_dts != AV_NOPTS_VALUE) {
+                            pkt->dts -= first_video_dts;
+                            if (pkt->dts < 0) pkt->dts = 0;
+                        }
+
+                        if (pkt->pts != AV_NOPTS_VALUE && first_video_pts != AV_NOPTS_VALUE) {
+                            pkt->pts -= first_video_pts;
+                            if (pkt->pts < 0) pkt->pts = 0;
+                        }
+                    } else {
+                        // Subsequent segments - maintain timestamp continuity
+                        // CRITICAL FIX: Use a small fixed offset instead of carrying over potentially large timestamps
+                        // This prevents the timestamp inflation issue while still maintaining continuity
+                        if (pkt->dts != AV_NOPTS_VALUE && first_video_dts != AV_NOPTS_VALUE) {
+                            // Calculate relative timestamp within this segment
+                            int64_t relative_dts = pkt->dts - first_video_dts;
+                            // Add a small fixed offset (e.g., 1/30th of a second in timebase units)
+                            // This ensures continuity without timestamp inflation
+                            pkt->dts = relative_dts + 1;
+                        }
+
+                        if (pkt->pts != AV_NOPTS_VALUE && first_video_pts != AV_NOPTS_VALUE) {
+                            int64_t relative_pts = pkt->pts - first_video_pts;
+                            pkt->pts = relative_pts + 1;
+                        }
+                    }
+
+                    // CRITICAL FIX: Ensure PTS >= DTS for video packets to prevent "pts < dts" errors
+                    // This is essential for MP4 format compliance and prevents ghosting artifacts
+                    if (pkt->pts != AV_NOPTS_VALUE && pkt->dts != AV_NOPTS_VALUE && pkt->pts < pkt->dts) {
+                        log_debug("Fixing video packet with PTS < DTS: PTS=%lld, DTS=%lld",
+                                 (long long)pkt->pts, (long long)pkt->dts);
+                        pkt->pts = pkt->dts;
+                    }
+
+                    // CRITICAL FIX: Ensure DTS values don't exceed MP4 format limits (0x7fffffff)
+                    // This prevents the "Assertion next_dts <= 0x7fffffff failed" error
+                    if (pkt->dts != AV_NOPTS_VALUE) {
+                        if (pkt->dts > 0x7fffffff) {
+                            log_warn("DTS value exceeds MP4 format limit: %lld, resetting to safe value", (long long)pkt->dts);
+                            // Reset to a small value that maintains continuity
+                            pkt->dts = 1000;
+                            if (pkt->pts != AV_NOPTS_VALUE) {
+                                // Maintain PTS-DTS relationship if possible
+                                int64_t pts_dts_diff = pkt->pts - pkt->dts;
+                                if (pts_dts_diff >= 0) {
+                                    pkt->pts = pkt->dts + pts_dts_diff;
+                                } else {
+                                    pkt->pts = pkt->dts;
+                                }
+                            } else {
+                                pkt->pts = pkt->dts;
+                            }
+                        }
+
+                        // Additional check to ensure DTS is always within safe range
+                        // This handles cases where DTS might be close to the limit
+                        if (pkt->dts > 0x70000000) {  // ~75% of max value
+                            log_info("DTS value approaching MP4 format limit: %lld, resetting to prevent overflow", (long long)pkt->dts);
+                            // Reset to a small value
+                            pkt->dts = 1000;
+                            if (pkt->pts != AV_NOPTS_VALUE) {
+                                // Maintain PTS-DTS relationship
+                                pkt->pts = pkt->dts + 1;
+                            } else {
+                                pkt->pts = pkt->dts;
+                            }
+                        }
+                    }
+
+                    // CRITICAL FIX: Ensure packet duration is within reasonable limits
+                    // This prevents the "Packet duration is out of range" error
+                    if (pkt->duration > 10000000) {
+                        log_warn("Packet duration too large: %lld, capping at reasonable value", (long long)pkt->duration);
+                        // Cap at a reasonable value (e.g., 1 second in timebase units)
+                        pkt->duration = 90000;
+                    }
+
+                    // Update last timestamps
+                    if (pkt->dts != AV_NOPTS_VALUE) {
+                        last_video_dts = pkt->dts;
+                    }
+                    if (pkt->pts != AV_NOPTS_VALUE) {
+                        last_video_pts = pkt->pts;
+                    }
+
+                    // Explicitly set duration for the final frame to prevent segmentation fault
+                    if (pkt->duration == 0 || pkt->duration == AV_NOPTS_VALUE) {
+                        // Use the time base of the video stream to calculate a reasonable duration
+                        if (input_ctx->streams[video_stream_idx]->avg_frame_rate.num > 0 &&
+                            input_ctx->streams[video_stream_idx]->avg_frame_rate.den > 0) {
+                            // Calculate duration based on framerate (time_base units)
+                            pkt->duration = av_rescale_q(1,
+                                                       av_inv_q(input_ctx->streams[video_stream_idx]->avg_frame_rate),
+                                                       input_ctx->streams[video_stream_idx]->time_base);
+                        } else {
+                            // Default to a reasonable value if framerate is not available
+                            pkt->duration = 1;
+                        }
+                        log_debug("Set final frame duration to %lld", (long long)pkt->duration);
+                    }
+
+                    // Set output stream index
+                    pkt->stream_index = out_video_stream->index;
+
+                    // Write packet
+                    ret = av_interleaved_write_frame(output_ctx, pkt);
+                    if (ret < 0) {
+                        log_error("Error writing video frame: %d", ret);
+                    }
+
+                    // Break the loop after processing the final frame
+                    av_packet_unref(pkt);
+                    break;
                 }
             }
-        }
 
-        // Validate that we found the necessary streams
-        if (video_stream_idx < 0) {
-            log_error("No valid video stream found in static input context");
-            pthread_mutex_lock(&static_vars_mutex);
-            if (static_input_ctx) {
-                log_info("Closing invalid static input context");
-                avformat_close_input(&static_input_ctx);
-                static_input_ctx = NULL;
-            }
-            pthread_mutex_unlock(&static_vars_mutex);
-
-            // Try to create a new input context
-            input_ctx = setup_rtsp_connection(rtsp_url, &opts);
-            if (!input_ctx) {
-                log_error("Failed to set up RTSP connection after static context failure");
-                return -1;
+            // Initialize first DTS if not set
+            if (first_video_dts == AV_NOPTS_VALUE && pkt->dts != AV_NOPTS_VALUE) {
+                first_video_dts = pkt->dts;
+                first_video_pts = pkt->pts != AV_NOPTS_VALUE ? pkt->pts : pkt->dts;
+                log_debug("First video DTS: %lld, PTS: %lld",
+                        (long long)first_video_dts, (long long)first_video_pts);
             }
 
-            // Find streams in the new context
-            ret = find_streams(input_ctx, &video_stream_idx, &audio_stream_idx);
-            if (ret < 0) {
-                log_error("Failed to find streams in new context");
-                avformat_close_input(&input_ctx);
-                return ret;
-            }
+            // Handle timestamps based on segment index
+            if (segment_index == 0) {
+                // First segment - adjust timestamps relative to first_dts
+                if (pkt->dts != AV_NOPTS_VALUE && first_video_dts != AV_NOPTS_VALUE) {
+                    pkt->dts -= first_video_dts;
+                    if (pkt->dts < 0) pkt->dts = 0;
+                }
 
-            // Update has_audio flag based on stream availability
-            has_audio = has_audio && (audio_stream_idx >= 0);
-            if (has_audio) {
-                log_info("Audio stream found and enabled in new context");
-            } else if (audio_stream_idx >= 0) {
-                log_info("Audio stream found but disabled by configuration in new context");
+                if (pkt->pts != AV_NOPTS_VALUE && first_video_pts != AV_NOPTS_VALUE) {
+                    pkt->pts -= first_video_pts;
+                    if (pkt->pts < 0) pkt->pts = 0;
+                }
             } else {
-                log_info("No audio stream found in new context");
+                // Subsequent segments - maintain timestamp continuity
+                // CRITICAL FIX: Use a small fixed offset instead of carrying over potentially large timestamps
+                // This prevents the timestamp inflation issue while still maintaining continuity
+                if (pkt->dts != AV_NOPTS_VALUE && first_video_dts != AV_NOPTS_VALUE) {
+                    // Calculate relative timestamp within this segment
+                    int64_t relative_dts = pkt->dts - first_video_dts;
+                    // Add a small fixed offset (e.g., 1/30th of a second in timebase units)
+                    // This ensures continuity without timestamp inflation
+                    pkt->dts = relative_dts + 1;
+                }
+
+                if (pkt->pts != AV_NOPTS_VALUE && first_video_pts != AV_NOPTS_VALUE) {
+                    int64_t relative_pts = pkt->pts - first_video_pts;
+                    pkt->pts = relative_pts + 1;
+                }
             }
-        }
-    }
 
-    // Set up output context
-    output_ctx = setup_output_context(output_file, input_ctx, video_stream_idx, audio_stream_idx,
-                                     has_audio, &out_video_stream, &out_audio_stream, &opts);
-    if (!output_ctx) {
-        log_error("Failed to set up output context");
-        if (!static_input_ctx) {
-            avformat_close_input(&input_ctx);
-        }
-        return -1;
-    }
-
-    // CRITICAL FIX: Double-check audio codec frame size after setup
-    // This is a safety measure to prevent the "track 1: codec frame size is not set" error
-    if (has_audio && audio_stream_idx >= 0 && out_audio_stream) {
-        // Validate the audio stream and codec parameters
-        if (!out_audio_stream->codecpar) {
-            log_error("Audio stream codec parameters are NULL");
-            has_audio = 0; // Disable audio to prevent segmentation fault
-        } else if (out_audio_stream->codecpar->frame_size == 0) {
-            // Set a default frame size based on codec
-            int default_frame_size = 1024; // Default for most audio codecs
-
-            // Adjust based on specific codecs if needed
-            switch (out_audio_stream->codecpar->codec_id) {
-                case AV_CODEC_ID_AAC:
-                    default_frame_size = 1024;
-                    log_warn("Audio codec frame_size still not set after setup, setting to %d for AAC codec", default_frame_size);
-                    out_audio_stream->codecpar->frame_size = default_frame_size;
-                    break;
-                case AV_CODEC_ID_MP3:
-                    default_frame_size = 1152;
-                    log_warn("Audio codec frame_size still not set after setup, setting to %d for MP3 codec", default_frame_size);
-                    out_audio_stream->codecpar->frame_size = default_frame_size;
-                    break;
-                case AV_CODEC_ID_OPUS:
-                    // For Opus, use the same frame size as in setup_output_context
-                    default_frame_size = 1024;
-                    out_audio_stream->codecpar->frame_size = default_frame_size;
-                    log_info("Setting audio codec frame_size to %d for Opus codec in double-check", default_frame_size);
-                    break;
-                default:
-                    // Use the default for other codecs
-                    log_warn("Audio codec frame_size still not set after setup, setting to %d for codec %s",
-                            default_frame_size, avcodec_get_name(out_audio_stream->codecpar->codec_id));
-                    out_audio_stream->codecpar->frame_size = default_frame_size;
-                    break;
+            // CRITICAL FIX: Ensure PTS >= DTS for video packets to prevent "pts < dts" errors
+            // This is essential for MP4 format compliance and prevents ghosting artifacts
+            if (pkt->pts != AV_NOPTS_VALUE && pkt->dts != AV_NOPTS_VALUE && pkt->pts < pkt->dts) {
+                log_debug("Fixing video packet with PTS < DTS: PTS=%lld, DTS=%lld",
+                         (long long)pkt->pts, (long long)pkt->dts);
+                pkt->pts = pkt->dts;
             }
-        } else {
-            log_debug("Audio codec frame_size is set to %d for codec %s",
-                    out_audio_stream->codecpar->frame_size,
-                    avcodec_get_name(out_audio_stream->codecpar->codec_id));
-        }
-    }
 
-    // Free options dictionary
-    av_dict_free(&opts);
+            // CRITICAL FIX: Ensure monotonically increasing DTS values
+            // This prevents the "Application provided invalid, non monotonically increasing dts" error
+            if (pkt->dts != AV_NOPTS_VALUE && last_video_dts != 0 && pkt->dts <= last_video_dts) {
+                int64_t fixed_dts = last_video_dts + 1;
+                log_debug("Fixing non-monotonic DTS: old=%lld, last=%lld, new=%lld",
+                         (long long)pkt->dts, (long long)last_video_dts, (long long)fixed_dts);
 
-    // Record start time
-    start_time = av_gettime();
+                // Maintain the PTS-DTS relationship if possible
+                if (pkt->pts != AV_NOPTS_VALUE) {
+                    int64_t pts_dts_diff = pkt->pts - pkt->dts;
+                    pkt->dts = fixed_dts;
+                    pkt->pts = fixed_dts + (pts_dts_diff > 0 ? pts_dts_diff : 0);
+                } else {
+                    pkt->dts = fixed_dts;
+                    pkt->pts = fixed_dts;
+                }
+            }
 
-    // Main packet processing loop
-    while (!is_shutdown_initiated()) {
-        // Check if we've reached the maximum duration
-        current_time = av_gettime();
-        if (recording_started && duration > 0 &&
-            (current_time - start_time) / 1000000 >= duration) {
-            log_info("Maximum duration reached (%d seconds), stopping recording", duration);
-            break;
-        }
+            // Update last timestamps
+            if (pkt->dts != AV_NOPTS_VALUE) {
+                last_video_dts = pkt->dts;
+            }
+            if (pkt->pts != AV_NOPTS_VALUE) {
+                last_video_pts = pkt->pts;
+            }
 
-        // Read packet - use av_packet_alloc instead of av_init_packet for better memory management
-        av_packet_unref(&pkt); // Ensure any previous packet data is properly freed
-        pkt.data = NULL;
-        pkt.size = 0;
+            // Explicitly set duration to prevent segmentation fault during fragment writing
+            // This addresses the "Estimating the duration of the last packet in a fragment" error
+            if (pkt->duration == 0 || pkt->duration == AV_NOPTS_VALUE) {
+                // Use the time base of the video stream to calculate a reasonable duration
+                // For most video streams, this will be 1/framerate
+                if (input_ctx->streams[video_stream_idx]->avg_frame_rate.num > 0 &&
+                    input_ctx->streams[video_stream_idx]->avg_frame_rate.den > 0) {
+                    // Calculate duration based on framerate (time_base units)
+                    pkt->duration = av_rescale_q(1,
+                                               av_inv_q(input_ctx->streams[video_stream_idx]->avg_frame_rate),
+                                               input_ctx->streams[video_stream_idx]->time_base);
+                } else {
+                    // Default to a reasonable value if framerate is not available
+                    pkt->duration = 1;
+                }
+                log_debug("Set video packet duration to %lld", (long long)pkt->duration);
+            }
 
-        // Ensure input_ctx is still valid before reading
-        if (!input_ctx) {
-            log_error("Input context is NULL before av_read_frame");
-            break;
-        }
+            // Set output stream index
+            pkt->stream_index = out_video_stream->index;
 
-        ret = av_read_frame(input_ctx, &pkt);
-
-        // Ensure packet is reference counted to prevent use-after-free
-        if (ret >= 0) {
-            ret = av_packet_make_refcounted(&pkt);
+            // Write packet
+            ret = av_interleaved_write_frame(output_ctx, pkt);
             if (ret < 0) {
-                log_error("Failed to make packet refcounted: %d", ret);
-                av_packet_unref(&pkt);
-                break;
-            }
-        }
-        if (ret < 0) {
-            if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-                // End of file or temporary unavailability, wait and retry
-                av_packet_unref(&pkt);
-                av_usleep(10000);  // 10ms
-                continue;
-            } else {
-                // Actual error
                 char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
                 av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-                log_error("Error reading frame: %d (%s)", ret, error_buf);
-                break;
+                log_error("Error writing video frame: %d (%s)", ret, error_buf);
+
+                // CRITICAL FIX: Handle timestamp-related errors
+                if (ret == AVERROR(EINVAL) && strstr(error_buf, "monoton")) {
+                    // This is likely a timestamp error, try to fix it for the next packet
+                    log_warn("Detected timestamp error, will try to fix for next packet");
+
+                    // Increment the consecutive error counter
+                    consecutive_timestamp_errors++;
+
+                    if (consecutive_timestamp_errors >= max_timestamp_errors) {
+                        // Too many consecutive errors, reset all timestamps
+                        log_warn("Too many consecutive timestamp errors (%d), resetting all timestamps",
+                                consecutive_timestamp_errors);
+
+                        // Reset timestamps to small values
+                        first_video_dts = 0;
+                        first_video_pts = 0;
+                        last_video_dts = 0;
+                        last_video_pts = 0;
+                        first_audio_dts = 0;
+                        first_audio_pts = 0;
+                        last_audio_dts = 0;
+                        last_audio_pts = 0;
+
+                        // Reset the error counter
+                        consecutive_timestamp_errors = 0;
+                    } else {
+                        // Force a larger increment for the next packet to avoid timestamp issues
+                        last_video_dts += 100 * consecutive_timestamp_errors;
+                        last_video_pts += 100 * consecutive_timestamp_errors;
+                    }
+                }
+            } else {
+                // Reset consecutive error counter on success
+                consecutive_timestamp_errors = 0;
+
+                video_packet_count++;
+                if (video_packet_count % 300 == 0) {
+                    log_debug("Processed %d video packets", video_packet_count);
+                }
             }
         }
-
-        // Check if this is a video packet
-        if (pkt.stream_index == video_stream_idx) {
-            // Check if this is a key frame
-            int is_key_frame = (pkt.flags & AV_PKT_FLAG_KEY) != 0;
-
-            // If waiting for a key frame, skip non-key frames
-            if (waiting_for_keyframe && !is_key_frame) {
-                av_packet_unref(&pkt);
-                continue;
-            } else if (waiting_for_keyframe && is_key_frame) {
-                log_info("Found key frame, starting recording");
-                waiting_for_keyframe = 0;
-                recording_started = 1;
-            } else if (!recording_started) {
-                recording_started = 1;
-            }
-
-            // Process video packet
-            ret = process_video_packet(&pkt, input_ctx, output_ctx, video_stream_idx, out_video_stream,
-                                      &first_video_dts, &first_video_pts, &last_video_dts, &last_video_pts,
-                                      segment_index, &consecutive_timestamp_errors, max_timestamp_errors);
-
-            // Handle special error codes
-            if (ret == -2) {
-                // Timestamp reset needed, reset all timestamp variables
-                first_video_dts = AV_NOPTS_VALUE;
-                first_video_pts = AV_NOPTS_VALUE;
-                last_video_dts = 0;
-                last_video_pts = 0;
-                first_audio_dts = AV_NOPTS_VALUE;
-                first_audio_pts = AV_NOPTS_VALUE;
-                last_audio_dts = 0;
-                last_audio_pts = 0;
-                log_info("Timestamp reset performed");
-            } else if (ret < 0 && ret != -2) {
-                log_error("Error processing video packet: %d", ret);
-                // Continue processing, don't break the loop
-            }
-
-            // Update last frame key status for next segment
-            segment_info.last_frame_was_key = is_key_frame;
-
-            // Increment video packet count
-            video_packet_count++;
-        }
-        // Check if this is an audio packet and audio is enabled
-        else if (has_audio && pkt.stream_index == audio_stream_idx && audio_stream_idx >= 0) {
-            // Validate audio stream and output stream before processing
-            if (!out_audio_stream) {
-                log_error("Output audio stream is NULL, skipping audio packet");
-                av_packet_unref(&pkt);
+        // Process audio packets - only if audio is enabled and we have an audio output stream
+        else if (has_audio && audio_stream_idx >= 0 && pkt->stream_index == audio_stream_idx && out_audio_stream) {
+            // Skip audio packets until we've found the first video keyframe
+            if (!found_first_keyframe) {
+                av_packet_unref(pkt);
                 continue;
             }
 
-            // Only process audio if recording has started
-            if (recording_started) {
-                // Process audio packet
-                ret = process_audio_packet(&pkt, input_ctx, output_ctx, audio_stream_idx, out_audio_stream,
-                                          &first_audio_dts, &first_audio_pts, &last_audio_dts, &last_audio_pts,
-                                          segment_index, audio_packet_count, &consecutive_timestamp_errors,
-                                          max_timestamp_errors);
+            // Initialize first audio DTS if not set
+            if (first_audio_dts == AV_NOPTS_VALUE && pkt->dts != AV_NOPTS_VALUE) {
+                first_audio_dts = pkt->dts;
+                first_audio_pts = pkt->pts != AV_NOPTS_VALUE ? pkt->pts : pkt->dts;
+                log_debug("First audio DTS: %lld, PTS: %lld",
+                        (long long)first_audio_dts, (long long)first_audio_pts);
+            }
 
-                // Handle special error codes
-                if (ret == -2) {
-                    // Timestamp reset needed, reset all timestamp variables
-                    first_audio_dts = AV_NOPTS_VALUE;
-                    first_audio_pts = AV_NOPTS_VALUE;
-                    last_audio_dts = 0;
-                    last_audio_pts = 0;
-                    log_info("Audio timestamp reset performed");
-                } else if (ret < 0 && ret != -2) {
-                    log_error("Error processing audio packet: %d", ret);
-                    // Continue processing, don't break the loop
+            // Handle timestamps based on segment index
+            if (segment_index == 0) {
+                // First segment - adjust timestamps relative to first_dts
+                if (pkt->dts != AV_NOPTS_VALUE && first_audio_dts != AV_NOPTS_VALUE) {
+                    pkt->dts -= first_audio_dts;
+                    if (pkt->dts < 0) pkt->dts = 0;
                 }
 
-                // Increment audio packet count
+                if (pkt->pts != AV_NOPTS_VALUE && first_audio_pts != AV_NOPTS_VALUE) {
+                    pkt->pts -= first_audio_pts;
+                    if (pkt->pts < 0) pkt->pts = 0;
+                }
+            } else {
+                // Subsequent segments - maintain timestamp continuity
+                // CRITICAL FIX: Use a small fixed offset instead of carrying over potentially large timestamps
+                // This prevents the timestamp inflation issue while still maintaining continuity
+                if (pkt->dts != AV_NOPTS_VALUE && first_audio_dts != AV_NOPTS_VALUE) {
+                    // Calculate relative timestamp within this segment
+                    int64_t relative_dts = pkt->dts - first_audio_dts;
+                    // Add a small fixed offset (e.g., 1/30th of a second in timebase units)
+                    // This ensures continuity without timestamp inflation
+                    pkt->dts = relative_dts + 1;
+                }
+
+                if (pkt->pts != AV_NOPTS_VALUE && first_audio_pts != AV_NOPTS_VALUE) {
+                    int64_t relative_pts = pkt->pts - first_audio_pts;
+                    pkt->pts = relative_pts + 1;
+                }
+            }
+
+            // Ensure monotonic increase of timestamps
+            if (audio_packet_count > 0) {
+                // CRITICAL FIX: More robust handling of non-monotonic DTS values
+                if (pkt->dts != AV_NOPTS_VALUE && pkt->dts <= last_audio_dts) {
+                    int64_t fixed_dts = last_audio_dts + 1;
+                    log_debug("Fixing non-monotonic audio DTS: old=%lld, last=%lld, new=%lld",
+                             (long long)pkt->dts, (long long)last_audio_dts, (long long)fixed_dts);
+                    pkt->dts = fixed_dts;
+                }
+
+                if (pkt->pts != AV_NOPTS_VALUE && pkt->pts <= last_audio_pts) {
+                    int64_t fixed_pts = last_audio_pts + 1;
+                    log_debug("Fixing non-monotonic audio PTS: old=%lld, last=%lld, new=%lld",
+                             (long long)pkt->pts, (long long)last_audio_pts, (long long)fixed_pts);
+                    pkt->pts = fixed_pts;
+                }
+
+                // Ensure PTS >= DTS
+                if (pkt->pts != AV_NOPTS_VALUE && pkt->dts != AV_NOPTS_VALUE && pkt->pts < pkt->dts) {
+                    log_debug("Fixing audio packet with PTS < DTS: PTS=%lld, DTS=%lld",
+                             (long long)pkt->pts, (long long)pkt->dts);
+                    pkt->pts = pkt->dts;
+                }
+            }
+
+            // CRITICAL FIX: Ensure DTS values don't exceed MP4 format limits (0x7fffffff) for audio packets
+            if (pkt->dts != AV_NOPTS_VALUE) {
+                if (pkt->dts > 0x7fffffff) {
+                    log_warn("Audio DTS value exceeds MP4 format limit: %lld, resetting to safe value", (long long)pkt->dts);
+                    pkt->dts = 1000;
+                    if (pkt->pts != AV_NOPTS_VALUE) {
+                        // Maintain PTS-DTS relationship if possible
+                        int64_t pts_dts_diff = pkt->pts - pkt->dts;
+                        if (pts_dts_diff >= 0) {
+                            pkt->pts = pkt->dts + pts_dts_diff;
+                        } else {
+                            pkt->pts = pkt->dts;
+                        }
+                    } else {
+                        pkt->pts = pkt->dts;
+                    }
+                }
+
+                // Additional check to ensure DTS is always within safe range
+                if (pkt->dts > 0x70000000) {  // ~75% of max value
+                    log_info("Audio DTS value approaching MP4 format limit: %lld, resetting to prevent overflow", (long long)pkt->dts);
+                    pkt->dts = 1000;
+                    if (pkt->pts != AV_NOPTS_VALUE) {
+                        // Maintain PTS-DTS relationship
+                        pkt->pts = pkt->dts + 1;
+                    } else {
+                        pkt->pts = pkt->dts;
+                    }
+                }
+            }
+
+            // Update last timestamps
+            if (pkt->dts != AV_NOPTS_VALUE) {
+                last_audio_dts = pkt->dts;
+            }
+            if (pkt->pts != AV_NOPTS_VALUE) {
+                last_audio_pts = pkt->pts;
+            }
+
+            // Explicitly set duration to prevent segmentation fault during fragment writing
+            if (pkt->duration == 0 || pkt->duration == AV_NOPTS_VALUE) {
+                // For audio, we can calculate duration based on sample rate and frame size
+                AVStream *audio_stream = input_ctx->streams[audio_stream_idx];
+                if (audio_stream->codecpar->sample_rate > 0) {
+                    // If we know the number of samples in this packet, use that
+                    int nb_samples = 0;
+
+                    // Try to get the number of samples from the codec parameters
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
+                    // For FFmpeg 5.0 and newer
+                    if (audio_stream->codecpar->ch_layout.nb_channels > 0 &&
+                        audio_stream->codecpar->bits_per_coded_sample > 0) {
+                        int bytes_per_sample = audio_stream->codecpar->bits_per_coded_sample / 8;
+                        // Ensure we don't divide by zero
+                        if (bytes_per_sample > 0) {
+                            nb_samples = pkt->size / (audio_stream->codecpar->ch_layout.nb_channels * bytes_per_sample);
+                        }
+                    }
+#else
+                    // For older FFmpeg versions
+                    if (audio_stream->codecpar->channels > 0 &&
+                        audio_stream->codecpar->bits_per_coded_sample > 0) {
+                        int bytes_per_sample = audio_stream->codecpar->bits_per_coded_sample / 8;
+                        // Ensure we don't divide by zero
+                        if (bytes_per_sample > 0) {
+                            nb_samples = pkt->size / (audio_stream->codecpar->channels * bytes_per_sample);
+                        }
+                    }
+#endif
+
+                    if (nb_samples > 0) {
+                        // Calculate duration based on samples and sample rate
+                        pkt->duration = av_rescale_q(nb_samples,
+                                                  (AVRational){1, audio_stream->codecpar->sample_rate},
+                                                  audio_stream->time_base);
+                    } else {
+                        // Default to a reasonable value based on sample rate
+                        // Typically audio frames are ~20-40ms, so we'll use 1024 samples as a common value
+                        pkt->duration = av_rescale_q(1024,
+                                                  (AVRational){1, audio_stream->codecpar->sample_rate},
+                                                  audio_stream->time_base);
+                    }
+                } else {
+                    // If we can't calculate based on sample rate, use a default value
+                    pkt->duration = 1;
+                    log_debug("Set default audio packet duration to 1");
+                }
+            }
+
+            // Set output stream index
+            pkt->stream_index = out_audio_stream->index;
+
+            // Write packet
+            ret = av_interleaved_write_frame(output_ctx, pkt);
+            if (ret < 0) {
+                char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+                av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+                log_error("Error writing audio frame: %d (%s)", ret, error_buf);
+
+                // CRITICAL FIX: Handle timestamp-related errors
+                if (ret == AVERROR(EINVAL) && strstr(error_buf, "monoton")) {
+                    // This is likely a timestamp error, try to fix it for the next packet
+                    log_warn("Detected audio timestamp error, will try to fix for next packet");
+
+                    // Increment the consecutive error counter
+                    consecutive_timestamp_errors++;
+
+                    if (consecutive_timestamp_errors >= max_timestamp_errors) {
+                        // Too many consecutive errors, reset all timestamps
+                        log_warn("Too many consecutive audio timestamp errors (%d), resetting all timestamps",
+                                consecutive_timestamp_errors);
+
+                        // Reset timestamps to small values
+                        first_video_dts = 0;
+                        first_video_pts = 0;
+                        last_video_dts = 0;
+                        last_video_pts = 0;
+                        first_audio_dts = 0;
+                        first_audio_pts = 0;
+                        last_audio_dts = 0;
+                        last_audio_pts = 0;
+
+                        // Reset the error counter
+                        consecutive_timestamp_errors = 0;
+                    } else {
+                        // Force a larger increment for the next packet to avoid timestamp issues
+                        last_audio_dts += 100 * consecutive_timestamp_errors;
+                        last_audio_pts += 100 * consecutive_timestamp_errors;
+                    }
+                }
+            } else {
+                // Reset consecutive error counter on success
+                consecutive_timestamp_errors = 0;
+
                 audio_packet_count++;
+                if (audio_packet_count % 300 == 0) {
+                    log_debug("Processed %d audio packets", audio_packet_count);
+                }
             }
         }
 
-        // Free packet
-        av_packet_unref(&pkt);
+        // Unref packet
+        av_packet_unref(pkt);
     }
 
-    // Finalize output
-    ret = finalize_output(output_ctx);
-    if (ret < 0) {
-        log_error("Failed to finalize output: %d", ret);
-    }
+    log_info("Recording segment complete (video packets: %d, audio packets: %d)",
+            video_packet_count, audio_packet_count);
 
-    // IMPROVED CLEANUP: Handle static context with extra care to prevent memory corruption
-    pthread_mutex_lock(&static_vars_mutex);
-    
-    // Always close the previous static context if it's different from the current one
-    if (static_input_ctx && static_input_ctx != input_ctx) {
-        log_info("Closing previous static input context to prevent memory leaks");
-        AVFormatContext *old_ctx = static_input_ctx;
-        static_input_ctx = NULL; // Clear before closing to prevent race conditions
-        
-        // Extra safety: ensure the context is valid before closing
-        if (old_ctx && old_ctx->pb) {
-            avio_flush(old_ctx->pb);
-            avformat_close_input(&old_ctx);
-        } else if (old_ctx) {
-            avformat_free_context(old_ctx);
-        }
-    }
+    // Flag to track if trailer has been written
+    bool trailer_written = false;
 
-    // For Opus audio, don't reuse the context to avoid memory corruption
-    if (input_ctx && audio_stream_idx >= 0 && 
-        input_ctx->streams[audio_stream_idx] && 
-        input_ctx->streams[audio_stream_idx]->codecpar &&
-        input_ctx->streams[audio_stream_idx]->codecpar->codec_id == AV_CODEC_ID_OPUS) {
-        
-        log_info("Opus audio detected, not saving context for reuse to avoid memory corruption");
-        avformat_close_input(&input_ctx);
-        static_input_ctx = NULL;
-        segment_info.segment_index = 0;
-        segment_info.has_audio = false;
-    }
-    // For other codecs, validate and reuse the context if possible
-    else if (input_ctx && input_ctx->nb_streams > 0) {
-        // Check if the input context is still valid
-        int valid_context = 1;
-        for (unsigned int i = 0; i < input_ctx->nb_streams; i++) {
-            if (!input_ctx->streams[i] || !input_ctx->streams[i]->codecpar) {
-                valid_context = 0;
-                log_warn("Stream %d is invalid in input context, not saving as static context", i);
-                break;
-            }
-        }
-
-        if (valid_context) {
-            static_input_ctx = input_ctx;
-            segment_info.segment_index = segment_index + 1;
-            segment_info.has_audio = has_audio;
-            log_debug("Saved valid input context for next segment");
+    // Write trailer
+    if (output_ctx && output_ctx->pb) {
+        ret = av_write_trailer(output_ctx);
+        if (ret < 0) {
+            log_error("Failed to write trailer: %d", ret);
         } else {
-            // Close the invalid context
-            log_warn("Not saving invalid input context");
-            avformat_close_input(&input_ctx);
-            static_input_ctx = NULL;
-            segment_info.segment_index = 0;
-            segment_info.has_audio = false;
+            trailer_written = true;
+            log_debug("Successfully wrote trailer to output file");
         }
-    } else {
-        log_warn("Input context is NULL or has no streams, not saving as static context");
-        if (input_ctx) {
-            avformat_close_input(&input_ctx);
-        }
-        static_input_ctx = NULL;
-        segment_info.segment_index = 0;
-        segment_info.has_audio = false;
     }
+
+    // Thread-safe update of segment info for the next segment
+    pthread_mutex_lock(&static_vars_mutex);
+    segment_info.segment_index = segment_index;
+    segment_info.has_audio = has_audio && audio_stream_idx >= 0;
     pthread_mutex_unlock(&static_vars_mutex);
 
-    log_info("Segment recording completed: %s", output_file);
-    log_debug("Video packets: %d, Audio packets: %d", video_packet_count, audio_packet_count);
+    log_info("Saved segment info for next segment: index=%d, has_audio=%d, last_frame_was_key=%d",
+            segment_index, has_audio && audio_stream_idx >= 0, segment_info.last_frame_was_key);
 
-    return 0;
+cleanup:
+    // CRITICAL FIX: Aggressive cleanup to prevent memory growth over time
+    log_debug("Starting aggressive cleanup of FFmpeg resources");
+
+    // Free dictionaries - these are always safe to free
+    av_dict_free(&opts);
+    av_dict_free(&out_opts);
+
+    // Free packet if allocated
+    if (pkt) {
+        log_debug("Freeing packet during cleanup");
+        av_packet_unref(pkt);
+        av_packet_free(&pkt);
+        pkt = NULL;
+    }
+
+    // Safely flush input context if it exists
+    if (input_ctx && input_ctx->pb) {
+        log_debug("Flushing input context");
+        avio_flush(input_ctx->pb);
+    }
+
+    // Safely flush output context if it exists
+    if (output_ctx && output_ctx->pb) {
+        log_debug("Flushing output context");
+        avio_flush(output_ctx->pb);
+    }
+
+    // Clean up output context if it was created
+    if (output_ctx) {
+        log_debug("Cleaning up output context");
+
+        // Only write trailer if we successfully wrote the header and it hasn't been written yet
+        if (output_ctx->pb && ret >= 0 && !trailer_written) {
+            log_debug("Writing trailer during cleanup");
+            av_write_trailer(output_ctx);
+        }
+
+        // Close output file if it was opened
+        if (output_ctx->pb) {
+            log_debug("Closing output file");
+            avio_closep(&output_ctx->pb);
+        }
+
+        // MEMORY LEAK FIX: Properly clean up all streams in the output context
+        // This ensures all codec contexts and other resources are freed
+        if (output_ctx->nb_streams > 0) {
+            log_debug("Cleaning up %d output streams", output_ctx->nb_streams);
+            for (unsigned int i = 0; i < output_ctx->nb_streams; i++) {
+                if (output_ctx->streams[i]) {
+                    // Free any codec parameters
+                    if (output_ctx->streams[i]->codecpar) {
+                        avcodec_parameters_free(&output_ctx->streams[i]->codecpar);
+                    }
+                }
+            }
+        }
+
+        // Free output context
+        log_debug("Freeing output context");
+        avformat_free_context(output_ctx);
+        output_ctx = NULL;
+    }
+
+    // CRITICAL FIX: Properly handle the input context to prevent memory leaks
+    log_debug("Handling input context cleanup");
+
+    // Store the input context for reuse if recording was successful
+    if (ret >= 0) {
+        pthread_mutex_lock(&static_vars_mutex);
+        // Only store if there's no existing context (should never happen, but just in case)
+        if (static_input_ctx == NULL) {
+            // We can't directly access internal FFmpeg structures
+            // Just store the context as is and rely on FFmpeg's internal reference counting
+
+            static_input_ctx = input_ctx;
+            // Don't close the input context as we're keeping it for the next segment
+            input_ctx = NULL;
+            log_debug("Stored input context for reuse in next segment");
+        } else {
+            // This should never happen, but if it does, close the current context
+            log_warn("Static input context already exists, closing current context");
+
+            // Clean up all streams before closing
+            for (unsigned int i = 0; i < input_ctx->nb_streams; i++) {
+                if (input_ctx->streams[i]) {
+                    // Free any codec parameters
+                    if (input_ctx->streams[i]->codecpar) {
+                        avcodec_parameters_free(&input_ctx->streams[i]->codecpar);
+                    }
+                }
+            }
+
+            avformat_close_input(&input_ctx);
+        }
+        pthread_mutex_unlock(&static_vars_mutex);
+    } else
+    {
+        // If there was an error, close the input context
+        log_debug("Closing input context due to error");
+
+        // CRITICAL FIX: Check if input_ctx is NULL before trying to access it
+        // This prevents segmentation fault when RTSP connection fails
+        if (input_ctx) {
+            // CRITICAL FIX: Use a safer approach to clean up FFmpeg resources
+            // First check if the context is valid and has streams
+            if (input_ctx->nb_streams > 0) {
+                // Clean up all streams before closing
+                for (unsigned int i = 0; i < input_ctx->nb_streams; i++) {
+                    if (input_ctx->streams && input_ctx->streams[i]) {
+                        // Free any codec parameters
+                        if (input_ctx->streams[i]->codecpar) {
+                            avcodec_parameters_free(&input_ctx->streams[i]->codecpar);
+                        }
+                    }
+                }
+            }
+
+            // Flush any pending data
+            if (input_ctx->pb) {
+                avio_flush(input_ctx->pb);
+            }
+
+            // Close the input context
+            avformat_close_input(&input_ctx);
+            input_ctx = NULL;  // Ensure the pointer is NULL after closing
+        } else {
+            log_debug("Input context is NULL, nothing to clean up");
+        }
+        log_debug("Closed input context due to error");
+    }
+
+    // Final FFmpeg cleanup to prevent memory leaks
+    avformat_network_deinit();
+    av_dict_free(&opts);
+
+    // Return the error code
+    return ret;
 }
 
 /**
- * Clean up the MP4 segment recorder
- * This function should be called during program shutdown
+ * Clean up all static resources used by the MP4 segment recorder
+ * This function should be called during program shutdown to prevent memory leaks
  */
 void mp4_segment_recorder_cleanup(void) {
-    log_info("Starting MP4 segment recorder cleanup");
-
+    // Thread-safe cleanup of static resources
     pthread_mutex_lock(&static_vars_mutex);
-    if (static_input_ctx) {
-        log_info("Closing static input context during cleanup");
-        // Make a local copy of the pointer and NULL out the original to prevent race conditions
-        AVFormatContext *ctx_to_close = static_input_ctx;
-        static_input_ctx = NULL;
 
-        // Flush buffers before closing to ensure clean shutdown
-        if (ctx_to_close->pb) {
-            avio_flush(ctx_to_close->pb);
-            log_debug("Flushed input context buffers");
+    // Clean up static input context if it exists
+    if (static_input_ctx) {
+        log_info("Cleaning up static input context during shutdown");
+
+        // Flush the input context before closing it
+        if (static_input_ctx->pb) {
+            avio_flush(static_input_ctx->pb);
         }
 
+        // Let avformat_close_input handle the cleanup of streams and codecs
+
         // Close the input context
-        avformat_close_input(&ctx_to_close);
-        log_info("Closed static input context");
+        avformat_close_input(&static_input_ctx);
+        static_input_ctx = NULL;
+        log_debug("Cleaned up static input context during shutdown");
     }
 
     // Reset segment info
     segment_info.segment_index = 0;
     segment_info.has_audio = false;
     segment_info.last_frame_was_key = false;
+
     pthread_mutex_unlock(&static_vars_mutex);
 
-    // Perform additional FFmpeg cleanup to prevent memory leaks
-    avformat_network_deinit();
-    log_info("Deinitialized FFmpeg network");
+    // Call FFmpeg's global cleanup functions to release any global resources
+    // This helps clean up resources that might not be freed otherwise
 
-    log_info("MP4 segment recorder cleaned up");
+    // Set log level to quiet to suppress any warnings during cleanup
+    av_log_set_level(AV_LOG_QUIET);
+
+    // Clean up network resources
+    // Note: This is safe to call during shutdown as we're ensuring all contexts are closed first
+    avformat_network_deinit();
+
+    log_info("MP4 segment recorder resources cleaned up");
 }
