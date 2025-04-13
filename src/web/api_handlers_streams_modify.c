@@ -424,28 +424,44 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
         config_changed = true;
     }
 
-    cJSON *detection_based_recording = cJSON_GetObjectItem(stream_json, "detection_based_recording");
-    if (detection_based_recording && cJSON_IsBool(detection_based_recording)) {
-        config.detection_based_recording = cJSON_IsTrue(detection_based_recording);
+    cJSON *detection_based_recording_json = cJSON_GetObjectItem(stream_json, "detection_based_recording");
+    bool detection_based_recording_value = false;
+    bool has_detection_based_recording = false;
+    if (detection_based_recording_json && cJSON_IsBool(detection_based_recording_json)) {
+        detection_based_recording_value = cJSON_IsTrue(detection_based_recording_json);
+        has_detection_based_recording = true;
+        config.detection_based_recording = detection_based_recording_value;
         config_changed = true;
     }
 
-    cJSON *detection_model = cJSON_GetObjectItem(stream_json, "detection_model");
-    if (detection_model && cJSON_IsString(detection_model)) {
-        strncpy(config.detection_model, detection_model->valuestring, sizeof(config.detection_model) - 1);
+    cJSON *detection_model_json = cJSON_GetObjectItem(stream_json, "detection_model");
+    char detection_model_value[256] = {0};
+    bool has_detection_model = false;
+    if (detection_model_json && cJSON_IsString(detection_model_json)) {
+        strncpy(detection_model_value, detection_model_json->valuestring, sizeof(detection_model_value) - 1);
+        has_detection_model = true;
+        strncpy(config.detection_model, detection_model_value, sizeof(config.detection_model) - 1);
         config_changed = true;
     }
 
-    cJSON *detection_threshold = cJSON_GetObjectItem(stream_json, "detection_threshold");
-    if (detection_threshold && cJSON_IsNumber(detection_threshold)) {
+    cJSON *detection_threshold_json = cJSON_GetObjectItem(stream_json, "detection_threshold");
+    float detection_threshold_value = 0.0f;
+    bool has_detection_threshold = false;
+    if (detection_threshold_json && cJSON_IsNumber(detection_threshold_json)) {
         // Convert from percentage (0-100) to float (0.0-1.0)
-        config.detection_threshold = detection_threshold->valuedouble / 100.0f;
+        detection_threshold_value = detection_threshold_json->valuedouble / 100.0f;
+        has_detection_threshold = true;
+        config.detection_threshold = detection_threshold_value;
         config_changed = true;
     }
 
-    cJSON *detection_interval = cJSON_GetObjectItem(stream_json, "detection_interval");
-    if (detection_interval && cJSON_IsNumber(detection_interval)) {
-        config.detection_interval = detection_interval->valueint;
+    cJSON *detection_interval_json = cJSON_GetObjectItem(stream_json, "detection_interval");
+    int detection_interval_value = 0;
+    bool has_detection_interval = false;
+    if (detection_interval_json && cJSON_IsNumber(detection_interval_json)) {
+        detection_interval_value = detection_interval_json->valueint;
+        has_detection_interval = true;
+        config.detection_interval = detection_interval_value;
         config_changed = true;
     }
 
@@ -669,8 +685,8 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
     // If detection settings were changed and the stream is running,
     // we need to restart the stream to apply the new detection settings
     if (config_changed &&
-        (detection_based_recording != NULL || detection_model != NULL ||
-         detection_threshold != NULL || detection_interval != NULL) &&
+        (has_detection_based_recording || has_detection_model ||
+         has_detection_threshold || has_detection_interval) &&
         is_running && !requires_restart) {
         log_info("Detection settings changed for stream %s, marking for restart to apply changes", config.name);
         requires_restart = true;
@@ -691,17 +707,17 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
     bool detection_now_enabled = false;
 
     // Check if detection_based_recording was changed in this request
-    if (detection_based_recording != NULL) {
+    if (has_detection_based_recording) {
         detection_enabled_changed = true;
-        detection_was_enabled = !cJSON_IsTrue(detection_based_recording); // Previous state was opposite
-        detection_now_enabled = cJSON_IsTrue(detection_based_recording);  // New state
+        detection_was_enabled = !detection_based_recording_value; // Previous state was opposite
+        detection_now_enabled = detection_based_recording_value;  // New state
     } else {
         // If not explicitly changed in this request, use the current config value
         detection_now_enabled = config.detection_based_recording;
 
         // Check if a detection thread is already running
         detection_was_enabled = is_stream_detection_thread_running(config.name);
-        
+
         // If detection is enabled in config but no thread is running, we need to start one
         if (detection_now_enabled && !detection_was_enabled) {
             log_info("Detection is enabled in config for stream %s but no thread is running", config.name);
@@ -762,7 +778,7 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
         }
     }
     // If detection settings changed but detection was already enabled, restart the thread with new settings
-    else if (detection_now_enabled && (detection_model != NULL || detection_threshold != NULL || detection_interval != NULL)) {
+    else if (detection_now_enabled && (has_detection_model || has_detection_threshold || has_detection_interval)) {
         log_info("Detection settings changed for stream %s, restarting detection thread", config.name);
 
         // Stop existing thread

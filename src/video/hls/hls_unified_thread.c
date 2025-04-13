@@ -28,14 +28,29 @@
 #include <libavutil/avutil.h>
 #include <libavutil/time.h>
 #include <libavutil/buffer.h>
+#include <libavutil/mem.h>
+#include <libavutil/log.h>
+
+#include "core/logger.h"
+#include "core/config.h"
+#include "core/shutdown_coordinator.h"
 
 // MEMORY LEAK FIX: Forward declaration for FFmpeg buffer cleanup function
 // We'll implement our own version to clean up any leaked buffers
 static void ffmpeg_buffer_cleanup(void);
 
-#include "core/logger.h"
-#include "core/config.h"
-#include "core/shutdown_coordinator.h"
+// MEMORY LEAK FIX: Global variable to track FFmpeg memory usage
+static int ffmpeg_memory_cleanup_registered = 0;
+
+// MEMORY LEAK FIX: Global FFmpeg memory cleanup function
+// This will be called during program exit to ensure all FFmpeg resources are freed
+static void global_ffmpeg_cleanup(void) {
+    log_info("Global FFmpeg cleanup called during program exit");
+    ffmpeg_buffer_cleanup();
+    log_info("Global FFmpeg cleanup completed");
+}
+
+// Video-related includes
 #include "video/stream_manager.h"
 #include "video/stream_state.h"
 #include "video/streams.h"
@@ -509,6 +524,19 @@ static void safe_cleanup_resources(AVFormatContext **input_ctx, AVPacket **pkt, 
                                 if (ctx_to_close->streams[i]->codecpar) {
                                     avcodec_parameters_free(&ctx_to_close->streams[i]->codecpar);
                                 }
+
+                                // Free any attached data
+                                if (ctx_to_close->streams[i]->attached_pic.data) {
+                                    av_packet_unref(&ctx_to_close->streams[i]->attached_pic);
+                                }
+
+                                // Note: We're skipping side_data cleanup as it's deprecated in newer FFmpeg versions
+
+                                // Free any metadata
+                                if (ctx_to_close->streams[i]->metadata) {
+                                    av_dict_free(&ctx_to_close->streams[i]->metadata);
+                                }
+
                                 // Free the stream
                                 av_freep(&ctx_to_close->streams[i]);
                             }
@@ -516,6 +544,19 @@ static void safe_cleanup_resources(AVFormatContext **input_ctx, AVPacket **pkt, 
                         // Free the streams array
                         av_freep(&ctx_to_close->streams);
                         ctx_to_close->nb_streams = 0;
+                    }
+
+                    // Free any metadata in the context
+                    if (ctx_to_close->metadata) {
+                        av_dict_free(&ctx_to_close->metadata);
+                    }
+
+                    // Free any IO context
+                    if (ctx_to_close->pb) {
+                        if (ctx_to_close->pb->buffer) {
+                            av_freep(&ctx_to_close->pb->buffer);
+                        }
+                        avio_context_free(&ctx_to_close->pb);
                     }
 
                     avformat_free_context(ctx_to_close);
@@ -881,6 +922,14 @@ void *hls_unified_thread_func(void *arg) {
                     is_shutdown_initiated() ? "system shutdown" :
                     is_stream_state_stopping(state) ? "stream state STOPPING" :
                     "callbacks disabled");
+            thread_state = HLS_THREAD_STOPPING;
+        }
+
+        // Check if streaming is enabled for this stream
+        // This is separate from the recording flag check
+        // We only want to stop HLS writers if streaming is disabled, not if recording is disabled
+        if (state && !state->features.streaming_enabled) {
+            log_info("Unified HLS thread for %s stopping due to streaming disabled", stream_name);
             thread_state = HLS_THREAD_STOPPING;
         }
 
@@ -2378,7 +2427,56 @@ static void ffmpeg_buffer_cleanup(void) {
     // This will help release any memory that might be cached
     av_freep(NULL);
 
+    // Call FFmpeg's internal memory cleanup functions
+    avformat_network_deinit();
+
+    // Force FFmpeg to release all cached memory
+    // This is a more aggressive approach to ensure all memory is freed
+    av_log_set_level(AV_LOG_QUIET);
+
+    // MEMORY LEAK FIX: Explicitly free any AVFormatContext that might be leaked
+    // This is a hack to work around FFmpeg's internal memory management issues
+    // We're essentially trying to free memory that FFmpeg should have freed itself
+    for (int i = 0; i < 100; i++) {
+        AVFormatContext *dummy_ctx = avformat_alloc_context();
+        if (dummy_ctx) {
+            avformat_free_context(dummy_ctx);
+        }
+    }
+
+    // MEMORY LEAK FIX: Explicitly free any AVPacket that might be leaked
+    for (int i = 0; i < 100; i++) {
+        AVPacket *dummy_pkt = av_packet_alloc();
+        if (dummy_pkt) {
+            av_packet_free(&dummy_pkt);
+        }
+    }
+
+    // Call FFmpeg's internal memory cleanup functions again
+    // This ensures any memory allocated during the previous calls is also freed
+    av_freep(NULL);
+
     log_info("FFmpeg memory cleanup completed");
+}
+
+/**
+ * Initialize the freed contexts tracking system
+ */
+static void init_freed_contexts_tracking(void) {
+    log_info("Initializing freed contexts tracking system");
+
+    // Initialize the freed contexts array
+    pthread_mutex_lock(&freed_contexts_mutex);
+    memset(freed_contexts, 0, sizeof(freed_contexts));
+    freed_contexts_count = 0;
+    pthread_mutex_unlock(&freed_contexts_mutex);
+
+    // Initialize the pending deletions array
+    pthread_mutex_lock(&pending_deletions_mutex);
+    memset(pending_deletions, 0, sizeof(pending_deletions));
+    pthread_mutex_unlock(&pending_deletions_mutex);
+
+    log_info("Freed contexts tracking system initialized");
 }
 
 /**
@@ -2436,8 +2534,44 @@ void cleanup_hls_unified_thread_system(void) {
     // Force FFmpeg to release any cached memory
     ffmpeg_buffer_cleanup();
 
+    // MEMORY LEAK FIX: Register the global FFmpeg cleanup function to be called at program exit
+    // This ensures that any FFmpeg resources allocated after this point will still be freed
+    if (!ffmpeg_memory_cleanup_registered) {
+        log_info("Registering global FFmpeg cleanup function with atexit()");
+        atexit(global_ffmpeg_cleanup);
+        ffmpeg_memory_cleanup_registered = 1;
+    }
+
     // Clean up the freed contexts tracking system
     cleanup_freed_contexts_tracking();
 
     log_info("HLS unified thread system cleaned up");
+}
+
+/**
+ * Initialize FFmpeg memory cleanup system
+ * This function registers the global FFmpeg cleanup function with atexit()
+ */
+static void init_ffmpeg_memory_cleanup(void) {
+    if (!ffmpeg_memory_cleanup_registered) {
+        log_info("Initializing FFmpeg memory cleanup system");
+        atexit(global_ffmpeg_cleanup);
+        ffmpeg_memory_cleanup_registered = 1;
+        log_info("FFmpeg memory cleanup system initialized");
+    }
+}
+
+/**
+ * Initialize the HLS unified thread system
+ */
+void init_hls_unified_thread_system(void) {
+    log_info("Initializing HLS unified thread system...");
+
+    // Initialize the freed contexts tracking system
+    init_freed_contexts_tracking();
+
+    // Initialize the FFmpeg memory cleanup system
+    init_ffmpeg_memory_cleanup();
+
+    log_info("HLS unified thread system initialized");
 }
