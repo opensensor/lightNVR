@@ -252,6 +252,17 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
     av_dict_set(&input_options, "reconnect_streamed", "1", 0); // Reconnect if streaming
     av_dict_set(&input_options, "reconnect_delay_max", "5", 0); // Max 5 seconds between reconnection attempts
 
+    // MEMORY LEAK FIX: Disable parsers which are causing memory leaks
+    av_dict_set(&input_options, "use_parser", "0", 0);
+    av_dict_set(&input_options, "enable_parser", "0", 0);
+
+    // MEMORY LEAK FIX: Limit the number of streams to reduce memory usage
+    av_dict_set(&input_options, "max_streams", "4", 0);
+
+    // MEMORY LEAK FIX: Reduce the amount of data analyzed to prevent memory leaks
+    av_dict_set(&input_options, "analyzeduration", "2000000", 0); // 2 seconds
+    av_dict_set(&input_options, "probesize", "2000000", 0); // 2MB
+
     if (protocol == STREAM_PROTOCOL_UDP) {
         // Check if this is a multicast stream with robust error handling
         is_multicast = is_multicast_url(url);
@@ -453,7 +464,40 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
 
     // Get stream info with enhanced error handling
     log_debug("Getting stream info for %s", url);
-    ret = avformat_find_stream_info(*input_ctx, NULL);
+
+    // MEMORY LEAK FIX: Create a new dictionary for find_stream_info options
+    AVDictionary *find_stream_options = NULL;
+
+    // Set options to prevent memory leaks during stream info discovery
+    av_dict_set(&find_stream_options, "enable_parser", "0", 0); // Disable parser to prevent leaks
+    av_dict_set(&find_stream_options, "use_parser", "0", 0); // Disable parser to prevent leaks
+    av_dict_set(&find_stream_options, "analyzeduration", "1000000", 0); // 1 second (reduced from 5)
+    av_dict_set(&find_stream_options, "probesize", "1000000", 0); // 1MB (reduced from 5)
+
+    // Create an array of option dictionaries, one for each stream
+    AVDictionary **options = NULL;
+    if ((*input_ctx)->nb_streams > 0) {
+        options = av_calloc((*input_ctx)->nb_streams, sizeof(*options));
+        if (options) {
+            // Set the same options for each stream
+            for (unsigned int i = 0; i < (*input_ctx)->nb_streams; i++) {
+                av_dict_copy(&options[i], find_stream_options, 0);
+            }
+        }
+    }
+
+    // Call find_stream_info with the options
+    ret = avformat_find_stream_info(*input_ctx, options);
+
+    // Free the options
+    if (options) {
+        for (unsigned int i = 0; i < (*input_ctx)->nb_streams; i++) {
+            av_dict_free(&options[i]);
+        }
+        av_free(options);
+    }
+    av_dict_free(&find_stream_options);
+
     if (ret < 0) {
         log_ffmpeg_error(ret, "Could not find stream info");
 
@@ -464,6 +508,9 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
 
         // Use our comprehensive cleanup function
         comprehensive_ffmpeg_cleanup(&ctx_to_cleanup, NULL, NULL, NULL);
+
+        // Note: We're not forcing garbage collection here to avoid segmentation faults
+        // Memory cleanup will be handled by the periodic cleanup in hls_unified_thread_func
 
         log_debug("Comprehensive cleanup completed after find_stream_info failure");
         return ret;
@@ -526,6 +573,9 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
     } else {
         log_warn("Opened input stream but no streams found: %s", url);
     }
+
+    // Note: We're not forcing garbage collection here to avoid segmentation faults
+    // Memory cleanup will be handled by the periodic cleanup in hls_unified_thread_func
 
     return 0;
 }

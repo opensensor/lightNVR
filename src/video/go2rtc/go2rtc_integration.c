@@ -8,6 +8,7 @@
 #include "video/go2rtc/go2rtc_stream.h"
 #include "core/logger.h"
 #include "core/config.h"
+#include "core/shutdown_coordinator.h"  // For is_shutdown_initiated
 #include "video/stream_manager.h"
 #include "video/mp4_recording.h"
 #include "video/hls/hls_api.h"
@@ -428,6 +429,12 @@ int go2rtc_integration_start_hls(const char *stream_name) {
 
     if (!stream_name) {
         log_error("Invalid parameter for go2rtc_integration_start_hls");
+        return -1;
+    }
+
+    // CRITICAL FIX: Check if shutdown is in progress and prevent starting new streams
+    if (is_shutdown_initiated()) {
+        log_warn("Cannot start HLS stream %s during shutdown", stream_name);
         return -1;
     }
 

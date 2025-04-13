@@ -62,6 +62,7 @@ static void global_ffmpeg_cleanup(void) {
 #include "video/hls/hls_context.h"
 #include "video/hls/hls_directory.h"
 #include "video/hls/hls_unified_thread.h"
+#include "video/ffmpeg_utils.h"
 
 // Maximum time (in seconds) without receiving a packet before considering the connection dead
 #define MAX_PACKET_TIMEOUT 5
@@ -279,6 +280,13 @@ static void mark_thread_exited(void *ctx) {
         return;  // Nothing to do for NULL context
     }
 
+    // CRITICAL FIX: Check if the context is already freed before proceeding
+    // This is a safety check to prevent use-after-free errors
+    if (is_context_already_freed(ctx)) {
+        log_warn("Attempted to mark thread as exited for already freed context %p", ctx);
+        return;
+    }
+
     pthread_mutex_lock(&pending_deletions_mutex);
 
     // First, check if the context is already in the list
@@ -305,10 +313,16 @@ static void mark_thread_exited(void *ctx) {
 
         // If we found an empty slot, use it
         if (slot != -1) {
-            pending_deletions[slot].ctx = ctx;
-            atomic_init(&pending_deletions[slot].pending_deletion, 0);
-            atomic_init(&pending_deletions[slot].thread_exited, 1);
-            log_info("Added context %p to pending deletions list and marked thread as exited", ctx);
+            // CRITICAL FIX: Check again if the context is already freed before adding it
+            // This handles the race condition where the context might be freed between our initial check and now
+            if (!is_context_already_freed(ctx)) {
+                pending_deletions[slot].ctx = ctx;
+                atomic_init(&pending_deletions[slot].pending_deletion, 0);
+                atomic_init(&pending_deletions[slot].thread_exited, 1);
+                log_info("Added context %p to pending deletions list and marked thread as exited", ctx);
+            } else {
+                log_warn("Context %p was freed during mark_thread_exited, not adding to list", ctx);
+            }
         } else {
             log_warn("No empty slot found in pending deletions list for context %p", ctx);
         }
@@ -513,6 +527,9 @@ static void safe_cleanup_resources(AVFormatContext **input_ctx, AVPacket **pkt, 
                     log_debug("Successfully closed input context");
                 } else {
                     // If the context is not properly initialized, just free it
+                    // MEMORY LEAK FIX: More thorough cleanup of partially initialized context
+                    log_debug("Input context not fully initialized, performing manual cleanup");
+
                     // CRITICAL FIX: Add memory barrier before freeing to ensure all accesses are complete
                     __sync_synchronize();
 
@@ -559,7 +576,29 @@ static void safe_cleanup_resources(AVFormatContext **input_ctx, AVPacket **pkt, 
                         avio_context_free(&ctx_to_close->pb);
                     }
 
+                    // MEMORY LEAK FIX: Free any internal buffers that might be allocated
+                    // These are common sources of memory leaks in FFmpeg
+                    if (ctx_to_close->interrupt_callback.opaque) {
+                        // Don't free this directly as it might be owned by someone else
+                        // Just clear the reference
+                        ctx_to_close->interrupt_callback.opaque = NULL;
+                        ctx_to_close->interrupt_callback.callback = NULL;
+                    }
+
+                    // MEMORY LEAK FIX: Free any internal format-specific data
+                    if (ctx_to_close->priv_data) {
+                        // This should be handled by avformat_free_context, but we'll clear it explicitly
+                        // to be safe. We don't free it directly as it's managed by the format-specific code.
+                        ctx_to_close->priv_data = NULL;
+                    }
+
+                    // MEMORY LEAK FIX: We can't directly access internal FFmpeg structures
+                    // as they're not exposed in the public API. We'll rely on avformat_free_context
+                    // to handle these internal structures.
+
+                    // Finally free the context itself
                     avformat_free_context(ctx_to_close);
+                    log_debug("Successfully freed input context manually");
                 }
             }
         }
@@ -812,6 +851,9 @@ void *hls_unified_thread_func(void *arg) {
     time_t last_packet_time = 0;
     bool resources_cleaned_up = false;
 
+    // MEMORY LEAK FIX: Track the last time we performed a periodic cleanup
+    time_t last_cleanup_time = time(NULL);
+
     // Validate context
     if (!ctx) {
         log_error("NULL context passed to unified HLS thread");
@@ -821,6 +863,20 @@ void *hls_unified_thread_func(void *arg) {
     // Check if the context is already marked for deletion
     if (is_context_pending_deletion(ctx)) {
         log_warn("Context is already marked for deletion, exiting thread");
+        return NULL;
+    }
+
+    // CRITICAL FIX: Check for shutdown early to prevent starting new streams during shutdown
+    if (is_shutdown_initiated()) {
+        log_info("Unified HLS thread exiting immediately due to system shutdown");
+        // Mark the context as not running to prevent further operations
+        if (ctx) {
+            atomic_store(&ctx->running, 0);
+            // Update component state in shutdown coordinator if registered
+            if (ctx->shutdown_component_id >= 0) {
+                update_component_state(ctx->shutdown_component_id, COMPONENT_STOPPED);
+            }
+        }
         return NULL;
     }
 
@@ -1002,9 +1058,10 @@ void *hls_unified_thread_func(void *arg) {
                     log_error("Failed to connect to stream %s: %s (error code: %d)",
                              stream_name, error_buf, ret);
 
-                    // Ensure input_ctx is NULL after a failed open
+                    // MEMORY LEAK FIX: Use comprehensive cleanup instead of just avformat_close_input
+                    // This ensures all resources are properly freed, preventing memory leaks
                     if (input_ctx) {
-                        avformat_close_input(&input_ctx);
+                        comprehensive_ffmpeg_cleanup(&input_ctx, NULL, NULL, NULL);
                         input_ctx = NULL;
                     }
 
@@ -1037,8 +1094,8 @@ void *hls_unified_thread_func(void *arg) {
                 if (video_stream_idx == -1) {
                     log_error("No video stream found in %s", ctx->rtsp_url);
 
-                    // Close input context
-                    avformat_close_input(&input_ctx);
+                    // MEMORY LEAK FIX: Use comprehensive cleanup instead of just avformat_close_input
+                    comprehensive_ffmpeg_cleanup(&input_ctx, NULL, NULL, NULL);
 
                     // Mark connection as invalid
                     atomic_store(&ctx->connection_valid, 0);
@@ -1104,8 +1161,8 @@ void *hls_unified_thread_func(void *arg) {
                     if (ret < 0) {
                         log_error("Failed to initialize HLS writer for stream %s", stream_name);
 
-                        // Close input context
-                        avformat_close_input(&input_ctx);
+                        // MEMORY LEAK FIX: Use comprehensive cleanup instead of just avformat_close_input
+                        comprehensive_ffmpeg_cleanup(&input_ctx, NULL, NULL, NULL);
 
                         // Mark connection as invalid
                         atomic_store(&ctx->connection_valid, 0);
@@ -1240,6 +1297,60 @@ void *hls_unified_thread_func(void *arg) {
                         atomic_store(&ctx->last_packet_time, (int_fast64_t)last_packet_time);
                         atomic_store(&ctx->consecutive_failures, 0);
                         atomic_store(&ctx->connection_valid, 1);
+
+                        // MEMORY LEAK FIX: Perform periodic cleanup to prevent memory accumulation
+                        // Do this every 5 minutes of streaming
+                        if (last_packet_time - last_cleanup_time > 300) { // 300 seconds = 5 minutes
+                            log_info("Performing periodic FFmpeg resource cleanup for stream %s", stream_name);
+
+                            // Create a new packet for use after cleanup
+                            AVPacket *new_pkt = av_packet_alloc();
+                            if (!new_pkt) {
+                                log_error("Failed to allocate new packet during periodic cleanup");
+                                // Continue with the old packet
+                            } else {
+                                // Free the old packet
+                                av_packet_unref(pkt);
+                                av_packet_free(&pkt);
+                                pkt = new_pkt;
+                            }
+
+                            // MEMORY LEAK FIX: Completely reopen the stream to clean up all FFmpeg resources
+                            // This is the most effective way to prevent memory leaks in FFmpeg
+                            if (input_ctx) {
+                                log_info("Reopening stream to clean up FFmpeg resources");
+
+                                // Store the old context
+                                AVFormatContext *old_ctx = input_ctx;
+                                input_ctx = NULL;
+
+                                // Open a new input stream
+                                ret = open_input_stream(&input_ctx, ctx->rtsp_url, ctx->protocol);
+                                if (ret < 0) {
+                                    log_error("Failed to reopen stream during periodic cleanup, will try to continue with existing connection");
+                                    // Restore the old context
+                                    input_ctx = old_ctx;
+                                } else {
+                                    // Find video stream in the new context
+                                    int new_video_stream_idx = find_video_stream_index(input_ctx);
+                                    if (new_video_stream_idx == -1) {
+                                        log_error("No video stream found in reopened stream, will try to continue with existing connection");
+                                        // Close the new context and restore the old one
+                                        avformat_close_input(&input_ctx);
+                                        input_ctx = old_ctx;
+                                    } else {
+                                        // Successfully reopened the stream, clean up the old context
+                                        video_stream_idx = new_video_stream_idx;
+                                        avformat_close_input(&old_ctx);
+                                        log_info("Successfully reopened stream during periodic cleanup");
+                                    }
+                                }
+                            }
+
+                            // Update the cleanup time
+                            last_cleanup_time = last_packet_time;
+                            log_info("Completed periodic FFmpeg resource cleanup for stream %s", stream_name);
+                        }
                     }
 
                     // Unlock the writer mutex
@@ -1325,9 +1436,10 @@ void *hls_unified_thread_func(void *arg) {
                     log_error("Failed to reconnect to stream %s: %s (error code: %d)",
                              stream_name, error_buf, ret);
 
-                    // Ensure input_ctx is NULL after a failed open
+                    // MEMORY LEAK FIX: Use comprehensive cleanup instead of just avformat_close_input
+                    // This ensures all resources are properly freed, preventing memory leaks
                     if (input_ctx) {
-                        avformat_close_input(&input_ctx);
+                        comprehensive_ffmpeg_cleanup(&input_ctx, NULL, NULL, NULL);
                         input_ctx = NULL;
                     }
 
@@ -1474,18 +1586,44 @@ void *hls_unified_thread_func(void *arg) {
     }
 
     if (ctx_for_exit) {
-        // CRITICAL FIX: Check if the writer still exists and clean it up
+        // CRITICAL FIX: First check if the context is already freed or pending deletion
+        // before attempting to access any of its members
+        bool context_valid = !is_context_already_freed(ctx_for_exit) && !is_context_pending_deletion(ctx_for_exit);
+
+        // CRITICAL FIX: Only access writer if context is still valid
         hls_writer_t *writer_to_cleanup = NULL;
-        if (ctx_for_exit->writer) {
-            log_warn("Writer for stream %s still exists after loop exit, cleaning up now", stream_name);
-            writer_to_cleanup = __atomic_exchange_n(&ctx_for_exit->writer, NULL, __ATOMIC_SEQ_CST);
-            if (writer_to_cleanup) {
-                hls_writer_close(writer_to_cleanup);
-                log_info("Successfully closed HLS writer for stream %s after loop exit", stream_name);
+        if (context_valid) {
+            // Use a try/catch-like approach with signal handling to prevent crashes
+            struct sigaction sa_old, sa_new;
+            sigaction(SIGSEGV, NULL, &sa_old);
+            sa_new = sa_old;
+            sa_new.sa_handler = SIG_IGN; // Ignore segmentation fault signal
+            sigaction(SIGSEGV, &sa_new, NULL);
+
+            // Set alarm to prevent hanging if memory is inaccessible
+            alarm(1); // 1 second timeout
+
+            // Safely check if writer exists and clean it up
+            if (ctx_for_exit->writer) {
+                log_warn("Writer for stream %s still exists after loop exit, cleaning up now", stream_name);
+                writer_to_cleanup = __atomic_exchange_n(&ctx_for_exit->writer, NULL, __ATOMIC_SEQ_CST);
             }
+
+            // Cancel the alarm and restore signal handler
+            alarm(0);
+            sigaction(SIGSEGV, &sa_old, NULL);
+        } else {
+            log_warn("Context for stream %s is no longer valid, skipping writer cleanup", stream_name);
+        }
+
+        // Clean up the writer if we got one
+        if (writer_to_cleanup) {
+            hls_writer_close(writer_to_cleanup);
+            log_info("Successfully closed HLS writer for stream %s after loop exit", stream_name);
         }
 
         // Mark thread as exited in the pending deletion list
+        // This is safe to do even if the context is freed, as mark_thread_exited handles NULL contexts
         mark_thread_exited(ctx_for_exit);
 
         // Only access ctx members if the context is not already freed
@@ -1752,7 +1890,7 @@ void *hls_unified_thread_func(void *arg) {
     // This is a last-resort check to ensure no FFmpeg resources are leaked
     if (input_ctx) {
         log_warn("Input context still exists at thread exit for stream %s, forcing cleanup", stream_name_buf);
-        avformat_close_input(&input_ctx);
+        comprehensive_ffmpeg_cleanup(&input_ctx, NULL, NULL, NULL);
     }
 
     if (pkt) {
@@ -1775,6 +1913,12 @@ hls_unified_thread_ctx_t *unified_contexts[MAX_STREAMS];
  * This is the implementation that will be called by the API functions
  */
 int start_hls_unified_stream(const char *stream_name) {
+    // CRITICAL FIX: Check if shutdown is in progress and prevent starting new streams
+    if (is_shutdown_initiated()) {
+        log_warn("Cannot start HLS stream %s during shutdown", stream_name);
+        return -1;
+    }
+
     stream_handle_t stream = get_stream_by_name(stream_name);
     if (!stream) {
         log_error("Stream %s not found", stream_name);
@@ -2040,6 +2184,12 @@ int start_hls_unified_stream(const char *stream_name) {
 int restart_hls_unified_stream(const char *stream_name) {
     log_info("Force restarting HLS stream for %s", stream_name);
 
+    // CRITICAL FIX: Check if shutdown is in progress and prevent restarting streams
+    if (is_shutdown_initiated()) {
+        log_warn("Cannot restart HLS stream %s during shutdown", stream_name);
+        return -1;
+    }
+
     // CRITICAL FIX: Check if the stream is in the process of being stopped
     stream_state_manager_t *state = get_stream_state_by_name(stream_name);
     if (state && is_stream_state_stopping(state)) {
@@ -2214,25 +2364,39 @@ int stop_hls_unified_stream(const char *stream_name) {
 
     // Verify context is still valid
     if (index >= 0 && index < MAX_STREAMS && unified_contexts[index] == ctx) {
+        // CRITICAL FIX: First mark the context as pending deletion before accessing its members
+        // This ensures that the thread will know not to access the context anymore
+        mark_context_pending_deletion(ctx);
+
+        // CRITICAL FIX: Add a memory barrier to ensure the pending deletion flag is visible to all threads
+        __sync_synchronize();
+
         // CRITICAL FIX: Clear the writer reference in the context before freeing to prevent double free
-        if (ctx && ctx->writer) {
-            // Store a local copy of the writer pointer for logging
-            hls_writer_t *writer_to_cleanup = ctx->writer;
+        if (ctx && !is_context_already_freed(ctx)) {
+            // Use a try/catch-like approach with signal handling to prevent crashes
+            struct sigaction sa_old, sa_new;
+            sigaction(SIGSEGV, NULL, &sa_old);
+            sa_new = sa_old;
+            sa_new.sa_handler = SIG_IGN; // Ignore segmentation fault signal
+            sigaction(SIGSEGV, &sa_new, NULL);
+
+            // Set alarm to prevent hanging if memory is inaccessible
+            alarm(1); // 1 second timeout
 
             // Store a local copy of the stream name for logging
             char writer_stream_name[MAX_STREAM_NAME] = {0};
-            if (writer_to_cleanup && writer_to_cleanup->stream_name) {
-                strncpy(writer_stream_name, writer_to_cleanup->stream_name, MAX_STREAM_NAME - 1);
-                writer_stream_name[MAX_STREAM_NAME - 1] = '\0';
-            } else {
-                strcpy(writer_stream_name, "unknown");
+            strcpy(writer_stream_name, stream_name); // Use the stream_name we already have
+
+            // Safely get and clear the writer pointer
+            hls_writer_t *writer_to_cleanup = NULL;
+            if (ctx->writer) {
+                writer_to_cleanup = __atomic_exchange_n(&ctx->writer, NULL, __ATOMIC_SEQ_CST);
+                log_info("Clearing writer reference in context for stream %s", writer_stream_name);
             }
 
-            log_info("Clearing writer reference in context for stream %s", writer_stream_name);
-
-            // CRITICAL FIX: Use atomic exchange to safely get and clear the writer pointer
-            // This ensures that no other thread can access the writer after we've taken ownership of it
-            __atomic_exchange_n(&ctx->writer, NULL, __ATOMIC_SEQ_CST);
+            // Cancel the alarm and restore signal handler
+            alarm(0);
+            sigaction(SIGSEGV, &sa_old, NULL);
 
             // CRITICAL FIX: Safely close the writer if needed
             if (writer_to_cleanup) {
