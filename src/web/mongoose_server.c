@@ -93,10 +93,10 @@ static const mg_api_route_t s_api_routes[] = {
     {"POST", "/api/auth/users/#/api-key", mg_handle_users_generate_api_key, true},  // Already uses threading
 
     // Streams API
-    {"GET", "/api/streams", mg_handle_get_streams, false},
+    {"GET", "/api/streams", mg_handle_get_streams, true},  // Opt out of auto-threading to prevent double threading
     {"POST", "/api/streams", mg_handle_post_stream, false},
     {"POST", "/api/streams/test", mg_handle_test_stream, false},
-    {"GET", "/api/streams/#", mg_handle_get_stream, false},
+    {"GET", "/api/streams/#", mg_handle_get_stream, true},  // Opt out of auto-threading to prevent double threading
     {"PUT", "/api/streams/#", mg_handle_put_stream, false},
     {"DELETE", "/api/streams/#", mg_handle_delete_stream, false},
 
@@ -136,7 +136,7 @@ static const mg_api_route_t s_api_routes[] = {
     {"OPTIONS", "/api/webrtc/ice", mg_handle_go2rtc_webrtc_ice_options, false},
 
     // Detection API
-    {"GET", "/api/detection/results/#", mg_handle_get_detection_results, false},
+    {"GET", "/api/detection/results/#", mg_handle_get_detection_results, true},  // Opt out of auto-threading to prevent double threading
     {"GET", "/api/detection/models", mg_handle_get_detection_models, false},
 
     // ONVIF API

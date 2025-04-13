@@ -147,25 +147,26 @@ export const recordingsAPI = {
     useDeleteRecording: () => {
       const queryClient = useQueryClient();
 
-      return useDeleteMutation(
-        '/api/recordings/:id',
-        {
-          timeout: 15000, // 15 second timeout
-          retries: 1,     // Retry once
-          retryDelay: 1000 // 1 second between retries
+      return useMutation({
+        mutationFn: async (recordingId) => {
+          const url = `/api/recordings/${recordingId}`;
+          return await fetchJSON(url, {
+            method: 'DELETE',
+            timeout: 15000, // 15 second timeout
+            retries: 1,     // Retry once
+            retryDelay: 1000 // 1 second between retries
+          });
         },
-        {
-          onSuccess: () => {
-            // Invalidate recordings queries to refresh the list
-            queryClient.invalidateQueries({ queryKey: ['recordings'] });
-            showStatusMessage('Recording deleted successfully');
-          },
-          onError: (error) => {
-            console.error('Error deleting recording:', error);
-            showStatusMessage('Error deleting recording: ' + error.message);
-          }
+        onSuccess: () => {
+          // Invalidate recordings queries to refresh the list
+          queryClient.invalidateQueries({ queryKey: ['recordings'] });
+          showStatusMessage('Recording deleted successfully');
+        },
+        onError: (error) => {
+          console.error('Error deleting recording:', error);
+          showStatusMessage('Error deleting recording: ' + error.message);
         }
-      );
+      });
     },
 
     /**

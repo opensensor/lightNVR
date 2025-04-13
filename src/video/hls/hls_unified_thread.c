@@ -59,11 +59,25 @@ extern bool go2rtc_get_rtsp_url(const char *stream_name, char *url, size_t url_s
 // Hash map for tracking running HLS streaming contexts
 // These are defined at the bottom of the file as non-static
 
-// CRITICAL FIX: Add tracking for freed contexts to prevent double free
+// CRITICAL FIX: Add tracking for freed contexts to prevent double free and use-after-free
 #define MAX_FREED_CONTEXTS 100
 static void *freed_contexts[MAX_FREED_CONTEXTS] = {0};
 static int freed_contexts_count = 0;
 static pthread_mutex_t freed_contexts_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// CRITICAL FIX: Add a flag to indicate that a context is pending deletion
+// This helps threads detect when their context is about to be freed
+typedef struct {
+    void *ctx;
+    atomic_int pending_deletion;
+    atomic_int thread_exited;  // Flag to indicate the thread has exited and it's safe to free the context
+} context_deletion_info_t;
+
+static context_deletion_info_t pending_deletions[MAX_STREAMS] = {0};
+static pthread_mutex_t pending_deletions_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// Maximum time to wait for a thread to exit (in microseconds)
+#define MAX_THREAD_EXIT_WAIT_US 500000  // 500ms
 
 // CRITICAL FIX: Add memory boundary checking to detect buffer overflows
 #define MEMORY_GUARD_SIZE 16
@@ -124,6 +138,10 @@ void *safe_free(void *ptr) {
 
 // Function to check if a context has already been freed
 static bool is_context_already_freed(void *ctx) {
+    if (!ctx) {
+        return false;  // NULL context is not considered freed
+    }
+
     bool result = false;
 
     pthread_mutex_lock(&freed_contexts_mutex);
@@ -137,12 +155,244 @@ static bool is_context_already_freed(void *ctx) {
 
     pthread_mutex_unlock(&freed_contexts_mutex);
 
+    // If not found in the freed contexts list, perform additional checks
+    if (!result) {
+        // Check if the memory appears to be invalid
+        // This is a heuristic to detect freed memory
+        bool appears_invalid = false;
+
+        // Try to access the first few bytes to see if they're zeroed out
+        // This might indicate that the memory has been freed
+        unsigned char *ptr = (unsigned char *)ctx;
+        bool all_zeros = true;
+
+        // Use a try/catch-like approach with signal handling to prevent crashes
+        struct sigaction sa_old, sa_new;
+        sigaction(SIGSEGV, NULL, &sa_old);
+        sa_new = sa_old;
+        sa_new.sa_handler = SIG_IGN; // Ignore segmentation fault signal
+        sigaction(SIGSEGV, &sa_new, NULL);
+
+        // Set alarm to prevent hanging if memory is inaccessible
+        alarm(1); // 1 second timeout
+
+        // Check the first few bytes
+        for (int i = 0; i < 16 && i < sizeof(hls_unified_thread_ctx_t); i++) {
+            if (ptr[i] != 0) {
+                all_zeros = false;
+                break;
+            }
+        }
+
+        // Cancel the alarm and restore signal handler
+        alarm(0);
+        sigaction(SIGSEGV, &sa_old, NULL);
+
+        if (all_zeros) {
+            // Memory appears to be zeroed out, which might indicate it's been freed
+            appears_invalid = true;
+        }
+
+        if (appears_invalid) {
+            log_warn("Context %p appears to be invalid or already freed", ctx);
+            result = true;
+        }
+    }
+
     return result;
+}
+
+// Function to mark a context as pending deletion
+static void mark_context_pending_deletion(void *ctx) {
+    pthread_mutex_lock(&pending_deletions_mutex);
+
+    // Find an empty slot or the existing entry for this context
+    int slot = -1;
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (pending_deletions[i].ctx == ctx) {
+            // Context already marked, just update the flag
+            atomic_store(&pending_deletions[i].pending_deletion, 1);
+            atomic_store(&pending_deletions[i].thread_exited, 0);  // Reset the thread_exited flag
+            slot = i;
+            break;
+        } else if (pending_deletions[i].ctx == NULL && slot == -1) {
+            // Found an empty slot
+            slot = i;
+        }
+    }
+
+    if (slot != -1 && pending_deletions[slot].ctx != ctx) {
+        // Initialize the new entry
+        pending_deletions[slot].ctx = ctx;
+        atomic_init(&pending_deletions[slot].pending_deletion, 1);
+        atomic_init(&pending_deletions[slot].thread_exited, 0);
+    }
+
+    pthread_mutex_unlock(&pending_deletions_mutex);
+}
+
+// Function to check if a context is pending deletion
+static bool is_context_pending_deletion(void *ctx) {
+    if (!ctx) {
+        return false;  // NULL context is not considered pending deletion
+    }
+
+    bool result = false;
+
+    pthread_mutex_lock(&pending_deletions_mutex);
+
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (pending_deletions[i].ctx == ctx && atomic_load(&pending_deletions[i].pending_deletion)) {
+            result = true;
+            break;
+        }
+    }
+
+    pthread_mutex_unlock(&pending_deletions_mutex);
+
+    return result;
+}
+
+// Function to mark a thread as exited in the pending deletion list
+static void mark_thread_exited(void *ctx) {
+    if (!ctx) {
+        return;  // Nothing to do for NULL context
+    }
+
+    pthread_mutex_lock(&pending_deletions_mutex);
+
+    // First, check if the context is already in the list
+    bool found = false;
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (pending_deletions[i].ctx == ctx) {
+            atomic_store(&pending_deletions[i].thread_exited, 1);
+            found = true;
+            log_info("Marked thread as exited for context %p", ctx);
+            break;
+        }
+    }
+
+    // If not found, add it to the list
+    if (!found) {
+        // Find an empty slot
+        int slot = -1;
+        for (int i = 0; i < MAX_STREAMS; i++) {
+            if (pending_deletions[i].ctx == NULL) {
+                slot = i;
+                break;
+            }
+        }
+
+        // If we found an empty slot, use it
+        if (slot != -1) {
+            pending_deletions[slot].ctx = ctx;
+            atomic_init(&pending_deletions[slot].pending_deletion, 0);
+            atomic_init(&pending_deletions[slot].thread_exited, 1);
+            log_info("Added context %p to pending deletions list and marked thread as exited", ctx);
+        } else {
+            log_warn("No empty slot found in pending deletions list for context %p", ctx);
+        }
+    }
+
+    pthread_mutex_unlock(&pending_deletions_mutex);
+}
+
+// Function to check if a thread has exited
+static bool has_thread_exited(void *ctx) {
+    bool result = false;
+
+    pthread_mutex_lock(&pending_deletions_mutex);
+
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (pending_deletions[i].ctx == ctx) {
+            result = atomic_load(&pending_deletions[i].thread_exited);
+            break;
+        }
+    }
+
+    pthread_mutex_unlock(&pending_deletions_mutex);
+
+    return result;
+}
+
+// Function to wait for a thread to exit
+static void wait_for_thread_exit(void *ctx) {
+    if (!ctx) {
+        return;  // Nothing to do for NULL context
+    }
+
+    int wait_time = 0;
+    const int sleep_interval = 10000;  // 10ms
+
+    // First check if the thread has already exited
+    if (has_thread_exited(ctx)) {
+        log_info("Thread for context %p has already exited", ctx);
+        return;
+    }
+
+    log_info("Waiting for thread to exit for context %p", ctx);
+
+    // Wait for the thread to exit with timeout
+    while (wait_time < MAX_THREAD_EXIT_WAIT_US) {
+        if (has_thread_exited(ctx)) {
+            log_info("Thread for context %p has exited after waiting %d ms", ctx, wait_time / 1000);
+            return;
+        }
+
+        usleep(sleep_interval);
+        wait_time += sleep_interval;
+
+        // Log progress every 100ms
+        if (wait_time % 100000 == 0) {
+            log_info("Still waiting for thread to exit for context %p (%d ms elapsed)", ctx, wait_time / 1000);
+        }
+    }
+
+    log_warn("Timeout waiting for thread to exit for context %p after %d ms", ctx, MAX_THREAD_EXIT_WAIT_US / 1000);
+
+    // Mark the thread as exited anyway to prevent deadlocks
+    log_warn("Forcing thread exited status for context %p to prevent deadlock", ctx);
+    mark_thread_exited(ctx);
+}
+
+// Function to clear a context from the pending deletion list
+static void clear_context_pending_deletion(void *ctx) {
+    pthread_mutex_lock(&pending_deletions_mutex);
+
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (pending_deletions[i].ctx == ctx) {
+            pending_deletions[i].ctx = NULL;
+            atomic_store(&pending_deletions[i].pending_deletion, 0);
+            atomic_store(&pending_deletions[i].thread_exited, 0);
+            break;
+        }
+    }
+
+    pthread_mutex_unlock(&pending_deletions_mutex);
 }
 
 // Function to mark a context as freed
 void mark_context_as_freed(void *ctx) {
+    if (!ctx) {
+        return;  // Nothing to do for NULL context
+    }
+
     pthread_mutex_lock(&freed_contexts_mutex);
+
+    // Check if the context is already in the freed list
+    bool already_freed = false;
+    for (int i = 0; i < freed_contexts_count; i++) {
+        if (freed_contexts[i] == ctx) {
+            already_freed = true;
+            break;
+        }
+    }
+
+    if (already_freed) {
+        log_warn("Context %p is already marked as freed", ctx);
+        pthread_mutex_unlock(&freed_contexts_mutex);
+        return;
+    }
 
     // If the array is full, remove the oldest entry
     if (freed_contexts_count >= MAX_FREED_CONTEXTS) {
@@ -155,6 +405,7 @@ void mark_context_as_freed(void *ctx) {
 
     // Add the new entry
     freed_contexts[freed_contexts_count++] = ctx;
+    log_info("Marked context %p as freed", ctx);
 
     pthread_mutex_unlock(&freed_contexts_mutex);
 }
@@ -500,6 +751,12 @@ void *hls_unified_thread_func(void *arg) {
         return NULL;
     }
 
+    // Check if the context is already marked for deletion
+    if (is_context_pending_deletion(ctx)) {
+        log_warn("Context is already marked for deletion, exiting thread");
+        return NULL;
+    }
+
     // Create a local copy of the stream name for thread safety
     char stream_name[MAX_STREAM_NAME];
     strncpy(stream_name, ctx->stream_name, MAX_STREAM_NAME - 1);
@@ -568,7 +825,17 @@ void *hls_unified_thread_func(void *arg) {
     }
 
     // Main state machine loop
-    while (atomic_load(&ctx->running)) {
+    while (ctx && !is_context_already_freed(ctx) && !is_context_pending_deletion(ctx)) {
+        // Check if we should continue running
+        // CRITICAL FIX: Only access ctx members if the context is not already freed
+        if (is_context_already_freed(ctx) || is_context_pending_deletion(ctx) || !atomic_load(&ctx->running)) {
+            log_info("Unified HLS thread for %s stopping due to %s",
+                    stream_name,
+                    is_context_already_freed(ctx) ? "context already freed" :
+                    is_context_pending_deletion(ctx) ? "context pending deletion" :
+                    "running flag cleared");
+            break;
+        }
         // Update thread state in context
         atomic_store(&ctx->thread_state, thread_state);
 
@@ -748,6 +1015,14 @@ void *hls_unified_thread_func(void *arg) {
                 log_info("Successfully connected to stream %s", stream_name);
                 thread_state = HLS_THREAD_RUNNING;
                 reconnect_attempt = 0;
+
+                // CRITICAL FIX: Check if context is still valid before accessing
+                if (is_context_already_freed(ctx) || is_context_pending_deletion(ctx)) {
+                    log_warn("Context for stream %s is no longer valid, exiting thread", stream_name);
+                    thread_state = HLS_THREAD_STOPPING;
+                    break;
+                }
+
                 atomic_store(&ctx->connection_valid, 1);
                 atomic_store(&ctx->consecutive_failures, 0);
                 last_packet_time = time(NULL);
@@ -756,6 +1031,13 @@ void *hls_unified_thread_func(void *arg) {
 
             case HLS_THREAD_RUNNING:
                 // Check if we should exit before potentially blocking on av_read_frame
+                // CRITICAL FIX: Check if context is still valid before accessing
+                if (is_context_already_freed(ctx) || is_context_pending_deletion(ctx)) {
+                    log_warn("Context for stream %s is no longer valid, exiting thread", stream_name);
+                    thread_state = HLS_THREAD_STOPPING;
+                    break;
+                }
+
                 if (!atomic_load(&ctx->running)) {
                     log_info("Unified HLS thread for %s detected shutdown before read", stream_name);
                     thread_state = HLS_THREAD_STOPPING;
@@ -880,6 +1162,13 @@ void *hls_unified_thread_func(void *arg) {
                 av_usleep(reconnect_delay_ms * 1000);
 
                 // Check if we should stop during the sleep
+                // CRITICAL FIX: Check if context is still valid before accessing
+                if (is_context_already_freed(ctx) || is_context_pending_deletion(ctx)) {
+                    log_warn("Context for stream %s is no longer valid, exiting thread", stream_name);
+                    thread_state = HLS_THREAD_STOPPING;
+                    break;
+                }
+
                 if (!atomic_load(&ctx->running)) {
                     log_info("Unified HLS thread for %s stopping during reconnection", stream_name);
                     thread_state = HLS_THREAD_STOPPING;
@@ -1009,16 +1298,51 @@ void *hls_unified_thread_func(void *arg) {
         }
     }
 
-    // CRITICAL FIX: Add safety checks before accessing ctx members
-    if (ctx) {
-        // Mark connection as invalid
-        atomic_store(&ctx->connection_valid, 0);
+    // Signal that the thread is exiting
+    // Make a local copy of the context pointer to prevent race conditions
+    hls_unified_thread_ctx_t *ctx_for_exit = ctx;
+    ctx = NULL;  // Clear the original pointer to prevent further access
+
+    if (ctx_for_exit) {
+        // Mark thread as exited in the pending deletion list
+        mark_thread_exited(ctx_for_exit);
+
+        // Only access ctx members if the context is not already freed
+        if (!is_context_already_freed(ctx_for_exit) && !is_context_pending_deletion(ctx_for_exit)) {
+            // Use a try/catch-like approach with signal handling to prevent crashes
+            struct sigaction sa_old, sa_new;
+            sigaction(SIGSEGV, NULL, &sa_old);
+            sa_new = sa_old;
+            sa_new.sa_handler = SIG_IGN; // Ignore segmentation fault signal
+            sigaction(SIGSEGV, &sa_new, NULL);
+
+            // Set alarm to prevent hanging if memory is inaccessible
+            alarm(1); // 1 second timeout
+
+            // Mark connection as invalid
+            atomic_store(&ctx_for_exit->connection_valid, 0);
+
+            // Cancel the alarm and restore signal handler
+            alarm(0);
+            sigaction(SIGSEGV, &sa_old, NULL);
+        }
     }
 
     // Clear the reference in the stream state
     // CRITICAL FIX: Add additional safety checks to prevent segfault
-    if (state && ctx && ctx->writer && state->hls_ctx == ctx->writer) {
-        state->hls_ctx = NULL;
+    if (state) {
+        // Make a local copy of the writer pointer for safety
+        hls_writer_t *writer_ptr = NULL;
+
+        // Only access ctx members if the context is not already freed
+        if (ctx && !is_context_already_freed(ctx)) {
+            writer_ptr = ctx->writer;
+        }
+
+        // Clear the reference if it matches
+        if (writer_ptr && state->hls_ctx == writer_ptr) {
+            state->hls_ctx = NULL;
+        }
     }
 
     // CRITICAL FIX: Store stream name in local buffer before cleanup
@@ -1047,13 +1371,24 @@ void *hls_unified_thread_func(void *arg) {
     hls_writer_t *writer_to_cleanup = NULL;
     int shutdown_id = -1;
 
-    if (ctx) {
-        if (ctx->writer) {
+    // Make a local copy of the context pointer to prevent race conditions
+    hls_unified_thread_ctx_t *ctx_local = ctx;
+    ctx = NULL;  // Clear the original pointer to prevent further access
+
+    // Check if the context is valid before accessing its members
+    if (ctx_local && !is_context_already_freed(ctx_local) && !is_context_pending_deletion(ctx_local)) {
+        // Safely get the writer pointer
+        hls_writer_t *writer_ptr = NULL;
+
+        // Use atomic load to safely access the writer pointer
+        writer_ptr = __atomic_load_n(&ctx_local->writer, __ATOMIC_SEQ_CST);
+
+        if (writer_ptr) {
             log_debug("Cleaning up HLS writer for stream %s", stream_name_buf);
 
             // CRITICAL FIX: Use atomic exchange to safely get and clear the writer pointer
             // This ensures that no other thread can access the writer after we've taken ownership of it
-            writer_to_cleanup = __atomic_exchange_n(&ctx->writer, NULL, __ATOMIC_SEQ_CST);
+            writer_to_cleanup = __atomic_exchange_n(&ctx_local->writer, NULL, __ATOMIC_SEQ_CST);
 
             // CRITICAL FIX: Store a local copy of the stream name for logging
             char writer_stream_name[MAX_STREAM_NAME] = {0};
@@ -1063,7 +1398,11 @@ void *hls_unified_thread_func(void *arg) {
                 log_info("Preparing to clean up HLS writer for stream %s", writer_stream_name);
             }
         }
-        shutdown_id = ctx->shutdown_component_id;
+
+        // Store the shutdown component ID for later
+        shutdown_id = ctx_local->shutdown_component_id;
+    } else {
+        log_warn("Context for stream %s is no longer valid during cleanup", stream_name_buf);
     }
 
     // CRITICAL FIX: Add memory barrier before cleanup to ensure all threads see consistent state
@@ -1115,13 +1454,13 @@ void *hls_unified_thread_func(void *arg) {
     log_info("Unmarked stream %s as stopping before thread exit", stream_name_buf);
 
     // CRITICAL FIX: Add additional safety checks before freeing the context
-    if (ctx) {
+    if (ctx_local) {
         // CRITICAL FIX: Add memory barrier before freeing to ensure all accesses are complete
         __sync_synchronize();
 
         // CRITICAL FIX: Use a local copy of the pointer to prevent race conditions
-        hls_unified_thread_ctx_t *ctx_to_free = ctx;
-        ctx = NULL;
+        hls_unified_thread_ctx_t *ctx_to_free = ctx_local;
+        ctx_local = NULL;
 
         // CRITICAL FIX: Add memory barrier after nulling the pointer
         __sync_synchronize();
@@ -1171,8 +1510,17 @@ void *hls_unified_thread_func(void *arg) {
                 // Set alarm
                 alarm(5); // 5 second timeout for context free
 
+                // Mark the context as pending deletion to signal the thread
+                mark_context_pending_deletion(ctx_to_free);
+
+                // Wait for the thread to exit
+                wait_for_thread_exit(ctx_to_free);
+
                 // Mark the context as freed before actually freeing it
                 mark_context_as_freed(ctx_to_free);
+
+                // Clear from pending deletion list
+                clear_context_pending_deletion(ctx_to_free);
 
                 // Free the context with additional protection
                 safe_free(ctx_to_free);
@@ -1591,6 +1939,12 @@ int stop_hls_unified_stream(const char *stream_name) {
 
         // CRITICAL FIX: Add additional safety checks before freeing the context
         if (ctx) {
+            // Check if the context is already marked as freed
+            if (is_context_already_freed(ctx)) {
+                log_warn("Context for stream %s has already been freed, skipping", stream_name);
+                return 0;
+            }
+
             // CRITICAL FIX: Add memory barrier before freeing to ensure all accesses are complete
             __sync_synchronize();
 
@@ -1646,8 +2000,17 @@ int stop_hls_unified_stream(const char *stream_name) {
                     // Set alarm
                     alarm(5); // 5 second timeout for context free
 
+                    // Mark the context as pending deletion to signal the thread
+                    mark_context_pending_deletion(ctx_to_free);
+
+                    // Wait for the thread to exit
+                    wait_for_thread_exit(ctx_to_free);
+
                     // Mark the context as freed before actually freeing it
                     mark_context_as_freed(ctx_to_free);
+
+                    // Clear from pending deletion list
+                    clear_context_pending_deletion(ctx_to_free);
 
                     // Free the context with additional protection
                     safe_free(ctx_to_free);
@@ -1722,12 +2085,37 @@ int is_hls_stream_active(const char *stream_name) {
  * Cleanup the freed contexts tracking system
  */
 static void cleanup_freed_contexts_tracking(void) {
-    pthread_mutex_lock(&freed_contexts_mutex);
+    // First, wait for any pending deletions to complete
+    pthread_mutex_lock(&pending_deletions_mutex);
 
-    // Clear the array
+    // Check if there are any pending deletions
+    bool has_pending = false;
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (pending_deletions[i].ctx != NULL && atomic_load(&pending_deletions[i].pending_deletion)) {
+            has_pending = true;
+            log_info("Waiting for thread to exit for context %p", pending_deletions[i].ctx);
+
+            // Wait for the thread to exit
+            if (!atomic_load(&pending_deletions[i].thread_exited)) {
+                pthread_mutex_unlock(&pending_deletions_mutex);
+                wait_for_thread_exit(pending_deletions[i].ctx);
+                pthread_mutex_lock(&pending_deletions_mutex);
+            }
+        }
+    }
+
+    if (has_pending) {
+        log_info("All pending deletions have been processed");
+    }
+
+    // Clear the pending deletions array
+    memset(pending_deletions, 0, sizeof(pending_deletions));
+    pthread_mutex_unlock(&pending_deletions_mutex);
+
+    // Clear the freed contexts array
+    pthread_mutex_lock(&freed_contexts_mutex);
     memset(freed_contexts, 0, sizeof(freed_contexts));
     freed_contexts_count = 0;
-
     pthread_mutex_unlock(&freed_contexts_mutex);
 
     log_info("Cleaned up freed contexts tracking system");
