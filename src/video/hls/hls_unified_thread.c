@@ -896,6 +896,13 @@ void *hls_unified_thread_func(void *arg) {
         return NULL;
     }
 
+    // Check if the stream state already has an HLS writer
+    if (state && state->hls_ctx && state->hls_ctx != ctx->writer) {
+        log_warn("Stream state for %s already has an HLS writer. Replacing it.", stream_name);
+        // We'll replace the existing writer with our new one
+        // The old writer will be cleaned up during shutdown
+    }
+
     // Create HLS writer with appropriate segment duration
     ctx->writer = hls_writer_create(ctx->output_path, stream_name, ctx->segment_duration);
     if (!ctx->writer) {
@@ -912,13 +919,6 @@ void *hls_unified_thread_func(void *arg) {
         }
 
         return NULL;
-    }
-
-    // Check if the stream state already has an HLS writer
-    if (state && state->hls_ctx && state->hls_ctx != ctx->writer) {
-        log_warn("Stream state for %s already has an HLS writer. Replacing it.", stream_name);
-        // We'll replace the existing writer with our new one
-        // The old writer will be cleaned up during shutdown
     }
 
     // Store the HLS writer in the stream state for other components to access
@@ -1142,7 +1142,7 @@ void *hls_unified_thread_func(void *arg) {
                 }
 
                 // Initialize HLS writer with stream information
-                if (input_ctx->streams[video_stream_idx]) {
+                if (!is_shutdown_initiated() && input_ctx->streams[video_stream_idx]) {
                     ret = hls_writer_initialize(ctx->writer, input_ctx->streams[video_stream_idx]);
                     if (ret < 0) {
                         log_error("Failed to initialize HLS writer for stream %s", stream_name);
