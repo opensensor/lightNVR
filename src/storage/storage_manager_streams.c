@@ -75,35 +75,26 @@ int get_stream_storage_usage(const char *storage_path, stream_storage_info_t *st
             stream_info[stream_count].size_bytes = 0;
             stream_info[stream_count].recording_count = 0;
             
-            // Get size of all files in the stream directory
-            DIR *stream_dir = opendir(stream_path);
-            if (stream_dir) {
-                struct dirent *file_entry;
-                
-                while ((file_entry = readdir(stream_dir)) != NULL) {
-                    // Skip . and ..
-                    if (strcmp(file_entry->d_name, ".") == 0 || strcmp(file_entry->d_name, "..") == 0) {
-                        continue;
-                    }
-                    
-                    // Check if it's a file
-                    char file_path[768];
-                    snprintf(file_path, sizeof(file_path), "%s/%s", stream_path, file_entry->d_name);
-                    
-                    struct stat file_st;
-                    if (stat(file_path, &file_st) == 0 && S_ISREG(file_st.st_mode)) {
-                        // Add file size to stream size
-                        stream_info[stream_count].size_bytes += file_st.st_size;
-                        stream_info[stream_count].recording_count++;
+            // Use du command to get directory size
+            char du_cmd[768];
+            snprintf(du_cmd, sizeof(du_cmd), "du -sb %s 2>/dev/null | cut -f1", stream_path);
+            FILE *fp = popen(du_cmd, "r");
+            if (fp) {
+                if (fscanf(fp, "%llu", &stream_info[stream_count].size_bytes) == 1) {
+                    // Use find to count MP4 files
+                    char find_cmd[768];
+                    snprintf(find_cmd, sizeof(find_cmd), "find %s -type f -name \"*.mp4\" | wc -l", stream_path);
+                    FILE *fp_count = popen(find_cmd, "r");
+                    if (fp_count) {
+                        if (fscanf(fp_count, "%d", &stream_info[stream_count].recording_count) == 1) {
+                            if (stream_info[stream_count].recording_count > 0) {
+                                stream_count++;
+                            }
+                        }
+                        pclose(fp_count);
                     }
                 }
-                
-                closedir(stream_dir);
-            }
-            
-            // Only include streams that have recordings
-            if (stream_info[stream_count].recording_count > 0) {
-                stream_count++;
+                pclose(fp);
             }
         }
     }
