@@ -76,9 +76,12 @@ describe('Streams Page', () => {
     await streamsPage.cancelStream();
   });
   
+  // Store the test stream name globally so it can be used by the delete test
+  let testStreamName;
+  
   test('should be able to add a new stream', async () => {
     // Generate a unique stream name
-    const streamName = `Test Stream ${Date.now()}`;
+    testStreamName = `Test Stream ${Date.now()}`;
     
     // Click the Add Stream button
     await streamsPage.clickAddStream();
@@ -88,7 +91,7 @@ describe('Streams Page', () => {
     
     // Fill in the form
     await streamsPage.fillStreamForm({
-      name: streamName,
+      name: testStreamName,
       url: 'rtsp://example.com/test',
       enabled: true,
       record: true
@@ -107,7 +110,7 @@ describe('Streams Page', () => {
     await takeScreenshot(driver, 'screenshots/after-add-stream.png');
     
     // Check if the stream was added
-    const exists = await streamsPage.streamExists(streamName);
+    const exists = await streamsPage.streamExists(testStreamName);
     expect(exists).toBe(true);
   });
   
@@ -141,22 +144,18 @@ describe('Streams Page', () => {
     await streamsPage.cancelStream();
   });
   
-  // This test is commented out because it would delete a stream
-  // Uncomment it if you want to test deletion
-  /*
+  // This test deletes the test stream created in the previous test
   test('should be able to delete a stream', async () => {
-    // Get the list of streams
-    const streamNames = await streamsPage.getStreamNames();
-    
-    // Skip the test if there are no streams
-    if (streamNames.length === 0) {
-      console.log('No streams to delete, skipping test');
+    // Skip the test if testStreamName is not defined
+    if (!testStreamName) {
+      console.log('No test stream to delete, skipping test');
       return;
     }
     
-    // Delete the first stream
-    const streamToDelete = streamNames[0];
-    await streamsPage.deleteStream(streamToDelete);
+    console.log(`Deleting test stream: ${testStreamName}`);
+    
+    // Delete the test stream
+    await streamsPage.deleteStream(testStreamName);
     
     // Confirm deletion
     await streamsPage.confirmDelete();
@@ -164,9 +163,11 @@ describe('Streams Page', () => {
     // Wait for the table to update
     await driver.sleep(2000);
     
-    // Check that the stream was deleted
-    const exists = await streamsPage.streamExists(streamToDelete);
+    // Take a screenshot after deleting the stream
+    await takeScreenshot(driver, 'screenshots/after-delete-stream.png');
+    
+    // Check that the stream was deleted (with retries)
+    const exists = await streamsPage.streamExists(testStreamName, true);
     expect(exists).toBe(false);
   });
-  */
 });

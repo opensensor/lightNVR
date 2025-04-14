@@ -28,9 +28,30 @@ int stopping_stream_count = 0;
 
 /**
  * Check if a stream is in the process of being stopped
+ * If stream_name is NULL, checks if any stream is being stopped
  */
 bool is_stream_stopping(const char *stream_name) {
-    if (!stream_name) return false;
+    // CRITICAL FIX: If stream_name is NULL, check if any stream is stopping
+    if (!stream_name) {
+        // Check if any stream is in the stopping state
+        pthread_mutex_lock(&stopping_mutex);
+        bool any_stopping = stopping_stream_count > 0;
+        pthread_mutex_unlock(&stopping_mutex);
+
+        if (any_stopping) {
+            return true;
+        }
+
+        // Also check the new state management system
+        for (int i = 0; i < MAX_STREAMS; i++) {
+            stream_state_manager_t *state = get_stream_state_by_index(i);
+            if (state && is_stream_state_stopping(state)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     // First try to use the new state management system
     stream_state_manager_t *state = get_stream_state_by_name(stream_name);

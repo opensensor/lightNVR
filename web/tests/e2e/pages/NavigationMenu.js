@@ -1,6 +1,8 @@
 /**
  * Page Object for the Navigation Menu
  */
+const { By, until } = require('selenium-webdriver');
+
 class NavigationMenu {
   constructor(driver) {
     this.driver = driver;
@@ -20,7 +22,6 @@ class NavigationMenu {
    * Navigate to the home page
    */
   async navigateToHome() {
-    const { By } = require('selenium-webdriver');
     const link = await this.driver.findElement(By.css(this.homeLink));
     await link.click();
   }
@@ -29,7 +30,6 @@ class NavigationMenu {
    * Navigate to the streams page
    */
   async navigateToStreams() {
-    const { By } = require('selenium-webdriver');
     const link = await this.driver.findElement(By.css(this.streamsLink));
     await link.click();
   }
@@ -38,7 +38,6 @@ class NavigationMenu {
    * Navigate to the recordings page
    */
   async navigateToRecordings() {
-    const { By } = require('selenium-webdriver');
     const link = await this.driver.findElement(By.css(this.recordingsLink));
     await link.click();
   }
@@ -47,8 +46,6 @@ class NavigationMenu {
    * Navigate to the timeline page (via recordings page)
    */
   async navigateToTimeline() {
-    const { By, until } = require('selenium-webdriver');
-    
     // First navigate to the recordings page
     await this.navigateToRecordings();
     
@@ -64,7 +61,6 @@ class NavigationMenu {
    * Navigate to the settings page
    */
   async navigateToSettings() {
-    const { By } = require('selenium-webdriver');
     const link = await this.driver.findElement(By.css(this.settingsLink));
     await link.click();
   }
@@ -73,7 +69,6 @@ class NavigationMenu {
    * Navigate to the users page
    */
   async navigateToUsers() {
-    const { By } = require('selenium-webdriver');
     const link = await this.driver.findElement(By.css(this.usersLink));
     await link.click();
   }
@@ -82,7 +77,6 @@ class NavigationMenu {
    * Navigate to the system page
    */
   async navigateToSystem() {
-    const { By } = require('selenium-webdriver');
     const link = await this.driver.findElement(By.css(this.systemLink));
     await link.click();
   }
@@ -91,7 +85,6 @@ class NavigationMenu {
    * Logout
    */
   async logout() {
-    const { By } = require('selenium-webdriver');
     try {
       const link = await this.driver.findElement(By.css(this.logoutLink));
       await link.click();
@@ -108,7 +101,6 @@ class NavigationMenu {
    * @param {number} timeout - Timeout in milliseconds
    */
   async waitForNavigation(pageIdentifier, timeout = 10000) {
-    const { By, until } = require('selenium-webdriver');
     await this.driver.wait(until.elementLocated(By.css(pageIdentifier)), timeout);
   }
 
@@ -126,7 +118,6 @@ class NavigationMenu {
    * @returns {boolean} True if the link exists, false otherwise
    */
   async hasLink(linkSelector) {
-    const { By } = require('selenium-webdriver');
     try {
       await this.driver.findElement(By.css(linkSelector));
       return true;

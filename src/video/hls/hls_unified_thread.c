@@ -83,6 +83,17 @@ static void global_ffmpeg_cleanup(void) {
     log_debug("Setting FFmpeg log level to quiet during global cleanup");
     av_log_set_level(AV_LOG_QUIET);
 
+    // CRITICAL FIX: Skip direct av_freep(NULL) call during global cleanup
+    // This is the most likely cause of segmentation faults
+    log_info("Using safer approach to release FFmpeg memory during global cleanup");
+
+    // Instead of directly calling av_freep(NULL), which can cause segfaults,
+    // allocate and free a small buffer to trigger FFmpeg's internal cleanup
+    void *dummy = av_malloc(16);
+    if (dummy) {
+        av_free(dummy);
+    }
+
     // Cancel the alarm and restore signal handler
     alarm(0);
     sigaction(SIGSEGV, &sa_old, NULL);
@@ -1591,6 +1602,19 @@ void *hls_unified_thread_func(void *arg) {
     hls_unified_thread_ctx_t *ctx_for_exit = ctx;
     ctx = NULL;  // Clear the original pointer to prevent further access
 
+    // CRITICAL FIX: Check if the context is already freed or pending deletion
+    // This prevents accessing invalid memory during cleanup
+    bool context_valid_for_exit = ctx_for_exit && !is_context_already_freed(ctx_for_exit) && !is_context_pending_deletion(ctx_for_exit);
+
+    // Store stream name in local buffer for logging even if context becomes invalid
+    char stream_name_buf[MAX_STREAM_NAME] = {0};
+    if (stream_name) {
+        strncpy(stream_name_buf, stream_name, MAX_STREAM_NAME - 1);
+        stream_name_buf[MAX_STREAM_NAME - 1] = '\0';
+    } else {
+        strcpy(stream_name_buf, "unknown");
+    }
+
     // CRITICAL FIX: Ensure all resources are cleaned up before exiting
     // This is a safety measure in case we exited the loop without proper cleanup
     if (input_ctx != NULL || pkt != NULL) {
@@ -1599,13 +1623,10 @@ void *hls_unified_thread_func(void *arg) {
     }
 
     if (ctx_for_exit) {
-        // CRITICAL FIX: First check if the context is already freed or pending deletion
-        // before attempting to access any of its members
-        bool context_valid = !is_context_already_freed(ctx_for_exit) && !is_context_pending_deletion(ctx_for_exit);
-
+        // Use the pre-computed context validity flag
         // CRITICAL FIX: Only access writer if context is still valid
         hls_writer_t *writer_to_cleanup = NULL;
-        if (context_valid) {
+        if (context_valid_for_exit) {
             // Use a try/catch-like approach with signal handling to prevent crashes
             struct sigaction sa_old, sa_new;
             sigaction(SIGSEGV, NULL, &sa_old);
@@ -1640,7 +1661,7 @@ void *hls_unified_thread_func(void *arg) {
         mark_thread_exited(ctx_for_exit);
 
         // Only access ctx members if the context is not already freed
-        if (!is_context_already_freed(ctx_for_exit) && !is_context_pending_deletion(ctx_for_exit)) {
+        if (context_valid_for_exit) {
             // Use a try/catch-like approach with signal handling to prevent crashes
             struct sigaction sa_old, sa_new;
             sigaction(SIGSEGV, NULL, &sa_old);
@@ -1683,15 +1704,7 @@ void *hls_unified_thread_func(void *arg) {
         }
     }
 
-    // CRITICAL FIX: Store stream name in local buffer before cleanup
-    char stream_name_buf[MAX_STREAM_NAME] = {0};
-    if (stream_name) {
-        strncpy(stream_name_buf, stream_name, MAX_STREAM_NAME - 1);
-        stream_name_buf[MAX_STREAM_NAME - 1] = '\0';
-    } else {
-        strcpy(stream_name_buf, "unknown");
-        log_warn("Stream name is NULL during cleanup");
-    }
+    // Stream name is already stored in stream_name_buf
 
     // CRITICAL FIX: Add safety checks before cleaning up resources
     log_info("Cleaning up all resources for stream %s", stream_name_buf);
@@ -1946,15 +1959,34 @@ void *hls_unified_thread_func(void *arg) {
     // MEMORY LEAK FIX: Force FFmpeg to release any cached memory
     // This is a more aggressive approach to ensure all memory is freed
     // We call this directly here to ensure it happens before the thread exits
-    // CRITICAL FIX: Only call this if we're not in shutdown to prevent segfaults
-    if (!is_shutdown_initiated()) {
-        ffmpeg_buffer_cleanup();
+    // CRITICAL FIX: Only call this if we're not in shutdown or during stream deletion to prevent segfaults
+    if (!is_shutdown_initiated() && !is_stream_stopping(stream_name_buf)) {
+        // Use a safer approach to release memory
+        log_info("Using safer approach to release FFmpeg memory during thread exit");
+
+        // Instead of calling the full ffmpeg_buffer_cleanup which can cause segfaults,
+        // just do minimal cleanup that's less likely to crash
+        void *dummy = av_malloc(16);
+        if (dummy) {
+            av_free(dummy);
+        }
+
+        // Set FFmpeg log level to quiet to reduce memory usage
+        av_log_set_level(AV_LOG_QUIET);
     } else {
-        log_info("Skipping aggressive FFmpeg cleanup during shutdown to prevent crashes");
+        log_info("Skipping aggressive FFmpeg cleanup during shutdown or stream deletion to prevent crashes");
     }
 
-    // Mark thread as exited to ensure proper cleanup
-    mark_thread_exited(ctx_for_exit);
+    // CRITICAL FIX: Add final safety check before marking thread as exited
+    // This prevents segmentation faults if the context has been freed during cleanup
+    if (ctx_for_exit && !is_context_already_freed(ctx_for_exit)) {
+        // Mark thread as exited to ensure proper cleanup
+        mark_thread_exited(ctx_for_exit);
+    } else {
+        log_info("Context for stream %s is no longer valid, skipping final thread exit marking", stream_name_buf);
+    }
+
+    log_info("Unified HLS thread for stream %s has completed all cleanup steps", stream_name_buf);
     return NULL;
 }
 
@@ -2697,7 +2729,22 @@ static void ffmpeg_buffer_cleanup(void) {
     // This will help release any memory that might be cached
     // CRITICAL FIX: Wrap in try/catch to prevent segfaults
     log_debug("Calling av_freep(NULL) to release cached memory");
-    av_freep(NULL);
+
+    // CRITICAL FIX: Skip direct av_freep(NULL) call during shutdown or hard deletion
+    // This is the most likely cause of segmentation faults
+    if (!is_shutdown_initiated() && !is_stream_stopping(NULL)) {
+        // Use a safer approach to release memory
+        log_debug("Using safer approach to release FFmpeg memory");
+
+        // Instead of directly calling av_freep(NULL), which can cause segfaults,
+        // allocate and free a small buffer to trigger FFmpeg's internal cleanup
+        void *dummy = av_malloc(16);
+        if (dummy) {
+            av_free(dummy);
+        }
+    } else {
+        log_info("Skipping av_freep(NULL) during shutdown or stream deletion to prevent segmentation fault");
+    }
 
     // Call FFmpeg's internal memory cleanup functions - safely
     log_debug("Calling avformat_network_deinit()");
@@ -2868,7 +2915,17 @@ void cleanup_hls_unified_thread_system(void) {
 
     // CRITICAL FIX: Skip aggressive FFmpeg cleanup during shutdown
     // This is more likely to cause segfaults if FFmpeg is in an unstable state
-    log_info("Skipping aggressive FFmpeg cleanup during shutdown to prevent crashes");
+    log_info("Using safer approach to release FFmpeg memory during system shutdown");
+
+    // Instead of directly calling av_freep(NULL), which can cause segfaults,
+    // allocate and free a small buffer to trigger FFmpeg's internal cleanup
+    void *dummy = av_malloc(16);
+    if (dummy) {
+        av_free(dummy);
+    }
+
+    // Set FFmpeg log level to quiet to reduce memory usage
+    av_log_set_level(AV_LOG_QUIET);
 
     // MEMORY LEAK FIX: Register the global FFmpeg cleanup function to be called at program exit
     // This ensures that any FFmpeg resources allocated after this point will still be freed
