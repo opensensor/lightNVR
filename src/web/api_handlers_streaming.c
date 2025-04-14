@@ -128,16 +128,16 @@ void mg_handle_direct_hls_request(struct mg_connection *c, struct mg_http_messag
         const char* cache_control;
         if (strstr(file_name, ".m3u8")) {
             // For playlist files, use a shorter cache time to ensure updates are seen
-            cache_control = "Cache-Control: max-age=2\r\n";
+            cache_control = "Cache-Control: no-cache, no-store, must-revalidate\r\n";
         } else if (strstr(file_name, ".ts") || strstr(file_name, ".m4s")) {
             // For media segments, use a longer cache time to improve mobile performance
-            cache_control = "Cache-Control: max-age=60\r\n";
+            cache_control = "Cache-Control: no-cache, no-store, must-revalidate\r\n";
         } else if (strstr(file_name, "init.mp4")) {
             // For initialization segments, use a longer cache time
-            cache_control = "Cache-Control: max-age=3600\r\n";
+            cache_control = "Cache-Control: no-cache, no-store, must-revalidate\r\n";
         } else {
             // Default cache time
-            cache_control = "Cache-Control: max-age=5\r\n";
+            cache_control = "Cache-Control: no-cache, no-store, must-revalidate\r\n";
         }
 
         snprintf(headers, sizeof(headers),
