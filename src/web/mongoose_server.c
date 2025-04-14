@@ -287,35 +287,6 @@ static int match_route(struct mg_http_message *hm) {
 }
 
 /**
- * @brief Initialize HTTP server
- */
-http_server_handle_t http_server_init(const http_server_config_t *config) {
-    // Initialize router
-    if (mongoose_server_init_router() != 0) {
-        log_error("Failed to initialize router");
-        return NULL;
-    }
-
-    // Initialize route table
-    init_route_table();
-
-    // Register WebSocket handlers
-    log_info("Registering WebSocket handlers");
-    websocket_register_handlers();
-
-    // We now use the multithreading pattern instead of the API thread pool
-    log_info("Using multithreading pattern for all requests");
-
-    http_server_handle_t server = mongoose_server_init(config);
-    if (!server) {
-        log_error("Failed to initialize Mongoose server");
-        return NULL;
-    }
-
-    return server;
-}
-
-/**
  * @brief Initialize HTTP server using Mongoose
  */
 http_server_handle_t mongoose_server_init(const http_server_config_t *config) {
@@ -358,7 +329,9 @@ http_server_handle_t mongoose_server_init(const http_server_config_t *config) {
         return NULL;
     }
 
-    // No mutex needed as we're not tracking statistics
+    // Register WebSocket handlers
+    log_info("Registering WebSocket handlers");
+    websocket_register_handlers();
 
     log_info("Using per-request threading for all requests");
 

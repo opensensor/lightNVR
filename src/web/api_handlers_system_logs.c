@@ -225,9 +225,9 @@ void mg_handle_get_system_logs(struct mg_connection *c, struct mg_http_message *
 
     // Get system logs
     char **logs = NULL;
-    int count = 0;
+    int count = 250;
 
-    int result = get_system_logs(&logs, &count);
+    const int result = get_json_logs_tail(level, NULL, &logs, &count);
 
     if (result != 0 || !logs) {
         mg_send_json_error(c, 500, "Failed to get system logs");
