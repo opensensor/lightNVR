@@ -32,11 +32,53 @@ const timelineState = {
   playbackSpeed: 1.0,
   showOnlySegments: true,
   forceReload: false,
+  userControllingCursor: false, // New flag to track if user is controlling cursor
   listeners: new Set(),
+
+  // Last time state was updated
+  lastUpdateTime: 0,
+
+  // Pending state updates
+  pendingUpdates: {},
 
   // Update state and notify listeners
   setState(newState) {
+    const now = Date.now();
+
+    console.log('timelineState: setState called with', newState);
+    console.log('timelineState: current state before update', {
+      currentTime: this.currentTime,
+      currentSegmentIndex: this.currentSegmentIndex,
+      segmentsLength: this.timelineSegments.length
+    });
+
+    // For time-sensitive updates (like currentTime), we want to batch them
+    // to prevent too many updates in a short period
+    if (newState.currentTime !== undefined &&
+        !newState.currentSegmentIndex &&
+        !newState.isPlaying &&
+        now - this.lastUpdateTime < 250) {
+      // Skip frequent time updates that don't change playback state
+      console.log('timelineState: Skipping frequent time update');
+      return;
+    }
+
+    // Apply the new state
     Object.assign(this, newState);
+
+    // Reset forceReload flag immediately
+    if (newState.forceReload) {
+      this.forceReload = false;
+    }
+
+    this.lastUpdateTime = now;
+
+    console.log('timelineState: state after update', {
+      currentTime: this.currentTime,
+      currentSegmentIndex: this.currentSegmentIndex,
+      segmentsLength: this.timelineSegments.length
+    });
+
     this.notifyListeners();
   },
 
@@ -49,6 +91,16 @@ const timelineState = {
   // Notify all listeners of state change
   notifyListeners() {
     this.listeners.forEach(listener => listener(this));
+  },
+
+  // Flush any pending updates
+  flushPendingUpdates() {
+    if (Object.keys(this.pendingUpdates).length > 0) {
+      Object.assign(this, this.pendingUpdates);
+      this.pendingUpdates = {};
+      this.lastUpdateTime = Date.now();
+      this.notifyListeners();
+    }
   }
 };
 
@@ -101,6 +153,22 @@ export function TimelinePage() {
   // Refs
   const timelineContainerRef = useRef(null);
   const initialLoadRef = useRef(false);
+  const flushIntervalRef = useRef(null);
+
+  // Set up periodic flush of pending updates
+  useEffect(() => {
+    // Set up interval to flush pending updates every 200ms
+    flushIntervalRef.current = setInterval(() => {
+      timelineState.flushPendingUpdates();
+    }, 200);
+
+    // Clean up interval on unmount
+    return () => {
+      if (flushIntervalRef.current) {
+        clearInterval(flushIntervalRef.current);
+      }
+    };
+  }, []);
 
   // Load streams using preact-query
   const {
@@ -215,27 +283,75 @@ export function TimelinePage() {
           return;
         }
 
-        console.log('TimelinePage: Setting segments');
-        setSegments(timelineSegments);
+        // IMPORTANT: Make a deep copy of the segments to avoid reference issues
+        const segmentsCopy = JSON.parse(JSON.stringify(timelineSegments));
 
-        // Update global state with the first segment selected
-        const initialTime = timelineSegments[0].start_timestamp;
-        timelineState.setState({
-          timelineSegments,
-          currentSegmentIndex: 0,
-          currentTime: initialTime,
-          prevCurrentTime: initialTime,
-          isPlaying: false
+        // Log the first few segments for debugging
+        segmentsCopy.slice(0, 3).forEach((segment, i) => {
+          const startTime = new Date(segment.start_timestamp * 1000);
+          const endTime = new Date(segment.end_timestamp * 1000);
+          console.log(`TimelinePage: Segment ${i} - Start: ${startTime.toLocaleTimeString()}, End: ${endTime.toLocaleTimeString()}`);
         });
+
+        console.log('TimelinePage: Setting segments');
+        setSegments(segmentsCopy);
+
+        // Force a synchronous DOM update
+        document.body.offsetHeight;
+
+        // Directly update the global state with the segments
+        const firstSegmentStartTime = segmentsCopy[0].start_timestamp;
+
+        console.log('TimelinePage: Setting initial segment and time', {
+          firstSegmentId: segmentsCopy[0].id,
+          startTime: new Date(firstSegmentStartTime * 1000).toLocaleTimeString()
+        });
+
+        // DIRECT ASSIGNMENT to ensure state is properly set
+        console.log('TimelinePage: Directly setting timelineState properties');
+        timelineState.timelineSegments = segmentsCopy;
+        timelineState.currentSegmentIndex = 0;
+        timelineState.currentTime = firstSegmentStartTime;
+        timelineState.prevCurrentTime = firstSegmentStartTime;
+        timelineState.isPlaying = false;
+        timelineState.forceReload = true;
+        timelineState.zoomLevel = 1;
+        timelineState.selectedDate = selectedDate; // Make sure the date is set
+
+        // Now call setState to notify listeners
+        timelineState.setState({
+          // Empty object just to trigger notification
+        });
+
+        console.log('TimelinePage: Updated timelineState with segments');
+
+        // Wait a moment to ensure state is updated, then log the current state
+        setTimeout(() => {
+          console.log('TimelinePage: State after update (delayed check):', {
+            segmentsLength: timelineState.timelineSegments.length,
+            currentSegmentIndex: timelineState.currentSegmentIndex,
+            currentTime: timelineState.currentTime
+          });
+
+          // Force a state update if the state wasn't properly updated
+          if (!timelineState.currentTime || timelineState.currentSegmentIndex === -1) {
+            console.log('TimelinePage: State not properly updated, forcing update');
+            timelineState.setState({
+              currentSegmentIndex: 0,
+              currentTime: firstSegmentStartTime,
+              prevCurrentTime: firstSegmentStartTime
+            });
+          }
+        }, 100);
 
         // Preload the first segment's video
         const videoPlayer = document.querySelector('#video-player video');
         if (videoPlayer) {
-          videoPlayer.src = `/api/recordings/play/${timelineSegments[0].id}`;
+          videoPlayer.src = `/api/recordings/play/${segmentsCopy[0].id}?t=${Date.now()}`;
           videoPlayer.load();
         }
 
-        showStatusMessage(`Loaded ${timelineSegments.length} recording segments`, 'success');
+        showStatusMessage(`Loaded ${segmentsCopy.length} recording segments`, 'success');
       },
       onError: (error) => {
         console.error('TimelinePage: Error loading timeline data:', error);
@@ -290,7 +406,7 @@ export function TimelinePage() {
             ref=${timelineContainerRef}
         >
           <${TimelineRuler} />
-          <${TimelineSegments} />
+          <${TimelineSegments} segments=${segments} />
           <${TimelineCursor} />
 
           <!-- Instructions for cursor -->
@@ -373,9 +489,10 @@ export function TimelinePage() {
         <h3 class="text-lg font-semibold mb-2">How to use the timeline:</h3>
         <ul class="list-disc pl-5">
           <li>Select a stream and date to load recordings</li>
-          <li>Click on the timeline to seek to a specific time</li>
+          <li>Click on the timeline to position the cursor at a specific time</li>
+          <li>Drag the orange cursor to navigate precisely</li>
           <li>Click on a segment (blue bar) to play that recording</li>
-          <li>Use the play/pause button to control playback</li>
+          <li>Use the play button to start playback from the current cursor position</li>
           <li>Use the zoom buttons to adjust the timeline scale</li>
         </ul>
       </div>

@@ -19,19 +19,19 @@ export function TimelineRuler() {
 
   // Subscribe to timeline state changes
   useEffect(() => {
-    console.log('TimelineRuler: Setting up subscription to timelineState');
-    
     const unsubscribe = timelineState.subscribe(state => {
-      console.log('TimelineRuler: Received state update:', state);
-      console.log('TimelineRuler: Zoom level:', state.zoomLevel);
-      
+      console.log('TimelineRuler: State update received', {
+        zoomLevel: state.zoomLevel,
+        segmentsCount: state.timelineSegments ? state.timelineSegments.length : 0,
+        currentTime: state.currentTime
+      });
+
       // Calculate time range based on zoom level
       const hoursPerView = 24 / state.zoomLevel;
-      console.log('TimelineRuler: Hours per view:', hoursPerView);
-      
+
       // Calculate the center hour based on current time or segments
       let centerHour = 12; // Default to noon
-      
+
       if (state.currentTime !== null) {
         // If we have a current time, use it as the center
         const currentDate = new Date(state.currentTime * 1000);
@@ -40,25 +40,26 @@ export function TimelineRuler() {
         // If we have segments but no current time, use the middle of the segments
         let earliestHour = 24;
         let latestHour = 0;
-        
+
         state.timelineSegments.forEach(segment => {
           const startTime = new Date(segment.start_timestamp * 1000);
           const endTime = new Date(segment.end_timestamp * 1000);
-          
+
           const startHour = startTime.getHours() + (startTime.getMinutes() / 60) + (startTime.getSeconds() / 3600);
           const endHour = endTime.getHours() + (endTime.getMinutes() / 60) + (endTime.getSeconds() / 3600);
-          
+
           earliestHour = Math.min(earliestHour, startHour);
           latestHour = Math.max(latestHour, endHour);
         });
-        
+
         centerHour = (earliestHour + latestHour) / 2;
+        console.log('TimelineRuler: Calculated center from segments', { earliestHour, latestHour, centerHour });
       }
-      
+
       // Calculate start and end hours based on center and zoom level
       let newStartHour = Math.max(0, centerHour - (hoursPerView / 2));
       let newEndHour = Math.min(24, newStartHour + hoursPerView);
-      
+
       // Adjust start hour if end hour is at the limit
       if (newEndHour === 24 && hoursPerView < 24) {
         newStartHour = Math.max(0, 24 - hoursPerView);
@@ -66,25 +67,31 @@ export function TimelineRuler() {
       } else if (newStartHour === 0 && hoursPerView < 24) {
         newEndHour = Math.min(24, hoursPerView);
       }
-      
-      console.log('TimelineRuler: New hour range:', { newStartHour, newEndHour });
-      
+
       // Update local state
       setStartHour(newStartHour);
       setEndHour(newEndHour);
       setZoomLevel(state.zoomLevel);
-      
+
+      console.log('TimelineRuler: Calculated time range', {
+        newStartHour,
+        newEndHour,
+        hoursPerView,
+        centerHour
+      });
+
       // Only update global state if the values have actually changed
       // to prevent infinite recursion
-      if (timelineState.timelineStartHour !== newStartHour || 
+      if (timelineState.timelineStartHour !== newStartHour ||
           timelineState.timelineEndHour !== newEndHour) {
+        console.log('TimelineRuler: Updating global state with new time range');
         timelineState.setState({
           timelineStartHour: newStartHour,
           timelineEndHour: newEndHour
         });
       }
     });
-    
+
     return () => unsubscribe();
   }, []);
 
@@ -92,60 +99,60 @@ export function TimelineRuler() {
   const generateHourMarkers = () => {
     const markers = [];
     const hourWidth = 100 / (endHour - startHour);
-    
+
     // Add hour markers and labels
     for (let hour = Math.floor(startHour); hour <= Math.ceil(endHour); hour++) {
       if (hour >= 0 && hour <= 24) {
         const position = ((hour - startHour) / (endHour - startHour)) * 100;
-        
+
         // Add hour marker
         markers.push(html`
-          <div 
-            key="tick-${hour}" 
-            class="absolute top-0 w-px h-5 bg-gray-500 dark:bg-gray-400" 
+          <div
+            key="tick-${hour}"
+            class="absolute top-0 w-px h-5 bg-gray-500 dark:bg-gray-400"
             style="left: ${position}%;"
           ></div>
         `);
-        
+
         // Add hour label
         markers.push(html`
-          <div 
-            key="label-${hour}" 
-            class="absolute top-0 text-xs text-gray-600 dark:text-gray-300 transform -translate-x-1/2" 
+          <div
+            key="label-${hour}"
+            class="absolute top-0 text-xs text-gray-600 dark:text-gray-300 transform -translate-x-1/2"
             style="left: ${position}%;"
           >
             ${hour}:00
           </div>
         `);
-        
+
         // Add half-hour marker if not the last hour and we're zoomed in enough
         if (hour < 24 && zoomLevel >= 2) {
           const halfHourPosition = ((hour + 0.5 - startHour) / (endHour - startHour)) * 100;
           markers.push(html`
-            <div 
-              key="tick-${hour}-30" 
-              class="absolute top-2 w-px h-3 bg-gray-400 dark:bg-gray-500" 
+            <div
+              key="tick-${hour}-30"
+              class="absolute top-2 w-px h-3 bg-gray-400 dark:bg-gray-500"
               style="left: ${halfHourPosition}%;"
             ></div>
           `);
-          
+
           // Add 15-minute markers if zoomed in even more
           if (zoomLevel >= 4) {
             const quarterHourPosition1 = ((hour + 0.25 - startHour) / (endHour - startHour)) * 100;
             const quarterHourPosition3 = ((hour + 0.75 - startHour) / (endHour - startHour)) * 100;
-            
+
             markers.push(html`
-              <div 
-                key="tick-${hour}-15" 
-                class="absolute top-3 w-px h-2 bg-gray-400 dark:bg-gray-500" 
+              <div
+                key="tick-${hour}-15"
+                class="absolute top-3 w-px h-2 bg-gray-400 dark:bg-gray-500"
                 style="left: ${quarterHourPosition1}%;"
               ></div>
             `);
-            
+
             markers.push(html`
-              <div 
-                key="tick-${hour}-45" 
-                class="absolute top-3 w-px h-2 bg-gray-400 dark:bg-gray-500" 
+              <div
+                key="tick-${hour}-45"
+                class="absolute top-3 w-px h-2 bg-gray-400 dark:bg-gray-500"
                 style="left: ${quarterHourPosition3}%;"
               ></div>
             `);
@@ -153,7 +160,7 @@ export function TimelineRuler() {
         }
       }
     }
-    
+
     return markers;
   };
 
