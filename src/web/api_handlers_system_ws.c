@@ -6,15 +6,10 @@
 
 #include "web/api_handlers_system_ws.h"
 #include "web/websocket_bridge.h"
-#include "web/mongoose_server_websocket_utils.h"
+#include "web/api_handlers_system_ws.h"
 #include "core/logger.h"
-#include "../external/cjson/cJSON.h"
+#include "cJSON.h"
 
-// Forward declarations
-extern int get_system_logs(char ***logs, int *count);
-static int send_filtered_logs_to_client(const char *client_id, const char *min_level);
-static int log_level_meets_minimum(const char *log_level, const char *min_level);
-extern __attribute__((weak)) int get_json_logs(const char *min_level, const char *last_timestamp, char ***logs, int *count);
 
 // Map to store client log level preferences
 // Key: client_id, Value: log level string (error, warning, info, debug)
@@ -213,7 +208,7 @@ void websocket_handle_system_logs(const char *client_id, const char *message) {
 
         log_info("Client %s subscribed to system logs with level: %s", client_id, log_level);
 
-        // Fetch logs using the new JSON-based approach
+        // Fetch logs using the optimized approach
         fetch_system_logs(client_id, log_level, NULL);
     }
     // Handle unsubscribe message
@@ -263,7 +258,7 @@ void websocket_handle_system_logs(const char *client_id, const char *message) {
         log_info("Client %s fetching logs with level: %s, last_timestamp: %s",
                 client_id, log_level, last_timestamp ? last_timestamp : "NULL");
 
-        // Fetch logs using the new JSON-based approach
+        // Fetch logs using the optimized approach
         fetch_system_logs(client_id, log_level, last_timestamp);
     }
     // Handle unknown message type
@@ -289,50 +284,6 @@ void websocket_handle_system_logs(const char *client_id, const char *message) {
 }
 
 /**
- * @brief Check if a log level meets the minimum required level
- *
- * @param log_level The log level to check
- * @param min_level The minimum required level
- * @return int 1 if the log level meets the minimum, 0 otherwise
- */
-static int log_level_meets_minimum(const char *log_level, const char *min_level) {
-    // Convert log levels to numeric values for comparison
-    int level_value = 2; // Default to INFO (2)
-    int min_value = 2;   // Default to INFO (2)
-
-    // Map log level strings to numeric values
-    // ERROR = 0, WARNING = 1, INFO = 2, DEBUG = 3
-    if (strcmp(log_level, "error") == 0) {
-        level_value = 0;
-    } else if (strcmp(log_level, "warning") == 0) {
-        level_value = 1;
-    } else if (strcmp(log_level, "info") == 0) {
-        level_value = 2;
-    } else if (strcmp(log_level, "debug") == 0) {
-        level_value = 3;
-    }
-
-    if (strcmp(min_level, "error") == 0) {
-        min_value = 0;
-    } else if (strcmp(min_level, "warning") == 0) {
-        min_value = 1;
-    } else if (strcmp(min_level, "info") == 0) {
-        min_value = 2;
-    } else if (strcmp(min_level, "debug") == 0) {
-        min_value = 3;
-    }
-
-    // IMPORTANT: The logic here is inverted from what you might expect
-    // When min_level is "error" (0), we only want to include error logs (0)
-    // When min_level is "warning" (1), we want to include error (0) and warning (1)
-    // When min_level is "info" (2), we want to include error (0), warning (1), and info (2)
-    // When min_level is "debug" (3), we want to include all logs
-
-    // So we return true if the log level value is LESS THAN OR EQUAL TO the minimum level value
-    return level_value <= min_value;
-}
-
-/**
  * @brief Send system logs to a specific client with filtering
  *
  * @param client_id The client ID to send logs to
@@ -345,15 +296,15 @@ static int send_filtered_logs_to_client(const char *client_id, const char *min_l
     char **logs = NULL;
     int count = 0;
 
-    int result = get_system_logs(&logs, &count);
+    // Use the optimized tail-based log retrieval
+    // Request 1000 lines to ensure we have enough after filtering
+    int result = get_system_logs_tail(&logs, &count, 1000);
 
     if (result != 0 || logs == NULL || count == 0) {
         return 0;
     }
 
-    // Note: The get_system_logs function now limits the number of logs internally
-    // We don't need to limit it here anymore, but we'll log the count for debugging
-    log_info("Processing %d logs", count);
+    log_info("Processing %d logs from tail", count);
 
     // Create JSON array of logs
     cJSON *logs_array = cJSON_CreateArray();
@@ -535,66 +486,14 @@ int fetch_system_logs(const char *client_id, const char *min_level, const char *
     log_info("fetch_system_logs called for client %s with level %s, last_timestamp %s",
              client_id, min_level, last_timestamp ? last_timestamp : "NULL");
 
-    // Get logs from JSON log file if the function is available
+    // Get logs using the optimized tail-based approach if available
     char **logs = NULL;
-    int count = 0;
-    int result = -1;
+    int count = 250;
 
-    if (get_json_logs) {
-        result = get_json_logs(min_level, last_timestamp, &logs, &count);
-    }
-
-    // If JSON logs are not available or there was an error, fall back to regular logs
+    // Try to use the optimized tail-based JSON logs function first
+    const int result = get_json_logs_tail(min_level, last_timestamp, &logs, &count);
     if (result != 0 || logs == NULL || count == 0) {
-        // Fall back to regular logs if JSON logs are not available
-        if (!get_json_logs) {
-            log_info("JSON logger not available, falling back to regular logs");
-            int result = send_filtered_logs_to_client(client_id, min_level);
-            return result;
-        }
-
-        // Free any logs that might have been allocated
-        if (logs) {
-            for (int i = 0; i < count; i++) {
-                if (logs[i]) {
-                    free(logs[i]);
-                }
-            }
-            free(logs);
-        }
-
-        log_warn("No logs found or error getting logs");
-
-        // Send empty logs array
-        cJSON *payload = cJSON_CreateObject();
-        cJSON_AddItemToObject(payload, "logs", cJSON_CreateArray());
-        cJSON_AddStringToObject(payload, "level", min_level);
-        cJSON_AddBoolToObject(payload, "more", false);
-
-        // Convert payload to string
-        char *payload_str = cJSON_PrintUnformatted(payload);
-
-        // Create WebSocket message
-        char *logs_message = NULL;
-        int len = asprintf(&logs_message, "{\"type\":\"update\",\"topic\":\"system/logs\",\"payload\":%s}", payload_str);
-
-        if (len > 0 && logs_message != NULL) {
-            // Get client connection directly from pointer value stored in client_id string
-            struct mg_connection *conn = NULL;
-            if (sscanf(client_id, "%p", &conn) == 1 && conn) {
-                // Send message directly using mongoose
-                mg_ws_send(conn, logs_message, strlen(logs_message), WEBSOCKET_OP_TEXT);
-            } else {
-                log_error("Invalid client ID or connection not found: %s", client_id);
-            }
-
-            // Free the message
-            free(logs_message);
-        }
-
-        cJSON_Delete(payload);
-        free(payload_str);
-
+        log_error("Failed to get JSON logs using tail command");
         return 0;
     }
 

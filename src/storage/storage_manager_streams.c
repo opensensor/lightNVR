@@ -13,18 +13,10 @@
 #include <errno.h>
 
 #include "storage/storage_manager.h"
+#include "storage/storage_manager_streams.h"
 #include "core/logger.h"
 #include "core/config.h"
 #include "../../external/cjson/cJSON.h"
-
-/**
- * Stream storage usage information
- */
-typedef struct {
-    char name[64];
-    uint64_t size_bytes;
-    int recording_count;
-} stream_storage_info_t;
 
 /**
  * Get storage usage per stream
@@ -80,7 +72,7 @@ int get_stream_storage_usage(const char *storage_path, stream_storage_info_t *st
             snprintf(du_cmd, sizeof(du_cmd), "du -sb %s 2>/dev/null | cut -f1", stream_path);
             FILE *fp = popen(du_cmd, "r");
             if (fp) {
-                if (fscanf(fp, "%llu", &stream_info[stream_count].size_bytes) == 1) {
+                if (fscanf(fp, "%lu", &stream_info[stream_count].size_bytes) == 1) {
                     // Use find to count MP4 files
                     char find_cmd[768];
                     snprintf(find_cmd, sizeof(find_cmd), "find %s -type f -name \"*.mp4\" | wc -l", stream_path);

@@ -18,8 +18,6 @@
 #include "core/config.h"
 #include "mongoose.h"
 
-// Forward declarations
-static int log_level_meets_minimum(const char *log_level, const char *min_level);
 
 /**
  * @brief Get system logs
@@ -170,10 +168,10 @@ int get_system_logs(char ***logs, int *count) {
  * @param min_level The minimum required level
  * @return int 1 if the log level meets the minimum, 0 otherwise
  */
-static int log_level_meets_minimum(const char *log_level, const char *min_level) {
+int log_level_meets_minimum(const char *log_level, const char *min_level) {
     // Convert log levels to numeric values for comparison
-    int level_value = 3; // Default to DEBUG (3)
-    int min_value = 3;   // Default to DEBUG (3)
+    int level_value = 2; // Default to INFO (2)
+    int min_value = 2;   // Default to INFO (2)
 
     // Map log level strings to numeric values
     // ERROR = 0, WARNING = 1, INFO = 2, DEBUG = 3

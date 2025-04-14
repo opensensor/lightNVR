@@ -1,3 +1,7 @@
+#define _POSIX_C_SOURCE 200809L
+#define _XOPEN_SOURCE 700
+#define _GNU_SOURCE
+
 /**
  * HLS Unified Thread Implementation
  *
@@ -17,6 +21,7 @@
 #include <stdatomic.h>
 #include <time.h>
 #include <signal.h>
+#include <sys/signal.h>
 #include <errno.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -1274,10 +1279,37 @@ void *hls_unified_thread_func(void *arg) {
                 // Process packets based on stream type
                 if (pkt->stream_index == video_stream_idx) {
                     // This is a video packet - process it
+                    
+                    // CRITICAL FIX: Check if writer is NULL before accessing it
+                    // This prevents segmentation fault during shutdown
+                    if (!ctx->writer) {
+                        log_warn("Writer is NULL for stream %s during packet processing, skipping packet", stream_name);
+                        continue;
+                    }
+                    
+                    // CRITICAL FIX: Use a local copy of the writer pointer to prevent race conditions
+                    hls_writer_t *writer = ctx->writer;
+                    
+                    // CRITICAL FIX: Add memory barrier to ensure we have a consistent view of the writer
+                    __sync_synchronize();
+                    
+                    // Check again after memory barrier
+                    if (!writer) {
+                        log_warn("Writer became NULL for stream %s after memory barrier, skipping packet", stream_name);
+                        continue;
+                    }
+                    
                     // Lock the writer mutex
-                    pthread_mutex_lock(&ctx->writer->mutex);
+                    pthread_mutex_lock(&writer->mutex);
+                    
+                    // CRITICAL FIX: Check if writer is still valid after locking
+                    if (ctx->writer != writer) {
+                        log_warn("Writer changed for stream %s during mutex lock, releasing mutex and skipping packet", stream_name);
+                        pthread_mutex_unlock(&writer->mutex);
+                        continue;
+                    }
 
-                    ret = hls_writer_write_packet(ctx->writer, pkt, input_stream);
+                    ret = hls_writer_write_packet(writer, pkt, input_stream);
 
                     // Log key frames for debugging
                     bool is_key_frame = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
@@ -1299,7 +1331,7 @@ void *hls_unified_thread_func(void *arg) {
                     }
 
                     // Unlock the writer mutex
-                    pthread_mutex_unlock(&ctx->writer->mutex);
+                    pthread_mutex_unlock(&writer->mutex);
                 } else {
                     // This is a non-video packet (likely audio)
                     // For now, we'll just log it and skip processing

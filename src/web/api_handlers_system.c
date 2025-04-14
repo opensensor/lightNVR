@@ -19,17 +19,15 @@
 #include <errno.h>
 
 #include "web/api_handlers.h"
-#include "web/mongoose_adapter.h"
-#include "web/api_handlers_system_ws.h"
 #include "core/logger.h"
 #include "core/config.h"
 #include "core/version.h"
 #include "core/shutdown_coordinator.h"
 #include "video/stream_manager.h"
-#include "database/database_manager.h"
 #include "database/db_streams.h"
 #include "database/db_recordings.h"
 #include "storage/storage_manager_streams.h"
+#include "storage/storage_manager_streams_cache.h"
 #include "mongoose.h"
 
 // External function from api_handlers_system_go2rtc.c
@@ -524,8 +522,8 @@ void mg_handle_get_system_info(struct mg_connection *c, struct mg_http_message *
         cJSON_AddItemToObject(info, "recordings", recordings);
     }
 
-    // Add stream storage usage information
-    add_stream_storage_usage_to_json(info);
+    // Add stream storage usage information with caching
+    add_cached_stream_storage_usage_to_json(info, 0);
 
     // Convert to string
     char *json_str = cJSON_PrintUnformatted(info);
