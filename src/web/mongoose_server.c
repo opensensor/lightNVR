@@ -148,8 +148,8 @@ static const mg_api_route_t s_api_routes[] = {
     {"POST", "/api/onvif/device/test", mg_handle_post_test_onvif_connection, false},
 
     // Timeline API
-    {"GET", "/api/timeline/segments", mg_handle_get_timeline_segments, false},
-    {"GET", "/api/timeline/manifest", mg_handle_timeline_manifest, false},
+    {"GET", "/api/timeline/segments", mg_handle_get_timeline_segments, true},  // Opt out of auto-threading to prevent hanging
+    {"GET", "/api/timeline/manifest", mg_handle_timeline_manifest, true},
     {"GET", "/api/timeline/play", mg_handle_timeline_playback, false},
 
     // End of table marker
