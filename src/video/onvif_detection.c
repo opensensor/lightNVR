@@ -34,7 +34,10 @@ typedef struct {
 
 // Structure to hold ONVIF subscription information
 typedef struct {
-    char subscription_address[512];
+    char camera_url[512];           // URL of the camera (used as the key for lookup)
+    char subscription_address[512]; // Address returned by the ONVIF service
+    char username[64];              // Username for authentication
+    char password[64];              // Password for authentication
     time_t creation_time;
     time_t expiration_time;
     bool active;
@@ -306,21 +309,25 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
 
     // Check if we already have a subscription for this URL
     for (int i = 0; i < subscription_count; i++) {
-        if (strcmp(subscriptions[i].subscription_address, url) == 0) {
+        if (strcmp(subscriptions[i].camera_url, url) == 0) {
             // Check if subscription is still valid
             time_t now;
             time(&now);
             
             if (subscriptions[i].active && now < subscriptions[i].expiration_time) {
+                log_info("Reusing existing ONVIF subscription for %s", url);
                 pthread_mutex_unlock(&subscription_mutex);
                 return &subscriptions[i];
             } else {
                 // Subscription expired, remove it
+                log_info("ONVIF subscription for %s expired, creating new one", url);
                 subscriptions[i].active = false;
                 break;
             }
         }
     }
+
+    log_info("Creating new ONVIF subscription for %s", url);
 
     // Create a new subscription
     const char *request_body = 
@@ -344,24 +351,49 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
         return NULL;
     }
 
-    // Add to subscriptions array if there's space
-    if (subscription_count < MAX_SUBSCRIPTIONS) {
-        strncpy(subscriptions[subscription_count].subscription_address, subscription_address, 
-                sizeof(subscriptions[subscription_count].subscription_address) - 1);
-        subscriptions[subscription_count].subscription_address[sizeof(subscriptions[subscription_count].subscription_address) - 1] = '\0';
-        
-        time(&subscriptions[subscription_count].creation_time);
-        subscriptions[subscription_count].expiration_time = subscriptions[subscription_count].creation_time + 3600; // 1 hour
-        subscriptions[subscription_count].active = true;
-        
-        onvif_subscription_t *result = &subscriptions[subscription_count];
-        subscription_count++;
-        
-        free(subscription_address);
-        pthread_mutex_unlock(&subscription_mutex);
-        return result;
+    // Find an empty slot or reuse an inactive one
+    int slot = -1;
+    for (int i = 0; i < subscription_count; i++) {
+        if (!subscriptions[i].active) {
+            slot = i;
+            break;
+        }
     }
 
+    // If no empty slot found, add to the end if there's space
+    if (slot == -1 && subscription_count < MAX_SUBSCRIPTIONS) {
+        slot = subscription_count++;
+    }
+
+    // If we found a slot, use it
+    if (slot >= 0) {
+        // Store camera URL, username, and password
+        strncpy(subscriptions[slot].camera_url, url, sizeof(subscriptions[slot].camera_url) - 1);
+        subscriptions[slot].camera_url[sizeof(subscriptions[slot].camera_url) - 1] = '\0';
+        
+        strncpy(subscriptions[slot].username, username, sizeof(subscriptions[slot].username) - 1);
+        subscriptions[slot].username[sizeof(subscriptions[slot].username) - 1] = '\0';
+        
+        strncpy(subscriptions[slot].password, password, sizeof(subscriptions[slot].password) - 1);
+        subscriptions[slot].password[sizeof(subscriptions[slot].password) - 1] = '\0';
+        
+        // Store subscription address
+        strncpy(subscriptions[slot].subscription_address, subscription_address, 
+                sizeof(subscriptions[slot].subscription_address) - 1);
+        subscriptions[slot].subscription_address[sizeof(subscriptions[slot].subscription_address) - 1] = '\0';
+        
+        // Set timestamps
+        time(&subscriptions[slot].creation_time);
+        subscriptions[slot].expiration_time = subscriptions[slot].creation_time + 3600; // 1 hour
+        subscriptions[slot].active = true;
+        
+        log_info("Successfully created ONVIF subscription for %s", url);
+        free(subscription_address);
+        pthread_mutex_unlock(&subscription_mutex);
+        return &subscriptions[slot];
+    }
+
+    log_error("No space for new ONVIF subscription");
     free(subscription_address);
     pthread_mutex_unlock(&subscription_mutex);
     return NULL;
@@ -517,12 +549,23 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
         "  <MessageLimit>100</MessageLimit>\n"
         "</PullMessages>";
 
-    // Send request
-    char *response = send_onvif_request(onvif_url, username, password, request_body, service);
+    // Send request using the stored credentials from the subscription
+    char *response = send_onvif_request(subscription->camera_url, 
+                                       subscription->username, 
+                                       subscription->password, 
+                                       request_body, 
+                                       service);
     free(service);
 
     if (!response) {
-        log_error("Failed to pull messages");
+        log_error("Failed to pull messages from subscription");
+        
+        // If pulling messages fails, the subscription might be invalid
+        // Mark it as inactive so we'll create a new one next time
+        pthread_mutex_lock(&subscription_mutex);
+        subscription->active = false;
+        pthread_mutex_unlock(&subscription_mutex);
+        
         return -1;
     }
 

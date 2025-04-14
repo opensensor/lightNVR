@@ -30,6 +30,9 @@
 // Forward declaration of the internal function - this is defined in detection_stream_thread.c
 extern int process_segment_for_detection(stream_detection_thread_t *thread, const char *segment_path);
 
+// Forward declaration for recording function - this is defined in detection_stream_thread.c
+extern int process_frame_for_recording(const char *stream_name, const uint8_t *frame_data, int width, int height, int channels, time_t timestamp, detection_result_t *result);
+
 // Forward declaration of global variable from detection_stream_thread.c
 extern time_t global_startup_delay_end;
 
@@ -754,6 +757,42 @@ int process_segment_if_needed(stream_detection_thread_t *thread,
                         
                         if (result == 0) {
                             log_info("[Stream %s] ONVIF detection successful", thread->stream_name);
+                            
+                            // Process detection results for recording if motion was detected
+                            if (result_struct.count > 0) {
+                                log_info("[Stream %s] ONVIF detection found motion", thread->stream_name);
+                                
+                                // Create a dummy frame buffer for recording
+                                // We don't have actual frame data for ONVIF, but we need to pass something
+                                // to process_frame_for_recording
+                                int width = 640;  // Default width
+                                int height = 480; // Default height
+                                int channels = 3; // RGB
+                                uint8_t *dummy_frame = (uint8_t *)calloc(width * height * channels, 1);
+                                
+                                if (dummy_frame) {
+                                    // Process the detection results for recording
+                                    time_t current_time = time(NULL);
+                                    int record_ret = process_frame_for_recording(thread->stream_name, 
+                                                                              dummy_frame, width, height,
+                                                                              channels, current_time, &result_struct);
+                                    
+                                    if (record_ret != 0) {
+                                        log_error("[Stream %s] Failed to process ONVIF detection for recording (error code: %d)",
+                                                 thread->stream_name, record_ret);
+                                    } else {
+                                        log_info("[Stream %s] Successfully processed ONVIF detection for recording", 
+                                                thread->stream_name);
+                                    }
+                                    
+                                    free(dummy_frame);
+                                } else {
+                                    log_error("[Stream %s] Failed to allocate dummy frame for ONVIF recording", 
+                                             thread->stream_name);
+                                }
+                            } else {
+                                log_info("[Stream %s] No motion detected in ONVIF detection", thread->stream_name);
+                            }
                         } else {
                             log_error("[Stream %s] ONVIF detection failed (error code: %d)", thread->stream_name, result);
                         }
