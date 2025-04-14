@@ -400,23 +400,36 @@ static int ensure_output_directory(hls_writer_t *writer) {
     if (stat(dir_path, &st) != 0 || !S_ISDIR(st.st_mode)) {
         log_warn("HLS output directory does not exist or is not a directory: %s", dir_path);
 
-        // Create directory with parent directories if needed
-        char mkdir_cmd[MAX_PATH_LENGTH * 2];
-        snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p %s", dir_path);
+        // Create directory using direct C functions to handle paths with spaces
+        char temp_path[MAX_PATH_LENGTH];
+        strncpy(temp_path, dir_path, MAX_PATH_LENGTH - 1);
+        temp_path[MAX_PATH_LENGTH - 1] = '\0';
 
-        if (system(mkdir_cmd) != 0) {
-            log_error("Failed to create HLS output directory: %s", dir_path);
+        // Create parent directories one by one
+        for (char *p = temp_path + 1; *p; p++) {
+            if (*p == '/') {
+                *p = '\0';
+                if (mkdir(temp_path, 0755) != 0 && errno != EEXIST) {
+                    log_warn("Failed to create parent directory: %s (error: %s)",
+                            temp_path, strerror(errno));
+                }
+                *p = '/';
+            }
+        }
+
+        // Create the final directory
+        if (mkdir(temp_path, 0755) != 0 && errno != EEXIST) {
+            log_error("Failed to create output directory: %s (error: %s)",
+                    temp_path, strerror(errno));
             return -1;
         }
 
         log_info("Created HLS output directory: %s", dir_path);
 
         // Set permissions to ensure FFmpeg can write files
-        // Use 755 instead of 777 for better security
-        snprintf(mkdir_cmd, sizeof(mkdir_cmd), "chmod -R 755 %s", dir_path);
-        int ret_chmod = system(mkdir_cmd);
-        if (ret_chmod != 0) {
-            log_warn("Failed to set permissions on directory: %s (return code: %d)", dir_path, ret_chmod);
+        if (chmod(dir_path, 0755) != 0) {
+            log_warn("Failed to set permissions on directory: %s (error: %s)",
+                    dir_path, strerror(errno));
         }
     }
 
@@ -424,12 +437,10 @@ static int ensure_output_directory(hls_writer_t *writer) {
     if (access(dir_path, W_OK) != 0) {
         log_error("HLS output directory is not writable: %s", dir_path);
 
-        // Try to fix permissions
-        char chmod_cmd[MAX_PATH_LENGTH * 2];
-        snprintf(chmod_cmd, sizeof(chmod_cmd), "chmod -R 777 %s", dir_path);
-        int ret_chmod = system(chmod_cmd);
-        if (ret_chmod != 0) {
-            log_warn("Failed to set permissions on directory: %s (return code: %d)", dir_path, ret_chmod);
+        // Try to fix permissions using direct chmod
+        if (chmod(dir_path, 0777) != 0) {
+            log_warn("Failed to set permissions on directory: %s (error: %s)",
+                    dir_path, strerror(errno));
         }
 
         // Check again

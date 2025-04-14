@@ -206,6 +206,29 @@ By default, tests run with the browser visible. To run in headless mode (without
 - Increase the wait time for the element to appear
 - Verify the page structure hasn't changed
 - Check the screenshots to see the actual state of the page
+- For navigation tests, be aware of the application's navigation patterns:
+  - Some pages are accessed through submenu items rather than main navigation
+  - For example, the Timeline page is accessed via the Recordings page, not directly from the main menu
+
+### Navigation Patterns
+
+**Note**: The application has some specific navigation patterns that the tests need to follow:
+
+- **Timeline Page**: Accessed through the Recordings page, not directly from the main navigation menu
+  ```javascript
+  // Example of navigating to the Timeline page
+  async navigateToTimeline() {
+    // First navigate to the recordings page
+    await this.navigateToRecordings();
+    
+    // Wait for the recordings page to load
+    await this.driver.wait(until.elementLocated(By.css('h2.text-xl')), 10000);
+    
+    // Then click on the Timeline View link
+    const timelineLink = await this.driver.findElement(By.css('a[href="timeline.html"]'));
+    await timelineLink.click();
+  }
+  ```
 
 ## Customizing Tests
 

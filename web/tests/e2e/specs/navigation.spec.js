@@ -76,8 +76,8 @@ describe('Navigation', () => {
     expect(currentUrl).toContain('recordings.html');
   });
   
-  test('should navigate to timeline page from index page', async () => {
-    // Navigate to timeline page using the navigation menu
+  test('should navigate to timeline page from recordings page', async () => {
+    // Navigate to timeline page via recordings page using the navigation menu
     await navMenu.navigateToTimeline();
     
     // Wait for the timeline page to load
@@ -91,7 +91,8 @@ describe('Navigation', () => {
     expect(currentUrl).toContain('timeline.html');
     
     // Verify the page title is correct
-    const pageTitle = await driver.findElement(By.css('h1'));
+    // Use a more specific selector to find the Timeline Playback heading
+    const pageTitle = await driver.findElement(By.css('.timeline-page h1'));
     const titleText = await pageTitle.getText();
     expect(titleText).toBe('Timeline Playback');
   });

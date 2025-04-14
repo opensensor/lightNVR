@@ -44,12 +44,20 @@ class NavigationMenu {
   }
 
   /**
-   * Navigate to the timeline page
+   * Navigate to the timeline page (via recordings page)
    */
   async navigateToTimeline() {
-    const { By } = require('selenium-webdriver');
-    const link = await this.driver.findElement(By.css(this.timelineLink));
-    await link.click();
+    const { By, until } = require('selenium-webdriver');
+    
+    // First navigate to the recordings page
+    await this.navigateToRecordings();
+    
+    // Wait for the recordings page to load
+    await this.driver.wait(until.elementLocated(By.css('h2.text-xl')), 10000);
+    
+    // Then click on the Timeline View link
+    const timelineLink = await this.driver.findElement(By.css('a[href="timeline.html"]'));
+    await timelineLink.click();
   }
 
   /**
