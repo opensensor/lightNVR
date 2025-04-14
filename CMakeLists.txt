@@ -103,6 +103,15 @@ list(APPEND SSL_INCLUDE_DIRS ${MBEDTLS_INCLUDE_DIRS})
 list(APPEND SSL_LIBRARIES ${MBEDTLS_LIBRARIES})
 message(STATUS "ONVIF and authentication system enabled, linking with mbedTLS for cryptographic functions")
 
+# Explicitly add mbedcrypto to the link libraries
+find_library(MBEDCRYPTO_LIBRARY mbedcrypto)
+if(MBEDCRYPTO_LIBRARY)
+    message(STATUS "Found mbedcrypto library: ${MBEDCRYPTO_LIBRARY}")
+    list(APPEND SSL_LIBRARIES ${MBEDCRYPTO_LIBRARY})
+else()
+    message(FATAL_ERROR "mbedcrypto library not found")
+endif()
+
 # Find cJSON
 find_package(cJSON QUIET)
 if(NOT cJSON_FOUND)

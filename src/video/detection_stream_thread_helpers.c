@@ -24,6 +24,8 @@
 #include "video/streams.h"
 #include "video/hls_writer.h"
 #include "utils/strings.h"
+#include "video/detection_model.h"
+#include "video/onvif_detection.h"
 
 // Forward declaration of the internal function - this is defined in detection_stream_thread.c
 extern int process_segment_for_detection(stream_detection_thread_t *thread, const char *segment_path);
@@ -583,11 +585,206 @@ int process_segment_if_needed(stream_detection_thread_t *thread,
         __attribute__((unused)) volatile int segment_check_result = 0;
 
         // CRITICAL FIX: Add additional safety check before processing
-        if (thread && thread->stream_name[0] != '\0' && access(newest_segment, F_OK) == 0) {
-            log_info("[Stream %s] Processing HLS segment for detection: %s", thread->stream_name, newest_segment);
-            result = process_segment_for_detection(thread, newest_segment);
+        if (thread && thread->stream_name[0] != '\0') {
+            // Check if this is an ONVIF detection model
+            if (thread->model) {
+                const char *model_type = get_model_type_from_handle(thread->model);
+                if (model_type && strcmp(model_type, MODEL_TYPE_ONVIF) == 0) {
+                    // For ONVIF detection, we don't need to process HLS segments
+                    // Instead, we use the ONVIF detection API directly
+                    log_info("[Stream %s] Using ONVIF detection instead of processing HLS segment", thread->stream_name);
+                    
+                    // Create detection result structure
+                    detection_result_t result_struct;
+                    memset(&result_struct, 0, sizeof(detection_result_t));
+                    
+                    // Get the ONVIF URL, username, and password from the model path
+                    const char *model_path = get_model_path(thread->model);
+                    char username[64] = {0};
+                    char password[64] = {0};
+                    char url[256] = {0};
+                    
+                    // Extract credentials from model path or use defaults
+                    if (model_path && strncmp(model_path, "onvif://", 8) == 0) {
+                        const char *auth_start = model_path + 8;
+                        const char *auth_end = strchr(auth_start, '@');
+                        
+                        if (auth_end) {
+                            const char *pwd_sep = strchr(auth_start, ':');
+                            
+                            if (pwd_sep && pwd_sep < auth_end) {
+                                // Extract username
+                                size_t username_len = pwd_sep - auth_start;
+                                if (username_len < sizeof(username)) {
+                                    strncpy(username, auth_start, username_len);
+                                    username[username_len] = '\0';
+                                }
+                                
+                                // Extract password
+                                size_t password_len = auth_end - (pwd_sep + 1);
+                                if (password_len < sizeof(password)) {
+                                    strncpy(password, pwd_sep + 1, password_len);
+                                    password[password_len] = '\0';
+                                }
+                            }
+                            
+                            // Extract URL
+                            snprintf(url, sizeof(url), "http://%s", auth_end + 1);
+                        }
+                    }
+                    
+                    // If we couldn't extract credentials from the model path, try to get them from the stream config
+                    if (url[0] == '\0' || username[0] == '\0' || password[0] == '\0') {
+                        stream_handle_t stream = get_stream_by_name(thread->stream_name);
+                        if (stream) {
+                            stream_config_t config;
+                            if (get_stream_config(stream, &config) == 0) {
+                                // Use ONVIF credentials from the stream config
+                                if (username[0] == '\0' && config.onvif_username[0] != '\0') {
+                                    strncpy(username, config.onvif_username, sizeof(username) - 1);
+                                    username[sizeof(username) - 1] = '\0';
+                                }
+                                
+                                if (password[0] == '\0' && config.onvif_password[0] != '\0') {
+                                    strncpy(password, config.onvif_password, sizeof(password) - 1);
+                                    password[sizeof(password) - 1] = '\0';
+                                }
+                                
+                                // Use the stream URL as the ONVIF URL if we don't have one
+                                if (config.url[0] != '\0') {
+                                    // Extract the IP address from the stream URL
+                                    const char *stream_url = config.url;
+                                    const char *ip_start = NULL;
+                                    int prefix_len = 0;
+                                    
+                                    // Look for rtsp:// or http:// prefix
+                                    if (strncmp(stream_url, "rtsp://", 7) == 0) {
+                                        ip_start = stream_url + 7;
+                                        prefix_len = 7;
+                                    } else if (strncmp(stream_url, "http://", 7) == 0) {
+                                        ip_start = stream_url + 7;
+                                        prefix_len = 7;
+                                    } else if (strncmp(stream_url, "https://", 8) == 0) {
+                                        ip_start = stream_url + 8;
+                                        prefix_len = 8;
+                                    }
+                                    
+                                    if (ip_start) {
+                                        // Check if there are credentials in the URL
+                                        const char *at_sign = strchr(ip_start, '@');
+                                        if (at_sign && username[0] == '\0' && password[0] == '\0') {
+                                            // Extract credentials from URL
+                                            const char *auth_start = ip_start;
+                                            const char *pwd_sep = strchr(auth_start, ':');
+                                            
+                                            if (pwd_sep && pwd_sep < at_sign) {
+                                                // Extract username
+                                                size_t username_len = pwd_sep - auth_start;
+                                                if (username_len < sizeof(username)) {
+                                                    strncpy(username, auth_start, username_len);
+                                                    username[username_len] = '\0';
+                                                    log_info("[Stream %s] Extracted username from URL: %s", 
+                                                            thread->stream_name, username);
+                                                }
+                                                
+                                                // Extract password
+                                                size_t password_len = at_sign - (pwd_sep + 1);
+                                                if (password_len < sizeof(password)) {
+                                                    strncpy(password, pwd_sep + 1, password_len);
+                                                    password[password_len] = '\0';
+                                                    log_info("[Stream %s] Extracted password from URL", 
+                                                            thread->stream_name);
+                                                }
+                                            }
+                                            
+                                            // Move ip_start past the credentials
+                                            ip_start = at_sign + 1;
+                                        }
+                                        
+                                        // Extract the IP address (up to the next / or :)
+                                        const char *ip_end = strchr(ip_start, '/');
+                                        if (!ip_end) {
+                                            ip_end = strchr(ip_start, ':');
+                                        }
+                                        
+                                        if (ip_end) {
+                                            size_t ip_len = ip_end - ip_start;
+                                            char ip_address[64] = {0};
+                                            if (ip_len < sizeof(ip_address)) {
+                                                strncpy(ip_address, ip_start, ip_len);
+                                                ip_address[ip_len] = '\0';
+                                                // For ONVIF, we need to use port 80 (HTTP) instead of 554 (RTSP)
+                                                // Check if the IP address contains a port
+                                                if (strstr(ip_address, ":554")) {
+                                                    // Replace port 554 with port 80 (HTTP port for ONVIF)
+                                                    char *port_pos = strstr(ip_address, ":554");
+                                                    *port_pos = '\0'; // Terminate the string at the port
+                                                    snprintf(url, sizeof(url), "http://%s", ip_address);
+                                                    log_info("[Stream %s] Changed RTSP port 554 to HTTP port for ONVIF: %s", 
+                                                            thread->stream_name, url);
+                                                } else if (strstr(ip_address, ":")) {
+                                                    // Already has a port, use as is
+                                                    snprintf(url, sizeof(url), "http://%s", ip_address);
+                                                } else {
+                                                    // No port, use default HTTP port for ONVIF
+                                                    snprintf(url, sizeof(url), "http://%s", ip_address);
+                                                    log_info("[Stream %s] Using default HTTP port for ONVIF: %s", 
+                                                            thread->stream_name, url);
+                                                }
+                                            }
+                                        } else {
+                                            // No / or : found, use the whole string with default HTTP port
+                                            snprintf(url, sizeof(url), "http://%s", ip_start);
+                                            log_info("[Stream %s] Using default HTTP port for ONVIF: %s", 
+                                                    thread->stream_name, url);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // If we have valid credentials, call the ONVIF detection function
+                    if (url[0] != '\0' && username[0] != '\0' && password[0] != '\0') {
+                        log_info("[Stream %s] Calling ONVIF detection with URL: %s, username: %s", 
+                                thread->stream_name, url, username);
+                        
+                        // Call the ONVIF detection function
+                        result = detect_motion_onvif(url, username, password, &result_struct, thread->stream_name);
+                        
+                        if (result == 0) {
+                            log_info("[Stream %s] ONVIF detection successful", thread->stream_name);
+                        } else {
+                            log_error("[Stream %s] ONVIF detection failed (error code: %d)", thread->stream_name, result);
+                        }
+                    } else {
+                        log_error("[Stream %s] Missing ONVIF credentials (URL: %s, username: %s)", 
+                                 thread->stream_name, url[0] ? url : "empty", username[0] ? username : "empty");
+                        result = -1;
+                    }
+                } else {
+                    // For other detection models, process the HLS segment as usual
+                    if (access(newest_segment, F_OK) == 0) {
+                        log_info("[Stream %s] Processing HLS segment for detection: %s", thread->stream_name, newest_segment);
+                        result = process_segment_for_detection(thread, newest_segment);
+                    } else {
+                        log_warn("[Stream %s] Segment no longer exists: %s", thread->stream_name, newest_segment);
+                        segment_processing_failed = true;
+                    }
+                }
+            } else {
+                // No model loaded, try to process the segment anyway
+                if (access(newest_segment, F_OK) == 0) {
+                    log_info("[Stream %s] Processing HLS segment for detection (no model loaded): %s", 
+                            thread->stream_name, newest_segment);
+                    result = process_segment_for_detection(thread, newest_segment);
+                } else {
+                    log_warn("[Stream %s] Segment no longer exists: %s", thread->stream_name, newest_segment);
+                    segment_processing_failed = true;
+                }
+            }
         } else {
-            log_warn("[Stream %s] Cannot process segment, thread invalid or segment no longer exists: %s",
+            log_warn("[Stream %s] Cannot process segment, thread invalid: %s",
                     thread ? thread->stream_name : "unknown", newest_segment);
             segment_processing_failed = true;
         }

@@ -33,6 +33,7 @@
 #include "video/hls_writer.h"
 #include "video/hls/hls_unified_thread.h"
 #include "video/api_detection.h"
+#include "video/onvif_detection.h"
 #include "video/go2rtc/go2rtc_stream.h"
 
 // Add signal handler to catch floating point exceptions
@@ -853,9 +854,10 @@ static void *stream_detection_thread_func(void *arg) {
 
         // Check if this is an API URL or the special "api-detection" string
         bool is_api_detection = ends_with(thread->model_path, "api-detection");
+        bool is_onvif_detection = ends_with(thread->model_path, "onvif");
 
         // Only check file existence if it's not an API detection
-        if (!is_api_detection) {
+        if (!is_api_detection && !is_onvif_detection) {
             // Check if model file exists
             struct stat st;
             if (stat(thread->model_path, &st) != 0) {
@@ -972,28 +974,6 @@ static void *stream_detection_thread_func(void *arg) {
         }
 
         time_t current_time = time(NULL);
-
-        // Try to load the model again if previous attempts failed
-        if (!thread->model && thread->model_path[0] != '\0' &&
-            model_load_retries < MAX_MODEL_LOAD_RETRIES &&
-            current_time - last_model_retry >= 5) { // Retry every 5 seconds
-
-            pthread_mutex_lock(&thread->mutex);
-            log_info("[Stream %s] Retrying to load detection model: %s (attempt %d/%d)",
-                    thread->stream_name, thread->model_path, model_load_retries + 1, MAX_MODEL_LOAD_RETRIES);
-            thread->model = load_detection_model(thread->model_path, thread->threshold);
-            if (!thread->model) {
-                log_error("[Stream %s] Failed to load detection model: %s on retry %d",
-                         thread->stream_name, thread->model_path, model_load_retries + 1);
-                model_load_retries++;
-            } else {
-                log_info("[Stream %s] Successfully loaded detection model on retry", thread->stream_name);
-                model_load_retries = 0;
-            }
-            pthread_mutex_unlock(&thread->mutex);
-
-            last_model_retry = current_time;
-        }
 
         // Log status periodically - always use log_info to ensure visibility
         if (current_time - last_log_time > 10) { // Log every 10 seconds
@@ -1474,4 +1454,3 @@ int get_stream_detection_status(const char *stream_name, bool *has_thread,
     pthread_mutex_unlock(&stream_threads_mutex);
     return -1;
 }
-

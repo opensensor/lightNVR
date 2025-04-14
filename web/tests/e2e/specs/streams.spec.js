@@ -160,9 +160,6 @@ describe('Streams Page', () => {
     // Confirm deletion
     await streamsPage.confirmDelete();
     
-    // Wait for the table to update
-    await driver.sleep(2000);
-    
     // Take a screenshot after deleting the stream
     await takeScreenshot(driver, 'screenshots/after-delete-stream.png');
     

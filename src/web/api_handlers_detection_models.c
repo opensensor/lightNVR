@@ -14,6 +14,8 @@
 #include "core/config.h"
 #include "mongoose.h"
 #include "video/detection.h"
+#include "video/api_detection.h"
+#include "video/onvif_detection.h"
 
 // Default models directory
 #define DEFAULT_MODELS_DIR "/var/lib/lightnvr/models"
@@ -121,6 +123,25 @@ void mg_handle_get_detection_models(struct mg_connection *c, struct mg_http_mess
         log_info("Added API detection model");
     } else {
         log_error("Failed to create API model JSON object");
+    }
+    
+    // Add ONVIF detection model
+    cJSON *onvif_model = cJSON_CreateObject();
+    if (onvif_model) {
+        cJSON_AddStringToObject(onvif_model, "name", "ONVIF Motion Events");
+        cJSON_AddStringToObject(onvif_model, "path", "onvif-detection");
+        cJSON_AddStringToObject(onvif_model, "type", MODEL_TYPE_ONVIF);
+        cJSON_AddBoolToObject(onvif_model, "supported", true);
+        cJSON_AddStringToObject(onvif_model, "description", "ONVIF camera motion events detection");
+        cJSON_AddStringToObject(onvif_model, "id", "onvif");
+        
+        // Add model to array
+        cJSON_AddItemToArray(models_array, onvif_model);
+        model_count++;
+        
+        log_info("Added ONVIF detection model");
+    } else {
+        log_error("Failed to create ONVIF model JSON object");
     }
     
     // Scan models directory

@@ -11,11 +11,13 @@ import { fetchSystemVersion } from './utils.js';
 /**
  * Header component
  * @param {Object} props - Component props
- * @param {string} props.activeNav - ID of the active navigation item
  * @param {string} props.version - System version
  * @returns {JSX.Element} Header component
  */
-export function Header({ activeNav = '', version = '' }) {
+export function Header({ version = '' }) {
+  // Get active navigation from data attribute on header container
+  const headerContainer = document.getElementById('header-container');
+  const activeNav = headerContainer?.dataset?.activeNav || '';
   const [username, setUsername] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -58,7 +60,7 @@ export function Header({ activeNav = '', version = '' }) {
       const iframe = document.createElement('iframe');
       iframe.style.display = 'none';
       document.body.appendChild(iframe);
-      
+
       // Set a timeout to redirect after attempting to clear auth cache
       setTimeout(() => {
         // Redirect to login page with auth_required parameter to prevent auto-redirect
@@ -79,12 +81,12 @@ export function Header({ activeNav = '', version = '' }) {
   const getLiveViewHref = () => {
     // Check if we're on the root URL or index.html
     const isRoot = window.location.pathname === '/' || window.location.pathname.endsWith('/');
-    
+
     // If we're on the root URL, stay on the root URL
     if (isRoot) {
       return './';
     }
-    
+
     // Otherwise, default to index.html
     return 'index.html';
   };
@@ -139,7 +141,7 @@ export function Header({ activeNav = '', version = '' }) {
         <!-- User Menu (Desktop) -->
         <div class="user-menu hidden md:flex items-center">
           <span class="mr-2">${username}</span>
-          <a href="#" onClick=${handleLogout} class="text-white no-underline hover:bg-blue-700 px-3 py-1 rounded transition-colors">Logout</a>
+          <a href="#" onClick=${handleLogout} class="logout-link text-white no-underline hover:bg-blue-700 px-3 py-1 rounded transition-colors">Logout</a>
         </div>
 
         <!-- Mobile Menu Button -->
@@ -162,7 +164,7 @@ export function Header({ activeNav = '', version = '' }) {
             <li class="w-full mt-2 pt-2 border-t border-gray-700">
               <div class="flex justify-between items-center px-4 py-2">
                 <span>${username}</span>
-                <a href="#" onClick=${handleLogout} class="text-white no-underline hover:bg-blue-700 px-3 py-1 rounded transition-colors">Logout</a>
+                <a href="#" onClick=${handleLogout} class="logout-link text-white no-underline hover:bg-blue-700 px-3 py-1 rounded transition-colors">Logout</a>
               </div>
             </li>
           </ul>
@@ -173,10 +175,9 @@ export function Header({ activeNav = '', version = '' }) {
 }
 
 /**
- * Load header with active navigation item
- * @param {string} activeNav - ID of the active navigation item
+ * Load header
  */
-export function loadHeader(activeNav = '') {
+export function loadHeader() {
   const headerContainer = document.getElementById('header-container');
   if (!headerContainer) return;
 
@@ -185,7 +186,7 @@ export function loadHeader(activeNav = '') {
 
   // Render the header with version
   import('preact').then(({ render }) => {
-    render(html`<${Header} activeNav=${activeNav} version=${version} />`, headerContainer);
+    render(html`<${Header} version=${version} />`, headerContainer);
   }).catch(error => {
     console.error('Error importing Preact:', error);
   });

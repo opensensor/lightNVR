@@ -236,32 +236,6 @@ function initApp() {
   const currentPage = window.location.pathname.split('/').pop();
   const currentQuery = window.location.search;
 
-  // Load header with active navigation
-  let activeNav = '';
-
-  switch (currentPage) {
-    case 'index.html':
-    case '': // Handle root URL (/) as index.html
-      activeNav = 'nav-live';
-      break;
-    case 'recordings.html':
-    case 'timeline.html':
-      activeNav = 'nav-recordings';
-      break;
-    case 'streams.html':
-      activeNav = 'nav-streams';
-      break;
-    case 'settings.html':
-      activeNav = 'nav-settings';
-      break;
-    case 'users.html':
-      activeNav = 'nav-users';
-      break;
-    case 'system.html':
-      activeNav = 'nav-system';
-      break;
-  }
-
   // Ensure we have an app-root element
   let appRoot = document.getElementById('app-root');
   if (!appRoot) {
@@ -286,7 +260,7 @@ function initApp() {
   );
 
   // Load header and footer
-  loadHeader(activeNav);
+  loadHeader();
   loadFooter();
 
   // Load page-specific content using dynamic imports

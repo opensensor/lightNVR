@@ -7,6 +7,9 @@
 # Sub-project
 light-object-detect/
 
+# Test Artifacts
+web/screenshots
+
 # Generated files
 cmake-build-debug/
 

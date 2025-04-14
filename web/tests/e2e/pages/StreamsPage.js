@@ -296,8 +296,6 @@ class StreamsPage {
           await deleteButton.click();
           console.log('Clicked delete button');
           
-          // Wait a shorter time for the modal to appear
-          await this.driver.sleep(500);
           break;
         }
       }
@@ -376,11 +374,7 @@ class StreamsPage {
           }
         }
       }
-      
-      // Wait for the second confirmation modal
-      console.log('Waiting for second confirmation modal...');
-      await this.driver.sleep(100); // Give the modal time to appear
-      
+
       // Take a screenshot after clicking hard delete
       const screenshot2 = await this.driver.takeScreenshot();
       fs.writeFileSync(`${dir}/after-hard-delete-click.png`, screenshot2, 'base64');
@@ -406,10 +400,6 @@ class StreamsPage {
           }
         }
       }
-      
-      // Wait for the deletion to complete and the page to refresh
-      console.log('Waiting for deletion to complete...');
-      await this.driver.sleep(500); // Short wait for the deletion to start
       
       // Refresh the page to ensure we see the updated list
       console.log('Refreshing page to see updated stream list');

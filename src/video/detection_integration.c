@@ -21,6 +21,8 @@
 #include "video/motion_detection_wrapper.h"
 #include "video/sod_integration.h"
 #include "video/api_detection.h"
+#include "video/onvif_detection.h"
+#include "video/onvif_detection_integration.h"
 #include "utils/memory.h"
 
 // Include our new modules
@@ -80,6 +82,16 @@ int init_detection_integration(void) {
     } else {
         log_info("API detection system initialized");
     }
+    
+    // Initialize the ONVIF detection system
+    if (init_onvif_detection_integration() != 0) {
+        log_error("Failed to initialize ONVIF detection system");
+        // This is not a critical error, as we can still use other detection methods
+        log_warn("ONVIF detection will not be available");
+    } else {
+        log_info("ONVIF detection system initialized");
+        // ONVIF detection is now integrated with the existing detection thread system
+    }
 
     log_info("Detection integration initialized with %d max concurrent detections", max_detections);
     return 0;
@@ -129,6 +141,10 @@ void cleanup_detection_resources(void) {
     // Shutdown the API detection system
     shutdown_api_detection_system();
     log_info("API detection system has shutdown");
+    
+    // Shutdown the ONVIF detection system
+    cleanup_onvif_detection_integration();
+    log_info("ONVIF detection system has shutdown");
 }
 
 /**

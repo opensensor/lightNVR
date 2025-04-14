@@ -20,6 +20,7 @@
 #include "video/sod_detection.h"
 #include "video/sod_realnet.h"
 #include "video/api_detection.h"
+#include "video/onvif_detection.h"
 #include "sod/sod.h"  // For sod_cnn_destroy
 
 // Static variable to track if we're in shutdown mode
@@ -145,6 +146,12 @@ bool is_model_supported(const char *model_path) {
 const char* get_model_type(const char *model_path) {
     if (!model_path) {
         return "unknown";
+    }
+    if (ends_with(model_path, "api-detection")) {
+        return MODEL_TYPE_API;
+    }
+    if (ends_with(model_path, "onvif")) {
+        return MODEL_TYPE_ONVIF;
     }
 
     // Check file extension
@@ -311,10 +318,15 @@ detection_model_t load_detection_model(const char *model_path, float threshold) 
     }
 
     // Check if this is an API URL (starts with http:// or https://) or the special "api-detection" string
-    bool is_api_url = ends_with(model_path, "api-detection");
+    bool is_api_detection = ends_with(model_path, "api-detection");
+    bool is_onvif_detection = ends_with(model_path, "onvif");
 
-    // Only check file existence if it's not an API URL
-    if (!is_api_url) {
+    // Only check file existence if it's not an API URL or ONVIF
+    if (is_api_detection) {
+        log_info("API DETECTION: Using API for detection instead of a local model file");
+    } else if (is_onvif_detection) {
+        log_info("ONVIF DETECTION: Using ONVIF for detection instead of a local model file");
+    } else {
         // Check if file exists and get its size
         struct stat st;
         if (stat(model_path, &st) != 0) {
@@ -330,12 +342,10 @@ detection_model_t load_detection_model(const char *model_path, float threshold) 
         if (model_size_mb > MAX_MODEL_SIZE_MB) {
             log_warn("Large model detected: %.1f MB (limit: %d MB)", model_size_mb, MAX_MODEL_SIZE_MB);
         }
-    } else {
-        log_info("API DETECTION: Using API for detection instead of a local model file");
     }
 
     // Get model type
-    const char *model_type = is_api_url ? MODEL_TYPE_API : get_model_type(model_path);
+    const char *model_type = get_model_type(model_path);
     log_info("MODEL TYPE: %s", model_type);
 
     // Load appropriate model type
@@ -354,6 +364,22 @@ detection_model_t load_detection_model(const char *model_path, float threshold) 
 
             // Initialize the API detection system
             init_api_detection_system();
+        }
+    }
+    else if (strcmp(model_type, MODEL_TYPE_ONVIF) == 0) {
+        // For ONVIF models, we just need to store the URL
+        model_t *m = (model_t *)malloc(sizeof(model_t));
+        if (m) {
+            strncpy(m->type, MODEL_TYPE_ONVIF, sizeof(m->type) - 1);
+            m->sod = NULL; // We don't need a model handle for ONVIF
+            m->threshold = threshold;
+            strncpy(m->path, model_path, MAX_PATH_LENGTH - 1);
+            m->path[MAX_PATH_LENGTH - 1] = '\0';  // Ensure null termination
+            model = m;
+
+            // Initialize the ONVIF detection system
+            init_onvif_detection_system();
+            log_info("ONVIF model created: %s", model_path);
         }
     }
     else if (strcmp(model_type, MODEL_TYPE_SOD_REALNET) == 0) {
@@ -416,6 +442,18 @@ void unload_detection_model(detection_model_t model) {
         // We don't need to call shutdown_api_detection_system() here because
         // it will be called during program shutdown, and we want to keep the
         // API detection system initialized for other API models that might be in use
+
+        // Just set the model pointer to NULL to prevent double-free
+        m->sod = NULL;
+    }
+    else if (strcmp(m->type, MODEL_TYPE_ONVIF) == 0) {
+        // For ONVIF models, we need to ensure the ONVIF detection system is properly cleaned up
+        // when the last ONVIF model is unloaded
+        log_info("Unloading ONVIF model: %s", model_path);
+
+        // We don't need to call shutdown_onvif_detection_system() here because
+        // it will be called during program shutdown, and we want to keep the
+        // ONVIF detection system initialized for other ONVIF models that might be in use
 
         // Just set the model pointer to NULL to prevent double-free
         m->sod = NULL;

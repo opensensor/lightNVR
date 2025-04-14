@@ -5,6 +5,7 @@
 #include "video/detection_result.h"
 #include "video/detection_model.h"
 #include "video/sod_detection.h"
+#include "video/onvif_detection.h"
 
 /**
  * Initialize the detection system

@@ -13,6 +13,7 @@ typedef void* detection_model_t;
 #define MODEL_TYPE_SOD_REALNET "sod_realnet"
 #define MODEL_TYPE_TFLITE "tflite"
 #define MODEL_TYPE_API "api"
+#define MODEL_TYPE_ONVIF "onvif"
 
 /**
  * Check if a model file is supported

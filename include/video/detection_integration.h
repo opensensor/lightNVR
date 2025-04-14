@@ -31,6 +31,12 @@ void force_cleanup_sod_models(void);
 void cleanup_detection_resources(void);
 
 /**
+ * Cleanup ONVIF detection integration resources
+ * This should be called when the application is exiting
+ */
+void cleanup_onvif_detection_integration(void);
+
+/**
  * Get the number of active detections
  *
  * @return Number of active detections

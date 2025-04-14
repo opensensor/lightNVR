@@ -31,22 +31,46 @@ describe('Navigation', () => {
   });
   
   beforeEach(async () => {
-    // Navigate to the index page before each test
-    await driver.get('http://localhost:8080/index.html');
+    // Navigate to the index page before each test with retry
+    console.log('Navigating to index page before test...');
     
-    // Wait for the page to load
-    await driver.wait(until.elementLocated(By.id('main-content')), 10000);
+    let loaded = false;
+    let attempts = 0;
+    const maxAttempts = 3;
+    
+    while (!loaded && attempts < maxAttempts) {
+      attempts++;
+      console.log(`Index page navigation attempt ${attempts} of ${maxAttempts}`);
+      
+      try {
+        // Navigate to the index page
+        await driver.get('http://localhost:8080/index.html');
+        
+        // Wait for the page to load with a shorter timeout
+        await driver.wait(until.elementLocated(By.id('main-content')), 5000);
+        
+        console.log('Index page loaded successfully');
+        loaded = true;
+      } catch (error) {
+        console.error(`Error loading index page on attempt ${attempts}:`, error.message);
+        
+        if (attempts >= maxAttempts) {
+          throw error;
+        }
+        
+        // Wait before retrying
+        console.log('Waiting before retry...');
+        await driver.sleep(1000);
+      }
+    }
   });
   
   test('should navigate to streams page from index page', async () => {
     // Take a screenshot before clicking
     await takeScreenshot(driver, 'screenshots/before-navigation-to-streams.png');
     
-    // Navigate to streams page using the navigation menu
+    // Navigate to streams page using the navigation menu with retry
     await navMenu.navigateToStreams();
-    
-    // Wait for the streams page to load
-    await navMenu.waitForNavigation('#streams-page');
     
     // Take a screenshot after navigation
     await takeScreenshot(driver, 'screenshots/after-navigation-to-streams.png');
@@ -62,11 +86,8 @@ describe('Navigation', () => {
   });
   
   test('should navigate to recordings page from index page', async () => {
-    // Navigate to recordings page using the navigation menu
+    // Navigate to recordings page using the navigation menu with retry
     await navMenu.navigateToRecordings();
-    
-    // Wait for the recordings page to load
-    await navMenu.waitForNavigation('h2');
     
     // Take a screenshot after navigation
     await takeScreenshot(driver, 'screenshots/after-navigation-to-recordings.png');
@@ -77,11 +98,8 @@ describe('Navigation', () => {
   });
   
   test('should navigate to timeline page from recordings page', async () => {
-    // Navigate to timeline page via recordings page using the navigation menu
+    // Navigate to timeline page via recordings page using the navigation menu with retry
     await navMenu.navigateToTimeline();
-    
-    // Wait for the timeline page to load
-    await navMenu.waitForNavigation('.timeline-page');
     
     // Take a screenshot after navigation
     await takeScreenshot(driver, 'screenshots/after-navigation-to-timeline.png');
@@ -98,11 +116,8 @@ describe('Navigation', () => {
   });
   
   test('should navigate to settings page from index page', async () => {
-    // Navigate to settings page using the navigation menu
+    // Navigate to settings page using the navigation menu with retry
     await navMenu.navigateToSettings();
-    
-    // Wait for the settings page to load
-    await navMenu.waitForNavigation('h2');
     
     // Take a screenshot after navigation
     await takeScreenshot(driver, 'screenshots/after-navigation-to-settings.png');
@@ -113,17 +128,11 @@ describe('Navigation', () => {
   });
   
   test('should navigate back to index page from streams page', async () => {
-    // First navigate to streams page
+    // First navigate to streams page with retry
     await navMenu.navigateToStreams();
     
-    // Wait for the streams page to load
-    await navMenu.waitForNavigation('#streams-page');
-    
-    // Navigate back to home page
+    // Navigate back to home page with retry
     await navMenu.navigateToHome();
-    
-    // Wait for the index page to load
-    await navMenu.waitForNavigation('#main-content');
     
     // Take a screenshot after navigation
     await takeScreenshot(driver, 'screenshots/after-navigation-back-to-index.png');

@@ -45,6 +45,7 @@ if(ENABLE_SOD)
         ${FFMPEG_LIBRARIES}
         ${SQLITE_LIBRARIES}
         ${CURL_LIBRARIES}
+        ${SSL_LIBRARIES}  # Add SSL libraries which include mbedcrypto
         pthread
         dl
         sod
@@ -62,6 +63,7 @@ if(ENABLE_SOD)
         ${FFMPEG_LIBRARIES}
         ${SQLITE_LIBRARIES}
         ${CURL_LIBRARIES}
+        ${SSL_LIBRARIES}  # Add SSL libraries which include mbedcrypto
         pthread
         dl
         sod
@@ -96,6 +98,7 @@ add_executable(test_db_backup database/db_backup_test.c)
 target_link_libraries(test_db_backup
     lightnvr_lib
     ${SQLITE_LIBRARIES}
+    ${SSL_LIBRARIES}  # Add SSL libraries which include mbedcrypto
     pthread
     dl
     mongoose_lib
@@ -123,6 +126,7 @@ target_link_libraries(test_stream_detection
     ${FFMPEG_LIBRARIES}
     ${SQLITE_LIBRARIES}
     ${CURL_LIBRARIES}
+    ${SSL_LIBRARIES}  # Add SSL libraries which include mbedcrypto
     pthread
     dl
     sqlite3
