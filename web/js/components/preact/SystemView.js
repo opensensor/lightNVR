@@ -97,24 +97,6 @@ export function SystemView() {
     }
   );
 
-  // Reference to track if we're using WebSocket for logs
-  const usingWebSocketForLogs = useRef(false);
-
-  // Only use HTTP fetch for logs if WebSocket is not available
-  const {
-    data: logsData,
-    refetch: refetchLogs
-  } = useQuery(
-    ['logs', logCount],
-    `/api/system/logs?level=debug&count=${logCount}`,
-    {
-      timeout: 20000,
-      retries: 1,
-      retryDelay: 1000,
-      enabled: !usingWebSocketForLogs.current // Only enable if not using WebSocket
-    }
-  );
-
   // Define all mutation hooks next
   const clearLogsMutation = useMutation({
     mutationKey: ['clearLogs'],
@@ -144,13 +126,6 @@ export function SystemView() {
 
   const handleLogsReceived = (newLogs) => {
     console.log('SystemView received new logs:', newLogs.length);
-
-    // Mark that we're using WebSocket for logs to disable HTTP fetching
-    if (!usingWebSocketForLogs.current) {
-      console.log('Setting usingWebSocketForLogs to true');
-      usingWebSocketForLogs.current = true;
-    }
-
     const currentLogLevel = logLevelRef.current;
     const filteredLogs = newLogs.filter(log => log_level_meets_minimum(log.level, currentLogLevel));
     setLogs(filteredLogs);
@@ -220,81 +195,6 @@ export function SystemView() {
     }
   }, [systemInfoData]);
 
-  // Process logs data when it's loaded
-  useEffect(() => {
-    if (logsData && logsData.logs && Array.isArray(logsData.logs)) {
-      const currentLogLevel = logLevelRef.current;
-
-      // Check if logs are already structured objects or raw strings
-      if (logsData.logs.length > 0 && typeof logsData.logs[0] === 'object' && logsData.logs[0].level) {
-        // Logs are already structured objects, filter them based on the current log level
-        let filteredLogs = logsData.logs.filter(log => {
-          return log_level_meets_minimum(log.level, currentLogLevel);
-        });
-
-        console.log(`Filtered ${logsData.logs.length} logs to ${filteredLogs.length} based on log level ${currentLogLevel}`);
-        setLogs(filteredLogs);
-      } else {
-        // Logs are raw strings, parse them into structured objects
-        const parsedLogs = logsData.logs.map(logLine => {
-          // Parse log line (format: [TIMESTAMP] [LEVEL] MESSAGE)
-          let timestamp = 'Unknown';
-          let level = 'debug';
-          let message = logLine;
-
-          // Try to extract timestamp and level using regex
-          const logRegex = /\[(.*?)\]\s*\[(.*?)\]\s*(.*)/;
-          const match = logLine.match(logRegex);
-
-          if (match && match.length >= 4) {
-            timestamp = match[1];
-            level = match[2].toLowerCase();
-            message = match[3];
-
-            // Normalize log level
-            if (level === 'warn') {
-              level = 'warning';
-            }
-          }
-
-          return {
-            timestamp,
-            level,
-            message
-          };
-        });
-
-        // Filter the parsed logs based on the current log level
-        let filteredLogs = parsedLogs.filter(log => {
-          return log_level_meets_minimum(log.level, currentLogLevel);
-        });
-
-        console.log(`Filtered ${parsedLogs.length} parsed logs to ${filteredLogs.length} based on log level ${currentLogLevel}`);
-        setLogs(filteredLogs);
-      }
-    } else {
-      setLogs([]);
-    }
-  }, [logsData]);
-
-  // Filter logs when log level changes
-  useEffect(() => {
-    console.log(`SystemView: Log level changed to ${logLevel} or count changed to ${logCount}`);
-
-    if (logsData && logsData.logs && Array.isArray(logsData.logs)) {
-      console.log('Filtering existing logs based on new log level');
-      // Filter existing logs based on the new log level from the ref
-      const currentLogLevel = logLevelRef.current;
-      console.log(`Filtering existing logs using logLevelRef.current: ${currentLogLevel}`);
-
-      setLogs(prevLogs => {
-        return prevLogs.filter(log => {
-          return log_level_meets_minimum(log.level, currentLogLevel);
-        });
-      });
-    }
-  }, [logLevel, logCount]);
-
   // Clean up WebSocket subscriptions on unmount
   useEffect(() => {
     return () => {
@@ -336,51 +236,8 @@ export function SystemView() {
   useEffect(() => {
     if (!window.wsClient) {
       console.log('WebSocket client not available in SystemView, it should be initialized in preact-app.js');
-      // If WebSocket is not available, make sure we're using HTTP
-      usingWebSocketForLogs.current = false;
     } else {
       console.log('WebSocket client is available in SystemView');
-
-      // Listen for WebSocket connection changes
-      const handleConnectionChange = (isConnected) => {
-        if (!isConnected && usingWebSocketForLogs.current) {
-          console.log('WebSocket disconnected, switching to HTTP for logs');
-          usingWebSocketForLogs.current = false;
-          // Trigger HTTP fetch
-          refetchLogs();
-        }
-      };
-
-      // Add event listener if available
-      if (typeof window.wsClient.addConnectionChangeListener === 'function') {
-        console.log('Adding WebSocket connection change listener');
-        window.wsClient.addConnectionChangeListener(handleConnectionChange);
-
-        // Clean up on unmount
-        return () => {
-          console.log('Removing WebSocket connection change listener');
-          window.wsClient.removeConnectionChangeListener(handleConnectionChange);
-        };
-      } else {
-        console.log('WebSocket client does not support connection change listeners');
-
-        // Listen for the websocket-fallback event as a fallback
-        const handleFallbackEvent = (event) => {
-          console.log('Received websocket-fallback event');
-          if (usingWebSocketForLogs.current) {
-            console.log('WebSocket fallback detected, switching to HTTP for logs');
-            usingWebSocketForLogs.current = false;
-            // Trigger HTTP fetch
-            refetchLogs();
-          }
-        };
-
-        window.addEventListener('websocket-fallback', handleFallbackEvent);
-
-        return () => {
-          window.removeEventListener('websocket-fallback', handleFallbackEvent);
-        };
-      }
     }
   }, []);
 
@@ -421,15 +278,11 @@ export function SystemView() {
           setLogCount=${setLogCount}
           loadLogs=${() => {
             // If using WebSocket, trigger a WebSocket fetch
-            if (usingWebSocketForLogs.current && window.wsClient && window.wsClient.isConnected()) {
+            if (window.wsClient && window.wsClient.isConnected()) {
               console.log('Manually triggering WebSocket fetch for logs');
               // Find the LogsPoller component and trigger a fetch
               const event = new CustomEvent('refresh-logs-websocket');
               window.dispatchEvent(event);
-            } else {
-              // Otherwise use HTTP
-              console.log('Using HTTP fetch for logs');
-              refetchLogs();
             }
           }}
           clearLogs=${clearLogs}
@@ -474,9 +327,9 @@ window.addEventListener('load', () => {
   window.addEventListener('refresh-system-info', async () => {
     try {
       await fetchJSON('/api/system/info', {
-        timeout: 15000, // 15 second timeout
+        timeout: 45000, // 45 second timeout
         retries: 1,     // Retry once
-        retryDelay: 1000 // 1 second between retries
+        retryDelay: 1000 // 5 second between retries
       });
 
       console.log('System info refreshed');
