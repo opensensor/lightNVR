@@ -28,6 +28,9 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <sys/time.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <dirent.h>
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
@@ -1279,29 +1282,29 @@ void *hls_unified_thread_func(void *arg) {
                 // Process packets based on stream type
                 if (pkt->stream_index == video_stream_idx) {
                     // This is a video packet - process it
-                    
+
                     // CRITICAL FIX: Check if writer is NULL before accessing it
                     // This prevents segmentation fault during shutdown
                     if (!ctx->writer) {
                         log_warn("Writer is NULL for stream %s during packet processing, skipping packet", stream_name);
                         continue;
                     }
-                    
+
                     // CRITICAL FIX: Use a local copy of the writer pointer to prevent race conditions
                     hls_writer_t *writer = ctx->writer;
-                    
+
                     // CRITICAL FIX: Add memory barrier to ensure we have a consistent view of the writer
                     __sync_synchronize();
-                    
+
                     // Check again after memory barrier
                     if (!writer) {
                         log_warn("Writer became NULL for stream %s after memory barrier, skipping packet", stream_name);
                         continue;
                     }
-                    
+
                     // Lock the writer mutex
                     pthread_mutex_lock(&writer->mutex);
-                    
+
                     // CRITICAL FIX: Check if writer is still valid after locking
                     if (ctx->writer != writer) {
                         log_warn("Writer changed for stream %s during mutex lock, releasing mutex and skipping packet", stream_name);
@@ -2155,29 +2158,60 @@ int start_hls_unified_stream(const char *stream_name) {
     snprintf(ctx->output_path, MAX_PATH_LENGTH, "%s/hls/%s",
              base_storage_path, stream_name);
 
-    // Create HLS directory if it doesn't exist
-    char dir_cmd[MAX_PATH_LENGTH * 2];
-    snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s", ctx->output_path);
-    int ret = system(dir_cmd);
-    if (ret != 0) {
-        log_error("Failed to create HLS directory: %s (return code: %d)", ctx->output_path, ret);
-        free(ctx);
-        return -1;
+    // Create HLS directory if it doesn't exist using direct C functions to handle paths with spaces
+    struct stat st;
+    if (stat(ctx->output_path, &st) != 0 || !S_ISDIR(st.st_mode)) {
+        log_info("Creating HLS directory: %s", ctx->output_path);
+
+        // Create parent directories one by one
+        char temp_path[MAX_PATH_LENGTH];
+        strncpy(temp_path, ctx->output_path, MAX_PATH_LENGTH - 1);
+        temp_path[MAX_PATH_LENGTH - 1] = '\0';
+
+        for (char *p = temp_path + 1; *p; p++) {
+            if (*p == '/') {
+                *p = '\0';
+                if (mkdir(temp_path, 0777) != 0 && errno != EEXIST) {
+                    log_warn("Failed to create parent directory: %s (error: %s)", temp_path, strerror(errno));
+                }
+                *p = '/';
+            }
+        }
+
+        // Create the final directory
+        if (mkdir(temp_path, 0777) != 0 && errno != EEXIST) {
+            log_error("Failed to create output directory: %s (error: %s)", temp_path, strerror(errno));
+            safe_free(ctx);
+            return -1;
+        }
+
+        // Verify the directory was created
+        if (stat(ctx->output_path, &st) != 0 || !S_ISDIR(st.st_mode)) {
+            log_error("Failed to verify output directory: %s", ctx->output_path);
+            safe_free(ctx);
+            return -1;
+        }
     }
 
     // Set full permissions to ensure FFmpeg can write files
-    snprintf(dir_cmd, sizeof(dir_cmd), "chmod -R 777 %s", ctx->output_path);
-    if (system(dir_cmd) != 0) {
-        log_warn("Failed to set permissions on HLS directory: %s", ctx->output_path);
+    if (chmod(ctx->output_path, 0777) != 0) {
+        log_warn("Failed to set permissions on HLS directory: %s (error: %s)", ctx->output_path, strerror(errno));
     }
 
     // Also ensure the parent directory of the HLS directory exists and is writable
     char parent_dir[MAX_PATH_LENGTH];
     snprintf(parent_dir, sizeof(parent_dir), "%s/hls", global_config->storage_path);
-    snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s && chmod -R 777 %s",
-             parent_dir, parent_dir);
-    if (system(dir_cmd) != 0) {
-        log_warn("Failed to create or set permissions on parent HLS directory: %s", parent_dir);
+
+    // Create parent directory if it doesn't exist
+    if (stat(parent_dir, &st) != 0 || !S_ISDIR(st.st_mode)) {
+        if (mkdir(parent_dir, 0777) != 0 && errno != EEXIST) {
+            log_warn("Failed to create parent HLS directory: %s (error: %s)", parent_dir, strerror(errno));
+        }
+    }
+
+    // Set permissions on parent directory
+    if (chmod(parent_dir, 0777) != 0) {
+        log_warn("Failed to set permissions on parent HLS directory: %s (error: %s)", parent_dir, strerror(errno));
     }
 
     log_info("Created HLS directory with full permissions: %s", ctx->output_path);

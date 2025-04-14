@@ -9,8 +9,8 @@ class LoginPage {
   // Selectors
   get usernameInput() { return '#username'; }
   get passwordInput() { return '#password'; }
-  get loginButton() { return '#login-button'; }
-  get errorMessage() { return '.error-message'; }
+  get loginButton() { return 'form#login-form button[type="submit"]'; }
+  get errorMessage() { return 'div[class*="bg-red-100"]'; }
   get rememberMeCheckbox() { return '#remember-me'; }
 
   /**

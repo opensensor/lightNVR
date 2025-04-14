@@ -30,7 +30,7 @@ else
     echo "Detected Chrome version: $CHROME_VERSION"
     
     # Check package.json for ChromeDriver version
-    CHROMEDRIVER_VERSION=$(grep -oP '(?<="chromedriver": "\^)[0-9]+' ../package.json)
+    CHROMEDRIVER_VERSION=$(grep -oP '(?<="chromedriver": "\^)[0-9]+' package.json 2>/dev/null)
     echo "Configured ChromeDriver version: $CHROMEDRIVER_VERSION"
     
     # Compare versions
@@ -44,6 +44,24 @@ fi
 
 # Create screenshots directory if it doesn't exist
 mkdir -p tests/screenshots
+
+# Check if the application server is running
+echo "Checking if the application server is running..."
+if curl -s http://localhost:8080 > /dev/null; then
+    echo "Application server is running. Proceeding with tests."
+else
+    echo "Warning: Application server does not appear to be running at http://localhost:8080"
+    echo "Tests that require server connectivity may fail."
+    echo "Please start the application server in another terminal with 'npm start' before running tests."
+    
+    # Ask user if they want to continue
+    read -p "Do you want to continue with the tests anyway? (y/n) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "Tests aborted. Please start the application server and try again."
+        exit 1
+    fi
+fi
 
 # Run tests
 echo "Running tests..."

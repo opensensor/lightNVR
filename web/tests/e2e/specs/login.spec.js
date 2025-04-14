@@ -60,12 +60,9 @@ describe('Login Page', () => {
     await takeScreenshot(driver, 'screenshots/login-error.png');
   });
   
-  // This test is commented out because it requires valid credentials
-  // Uncomment and update with valid credentials to test successful login
-  /*
   test('should login successfully with valid credentials', async () => {
     // Login with valid credentials
-    await loginPage.login('admin', 'password');
+    await loginPage.login('admin', 'admin');
     
     // Wait for redirection after successful login
     await driver.wait(async () => {
@@ -80,5 +77,4 @@ describe('Login Page', () => {
     // Take a screenshot after successful login
     await takeScreenshot(driver, 'screenshots/after-login.png');
   });
-  */
 });

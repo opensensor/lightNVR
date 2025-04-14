@@ -473,6 +473,10 @@ int go2rtc_integration_start_hls(const char *stream_name) {
         }
 
         return result;
+    } else {
+        // Fall back to default HLS streaming
+        log_info("Using default HLS streaming for stream %s", stream_name);
+        return start_hls_stream(stream_name);
     }
 }
 

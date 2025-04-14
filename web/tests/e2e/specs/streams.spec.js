@@ -2,7 +2,7 @@
  * Streams page E2E tests
  */
 const { By, until } = require('selenium-webdriver');
-const { createDriver, takeScreenshot } = require('../utils/test-utils');
+const { createDriver, takeScreenshot, login } = require('../utils/test-utils');
 const StreamsPage = require('../pages/StreamsPage');
 
 describe('Streams Page', () => {
@@ -15,6 +15,12 @@ describe('Streams Page', () => {
     
     // Create the page object
     streamsPage = new StreamsPage(driver);
+    
+    // Login before running tests
+    const loginSuccess = await login(driver);
+    if (!loginSuccess) {
+      throw new Error('Login failed. Tests cannot proceed.');
+    }
   });
   
   afterAll(async () => {

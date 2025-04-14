@@ -2,7 +2,7 @@
  * Navigation E2E tests
  */
 const { By, until } = require('selenium-webdriver');
-const { createDriver, takeScreenshot } = require('../utils/test-utils');
+const { createDriver, takeScreenshot, login } = require('../utils/test-utils');
 const NavigationMenu = require('../pages/NavigationMenu');
 
 describe('Navigation', () => {
@@ -15,6 +15,12 @@ describe('Navigation', () => {
     
     // Create the navigation menu page object
     navMenu = new NavigationMenu(driver);
+    
+    // Login before running tests
+    const loginSuccess = await login(driver);
+    if (!loginSuccess) {
+      throw new Error('Login failed. Tests cannot proceed.');
+    }
   });
   
   afterAll(async () => {

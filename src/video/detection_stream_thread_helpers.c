@@ -265,10 +265,31 @@ bool find_hls_directory(stream_detection_thread_t *thread, time_t current_time,
         log_info("[Stream %s] Creating standard HLS directory path: %s",
                 thread->stream_name, standard_path);
 
-        // Create the directory
-        char cmd[MAX_PATH_LENGTH * 2];
-        snprintf(cmd, sizeof(cmd), "mkdir -p \"%s\"", standard_path);
-        system(cmd);
+        // Create the directory using direct C functions to handle paths with spaces
+        char temp_path[MAX_PATH_LENGTH];
+        strncpy(temp_path, standard_path, MAX_PATH_LENGTH - 1);
+        temp_path[MAX_PATH_LENGTH - 1] = '\0';
+
+        // Create parent directories one by one
+        for (char *p = temp_path + 1; *p; p++) {
+            if (*p == '/') {
+                *p = '\0';
+                if (mkdir(temp_path, 0777) != 0 && errno != EEXIST) {
+                    log_warn("[Stream %s] Failed to create parent directory: %s (error: %s)",
+                            thread->stream_name, temp_path, strerror(errno));
+                }
+                *p = '/';
+            }
+        }
+
+        // Create the final directory
+        if (mkdir(temp_path, 0777) != 0 && errno != EEXIST) {
+            log_warn("[Stream %s] Failed to create directory: %s (error: %s)",
+                    thread->stream_name, temp_path, strerror(errno));
+        } else {
+            log_info("[Stream %s] Successfully created directory: %s",
+                    thread->stream_name, temp_path);
+        }
     }
 
     hls_dir[MAX_PATH_LENGTH - 1] = '\0';

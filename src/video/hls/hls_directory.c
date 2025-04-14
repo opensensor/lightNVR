@@ -52,28 +52,37 @@ int ensure_hls_directory(const char *output_dir, const char *stream_name) {
     if (stat(output_dir, &st) != 0 || !S_ISDIR(st.st_mode)) {
         log_warn("Output directory does not exist or is not a directory: %s", output_dir);
 
-        // Recreate it as a last resort
-        char mkdir_cmd[MAX_PATH_LENGTH * 2];
-        snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p %s", output_dir);
+        // Recreate it using direct C functions to handle paths with spaces
+        char temp_path[MAX_PATH_LENGTH];
+        strncpy(temp_path, output_dir, MAX_PATH_LENGTH - 1);
+        temp_path[MAX_PATH_LENGTH - 1] = '\0';
 
-        int ret_mkdir = system(mkdir_cmd);
-        if (ret_mkdir != 0 || stat(output_dir, &st) != 0 || !S_ISDIR(st.st_mode)) {
-            log_error("Failed to create output directory: %s (return code: %d)", output_dir, ret_mkdir);
+        // Create parent directories one by one
+        for (char *p = temp_path + 1; *p; p++) {
+            if (*p == '/') {
+                *p = '\0';
+                if (mkdir(temp_path, 0777) != 0 && errno != EEXIST) {
+                    log_warn("Failed to create parent directory: %s (error: %s)", temp_path, strerror(errno));
+                }
+                *p = '/';
+            }
+        }
+
+        // Create the final directory
+        if (mkdir(temp_path, 0777) != 0 && errno != EEXIST) {
+            log_error("Failed to create output directory: %s (error: %s)", temp_path, strerror(errno));
             return -1;
         }
 
-        // Set permissions - use 777 to ensure all processes can write
-        snprintf(mkdir_cmd, sizeof(mkdir_cmd), "chmod -R 777 %s", output_dir);
-        int ret_chmod = system(mkdir_cmd);
-        if (ret_chmod != 0) {
-            log_warn("Failed to set permissions on directory: %s (return code: %d)", output_dir, ret_chmod);
+        // Verify the directory was created
+        if (stat(output_dir, &st) != 0 || !S_ISDIR(st.st_mode)) {
+            log_error("Failed to verify output directory: %s", output_dir);
+            return -1;
+        }
 
-            // Try again with sudo if available
-            snprintf(mkdir_cmd, sizeof(mkdir_cmd), "sudo chmod -R 777 %s 2>/dev/null", output_dir);
-            ret_chmod = system(mkdir_cmd);
-            if (ret_chmod != 0) {
-                log_warn("Failed to set permissions with sudo on directory: %s", output_dir);
-            }
+        // Set permissions directly using chmod
+        if (chmod(output_dir, 0777) != 0) {
+            log_warn("Failed to set permissions on directory: %s (error: %s)", output_dir, strerror(errno));
         }
 
         log_info("Successfully created output directory: %s", output_dir);
@@ -83,12 +92,9 @@ int ensure_hls_directory(const char *output_dir, const char *stream_name) {
     if (access(output_dir, W_OK) != 0) {
         log_error("Output directory is not writable: %s", output_dir);
 
-        // Try to fix permissions
-        char chmod_cmd[MAX_PATH_LENGTH * 2];
-        snprintf(chmod_cmd, sizeof(chmod_cmd), "chmod -R 777 %s", output_dir);
-        int ret_chmod = system(chmod_cmd);
-        if (ret_chmod != 0) {
-            log_warn("Failed to set permissions on directory: %s (return code: %d)", output_dir, ret_chmod);
+        // Try to fix permissions using direct chmod
+        if (chmod(output_dir, 0777) != 0) {
+            log_warn("Failed to set permissions on directory: %s (error: %s)", output_dir, strerror(errno));
         }
 
         if (access(output_dir, W_OK) != 0) {

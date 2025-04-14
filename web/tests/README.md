@@ -39,6 +39,7 @@ Before running the tests, make sure you have the following installed:
 1. Node.js and npm
 2. Chrome and/or Firefox browsers
 3. ChromeDriver and/or GeckoDriver (for Selenium)
+4. Application running with authentication (username: `admin`, password: `admin`)
 
 ## Running Tests Locally
 

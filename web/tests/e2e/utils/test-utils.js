@@ -1,7 +1,7 @@
 /**
  * Test utilities for E2E tests
  */
-const { Builder } = require('selenium-webdriver');
+const { Builder, By, until } = require('selenium-webdriver');
 const chrome = require('selenium-webdriver/chrome');
 const firefox = require('selenium-webdriver/firefox');
 
@@ -74,8 +74,51 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+/**
+ * Login to the application
+ * @param {WebDriver} driver - The WebDriver instance
+ * @param {string} username - The username to use (default: 'admin')
+ * @param {string} password - The password to use (default: 'admin')
+ * @returns {Promise<boolean>} True if login was successful, false otherwise
+ */
+async function login(driver, username = 'admin', password = 'admin') {
+  try {
+    // Navigate to the login page
+    await driver.get('http://localhost:8080/login.html');
+    
+    // Wait for the login form to load
+    await driver.wait(until.elementLocated(By.css('#username')), 10000);
+    
+    // Enter username
+    const usernameInput = await driver.findElement(By.css('#username'));
+    await usernameInput.clear();
+    await usernameInput.sendKeys(username);
+    
+    // Enter password
+    const passwordInput = await driver.findElement(By.css('#password'));
+    await passwordInput.clear();
+    await passwordInput.sendKeys(password);
+    
+    // Click login button
+    const loginButton = await driver.findElement(By.css('form#login-form button[type="submit"]'));
+    await loginButton.click();
+    
+    // Wait for redirection after successful login
+    await driver.wait(async () => {
+      const currentUrl = await driver.getCurrentUrl();
+      return !currentUrl.includes('login.html');
+    }, 5000, 'Timed out waiting for successful login redirection');
+    
+    return true;
+  } catch (error) {
+    console.error('Login failed:', error);
+    return false;
+  }
+}
+
 module.exports = {
   createDriver,
   takeScreenshot,
-  sleep
+  sleep,
+  login
 };

@@ -25,6 +25,11 @@ Before running the tests, ensure you have the following installed:
    - **Windows**: Add the directory containing the WebDriver to your PATH environment variable
    - **macOS/Linux**: Move the WebDriver to `/usr/local/bin` or add its location to your PATH
 
+5. **Application running with authentication**: The tests assume:
+   - The application is running at http://localhost:8080
+   - Authentication is enabled
+   - Default credentials are username: `admin` and password: `admin`
+
 ## Installation
 
 1. **Install dependencies**:
@@ -175,12 +180,22 @@ By default, tests run with the browser visible. To run in headless mode (without
 
 ### Connection Refused
 
-**Error**: `Error: connect ECONNREFUSED 127.0.0.1:8080`
+**Error**: `Error: connect ECONNREFUSED 127.0.0.1:8080` or `WebDriverError: unknown error: net::ERR_CONNECTION_REFUSED`
 
 **Solution**:
-- Ensure your application server is running
+- Ensure your application server is running before starting the tests
+  ```bash
+  # In one terminal, start the application
+  cd /path/to/nvr_soft/web
+  npm start
+  
+  # In another terminal, run the tests
+  cd /path/to/nvr_soft/web
+  npm run test:e2e
+  ```
 - Verify it's running on the expected port (8080)
 - Check for any firewall issues
+- If you're running the application in a Docker container, make sure port 8080 is properly exposed
 
 ### Element Not Found
 

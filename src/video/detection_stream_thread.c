@@ -1233,13 +1233,34 @@ int start_stream_detection_thread(const char *stream_name, const char *model_pat
         return -1;
     }
 
-    // Make sure the HLS directory exists
+    // Make sure the HLS directory exists using direct C functions to handle paths with spaces
     struct stat st;
     if (stat(hls_dir, &st) != 0) {
         log_warn("HLS directory does not exist, creating it: %s", hls_dir);
-        char cmd[MAX_PATH_LENGTH * 2];
-        snprintf(cmd, sizeof(cmd), "mkdir -p %s", hls_dir);
-        system(cmd);
+
+        // Create parent directories one by one
+        char temp_path[MAX_PATH_LENGTH];
+        strncpy(temp_path, hls_dir, MAX_PATH_LENGTH - 1);
+        temp_path[MAX_PATH_LENGTH - 1] = '\0';
+
+        for (char *p = temp_path + 1; *p; p++) {
+            if (*p == '/') {
+                *p = '\0';
+                if (mkdir(temp_path, 0777) != 0 && errno != EEXIST) {
+                    log_warn("Failed to create parent directory: %s (error: %s)",
+                            temp_path, strerror(errno));
+                }
+                *p = '/';
+            }
+        }
+
+        // Create the final directory
+        if (mkdir(temp_path, 0777) != 0 && errno != EEXIST) {
+            log_warn("Failed to create directory: %s (error: %s)",
+                    temp_path, strerror(errno));
+        } else {
+            log_info("Successfully created directory: %s", temp_path);
+        }
     }
 
     pthread_mutex_lock(&stream_threads_mutex);
