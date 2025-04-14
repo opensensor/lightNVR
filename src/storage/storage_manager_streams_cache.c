@@ -215,15 +215,39 @@ int add_cached_stream_storage_usage_to_json(cJSON *json_obj, int force_refresh) 
         return -1;
     }
     
+    // Check if cache is initialized
+    if (!cache.initialized) {
+        log_warn("Storage manager streams cache not initialized, initializing with default TTL");
+        if (init_storage_manager_streams_cache(300) != 0) {
+            log_error("Failed to initialize storage manager streams cache");
+            // Still add the empty array to the JSON object
+            cJSON_AddItemToObject(json_obj, "streamStorage", stream_storage_array);
+            return 0;
+        }
+        // Force refresh since we just initialized the cache
+        force_refresh = 1;
+    }
+    
     // Get cached stream storage usage
     stream_storage_info_t *stream_info = NULL;
     int stream_count = get_cached_stream_storage_usage(&stream_info, force_refresh);
     
     if (stream_count <= 0 || !stream_info) {
         log_warn("No cached stream storage usage information available");
-        // Still add the empty array to the JSON object
-        cJSON_AddItemToObject(json_obj, "streamStorage", stream_storage_array);
-        return 0;
+        
+        // Try to get the information directly without caching
+        log_info("Attempting to get stream storage usage directly");
+        stream_info = NULL;
+        stream_count = get_all_stream_storage_usage(&stream_info);
+        
+        if (stream_count <= 0 || !stream_info) {
+            log_warn("No stream storage usage information available");
+            // Still add the empty array to the JSON object
+            cJSON_AddItemToObject(json_obj, "streamStorage", stream_storage_array);
+            return 0;
+        }
+        
+        log_info("Successfully retrieved %d streams directly", stream_count);
     }
     
     // Add stream storage info to array

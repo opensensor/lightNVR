@@ -23,6 +23,7 @@
 #include "video/stream_state.h"
 #include "video/stream_state_adapter.h"
 #include "storage/storage_manager.h"
+#include "storage/storage_manager_streams_cache.h"
 #include "video/streams.h"
 #include "video/hls_streaming.h"
 #include "video/mp4_recording.h"
@@ -520,6 +521,14 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
     log_info("Storage manager initialized");
+    
+    // Initialize storage manager streams cache
+    if (init_storage_manager_streams_cache(300) != 0) {
+        log_warn("Failed to initialize storage manager streams cache, continuing without caching");
+        // Continue anyway, the system will fall back to direct retrieval
+    } else {
+        log_info("Storage manager streams cache initialized with 5-minute TTL");
+    }
 
     // Load stream configurations from database
     if (load_stream_configs(&config) < 0) {
@@ -1147,6 +1156,9 @@ cleanup:
         log_info("Shutting down stream state manager...");
         shutdown_stream_state_manager();
 
+        log_info("Shutting down storage manager streams cache...");
+        shutdown_storage_manager_streams_cache();
+        
         log_info("Shutting down storage manager...");
         shutdown_storage_manager();
 
