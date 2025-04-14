@@ -914,16 +914,9 @@ int main(int argc, char *argv[]) {
     }
 
     log_info("Mongoose web server started on port %d", config.web_port);
-
-    // No need to register API handlers with the Mongoose server
-    // Direct handlers are registered in register_api_handlers
-
-    log_info("LightNVR initialized successfully");
-
-    // Print initial detection stream status
-    print_detection_stream_status();
-
     check_and_ensure_services();
+    print_detection_stream_status();
+    log_info("LightNVR initialized successfully");
 
     // Main loop
     while (running) {
@@ -1348,6 +1341,17 @@ static void check_and_ensure_services(void) {
                 // Continue anyway, as the HLS streaming might already be running
             }
             #endif
+        }
+        // Handle detection-based recording - MOVED TO END OF SETUP
+        if (config.streams[i].name[0] != '\0' && config.streams[i].enabled && config.streams[i].detection_based_recording) {
+            log_info("Ensuring detection-based recording is active for stream: %s", config.streams[i].name);
+            if (start_stream_detection_thread(config.streams[i].name, config.streams[i].detection_model,
+                                             config.streams[i].detection_threshold,
+                                             config.streams[i].detection_interval, NULL) != 0) {
+                log_warn("Failed to start detection-based recording for stream: %s", config.streams[i].name);
+            } else {
+                log_info("Successfully started detection-based recording for stream: %s", config.streams[i].name);
+            }
         }
     }
 }
