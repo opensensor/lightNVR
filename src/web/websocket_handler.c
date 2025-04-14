@@ -125,10 +125,6 @@ bool websocket_handler_call(const char *topic, const char *client_id, const char
         websocket_init();
     }
     
-    // Make sure handlers are registered
-    extern void websocket_register_handlers(void);
-    websocket_register_handlers();
-    
     int index = websocket_handler_find_by_topic(topic);
     if (index < 0) {
         log_warn("No handler found for topic: %s", topic);
