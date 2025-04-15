@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
-    <title>Live View - LightNVR</title>
+    <title>WebRTC View - LightNVR</title>
     <link rel="stylesheet" href="./css/base.css">
     <link rel="stylesheet" href="./css/main.css">
     <link rel="stylesheet" href="./css/components.css">
@@ -19,11 +19,8 @@
         <!-- Header content will be loaded by JavaScript -->
     </header>
 
-<main id="main-content" class="flex-grow">
-    <div id="app-root">
-        <!-- WebRTCView component will be rendered here -->
-    </div>
-</main>
+    <main id="main-content" class="flex-grow">
+    </main>
 
     <footer id="footer-container" class="mt-auto">
         <!-- Footer content will be loaded by JavaScript -->
@@ -36,7 +33,6 @@
 <div id="video-modal-container"></div>
 
 <!-- Scripts -->
-<script src="./js/webrtc-check.js"></script>
-<script type="module" src="./js/preact-app.js"></script>
+<script type="module" src="js/pages/index-page.jsx"></script>
 </body>
 </html>

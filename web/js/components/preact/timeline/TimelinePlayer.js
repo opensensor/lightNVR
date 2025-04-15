@@ -5,7 +5,7 @@
 
 import { html } from '../../../html-helper.js';
 import { useState, useEffect, useRef } from 'preact/hooks';
-import { timelineState } from './TimelinePage.js';
+import { timelineState } from './TimelinePage.jsx';
 import { SpeedControls } from './SpeedControls.js';
 import { showStatusMessage } from '../UI.js';
 

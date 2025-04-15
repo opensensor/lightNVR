@@ -354,6 +354,20 @@ export function LiveViewGrid() {
     }
   });
 
+  // Update video grid when layout or streams change
+  useEffect(() => {
+    if (videoGridRef.current && streams) {
+      updateVideoGrid(
+        videoGridRef.current,
+        streams,
+        layout,
+        selectedStream,
+        videoPlayers.current,
+        detectionIntervals.current
+      );
+    }
+  }, [layout, selectedStream, streams]);
+
   // Handle layout change
   const handleLayoutChange = (newLayout) => {
     setLayout(newLayout);

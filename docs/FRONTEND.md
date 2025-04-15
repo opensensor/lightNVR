@@ -30,9 +30,9 @@ web/
 ├── js/
 │   ├── components/       # JavaScript components
 │   │   └── preact/       # Preact components
-│   │       ├── LiveView.js
-│   │       ├── RecordingsView.js
-│   │       ├── SettingsView.js
+│   │       ├── LiveView.jsx
+│   │       ├── RecordingsView.jsx
+│   │       ├── SettingsView.jsx
 │   │       ├── StreamsView.js
 │   │       └── UI.js     # Shared UI components
 │   ├── preact.min.js     # Preact library

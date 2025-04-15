@@ -17,39 +17,39 @@ import { showStatusMessage } from './UI.js';
  * @param {Object} detectionIntervals - Reference to detection intervals
  */
 export function updateVideoGrid(
-  videoGridRef, 
-  streams, 
-  layout, 
-  selectedStream, 
-  videoPlayers, 
+  videoGridRef,
+  streams,
+  layout,
+  selectedStream,
+  videoPlayers,
   detectionIntervals
 ) {
   if (!videoGridRef) return;
-  
+
   // Clear existing content except placeholder
   const placeholder = videoGridRef.querySelector('.placeholder');
   videoGridRef.innerHTML = '';
-  
+
   // If placeholder exists and no streams, add it back
   if (placeholder && streams.length === 0) {
     videoGridRef.appendChild(placeholder);
     return;
   }
-  
+
   // Filter streams based on layout and selected stream
   let streamsToShow = streams;
   if (layout === '1' && selectedStream) {
     streamsToShow = streams.filter(stream => stream.name === selectedStream);
   }
-  
+
   // Add video elements for each stream
   streamsToShow.forEach(stream => {
     // Ensure we have an ID for the stream (use name as fallback if needed)
     const streamId = stream.id || stream.name;
-    
+
     const videoCell = document.createElement('div');
     videoCell.className = 'video-cell';
-    
+
     videoCell.innerHTML = `
       <video id="video-${stream.name.replace(/\s+/g, '-')}" autoplay muted></video>
       <div class="stream-info">
@@ -69,20 +69,21 @@ export function updateVideoGrid(
         <span>Connecting...</span>
       </div>
     `;
-    
+
     videoGridRef.appendChild(videoCell);
-    
+
     // Initialize video player
     initializeVideoPlayer(stream, videoPlayers, detectionIntervals);
-    
+
     // Add event listeners for buttons
     const snapshotBtn = videoCell.querySelector('.snapshot-btn');
     if (snapshotBtn) {
-      snapshotBtn.addEventListener('click', () => {
-        takeSnapshot(streamId);
+      snapshotBtn.addEventListener('click', (event) => {
+        console.log('Snapshot button clicked');
+        takeSnapshot(streamId, event);
       });
     }
-    
+
     const fullscreenBtn = videoCell.querySelector('.fullscreen-btn');
     if (fullscreenBtn) {
       fullscreenBtn.addEventListener('click', () => {
@@ -106,9 +107,9 @@ export async function loadStreams(setStreams, setSelectedStream, videoGridRef) {
     if (!response.ok) {
       throw new Error('Failed to load streams');
     }
-    
+
     const data = await response.json();
-    
+
     // For live view, we need to fetch full details for each stream
     // to get detection settings
     const streamPromises = (data || []).map(stream => {
@@ -125,10 +126,10 @@ export async function loadStreams(setStreams, setSelectedStream, videoGridRef) {
           return stream;
         });
     });
-    
+
     const detailedStreams = await Promise.all(streamPromises);
     console.log('Loaded detailed streams for live view:', detailedStreams);
-    
+
     // Filter out streams that are soft deleted, inactive, or not configured for HLS
     const filteredStreams = detailedStreams.filter(stream => {
       // Filter out soft deleted streams
@@ -136,37 +137,37 @@ export async function loadStreams(setStreams, setSelectedStream, videoGridRef) {
         console.log(`Stream ${stream.name} is soft deleted, filtering out`);
         return false;
       }
-      
+
       // Filter out inactive streams
       if (!stream.enabled) {
         console.log(`Stream ${stream.name} is inactive, filtering out`);
         return false;
       }
-      
+
       // Filter out streams not configured for HLS
       if (!stream.streaming_enabled) {
         console.log(`Stream ${stream.name} is not configured for HLS, filtering out`);
         return false;
       }
-      
+
       return true;
     });
-    
+
     console.log('Filtered streams for live view:', filteredStreams);
-    
+
     // Store filtered streams in state
     setStreams(filteredStreams || []);
-    
+
     // If we have filtered streams, set the first one as selected for single view
     if (filteredStreams.length > 0) {
       setSelectedStream(filteredStreams[0].name);
     }
-    
+
     return filteredStreams;
   } catch (error) {
     console.error('Error loading streams for live view:', error);
     showStatusMessage('Error loading streams: ' + error.message);
-    
+
     return [];
   }
 }

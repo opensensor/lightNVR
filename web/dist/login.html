@@ -1,129 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <script type="module" crossorigin src="./assets/polyfills-UbuQ6c0L.js"></script>
+  <script type="module" crossorigin src="./assets/polyfills-Cd2HQz36.js"></script>
 
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - LightNVR</title>
     <link rel="icon" href="./img/favicon.ico" type="image/x-icon">
-    <script>
-        // Redirect to index.html if already authenticated
-        document.addEventListener('DOMContentLoaded', function() {
-            // Check URL parameters
-            const urlParams = new URLSearchParams(window.location.search);
-            const authRequired = urlParams.has('auth_required');
-            const logoutRequested = urlParams.has('logout');
-            const fromRedirect = urlParams.has('from_redirect');
-
-            // If auth is required or logout was requested, don't auto-redirect even if we have credentials
-            // This prevents redirect loops when credentials are invalid or after logout
-            if (logoutRequested) {
-                console.log('Auth required or logout requested, staying on login page');
-                // Clear any potentially invalid credentials
-                localStorage.removeItem('auth');
-                document.cookie = "auth=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict";
-                document.cookie = "session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict";
-                return;
-            }
-
-            // If we were redirected from index.html, don't redirect back to prevent loops
-            // This is especially important for Chrome mobile
-            if (logoutRequested || fromRedirect) {
-                console.log('Detected redirect from index.html, staying on login page to prevent loop');
-                return;
-            }
-
-            const auth = localStorage.getItem('auth');
-
-            // Firefox has stricter cookie handling, so we need to be more careful
-            const cookies = document.cookie.split(';').map(cookie => cookie.trim());
-            const hasAuthCookie = cookies.some(cookie => cookie.startsWith('auth='));
-            const hasSessionCookie = cookies.some(cookie => cookie.startsWith('session='));
-
-            // Debug cookie information
-            console.log('Login page - Cookies available:', document.cookie ? 'Yes' : 'No');
-            console.log('Login page - Auth cookie found:', hasAuthCookie);
-            console.log('Login page - Session cookie found:', hasSessionCookie);
-
-            if (auth || hasAuthCookie) {
-                // For other browsers, redirect if we have credentials
-                redirectToIndex();
-            }
-
-            // Function to handle the redirection to index with fallbacks
-            function redirectToIndex() {
-                const timestamp = Date.now();
-                const targetUrl = `/index.html?t=${timestamp}`;
-                console.log('Redirecting to index page:', targetUrl);
-
-                // Method 1: Try location.href (most common)
-                try {
-                    window.location.href = targetUrl;
-                } catch (error) {
-                    console.error('Error redirecting via location.href:', error);
-                }
-
-                // Set a fallback timeout to check if redirection happened
-                setTimeout(function() {
-                    if (window.location.pathname.includes('/login.html')) {
-                        console.log('Still on login page, trying alternate redirection method');
-
-                        // Method 2: Try location.assign
-                        try {
-                            window.location.assign(targetUrl);
-                        } catch (assignError) {
-                            console.error('Error redirecting via location.assign:', assignError);
-
-                            // Method 3: Try location.replace
-                            try {
-                                window.location.replace(targetUrl);
-                            } catch (replaceError) {
-                                console.error('Error redirecting via location.replace:', replaceError);
-
-                                // Method 4: Create a visible button for the user
-                                console.log('Creating manual redirect button');
-                                const redirectButton = document.createElement('button');
-                                redirectButton.textContent = 'Click here to continue to dashboard';
-                                redirectButton.style.position = 'fixed';
-                                redirectButton.style.top = '50%';
-                                redirectButton.style.left = '50%';
-                                redirectButton.style.transform = 'translate(-50%, -50%)';
-                                redirectButton.style.padding = '1rem 2rem';
-                                redirectButton.style.backgroundColor = '#1e88e5';
-                                redirectButton.style.color = 'white';
-                                redirectButton.style.border = 'none';
-                                redirectButton.style.borderRadius = '0.25rem';
-                                redirectButton.style.fontSize = '1rem';
-                                redirectButton.style.cursor = 'pointer';
-                                redirectButton.style.zIndex = '9999';
-
-                                redirectButton.onclick = function() {
-                                    window.location = targetUrl;
-                                };
-
-                                document.body.appendChild(redirectButton);
-
-                                // Create a message explaining what happened
-                                const message = document.createElement('div');
-                                message.textContent = 'Login successful, but automatic redirection failed.';
-                                message.style.position = 'fixed';
-                                message.style.top = 'calc(50% - 60px)';
-                                message.style.left = '50%';
-                                message.style.transform = 'translateX(-50%)';
-                                message.style.color = '#333';
-                                message.style.fontWeight = 'bold';
-                                document.body.appendChild(message);
-                            }
-                        }
-                    }
-                }, 500);
-            }
-        });
-    </script>
-  <script type="module" crossorigin src="./assets/login-BYV6IB2A.js"></script>
-  <link rel="modulepreload" crossorigin href="./assets/preact-app-DUOnBgZ0.js">
-  <link rel="stylesheet" crossorigin href="./css/preact-app.css">
+  <script type="module" crossorigin src="./assets/login-Bmwna6B_.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/query-client-mfCUf3pQ.js">
+  <link rel="stylesheet" crossorigin href="./css/query-client.css">
   <link rel="stylesheet" crossorigin href="./css/layout.css">
   <script type="module">import.meta.url;import("_").catch(()=>1);(async function*(){})().next();if(location.protocol!="file:"){window.__vite_is_modern_browser=true}</script>
   <script type="module">!function(){if(window.__vite_is_modern_browser)return;console.warn("vite: loading legacy chunks, syntax error above and the same error below should be ignored");var e=document.getElementById("vite-legacy-polyfill"),n=document.createElement("script");n.src=e.src,n.onload=function(){System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))},document.body.appendChild(n)}();</script>
@@ -139,24 +25,8 @@
 <div id="status-message-container"></div>
 
 <!-- Scripts -->
-<script>
-    // Ensure LoginView is loaded
-    document.addEventListener('DOMContentLoaded', function() {
-        // Check if LoginView was loaded by preact-app.js
-        setTimeout(function() {
-            if (!document.querySelector('#login-page')) {
-                console.log('LoginView not loaded automatically, loading manually');
-                import('./assets/LoginView.js').then(module => {
-                    module.loadLoginView();
-                }).catch(error => {
-                    console.error('Error loading LoginView:', error);
-                });
-            }
-        }, 500); // Give preact-app.js time to load components
-    });
-</script>
   <script nomodule>!function(){var e=document,t=e.createElement("script");if(!("noModule"in t)&&"onbeforeload"in t){var n=!1;e.addEventListener("beforeload",(function(e){if(e.target===t)n=!0;else if(!e.target.hasAttribute("nomodule")||!n)return;e.preventDefault()}),!0),t.type="module",t.src=".",e.head.appendChild(t),t.remove()}}();</script>
-  <script nomodule crossorigin id="vite-legacy-polyfill" src="./assets/polyfills-legacy-CmMCgs_i.js"></script>
-  <script nomodule crossorigin id="vite-legacy-entry" data-src="./assets/login-legacy-yGeYniL2.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>
+  <script nomodule crossorigin id="vite-legacy-polyfill" src="./assets/polyfills-legacy-CLRc2ASR.js"></script>
+  <script nomodule crossorigin id="vite-legacy-entry" data-src="./assets/login-legacy-Y_PJR3Jw.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>
 </body>
 </html>

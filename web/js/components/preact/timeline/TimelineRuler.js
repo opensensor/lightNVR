@@ -5,7 +5,7 @@
 
 import { html } from '../../../html-helper.js';
 import { useState, useEffect } from 'preact/hooks';
-import { timelineState } from './TimelinePage.js';
+import { timelineState } from './TimelinePage.jsx';
 
 /**
  * TimelineRuler component

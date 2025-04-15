@@ -398,13 +398,12 @@ function cancelBatchDelete() {
  * @returns {BatchDeleteRecordingsClient} Batch delete client
  */
 function initBatchDeleteClient() {
-    // Use the global WebSocket client that was initialized in preact-app.js
     // If it doesn't exist for some reason, create it
     if (!window.wsClient) {
-        console.log('Creating WebSocket client in batch-delete-modal.js (fallback)');
+        console.log('Creating WebSocket client in batch-delete-modal.js');
         window.wsClient = new WebSocketClient();
     } else {
-        console.log('Using existing WebSocket client from preact-app.js');
+        console.log('Using existing WebSocket client');
     }
 
     // Create batch delete client if it doesn't exist

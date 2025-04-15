@@ -6,7 +6,7 @@
 
 import { html } from '../../../html-helper.js';
 import { useState, useEffect, useRef } from 'preact/hooks';
-import { timelineState } from './TimelinePage.js';
+import { timelineState } from './TimelinePage.jsx';
 
 /**
  * TimelineCursor component

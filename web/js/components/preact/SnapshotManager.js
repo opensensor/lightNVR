@@ -7,19 +7,31 @@ import { showStatusMessage, showSnapshotPreview } from './UI.js';
 /**
  * Take a snapshot of a stream
  * @param {string} streamId - ID of the stream
+ * @param {Event} event - Optional click event
  */
-export function takeSnapshot(streamId) {
+export function takeSnapshot(streamId, event) {
+  console.log(`Taking snapshot of stream with ID: ${streamId}`);
+
   // Find the stream by ID or name
   const streamElement = document.querySelector(`.snapshot-btn[data-id="${streamId}"]`);
-  if (!streamElement) {
-    console.error('Stream element not found for ID:', streamId);
-    return;
+  let streamName;
+
+  if (streamElement) {
+    // Get the stream name from the data attribute
+    streamName = streamElement.getAttribute('data-name');
+  } else if (event) {
+    // If we can't find by data-id, try to find from the event target
+    const clickedButton = event.currentTarget || event.target;
+    const videoCell = clickedButton ? clickedButton.closest('.video-cell') : null;
+
+    if (videoCell) {
+      streamName = videoCell.dataset.streamName;
+    }
   }
 
-  // Get the stream name from the data attribute
-  const streamName = streamElement.getAttribute('data-name');
   if (!streamName) {
     console.error('Stream name not found for ID:', streamId);
+    showStatusMessage('Cannot take snapshot: Stream not identified', 'error');
     return;
   }
 
@@ -50,18 +62,18 @@ export function takeSnapshot(streamId) {
   try {
     // Save the canvas to global scope for direct access in the overlay
     window.__snapshotCanvas = canvas;
-    
+
     // Generate a filename
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const fileName = `snapshot-${streamName.replace(/\s+/g, '-')}-${timestamp}.jpg`;
     window.__snapshotFileName = fileName;
-    
+
     // Show the standard preview
     showSnapshotPreview(canvas.toDataURL('image/jpeg', 0.95), `Snapshot: ${streamName}`);
-    
+
     // Find and enhance the download button
     setTimeout(() => enhanceDownloadButton(), 100);
-    
+
     // Show success message
     showStatusMessage('Snapshot taken successfully');
   } catch (error) {
@@ -80,28 +92,28 @@ function enhanceDownloadButton() {
     setTimeout(enhanceDownloadButton, 100);
     return;
   }
-  
+
   // Find download button
   const buttons = overlay.querySelectorAll('button');
   let downloadButton = null;
-  
+
   for (const button of buttons) {
     if (button.textContent.includes('Download')) {
       downloadButton = button;
       break;
     }
   }
-  
+
   if (!downloadButton) {
     // Try again if button not found
     setTimeout(enhanceDownloadButton, 100);
     return;
   }
-  
+
   // Replace the download button with our enhanced version
   const newButton = downloadButton.cloneNode(true);
   downloadButton.parentNode.replaceChild(newButton, downloadButton);
-  
+
   // Add our download handler using Blob+URL.createObjectURL approach
   newButton.addEventListener('click', () => {
     // Check if we have a canvas available
@@ -110,11 +122,11 @@ function enhanceDownloadButton() {
       showStatusMessage('Download failed: No snapshot data available');
       return;
     }
-    
+
     // Convert canvas to blob and download
     downloadCanvasAsJpeg(window.__snapshotCanvas, window.__snapshotFileName || 'snapshot.jpg');
   });
-  
+
   console.log('Download button enhanced');
 }
 
@@ -131,33 +143,33 @@ function downloadCanvasAsJpeg(canvas, fileName) {
       showStatusMessage('Download failed: Unable to create image data');
       return;
     }
-    
+
     console.log('Created blob:', blob.size, 'bytes');
-    
+
     // Create object URL from blob
     const blobUrl = URL.createObjectURL(blob);
     console.log('Created blob URL:', blobUrl);
-    
+
     // Create download link
     const link = document.createElement('a');
     link.href = blobUrl;
     link.download = fileName;
-    
+
     // Style the link to make it more visible
     link.style.position = 'absolute';
     link.style.top = '0';
     link.style.left = '0';
     link.style.opacity = '0.01'; // Almost invisible but still technically visible
-    
+
     // Add the link to the document
     document.body.appendChild(link);
     console.log('Added download link to document');
-    
+
     // Trigger click after a short delay
     setTimeout(() => {
       console.log('Clicking download link');
       link.click();
-      
+
       // Keep the link in the document for a while
       setTimeout(() => {
         // Clean up
@@ -168,7 +180,7 @@ function downloadCanvasAsJpeg(canvas, fileName) {
         console.log('Cleaned up download resources');
       }, 10000); // Keep resources around for 10 seconds
     }, 100);
-    
+
     showStatusMessage('Download started');
   }, 'image/jpeg', 0.95); // High quality JPEG
 }

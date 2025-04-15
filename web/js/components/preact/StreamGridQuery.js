@@ -6,7 +6,6 @@ import { useQuery } from '../../query-client.js';
 import { initializeVideoPlayer } from './VideoPlayer.js';
 import { takeSnapshot } from './SnapshotManager.js';
 import { toggleStreamFullscreen } from './FullscreenManager.js';
-import { showStatusMessage } from './UI.js';
 
 /**
  * Custom hook to fetch streams list

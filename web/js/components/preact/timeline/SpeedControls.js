@@ -6,7 +6,7 @@
 
 import { html } from '../../../html-helper.js';
 import { useState, useEffect } from 'preact/hooks';
-import { timelineState } from './TimelinePage.js';
+import { timelineState } from './TimelinePage.jsx';
 import { showStatusMessage } from '../UI.js';
 
 /**

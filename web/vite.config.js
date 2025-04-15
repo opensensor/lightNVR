@@ -4,6 +4,7 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
 import legacy from '@vitejs/plugin-legacy';
+import preact from '@preact/preset-vite';
 
 // Custom plugin to remove "use client" directives
 const removeUseClientDirective = () => {
@@ -63,7 +64,7 @@ export default defineConfig({
     commonjsOptions: {
       transformMixedEsModules: true
     },
-    
+
     // Configure esbuild to ignore specific warnings
     minify: 'esbuild',
     // Removed target: 'es2015' as it's handled by the legacy plugin
@@ -107,6 +108,8 @@ export default defineConfig({
 
   // Configure plugins
   plugins: [
+    // Preact plugin to handle JSX
+    preact(),
     // Custom plugin to remove "use client" directives
     removeUseClientDirective(),
     // Add legacy browser support with explicit targets
