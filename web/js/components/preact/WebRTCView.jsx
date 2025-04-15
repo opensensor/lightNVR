@@ -122,6 +122,10 @@ export function WebRTCView() {
         });
   }, []);
 
+  useEffect(() => {
+    updateVideoGrid();
+  }, [layout, selectedStream, streams, currentPage]);
+
   /**
    * Load streams from API
    * @returns {Promise<Array>} Promise resolving to array of streams
@@ -232,18 +236,6 @@ export function WebRTCView() {
    */
   const updateVideoGrid = () => {
     if (!videoGridRef.current) return;
-
-    // Create a transparent overlay to prevent clicks during grid updates
-    const preventClickOverlay = document.createElement('div');
-    preventClickOverlay.style.position = 'fixed';
-    preventClickOverlay.style.top = '0';
-    preventClickOverlay.style.left = '0';
-    preventClickOverlay.style.width = '100%';
-    preventClickOverlay.style.height = '100%';
-    preventClickOverlay.style.zIndex = '9999';
-    preventClickOverlay.style.backgroundColor = 'transparent';
-    preventClickOverlay.style.pointerEvents = 'auto';
-    document.body.appendChild(preventClickOverlay);
 
     // Clear existing content except placeholder
     const placeholder = videoGridRef.current.querySelector('.placeholder');
