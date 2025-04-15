@@ -25,11 +25,18 @@ RUN mkdir -p /opt/external && \
 WORKDIR /opt
 COPY . .
 
-# Create pkg-config files for MbedTLS
+# Create pkg-config files for MbedTLS with architecture-specific paths
 RUN mkdir -p /usr/lib/pkgconfig && \
-    echo "prefix=/usr\nexec_prefix=\${prefix}\nlibdir=\${exec_prefix}/lib/x86_64-linux-gnu\nincludedir=\${prefix}/include\n\nName: mbedtls\nDescription: MbedTLS Library\nVersion: 2.28.0\nLibs: -L\${libdir} -lmbedtls\nCflags: -I\${includedir}" > /usr/lib/pkgconfig/mbedtls.pc && \
-    echo "prefix=/usr\nexec_prefix=\${prefix}\nlibdir=\${exec_prefix}/lib/x86_64-linux-gnu\nincludedir=\${prefix}/include\n\nName: mbedcrypto\nDescription: MbedTLS Crypto Library\nVersion: 2.28.0\nLibs: -L\${libdir} -lmbedcrypto\nCflags: -I\${includedir}" > /usr/lib/pkgconfig/mbedcrypto.pc && \
-    echo "prefix=/usr\nexec_prefix=\${prefix}\nlibdir=\${exec_prefix}/lib/x86_64-linux-gnu\nincludedir=\${prefix}/include\n\nName: mbedx509\nDescription: MbedTLS X509 Library\nVersion: 2.28.0\nLibs: -L\${libdir} -lmbedx509\nCflags: -I\${includedir}" > /usr/lib/pkgconfig/mbedx509.pc && \
+    ARCH=$(uname -m) && \
+    case $ARCH in \
+        x86_64) LIB_DIR="/usr/lib/x86_64-linux-gnu" ;; \
+        aarch64) LIB_DIR="/usr/lib/aarch64-linux-gnu" ;; \
+        armv7l) LIB_DIR="/usr/lib/arm-linux-gnueabihf" ;; \
+        *) echo "Unsupported architecture: $ARCH"; exit 1 ;; \
+    esac && \
+    echo "prefix=/usr\nexec_prefix=\${prefix}\nlibdir=$LIB_DIR\nincludedir=\${prefix}/include\n\nName: mbedtls\nDescription: MbedTLS Library\nVersion: 2.28.0\nLibs: -L\${libdir} -lmbedtls\nCflags: -I\${includedir}" > /usr/lib/pkgconfig/mbedtls.pc && \
+    echo "prefix=/usr\nexec_prefix=\${prefix}\nlibdir=$LIB_DIR\nincludedir=\${prefix}/include\n\nName: mbedcrypto\nDescription: MbedTLS Crypto Library\nVersion: 2.28.0\nLibs: -L\${libdir} -lmbedcrypto\nCflags: -I\${includedir}" > /usr/lib/pkgconfig/mbedcrypto.pc && \
+    echo "prefix=/usr\nexec_prefix=\${prefix}\nlibdir=$LIB_DIR\nincludedir=\${prefix}/include\n\nName: mbedx509\nDescription: MbedTLS X509 Library\nVersion: 2.28.0\nLibs: -L\${libdir} -lmbedx509\nCflags: -I\${includedir}" > /usr/lib/pkgconfig/mbedx509.pc && \
     chmod 644 /usr/lib/pkgconfig/mbedtls.pc /usr/lib/pkgconfig/mbedcrypto.pc /usr/lib/pkgconfig/mbedx509.pc
 
 # Download and install go2rtc
@@ -70,8 +77,16 @@ RUN mkdir -p /etc/lightnvr /var/lib/lightnvr /var/log/lightnvr /var/run/lightnvr
     chmod -R 777 /var/lib/lightnvr /var/log/lightnvr /var/run/lightnvr && \
     # Clean any existing build files
     rm -rf build/ && \
+    # Determine architecture-specific pkgconfig path
+    ARCH=$(uname -m) && \
+    case $ARCH in \
+        x86_64) PKG_CONFIG_ARCH_PATH="/usr/lib/x86_64-linux-gnu/pkgconfig" ;; \
+        aarch64) PKG_CONFIG_ARCH_PATH="/usr/lib/aarch64-linux-gnu/pkgconfig" ;; \
+        armv7l) PKG_CONFIG_ARCH_PATH="/usr/lib/arm-linux-gnueabihf/pkgconfig" ;; \
+        *) echo "Unsupported architecture: $ARCH"; exit 1 ;; \
+    esac && \
     # Build the application with go2rtc and SOD dynamic linking
-    PKG_CONFIG_PATH=/usr/lib/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:$PKG_CONFIG_PATH \
+    PKG_CONFIG_PATH=/usr/lib/pkgconfig:$PKG_CONFIG_ARCH_PATH:$PKG_CONFIG_PATH \
     ./scripts/build.sh --release --with-sod --sod-dynamic --with-go2rtc --go2rtc-binary=/bin/go2rtc --go2rtc-config-dir=/etc/lightnvr/go2rtc --go2rtc-api-port=1984 && \
     ./scripts/install.sh --prefix=/ --with-go2rtc --go2rtc-config-dir=/etc/lightnvr/go2rtc --without-systemd
 
@@ -83,7 +98,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Install only necessary runtime dependencies
 RUN apt-get update && apt-get install -y \
     libavcodec59 libavformat59 libavutil57 libswscale6 \
-    libcurl4 libmbedtls14 sqlite3 procps && \
+    libcurl4 libmbedtls14 libmbedcrypto7 sqlite3 procps && \
     rm -rf /var/lib/apt/lists/*
 
 # Create necessary directories in runtime

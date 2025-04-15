@@ -104,12 +104,35 @@ list(APPEND SSL_LIBRARIES ${MBEDTLS_LIBRARIES})
 message(STATUS "ONVIF and authentication system enabled, linking with mbedTLS for cryptographic functions")
 
 # Explicitly add mbedcrypto to the link libraries
-find_library(MBEDCRYPTO_LIBRARY mbedcrypto)
+find_library(MBEDCRYPTO_LIBRARY mbedcrypto
+    HINTS
+    /usr/lib
+    /usr/lib/x86_64-linux-gnu
+    /usr/lib/aarch64-linux-gnu
+    /usr/lib/arm-linux-gnueabihf
+    /lib
+    /lib/x86_64-linux-gnu
+    /lib/aarch64-linux-gnu
+    /lib/arm-linux-gnueabihf
+)
+
 if(MBEDCRYPTO_LIBRARY)
     message(STATUS "Found mbedcrypto library: ${MBEDCRYPTO_LIBRARY}")
     list(APPEND SSL_LIBRARIES ${MBEDCRYPTO_LIBRARY})
 else()
-    message(FATAL_ERROR "mbedcrypto library not found")
+    # Try to find by manually checking common locations
+    foreach(LIB_PATH /usr/lib /usr/lib/x86_64-linux-gnu /usr/lib/aarch64-linux-gnu /usr/lib/arm-linux-gnueabihf /lib /lib/x86_64-linux-gnu /lib/aarch64-linux-gnu /lib/arm-linux-gnueabihf)
+        if(EXISTS "${LIB_PATH}/libmbedcrypto.so")
+            set(MBEDCRYPTO_LIBRARY "${LIB_PATH}/libmbedcrypto.so")
+            message(STATUS "Found mbedcrypto library through manual search: ${MBEDCRYPTO_LIBRARY}")
+            list(APPEND SSL_LIBRARIES ${MBEDCRYPTO_LIBRARY})
+            break()
+        endif()
+    endforeach()
+
+    if(NOT MBEDCRYPTO_LIBRARY)
+        message(FATAL_ERROR "mbedcrypto library not found. Please install libmbedtls-dev package.")
+    endif()
 endif()
 
 # Find cJSON
