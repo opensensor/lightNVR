@@ -45,48 +45,6 @@ export function WebRTCView() {
     addStatusMessageStyles();
     addModalStyles();
 
-    // Add event listener to stop streams when leaving the page
-    const handleBeforeUnload = () => {
-      stopAllWebRTCStreams();
-    };
-
-    // Add event listener for visibility change to handle tab switching
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        console.log("Page hidden, pausing WebRTC streams");
-        // Mark connections as inactive but don't close them yet
-        Object.keys(webrtcConnections.current).forEach(streamName => {
-          const pc = webrtcConnections.current[streamName];
-          if (pc && pc.connectionState !== 'closed') {
-            // Pause video elements to reduce resource usage
-            const videoElementId = `video-${streamName.replace(/\s+/g, '-')}`;
-            const videoElement = document.getElementById(videoElementId);
-            if (videoElement) {
-              videoElement.pause();
-            }
-          }
-        });
-      } else {
-        console.log("Page visible, resuming WebRTC streams");
-        // Resume video playback
-        Object.keys(webrtcConnections.current).forEach(streamName => {
-          const pc = webrtcConnections.current[streamName];
-          if (pc && pc.connectionState !== 'closed') {
-            const videoElementId = `video-${streamName.replace(/\s+/g, '-')}`;
-            const videoElement = document.getElementById(videoElementId);
-            if (videoElement) {
-              videoElement.play().catch(e => {
-                console.warn(`Could not resume video for ${streamName}:`, e);
-              });
-            }
-          }
-        });
-      }
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
     // Set up periodic connection check
     const connectionCheckInterval = setInterval(() => {
       Object.keys(webrtcConnections.current).forEach(streamName => {
@@ -116,8 +74,6 @@ export function WebRTCView() {
     // Cleanup
     return () => {
       // No need to remove handleEscape as it's now handled in FullscreenManager.js
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearInterval(connectionCheckInterval);
       stopAllWebRTCStreams();
     };
@@ -165,42 +121,6 @@ export function WebRTCView() {
           setIsLoading(false);
         });
   }, []);
-
-  // Update video grid when layout, page, or streams change
-  useEffect(() => {
-    updateVideoGrid();
-  }, [layout, selectedStream, streams, currentPage]);
-
-  // Update URL when page, layout, or selectedStream changes
-  useEffect(() => {
-    // Update URL with current page (convert from 0-based internal to 1-based URL)
-    const url = new URL(window.location);
-    if (currentPage === 0) {
-      url.searchParams.delete('page');
-    } else {
-      // Add 1 to convert from 0-based (internal) to 1-based (URL)
-      url.searchParams.set('page', currentPage + 1);
-    }
-
-    // Ensure layout parameter is preserved
-    if (layout && layout !== '4') { // Only set if not the default
-      url.searchParams.set('layout', layout);
-    } else if (layout === '4') {
-      // Remove layout parameter if it's the default value
-      url.searchParams.delete('layout');
-    }
-
-    // Handle selectedStream parameter
-    if (layout === '1' && selectedStream) {
-      url.searchParams.set('stream', selectedStream);
-    } else {
-      // Remove stream parameter if not in single stream mode
-      url.searchParams.delete('stream');
-    }
-
-    // Update URL without reloading the page
-    window.history.replaceState({}, '', url);
-  }, [currentPage, layout, selectedStream]);
 
   /**
    * Load streams from API
@@ -313,6 +233,18 @@ export function WebRTCView() {
   const updateVideoGrid = () => {
     if (!videoGridRef.current) return;
 
+    // Create a transparent overlay to prevent clicks during grid updates
+    const preventClickOverlay = document.createElement('div');
+    preventClickOverlay.style.position = 'fixed';
+    preventClickOverlay.style.top = '0';
+    preventClickOverlay.style.left = '0';
+    preventClickOverlay.style.width = '100%';
+    preventClickOverlay.style.height = '100%';
+    preventClickOverlay.style.zIndex = '9999';
+    preventClickOverlay.style.backgroundColor = 'transparent';
+    preventClickOverlay.style.pointerEvents = 'auto';
+    document.body.appendChild(preventClickOverlay);
+
     // Clear existing content except placeholder
     const placeholder = videoGridRef.current.querySelector('.placeholder');
     videoGridRef.current.innerHTML = '';
@@ -320,6 +252,12 @@ export function WebRTCView() {
     // If placeholder exists and no streams, add it back
     if (placeholder && streams.length === 0) {
       videoGridRef.current.appendChild(placeholder);
+      // Remove the overlay after a short delay
+      setTimeout(() => {
+        if (document.body.contains(preventClickOverlay)) {
+          document.body.removeChild(preventClickOverlay);
+        }
+      }, 100);
       return;
     }
 
@@ -370,6 +308,13 @@ export function WebRTCView() {
         console.log(`WebRTC connection for stream ${stream.name} already exists, reusing`);
       }
     });
+
+    // Remove the overlay after all cells are created
+    setTimeout(() => {
+      if (document.body.contains(preventClickOverlay)) {
+        document.body.removeChild(preventClickOverlay);
+      }
+    }, 100);
   };
 
   /**
@@ -414,6 +359,7 @@ export function WebRTCView() {
     loadingIndicator.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
     loadingIndicator.style.color = 'white';
     loadingIndicator.style.zIndex = '20'; // Above video but below controls
+    loadingIndicator.style.pointerEvents = 'none'; // Ensure loading indicator doesn't capture clicks
 
     // Create error indicator (hidden by default)
     const errorIndicator = document.createElement('div');
@@ -430,6 +376,7 @@ export function WebRTCView() {
     errorIndicator.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
     errorIndicator.style.color = 'white';
     errorIndicator.style.zIndex = '20'; // Above video but below controls
+    // We'll set pointerEvents to 'auto' only when it's visible to allow retry button clicks
 
     // Create stream name overlay
     const streamNameOverlay = document.createElement('div');
@@ -444,6 +391,7 @@ export function WebRTCView() {
     streamNameOverlay.style.borderRadius = '4px';
     streamNameOverlay.style.fontSize = '14px';
     streamNameOverlay.style.zIndex = '15'; // Above video but below controls
+    streamNameOverlay.style.pointerEvents = 'none'; // Ensure stream name doesn't capture clicks
 
     // Create stream controls
     const streamControls = document.createElement('div');
@@ -841,6 +789,7 @@ export function WebRTCView() {
       <button className="retry-button mt-4 px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">Retry</button>
     `;
     errorIndicator.style.display = 'flex';
+    errorIndicator.style.pointerEvents = 'auto'; // Enable pointer events when visible to allow retry button clicks
 
     // Make sure retry button is clickable
     const retryButton = errorIndicator.querySelector('.retry-button');
@@ -978,6 +927,7 @@ const takeSnapshot = (streamId, event) => {
   const canvas = document.createElement('canvas');
   canvas.width = videoElement.videoWidth;
   canvas.height = videoElement.videoHeight;
+  canvas.style.pointerEvents = 'none'; // Ensure canvas doesn't capture clicks
 
   // Check if we have valid dimensions
   if (canvas.width === 0 || canvas.height === 0) {
