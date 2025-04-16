@@ -1,12 +1,12 @@
 /**
  * MP4 Writer Implementation
- * 
+ *
  * This module provides the core functionality for writing MP4 files from RTSP streams.
  * It has been refactored to improve maintainability and reduce memory leaks:
- * 
+ *
  * - mp4_segment_recorder.c: Handles recording of individual MP4 segments
  * - mp4_writer_thread.c: Handles thread management for MP4 recording
- * 
+ *
  * This file contains the main MP4 writer API implementation.
  */
 
@@ -37,7 +37,7 @@
 
 /**
  * Enable or disable audio recording
- * 
+ *
  * @param writer The MP4 writer instance
  * @param enable 1 to enable audio, 0 to disable
  */
@@ -45,7 +45,7 @@ void mp4_writer_set_audio(mp4_writer_t *writer, int enable) {
     if (!writer) {
         return;
     }
-    
+
     writer->has_audio = enable ? 1 : 0;
     log_info("%s audio recording for stream %s",
             enable ? "Enabled" : "Disabled", writer->stream_name);
@@ -53,7 +53,7 @@ void mp4_writer_set_audio(mp4_writer_t *writer, int enable) {
 
 /**
  * Get the current output path for the MP4 writer
- * 
+ *
  * @param writer The MP4 writer instance
  * @return The current output path or NULL if writer is NULL
  */
@@ -61,13 +61,13 @@ const char *mp4_writer_get_output_path(mp4_writer_t *writer) {
     if (!writer) {
         return NULL;
     }
-    
+
     return writer->output_path;
 }
 
 /**
  * Get the current output directory for the MP4 writer
- * 
+ *
  * @param writer The MP4 writer instance
  * @return The current output directory or NULL if writer is NULL
  */
@@ -75,13 +75,13 @@ const char *mp4_writer_get_output_dir(mp4_writer_t *writer) {
     if (!writer) {
         return NULL;
     }
-    
+
     return writer->output_dir;
 }
 
 /**
  * Get the stream name for the MP4 writer
- * 
+ *
  * @param writer The MP4 writer instance
  * @return The stream name or NULL if writer is NULL
  */
@@ -89,13 +89,13 @@ const char *mp4_writer_get_stream_name(mp4_writer_t *writer) {
     if (!writer) {
         return NULL;
     }
-    
+
     return writer->stream_name;
 }
 
 /**
  * Get the segment duration for the MP4 writer
- * 
+ *
  * @param writer The MP4 writer instance
  * @return The segment duration in seconds or 0 if writer is NULL
  */
@@ -103,13 +103,13 @@ int mp4_writer_get_segment_duration(mp4_writer_t *writer) {
     if (!writer) {
         return 0;
     }
-    
+
     return writer->segment_duration;
 }
 
 /**
  * Check if audio recording is enabled
- * 
+ *
  * @param writer The MP4 writer instance
  * @return 1 if audio is enabled, 0 if disabled or writer is NULL
  */
@@ -117,7 +117,7 @@ int mp4_writer_has_audio(mp4_writer_t *writer) {
     if (!writer) {
         return 0;
     }
-    
+
     return writer->has_audio;
 }
 
@@ -136,9 +136,25 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
         log_error("Invalid parameters passed to mp4_writer_write_packet");
         return -1;
     }
-    
+
     // Update the last packet time
     writer->last_packet_time = time(NULL);
-    
+
+    // If this is an audio packet and audio is disabled, silently drop it
+    if (input_stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO && !writer->has_audio) {
+        // Just return success without doing anything
+        return 0;
+    }
+
+    // If this is an audio packet with an incompatible codec, silently drop it
+    if (input_stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
+        // Check for incompatible codecs
+        if (input_stream->codecpar->codec_id == AV_CODEC_ID_PCM_MULAW ||
+            input_stream->codecpar->codec_id == AV_CODEC_ID_PCM_ALAW) {
+            // Just return success without doing anything
+            return 0;
+        }
+    }
+
     return 0;
 }

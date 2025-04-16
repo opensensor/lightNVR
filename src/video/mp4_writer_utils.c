@@ -29,6 +29,46 @@
 #include "video/mp4_writer_internal.h"
 
 /**
+ * Check if an audio codec is compatible with MP4 format
+ *
+ * @param codec_id The codec ID to check
+ * @param codec_name Output parameter to store the codec name
+ * @return true if compatible, false otherwise
+ */
+static bool is_audio_codec_compatible_with_mp4(enum AVCodecID codec_id, const char **codec_name) {
+    bool is_compatible = true;
+
+    switch (codec_id) {
+        case AV_CODEC_ID_AAC:
+            *codec_name = "AAC";
+            break;
+        case AV_CODEC_ID_MP3:
+            *codec_name = "MP3";
+            break;
+        case AV_CODEC_ID_AC3:
+            *codec_name = "AC3";
+            break;
+        case AV_CODEC_ID_OPUS:
+            *codec_name = "Opus";
+            break;
+        case AV_CODEC_ID_PCM_MULAW:
+            *codec_name = "PCM μ-law (mlaw)";
+            is_compatible = false;
+            break;
+        case AV_CODEC_ID_PCM_ALAW:
+            *codec_name = "PCM A-law (alaw)";
+            is_compatible = false;
+            break;
+        default:
+            *codec_name = "Unknown";
+            // Assume compatible for unknown codecs and let FFmpeg handle it
+            break;
+    }
+
+    return is_compatible;
+}
+
+/**
  * Apply h264_mp4toannexb bitstream filter to convert H.264 stream from MP4 format to Annex B format
  * This is needed for some RTSP cameras that send H.264 in MP4 format instead of Annex B format
  *
@@ -254,7 +294,51 @@ int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, const AVStr
                 writer->stream_name ? writer->stream_name : "unknown");
     }
     else if (input_stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
-        // If initialization is triggered by an audio packet, we need to create a dummy video stream first
+        // Check if the audio codec is compatible with MP4 format
+        // MP4 container has limited audio codec support
+        const char *codec_name = "unknown";
+        bool is_compatible = is_audio_codec_compatible_with_mp4(input_stream->codecpar->codec_id, &codec_name);
+
+        if (!is_compatible) {
+            log_error("%s codec is not compatible with MP4 format for stream %s",
+                     codec_name, writer->stream_name ? writer->stream_name : "unknown");
+            log_info("Disabling audio recording for stream %s due to incompatible codec",
+                    writer->stream_name ? writer->stream_name : "unknown");
+
+            // Disable audio for this writer
+            writer->has_audio = 0;
+
+            // We still need to create a dummy video stream to initialize the MP4 writer
+            // but we won't add an audio stream
+            log_warn("MP4 writer initialization triggered by incompatible audio packet for %s - creating dummy video stream only",
+                    writer->stream_name ? writer->stream_name : "unknown");
+
+            AVStream *dummy_video = avformat_new_stream(writer->output_ctx, NULL);
+            if (!dummy_video) {
+                log_error("Failed to create dummy video stream for MP4 writer");
+                avformat_free_context(writer->output_ctx);
+                writer->output_ctx = NULL;
+                free(dir_path);
+                return -1;
+            }
+
+            // Set up a minimal H.264 video stream
+            dummy_video->codecpar->codec_type = AVMEDIA_TYPE_VIDEO;
+            dummy_video->codecpar->codec_id = AV_CODEC_ID_H264;
+            dummy_video->codecpar->width = 640;
+            dummy_video->codecpar->height = 480;
+            dummy_video->time_base = (AVRational){1, 30};
+            writer->time_base = dummy_video->time_base;
+            writer->video_stream_idx = 0;
+
+            // Skip adding the audio stream
+            goto skip_audio_stream;
+        } else {
+            log_info("Using %s audio codec for stream %s",
+                    codec_name, writer->stream_name ? writer->stream_name : "unknown");
+        }
+
+        // If initialization is triggered by a compatible audio packet, we need to create a dummy video stream first
         // This is because MP4 format expects video to be the first stream
         log_warn("MP4 writer initialization triggered by audio packet for %s - creating dummy video stream",
                 writer->stream_name ? writer->stream_name : "unknown");
@@ -312,6 +396,7 @@ int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, const AVStr
                 writer->audio.stream_idx, writer->stream_name ? writer->stream_name : "unknown");
     }
 
+skip_audio_stream:
     // Initialize audio state if not already done
     if (writer->audio.stream_idx == -1) {
         writer->audio.stream_idx = -1; // Initialize to -1 (no audio yet)
@@ -524,6 +609,30 @@ int mp4_writer_add_audio_stream(mp4_writer_t *writer, const AVCodecParameters *c
     writer->audio.last_dts = 0;
     writer->audio.initialized = 0;  // Don't mark as initialized until we receive the first packet
     writer->audio.time_base = safe_time_base;  // Store the timebase in the audio state
+
+    // Check if the audio codec is compatible with MP4 format
+    // MP4 container has limited audio codec support
+    const char *codec_name = "unknown";
+    bool is_compatible = is_audio_codec_compatible_with_mp4(codec_params->codec_id, &codec_name);
+
+    if (!is_compatible) {
+        log_error("%s codec is not compatible with MP4 format for stream %s",
+                 codec_name, writer->stream_name ? writer->stream_name : "unknown");
+        log_info("Disabling audio recording for stream %s due to incompatible codec",
+                writer->stream_name ? writer->stream_name : "unknown");
+
+        // Disable audio for this writer
+        writer->has_audio = 0;
+
+        // Free the codec parameters
+        avcodec_parameters_free(&local_codec_params);
+
+        // Return success but don't add the audio stream
+        return 0;
+    } else {
+        log_info("Using %s audio codec for stream %s",
+                codec_name, writer->stream_name ? writer->stream_name : "unknown");
+    }
 
     // Set default frame size for audio codec
     if (codec_params->codec_id == AV_CODEC_ID_OPUS) {

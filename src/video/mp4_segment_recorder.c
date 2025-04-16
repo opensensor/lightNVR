@@ -311,13 +311,34 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
         log_error("Failed to write header: %d (%s)", ret, error_buf);
 
-        // If this is an EINVAL error, it might be related to dimensions
+        // If this is an EINVAL error, it might be related to dimensions or incompatible audio codec
         if (ret == AVERROR(EINVAL)) {
             log_error("Header write failed with EINVAL, likely due to invalid video parameters");
             log_error("Video stream parameters: width=%d, height=%d, codec_id=%d",
                      out_video_stream->codecpar->width,
                      out_video_stream->codecpar->height,
                      out_video_stream->codecpar->codec_id);
+
+            // Check if we have an audio stream and log its parameters
+            if (out_audio_stream) {
+                log_error("Audio stream parameters: codec_id=%d, sample_rate=%d, channels=%d",
+                         out_audio_stream->codecpar->codec_id,
+                         out_audio_stream->codecpar->sample_rate,
+                         #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
+                             out_audio_stream->codecpar->ch_layout.nb_channels);
+                         #else
+                             out_audio_stream->codecpar->channels);
+                         #endif
+
+                // Check for known incompatible audio codecs
+                if (out_audio_stream->codecpar->codec_id == AV_CODEC_ID_PCM_MULAW) {
+                    log_error("PCM μ-law (mlaw) audio codec is not compatible with MP4 format");
+                    log_error("Try disabling audio recording for this stream");
+                } else if (out_audio_stream->codecpar->codec_id == AV_CODEC_ID_PCM_ALAW) {
+                    log_error("PCM A-law (alaw) audio codec is not compatible with MP4 format");
+                    log_error("Try disabling audio recording for this stream");
+                }
+            }
         }
 
         goto cleanup;
