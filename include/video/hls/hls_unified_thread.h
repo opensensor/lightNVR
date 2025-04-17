@@ -27,19 +27,19 @@ typedef struct {
     char stream_name[MAX_STREAM_NAME];
     char rtsp_url[MAX_PATH_LENGTH];
     char output_path[MAX_PATH_LENGTH];
-    
+
     // Thread management
     pthread_t thread;
     atomic_int running;
     int shutdown_component_id;
-    
+
     // Stream configuration
     int protocol;  // STREAM_PROTOCOL_TCP or STREAM_PROTOCOL_UDP
     int segment_duration;
-    
+
     // HLS writer (embedded directly instead of pointer)
     hls_writer_t *writer;
-    
+
     // Connection state tracking
     atomic_int_fast64_t last_packet_time;
     atomic_int connection_valid;
@@ -95,5 +95,24 @@ int is_hls_stream_active(const char *stream_name);
  * @return NULL
  */
 void *hls_unified_thread_func(void *arg);
+
+/**
+ * Get the number of HLS thread restarts performed by the watchdog
+ *
+ * @return The number of restarts
+ */
+int get_hls_watchdog_restart_count(void);
+
+/**
+ * Initialize the HLS unified thread system
+ * This function initializes the HLS unified thread system and starts the watchdog
+ */
+void init_hls_unified_thread_system(void);
+
+/**
+ * Clean up the HLS unified thread system
+ * This function cleans up the HLS unified thread system and stops the watchdog
+ */
+void cleanup_hls_unified_thread_system(void);
 
 #endif /* HLS_UNIFIED_THREAD_H */

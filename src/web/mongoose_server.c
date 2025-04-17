@@ -114,6 +114,7 @@ static const mg_api_route_t s_api_routes[] = {
     {"POST", "/api/system/backup", mg_handle_post_system_backup, false},
     {"GET", "/api/system/status", mg_handle_get_system_status, false},
     {"GET", "/api/health", mg_handle_get_health, false},
+    {"GET", "/api/health/hls", mg_handle_get_hls_health, false},
 
     // Recordings API
     {"GET", "/api/recordings", mg_handle_get_recordings, false},

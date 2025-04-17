@@ -47,6 +47,10 @@
 // We'll implement our own version to clean up any leaked buffers
 static void ffmpeg_buffer_cleanup(void);
 
+// Forward declarations for HLS watchdog functions
+static void start_hls_watchdog(void);
+static void stop_hls_watchdog(void);
+
 // MEMORY LEAK FIX: Global variable to track FFmpeg memory usage
 static int ffmpeg_memory_cleanup_registered = 0;
 
@@ -155,6 +159,11 @@ static pthread_mutex_t pending_deletions_mutex = PTHREAD_MUTEX_INITIALIZER;
 // CRITICAL FIX: Add memory boundary checking to detect buffer overflows
 #define MEMORY_GUARD_SIZE 16
 #define MEMORY_GUARD_PATTERN 0xFE
+
+// Watchdog thread settings
+#define WATCHDOG_CHECK_INTERVAL_SEC 30  // Check every 30 seconds
+#define WATCHDOG_MAX_RESTART_ATTEMPTS 5  // Maximum number of restart attempts
+#define WATCHDOG_RESTART_COOLDOWN_SEC 300  // 5 minutes between restart attempts
 
 // Function to allocate memory with guard bytes
 static void *safe_malloc(size_t size) {
@@ -2044,6 +2053,13 @@ void *hls_unified_thread_func(void *arg) {
 pthread_mutex_t unified_contexts_mutex = PTHREAD_MUTEX_INITIALIZER;
 hls_unified_thread_ctx_t *unified_contexts[MAX_STREAMS];
 
+// Watchdog thread variables
+static pthread_t hls_watchdog_thread;
+static atomic_bool watchdog_running = ATOMIC_VAR_INIT(false);
+static atomic_int watchdog_restart_count = ATOMIC_VAR_INIT(0);
+static time_t last_restart_time[MAX_STREAMS] = {0};
+static int restart_attempts[MAX_STREAMS] = {0};
+
 /**
  * Start HLS streaming for a stream using the unified thread approach
  * This is the implementation that will be called by the API functions
@@ -2954,6 +2970,9 @@ void cleanup_hls_unified_thread_system(void) {
 
     log_info("Cleaning up HLS unified thread system...");
 
+    // Stop the watchdog thread
+    stop_hls_watchdog();
+
     // CRITICAL FIX: Use try/catch-like approach with signal handling to prevent crashes
     struct sigaction sa_old, sa_new;
     sigaction(SIGSEGV, NULL, &sa_old);
@@ -3017,6 +3036,212 @@ static void init_ffmpeg_memory_cleanup(void) {
 }
 
 /**
+ * Check if a thread is still running
+ * This function checks if a thread is still running by examining its state
+ *
+ * @param ctx The thread context
+ * @return true if running, false if not
+ */
+static bool is_thread_running(hls_unified_thread_ctx_t *ctx) {
+    if (!ctx) {
+        return false;
+    }
+
+    // Check if the thread is marked as running
+    if (!atomic_load(&ctx->running)) {
+        return false;
+    }
+
+    // Check if the thread state is STOPPED
+    if (atomic_load(&ctx->thread_state) == HLS_THREAD_STOPPED) {
+        return false;
+    }
+
+    // Check if we've received a packet recently
+    time_t last_packet = (time_t)atomic_load(&ctx->last_packet_time);
+    time_t now = time(NULL);
+    if (now - last_packet > MAX_PACKET_TIMEOUT * 3) { // 3x the normal timeout for watchdog
+        log_warn("Thread for stream %s has not received a packet in %ld seconds",
+                ctx->stream_name, now - last_packet);
+        return false;
+    }
+
+    return true;
+}
+
+/**
+ * Watchdog thread function
+ * This function periodically checks all HLS threads and restarts any that have exited unexpectedly
+ *
+ * @param arg Not used
+ * @return NULL
+ */
+static void *hls_watchdog_thread_func(void *arg) {
+    log_info("HLS watchdog thread started");
+
+    while (atomic_load(&watchdog_running)) {
+        // Sleep for the check interval
+        sleep(WATCHDOG_CHECK_INTERVAL_SEC);
+
+        // Check if we should continue running
+        if (!atomic_load(&watchdog_running) || is_shutdown_initiated()) {
+            log_info("HLS watchdog thread stopping");
+            break;
+        }
+
+        log_debug("HLS watchdog checking thread status...");
+
+        // Lock the contexts mutex
+        pthread_mutex_lock(&unified_contexts_mutex);
+
+        // Check each context
+        for (int i = 0; i < MAX_STREAMS; i++) {
+            hls_unified_thread_ctx_t *ctx = unified_contexts[i];
+            if (!ctx) {
+                continue;
+            }
+
+            // Skip contexts that are already marked for deletion
+            if (is_context_pending_deletion(ctx)) {
+                continue;
+            }
+
+            // Check if the thread is still running
+            if (!is_thread_running(ctx)) {
+                log_warn("HLS thread for stream %s has exited unexpectedly", ctx->stream_name);
+
+                // Check if we should restart the thread
+                time_t now = time(NULL);
+                if (now - last_restart_time[i] < WATCHDOG_RESTART_COOLDOWN_SEC) {
+                    log_warn("Cooldown period not elapsed for stream %s, not restarting yet",
+                            ctx->stream_name);
+                    continue;
+                }
+
+                // Check if we've exceeded the maximum restart attempts
+                if (restart_attempts[i] >= WATCHDOG_MAX_RESTART_ATTEMPTS) {
+                    log_error("Maximum restart attempts (%d) exceeded for stream %s, not restarting",
+                             WATCHDOG_MAX_RESTART_ATTEMPTS, ctx->stream_name);
+                    continue;
+                }
+
+                // Store the stream name before unlocking the mutex
+                char stream_name[MAX_STREAM_NAME];
+                strncpy(stream_name, ctx->stream_name, MAX_STREAM_NAME - 1);
+                stream_name[MAX_STREAM_NAME - 1] = '\0';
+
+                // Unlock the mutex before restarting the stream
+                pthread_mutex_unlock(&unified_contexts_mutex);
+
+                log_info("Attempting to restart HLS thread for stream %s (attempt %d)",
+                        stream_name, restart_attempts[i] + 1);
+
+                // Stop the stream first to clean up any resources
+                stop_hls_unified_stream(stream_name);
+
+                // Wait a bit to ensure the stream is fully stopped
+                usleep(1000000); // 1 second
+
+                // Start the stream again
+                int result = start_hls_unified_stream(stream_name);
+                if (result == 0) {
+                    log_info("Successfully restarted HLS thread for stream %s", stream_name);
+
+                    // Update restart statistics
+                    pthread_mutex_lock(&unified_contexts_mutex);
+                    last_restart_time[i] = time(NULL);
+                    restart_attempts[i]++;
+                    atomic_fetch_add(&watchdog_restart_count, 1);
+                    pthread_mutex_unlock(&unified_contexts_mutex);
+                } else {
+                    log_error("Failed to restart HLS thread for stream %s", stream_name);
+
+                    // Update restart statistics
+                    pthread_mutex_lock(&unified_contexts_mutex);
+                    last_restart_time[i] = time(NULL);
+                    restart_attempts[i]++;
+                    pthread_mutex_unlock(&unified_contexts_mutex);
+                }
+
+                // Re-lock the mutex to continue the loop
+                pthread_mutex_lock(&unified_contexts_mutex);
+            } else {
+                // Thread is running, reset restart attempts if it's been running for a while
+                time_t now = time(NULL);
+                if (restart_attempts[i] > 0 && now - last_restart_time[i] > WATCHDOG_RESTART_COOLDOWN_SEC * 2) {
+                    log_info("Resetting restart attempts for stream %s after stable period", ctx->stream_name);
+                    restart_attempts[i] = 0;
+                }
+            }
+        }
+
+        // Unlock the mutex
+        pthread_mutex_unlock(&unified_contexts_mutex);
+    }
+
+    log_info("HLS watchdog thread exited");
+    return NULL;
+}
+
+/**
+ * Start the HLS watchdog thread
+ */
+static void start_hls_watchdog(void) {
+    // Check if the watchdog is already running
+    if (atomic_load(&watchdog_running)) {
+        log_warn("HLS watchdog thread is already running");
+        return;
+    }
+
+    // Initialize restart tracking arrays
+    memset(last_restart_time, 0, sizeof(last_restart_time));
+    memset(restart_attempts, 0, sizeof(restart_attempts));
+
+    // Set the watchdog running flag
+    atomic_store(&watchdog_running, true);
+    atomic_store(&watchdog_restart_count, 0);
+
+    // Create the watchdog thread
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+    int result = pthread_create(&hls_watchdog_thread, &attr, hls_watchdog_thread_func, NULL);
+    pthread_attr_destroy(&attr);
+
+    if (result != 0) {
+        log_error("Failed to create HLS watchdog thread");
+        atomic_store(&watchdog_running, false);
+    } else {
+        log_info("Started HLS watchdog thread");
+    }
+}
+
+/**
+ * Stop the HLS watchdog thread
+ */
+static void stop_hls_watchdog(void) {
+    // Check if the watchdog is running
+    if (!atomic_load(&watchdog_running)) {
+        log_warn("HLS watchdog thread is not running");
+        return;
+    }
+
+    // Set the watchdog running flag to false
+    atomic_store(&watchdog_running, false);
+
+    // The thread is detached, so we don't need to join it
+    log_info("Signaled HLS watchdog thread to stop");
+}
+
+/**
+ * Get the number of HLS thread restarts performed by the watchdog
+ */
+int get_hls_watchdog_restart_count(void) {
+    return atomic_load(&watchdog_restart_count);
+}
+
+/**
  * Initialize the HLS unified thread system
  */
 void init_hls_unified_thread_system(void) {
@@ -3028,5 +3253,8 @@ void init_hls_unified_thread_system(void) {
     // Initialize the FFmpeg memory cleanup system
     init_ffmpeg_memory_cleanup();
 
-    log_info("HLS unified thread system initialized");
+    // Start the HLS watchdog thread
+    start_hls_watchdog();
+
+    log_info("HLS unified thread system initialized with watchdog monitoring");
 }
