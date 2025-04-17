@@ -59,4 +59,15 @@ void mp4_segment_recorder_init(void);
  */
 void mp4_segment_recorder_cleanup(void);
 
+/**
+ * Write a packet to the MP4 file
+ * This function handles both video and audio packets
+ *
+ * @param writer The MP4 writer instance
+ * @param pkt The packet to write
+ * @param input_stream The original input stream (for codec parameters)
+ * @return 0 on success, negative on error
+ */
+int mp4_segment_recorder_write_packet(mp4_writer_t *writer, const AVPacket *pkt, const AVStream *input_stream);
+
 #endif /* MP4_SEGMENT_RECORDER_H */

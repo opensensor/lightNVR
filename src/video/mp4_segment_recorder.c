@@ -1177,3 +1177,82 @@ void mp4_segment_recorder_cleanup(void) {
 
     log_info("MP4 segment recorder resources cleaned up");
 }
+
+/**
+ * Write a packet to the MP4 file
+ * This function handles both video and audio packets
+ *
+ * @param writer The MP4 writer instance
+ * @param pkt The packet to write
+ * @param input_stream The original input stream (for codec parameters)
+ * @return 0 on success, negative on error
+ */
+int mp4_segment_recorder_write_packet(mp4_writer_t *writer, const AVPacket *pkt, const AVStream *input_stream) {
+    if (!writer || !pkt || !input_stream) {
+        log_error("Invalid parameters passed to mp4_segment_recorder_write_packet");
+        return -1;
+    }
+
+    if (!writer->output_ctx) {
+        log_error("Writer output context is NULL for stream %s",
+                writer->stream_name ? writer->stream_name : "unknown");
+        return -1;
+    }
+
+    // Create a copy of the packet to avoid modifying the original
+    AVPacket *out_pkt = av_packet_alloc();
+    if (!out_pkt) {
+        log_error("Failed to allocate packet for stream %s",
+                writer->stream_name ? writer->stream_name : "unknown");
+        return -1;
+    }
+
+    // Make a reference copy of the packet
+    int ret = av_packet_ref(out_pkt, pkt);
+    if (ret < 0) {
+        char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+        av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+        log_error("Failed to copy packet for stream %s: %s",
+                writer->stream_name ? writer->stream_name : "unknown", error_buf);
+        av_packet_free(&out_pkt);
+        return ret;
+    }
+
+    // Determine the output stream index based on the packet type
+    if (input_stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+        // Set the stream index to the video stream
+        out_pkt->stream_index = writer->video_stream_idx;
+
+        // Ensure PTS >= DTS for video packets
+        if (out_pkt->pts != AV_NOPTS_VALUE && out_pkt->dts != AV_NOPTS_VALUE && out_pkt->pts < out_pkt->dts) {
+            out_pkt->pts = out_pkt->dts;
+        }
+    } else if (input_stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
+        // Set the stream index to the audio stream
+        if (writer->audio.stream_idx >= 0) {
+            out_pkt->stream_index = writer->audio.stream_idx;
+        } else {
+            // No audio stream in the output, drop the packet
+            av_packet_free(&out_pkt);
+            return 0;
+        }
+    } else {
+        // Unknown stream type, drop the packet
+        av_packet_free(&out_pkt);
+        return 0;
+    }
+
+    // Write the packet to the output
+    ret = av_interleaved_write_frame(writer->output_ctx, out_pkt);
+    if (ret < 0) {
+        char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+        av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+        log_error("Error writing frame for stream %s: %s",
+                writer->stream_name ? writer->stream_name : "unknown", error_buf);
+    }
+
+    // Free the packet
+    av_packet_free(&out_pkt);
+
+    return ret;
+}

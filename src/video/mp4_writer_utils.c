@@ -27,6 +27,510 @@
 #include "core/logger.h"
 #include "video/mp4_writer.h"
 #include "video/mp4_writer_internal.h"
+#include "video/ffmpeg_utils.h"
+
+// Structure to hold audio transcoding context
+typedef struct {
+    AVCodecContext *decoder_ctx;
+    AVCodecContext *encoder_ctx;
+    AVFrame *frame;
+    AVPacket *in_pkt;
+    AVPacket *out_pkt;
+    int initialized;
+} audio_transcoder_t;
+
+// Global transcoder context for each stream
+static audio_transcoder_t audio_transcoders[MAX_STREAMS] = {0};
+static char audio_transcoder_stream_names[MAX_STREAMS][MAX_STREAM_NAME] = {{0}};
+static pthread_mutex_t audio_transcoder_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+/**
+ * Initialize audio transcoder for a stream
+ *
+ * @param stream_name Name of the stream
+ * @param codec_params Original codec parameters (μ-law)
+ * @param time_base Time base of the original stream
+ * @return Index of the transcoder in the array, or -1 on error
+ */
+static int init_audio_transcoder(const char *stream_name,
+                               const AVCodecParameters *codec_params,
+                               const AVRational *time_base) {
+    int ret = -1;
+    int slot = -1;
+    const AVCodec *decoder = NULL;
+    const AVCodec *encoder = NULL;
+
+    pthread_mutex_lock(&audio_transcoder_mutex);
+
+    // Find an empty slot or existing entry for this stream
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (!audio_transcoders[i].initialized) {
+            slot = i;
+            break;
+        } else if (audio_transcoder_stream_names[i][0] != '\0' &&
+                  strcmp(audio_transcoder_stream_names[i], stream_name) == 0) {
+            // Stream already has a transcoder, return its index
+            pthread_mutex_unlock(&audio_transcoder_mutex);
+            return i;
+        }
+    }
+
+    if (slot == -1) {
+        log_error("No available slots for audio transcoder registration");
+        pthread_mutex_unlock(&audio_transcoder_mutex);
+        return -1;
+    }
+
+    // Find the μ-law decoder
+    decoder = avcodec_find_decoder(codec_params->codec_id);
+    if (!decoder) {
+        log_error("Failed to find decoder for μ-law audio in %s", stream_name);
+        pthread_mutex_unlock(&audio_transcoder_mutex);
+        return -1;
+    }
+
+    // Find the AAC encoder
+    encoder = avcodec_find_encoder(AV_CODEC_ID_AAC);
+    if (!encoder) {
+        log_error("Failed to find AAC encoder for %s", stream_name);
+        pthread_mutex_unlock(&audio_transcoder_mutex);
+        return -1;
+    }
+
+    // Create decoder context
+    audio_transcoders[slot].decoder_ctx = avcodec_alloc_context3(decoder);
+    if (!audio_transcoders[slot].decoder_ctx) {
+        log_error("Failed to allocate decoder context for %s", stream_name);
+        goto cleanup;
+    }
+
+    // Copy parameters to decoder context
+    ret = avcodec_parameters_to_context(audio_transcoders[slot].decoder_ctx, codec_params);
+    if (ret < 0) {
+        log_ffmpeg_error(ret, "Failed to copy parameters to decoder context");
+        goto cleanup;
+    }
+
+    // Set time base
+    audio_transcoders[slot].decoder_ctx->time_base = *time_base;
+
+    // Open decoder
+    ret = avcodec_open2(audio_transcoders[slot].decoder_ctx, decoder, NULL);
+    if (ret < 0) {
+        log_ffmpeg_error(ret, "Failed to open μ-law decoder");
+        goto cleanup;
+    }
+
+    // Create encoder context
+    audio_transcoders[slot].encoder_ctx = avcodec_alloc_context3(encoder);
+    if (!audio_transcoders[slot].encoder_ctx) {
+        log_error("Failed to allocate encoder context for %s", stream_name);
+        goto cleanup;
+    }
+
+    // Set encoder parameters
+    audio_transcoders[slot].encoder_ctx->sample_fmt = AV_SAMPLE_FMT_FLTP; // AAC requires float planar format
+    audio_transcoders[slot].encoder_ctx->sample_rate = audio_transcoders[slot].decoder_ctx->sample_rate;
+
+    // Handle channel layout using the newer FFmpeg API (5.0+)
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
+    // Copy channel layout from decoder to encoder
+    av_channel_layout_copy(&audio_transcoders[slot].encoder_ctx->ch_layout,
+                          &audio_transcoders[slot].decoder_ctx->ch_layout);
+
+    // If channel layout is not set, default to stereo
+    if (audio_transcoders[slot].encoder_ctx->ch_layout.nb_channels == 0) {
+        av_channel_layout_default(&audio_transcoders[slot].encoder_ctx->ch_layout, 2); // Default to stereo
+    }
+#else
+    // For older FFmpeg versions
+    audio_transcoders[slot].encoder_ctx->channels = audio_transcoders[slot].decoder_ctx->channels;
+    audio_transcoders[slot].encoder_ctx->channel_layout = av_get_default_channel_layout(audio_transcoders[slot].decoder_ctx->channels);
+#endif
+
+    audio_transcoders[slot].encoder_ctx->bit_rate = 128000; // 128 kbps, a good default for AAC
+    audio_transcoders[slot].encoder_ctx->time_base = (AVRational){1, audio_transcoders[slot].encoder_ctx->sample_rate};
+
+    // Open encoder
+    ret = avcodec_open2(audio_transcoders[slot].encoder_ctx, encoder, NULL);
+    if (ret < 0) {
+        log_ffmpeg_error(ret, "Failed to open AAC encoder");
+        goto cleanup;
+    }
+
+    // Allocate frame and packets
+    audio_transcoders[slot].frame = av_frame_alloc();
+    if (!audio_transcoders[slot].frame) {
+        log_error("Failed to allocate frame for %s", stream_name);
+        goto cleanup;
+    }
+
+    audio_transcoders[slot].in_pkt = av_packet_alloc();
+    if (!audio_transcoders[slot].in_pkt) {
+        log_error("Failed to allocate input packet for %s", stream_name);
+        goto cleanup;
+    }
+
+    audio_transcoders[slot].out_pkt = av_packet_alloc();
+    if (!audio_transcoders[slot].out_pkt) {
+        log_error("Failed to allocate output packet for %s", stream_name);
+        goto cleanup;
+    }
+
+    // Mark as initialized
+    audio_transcoders[slot].initialized = 1;
+
+    // Store stream name
+    strncpy(audio_transcoder_stream_names[slot], stream_name, MAX_STREAM_NAME - 1);
+    audio_transcoder_stream_names[slot][MAX_STREAM_NAME - 1] = '\0';
+
+    log_info("Successfully initialized audio transcoder from μ-law to AAC for %s", stream_name);
+
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
+    log_info("Sample rate: %d, Channels: %d, Bit rate: %ld",
+            audio_transcoders[slot].encoder_ctx->sample_rate,
+            audio_transcoders[slot].encoder_ctx->ch_layout.nb_channels,
+            audio_transcoders[slot].encoder_ctx->bit_rate);
+#else
+    log_info("Sample rate: %d, Channels: %d, Bit rate: %ld",
+            audio_transcoders[slot].encoder_ctx->sample_rate,
+            audio_transcoders[slot].encoder_ctx->channels,
+            audio_transcoders[slot].encoder_ctx->bit_rate);
+#endif
+
+    pthread_mutex_unlock(&audio_transcoder_mutex);
+    return slot;
+
+cleanup:
+    if (audio_transcoders[slot].decoder_ctx) {
+        avcodec_free_context(&audio_transcoders[slot].decoder_ctx);
+        audio_transcoders[slot].decoder_ctx = NULL;
+    }
+
+    if (audio_transcoders[slot].encoder_ctx) {
+        avcodec_free_context(&audio_transcoders[slot].encoder_ctx);
+        audio_transcoders[slot].encoder_ctx = NULL;
+    }
+
+    if (audio_transcoders[slot].frame) {
+        av_frame_free(&audio_transcoders[slot].frame);
+        audio_transcoders[slot].frame = NULL;
+    }
+
+    if (audio_transcoders[slot].in_pkt) {
+        av_packet_free(&audio_transcoders[slot].in_pkt);
+        audio_transcoders[slot].in_pkt = NULL;
+    }
+
+    if (audio_transcoders[slot].out_pkt) {
+        av_packet_free(&audio_transcoders[slot].out_pkt);
+        audio_transcoders[slot].out_pkt = NULL;
+    }
+
+    audio_transcoders[slot].initialized = 0;
+    audio_transcoder_stream_names[slot][0] = '\0';
+
+    pthread_mutex_unlock(&audio_transcoder_mutex);
+    return -1;
+}
+
+/**
+ * Cleanup audio transcoder for a stream
+ *
+ * @param stream_name Name of the stream
+ */
+void cleanup_audio_transcoder(const char *stream_name) {
+    pthread_mutex_lock(&audio_transcoder_mutex);
+
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (audio_transcoder_stream_names[i][0] != '\0' &&
+            strcmp(audio_transcoder_stream_names[i], stream_name) == 0) {
+            // Found the transcoder for this stream
+            if (audio_transcoders[i].decoder_ctx) {
+                avcodec_free_context(&audio_transcoders[i].decoder_ctx);
+                audio_transcoders[i].decoder_ctx = NULL;
+            }
+
+            if (audio_transcoders[i].encoder_ctx) {
+                avcodec_free_context(&audio_transcoders[i].encoder_ctx);
+                audio_transcoders[i].encoder_ctx = NULL;
+            }
+
+            if (audio_transcoders[i].frame) {
+                av_frame_free(&audio_transcoders[i].frame);
+                audio_transcoders[i].frame = NULL;
+            }
+
+            if (audio_transcoders[i].in_pkt) {
+                av_packet_free(&audio_transcoders[i].in_pkt);
+                audio_transcoders[i].in_pkt = NULL;
+            }
+
+            if (audio_transcoders[i].out_pkt) {
+                av_packet_free(&audio_transcoders[i].out_pkt);
+                audio_transcoders[i].out_pkt = NULL;
+            }
+
+            audio_transcoders[i].initialized = 0;
+            audio_transcoder_stream_names[i][0] = '\0';
+
+            log_info("Cleaned up audio transcoder for stream %s", stream_name);
+            break;
+        }
+    }
+
+    pthread_mutex_unlock(&audio_transcoder_mutex);
+}
+
+/**
+ * Transcode an audio packet from μ-law to AAC
+ *
+ * @param stream_name Name of the stream
+ * @param in_pkt Input packet (μ-law)
+ * @param out_pkt Output packet (AAC) - must be allocated by caller
+ * @param input_stream Original input stream
+ * @return 0 on success, negative on error
+ */
+int transcode_audio_packet(const char *stream_name,
+                          const AVPacket *in_pkt,
+                          AVPacket *out_pkt,
+                          const AVStream *input_stream) {
+    int ret = 0;
+    int transcoder_idx = -1;
+    int got_output = 0;
+
+    // Find the transcoder for this stream
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (audio_transcoders[i].initialized &&
+            audio_transcoder_stream_names[i][0] != '\0' &&
+            strcmp(audio_transcoder_stream_names[i], stream_name) == 0) {
+            transcoder_idx = i;
+            break;
+        }
+    }
+
+    if (transcoder_idx == -1) {
+        // Initialize a new transcoder
+        transcoder_idx = init_audio_transcoder(stream_name,
+                                             input_stream->codecpar,
+                                             &input_stream->time_base);
+        if (transcoder_idx == -1) {
+            log_error("Failed to initialize audio transcoder for %s", stream_name);
+            return -1;
+        }
+    }
+
+    // Copy input packet to our internal packet
+    av_packet_unref(audio_transcoders[transcoder_idx].in_pkt);
+    ret = av_packet_ref(audio_transcoders[transcoder_idx].in_pkt, in_pkt);
+    if (ret < 0) {
+        log_ffmpeg_error(ret, "Failed to copy input packet");
+        return ret;
+    }
+
+    // Send packet to decoder
+    ret = avcodec_send_packet(audio_transcoders[transcoder_idx].decoder_ctx,
+                             audio_transcoders[transcoder_idx].in_pkt);
+    if (ret < 0) {
+        log_ffmpeg_error(ret, "Failed to send packet to decoder");
+        return ret;
+    }
+
+    // Receive frame from decoder
+    ret = avcodec_receive_frame(audio_transcoders[transcoder_idx].decoder_ctx,
+                               audio_transcoders[transcoder_idx].frame);
+    if (ret < 0) {
+        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+            // Need more input or end of file, not an error
+            return 0;
+        }
+        log_ffmpeg_error(ret, "Failed to receive frame from decoder");
+        return ret;
+    }
+
+    // Send frame to encoder
+    ret = avcodec_send_frame(audio_transcoders[transcoder_idx].encoder_ctx,
+                            audio_transcoders[transcoder_idx].frame);
+    if (ret < 0) {
+        log_ffmpeg_error(ret, "Failed to send frame to encoder");
+        return ret;
+    }
+
+    // Receive packet from encoder
+    av_packet_unref(audio_transcoders[transcoder_idx].out_pkt);
+    ret = avcodec_receive_packet(audio_transcoders[transcoder_idx].encoder_ctx,
+                                audio_transcoders[transcoder_idx].out_pkt);
+    if (ret < 0) {
+        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+            // Need more input or end of file, not an error
+            return 0;
+        }
+        log_ffmpeg_error(ret, "Failed to receive packet from encoder");
+        return ret;
+    }
+
+    // Copy output packet to caller's packet
+    av_packet_unref(out_pkt);
+    ret = av_packet_ref(out_pkt, audio_transcoders[transcoder_idx].out_pkt);
+    if (ret < 0) {
+        log_ffmpeg_error(ret, "Failed to copy output packet");
+        return ret;
+    }
+
+    // Set output packet time base to match the encoder's time base
+    out_pkt->time_base = audio_transcoders[transcoder_idx].encoder_ctx->time_base;
+
+    // Set output packet stream index to match the input packet
+    out_pkt->stream_index = in_pkt->stream_index;
+
+    return 0;
+}
+
+/**
+ * Transcode audio from μ-law to AAC format
+ *
+ * @param codec_params Original codec parameters (μ-law)
+ * @param time_base Time base of the original stream
+ * @param stream_name Name of the stream (for logging)
+ * @param transcoded_params Output parameter to store the transcoded codec parameters
+ * @return 0 on success, negative on error
+ */
+static int transcode_mulaw_to_aac(const AVCodecParameters *codec_params,
+                                 const AVRational *time_base,
+                                 const char *stream_name,
+                                 AVCodecParameters **transcoded_params) {
+    int ret = 0;
+    AVCodecContext *decoder_ctx = NULL;
+    AVCodecContext *encoder_ctx = NULL;
+    const AVCodec *decoder = NULL;
+    const AVCodec *encoder = NULL;
+    AVFrame *frame = NULL;
+    AVPacket *pkt = NULL;
+
+    // Allocate output codec parameters
+    *transcoded_params = avcodec_parameters_alloc();
+    if (!*transcoded_params) {
+        log_error("Failed to allocate transcoded codec parameters for %s",
+                stream_name ? stream_name : "unknown");
+        ret = AVERROR(ENOMEM);
+        goto cleanup;
+    }
+
+    // Find the μ-law decoder
+    decoder = avcodec_find_decoder(codec_params->codec_id);
+    if (!decoder) {
+        log_error("Failed to find decoder for μ-law audio in %s",
+                stream_name ? stream_name : "unknown");
+        ret = AVERROR_DECODER_NOT_FOUND;
+        goto cleanup;
+    }
+
+    // Find the AAC encoder
+    encoder = avcodec_find_encoder(AV_CODEC_ID_AAC);
+    if (!encoder) {
+        log_error("Failed to find AAC encoder for %s",
+                stream_name ? stream_name : "unknown");
+        ret = AVERROR_ENCODER_NOT_FOUND;
+        goto cleanup;
+    }
+
+    // Create decoder context
+    decoder_ctx = avcodec_alloc_context3(decoder);
+    if (!decoder_ctx) {
+        log_error("Failed to allocate decoder context for %s",
+                stream_name ? stream_name : "unknown");
+        ret = AVERROR(ENOMEM);
+        goto cleanup;
+    }
+
+    // Copy parameters to decoder context
+    ret = avcodec_parameters_to_context(decoder_ctx, codec_params);
+    if (ret < 0) {
+        log_ffmpeg_error(ret, "Failed to copy parameters to decoder context");
+        goto cleanup;
+    }
+
+    // Set time base
+    decoder_ctx->time_base = *time_base;
+
+    // Open decoder
+    ret = avcodec_open2(decoder_ctx, decoder, NULL);
+    if (ret < 0) {
+        log_ffmpeg_error(ret, "Failed to open μ-law decoder");
+        goto cleanup;
+    }
+
+    // Create encoder context
+    encoder_ctx = avcodec_alloc_context3(encoder);
+    if (!encoder_ctx) {
+        log_error("Failed to allocate encoder context for %s",
+                stream_name ? stream_name : "unknown");
+        ret = AVERROR(ENOMEM);
+        goto cleanup;
+    }
+
+    // Set encoder parameters
+    encoder_ctx->sample_fmt = AV_SAMPLE_FMT_FLTP; // AAC requires float planar format
+    encoder_ctx->sample_rate = decoder_ctx->sample_rate;
+
+    // Handle channel layout using the newer FFmpeg API (5.0+)
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
+    // Copy channel layout from decoder to encoder
+    av_channel_layout_copy(&encoder_ctx->ch_layout, &decoder_ctx->ch_layout);
+
+    // If channel layout is not set, default to stereo
+    if (encoder_ctx->ch_layout.nb_channels == 0) {
+        av_channel_layout_default(&encoder_ctx->ch_layout, 2); // Default to stereo
+    }
+#else
+    // For older FFmpeg versions
+    encoder_ctx->channels = decoder_ctx->channels;
+    encoder_ctx->channel_layout = av_get_default_channel_layout(decoder_ctx->channels);
+#endif
+
+    encoder_ctx->bit_rate = 128000; // 128 kbps, a good default for AAC
+    encoder_ctx->time_base = (AVRational){1, encoder_ctx->sample_rate};
+
+    // Open encoder
+    ret = avcodec_open2(encoder_ctx, encoder, NULL);
+    if (ret < 0) {
+        log_ffmpeg_error(ret, "Failed to open AAC encoder");
+        goto cleanup;
+    }
+
+    // Get the encoder parameters
+    ret = avcodec_parameters_from_context(*transcoded_params, encoder_ctx);
+    if (ret < 0) {
+        log_ffmpeg_error(ret, "Failed to get parameters from encoder context");
+        goto cleanup;
+    }
+
+    log_info("Successfully configured transcoding from μ-law to AAC for %s",
+            stream_name ? stream_name : "unknown");
+
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
+    log_info("Sample rate: %d, Channels: %d, Bit rate: %ld",
+            encoder_ctx->sample_rate, encoder_ctx->ch_layout.nb_channels, encoder_ctx->bit_rate);
+#else
+    log_info("Sample rate: %d, Channels: %d, Bit rate: %ld",
+            encoder_ctx->sample_rate, encoder_ctx->channels, encoder_ctx->bit_rate);
+#endif
+
+    ret = 0; // Success
+
+cleanup:
+    if (decoder_ctx) avcodec_free_context(&decoder_ctx);
+    if (encoder_ctx) avcodec_free_context(&encoder_ctx);
+    if (frame) av_frame_free(&frame);
+    if (pkt) av_packet_free(&pkt);
+
+    if (ret < 0 && *transcoded_params) {
+        avcodec_parameters_free(transcoded_params);
+        *transcoded_params = NULL;
+    }
+
+    return ret;
+}
 
 /**
  * Check if an audio codec is compatible with MP4 format
@@ -616,19 +1120,65 @@ int mp4_writer_add_audio_stream(mp4_writer_t *writer, const AVCodecParameters *c
     bool is_compatible = is_audio_codec_compatible_with_mp4(codec_params->codec_id, &codec_name);
 
     if (!is_compatible) {
-        log_error("%s codec is not compatible with MP4 format for stream %s",
-                 codec_name, writer->stream_name ? writer->stream_name : "unknown");
-        log_info("Disabling audio recording for stream %s due to incompatible codec",
-                writer->stream_name ? writer->stream_name : "unknown");
+        // Check if this is μ-law or A-law audio that we can transcode
+        if (codec_params->codec_id == AV_CODEC_ID_PCM_MULAW ||
+            codec_params->codec_id == AV_CODEC_ID_PCM_ALAW) {
+            log_info("%s codec detected for stream %s - will transcode to AAC",
+                    codec_name, writer->stream_name ? writer->stream_name : "unknown");
 
-        // Disable audio for this writer
-        writer->has_audio = 0;
+            // Transcode μ-law/A-law to AAC
+            AVCodecParameters *transcoded_params = NULL;
+            int ret = transcode_mulaw_to_aac(codec_params, time_base,
+                                           writer->stream_name, &transcoded_params);
 
-        // Free the codec parameters
-        avcodec_parameters_free(&local_codec_params);
+            if (ret < 0 || !transcoded_params) {
+                log_error("Failed to transcode %s to AAC for stream %s",
+                         codec_name, writer->stream_name ? writer->stream_name : "unknown");
+                log_info("Disabling audio recording for stream %s due to transcoding failure",
+                        writer->stream_name ? writer->stream_name : "unknown");
 
-        // Return success but don't add the audio stream
-        return 0;
+                // Disable audio for this writer
+                writer->has_audio = 0;
+
+                // Free the codec parameters
+                avcodec_parameters_free(&local_codec_params);
+
+                // Return success but don't add the audio stream
+                return 0;
+            }
+
+            // Free the original codec parameters
+            avcodec_parameters_free(&local_codec_params);
+
+            // Use the transcoded parameters instead
+            local_codec_params = transcoded_params;
+
+            log_info("Successfully transcoded %s to AAC for stream %s",
+                    codec_name, writer->stream_name ? writer->stream_name : "unknown");
+
+            // Initialize the audio transcoder for this stream
+            int transcoder_idx = init_audio_transcoder(writer->stream_name,
+                                                     codec_params,
+                                                     time_base);
+            if (transcoder_idx < 0) {
+                log_warn("Failed to initialize audio transcoder for %s, but continuing with transcoded parameters",
+                       writer->stream_name ? writer->stream_name : "unknown");
+            }
+        } else {
+            log_error("%s codec is not compatible with MP4 format for stream %s",
+                     codec_name, writer->stream_name ? writer->stream_name : "unknown");
+            log_info("Disabling audio recording for stream %s due to incompatible codec",
+                    writer->stream_name ? writer->stream_name : "unknown");
+
+            // Disable audio for this writer
+            writer->has_audio = 0;
+
+            // Free the codec parameters
+            avcodec_parameters_free(&local_codec_params);
+
+            // Return success but don't add the audio stream
+            return 0;
+        }
     } else {
         log_info("Using %s audio codec for stream %s",
                 codec_name, writer->stream_name ? writer->stream_name : "unknown");

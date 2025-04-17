@@ -122,6 +122,12 @@ int mp4_writer_has_audio(mp4_writer_t *writer) {
 }
 
 
+// Forward declaration of transcode_audio_packet function
+extern int transcode_audio_packet(const char *stream_name,
+                                const AVPacket *in_pkt,
+                                AVPacket *out_pkt,
+                                const AVStream *input_stream);
+
 /**
  * Write a packet to the MP4 file
  * This function handles both video and audio packets
@@ -146,15 +152,46 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
         return 0;
     }
 
-    // If this is an audio packet with an incompatible codec, silently drop it
+    // If this is an audio packet with an incompatible codec, try to transcode it
     if (input_stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
-        // Check for incompatible codecs
         if (input_stream->codecpar->codec_id == AV_CODEC_ID_PCM_MULAW ||
             input_stream->codecpar->codec_id == AV_CODEC_ID_PCM_ALAW) {
-            // Just return success without doing anything
-            return 0;
+
+            // Create a new packet for the transcoded audio
+            AVPacket *transcoded_pkt = av_packet_alloc();
+            if (!transcoded_pkt) {
+                log_error("Failed to allocate packet for transcoded audio");
+                return -1;
+            }
+
+            // Transcode the audio packet
+            int ret = transcode_audio_packet(writer->stream_name,
+                                           in_pkt,
+                                           transcoded_pkt,
+                                           input_stream);
+
+            if (ret < 0) {
+                log_error("Failed to transcode audio packet for %s", writer->stream_name);
+                av_packet_free(&transcoded_pkt);
+                return 0; // Return success but don't write the packet
+            }
+
+            if (transcoded_pkt->size <= 0) {
+                // No output packet was generated, this is normal for some frames
+                av_packet_free(&transcoded_pkt);
+                return 0; // Return success but don't write the packet
+            }
+
+            // Write the transcoded packet
+            ret = mp4_segment_recorder_write_packet(writer, transcoded_pkt, input_stream);
+
+            // Free the transcoded packet
+            av_packet_free(&transcoded_pkt);
+
+            return ret;
         }
     }
 
-    return 0;
+    // Process normal packets
+    return mp4_segment_recorder_write_packet(writer, in_pkt, input_stream);
 }

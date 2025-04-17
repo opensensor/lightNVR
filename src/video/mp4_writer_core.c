@@ -207,6 +207,10 @@ void mp4_writer_close(mp4_writer_t *writer) {
         log_warn("Failed to destroy audio mutex: %s", strerror(mutex_result));
     }
 
+    // Clean up any audio transcoders for this stream
+    extern void cleanup_audio_transcoder(const char *stream_name);
+    cleanup_audio_transcoder(writer->stream_name);
+
     // Free the writer structure
     free(writer);
 
