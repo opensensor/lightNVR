@@ -26,6 +26,7 @@
 #include "utils/strings.h"
 #include "video/detection_model.h"
 #include "video/onvif_detection.h"
+#include "video/stream_state.h"
 
 // Forward declaration of the internal function - this is defined in detection_stream_thread.c
 extern int process_segment_for_detection(stream_detection_thread_t *thread, const char *segment_path);
