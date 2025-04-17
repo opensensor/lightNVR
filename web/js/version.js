@@ -4,4 +4,4 @@
  * DO NOT EDIT MANUALLY
  */
 
-export const VERSION = '0.11.17';
+export const VERSION = '0.11.18';

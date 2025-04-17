@@ -8,7 +8,7 @@ import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { showStatusMessage, showSnapshotPreview, setupModals, addStatusMessageStyles, addModalStyles } from './UI.js';
 import { toggleFullscreen, exitFullscreenMode } from './FullscreenManager.js';
 import { startDetectionPolling, cleanupDetectionPolling } from './DetectionOverlay.js';
-import { usePostMutation, useMutation } from '../../query-client.js';
+import { usePostMutation, useMutation, useQuery, useQueryClient } from '../../query-client.js';
 import { WebRTCVideoCell } from './WebRTCVideoCell.jsx';
 
 /**
@@ -196,48 +196,64 @@ export function WebRTCView() {
     };
   }, [streams, currentPage, layout, selectedStream]); // Add all relevant dependencies
 
-  // Load streams after the component has rendered and videoGridRef is available
+  // Get query client for fetching and invalidating queries
+  const queryClient = useQueryClient();
+
+  // Fetch streams using preact-query
+  const {
+    data: streamsData,
+    isLoading: isLoadingStreams,
+    error: streamsError
+  } = useQuery(
+    'streams',
+    '/api/streams',
+    {
+      timeout: 15000, // 15 second timeout
+      retries: 2,     // Retry twice
+      retryDelay: 1000 // 1 second between retries
+    }
+  );
+
+  // Update loading state based on streams query status
   useEffect(() => {
-      // Set loading state initially
-      setIsLoading(true);
+    setIsLoading(isLoadingStreams);
+  }, [isLoadingStreams]);
 
-      // Create a timeout to handle potential stalls in loading
-      const timeoutId = setTimeout(() => {
-        console.warn('Stream loading timed out');
-        setIsLoading(false);
-        showStatusMessage('Loading streams timed out. Please try refreshing the page.');
-      }, 15000); // 15 second timeout
+  // Process streams data when it's loaded
+  useEffect(() => {
+    if (streamsData && Array.isArray(streamsData)) {
+      // Process the streams data
+      const processStreams = async () => {
+        try {
+          // Filter and process the streams
+          const filteredStreams = await filterStreamsForWebRTC(streamsData);
 
-      // Load streams from API with timeout handling
-      loadStreams()
-        .then((streamData) => {
-          clearTimeout(timeoutId);
-          if (streamData && streamData.length > 0) {
-            setStreams(streamData);
+          if (filteredStreams.length > 0) {
+            setStreams(filteredStreams);
 
             // Set selectedStream based on URL parameter if it exists and is valid
             const urlParams = new URLSearchParams(window.location.search);
             const streamParam = urlParams.get('stream');
 
-            if (streamParam && streamData.some(stream => stream.name === streamParam)) {
+            if (streamParam && filteredStreams.some(stream => stream.name === streamParam)) {
               // If the stream from URL exists in the loaded streams, use it
               setSelectedStream(streamParam);
-            } else if (!selectedStream || !streamData.some(stream => stream.name === selectedStream)) {
+            } else if (!selectedStream || !filteredStreams.some(stream => stream.name === selectedStream)) {
               // Otherwise use the first stream if selectedStream is not set or invalid
-              setSelectedStream(streamData[0].name);
+              setSelectedStream(filteredStreams[0].name);
             }
           } else {
-            console.warn('No streams returned from API');
+            console.warn('No streams available for WebRTC view after filtering');
           }
-          setIsLoading(false);
-        })
-        .catch((error) => {
-          clearTimeout(timeoutId);
-          console.error('Error loading streams:', error);
-          showStatusMessage('Error loading streams: ' + error.message);
-          setIsLoading(false);
-        });
-  }, []);
+        } catch (error) {
+          console.error('Error processing streams:', error);
+          showStatusMessage('Error processing streams: ' + error.message);
+        }
+      };
+
+      processStreams();
+    }
+  }, [streamsData, selectedStream, queryClient]);
 
   // Use a ref to track previous values to prevent unnecessary updates
   const previousValues = useRef({ layout, selectedStream, currentPage, streamsLength: streams.length });
@@ -321,61 +337,46 @@ export function WebRTCView() {
   }, [currentPage, layout, selectedStream, streams.length]);
 
   /**
-   * Load streams from API
-   * @returns {Promise<Array>} Promise resolving to array of streams
+   * Filter streams for WebRTC view
+   * @param {Array} streams - Array of streams
+   * @returns {Promise<Array>} Promise resolving to filtered array of streams
    */
-  const loadStreams = async () => {
+  const filterStreamsForWebRTC = async (streams) => {
     try {
-      // Create a timeout promise to handle potential stalls
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Request timed out')), 5000); // 5 second timeout
-      });
-
-      // Fetch streams from API with timeout
-      const fetchPromise = fetch('/api/streams');
-      const response = await Promise.race([fetchPromise, timeoutPromise]);
-
-      if (!response.ok) {
-        throw new Error('Failed to load streams');
+      if (!streams || !Array.isArray(streams)) {
+        console.warn('No streams data provided to filter');
+        return [];
       }
 
-      // Create another timeout for the JSON parsing
-      const jsonTimeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('JSON parsing timed out')), 3000); // 3 second timeout
-      });
-
-      const jsonPromise = response.json();
-      const data = await Promise.race([jsonPromise, jsonTimeoutPromise]);
-
       // For WebRTC view, we need to fetch full details for each stream
-      const streamPromises = (data || []).map(stream => {
-        // Create a timeout promise for this stream's details fetch
-        const detailsTimeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error(`Timeout fetching details for stream ${stream.name}`)), 3000);
-        });
+      const streamPromises = streams.map(async (stream) => {
+        try {
+          const streamId = stream.id || stream.name;
 
-        // Fetch stream details with timeout
-        const detailsFetchPromise = fetch(`/api/streams/${encodeURIComponent(stream.id || stream.name)}`)
-          .then(response => {
-            if (!response.ok) {
-              throw new Error(`Failed to load details for stream ${stream.name}`);
-            }
-            return response.json();
+          const streamDetails = await queryClient.fetchQuery({
+            queryKey: ['stream-details', streamId],
+            queryFn: async () => {
+              const response = await fetch(`/api/streams/${encodeURIComponent(streamId)}`);
+              if (!response.ok) {
+                throw new Error(`Failed to load details for stream ${stream.name}`);
+              }
+              return response.json();
+            },
+            staleTime: 30000 // 30 seconds
           });
 
-        // Race the fetch against the timeout
-        return Promise.race([detailsFetchPromise, detailsTimeoutPromise])
-          .catch(error => {
-            console.error(`Error loading details for stream ${stream.name}:`, error);
-            // Return the basic stream info if we can't get details
-            return stream;
-          });
+          return streamDetails;
+        } catch (error) {
+          console.error(`Error loading details for stream ${stream.name}:`, error);
+          // Return the basic stream info if we can't get details
+          return stream;
+        }
       });
 
       const detailedStreams = await Promise.all(streamPromises);
       console.log('Loaded detailed streams for WebRTC view:', detailedStreams);
 
-      // Filter out streams that are soft deleted, inactive, or not configured for HLS
+      // Filter out streams that are soft deleted, inactive, or not configured for streaming
       const filteredStreams = detailedStreams.filter(stream => {
         // Filter out soft deleted streams
         if (stream.is_deleted) {
@@ -389,9 +390,9 @@ export function WebRTCView() {
           return false;
         }
 
-        // Filter out streams not configured for HLS
+        // Filter out streams not configured for streaming
         if (!stream.streaming_enabled) {
-          console.log(`Stream ${stream.name} is not configured for HLS, filtering out`);
+          console.log(`Stream ${stream.name} is not configured for streaming, filtering out`);
           return false;
         }
 
@@ -402,9 +403,8 @@ export function WebRTCView() {
 
       return filteredStreams || [];
     } catch (error) {
-      console.error('Error loading streams for WebRTC view:', error);
-      showStatusMessage('Error loading streams: ' + error.message);
-
+      console.error('Error filtering streams for WebRTC view:', error);
+      showStatusMessage('Error processing streams: ' + error.message);
       return [];
     }
   };
@@ -762,7 +762,7 @@ export function WebRTCView() {
    * @param {string} streamName - Stream name
    * @param {string} message - Error message
    */
-  const handleWebRTCError = (streamName, message) => {
+  const handleWebRTCError = async (streamName, message) => {
     console.error(`WebRTC error for stream ${streamName}:`, message);
 
     // Find the video cell
@@ -839,7 +839,7 @@ export function WebRTCView() {
     errorIndicator.style.pointerEvents = 'auto'; // Enable pointer events when visible to allow retry button clicks
 
     // Add event listener to retry button
-    retryButton.addEventListener('click', (event) => {
+    retryButton.addEventListener('click', async (event) => {
       console.log('Retry button clicked for stream:', streamName);
       event.preventDefault();
       event.stopPropagation();
@@ -866,33 +866,38 @@ export function WebRTCView() {
         }, 100);
       } else {
         console.log(`Stream ${streamName} not found in local state, fetching from API`);
-        // Fetch stream info again and reinitialize
-        fetch(`/api/streams/${encodeURIComponent(streamName)}`)
-          .then(response => {
-            if (!response.ok) {
-              throw new Error(`Failed to fetch stream info: ${response.status} ${response.statusText}`);
-            }
-            return response.json();
-          })
-          .then(streamInfo => {
-            console.log(`Received stream info for ${streamName}, reinitializing`);
-            // Reinitialize with a small delay
-            setTimeout(() => {
-              initializeWebRTCPlayer(streamInfo);
-            }, 100);
-          })
-          .catch(error => {
-            console.error('Error fetching stream info:', error);
 
-            // Show error indicator again with new message
-            errorIndicator.style.display = 'flex';
-            errorMsg.textContent = 'Could not reconnect: ' + error.message;
-
-            // Hide loading indicator
-            if (loadingIndicator) {
-              loadingIndicator.style.display = 'none';
-            }
+        try {
+          // Fetch stream info using queryClient
+          const streamInfo = await queryClient.fetchQuery({
+            queryKey: ['stream-details', streamName],
+            queryFn: async () => {
+              const response = await fetch(`/api/streams/${encodeURIComponent(streamName)}`);
+              if (!response.ok) {
+                throw new Error(`Failed to fetch stream info: ${response.status} ${response.statusText}`);
+              }
+              return response.json();
+            },
+            staleTime: 10000 // 10 seconds
           });
+
+          console.log(`Received stream info for ${streamName}, reinitializing`);
+          // Reinitialize with a small delay
+          setTimeout(() => {
+            initializeWebRTCPlayer(streamInfo);
+          }, 100);
+        } catch (error) {
+          console.error('Error fetching stream info:', error);
+
+          // Show error indicator again with new message
+          errorIndicator.style.display = 'flex';
+          errorMsg.textContent = 'Could not reconnect: ' + error.message;
+
+          // Hide loading indicator
+          if (loadingIndicator) {
+            loadingIndicator.style.display = 'none';
+          }
+        }
       }
     });
   };
@@ -1141,13 +1146,31 @@ const takeSnapshot = (streamId, event) => {
             className={`video-container layout-${layout}`}
             ref={videoGridRef}
         >
-          {isLoading ? (
+          {isLoadingStreams ? (
               <div className="flex justify-center items-center col-span-full row-span-full h-64 w-full">
                 <div className="flex flex-col items-center justify-center py-8">
                   <div
                       className="inline-block animate-spin rounded-full border-4 border-gray-300 dark:border-gray-600 border-t-blue-600 dark:border-t-blue-500 w-16 h-16"></div>
                   <p className="mt-4 text-gray-700 dark:text-gray-300">Loading streams...</p>
               </div>
+            </div>
+          ) : (isLoading && !isLoadingStreams) ? (
+            <div className="flex justify-center items-center col-span-full row-span-full h-64 w-full">
+              <div className="flex flex-col items-center justify-center py-8">
+                <div
+                    className="inline-block animate-spin rounded-full border-4 border-gray-300 dark:border-gray-600 border-t-blue-600 dark:border-t-blue-500 w-16 h-16"></div>
+                <p className="mt-4 text-gray-700 dark:text-gray-300">Loading streams...</p>
+              </div>
+            </div>
+          ) : (streamsError) ? (
+            <div className="placeholder flex flex-col justify-center items-center col-span-full row-span-full bg-white dark:bg-gray-800 rounded-lg shadow-md text-center p-8">
+              <p className="mb-6 text-gray-600 dark:text-gray-300 text-lg">Error loading streams: {streamsError.message}</p>
+              <button
+                onClick={() => window.location.reload()}
+                className="btn-primary px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+              >
+                Retry
+              </button>
             </div>
           ) : streams.length === 0 ? (
             <div className="placeholder flex flex-col justify-center items-center col-span-full row-span-full bg-white dark:bg-gray-800 rounded-lg shadow-md text-center p-8">

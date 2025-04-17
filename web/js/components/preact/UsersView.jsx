@@ -9,11 +9,11 @@ import { useQuery, useMutation, fetchJSON } from '../../query-client.js';
 
 // Import user components
 import { USER_ROLES } from './users/UserRoles.js';
-import { UsersTable } from './users/UsersTable.js';
-import { AddUserModal } from './users/AddUserModal.js';
-import { EditUserModal } from './users/EditUserModal.js';
-import { DeleteUserModal } from './users/DeleteUserModal.js';
-import { ApiKeyModal } from './users/ApiKeyModal.js';
+import { UsersTable } from './users/UsersTable.jsx';
+import { AddUserModal } from './users/AddUserModal.jsx';
+import { EditUserModal } from './users/EditUserModal.jsx';
+import { DeleteUserModal } from './users/DeleteUserModal.jsx';
+import { ApiKeyModal } from './users/ApiKeyModal.jsx';
 
 /**
  * UsersView component
@@ -66,30 +66,17 @@ export function UsersView() {
   // Extract users array from response
   const users = usersData?.users || [];
 
-  // Add event listener for the add user button
-  useEffect(() => {
-    const addUserBtn = document.getElementById('add-user-btn');
-    if (addUserBtn) {
-      const handleAddUserClick = () => {
-        // Reset form data for new user
-        setFormData({
-          username: '',
-          password: '',
-          email: '',
-          role: 1,
-          is_active: true
-        });
-        setActiveModal('add');
-      };
-
-      addUserBtn.addEventListener('click', handleAddUserClick);
-
-      return () => {
-        if (addUserBtn) {
-          addUserBtn.removeEventListener('click', handleAddUserClick);
-        }
-      };
-    }
+  // Handler for the add user button
+  const handleAddUserClick = useCallback(() => {
+    // Reset form data for new user
+    setFormData({
+      username: '',
+      password: '',
+      email: '',
+      role: 1,
+      is_active: true
+    });
+    setActiveModal('add');
   }, []);
 
   /**
@@ -345,6 +332,16 @@ export function UsersView() {
   if (users.length === 0 && !loading) {
     return (
       <div>
+        <div className="mb-4 flex justify-between items-center">
+          <h2 className="text-xl font-semibold">User Management</h2>
+          <button
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+            onClick={handleAddUserClick}
+          >
+            Add User
+          </button>
+        </div>
+
         <div className="bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded relative mb-4">
           <h4 className="font-bold mb-2">No Users Found</h4>
           <p>Click the "Add User" button to create your first user.</p>
@@ -364,6 +361,16 @@ export function UsersView() {
   // Render users table with modals
   return (
     <div>
+      <div className="mb-4 flex justify-between items-center">
+        <h2 className="text-xl font-semibold">User Management</h2>
+        <button
+          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+          onClick={handleAddUserClick}
+        >
+          Add User
+        </button>
+      </div>
+
       <UsersTable
         users={users}
         onEdit={openEditModal}

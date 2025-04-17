@@ -9,10 +9,10 @@ import { showStatusMessage, showVideoModal, DeleteConfirmationModal } from './UI
 import { ContentLoader } from './LoadingIndicator.js';
 
 // Import components
-import { FiltersSidebar } from './recordings/FiltersSidebar.js';
-import { ActiveFilters } from './recordings/ActiveFilters.js';
-import { RecordingsTable } from './recordings/RecordingsTable.js';
-import { PaginationControls } from './recordings/PaginationControls.js';
+import { FiltersSidebar } from './recordings/FiltersSidebar.jsx';
+import { ActiveFilters } from './recordings/ActiveFilters.jsx';
+import { RecordingsTable } from './recordings/RecordingsTable.jsx';
+import { PaginationControls } from './recordings/PaginationControls.jsx';
 
 // Import utilities
 import { formatUtils } from './recordings/formatUtils.js';
@@ -225,6 +225,15 @@ export function RecordingsView() {
     if (recordingsData) {
       // Store recordings in the component state
       const recordingsArray = recordingsData.recordings || [];
+
+      // When filtering for detection events, all returned recordings should have detections
+      if (filters.recordingType === 'detection') {
+        recordingsArray.forEach(recording => {
+          recording.has_detections = true;
+        });
+      }
+
+      // Set the recordings state
       setRecordings(recordingsArray);
       setHasData(recordingsArray.length > 0);
 
@@ -233,7 +242,7 @@ export function RecordingsView() {
         updatePaginationFromResponse(recordingsData, pagination.currentPage);
       }
     }
-  }, [recordingsData]);
+  }, [recordingsData, filters.recordingType]);
 
   // Handle recordings error
   useEffect(() => {

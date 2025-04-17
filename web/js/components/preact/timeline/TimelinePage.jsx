@@ -4,15 +4,36 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { TimelineControls } from './TimelineControls.js';
-import { TimelineRuler } from './TimelineRuler.js';
-import { TimelineSegments } from './TimelineSegments.js';
-import { TimelineCursor } from './TimelineCursor.js';
-import { TimelinePlayer } from './TimelinePlayer.js';
-import { SpeedControls } from './SpeedControls.js';
+import { TimelineControls } from './TimelineControls.jsx';
+import { TimelineRuler } from './TimelineRuler.jsx';
+import { TimelineSegments } from './TimelineSegments.jsx';
+import { TimelineCursor } from './TimelineCursor.jsx';
+import { TimelinePlayer } from './TimelinePlayer.jsx';
+import { SpeedControls } from './SpeedControls.jsx';
 import { showStatusMessage } from '../UI.js';
 import { LoadingIndicator } from '../LoadingIndicator.js';
 import { useQuery } from '../../../query-client.js';
+
+// Utility function to convert between timeline hour and timestamp
+function timelineHourToTimestamp(hour, selectedDate) {
+  // Get the selected date or today
+  const date = selectedDate ? new Date(selectedDate) : new Date();
+
+  // Reset time components
+  date.setHours(0, 0, 0, 0);
+
+  // Add the hour component (this is in local time)
+  const milliseconds = date.getTime() + (hour * 60 * 60 * 1000);
+
+  // Convert to timestamp (seconds)
+  return Math.floor(milliseconds / 1000);
+}
+
+// Utility function to convert timestamp to timeline hour
+function timestampToTimelineHour(timestamp) {
+  const date = new Date(timestamp * 1000);
+  return date.getHours() + (date.getMinutes() / 60) + (date.getSeconds() / 3600);
+}
 
 // Global timeline state for child components
 const timelineState = {
@@ -31,6 +52,11 @@ const timelineState = {
   showOnlySegments: true,
   forceReload: false,
   userControllingCursor: false, // New flag to track if user is controlling cursor
+  preserveCursorPosition: false, // New flag to explicitly preserve cursor position
+  cursorPositionLocked: false, // New flag to lock the cursor position during playback
+  // Utility functions for time conversion
+  timelineHourToTimestamp,
+  timestampToTimelineHour,
   listeners: new Set(),
 
   // Last time state was updated
@@ -221,9 +247,21 @@ export function TimelinePage() {
     const endDate = new Date(date);
     endDate.setHours(23, 59, 59, 999);
 
+    // Format dates for API in ISO format
+    const startTime = startDate.toISOString();
+    const endTime = endDate.toISOString();
+
+    console.log('TimelinePage: Generated time range:', {
+      date,
+      startDate: startDate.toString(),
+      endDate: endDate.toString(),
+      startTime,
+      endTime
+    });
+
     return {
-      startTime: startDate.toISOString(),
-      endTime: endDate.toISOString()
+      startTime,
+      endTime
     };
   };
 
@@ -242,7 +280,17 @@ export function TimelinePage() {
   }, [selectedStream, selectedDate]);
 
   // Get time range for current date
-  const { startTime, endTime } = getTimeRange(selectedDate);
+  const timeRange = getTimeRange(selectedDate);
+  const startTime = timeRange.startTime;
+  const endTime = timeRange.endTime;
+
+  // Construct the URL for the API call
+  const timelineUrl = selectedStream ?
+    `/api/timeline/segments?stream=${encodeURIComponent(selectedStream)}&start=${encodeURIComponent(startTime)}&end=${encodeURIComponent(endTime)}` :
+    null;
+
+  // Debug the URL being used
+  console.log('TimelinePage: Timeline URL:', timelineUrl);
 
   // Fetch timeline segments using preact-query
   const {
@@ -252,7 +300,7 @@ export function TimelinePage() {
     refetch: refetchTimeline
   } = useQuery(
     ['timeline-segments', selectedStream, selectedDate],
-    selectedStream ? `/api/timeline/segments?stream=${encodeURIComponent(selectedStream)}&start=${encodeURIComponent(startTime)}&end=${encodeURIComponent(endTime)}` : null,
+    timelineUrl,
     {
       timeout: 30000, // 30 second timeout
       retries: 2,     // Retry twice
@@ -353,6 +401,12 @@ export function TimelinePage() {
       },
       onError: (error) => {
         console.error('TimelinePage: Error loading timeline data:', error);
+        console.error('TimelinePage: Error details:', {
+          message: error.message,
+          status: error.status,
+          statusText: error.statusText,
+          response: error.response
+        });
         showStatusMessage('Error loading timeline data: ' + error.message, 'error');
         setSegments([]);
       }

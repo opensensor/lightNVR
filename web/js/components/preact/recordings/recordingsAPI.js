@@ -82,54 +82,11 @@ export const recordingsAPI = {
           retries: 2,     // Retry twice
           retryDelay: 1000 // 1 second between retries
         },
-        {
-          onSuccess: (data) => {
-            // Set has_detections to false by default instead of making API calls
-            // This prevents unnecessary detection API calls on the recordings page
-            if (data.recordings && data.recordings.length > 0) {
-              data.recordings.forEach(recording => {
-                recording.has_detections = false;
-              });
-            }
-          }
-        }
+        // No special handling needed - we rely on the backend API for detection information
       );
     },
 
-    /**
-     * Hook to check if a recording has detections
-     * @param {Object} recording Recording to check
-     * @returns {Object} Query result
-     */
-    useRecordingDetections: (recording) => {
-      // Skip if recording doesn't have required properties
-      if (!recording || !recording.id || !recording.stream || !recording.start_time || !recording.end_time) {
-        return { data: { detections: [] } };
-      }
-
-      // Convert timestamps to seconds
-      const startTime = Math.floor(new Date(recording.start_time).getTime() / 1000);
-      const endTime = Math.floor(new Date(recording.end_time).getTime() / 1000);
-
-      // Query the detections API
-      const params = new URLSearchParams({
-        start: startTime,
-        end: endTime
-      });
-
-      return useQuery(
-        ['recording-detections', recording.id],
-        `/api/detection/results/${recording.stream}?${params.toString()}`,
-        {
-          timeout: 15000, // 15 second timeout
-          retries: 1,     // Retry once
-          retryDelay: 1000 // 1 second between retries
-        },
-        {
-          enabled: !!recording.id // Only run query if we have a recording ID
-        }
-      );
-    },
+    // useRecordingDetections hook removed - we rely on the backend API for detection information
 
     /**
      * Hook to delete a recording

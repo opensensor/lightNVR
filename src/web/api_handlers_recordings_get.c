@@ -293,7 +293,7 @@ void mg_handle_get_recordings_worker(struct mg_connection *c, struct mg_http_mes
         cJSON_AddStringToObject(recording, "end_time", end_time_str);
         cJSON_AddNumberToObject(recording, "duration", duration);
         cJSON_AddStringToObject(recording, "size", size_str);
-        cJSON_AddBoolToObject(recording, "has_detection", false); // Default to false as it's not in metadata
+        cJSON_AddBoolToObject(recording, "has_detection", false);
         
         cJSON_AddItemToArray(recordings_array, recording);
     }

@@ -10,14 +10,14 @@ import { useQuery, useMutation, fetchJSON } from '../../query-client.js';
 import { WebSocketClient } from '../../websocket-client.js';
 
 // Import system components
-import { SystemControls } from './system/SystemControls.js';
-import { SystemInfo } from './system/SystemInfo.js';
-import { MemoryStorage } from './system/MemoryStorage.js';
-import { StreamStorage } from './system/StreamStorage.js';
-import { NetworkInfo } from './system/NetworkInfo.js';
-import { StreamsInfo } from './system/StreamsInfo.js';
-import { LogsView } from './system/LogsView.js';
-import { LogsPoller } from './system/LogsPoller.js';
+import { SystemControls } from './system/SystemControls.jsx';
+import { SystemInfo } from './system/SystemInfo.jsx';
+import { MemoryStorage } from './system/MemoryStorage.jsx';
+import { StreamStorage } from './system/StreamStorage.jsx';
+import { NetworkInfo } from './system/NetworkInfo.jsx';
+import { StreamsInfo } from './system/StreamsInfo.jsx';
+import { LogsView } from './system/LogsView.jsx';
+import { LogsPoller } from './system/LogsPoller.jsx';
 
 // Import utility functions
 import { formatBytes, formatUptime, log_level_meets_minimum } from './system/SystemUtils.js';
@@ -306,7 +306,7 @@ export function SystemView() {
   }, []);
 
   return (
-    <section id="system-page" class="page">
+    <section id="system-page" className="page">
       <SystemControls
         restartSystem={restartSystem}
         shutdownSystem={shutdownSystem}
@@ -320,16 +320,16 @@ export function SystemView() {
         loadingMessage="Loading system information..."
         emptyMessage="System information not available. Please try again later."
       >
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <SystemInfo systemInfo={systemInfo} formatUptime={formatUptime} />
           <MemoryStorage systemInfo={systemInfo} formatBytes={formatBytes} />
         </div>
 
-        <div class="grid grid-cols-1 gap-4 mb-4">
+        <div className="grid grid-cols-1 gap-4 mb-4">
           <StreamStorage systemInfo={systemInfo} formatBytes={formatBytes} />
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <NetworkInfo systemInfo={systemInfo} />
           <StreamsInfo systemInfo={systemInfo} formatBytes={formatBytes} />
         </div>
