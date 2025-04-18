@@ -365,7 +365,6 @@ export function LiveView({isWebRTCDisabled}) {
     videoElement.playsInline = true;
     videoElement.autoplay = true;
     videoElement.muted = true;
-    videoElement.style.pointerEvents = 'none'; // Allow clicks to pass through to controls
 
     // Create loading indicator
     const loadingIndicator = document.createElement('div');
@@ -437,7 +436,6 @@ export function LiveView({isWebRTCDisabled}) {
     streamControls.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
     streamControls.style.padding = '5px';
     streamControls.style.borderRadius = '4px';
-    streamControls.style.pointerEvents = 'auto'; // Ensure clicks are registered
 
     // Add canvas for detection overlay
     const canvasOverlay = document.createElement('canvas');
@@ -448,7 +446,6 @@ export function LiveView({isWebRTCDisabled}) {
     canvasOverlay.style.left = '0';
     canvasOverlay.style.width = '100%';
     canvasOverlay.style.height = '100%';
-    canvasOverlay.style.pointerEvents = 'none'; // Allow clicks to pass through
     canvasOverlay.style.zIndex = '5'; // Above video but below controls
 
     // Assemble the video cell
@@ -538,7 +535,6 @@ export function LiveView({isWebRTCDisabled}) {
       canvasOverlay.style.left = '0';
       canvasOverlay.style.width = '100%';
       canvasOverlay.style.height = '100%';
-      canvasOverlay.style.pointerEvents = 'none'; // Allow clicks to pass through
       videoCell.appendChild(canvasOverlay);
     }
 

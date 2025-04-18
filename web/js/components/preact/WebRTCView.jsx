@@ -221,6 +221,7 @@ export function WebRTCView() {
 
   // Update loading state based on streams query status
   useEffect(() => {
+    // Only set loading state based on streams loading, but don't block UI interactions
     setIsLoading(isLoadingStreams);
   }, [isLoadingStreams]);
 
@@ -770,141 +771,23 @@ export function WebRTCView() {
   const handleWebRTCError = async (streamName, message) => {
     console.error(`WebRTC error for stream ${streamName}:`, message);
 
-    // Find the video cell
-    const videoElementId = `video-${streamName.replace(/\s+/g, '-')}`;
-    const videoElement = document.getElementById(videoElementId);
-    if (!videoElement) return;
+    // The WebRTCVideoCell component now handles its own error state
+    // We just need to update the connection state and let the component handle the UI
 
-    const videoCell = videoElement.closest('.video-cell');
-    if (!videoCell) return;
+    // Cleanup existing connection to trigger the error state in the component
+    cleanupWebRTCPlayer(streamName);
 
-    // Hide loading indicator
-    const loadingIndicator = videoCell.querySelector('.loading-indicator');
-    if (loadingIndicator) {
-      loadingIndicator.style.display = 'none';
+    // Find the stream in our streams array
+    const stream = streams.find(s => s.name === streamName);
+
+    if (stream) {
+      console.log(`Found stream ${streamName} in local state, will be reinitialized by component`);
+      // The component will handle retrying through its error UI
+    } else {
+      console.log(`Stream ${streamName} not found in local state, this is unexpected`);
+      // This is an edge case that shouldn't happen in normal operation
+      // The component will show an error state
     }
-
-    // Create error indicator if it doesn't exist
-    let errorIndicator = videoCell.querySelector('.error-indicator');
-    if (!errorIndicator) {
-      errorIndicator = document.createElement('div');
-      errorIndicator.className = 'error-indicator';
-      errorIndicator.style.position = 'absolute';
-      errorIndicator.style.top = '0';
-      errorIndicator.style.left = '0';
-      errorIndicator.style.width = '100%';
-      errorIndicator.style.height = '100%';
-      errorIndicator.style.display = 'flex';
-      errorIndicator.style.flexDirection = 'column';
-      errorIndicator.style.justifyContent = 'center';
-      errorIndicator.style.alignItems = 'center';
-      errorIndicator.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-      errorIndicator.style.color = 'white';
-      errorIndicator.style.zIndex = '20'; // Above video but below controls
-      videoCell.appendChild(errorIndicator);
-    }
-
-    // Create the error message and retry button
-    const errorIcon = document.createElement('div');
-    errorIcon.className = 'error-icon';
-    errorIcon.textContent = '!';
-    errorIcon.style.fontSize = '24px';
-    errorIcon.style.marginBottom = '10px';
-    errorIcon.style.fontWeight = 'bold';
-
-    const errorMsg = document.createElement('p');
-    errorMsg.textContent = message || 'WebRTC connection failed';
-    errorMsg.style.marginBottom = '15px';
-    errorMsg.style.textAlign = 'center';
-    errorMsg.style.maxWidth = '80%';
-    errorMsg.style.color = 'white';
-
-    const retryButton = document.createElement('button');
-    retryButton.className = 'retry-button';
-    retryButton.textContent = 'Retry';
-    retryButton.style.padding = '8px 16px';
-    retryButton.style.backgroundColor = '#2563eb'; // blue-600
-    retryButton.style.color = 'white';
-    retryButton.style.borderRadius = '4px';
-    retryButton.style.border = 'none';
-    retryButton.style.cursor = 'pointer';
-    retryButton.style.position = 'relative';
-    retryButton.style.zIndex = '30';
-    retryButton.style.pointerEvents = 'auto';
-    retryButton.style.margin = '0 auto';
-    retryButton.style.display = 'block';
-
-    // Clear the error indicator and add the new elements
-    errorIndicator.innerHTML = '';
-    errorIndicator.appendChild(errorIcon);
-    errorIndicator.appendChild(errorMsg);
-    errorIndicator.appendChild(retryButton);
-
-    errorIndicator.style.display = 'flex';
-    errorIndicator.style.pointerEvents = 'auto'; // Enable pointer events when visible to allow retry button clicks
-
-    // Add event listener to retry button
-    retryButton.addEventListener('click', async (event) => {
-      console.log('Retry button clicked for stream:', streamName);
-      event.preventDefault();
-      event.stopPropagation();
-
-      // Show loading indicator
-      if (loadingIndicator) {
-        loadingIndicator.style.display = 'flex';
-      }
-
-      // Hide error indicator
-      errorIndicator.style.display = 'none';
-
-      // Cleanup existing connection
-      cleanupWebRTCPlayer(streamName);
-
-      // Find the stream in our streams array
-      const stream = streams.find(s => s.name === streamName);
-
-      if (stream) {
-        console.log(`Found stream ${streamName} in local state, reinitializing`);
-        // Small delay to ensure cleanup is complete
-        setTimeout(() => {
-          initializeWebRTCPlayer(stream);
-        }, 100);
-      } else {
-        console.log(`Stream ${streamName} not found in local state, fetching from API`);
-
-        try {
-          // Fetch stream info using queryClient
-          const streamInfo = await queryClient.fetchQuery({
-            queryKey: ['stream-details', streamName],
-            queryFn: async () => {
-              const response = await fetch(`/api/streams/${encodeURIComponent(streamName)}`);
-              if (!response.ok) {
-                throw new Error(`Failed to fetch stream info: ${response.status} ${response.statusText}`);
-              }
-              return response.json();
-            },
-            staleTime: 10000 // 10 seconds
-          });
-
-          console.log(`Received stream info for ${streamName}, reinitializing`);
-          // Reinitialize with a small delay
-          setTimeout(() => {
-            initializeWebRTCPlayer(streamInfo);
-          }, 100);
-        } catch (error) {
-          console.error('Error fetching stream info:', error);
-
-          // Show error indicator again with new message
-          errorIndicator.style.display = 'flex';
-          errorMsg.textContent = 'Could not reconnect: ' + error.message;
-
-          // Hide loading indicator
-          if (loadingIndicator) {
-            loadingIndicator.style.display = 'none';
-          }
-        }
-      }
-    });
   };
 
   /**
@@ -966,8 +849,9 @@ export function WebRTCView() {
    * Toggle fullscreen mode for a specific stream
    * @param {string} streamName - Stream name
    * @param {Event} event - Click event
+   * @param {HTMLElement} cellElement - The video cell element (passed from the component)
    */
-  const toggleStreamFullscreen = (streamName, event) => {
+  const toggleStreamFullscreen = (streamName, event, cellElement) => {
     // Prevent default button behavior
     if (event) {
       event.preventDefault();
@@ -980,18 +864,15 @@ export function WebRTCView() {
     }
 
     console.log(`Toggling fullscreen for stream: ${streamName}`);
-    const videoElementId = `video-${streamName.replace(/\s+/g, '-')}`;
-    const videoElement = document.getElementById(videoElementId);
-    const videoCell = videoElement ? videoElement.closest('.video-cell') : null;
 
-    if (!videoCell) {
-      console.error('Stream not found:', streamName);
+    if (!cellElement) {
+      console.error('Video cell element not provided for fullscreen toggle');
       return;
     }
 
     if (!document.fullscreenElement) {
       console.log('Entering fullscreen mode for video cell');
-      videoCell.requestFullscreen().catch(err => {
+      cellElement.requestFullscreen().catch(err => {
         console.error(`Error attempting to enable fullscreen: ${err.message}`);
         showStatusMessage(`Could not enable fullscreen mode: ${err.message}`);
       });
@@ -1002,7 +883,15 @@ export function WebRTCView() {
   };
 
   return (
-    <section id="live-page" className={`page ${isFullscreen ? 'fullscreen-mode' : ''}`}>
+    <section
+      id="live-page"
+      className={`page ${isFullscreen ? 'fullscreen-mode' : ''}`}
+      style={{
+        // Ensure the section doesn't block navigation during loading
+        position: 'relative',
+        zIndex: 1
+      }}
+    >
       {/* Include the SnapshotManager component */}
       <SnapshotManager />
       {/* Include the FullscreenManager component */}
@@ -1083,6 +972,11 @@ export function WebRTCView() {
             id="video-grid"
             className={`video-container layout-${layout}`}
             ref={videoGridRef}
+            style={{
+              // Ensure the video grid doesn't block navigation during loading
+              position: 'relative',
+              zIndex: 1
+            }}
         >
           {isLoadingStreams ? (
               <div className="flex justify-center items-center col-span-full row-span-full h-64 w-full">
@@ -1093,7 +987,14 @@ export function WebRTCView() {
               </div>
             </div>
           ) : (isLoading && !isLoadingStreams) ? (
-            <div className="flex justify-center items-center col-span-full row-span-full h-64 w-full">
+            <div
+              className="flex justify-center items-center col-span-full row-span-full h-64 w-full"
+              style={{
+                pointerEvents: 'none',
+                position: 'relative',
+                zIndex: 1
+              }}
+            >
               <div className="flex flex-col items-center justify-center py-8">
                 <div
                     className="inline-block animate-spin rounded-full border-4 border-gray-300 dark:border-gray-600 border-t-blue-600 dark:border-t-blue-500 w-16 h-16"></div>

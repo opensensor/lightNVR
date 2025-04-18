@@ -6,21 +6,12 @@
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { startDetectionPolling } from './DetectionOverlay.js';
 import { SnapshotButton } from './SnapshotManager.jsx';
+import { LoadingIndicator } from './LoadingIndicator.jsx';
+// We'll use inline styles for the spinner animation instead of injecting a style tag
+// This avoids direct DOM manipulation
+const spinnerAnimation = 'spin 1s linear infinite';
 
-// Add CSS for spinner animation
-const spinnerStyle = `
-  @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-  }
-`;
-
-// Add the style to the document
-if (typeof document !== 'undefined') {
-  const style = document.createElement('style');
-  style.textContent = spinnerStyle;
-  document.head.appendChild(style);
-}
+// Define the keyframes in a style tag in the JSX instead of injecting it directly
 
 /**
  * WebRTCVideoCell component
@@ -163,8 +154,21 @@ export function WebRTCVideoCell({
       data-stream-name={stream.name}
       data-stream-id={stream.id || stream.name}
       ref={cellRef}
-      style={{ position: 'relative' }}
+      style={{
+        position: 'relative',
+        // Ensure the video cell doesn't interfere with navigation elements
+        pointerEvents: isLoading ? 'none' : 'auto'
+      }}
     >
+      {/* Add keyframes for spinner animation in the component */}
+      <style>
+        {`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}
+      </style>
       {/* Video element */}
       <video
         id={`video-${stream.name.replace(/\s+/g, '-')}`}
@@ -173,7 +177,7 @@ export function WebRTCVideoCell({
         playsInline
         autoPlay
         muted
-        style={{ pointerEvents: 'none', width: '100%', height: '100%', objectFit: 'contain' }}
+        style={{ pointerEvents: 'none', width: '100%', height: '100%', objectFit: 'contain', zIndex: 1 }}
       />
 
       {/* Canvas overlay for detection */}
@@ -188,7 +192,7 @@ export function WebRTCVideoCell({
           width: '100%',
           height: '100%',
           pointerEvents: 'none',
-          zIndex: 5
+          zIndex: 2 /* Lower z-index to ensure it doesn't block navigation */
         }}
       />
 
@@ -204,7 +208,7 @@ export function WebRTCVideoCell({
           color: 'white',
           borderRadius: '4px',
           fontSize: '14px',
-          zIndex: 15,
+          zIndex: 3, /* Lower z-index to ensure it doesn't block navigation */
           pointerEvents: 'none'
         }}
       >
@@ -220,11 +224,11 @@ export function WebRTCVideoCell({
           right: '10px',
           display: 'flex',
           gap: '10px',
-          zIndex: 30,
+          zIndex: 5, /* Lower z-index but still above video and overlays */
           backgroundColor: 'rgba(0, 0, 0, 0.5)',
           padding: '5px',
           borderRadius: '4px',
-          pointerEvents: 'auto'
+          pointerEvents: 'auto' /* Keep pointer events enabled for controls */
         }}
       >
         <div
@@ -233,7 +237,7 @@ export function WebRTCVideoCell({
             padding: '5px',
             borderRadius: '4px',
             position: 'relative',
-            zIndex: 30
+            zIndex: 1 /* Lower z-index to prevent blocking */
           }}
           onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)'}
           onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
@@ -248,7 +252,7 @@ export function WebRTCVideoCell({
           title="Toggle Fullscreen"
           data-id={stream.id || stream.name}
           data-name={stream.name}
-          onClick={(e) => onToggleFullscreen(stream.name, e)}
+          onClick={(e) => onToggleFullscreen(stream.name, e, cellRef.current)}
           style={{
             backgroundColor: 'transparent',
             border: 'none',
@@ -257,7 +261,7 @@ export function WebRTCVideoCell({
             color: 'white',
             cursor: 'pointer',
             position: 'relative',
-            zIndex: 30
+            zIndex: 1 /* Lower z-index to prevent blocking */
           }}
           onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)'}
           onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
@@ -267,56 +271,7 @@ export function WebRTCVideoCell({
       </div>
 
       {/* Loading indicator */}
-      {isLoading && (
-        <div
-          className="loading-indicator"
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            width: '100%',
-            height: '100%',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center',
-            alignItems: 'center',
-            backgroundColor: 'rgba(0, 0, 0, 0.7)',
-            color: 'white',
-            zIndex: 20,
-            pointerEvents: 'none',
-            textAlign: 'center'
-          }}
-        >
-          <div
-            className="loading-content"
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'center',
-              alignItems: 'center',
-              padding: '20px',
-              borderRadius: '8px',
-              backgroundColor: 'rgba(0, 0, 0, 0.5)'
-            }}
-          >
-            <div className="spinner" style={{
-              width: '40px',
-              height: '40px',
-              border: '4px solid rgba(255, 255, 255, 0.3)',
-              borderRadius: '50%',
-              borderTop: '4px solid white',
-              animation: 'spin 1s linear infinite',
-              marginBottom: '15px'
-            }}></div>
-            <p style={{
-              fontSize: '14px',
-              fontWeight: 'bold'
-            }}>Connecting...</p>
-          </div>
-        </div>
-      )}
+      {isLoading && (<LoadingIndicator message="Connecting..." />)}
 
       {/* Error indicator */}
       {error && (
@@ -336,9 +291,11 @@ export function WebRTCVideoCell({
             alignItems: 'center',
             backgroundColor: 'rgba(0, 0, 0, 0.7)',
             color: 'white',
-            zIndex: 20,
-            pointerEvents: 'auto',
-            textAlign: 'center'
+            zIndex: 10,
+            pointerEvents: 'auto', /* Keep pointer events enabled for error state to allow retry button clicks */
+            textAlign: 'center',
+            // Ensure the error indicator is contained within the video cell
+            overflow: 'hidden'
           }}
         >
           <div

@@ -125,7 +125,6 @@ class NavigationMenu {
    */
   async navigateWithRetry(linkSelector, targetPageSelector, maxRetries = 3) {
     console.log(`Attempting to navigate to ${linkSelector} with retry mechanism`);
-    await this.driver.sleep(1000);
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       console.log(`Navigation attempt ${attempt} of ${maxRetries}`);

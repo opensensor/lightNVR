@@ -20,9 +20,9 @@ let setToastsFunction = null;
 export function addToast(message, type = 'info', duration = 4000) {
   // Ensure message is a string and handle undefined/null values
   const safeMessage = message !== undefined && message !== null ? String(message) : 'Operation completed';
-  
+
   console.log('Adding toast to queue:', safeMessage);
-  
+
   // Create a new toast
   const toast = {
     id: toastId++,
@@ -30,15 +30,15 @@ export function addToast(message, type = 'info', duration = 4000) {
     type,
     duration
   };
-  
+
   // Add to queue
   toastQueue = [...toastQueue, toast];
-  
+
   // Update state if the setter function is available
   if (setToastsFunction) {
     setToastsFunction(toastQueue);
   }
-  
+
   // Remove after duration
   setTimeout(() => {
     removeToast(toast.id);
@@ -51,10 +51,10 @@ export function addToast(message, type = 'info', duration = 4000) {
  */
 export function removeToast(id) {
   console.log('Removing toast from queue:', id);
-  
+
   // Remove from queue
   toastQueue = toastQueue.filter(toast => toast.id !== id);
-  
+
   // Update state if the setter function is available
   if (setToastsFunction) {
     setToastsFunction(toastQueue);
@@ -68,28 +68,28 @@ export function removeToast(id) {
 export function ToastContainer() {
   const [toasts, setToasts] = useState(toastQueue);
   const containerRef = useRef(null);
-  
+
   // Store the setter function in the global variable
   useEffect(() => {
     setToastsFunction = setToasts;
-    
+
     // Clean up
     return () => {
       setToastsFunction = null;
     };
   }, []);
-  
+
   // Create portal for the toast container
   return createPortal(
-    <div 
+    <div
       ref={containerRef}
-      className="fixed top-5 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2.5 w-full max-w-[450px] pointer-events-none"
+      className="fixed top-20 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2.5 w-full max-w-[450px] pointer-events-none"
     >
       {toasts.map(toast => (
-        <div 
+        <div
           key={toast.id}
           className={`py-3.5 px-4.5 rounded-lg shadow-lg w-full flex items-center pointer-events-auto font-medium
-            ${toast.type === 'success' ? 'bg-green-500 text-white border-l-[6px] border-green-600' : 
+            ${toast.type === 'success' ? 'bg-green-500 text-white border-l-[6px] border-green-600' :
               toast.type === 'error' ? 'bg-red-500 text-white border-l-[6px] border-red-700' :
               toast.type === 'warning' ? 'bg-yellow-500 text-white border-l-[6px] border-yellow-600' :
               'bg-blue-500 text-white border-l-[6px] border-blue-600'}`}
@@ -148,7 +148,7 @@ if (typeof window !== 'undefined') {
   window.showInfoToast = showInfoToast;
   window.showToast = showToast;
   window.showStatusMessage = showStatusMessage;
-  
+
   // Add a test function
   window.testToast = (type = 'info') => {
     const message = `Test ${type} toast at ${new Date().toLocaleTimeString()}`;

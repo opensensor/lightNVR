@@ -201,9 +201,12 @@ export function StreamsView() {
     },
     onSuccess: () => {
       showStatusMessage('Stream successfully deleted.');
-      closeDeleteModal();
       // Invalidate and refetch streams data
-      queryClient.invalidateQueries({ queryKey: ['streams'] });
+      queryClient.invalidateQueries({ queryKey: ['streams'] })
+        .then(() => {
+          // Close the modal after the query invalidation is complete
+          closeDeleteModal();
+        });
     },
     onError: (error) => {
       showStatusMessage(`Error deleting stream: ${error.message}`, 5000, 'error');
@@ -223,9 +226,12 @@ export function StreamsView() {
     },
     onSuccess: () => {
       showStatusMessage('Stream successfully disabled.');
-      closeDeleteModal();
       // Invalidate and refetch streams data
-      queryClient.invalidateQueries({ queryKey: ['streams'] });
+      queryClient.invalidateQueries({ queryKey: ['streams'] })
+        .then(() => {
+          // Close the modal after the query invalidation is complete
+          closeDeleteModal();
+        });
     },
     onError: (error) => {
       showStatusMessage(`Error disabling stream: ${error.message}`, 5000, 'error');
