@@ -76,7 +76,7 @@ export function useSnapshotManager() {
       // Generate a filename
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const fileName = `snapshot-${streamName.replace(/\s+/g, '-')}-${timestamp}.jpg`;
-      
+
       // Store the canvas and filename in state
       setSnapshotData({
         canvas,
@@ -99,7 +99,7 @@ export function useSnapshotManager() {
    */
   const downloadSnapshot = useCallback(() => {
     const { canvas, fileName } = snapshotData;
-    
+
     if (!canvas) {
       console.error('No snapshot canvas available');
       showStatusMessage('Download failed: No snapshot data available');
@@ -158,11 +158,11 @@ export function useSnapshotManager() {
  */
 export function SnapshotManager() {
   const { takeSnapshot, downloadSnapshot } = useSnapshotManager();
-  
+
   // Register the takeSnapshot function globally for backward compatibility
   useEffect(() => {
     window.takeSnapshot = takeSnapshot;
-    
+
     return () => {
       // Clean up global function when component unmounts
       delete window.takeSnapshot;
@@ -178,34 +178,41 @@ export function SnapshotManager() {
  * @param {Object} props Component props
  * @param {string} props.streamId Stream ID
  * @param {string} props.streamName Stream name
+ * @param {Function} props.onSnapshot Optional custom snapshot handler
  * @returns {JSX.Element} SnapshotButton component
  */
-export function SnapshotButton({ streamId, streamName }) {
+export function SnapshotButton({ streamId, streamName, onSnapshot }) {
   const { takeSnapshot } = useSnapshotManager();
-  
+
   const handleClick = (event) => {
     event.preventDefault();
     event.stopPropagation();
-    takeSnapshot(streamId, event);
+
+    // Use custom snapshot handler if provided, otherwise use default
+    if (typeof onSnapshot === 'function') {
+      onSnapshot(event);
+    } else {
+      takeSnapshot(streamId, event);
+    }
   };
-  
+
   return (
-    <button 
-      className="snapshot-btn" 
-      title="Take Snapshot" 
-      data-id={streamId} 
+    <button
+      className="snapshot-btn"
+      title="Take Snapshot"
+      data-id={streamId}
       data-name={streamName}
       onClick={handleClick}
     >
-      <svg 
-        xmlns="http://www.w3.org/2000/svg" 
-        width="24" 
-        height="24" 
-        viewBox="0 0 24 24" 
-        fill="none" 
-        stroke="white" 
-        stroke-width="2" 
-        stroke-linecap="round" 
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="24"
+        height="24"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="white"
+        stroke-width="2"
+        stroke-linecap="round"
         stroke-linejoin="round"
       >
         <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
@@ -222,11 +229,11 @@ export function SnapshotButton({ streamId, streamName }) {
  */
 export function DownloadButton() {
   const { downloadSnapshot, hasSnapshot } = useSnapshotManager();
-  
+
   if (!hasSnapshot) return null;
-  
+
   return (
-    <button 
+    <button
       className="download-btn px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
       onClick={downloadSnapshot}
     >

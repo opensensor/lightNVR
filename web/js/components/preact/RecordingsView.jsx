@@ -4,9 +4,9 @@
  */
 
 import { h } from 'preact';
-import { useState, useEffect, useRef } from 'preact/hooks';
+import { useState, useEffect, useRef, useContext } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
-import { showVideoModal, DeleteConfirmationModal } from './UI.jsx';
+import { showVideoModal, DeleteConfirmationModal, ModalContext } from './UI.jsx';
 import { ContentLoader } from './LoadingIndicator.jsx';
 
 // Import components
@@ -56,6 +56,24 @@ export function RecordingsView() {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteMode, setDeleteMode] = useState('selected'); // 'selected' or 'all'
   const recordingsTableBodyRef = useRef(null);
+
+  // Get modal context for video playback
+  const modalContext = useContext(ModalContext);
+
+  // Store modal context in window for global access
+  useEffect(() => {
+    if (modalContext) {
+      console.log('Modal context available in RecordingsView');
+      window.__modalContext = modalContext;
+
+      // Log the available methods for debugging
+      console.log('Available modal methods:',
+        Object.keys(modalContext).map(key => key)
+      );
+    } else {
+      console.warn('Modal context not available in RecordingsView');
+    }
+  }, [modalContext]);
 
   // Get query client for invalidating queries
   const queryClient = useQueryClient();
@@ -691,7 +709,22 @@ export function RecordingsView() {
 
   // Play recording
   const playRecording = (recording) => {
-    recordingsAPI.playRecording(recording, showVideoModal);
+    console.log('RecordingsView.playRecording called with:', recording);
+
+    // Use the modal context if available, otherwise fall back to the imported function
+    if (modalContext && modalContext.showVideoModal) {
+      console.log('Using modal context showVideoModal');
+      const videoUrl = `/api/recordings/play/${recording.id}`;
+      const title = `${recording.stream} - ${formatUtils.formatDateTime(recording.start_time)}`;
+      const downloadUrl = `/api/recordings/download/${recording.id}`;
+
+      // Call the context function directly
+      modalContext.showVideoModal(videoUrl, title, downloadUrl);
+    } else {
+      console.log('Falling back to recordingsAPI.playRecording');
+      // Fall back to the API function which will use the imported showVideoModal
+      recordingsAPI.playRecording(recording, showVideoModal);
+    }
   };
 
   // Download recording

@@ -726,6 +726,7 @@ export const recordingsAPI = {
   /**
    * Play recording
    * @param {Object} recording Recording to play
+   * @param {Function} showVideoModal Function to show video modal
    */
   playRecording: (recording, showVideoModal) => {
     console.log('Play recording clicked:', recording);
@@ -746,8 +747,15 @@ export const recordingsAPI = {
     console.log('Title:', title);
     console.log('Download URL:', downloadUrl);
 
-    // Show video modal
-    showVideoModal(videoUrl, title, downloadUrl);
+    // Check if we're using the context-based showVideoModal or the direct function
+    if (window.__modalContext && window.__modalContext.showVideoModal) {
+      // Use the context-based function if available
+      window.__modalContext.showVideoModal(videoUrl, title, downloadUrl);
+    } else {
+      // Fall back to the provided function
+      showVideoModal(videoUrl, title, downloadUrl);
+    }
+
     console.log('Video modal should be shown now');
   },
 

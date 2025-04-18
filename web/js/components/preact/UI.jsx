@@ -195,6 +195,8 @@ export function SnapshotPreviewModal({ isOpen, onClose, imageData, streamName, o
  * @returns {JSX.Element} VideoModal component
  */
 export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
+  console.log('VideoModal rendered with props:', { isOpen, videoUrl, title });
+
   const [detectionOverlayEnabled, setDetectionOverlayEnabled] = useState(false);
   const [timeWindow, setTimeWindow] = useState(2);
   const [detections, setDetections] = useState([]);
@@ -206,7 +208,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
   const canvasRef = useRef(null);
   const modalRef = useRef(null);
 
-  // Handle escape key
+  // Handle escape key and cleanup
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape' && isOpen) {
@@ -214,9 +216,31 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
       }
     };
 
-    document.addEventListener('keydown', handleKeyDown);
+    if (isOpen) {
+      console.log('VideoModal opened, setting up event listeners');
+      document.addEventListener('keydown', handleKeyDown);
+
+      // Reset video element when modal opens
+      if (videoRef.current) {
+        videoRef.current.load();
+      }
+    }
+
     return () => {
+      console.log('VideoModal cleanup');
       document.removeEventListener('keydown', handleKeyDown);
+
+      // Cleanup video element when component unmounts or modal closes
+      if (videoRef.current) {
+        // Pause and reset video src to stop any ongoing requests
+        try {
+          videoRef.current.pause();
+          videoRef.current.removeAttribute('src');
+          videoRef.current.load();
+        } catch (e) {
+          console.error('Error cleaning up video element:', e);
+        }
+      }
     };
   }, [isOpen, onClose]);
 
@@ -397,6 +421,14 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
     };
   }, [isOpen, detectionOverlayEnabled, drawDetections]);
 
+  // Handle video URL changes
+  useEffect(() => {
+    if (isOpen && videoUrl && videoRef.current) {
+      console.log('Video URL changed, loading new video');
+      videoRef.current.load();
+    }
+  }, [isOpen, videoUrl]);
+
   // Update detection overlay when enabled/disabled
   useEffect(() => {
     if (detectionOverlayEnabled) {
@@ -437,6 +469,30 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
 
   if (!isOpen) return null;
 
+  // Add useEffect to handle modal animation and cleanup
+  useEffect(() => {
+    let animationTimeout;
+
+    if (isOpen && modalRef.current) {
+      // Animate in - small delay to ensure DOM is ready
+      animationTimeout = setTimeout(() => {
+        const modalContent = modalRef.current?.querySelector('.modal-content');
+        if (modalContent) {
+          modalContent.classList.remove('scale-95', 'opacity-0');
+          modalContent.classList.add('scale-100', 'opacity-100');
+          console.log('Modal animation applied');
+        }
+      }, 10);
+    }
+
+    // Cleanup function
+    return () => {
+      if (animationTimeout) {
+        clearTimeout(animationTimeout);
+      }
+    };
+  }, [isOpen]);
+
   return createPortal(
     <div
       ref={modalRef}
@@ -444,7 +500,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
       className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
       onClick={handleBackgroundClick}
     >
-      <div className="modal-content bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl max-h-[90vh] flex flex-col transform transition-all duration-300 ease-out scale-95 opacity-0 w-full md:w-[90%]">
+      <div className={`modal-content bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl max-h-[90vh] flex flex-col transform transition-all duration-300 ease-out ${isOpen ? 'scale-100 opacity-100' : 'scale-95 opacity-0'} w-full md:w-[90%]`}>
         <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
           <h3 id="video-preview-title" className="text-lg font-semibold text-gray-900 dark:text-white">
             {title || 'Video'}
@@ -462,10 +518,19 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
             <video
               ref={videoRef}
               className="w-full h-auto max-w-full object-contain mx-auto"
-              src={videoUrl}
               controls
               autoPlay
-            />
+              key={videoUrl} /* Add key to force re-render when URL changes */
+              onError={(e) => {
+                console.error('Video error:', e);
+                showStatusMessage('Error loading video. Please try again.', 'error');
+              }}
+              onLoadStart={() => console.log('Video load started')}
+              onLoadedData={() => console.log('Video data loaded')}
+            >
+              {/* Use source element instead of src attribute for better control */}
+              {videoUrl && <source src={videoUrl} type="video/mp4" />}
+            </video>
             <canvas
               ref={canvasRef}
               className="absolute top-0 left-0 w-full h-full pointer-events-none"
@@ -620,12 +685,26 @@ export function ModalProvider({ children }) {
 
   // Show video modal
   const showVideoModal = useCallback((videoUrl, title, downloadUrl) => {
+    console.log('ModalProvider.showVideoModal called with:', { videoUrl, title, downloadUrl });
+
+    // First reset the modal state completely
     setVideoModal({
-      isOpen: true,
-      videoUrl,
-      title,
-      downloadUrl,
+      isOpen: false,
+      videoUrl: '',
+      title: '',
+      downloadUrl: ''
     });
+
+    // Then set the new state after a small delay to ensure clean rendering
+    setTimeout(() => {
+      setVideoModal({
+        isOpen: true,
+        videoUrl,
+        title,
+        downloadUrl,
+      });
+      console.log('Video modal state updated with new content');
+    }, 50);
   }, []);
 
   // Use the snapshot manager hook for download functionality
@@ -677,7 +756,21 @@ export function ModalProvider({ children }) {
 
   // Close video modal
   const closeVideoModal = useCallback(() => {
+    console.log('Closing video modal');
+
+    // First just set isOpen to false to trigger the closing animation
     setVideoModal(prev => ({ ...prev, isOpen: false }));
+
+    // Then completely reset the modal state after animation completes
+    setTimeout(() => {
+      setVideoModal({
+        isOpen: false,
+        videoUrl: '',
+        title: '',
+        downloadUrl: ''
+      });
+      console.log('Video modal state fully reset');
+    }, 300);
   }, []);
 
   // Create context value
@@ -726,13 +819,17 @@ export function showVideoModal(videoUrl, title, downloadUrl) {
 
   // Get the modal context from the global variable if available
   if (window.__modalContext && window.__modalContext.showVideoModal) {
+    console.log('Using modal context to show video modal');
     window.__modalContext.showVideoModal(videoUrl, title, downloadUrl);
     return;
   }
 
+  console.log('Falling back to direct modal rendering');
+
   // Fallback to creating a modal directly
   const modalRoot = document.getElementById('modal-root');
   if (!modalRoot) {
+    console.log('Creating modal root element');
     const root = document.createElement('div');
     root.id = 'modal-root';
     document.body.appendChild(root);
@@ -744,11 +841,14 @@ export function showVideoModal(videoUrl, title, downloadUrl) {
   document.body.appendChild(modalContainer);
 
   // Import preact to render the modal
+  console.log('Dynamically importing preact to render modal');
   import('preact').then(({ render, h }) => {
+    console.log('Rendering VideoModal component');
     render(
       h(VideoModal, {
         isOpen: true,
         onClose: () => {
+          console.log('Closing modal');
           render(null, modalContainer);
           document.body.removeChild(modalContainer);
         },

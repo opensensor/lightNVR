@@ -3,11 +3,12 @@
  * Preact component for the HLS live view page
  */
 
+import { h, render } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { showSnapshotPreview, setupModals, addModalStyles } from './UI.jsx';
 import { useFullscreenManager, FullscreenManager } from './FullscreenManager.jsx';
-import { startDetectionPolling, cleanupDetectionPolling } from './DetectionOverlay.js';
+import { DetectionOverlay, takeSnapshotWithDetections } from './DetectionOverlay.jsx';
 import { SnapshotManager, useSnapshotManager } from './SnapshotManager.jsx';
 import Hls from 'hls.js';
 
@@ -42,7 +43,7 @@ export function LiveView({isWebRTCDisabled}) {
   });
   const videoGridRef = useRef(null);
   const hlsPlayers = useRef({});
-  const detectionIntervals = useRef({});
+  const detectionOverlays = useRef({});
   const refreshTimers = useRef({});
 
   // Set up event listeners and UI components
@@ -636,10 +637,16 @@ export function LiveView({isWebRTCDisabled}) {
       hlsPlayers.current[stream.name] = hls;
       refreshTimers.current[stream.name] = refreshTimer;
 
-      // Start detection polling if detection is enabled for this stream
+      // Detection is now handled by the DetectionOverlay component
       if (stream.detection_based_recording && stream.detection_model) {
-        console.log(`Starting detection polling for stream ${stream.name}`);
-        startDetectionPolling(stream.name, canvasOverlay, videoElement, detectionIntervals.current);
+        console.log(`Detection enabled for stream ${stream.name}`);
+        // Create a React component for the detection overlay
+        const detectionOverlayComponent = document.createElement('div');
+        detectionOverlayComponent.id = `detection-overlay-container-${stream.name.replace(/\s+/g, '-')}`;
+        videoCell.appendChild(detectionOverlayComponent);
+
+        // Render the DetectionOverlay component
+        renderDetectionOverlay(stream.name, videoElement, canvasOverlay);
       } else {
         console.log(`Detection not enabled for stream ${stream.name}`);
       }
@@ -828,8 +835,23 @@ export function LiveView({isWebRTCDisabled}) {
       videoElement.load();
     }
 
-    // Clean up detection polling
-    cleanupDetectionPolling(streamName, detectionIntervals.current);
+    // Clean up detection overlay component if it exists
+    if (detectionOverlays.current[streamName]) {
+      const { container } = detectionOverlays.current[streamName];
+      if (container) {
+        // Unmount the component by rendering null
+        render(null, container);
+      }
+      delete detectionOverlays.current[streamName];
+    } else {
+      // For backward compatibility, also check for container by ID
+      const containerId = `detection-overlay-container-${streamName.replace(/\s+/g, '-')}`;
+      const container = document.getElementById(containerId);
+      if (container) {
+        // Unmount the component by rendering null
+        render(null, container);
+      }
+    }
   };
 
   /**
@@ -844,6 +866,55 @@ export function LiveView({isWebRTCDisabled}) {
 
 
 // Note: takeSnapshot is now provided by the useSnapshotManager hook
+
+  /**
+   * Render the DetectionOverlay component for a stream
+   * @param {string} streamName - Stream name
+   * @param {HTMLVideoElement} videoElement - Video element
+   * @param {HTMLCanvasElement} canvasElement - Canvas element (will be replaced by the component)
+   */
+  const renderDetectionOverlay = (streamName, videoElement, canvasElement) => {
+    // Create a ref object for the video element
+    const videoRef = { current: videoElement };
+
+    // Get the container element
+    const containerId = `detection-overlay-container-${streamName.replace(/\s+/g, '-')}`;
+    const container = document.getElementById(containerId);
+
+    if (!container) {
+      console.error(`Detection overlay container not found for stream ${streamName}`);
+      return;
+    }
+
+    // Remove the original canvas element if it exists
+    if (canvasElement && canvasElement.parentNode) {
+      canvasElement.parentNode.removeChild(canvasElement);
+    }
+
+    // Find the stream object
+    const stream = streams.find(s => s.name === streamName);
+    if (!stream) {
+      console.error(`Stream not found for detection overlay: ${streamName}`);
+      return;
+    }
+
+    // Render the DetectionOverlay component
+    const detectionOverlay = render(
+      <DetectionOverlay
+        streamName={streamName}
+        videoRef={videoRef}
+        enabled={true}
+        detectionModel={stream.detection_model}
+      />,
+      container
+    );
+
+    // Store the component reference for cleanup
+    detectionOverlays.current[streamName] = {
+      container,
+      component: detectionOverlay
+    };
+  };
 
   /**
    * Toggle fullscreen mode for a specific stream
@@ -951,7 +1022,7 @@ export function LiveView({isWebRTCDisabled}) {
         </div>
       </div>
 
-      <div className="flex flex-col space-y-4">
+      <div className="flex flex-col space-y-4 h-full">
         <div
           id="video-grid"
           className={`video-container layout-${layout}`}

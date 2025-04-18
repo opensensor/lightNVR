@@ -9,6 +9,10 @@
   @apply bg-white dark:bg-gray-800 rounded-lg shadow p-4 mb-4;
 }
 
+.fullscreen-mode.page {
+  @apply h-screen max-h-screen overflow-hidden p-0 m-0 rounded-none shadow-none;
+}
+
 /* Footer styles */
 footer {
   @apply bg-gray-800 text-white py-3 px-4 flex justify-between items-center text-sm mt-4;
@@ -71,6 +75,11 @@ th {
 
 .video-cell video {
   @apply w-full h-full object-contain;
+}
+
+/* Ensure header is always clickable */
+header, header *, nav, nav * {
+  pointer-events: auto !important;
 }
 
 /* Responsive adjustments */
