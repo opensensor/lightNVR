@@ -75,6 +75,11 @@ void mp4_segment_recorder_init(void) {
  * It maintains a single RTSP connection across multiple recording segments,
  * ensuring there are no gaps between segments.
  *
+ * IMPORTANT: This function always ensures that recordings start on a keyframe.
+ * It will wait for a keyframe before starting to record, regardless of whether
+ * the previous segment ended with a keyframe or not. This ensures proper playback
+ * of all recorded segments.
+ *
  * Error handling:
  * - Network errors: The function will return an error code, but the input context
  *   will be preserved if possible so that the caller can retry.
@@ -427,27 +432,20 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 
             // If we're waiting for the first key frame
             if (!found_first_keyframe) {
-            // If the previous segment ended with a key frame, we can start immediately with this frame
-            // Otherwise, wait for a key frame
-            if (segment_info.last_frame_was_key && segment_index > 0) {
-                    log_info("Previous segment ended with a key frame, starting new segment immediately");
-                    found_first_keyframe = true;
-
-                    // Reset start time to now
-                    start_time = av_gettime();
-
-                    // If this frame is not a keyframe, log a warning as we might have missed the keyframe
-                    if (!is_keyframe) {
-                        log_warn("Starting segment with non-keyframe even though previous segment ended with keyframe");
-                    }
-                } else if (is_keyframe) {
+                // BUGFIX: Always wait for a keyframe to start recording, regardless of previous segment state
+                if (is_keyframe) {
                     log_info("Found first key frame, starting recording");
                     found_first_keyframe = true;
 
                     // Reset start time to when we found the first key frame
                     start_time = av_gettime();
+
+                    // Note if we had a keyframe at the end of the previous segment
+                    if (segment_info.last_frame_was_key && segment_index > 0) {
+                        log_info("Previous segment ended with a key frame, and we're starting with a new keyframe");
+                    }
                 } else {
-                    // For regular segments, always wait for a key frame
+                    // Always wait for a key frame
                     // Skip this frame as we're waiting for a key frame
                     av_packet_unref(pkt);
                     continue;

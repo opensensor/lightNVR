@@ -31,6 +31,11 @@ typedef struct {
  * It maintains a single RTSP connection across multiple recording segments,
  * ensuring there are no gaps between segments.
  *
+ * IMPORTANT: This function always ensures that recordings start on a keyframe.
+ * It will wait for a keyframe before starting to record, regardless of whether
+ * the previous segment ended with a keyframe or not. This ensures proper playback
+ * of all recorded segments.
+ *
  * Error handling:
  * - Network errors: The function will return an error code, but the input context
  *   will be preserved if possible so that the caller can retry.
