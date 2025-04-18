@@ -148,9 +148,18 @@ void mp4_writer_close(mp4_writer_t *writer) {
     if (writer->thread_ctx) {
         log_info("Stopping recording thread for %s during writer close",
                 writer->stream_name ? writer->stream_name : "unknown");
+
+        // Call the function to stop the recording thread
+        // This will properly clean up the thread context
         mp4_writer_stop_recording_thread(writer);
-        //  thread_ctx should now be NULL if join was successful
-        // If join failed, the thread was detached and will clean up itself
+
+        // thread_ctx should now be NULL if the function worked correctly
+        // If it's not NULL, there might be a problem
+        if (writer->thread_ctx) {
+            log_warn("Thread context still exists after stopping recording thread for %s",
+                   writer->stream_name ? writer->stream_name : "unknown");
+            // Don't free it here, as it might still be in use
+        }
     }
 
     // MEMORY LEAK FIX: Ensure proper cleanup of FFmpeg resources

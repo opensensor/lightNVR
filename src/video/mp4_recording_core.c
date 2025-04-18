@@ -651,16 +651,27 @@ int stop_mp4_recording(const char *stream_name) {
 
     // Verify context is still valid
     if (index >= 0 && index < MAX_STREAMS && recording_contexts[index] == ctx) {
+        // First clear the slot in the global array to prevent other threads from accessing it
+        recording_contexts[index] = NULL;
+
+        // Add a memory barrier to ensure the NULL assignment is visible to other threads
+        __sync_synchronize();
+
         // Cleanup resources
         if (ctx->mp4_writer) {
-            log_info("Closing MP4 writer for stream %s", stream_name);
-            mp4_writer_close(ctx->mp4_writer);
+            // Make a local copy of the mp4_writer pointer
+            mp4_writer_t *writer = ctx->mp4_writer;
+
+            // Set the pointer to NULL in the context to prevent double-free
             ctx->mp4_writer = NULL;
+
+            // Now close the writer with our local copy
+            log_info("Closing MP4 writer for stream %s", stream_name);
+            mp4_writer_close(writer);
         }
 
-        // Free context and clear slot
+        // Free context after all resources have been cleaned up
         free(ctx);
-        recording_contexts[index] = NULL;
 
         log_info("Successfully cleaned up resources for stream %s", stream_name);
     } else {

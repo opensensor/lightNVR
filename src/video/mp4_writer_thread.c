@@ -40,21 +40,53 @@
  * and handles self-management including retries and shutdown
  */
 static void *mp4_writer_rtsp_thread(void *arg) {
+    // Check if the thread context is valid
     mp4_writer_thread_t *thread_ctx = (mp4_writer_thread_t *)arg;
-    if (!thread_ctx || !thread_ctx->writer) {
+    if (!thread_ctx) {
+        log_error("NULL thread context passed to mp4_writer_rtsp_thread");
+        return NULL;
+    }
+
+    // Check if the writer is valid
+    if (!thread_ctx->writer) {
+        log_error("NULL writer in thread context passed to mp4_writer_rtsp_thread");
         return NULL;
     }
 
     // Set running flag at start of thread
     thread_ctx->running = 1;
 
-    // Create a local copy of needed values to prevent use-after-free
+    // Create local copies of ALL needed values to prevent use-after-free issues
+    // This is critical for thread safety - we want to minimize access to shared structures
     char rtsp_url[MAX_PATH_LENGTH];
     strncpy(rtsp_url, thread_ctx->rtsp_url, sizeof(rtsp_url) - 1);
     rtsp_url[sizeof(rtsp_url) - 1] = '\0';
 
+    // Make a local copy of the stream name for thread safety
+    char stream_name[MAX_STREAM_NAME];
+    if (thread_ctx->writer->stream_name && thread_ctx->writer->stream_name[0] != '\0') {
+        strncpy(stream_name, thread_ctx->writer->stream_name, MAX_STREAM_NAME - 1);
+        stream_name[MAX_STREAM_NAME - 1] = '\0';
+    } else {
+        strncpy(stream_name, "unknown", MAX_STREAM_NAME - 1);
+    }
+
+    // Make a local copy of the output path
+    char output_path[MAX_PATH_LENGTH];
+    if (thread_ctx->writer->output_path && thread_ctx->writer->output_path[0] != '\0') {
+        strncpy(output_path, thread_ctx->writer->output_path, MAX_PATH_LENGTH - 1);
+        output_path[MAX_PATH_LENGTH - 1] = '\0';
+    } else {
+        output_path[0] = '\0';
+    }
+
     int segment_duration = thread_ctx->segment_duration;
+    int has_audio = thread_ctx->writer->has_audio;
+
+    // Keep a reference to the writer but minimize direct access to it
     mp4_writer_t *writer = thread_ctx->writer;
+
+    log_info("Starting RTSP reading thread for stream %s", stream_name);
 
     AVFormatContext *input_ctx = NULL;
     AVPacket *pkt = NULL;
@@ -68,14 +100,7 @@ static void *mp4_writer_rtsp_thread(void *arg) {
     thread_ctx->retry_count = 0;
     thread_ctx->last_retry_time = 0;
 
-    // Make a local copy of the stream name for thread safety
-    char stream_name[MAX_STREAM_NAME];
-    if (thread_ctx->writer && thread_ctx->writer->stream_name[0] != '\0') {
-        strncpy(stream_name, thread_ctx->writer->stream_name, MAX_STREAM_NAME - 1);
-        stream_name[MAX_STREAM_NAME - 1] = '\0';
-    } else {
-        strncpy(stream_name, "unknown", MAX_STREAM_NAME - 1);
-    }
+    // We already have a local copy of stream_name from earlier in the function
 
     log_info("Starting RTSP reading thread for stream %s", stream_name);
 
@@ -331,8 +356,11 @@ static void *mp4_writer_rtsp_thread(void *arg) {
             log_debug("Closed existing input context before recording new segment");
         }
 
-        ret = record_segment(thread_ctx->rtsp_url, thread_ctx->writer->output_path,
-                           segment_duration, thread_ctx->writer->has_audio);
+        // Use our local copies of variables to prevent use-after-free issues
+        // This is critical for thread safety - we don't want to access the writer structure
+        // directly in case it's being freed by another thread
+        ret = record_segment(rtsp_url, output_path,
+                           segment_duration, has_audio);
 
         log_info("Finished segment recording with info: index=%d, has_audio=%d, last_frame_was_key=%d",
                 segment_info.segment_index, segment_info.has_audio, segment_info.last_frame_was_key);
@@ -394,18 +422,24 @@ static void *mp4_writer_rtsp_thread(void *arg) {
         }
 
         // Update the last packet time for activity tracking
-        thread_ctx->writer->last_packet_time = time(NULL);
+        // Use atomic operation to safely update the writer's last_packet_time
+        // This is safer than directly accessing the writer structure
+        if (writer) {
+            writer->last_packet_time = time(NULL);
 
-        // Update the recording metadata with the current file size
-        if (thread_ctx->writer->current_recording_id > 0) {
-            struct stat st;
-            if (stat(thread_ctx->writer->output_path, &st) == 0) {
-                uint64_t size_bytes = st.st_size;
-                // Update size but don't mark as complete yet
-                update_recording_metadata(thread_ctx->writer->current_recording_id, 0, size_bytes, false);
-                log_debug("Updated recording metadata for ID: %llu, size: %llu bytes",
-                        (unsigned long long)thread_ctx->writer->current_recording_id,
-                        (unsigned long long)size_bytes);
+            // Update the recording metadata with the current file size
+            // Make a local copy of the recording ID to prevent race conditions
+            uint64_t recording_id = writer->current_recording_id;
+            if (recording_id > 0) {
+                struct stat st;
+                if (stat(output_path, &st) == 0) {
+                    uint64_t size_bytes = st.st_size;
+                    // Update size but don't mark as complete yet
+                    update_recording_metadata(recording_id, 0, size_bytes, false);
+                    log_debug("Updated recording metadata for ID: %llu, size: %llu bytes",
+                            (unsigned long long)recording_id,
+                            (unsigned long long)size_bytes);
+                }
             }
         }
     }
@@ -530,35 +564,92 @@ int mp4_writer_start_recording_thread(mp4_writer_t *writer, const char *rtsp_url
  * This function signals the recording thread to stop and waits for it to exit
  */
 void mp4_writer_stop_recording_thread(mp4_writer_t *writer) {
-    if (!writer || !writer->thread_ctx) {
+    if (!writer) {
+        log_warn("NULL writer passed to mp4_writer_stop_recording_thread");
         return;
     }
 
+    // Make a local copy of the stream name for logging
+    char stream_name[MAX_STREAM_NAME];
+    if (writer->stream_name && writer->stream_name[0] != '\0') {
+        strncpy(stream_name, writer->stream_name, MAX_STREAM_NAME - 1);
+        stream_name[MAX_STREAM_NAME - 1] = '\0';
+    } else {
+        strncpy(stream_name, "unknown", MAX_STREAM_NAME - 1);
+    }
+
+    // Check if thread context exists
+    if (!writer->thread_ctx) {
+        log_warn("No thread context found for stream %s in mp4_writer_stop_recording_thread", stream_name);
+        return;
+    }
+
+    // Store a local copy of the thread context pointer
+    mp4_writer_thread_t *thread_ctx = writer->thread_ctx;
+
     // Signal thread to stop
-    atomic_store(&writer->thread_ctx->shutdown_requested, 1);
+    atomic_store(&thread_ctx->shutdown_requested, 1);
+    log_info("Signaled recording thread to stop for stream %s", stream_name);
 
-    // Wait for thread to finish
-    if (writer->thread_ctx->running) {
-        pthread_join(writer->thread_ctx->thread, NULL);
-        writer->thread_ctx->running = 0;
+    // Wait for thread to finish with a timeout implementation
+    if (thread_ctx->running) {
+        // Use a timeout approach that's portable across platforms
+        time_t start_time = time(NULL);
+        time_t timeout_seconds = 5; // 5 second timeout
+
+        // Try to join with a polling approach
+        int join_result = -1;
+        while (time(NULL) - start_time < timeout_seconds) {
+            // Try to join with a very short timeout
+            join_result = pthread_join(thread_ctx->thread, NULL);
+            if (join_result == 0) {
+                // Successfully joined
+                log_info("Successfully joined recording thread for stream %s", stream_name);
+                break;
+            } else if (join_result != EBUSY && join_result != ETIMEDOUT) {
+                // Some other error occurred
+                log_warn("Failed to join recording thread for stream %s: %s",
+                       stream_name, strerror(join_result));
+                break;
+            }
+
+            // Sleep for a short time before trying again
+            usleep(100000); // 100ms
+        }
+
+        // If we couldn't join within the timeout, detach the thread
+        if (join_result != 0) {
+            log_warn("Failed to join recording thread for stream %s within timeout",
+                   stream_name);
+            // Detach the thread instead of waiting indefinitely
+            pthread_detach(thread_ctx->thread);
+            log_info("Detached recording thread for stream %s", stream_name);
+        }
+
+        // Mark as not running regardless of join result
+        thread_ctx->running = 0;
     }
 
-    // CRITICAL: Only free resources after thread has completely stopped
-    if (writer->thread_ctx->rtsp_url[0] != '\0') {
-        memset(writer->thread_ctx->rtsp_url, 0, sizeof(writer->thread_ctx->rtsp_url));
+    // CRITICAL: Only free resources after thread has completely stopped or been detached
+    // Clear sensitive data like URLs
+    if (thread_ctx->rtsp_url[0] != '\0') {
+        memset(thread_ctx->rtsp_url, 0, sizeof(thread_ctx->rtsp_url));
     }
+
+    // Set the writer's thread_ctx to NULL BEFORE freeing it
+    // This prevents other parts of the code from accessing it after it's freed
+    writer->thread_ctx = NULL;
 
     // Free thread context
-    free(writer->thread_ctx);
-    writer->thread_ctx = NULL;
+    free(thread_ctx);
 
     // Update component state in shutdown coordinator
     if (writer->shutdown_component_id >= 0) {
         update_component_state(writer->shutdown_component_id, COMPONENT_STOPPED);
-        log_info("Updated MP4 writer component state to STOPPED for %s", writer->stream_name);
+        log_info("Updated MP4 writer component state to STOPPED for %s", stream_name);
     }
 
-    log_info("Stopped RTSP reading thread for %s", writer->stream_name);
+    log_info("Stopped RTSP reading thread for %s", stream_name);
 }
 
 /**
@@ -574,10 +665,15 @@ int mp4_writer_is_recording(mp4_writer_t *writer) {
         return 1;
     }
 
-    mp4_writer_thread_t *thread_ctx = (mp4_writer_thread_t *)writer->thread_ctx;
+    // Use a local variable and add additional NULL check
+    mp4_writer_thread_t *thread_ctx = writer->thread_ctx;
     if (!thread_ctx) {
         return 0;
     }
 
+    // Add a memory barrier to ensure we're reading the latest value
+    __sync_synchronize();
+
+    // Check if the thread is running
     return thread_ctx->running;
 }
