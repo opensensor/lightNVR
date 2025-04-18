@@ -3,10 +3,9 @@
  * Preact component for the settings page
  */
 
-import { html } from '../../html-helper.js';
-import { useState, useEffect, useRef } from 'preact/hooks';
-import { showStatusMessage } from './UI.js';
-import { ContentLoader } from './LoadingIndicator.js';
+import { useState, useEffect } from 'preact/hooks';
+import { showStatusMessage } from './ToastContainer.jsx';
+import { ContentLoader } from './LoadingIndicator.jsx';
 import { useQuery, useMutation, fetchJSON } from '../../query-client.js';
 
 /**

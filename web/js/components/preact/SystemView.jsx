@@ -4,8 +4,8 @@
  */
 
 import { useState, useEffect, useRef } from 'preact/hooks';
-import { showStatusMessage } from './UI.js';
-import { ContentLoader } from './LoadingIndicator.js';
+import { showStatusMessage } from './ToastContainer.jsx';
+import { ContentLoader } from './LoadingIndicator.jsx';
 import { useQuery, useMutation, fetchJSON } from '../../query-client.js';
 import { WebSocketClient } from '../../websocket-client.js';
 

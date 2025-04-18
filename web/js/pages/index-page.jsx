@@ -10,6 +10,7 @@ import { WebRTCView } from '../components/preact/WebRTCView.jsx';
 import { QueryClientProvider, queryClient } from '../query-client.js';
 import { Header } from "../components/preact/Header.jsx";
 import { Footer } from "../components/preact/Footer.jsx";
+import { ToastContainer } from "../components/preact/ToastContainer.jsx";
 
 /**
  * Main App component that conditionally renders WebRTCView or LiveView
@@ -56,6 +57,7 @@ function App() {
     return (
         <>
             <Header />
+            <ToastContainer />
             {isWebRTCDisabled ? <LiveView isWebRTCDisabled={true} /> : <WebRTCView />}
             <Footer />
         </>

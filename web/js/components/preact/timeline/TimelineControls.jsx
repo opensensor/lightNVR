@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from 'preact/hooks';
 import { timelineState } from './TimelinePage.jsx';
-import { showStatusMessage } from '../UI.js';
+import { showStatusMessage } from '../ToastContainer.jsx';
 
 /**
  * TimelineControls component

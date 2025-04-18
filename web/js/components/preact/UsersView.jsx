@@ -3,8 +3,8 @@
  * Preact component for the user management page
  */
 
-import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
-import { showStatusMessage } from './UI.js';
+import { useState, useCallback } from 'preact/hooks';
+import { showStatusMessage } from './ToastContainer.jsx';
 import { useQuery, useMutation, fetchJSON } from '../../query-client.js';
 
 // Import user components

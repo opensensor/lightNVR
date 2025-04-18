@@ -9,9 +9,8 @@ import { TimelineRuler } from './TimelineRuler.jsx';
 import { TimelineSegments } from './TimelineSegments.jsx';
 import { TimelineCursor } from './TimelineCursor.jsx';
 import { TimelinePlayer } from './TimelinePlayer.jsx';
-import { SpeedControls } from './SpeedControls.jsx';
-import { showStatusMessage } from '../UI.js';
-import { LoadingIndicator } from '../LoadingIndicator.js';
+import { showStatusMessage } from '../ToastContainer.jsx';
+import { LoadingIndicator } from '../LoadingIndicator.jsx';
 import { useQuery } from '../../../query-client.js';
 
 // Utility function to convert between timeline hour and timestamp

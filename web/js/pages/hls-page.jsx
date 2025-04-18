@@ -6,7 +6,7 @@
 import { render } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import { LiveView } from '../components/preact/LiveView.jsx';
-import { WebRTCView } from '../components/preact/WebRTCView.jsx';
+import { ToastContainer } from "../components/preact/ToastContainer.jsx";
 import { QueryClientProvider, queryClient } from '../query-client.js';
 import { Header } from "../components/preact/Header.jsx";
 import { Footer } from "../components/preact/Footer.jsx";
@@ -56,6 +56,7 @@ function App() {
     return (
         <>
             <Header />
+            <ToastContainer />
             <LiveView isWebRTCDisabled={isWebRTCDisabled} />
             <Footer />
         </>

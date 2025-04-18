@@ -5,8 +5,9 @@
 
 import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
-import { showStatusMessage, showVideoModal, DeleteConfirmationModal } from './UI.js';
-import { ContentLoader } from './LoadingIndicator.js';
+import { showStatusMessage } from './ToastContainer.jsx';
+import { showVideoModal, DeleteConfirmationModal } from './UI.jsx';
+import { ContentLoader } from './LoadingIndicator.jsx';
 
 // Import components
 import { FiltersSidebar } from './recordings/FiltersSidebar.jsx';

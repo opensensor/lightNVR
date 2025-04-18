@@ -43,3 +43,22 @@
 .toast-error .toast-icon svg {
     @apply fill-white;
 }
+
+/* Modal Styles - Tailwind-based */
+/* 
+ * Styles for modal components using Tailwind's utility classes
+ */
+
+.modal-content {
+    transition: all 0.3s ease-out;
+}
+
+.modal-content.scale-95 {
+    transform: scale(0.95);
+    opacity: 0;
+}
+
+.modal-content.scale-100 {
+    transform: scale(1);
+    opacity: 1;
+}

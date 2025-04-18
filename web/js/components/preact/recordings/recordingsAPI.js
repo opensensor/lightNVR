@@ -2,7 +2,7 @@
  * API functions for RecordingsView
  */
 
-import { showStatusMessage } from '../UI.js';
+import { showStatusMessage } from '../ToastContainer.jsx';
 import { formatUtils } from './formatUtils.js';
 import { fetchJSON, enhancedFetch } from '../../../fetch-utils.js';
 import {
@@ -10,8 +10,6 @@ import {
   useMutation,
   useQueryClient,
   usePostMutation,
-  useDeleteMutation,
-  invalidateQueries
 } from '../../../query-client.js';
 
 /**

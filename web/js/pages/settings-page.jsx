@@ -8,6 +8,7 @@ import { SettingsView } from '../components/preact/SettingsView.jsx';
 import { QueryClientProvider, queryClient } from '../query-client.js';
 import {Header} from "../components/preact/Header.jsx";
 import {Footer} from "../components/preact/Footer.jsx";
+import { ToastContainer } from "../components/preact/ToastContainer.jsx";
 
 // Render the StreamsView component when the DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
@@ -18,6 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
         render(
             <QueryClientProvider client={queryClient}>
                 <Header />
+                <ToastContainer />
                 <SettingsView />
                 <Footer />
             </QueryClientProvider>,

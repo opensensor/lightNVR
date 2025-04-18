@@ -4,8 +4,8 @@
  */
 
 import { useState, useEffect, useRef } from 'preact/hooks';
-import { showStatusMessage } from './UI.js';
-import { startDetectionPolling, cleanupDetectionPolling } from './DetectionOverlay.js';
+import { startDetectionPolling } from './DetectionOverlay.js';
+import { SnapshotButton } from './SnapshotManager.jsx';
 
 // Add CSS for spinner animation
 const spinnerStyle = `
@@ -227,27 +227,22 @@ export function WebRTCVideoCell({
           pointerEvents: 'auto'
         }}
       >
-        <button
-          className="snapshot-btn"
-          title="Take Snapshot"
-          data-id={stream.id || stream.name}
-          data-name={stream.name}
-          onClick={(e) => onTakeSnapshot(stream.id || stream.name, e)}
+        <div
           style={{
             backgroundColor: 'transparent',
-            border: 'none',
             padding: '5px',
             borderRadius: '4px',
-            color: 'white',
-            cursor: 'pointer',
             position: 'relative',
             zIndex: 30
           }}
           onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)'}
           onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
-        </button>
+          <SnapshotButton
+            streamId={stream.id || stream.name}
+            streamName={stream.name}
+          />
+        </div>
         <button
           className="fullscreen-btn"
           title="Toggle Fullscreen"

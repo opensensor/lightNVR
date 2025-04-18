@@ -4,9 +4,11 @@
  */
 
 import { useState, useEffect, useRef } from 'preact/hooks';
-import { showStatusMessage, showSnapshotPreview, setupModals, addStatusMessageStyles, addModalStyles } from './UI.js';
-import { toggleFullscreen, exitFullscreenMode } from './FullscreenManager.js';
+import { showStatusMessage } from './ToastContainer.jsx';
+import { showSnapshotPreview, setupModals, addModalStyles } from './UI.jsx';
+import { useFullscreenManager, FullscreenManager } from './FullscreenManager.jsx';
 import { startDetectionPolling, cleanupDetectionPolling } from './DetectionOverlay.js';
+import { SnapshotManager, useSnapshotManager } from './SnapshotManager.jsx';
 import Hls from 'hls.js';
 
 /**
@@ -14,6 +16,10 @@ import Hls from 'hls.js';
  * @returns {JSX.Element} LiveView component
  */
 export function LiveView({isWebRTCDisabled}) {
+  // Use the snapshot manager hook
+  const { takeSnapshot } = useSnapshotManager();
+  // Use the fullscreen manager hook
+  const { isFullscreen, setIsFullscreen, toggleFullscreen } = useFullscreenManager();
   const [streams, setStreams] = useState([]);
   // Initialize layout from URL if available
   const [layout, setLayout] = useState(() => {
@@ -25,7 +31,7 @@ export function LiveView({isWebRTCDisabled}) {
     const urlParams = new URLSearchParams(window.location.search);
     return urlParams.get('stream') || '';
   });
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  // isFullscreen state is now managed by useFullscreenManager
   const [isLoading, setIsLoading] = useState(true);
   // Initialize currentPage from URL if available (URL uses 1-based indexing, internal state uses 0-based)
   const [currentPage, setCurrentPage] = useState(() => {
@@ -43,7 +49,6 @@ export function LiveView({isWebRTCDisabled}) {
   useEffect(() => {
     // Set up modals for snapshot preview
     setupModals();
-    addStatusMessageStyles();
     addModalStyles();
 
     // Add event listener to stop streams when leaving the page
@@ -569,7 +574,7 @@ export function LiveView({isWebRTCDisabled}) {
         if (loadingIndicator) {
           loadingIndicator.style.display = 'none';
         }
-        
+
         videoElement.play().catch(error => {
           console.warn('Auto-play prevented:', error);
           // Add play button overlay for user interaction
@@ -581,18 +586,18 @@ export function LiveView({isWebRTCDisabled}) {
         if (data.fatal) {
           console.error('HLS error:', data);
           hls.destroy();
-          
+
           // Check if the stream was recently enabled
           const videoCell = videoElement.closest('.video-cell');
           const loadingIndicator = videoCell.querySelector('.loading-indicator');
-          
+
           // If the stream was recently enabled (indicated by the loading message),
           // automatically retry after a short delay
-          if (loadingIndicator && 
+          if (loadingIndicator &&
               loadingIndicator.style.display === 'flex') {
-              
+
             console.log(`Stream ${stream.name} failed to load, retrying in 2 seconds...`);
-              
+
             // Retry after a delay
             setTimeout(() => {
               console.log(`Retrying stream ${stream.name} after failure`);
@@ -630,11 +635,11 @@ export function LiveView({isWebRTCDisabled}) {
           clearInterval(refreshTimer);
         }
       }, refreshInterval);
-      
+
       // Store hls instance and timer for cleanup
       hlsPlayers.current[stream.name] = hls;
       refreshTimers.current[stream.name] = refreshTimer;
-      
+
       // Start detection polling if detection is enabled for this stream
       if (stream.detection_based_recording && stream.detection_model) {
         console.log(`Starting detection polling for stream ${stream.name}`);
@@ -642,7 +647,7 @@ export function LiveView({isWebRTCDisabled}) {
       } else {
         console.log(`Detection not enabled for stream ${stream.name}`);
       }
-    } 
+    }
     // Check if HLS is supported natively (Safari)
     else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
       console.log(`Using native HLS support for stream ${stream.name}`);
@@ -663,7 +668,7 @@ export function LiveView({isWebRTCDisabled}) {
       handleHLSError(stream.name, 'HLS not supported by your browser - please use a modern browser');
     }
   };
-  
+
   /**
    * Add play button overlay for browsers that block autoplay
    * @param {HTMLElement} videoCell - Video cell element
@@ -684,7 +689,7 @@ export function LiveView({isWebRTCDisabled}) {
     playOverlay.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
     playOverlay.style.zIndex = '25';
     playOverlay.style.cursor = 'pointer';
-    
+
     const playButton = document.createElement('div');
     playButton.className = 'play-button';
     playButton.innerHTML = `
@@ -693,7 +698,7 @@ export function LiveView({isWebRTCDisabled}) {
       </svg>
     `;
     playOverlay.appendChild(playButton);
-    
+
     videoCell.appendChild(playOverlay);
 
     playOverlay.addEventListener('click', () => {
@@ -811,7 +816,7 @@ export function LiveView({isWebRTCDisabled}) {
       hlsPlayers.current[streamName].destroy();
       delete hlsPlayers.current[streamName];
     }
-    
+
     // Clear refresh timer if it exists
     if (refreshTimers.current[streamName]) {
       clearInterval(refreshTimers.current[streamName]);
@@ -842,96 +847,7 @@ export function LiveView({isWebRTCDisabled}) {
   };
 
 
-/**
- * Take snapshot of a stream
- * @param {string} streamId - Stream ID
- * @param {Event} event - Click event
- */
-const takeSnapshot = (streamId, event) => {
-  console.log(`Taking snapshot of stream with ID: ${streamId}`, event);
-
-  // Find the stream by button element
-  const streamElement = document.querySelector(`.snapshot-btn[data-id="${streamId}"]`);
-  let streamName;
-
-  if (streamElement) {
-    // Get the stream name from the data attribute
-    streamName = streamElement.getAttribute('data-name');
-    console.log(`Found stream name from button attribute: ${streamName}`);
-  } else {
-    // If we can't find by data-id (which might be missing in the new UI),
-    // try to find the parent video cell and get the stream name
-    const clickedButton = event ? (event.currentTarget || event.target) : null;
-    console.log('Clicked button:', clickedButton);
-
-    const videoCell = clickedButton ? clickedButton.closest('.video-cell') : null;
-    console.log('Video cell:', videoCell);
-
-    if (videoCell) {
-      streamName = videoCell.dataset.streamName;
-      console.log(`Found stream name from video cell: ${streamName}`);
-    }
-
-    // If still not found, try to find the stream by ID in the streams array
-    if (!streamName) {
-      const stream = streams.find(s => s.id === streamId || s.name === streamId);
-      if (stream) {
-        streamName = stream.name;
-        console.log(`Found stream name from streams array: ${streamName}`);
-      }
-    }
-  }
-
-  if (!streamName) {
-    console.error('Stream name not found for snapshot');
-    showStatusMessage('Cannot take snapshot: Stream not identified');
-    return;
-  }
-
-  // Find the video element
-  const videoElementId = `video-${streamName.replace(/\s+/g, '-')}`;
-  const videoElement = document.getElementById(videoElementId);
-  if (!videoElement) {
-    console.error('Video element not found for stream:', streamName);
-    showStatusMessage('Cannot take snapshot: Video element not found');
-    return;
-  }
-
-  // Create a canvas element to capture the frame
-  const canvas = document.createElement('canvas');
-  canvas.width = videoElement.videoWidth;
-  canvas.height = videoElement.videoHeight;
-
-  // Check if we have valid dimensions
-  if (canvas.width === 0 || canvas.height === 0) {
-    console.error('Invalid video dimensions:', canvas.width, canvas.height);
-    showStatusMessage('Cannot take snapshot: Video not loaded or has invalid dimensions');
-    return;
-  }
-
-  // Draw the current frame to the canvas
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
-
-  try {
-    // Save the canvas to global scope for direct access in the overlay
-    window.__snapshotCanvas = canvas;
-
-    // Generate a filename
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const fileName = `snapshot-${streamName.replace(/\s+/g, '-')}-${timestamp}.jpg`;
-    window.__snapshotFileName = fileName;
-
-    // Show the standard preview
-    showSnapshotPreview(canvas.toDataURL('image/jpeg', 0.95), `Snapshot: ${streamName}`);
-
-    // Show success message
-    showStatusMessage('Snapshot taken successfully');
-  } catch (error) {
-    console.error('Error creating snapshot:', error);
-    showStatusMessage('Failed to create snapshot: ' + error.message);
-  }
-};
+// Note: takeSnapshot is now provided by the useSnapshotManager hook
 
   /**
    * Toggle fullscreen mode for a specific stream
@@ -962,6 +878,10 @@ const takeSnapshot = (streamId, event) => {
 
   return (
     <section id="live-page" className={`page ${isFullscreen ? 'fullscreen-mode' : ''}`}>
+      {/* Include the SnapshotManager component */}
+      <SnapshotManager />
+      {/* Include the FullscreenManager component */}
+      <FullscreenManager isFullscreen={isFullscreen} setIsFullscreen={setIsFullscreen} targetId="live-page" />
       <div className="page-header flex justify-between items-center mb-4 p-4 bg-white dark:bg-gray-800 rounded-lg shadow">
         <div className="flex items-center space-x-2">
           <h2 className="text-xl font-bold mr-4">Live View</h2>
@@ -1023,7 +943,7 @@ const takeSnapshot = (streamId, event) => {
           <button
               id="fullscreen-btn"
               className="p-2 rounded-full bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 focus:outline-none"
-              onClick={() => toggleFullscreen(isFullscreen, setIsFullscreen)}
+              onClick={() => toggleFullscreen()}
               title="Toggle Fullscreen"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"

@@ -3,17 +3,15 @@
  * React component for the streams page
  */
 
-import React, { useState, useEffect, useRef } from 'react';
-import { showStatusMessage } from './UI.js';
-import { ContentLoader } from './LoadingIndicator.js';
-import { StreamDeleteModal } from './StreamDeleteModal.js';
+import { useState } from 'react';
+import { showStatusMessage } from './ToastContainer.jsx';
+import { ContentLoader } from './LoadingIndicator.jsx';
+import { StreamDeleteModal } from './StreamDeleteModal.jsx';
 import {
   useQuery,
   useMutation,
   useQueryClient,
   usePostMutation,
-  usePutMutation,
-  useDeleteMutation,
   fetchJSON
 } from '../../query-client.js';
 
