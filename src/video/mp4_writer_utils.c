@@ -804,13 +804,116 @@ int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, const AVStr
         bool is_compatible = is_audio_codec_compatible_with_mp4(input_stream->codecpar->codec_id, &codec_name);
 
         if (!is_compatible) {
-            log_error("%s codec is not compatible with MP4 format for stream %s",
-                     codec_name, writer->stream_name ? writer->stream_name : "unknown");
-            log_info("Disabling audio recording for stream %s due to incompatible codec",
-                    writer->stream_name ? writer->stream_name : "unknown");
-
-            // Disable audio for this writer
-            writer->has_audio = 0;
+            // For incompatible codecs, attempt transcoding if it's μ-law
+            if (input_stream->codecpar->codec_id == AV_CODEC_ID_PCM_MULAW) {
+                log_info("Attempting to transcode %s audio to AAC for MP4 compatibility in stream %s", 
+                        codec_name, writer->stream_name ? writer->stream_name : "unknown");
+                
+                // Try to transcode μ-law to AAC
+                AVCodecParameters *transcoded_params = NULL;
+                int transcode_ret = transcode_mulaw_to_aac(input_stream->codecpar, 
+                                                         &input_stream->time_base, 
+                                                         writer->stream_name, 
+                                                         &transcoded_params);
+                
+                if (transcode_ret >= 0 && transcoded_params) {
+                    log_info("Successfully transcoded μ-law audio to AAC for stream %s", 
+                            writer->stream_name ? writer->stream_name : "unknown");
+                    
+                    // Create a dummy video stream first (MP4 expects video to be the first stream)
+                    log_warn("MP4 writer initialization triggered by transcoded audio packet for %s - creating dummy video stream",
+                            writer->stream_name ? writer->stream_name : "unknown");
+                    
+                    AVStream *dummy_video = avformat_new_stream(writer->output_ctx, NULL);
+                    if (!dummy_video) {
+                        log_error("Failed to create dummy video stream for MP4 writer");
+                        avcodec_parameters_free(&transcoded_params);
+                        avformat_free_context(writer->output_ctx);
+                        writer->output_ctx = NULL;
+                        free(dir_path);
+                        return -1;
+                    }
+                    
+                    // Set up a minimal H.264 video stream
+                    dummy_video->codecpar->codec_type = AVMEDIA_TYPE_VIDEO;
+                    dummy_video->codecpar->codec_id = AV_CODEC_ID_H264;
+                    dummy_video->codecpar->width = 640;
+                    dummy_video->codecpar->height = 480;
+                    dummy_video->time_base = (AVRational){1, 30};
+                    writer->time_base = dummy_video->time_base;
+                    writer->video_stream_idx = 0;
+                    
+                    // Now add the transcoded audio stream
+                    AVStream *audio_stream = avformat_new_stream(writer->output_ctx, NULL);
+                    if (!audio_stream) {
+                        log_error("Failed to create audio stream for MP4 writer");
+                        avcodec_parameters_free(&transcoded_params);
+                        avformat_free_context(writer->output_ctx);
+                        writer->output_ctx = NULL;
+                        free(dir_path);
+                        return -1;
+                    }
+                    
+                    // Copy transcoded audio codec parameters
+                    ret = avcodec_parameters_copy(audio_stream->codecpar, transcoded_params);
+                    if (ret < 0) {
+                        char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+                        av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+                        log_error("Failed to copy transcoded audio codec parameters for MP4 writer: %s", error_buf);
+                        avcodec_parameters_free(&transcoded_params);
+                        avformat_free_context(writer->output_ctx);
+                        writer->output_ctx = NULL;
+                        free(dir_path);
+                        return -1;
+                    }
+                    
+                    // Free the transcoded parameters now that we've copied them
+                    avcodec_parameters_free(&transcoded_params);
+                    
+                    // Set audio stream time base
+                    audio_stream->time_base = input_stream->time_base;
+                    writer->audio.time_base = input_stream->time_base;
+                    
+                    // Store audio stream index
+                    writer->audio.stream_idx = audio_stream->index;
+                    writer->has_audio = 1;
+                    writer->audio.initialized = 0;  // Will be initialized when we process the first audio packet
+                    
+                    log_info("Added transcoded audio stream at index %d during initialization for %s",
+                            writer->audio.stream_idx, writer->stream_name ? writer->stream_name : "unknown");
+                    
+                    // Skip the rest of the audio stream handling
+                    goto skip_audio_stream;
+                } else {
+                    log_error("Failed to transcode %s audio to AAC: %d", codec_name, transcode_ret);
+                    log_error("Audio stream parameters: codec_id=%d, sample_rate=%d, channels=%d",
+                             input_stream->codecpar->codec_id, input_stream->codecpar->sample_rate,
+                             #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
+                                 input_stream->codecpar->ch_layout.nb_channels
+                             #else
+                                 input_stream->codecpar->channels
+                             #endif
+                            );
+                    log_error("Disabling audio recording for this stream");
+                    
+                    // Disable audio for this writer
+                    writer->has_audio = 0;
+                }
+            } else {
+                log_error("%s audio codec is not compatible with MP4 format", codec_name);
+                log_error("Audio stream parameters: codec_id=%d, sample_rate=%d, channels=%d",
+                         input_stream->codecpar->codec_id, input_stream->codecpar->sample_rate,
+                         #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
+                             input_stream->codecpar->ch_layout.nb_channels
+                         #else
+                             input_stream->codecpar->channels
+                         #endif
+                        );
+                log_error("Disabling audio recording for this stream");
+                
+                // Disable audio for this writer
+                writer->has_audio = 0;
+            }
 
             // We still need to create a dummy video stream to initialize the MP4 writer
             // but we won't add an audio stream
@@ -1120,62 +1223,69 @@ int mp4_writer_add_audio_stream(mp4_writer_t *writer, const AVCodecParameters *c
     bool is_compatible = is_audio_codec_compatible_with_mp4(codec_params->codec_id, &codec_name);
 
     if (!is_compatible) {
-        // Check if this is μ-law or A-law audio that we can transcode
-        if (codec_params->codec_id == AV_CODEC_ID_PCM_MULAW ||
-            codec_params->codec_id == AV_CODEC_ID_PCM_ALAW) {
-            log_info("%s codec detected for stream %s - will transcode to AAC",
+        // For incompatible codecs, attempt transcoding if it's μ-law
+        if (codec_params->codec_id == AV_CODEC_ID_PCM_MULAW) {
+            log_info("Attempting to transcode %s audio to AAC for MP4 compatibility in stream %s", 
                     codec_name, writer->stream_name ? writer->stream_name : "unknown");
-
-            // Transcode μ-law/A-law to AAC
+            
+            // Try to transcode μ-law to AAC
             AVCodecParameters *transcoded_params = NULL;
-            int ret = transcode_mulaw_to_aac(codec_params, time_base,
-                                           writer->stream_name, &transcoded_params);
-
-            if (ret < 0 || !transcoded_params) {
-                log_error("Failed to transcode %s to AAC for stream %s",
-                         codec_name, writer->stream_name ? writer->stream_name : "unknown");
-                log_info("Disabling audio recording for stream %s due to transcoding failure",
+            int transcode_ret = transcode_mulaw_to_aac(codec_params, &safe_time_base, 
+                                                     writer->stream_name, &transcoded_params);
+            
+            if (transcode_ret >= 0 && transcoded_params) {
+                log_info("Successfully transcoded μ-law audio to AAC for stream %s", 
                         writer->stream_name ? writer->stream_name : "unknown");
-
+                
+                // Free the original codec parameters
+                avcodec_parameters_free(&local_codec_params);
+                
+                // Use the transcoded parameters instead
+                local_codec_params = transcoded_params;
+                
+                // Update codec name for logging
+                codec_name = "AAC (transcoded from μ-law)";
+                is_compatible = true;
+            } else {
+                log_error("Failed to transcode %s audio to AAC: %d", codec_name, transcode_ret);
+                log_error("Audio stream parameters: codec_id=%d, sample_rate=%d, channels=%d",
+                         codec_params->codec_id, codec_params->sample_rate,
+                         #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
+                             codec_params->ch_layout.nb_channels
+                         #else
+                             codec_params->channels
+                         #endif
+                        );
+                log_error("Disabling audio recording for this stream");
+                
                 // Disable audio for this writer
                 writer->has_audio = 0;
-
+                
                 // Free the codec parameters
                 avcodec_parameters_free(&local_codec_params);
-
+                
                 // Return success but don't add the audio stream
                 return 0;
             }
-
-            // Free the original codec parameters
-            avcodec_parameters_free(&local_codec_params);
-
-            // Use the transcoded parameters instead
-            local_codec_params = transcoded_params;
-
-            log_info("Successfully transcoded %s to AAC for stream %s",
-                    codec_name, writer->stream_name ? writer->stream_name : "unknown");
-
-            // Initialize the audio transcoder for this stream
-            int transcoder_idx = init_audio_transcoder(writer->stream_name,
-                                                     codec_params,
-                                                     time_base);
-            if (transcoder_idx < 0) {
-                log_warn("Failed to initialize audio transcoder for %s, but continuing with transcoded parameters",
-                       writer->stream_name ? writer->stream_name : "unknown");
-            }
         } else {
-            log_error("%s codec is not compatible with MP4 format for stream %s",
-                     codec_name, writer->stream_name ? writer->stream_name : "unknown");
-            log_info("Disabling audio recording for stream %s due to incompatible codec",
-                    writer->stream_name ? writer->stream_name : "unknown");
-
+            // For other incompatible codecs, disable audio recording
+            log_error("%s audio codec is not compatible with MP4 format", codec_name);
+            log_error("Audio stream parameters: codec_id=%d, sample_rate=%d, channels=%d",
+                     codec_params->codec_id, codec_params->sample_rate,
+                     #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
+                         codec_params->ch_layout.nb_channels
+                     #else
+                         codec_params->channels
+                     #endif
+                    );
+            log_error("Disabling audio recording for this stream");
+            
             // Disable audio for this writer
             writer->has_audio = 0;
-
+            
             // Free the codec parameters
             avcodec_parameters_free(&local_codec_params);
-
+            
             // Return success but don't add the audio stream
             return 0;
         }
