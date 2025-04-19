@@ -131,10 +131,10 @@ static const mg_api_route_t s_api_routes[] = {
     // No direct HLS handlers - handled by static file handler
 
     // go2rtc WebRTC API
-    {"POST", "/api/webrtc", mg_handle_go2rtc_webrtc_offer, false},
-    {"POST", "/api/webrtc/ice", mg_handle_go2rtc_webrtc_ice, false},
-    {"OPTIONS", "/api/webrtc", mg_handle_go2rtc_webrtc_options, false},
-    {"OPTIONS", "/api/webrtc/ice", mg_handle_go2rtc_webrtc_ice_options, false},
+    {"POST", "/api/webrtc", mg_handle_go2rtc_webrtc_offer, true},  // Enable threading for WebRTC offer requests
+    {"POST", "/api/webrtc/ice", mg_handle_go2rtc_webrtc_ice, true},  // Enable threading for WebRTC ICE requests
+    {"OPTIONS", "/api/webrtc", mg_handle_go2rtc_webrtc_options, false},  // OPTIONS requests are fast, no need for threading
+    {"OPTIONS", "/api/webrtc/ice", mg_handle_go2rtc_webrtc_ice_options, false},  // OPTIONS requests are fast, no need for threading
 
     // Detection API
     {"GET", "/api/detection/results/#", mg_handle_get_detection_results, true},  // Opt out of auto-threading to prevent double threading
