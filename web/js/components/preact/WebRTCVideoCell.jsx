@@ -9,6 +9,7 @@ import { DetectionOverlay, takeSnapshotWithDetections } from './DetectionOverlay
 import { SnapshotButton } from './SnapshotManager.jsx';
 import { LoadingIndicator } from './LoadingIndicator.jsx';
 import { showSnapshotPreview } from './UI.jsx';
+import adapter from 'webrtc-adapter';
 
 /**
  * WebRTCVideoCell component
@@ -82,64 +83,11 @@ export function WebRTCVideoCell({
           setIsLoading(false);
           setIsPlaying(true);
         };
-        
-        // Add timeouts to force-check video playback at different intervals
-        setTimeout(() => {
-          if (videoElement && !isPlaying) {
-            console.log(`Force-checking playback for stream ${stream.name} (attempt 1)`);
-            try {
-              videoElement.play().catch(e => {
-                console.warn(`Force play attempt 1 failed for ${stream.name}:`, e);
-              });
-            } catch (e) {
-              console.warn(`Error in force play attempt 1 for ${stream.name}:`, e);
-            }
-          }
-        }, 3000); // First check after 3 seconds
-
-        setTimeout(() => {
-          if (videoElement && !isPlaying) {
-            console.log(`Force-checking playback for stream ${stream.name} (attempt 2)`);
-            try {
-              // Try to restart the connection if still not playing
-              if (peerConnectionRef.current && peerConnectionRef.current.iceConnectionState === 'connected') {
-                console.log(`Connection is established but video not playing for ${stream.name}, forcing play`);
-                videoElement.play().catch(e => {
-                  console.warn(`Force play attempt 2 failed for ${stream.name}:`, e);
-                });
-              }
-            } catch (e) {
-              console.warn(`Error in force play attempt 2 for ${stream.name}:`, e);
-            }
-          } else if (isPlaying) {
-            console.log(`Video is now playing for stream ${stream.name}`);
-          }
-        }, 8000); // Second check after 8 seconds
-
-        videoElement.onerror = (e) => {
-          console.error(`Video error for stream ${stream.name}:`, e);
-          setError('Video playback error');
+        videoElement.onerror = (event) => {
+          console.error(`Error loading video for stream ${stream.name}:`, event);
+          setError('Failed to load video');
           setIsLoading(false);
         };
-      }
-    };
-
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        // Filter out empty candidates
-        if (event.candidate.candidate !== "") {
-          console.log(`ICE candidate for stream ${stream.name}`);
-          
-          // Only process candidates if we're not already connected
-          // This prevents issues with late-arriving candidates disrupting established connections
-          if (pc.iceConnectionState !== 'connected' && pc.iceConnectionState !== 'completed') {
-            // Process the candidate normally
-          } else {
-            console.log(`Ignoring late ICE candidate for stream ${stream.name} - connection already ${pc.iceConnectionState}`);
-          }
-        } else {
-          console.log(`Ignoring empty ICE candidate for stream ${stream.name}`);
-        }
       }
     };
 
@@ -177,7 +125,6 @@ export function WebRTCVideoCell({
 
     // Add transceivers
     pc.addTransceiver('video', {direction: 'recvonly'});
-    pc.addTransceiver('audio', {direction: 'recvonly'});
 
     // Create and send offer
     pc.createOffer()
@@ -203,7 +150,6 @@ export function WebRTCVideoCell({
             ...(auth ? { 'Authorization': 'Basic ' + auth } : {})
           },
           body: JSON.stringify(formattedOffer),
-          signal: abortControllerRef.current.signal
         });
       })
       .then(response => {
@@ -224,7 +170,6 @@ export function WebRTCVideoCell({
       .catch(error => {
         console.error(`Error setting up WebRTC for stream ${stream.name}:`, error);
         setError(error.message || 'Failed to establish WebRTC connection');
-        setIsLoading(false);
       });
 
     // Set up connection quality monitoring
@@ -281,25 +226,6 @@ export function WebRTCVideoCell({
             console.log(`WebRTC connection quality for stream ${stream.name} changed to ${quality}`);
             console.log(`Stats: loss=${lossPercentage.toFixed(2)}%, rtt=${(currentRtt * 1000).toFixed(0)}ms, jitter=${(jitter * 1000).toFixed(0)}ms`);
             setConnectionQuality(quality);
-            
-            // If connection quality is poor or bad for the "parking" stream, which has shown issues
-            if ((quality === 'poor' || quality === 'bad') && stream.name === 'parking') {
-              console.warn(`Poor connection quality detected for problematic stream ${stream.name}, may need intervention`);
-              
-              // If we're in a bad state and the connection is still technically "connected"
-              // but video isn't flowing properly, we might need to force a reconnection
-              if (peerConnectionRef.current && 
-                  peerConnectionRef.current.iceConnectionState === 'connected' && 
-                  !isPlaying && 
-                  reconnectAttemptsRef.current < 3) {
-                
-                console.log(`Attempting to recover stream ${stream.name} (attempt ${reconnectAttemptsRef.current + 1})`);
-                reconnectAttemptsRef.current++;
-                
-                // Force a reconnection
-                handleRetry();
-              }
-            }
           }
         }).catch(err => {
           console.warn(`Error getting WebRTC stats for stream ${stream.name}:`, err);
@@ -384,7 +310,7 @@ export function WebRTCVideoCell({
       tracks.forEach(track => track.stop());
       videoRef.current.srcObject = null;
     }
-    
+
     // Force a re-render by updating state
     setIsPlaying(false);
   };
@@ -406,10 +332,10 @@ export function WebRTCVideoCell({
         id={`video-${streamId.replace(/\s+/g, '-')}`}
         className="video-element"
         ref={videoRef}
-        playsInline
         autoPlay
         muted
         disablePictureInPicture
+        playsInline
         style={{ width: '100%', height: '100%', objectFit: 'contain' }}
       />
 
