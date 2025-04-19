@@ -75,68 +75,7 @@ export function WebRTCView() {
     // Set up modals for snapshot preview
     setupModals();
     addModalStyles();
-
-    // Add event listener to preserve URL parameters when page is reloaded
-    const handleBeforeUnload = () => {
-      console.log('Preserving URL parameters before page reload');
-
-      // Create a URL with the current parameters
-      const url = new URL(window.location);
-
-      // Ensure page parameter is set correctly (convert from 0-based internal to 1-based URL)
-      if (currentPage > 0) {
-        url.searchParams.set('page', currentPage + 1);
-      } else {
-        url.searchParams.delete('page');
-      }
-
-      // Ensure layout parameter is set if not default
-      if (layout !== '4') {
-        url.searchParams.set('layout', layout);
-      } else {
-        url.searchParams.delete('layout');
-      }
-
-      // Ensure stream parameter is set if in single stream mode
-      if (layout === '1' && selectedStream) {
-        url.searchParams.set('stream', selectedStream);
-      } else {
-        url.searchParams.delete('stream');
-      }
-
-      // Update URL without triggering navigation
-      window.history.replaceState({}, '', url);
-
-      // Store the current page in sessionStorage as a backup
-      if (currentPage > 0) {
-        sessionStorage.setItem('webrtc_current_page', (currentPage + 1).toString());
-      } else {
-        sessionStorage.removeItem('webrtc_current_page');
-      }
-
-      // Store layout in sessionStorage
-      if (layout !== '4') {
-        sessionStorage.setItem('webrtc_layout', layout);
-      } else {
-        sessionStorage.removeItem('webrtc_layout');
-      }
-
-      // Store selected stream in sessionStorage
-      if (layout === '1' && selectedStream) {
-        sessionStorage.setItem('webrtc_selected_stream', selectedStream);
-      } else {
-        sessionStorage.removeItem('webrtc_selected_stream');
-      }
-    };
-
-    // Register the beforeunload handler
-    window.addEventListener('beforeunload', handleBeforeUnload);
-
-    // Cleanup
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
-  }, [streams, currentPage, layout, selectedStream]);
+  }, []);
 
   // Fetch streams using preact-query
   const {
@@ -192,7 +131,7 @@ export function WebRTCView() {
 
       processStreams();
     }
-  }, [streamsData, selectedStream, queryClient]);
+  }, [streamsData, selectedStream]);
 
   // Update URL when layout, page, or selectedStream changes
   useEffect(() => {
@@ -434,14 +373,17 @@ export function WebRTCView() {
         targetId="live-page"
       />
 
-      <div className="page-header flex justify-between items-center mb-4 p-4 bg-white dark:bg-gray-800 rounded-lg shadow">
+      <div className="page-header flex justify-between items-center mb-4 p-4 bg-white dark:bg-gray-800 rounded-lg shadow" style={{ position: 'relative', zIndex: 10, pointerEvents: 'auto' }}>
         <div className="flex items-center space-x-2">
           <h2 className="text-xl font-bold mr-4">Live View</h2>
           <div className="flex space-x-2">
             <button
               id="hls-toggle-btn"
-              className="px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
-              onClick={() => window.location.href = '/hls.html'}
+              className="px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 inline-block text-center"
+              style={{ position: 'relative', zIndex: 50 }} // Very high z-index to ensure clickability
+              onClick={() => {
+                window.location.href = '/hls.html';
+              }}
             >
               HLS View
             </button>
@@ -509,8 +451,8 @@ export function WebRTCView() {
           className={`video-container layout-${layout}`}
         >
           {isLoadingStreams ? (
-            <div className="flex justify-center items-center col-span-full row-span-full h-64 w-full" style={{ pointerEvents: 'none', zIndex: 1 }}>
-              <div className="flex flex-col items-center justify-center py-8">
+              <div className="flex justify-center items-center col-span-full row-span-full h-64 w-full" style={{ pointerEvents: 'none', zIndex: 1 }}>
+                <div className="flex flex-col items-center justify-center py-8">
                 <div
                   className="inline-block animate-spin rounded-full border-4 border-gray-300 dark:border-gray-600 border-t-blue-600 dark:border-t-blue-500 w-16 h-16"></div>
                 <p className="mt-4 text-gray-700 dark:text-gray-300">Loading streams...</p>
@@ -518,12 +460,12 @@ export function WebRTCView() {
             </div>
           ) : (isLoading && !isLoadingStreams) ? (
             <div
-              className="flex justify-center items-center col-span-full row-span-full h-64 w-full"
-              style={{
-                pointerEvents: 'none',
-                position: 'relative',
-                zIndex: 1
-              }}
+                className="flex justify-center items-center col-span-full row-span-full h-64 w-full"
+                style={{
+                  pointerEvents: 'none',
+                  position: 'relative',
+                  zIndex: 1
+                }}
             >
               <div className="flex flex-col items-center justify-center py-8">
                 <div
@@ -553,7 +495,7 @@ export function WebRTCView() {
                 key={stream.name}
                 stream={stream}
                 onToggleFullscreen={toggleStreamFullscreen}
-                streamId={stream.id || stream.name} // Add explicit streamId prop to prevent re-renders
+                streamId={stream.name} // Add explicit streamId prop to prevent re-renders
               />
             ))
           )}

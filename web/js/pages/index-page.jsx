@@ -55,12 +55,7 @@ function App() {
     }
 
     return (
-        <>
-            <Header />
-            <ToastContainer />
-            {isWebRTCDisabled ? <LiveView isWebRTCDisabled={true} /> : <WebRTCView />}
-            <Footer />
-        </>
+            <>{isWebRTCDisabled ? <LiveView isWebRTCDisabled={true} /> : <WebRTCView />}</>
     );
 }
 
@@ -72,7 +67,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (container) {
         render(
             <QueryClientProvider client={queryClient}>
+                <Header />
+                <ToastContainer />
                 <App />
+                <Footer />
             </QueryClientProvider>,
             container
         );

@@ -132,7 +132,6 @@
     width: 100%;
     height: 100%;
     z-index: 2;
-    pointer-events: none;
 }
 
 /* Adjust video cells in fullscreen mode for better visibility */

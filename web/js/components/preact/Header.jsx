@@ -90,6 +90,22 @@ export function Header({ version = VERSION }) {
     { id: 'nav-system', href: 'system.html', label: 'System' }
   ];
 
+  // Force navigation function to bypass React cleanup issues
+  const forceNavigation = (href, e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    // Use setTimeout with 0 delay to move this to the end of the event queue
+    // This helps ensure the navigation happens after any other event handlers
+    setTimeout(() => {
+      window.location.href = href;
+    }, 0);
+
+    return false; // Prevent default behavior
+  };
+
   // Render navigation item
   const renderNavItem = (item) => {
     const isActive = activeNav === item.id;
@@ -99,66 +115,74 @@ export function Header({ version = VERSION }) {
     const activeClass = isActive ? 'bg-blue-600' : 'hover:bg-blue-700';
 
     return (
-      <li className={mobileMenuOpen ? "w-full" : "mx-1"}>
-        <a
-          href={item.href}
-          id={item.id}
-          className={`${baseClasses} ${mobileMenuOpen ? mobileClasses : desktopClasses} ${activeClass}`}
-          onClick={mobileMenuOpen ? toggleMobileMenu : null}
-        >
-          {item.label}
-        </a>
-      </li>
+        <li className={mobileMenuOpen ? "w-full" : "mx-1"}>
+          <a
+              href={item.href}
+              id={item.id}
+              className={`${baseClasses} ${mobileMenuOpen ? mobileClasses : desktopClasses} ${activeClass}`}
+              onClick={(e) => {
+                // Force navigation and prevent default behavior
+                forceNavigation(item.href, e);
+
+                // Close mobile menu if open
+                if (mobileMenuOpen) {
+                  toggleMobileMenu();
+                }
+              }}
+          >
+            {item.label}
+          </a>
+        </li>
     );
   };
 
   return (
-    <header className="bg-gray-800 text-white py-2 shadow-md mb-4 w-full">
-      <div className="container mx-auto px-4 flex justify-between items-center">
-        <div className="logo flex items-center">
-          <h1 className="text-xl font-bold m-0">LightNVR</h1>
-          <span className="version text-blue-200 text-xs ml-2">v{version}</span>
+      <header className="bg-gray-800 text-white py-2 shadow-md mb-4 w-full" style={{ position: 'relative', zIndex: 20 }}>
+        <div className="container mx-auto px-4 flex justify-between items-center">
+          <div className="logo flex items-center">
+            <h1 className="text-xl font-bold m-0">LightNVR</h1>
+            <span className="version text-blue-200 text-xs ml-2">v{version}</span>
+          </div>
+
+          {/* Desktop Navigation */}
+          <nav className="hidden md:block" style={{ position: 'relative', zIndex: 20 }}>
+            <ul className="flex list-none m-0 p-0">
+              {navItems.map(renderNavItem)}
+            </ul>
+          </nav>
+
+          {/* User Menu (Desktop) */}
+          <div className="user-menu hidden md:flex items-center">
+            <span className="mr-2">{username}</span>
+            <a href="#" onClick={handleLogout} className="logout-link text-white no-underline hover:bg-blue-700 px-3 py-1 rounded transition-colors">Logout</a>
+          </div>
+
+          {/* Mobile Menu Button */}
+          <button
+              className="md:hidden text-white p-2 focus:outline-none"
+              onClick={toggleMobileMenu}
+              aria-label="Toggle menu"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={mobileMenuOpen ? "M6 18L18 6M6 6l12 12" : "M4 6h16M4 12h16M4 18h16"} />
+            </svg>
+          </button>
         </div>
 
-        {/* Desktop Navigation */}
-        <nav className="hidden md:block">
-          <ul className="flex list-none m-0 p-0">
-            {navItems.map(renderNavItem)}
-          </ul>
-        </nav>
-
-        {/* User Menu (Desktop) */}
-        <div className="user-menu hidden md:flex items-center">
-          <span className="mr-2">{username}</span>
-          <a href="#" onClick={handleLogout} className="logout-link text-white no-underline hover:bg-blue-700 px-3 py-1 rounded transition-colors">Logout</a>
-        </div>
-
-        {/* Mobile Menu Button */}
-        <button
-          className="md:hidden text-white p-2 focus:outline-none"
-          onClick={toggleMobileMenu}
-          aria-label="Toggle menu"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={mobileMenuOpen ? "M6 18L18 6M6 6l12 12" : "M4 6h16M4 12h16M4 18h16"} />
-          </svg>
-        </button>
-      </div>
-
-      {/* Mobile Navigation */}
-      {mobileMenuOpen && (
-        <div className="md:hidden mt-2 border-t border-gray-700 pt-2 container mx-auto px-4">
-          <ul className="list-none m-0 p-0 flex flex-col w-full">
-            {navItems.map(renderNavItem)}
-            <li className="w-full mt-2 pt-2 border-t border-gray-700">
-              <div className="flex justify-between items-center px-4 py-2">
-                <span>{username}</span>
-                <a href="#" onClick={handleLogout} className="logout-link text-white no-underline hover:bg-blue-700 px-3 py-1 rounded transition-colors">Logout</a>
-              </div>
-            </li>
-          </ul>
-        </div>
-      )}
-    </header>
+        {/* Mobile Navigation */}
+        {mobileMenuOpen && (
+            <div className="md:hidden mt-2 border-t border-gray-700 pt-2 container mx-auto px-4">
+              <ul className="list-none m-0 p-0 flex flex-col w-full">
+                {navItems.map(renderNavItem)}
+                <li className="w-full mt-2 pt-2 border-t border-gray-700">
+                  <div className="flex justify-between items-center px-4 py-2">
+                    <span>{username}</span>
+                    <a href="#" onClick={handleLogout} className="logout-link text-white no-underline hover:bg-blue-700 px-3 py-1 rounded transition-colors">Logout</a>
+                  </div>
+                </li>
+              </ul>
+            </div>
+        )}
+      </header>
   );
 }
