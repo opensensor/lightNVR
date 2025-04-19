@@ -27,6 +27,7 @@ export function WebRTCVideoCell({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [connectionQuality, setConnectionQuality] = useState('unknown'); // 'unknown', 'good', 'poor', 'bad'
 
   // Refs
   const videoRef = useRef(null);
@@ -34,6 +35,8 @@ export function WebRTCVideoCell({
   const peerConnectionRef = useRef(null);
   const detectionOverlayRef = useRef(null);
   const abortControllerRef = useRef(null);
+  const connectionMonitorRef = useRef(null);
+  const reconnectAttemptsRef = useRef(0);
 
   // Initialize WebRTC connection when component mounts
   useEffect(() => {
@@ -45,6 +48,11 @@ export function WebRTCVideoCell({
 
     // Create a new RTCPeerConnection
     const pc = new RTCPeerConnection({
+      iceTransports: 'all',
+      bundlePolicy: 'balanced',
+      rtcpCnameCpn: 'LightNVR',
+      rtcpCnameRtp: 'LightNVR',
+      iceCandidatePoolSize: 0,
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' }
@@ -74,6 +82,39 @@ export function WebRTCVideoCell({
           setIsLoading(false);
           setIsPlaying(true);
         };
+        
+        // Add timeouts to force-check video playback at different intervals
+        setTimeout(() => {
+          if (videoElement && !isPlaying) {
+            console.log(`Force-checking playback for stream ${stream.name} (attempt 1)`);
+            try {
+              videoElement.play().catch(e => {
+                console.warn(`Force play attempt 1 failed for ${stream.name}:`, e);
+              });
+            } catch (e) {
+              console.warn(`Error in force play attempt 1 for ${stream.name}:`, e);
+            }
+          }
+        }, 3000); // First check after 3 seconds
+
+        setTimeout(() => {
+          if (videoElement && !isPlaying) {
+            console.log(`Force-checking playback for stream ${stream.name} (attempt 2)`);
+            try {
+              // Try to restart the connection if still not playing
+              if (peerConnectionRef.current && peerConnectionRef.current.iceConnectionState === 'connected') {
+                console.log(`Connection is established but video not playing for ${stream.name}, forcing play`);
+                videoElement.play().catch(e => {
+                  console.warn(`Force play attempt 2 failed for ${stream.name}:`, e);
+                });
+              }
+            } catch (e) {
+              console.warn(`Error in force play attempt 2 for ${stream.name}:`, e);
+            }
+          } else if (isPlaying) {
+            console.log(`Video is now playing for stream ${stream.name}`);
+          }
+        }, 8000); // Second check after 8 seconds
 
         videoElement.onerror = (e) => {
           console.error(`Video error for stream ${stream.name}:`, e);
@@ -88,6 +129,14 @@ export function WebRTCVideoCell({
         // Filter out empty candidates
         if (event.candidate.candidate !== "") {
           console.log(`ICE candidate for stream ${stream.name}`);
+          
+          // Only process candidates if we're not already connected
+          // This prevents issues with late-arriving candidates disrupting established connections
+          if (pc.iceConnectionState !== 'connected' && pc.iceConnectionState !== 'completed') {
+            // Process the candidate normally
+          } else {
+            console.log(`Ignoring late ICE candidate for stream ${stream.name} - connection already ${pc.iceConnectionState}`);
+          }
         } else {
           console.log(`Ignoring empty ICE candidate for stream ${stream.name}`);
         }
@@ -98,8 +147,31 @@ export function WebRTCVideoCell({
       console.log(`ICE connection state for stream ${stream.name}: ${pc.iceConnectionState}`);
       
       if (pc.iceConnectionState === 'failed') {
+        console.error(`WebRTC ICE connection failed for stream ${stream.name}`);
         setError('WebRTC ICE connection failed');
         setIsLoading(false);
+      } else if (pc.iceConnectionState === 'disconnected') {
+        // Connection is temporarily disconnected, log but don't show error yet
+        console.warn(`WebRTC ICE connection disconnected for stream ${stream.name}, attempting to recover...`);
+        
+        // Set a timeout to check if the connection recovers on its own
+        setTimeout(() => {
+          if (peerConnectionRef.current && 
+              (peerConnectionRef.current.iceConnectionState === 'disconnected' || 
+               peerConnectionRef.current.iceConnectionState === 'failed')) {
+            console.error(`WebRTC ICE connection could not recover for stream ${stream.name}`);
+            setError('WebRTC connection lost. Please retry.');
+            setIsLoading(false);
+          } else if (peerConnectionRef.current) {
+            console.log(`WebRTC ICE connection recovered for stream ${stream.name}, current state: ${peerConnectionRef.current.iceConnectionState}`);
+          }
+        }, 5000); // Wait 5 seconds to see if connection recovers
+      } else if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+        // Connection is established or completed, clear any previous error
+        if (error) {
+          console.log(`WebRTC connection restored for stream ${stream.name}`);
+          setError(null);
+        }
       }
     };
 
@@ -155,9 +227,124 @@ export function WebRTCVideoCell({
         setIsLoading(false);
       });
 
+    // Set up connection quality monitoring
+    const startConnectionMonitoring = () => {
+      // Clear any existing monitor
+      if (connectionMonitorRef.current) {
+        clearInterval(connectionMonitorRef.current);
+      }
+      
+      // Start a new monitor
+      connectionMonitorRef.current = setInterval(() => {
+        if (!peerConnectionRef.current) return;
+        
+        // Get connection stats
+        peerConnectionRef.current.getStats().then(stats => {
+          let packetsLost = 0;
+          let packetsReceived = 0;
+          let currentRtt = 0;
+          let jitter = 0;
+          
+          stats.forEach(report => {
+            if (report.type === 'inbound-rtp' && report.kind === 'video') {
+              packetsLost = report.packetsLost || 0;
+              packetsReceived = report.packetsReceived || 0;
+              jitter = report.jitter || 0;
+            }
+            
+            if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+              currentRtt = report.currentRoundTripTime || 0;
+            }
+          });
+          
+          // Calculate packet loss percentage
+          const totalPackets = packetsReceived + packetsLost;
+          const lossPercentage = totalPackets > 0 ? (packetsLost / totalPackets) * 100 : 0;
+          
+          // Determine connection quality
+          let quality = 'unknown';
+          
+          if (packetsReceived > 0) {
+            if (lossPercentage < 2 && currentRtt < 0.1 && jitter < 0.03) {
+              quality = 'good';
+            } else if (lossPercentage < 5 && currentRtt < 0.3 && jitter < 0.1) {
+              quality = 'fair';
+            } else if (lossPercentage < 15 && currentRtt < 1) {
+              quality = 'poor';
+            } else {
+              quality = 'bad';
+            }
+          }
+          
+          // Update connection quality state if changed
+          if (quality !== connectionQuality) {
+            console.log(`WebRTC connection quality for stream ${stream.name} changed to ${quality}`);
+            console.log(`Stats: loss=${lossPercentage.toFixed(2)}%, rtt=${(currentRtt * 1000).toFixed(0)}ms, jitter=${(jitter * 1000).toFixed(0)}ms`);
+            setConnectionQuality(quality);
+            
+            // If connection quality is poor or bad for the "parking" stream, which has shown issues
+            if ((quality === 'poor' || quality === 'bad') && stream.name === 'parking') {
+              console.warn(`Poor connection quality detected for problematic stream ${stream.name}, may need intervention`);
+              
+              // If we're in a bad state and the connection is still technically "connected"
+              // but video isn't flowing properly, we might need to force a reconnection
+              if (peerConnectionRef.current && 
+                  peerConnectionRef.current.iceConnectionState === 'connected' && 
+                  !isPlaying && 
+                  reconnectAttemptsRef.current < 3) {
+                
+                console.log(`Attempting to recover stream ${stream.name} (attempt ${reconnectAttemptsRef.current + 1})`);
+                reconnectAttemptsRef.current++;
+                
+                // Force a reconnection
+                handleRetry();
+              }
+            }
+          }
+        }).catch(err => {
+          console.warn(`Error getting WebRTC stats for stream ${stream.name}:`, err);
+        });
+      }, 10000); // Check every 10 seconds
+    };
+    
+    // Start monitoring once we have a connection
+    if (peerConnectionRef.current && peerConnectionRef.current.iceConnectionState === 'connected') {
+      startConnectionMonitoring();
+    }
+    
+    // Listen for connection state changes to start/stop monitoring
+    const originalOnIceConnectionStateChange = pc.oniceconnectionstatechange;
+    pc.oniceconnectionstatechange = () => {
+      // Call the original handler
+      if (originalOnIceConnectionStateChange) {
+        originalOnIceConnectionStateChange();
+      }
+      
+      // Start monitoring when connected
+      if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+        startConnectionMonitoring();
+        // Reset reconnect attempts counter when we get a good connection
+        reconnectAttemptsRef.current = 0;
+      }
+      
+      // Stop monitoring when disconnected or failed
+      if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'closed') {
+        if (connectionMonitorRef.current) {
+          clearInterval(connectionMonitorRef.current);
+          connectionMonitorRef.current = null;
+        }
+      }
+    };
+
     // Cleanup function
     return () => {
       console.log(`Cleaning up WebRTC connection for stream ${stream.name}`);
+      
+      // Stop connection monitoring
+      if (connectionMonitorRef.current) {
+        clearInterval(connectionMonitorRef.current);
+        connectionMonitorRef.current = null;
+      }
       
       // Abort any pending fetch requests
       if (abortControllerRef.current) {
@@ -237,7 +424,7 @@ export function WebRTCVideoCell({
         />
       )}
 
-      {/* Stream name overlay */}
+      {/* Stream name overlay with connection quality indicator */}
       <div
         className="stream-name-overlay"
         style={{
@@ -249,10 +436,33 @@ export function WebRTCVideoCell({
           color: 'white',
           borderRadius: '4px',
           fontSize: '14px',
-          zIndex: 3
+          zIndex: 3,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
         }}
       >
         {stream.name}
+        
+        {/* Connection quality indicator - only show when we have quality data and stream is playing */}
+        {isPlaying && connectionQuality !== 'unknown' && (
+          <div 
+            className={`connection-quality-indicator quality-${connectionQuality}`}
+            title={`Connection Quality: ${connectionQuality.charAt(0).toUpperCase() + connectionQuality.slice(1)}`}
+            style={{
+              width: '10px',
+              height: '10px',
+              borderRadius: '50%',
+              backgroundColor: 
+                connectionQuality === 'good' ? '#10B981' :  // Green
+                connectionQuality === 'fair' ? '#FBBF24' :  // Yellow
+                connectionQuality === 'poor' ? '#F97316' :  // Orange
+                connectionQuality === 'bad' ? '#EF4444' :   // Red
+                '#6B7280',                                  // Gray (unknown)
+              boxShadow: '0 0 4px rgba(0, 0, 0, 0.3)'
+            }}
+          />
+        )}
       </div>
 
       {/* Stream controls */}
