@@ -353,6 +353,12 @@ export function WebRTCView() {
       console.log('Exiting fullscreen mode');
       document.exitFullscreen();
     }
+
+    // Prevent event propagation
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
   };
 
   // Memoize the streams to show to prevent unnecessary re-renders

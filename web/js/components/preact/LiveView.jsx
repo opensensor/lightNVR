@@ -4,11 +4,11 @@
  */
 
 import { h, render } from 'preact';
-import { useState, useEffect, useRef } from 'preact/hooks';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { setupModals, addModalStyles } from './UI.jsx';
 import { useFullscreenManager, FullscreenManager } from './FullscreenManager.jsx';
-import { DetectionOverlay } from './DetectionOverlay.jsx';
+import { useQuery, useQueryClient } from '../../query-client.js';
 import { SnapshotManager, useSnapshotManager } from './SnapshotManager.jsx';
 import { HLSVideoCell } from './HLSVideoCell.jsx';
 
@@ -19,135 +19,130 @@ import { HLSVideoCell } from './HLSVideoCell.jsx';
 export function LiveView({isWebRTCDisabled}) {
   // Use the snapshot manager hook
   const { takeSnapshot } = useSnapshotManager();
+
   // Use the fullscreen manager hook
   const { isFullscreen, setIsFullscreen, toggleFullscreen } = useFullscreenManager();
+
+  // State for streams and layout
   const [streams, setStreams] = useState([]);
-  // Initialize layout from URL if available
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Initialize layout from URL or sessionStorage if available
   const [layout, setLayout] = useState(() => {
     const urlParams = new URLSearchParams(window.location.search);
-    return urlParams.get('layout') || '4';
+    const layoutParam = urlParams.get('layout');
+    if (layoutParam) {
+      return layoutParam;
+    }
+    // Check sessionStorage as a backup
+    const storedLayout = sessionStorage.getItem('hls_layout');
+    return storedLayout || '4';
   });
-  // Initialize selectedStream from URL if available
+
+  // Initialize selectedStream from URL or sessionStorage if available
   const [selectedStream, setSelectedStream] = useState(() => {
     const urlParams = new URLSearchParams(window.location.search);
-    return urlParams.get('stream') || '';
+    const streamParam = urlParams.get('stream');
+    if (streamParam) {
+      return streamParam;
+    }
+    // Check sessionStorage as a backup
+    const storedStream = sessionStorage.getItem('hls_selected_stream');
+    return storedStream || '';
   });
-  // isFullscreen state is now managed by useFullscreenManager
-  const [isLoading, setIsLoading] = useState(true);
-  // Initialize currentPage from URL if available (URL uses 1-based indexing, internal state uses 0-based)
+
+  // Initialize currentPage from URL or sessionStorage if available (URL uses 1-based indexing, internal state uses 0-based)
   const [currentPage, setCurrentPage] = useState(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const pageParam = urlParams.get('page');
-    // Convert from 1-based (URL) to 0-based (internal)
-    return pageParam ? Math.max(0, parseInt(pageParam, 10) - 1) : 0;
+    if (pageParam) {
+      // Convert from 1-based (URL) to 0-based (internal)
+      return Math.max(0, parseInt(pageParam, 10) - 1);
+    }
+    // Check sessionStorage as a backup
+    const storedPage = sessionStorage.getItem('hls_current_page');
+    if (storedPage) {
+      // Convert from 1-based (stored) to 0-based (internal)
+      return Math.max(0, parseInt(storedPage, 10) - 1);
+    }
+    return 0;
   });
-  const videoGridRef = useRef(null);
-  const hlsPlayers = useRef({});
-  const detectionOverlays = useRef({});
-  const refreshTimers = useRef({});
+
+  // Get query client for fetching and invalidating queries
+  const queryClient = useQueryClient();
 
   // Set up event listeners and UI components
   useEffect(() => {
     // Set up modals for snapshot preview
     setupModals();
     addModalStyles();
+  }, []);
 
-    // Add event listener to stop streams when leaving the page
-    const handleBeforeUnload = () => {
-      stopAllHLSStreams();
-    };
+  // Fetch streams using preact-query
+  const {
+    data: streamsData,
+    isLoading: isLoadingStreams,
+    error: streamsError
+  } = useQuery(
+    'streams',
+    '/api/streams',
+    {
+      timeout: 15000, // 15 second timeout
+      retries: 2,     // Retry twice
+      retryDelay: 1000 // 1 second between retries
+    }
+  );
 
-    // Add event listener for visibility change to handle tab switching
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        console.log("Page hidden, pausing HLS streams");
-        // Pause video elements to reduce resource usage
-        Object.keys(hlsPlayers.current).forEach(streamName => {
-          const videoElementId = `video-${streamName.replace(/\s+/g, '-')}`;
-          const videoElement = document.getElementById(videoElementId);
-          if (videoElement) {
-            videoElement.pause();
-          }
-        });
-      } else {
-        console.log("Page visible, resuming HLS streams");
-        // Resume video playback
-        Object.keys(hlsPlayers.current).forEach(streamName => {
-          const videoElementId = `video-${streamName.replace(/\s+/g, '-')}`;
-          const videoElement = document.getElementById(videoElementId);
-          if (videoElement) {
-            videoElement.play().catch(e => {
-              console.warn(`Could not resume video for ${streamName}:`, e);
-            });
-          }
-        });
-      }
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    // Cleanup
-    return () => {
-      // No need to remove handleEscape as it's now handled in FullscreenManager.js
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      stopAllHLSStreams();
-    };
-  }, [streams]); // Add streams as dependency to ensure we have the latest stream data
-
-  // Load streams after the component has rendered and videoGridRef is available
+  // Update loading state based on streams query status
   useEffect(() => {
-      // Set loading state initially
-      setIsLoading(true);
+    setIsLoading(isLoadingStreams);
+  }, [isLoadingStreams]);
 
-      // Create a timeout to handle potential stalls in loading
-      const timeoutId = setTimeout(() => {
-        console.warn('Stream loading timed out');
-        setIsLoading(false);
-        showStatusMessage('Loading streams timed out. Please try refreshing the page.');
-      }, 15000); // 15 second timeout
+  // Process streams data when it's loaded
+  useEffect(() => {
+    if (streamsData && Array.isArray(streamsData)) {
+      // Process the streams data
+      const processStreams = async () => {
+        try {
+          // Filter and process the streams
+          const filteredStreams = await filterStreamsForHLS(streamsData);
 
-      // Load streams from API with timeout handling
-      loadStreams()
-        .then((streamData) => {
-          clearTimeout(timeoutId);
-          if (streamData && streamData.length > 0) {
-            setStreams(streamData);
+          if (filteredStreams.length > 0) {
+            setStreams(filteredStreams);
 
             // Set selectedStream based on URL parameter if it exists and is valid
             const urlParams = new URLSearchParams(window.location.search);
             const streamParam = urlParams.get('stream');
 
-            if (streamParam && streamData.some(stream => stream.name === streamParam)) {
+            if (streamParam && filteredStreams.some(stream => stream.name === streamParam)) {
               // If the stream from URL exists in the loaded streams, use it
               setSelectedStream(streamParam);
-            } else if (!selectedStream || !streamData.some(stream => stream.name === selectedStream)) {
+            } else if (!selectedStream || !filteredStreams.some(stream => stream.name === selectedStream)) {
               // Otherwise use the first stream if selectedStream is not set or invalid
-              setSelectedStream(streamData[0].name);
+              setSelectedStream(filteredStreams[0].name);
             }
           } else {
-            console.warn('No streams returned from API');
+            console.warn('No streams available for HLS view after filtering');
           }
-          setIsLoading(false);
-        })
-        .catch((error) => {
-          clearTimeout(timeoutId);
-          console.error('Error loading streams:', error);
-          showStatusMessage('Error loading streams: ' + error.message);
-          setIsLoading(false);
-        });
-  }, []);
+        } catch (error) {
+          console.error('Error processing streams:', error);
+          showStatusMessage('Error processing streams: ' + error.message);
+        }
+      };
 
-  // Update video grid when layout, page, or streams change
-  useEffect(() => {
-    updateVideoGrid();
-  }, [layout, selectedStream, streams, currentPage]);
+      processStreams();
+    }
+  }, [streamsData, selectedStream]);
 
-  // Update URL when page, layout, or selectedStream changes
+  // Update URL when layout, page, or selectedStream changes
   useEffect(() => {
-    // Update URL with current page (convert from 0-based internal to 1-based URL)
+    // Don't update URL during initial load or when streams are empty
+    if (streams.length === 0) return;
+
+    console.log('Updating URL parameters');
     const url = new URL(window.location);
+
+    // Handle page parameter (convert from 0-based internal to 1-based URL)
     if (currentPage === 0) {
       url.searchParams.delete('page');
     } else {
@@ -155,10 +150,10 @@ export function LiveView({isWebRTCDisabled}) {
       url.searchParams.set('page', currentPage + 1);
     }
 
-    // Ensure layout parameter is preserved
-    if (layout && layout !== '4') { // Only set if not the default
+    // Handle layout parameter
+    if (layout !== '4') { // Only set if not the default
       url.searchParams.set('layout', layout);
-    } else if (layout === '4') {
+    } else {
       // Remove layout parameter if it's the default value
       url.searchParams.delete('layout');
     }
@@ -173,64 +168,68 @@ export function LiveView({isWebRTCDisabled}) {
 
     // Update URL without reloading the page
     window.history.replaceState({}, '', url);
-  }, [currentPage, layout, selectedStream]);
+
+    // Also update sessionStorage
+    if (currentPage > 0) {
+      sessionStorage.setItem('hls_current_page', (currentPage + 1).toString());
+    } else {
+      sessionStorage.removeItem('hls_current_page');
+    }
+
+    if (layout !== '4') {
+      sessionStorage.setItem('hls_layout', layout);
+    } else {
+      sessionStorage.removeItem('hls_layout');
+    }
+
+    if (layout === '1' && selectedStream) {
+      sessionStorage.setItem('hls_selected_stream', selectedStream);
+    } else {
+      sessionStorage.removeItem('hls_selected_stream');
+    }
+  }, [currentPage, layout, selectedStream, streams.length]);
 
   /**
-   * Load streams from API
-   * @returns {Promise<Array>} Promise resolving to array of streams
+   * Filter streams for HLS Live view
+   * @param {Array} streams - Array of streams
+   * @returns {Promise<Array>} Promise resolving to filtered array of streams
    */
-  const loadStreams = async () => {
+  const filterStreamsForHLS = async (streams) => {
     try {
-      // Create a timeout promise to handle potential stalls
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Request timed out')), 5000); // 5 second timeout
-      });
-
-      // Fetch streams from API with timeout
-      const fetchPromise = fetch('/api/streams');
-      const response = await Promise.race([fetchPromise, timeoutPromise]);
-
-      if (!response.ok) {
-        throw new Error('Failed to load streams');
+      if (!streams || !Array.isArray(streams)) {
+        console.warn('No streams data provided to filter');
+        return [];
       }
 
-      // Create another timeout for the JSON parsing
-      const jsonTimeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('JSON parsing timed out')), 3000); // 3 second timeout
-      });
-
-      const jsonPromise = response.json();
-      const data = await Promise.race([jsonPromise, jsonTimeoutPromise]);
-
       // For HLS view, we need to fetch full details for each stream
-      const streamPromises = (data || []).map(stream => {
-        // Create a timeout promise for this stream's details fetch
-        const detailsTimeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error(`Timeout fetching details for stream ${stream.name}`)), 3000);
-        });
+      const streamPromises = streams.map(async (stream) => {
+        try {
+          const streamId = stream.id || stream.name;
 
-        // Fetch stream details with timeout
-        const detailsFetchPromise = fetch(`/api/streams/${encodeURIComponent(stream.id || stream.name)}`)
-          .then(response => {
-            if (!response.ok) {
-              throw new Error(`Failed to load details for stream ${stream.name}`);
-            }
-            return response.json();
+          const streamDetails = await queryClient.fetchQuery({
+            queryKey: ['stream-details', streamId],
+            queryFn: async () => {
+              const response = await fetch(`/api/streams/${encodeURIComponent(streamId)}`);
+              if (!response.ok) {
+                throw new Error(`Failed to load details for stream ${stream.name}`);
+              }
+              return response.json();
+            },
+            staleTime: 30000 // 30 seconds
           });
 
-        // Race the fetch against the timeout
-        return Promise.race([detailsFetchPromise, detailsTimeoutPromise])
-          .catch(error => {
-            console.error(`Error loading details for stream ${stream.name}:`, error);
-            // Return the basic stream info if we can't get details
-            return stream;
-          });
+          return streamDetails;
+        } catch (error) {
+          console.error(`Error loading details for stream ${stream.name}:`, error);
+          // Return the basic stream info if we can't get details
+          return stream;
+        }
       });
 
       const detailedStreams = await Promise.all(streamPromises);
       console.log('Loaded detailed streams for HLS view:', detailedStreams);
 
-      // Filter out streams that are soft deleted, inactive, or not configured for HLS
+      // Filter out streams that are soft deleted, inactive, or not configured for streaming
       const filteredStreams = detailedStreams.filter(stream => {
         // Filter out soft deleted streams
         if (stream.is_deleted) {
@@ -244,9 +243,9 @@ export function LiveView({isWebRTCDisabled}) {
           return false;
         }
 
-        // Filter out streams not configured for HLS
+        // Filter out streams not configured for streaming
         if (!stream.streaming_enabled) {
-          console.log(`Stream ${stream.name} is not configured for HLS, filtering out`);
+          console.log(`Stream ${stream.name} is not configured for streaming, filtering out`);
           return false;
         }
 
@@ -257,9 +256,8 @@ export function LiveView({isWebRTCDisabled}) {
 
       return filteredStreams || [];
     } catch (error) {
-      console.error('Error loading streams for WebRTC view:', error);
-      showStatusMessage('Error loading streams: ' + error.message);
-
+      console.error('Error filtering streams for HLS view:', error);
+      showStatusMessage('Error processing streams: ' + error.message);
       return [];
     }
   };
@@ -268,7 +266,7 @@ export function LiveView({isWebRTCDisabled}) {
    * Get maximum number of streams to display based on layout
    * @returns {number} Maximum number of streams
    */
-  const getMaxStreamsForLayout = () => {
+  const getMaxStreamsForLayout = useCallback(() => {
     switch (layout) {
       case '1': return 1;  // Single view
       case '2': return 2;  // 2x1 grid
@@ -278,24 +276,13 @@ export function LiveView({isWebRTCDisabled}) {
       case '16': return 16; // 4x4 grid
       default: return 4;
     }
-  };
+  }, [layout]);
 
   /**
-   * Update video grid based on layout, streams, and pagination
+   * Get streams to show based on layout, selected stream, and pagination
+   * @returns {Array} Streams to show
    */
-  const updateVideoGrid = () => {
-    if (!videoGridRef.current) return;
-
-    // Clear existing content except placeholder
-    const placeholder = videoGridRef.current.querySelector('.placeholder');
-    videoGridRef.current.innerHTML = '';
-
-    // If placeholder exists and no streams, add it back
-    if (placeholder && streams.length === 0) {
-      videoGridRef.current.appendChild(placeholder);
-      return;
-    }
-
+  const getStreamsToShow = useCallback(() => {
     // Filter streams based on layout and selected stream
     let streamsToShow = streams;
     if (layout === '1' && selectedStream) {
@@ -306,9 +293,8 @@ export function LiveView({isWebRTCDisabled}) {
       const totalPages = Math.ceil(streams.length / maxStreams);
 
       // Ensure current page is valid
-      if (currentPage >= totalPages) {
-        setCurrentPage(Math.max(0, totalPages - 1));
-        return; // Will re-render with corrected page
+      if (currentPage >= totalPages && totalPages > 0) {
+        return []; // Will be handled by the effect that watches currentPage
       }
 
       // Get streams for current page
@@ -317,109 +303,49 @@ export function LiveView({isWebRTCDisabled}) {
       streamsToShow = streams.slice(startIdx, endIdx);
     }
 
-    // Get the names of streams that should be shown
-    const streamsToShowNames = streamsToShow.map(stream => stream.name);
+    return streamsToShow;
+  }, [streams, layout, selectedStream, currentPage]);
 
-    // Clean up connections for streams that are no longer visible
-    Object.keys(hlsPlayers.current).forEach(streamName => {
-      if (!streamsToShowNames.includes(streamName)) {
-        console.log(`Cleaning up HLS player for stream ${streamName} as it's not on the current page`);
-        cleanupHLSPlayer(streamName);
-      }
-    });
+  // Ensure current page is valid when streams or layout changes
+  useEffect(() => {
+    if (streams.length === 0) return;
 
-    // Render each stream using the HLSVideoCell component
-    streamsToShow.forEach((stream, index) => {
-      const streamId = stream.id || stream.name;
-      const container = document.createElement('div');
-      container.className = 'video-cell-container';
-      videoGridRef.current.appendChild(container);
+    const maxStreams = getMaxStreamsForLayout();
+    const totalPages = Math.ceil(streams.length / maxStreams);
 
-      // Render the HLSVideoCell component
-      render(
-        <HLSVideoCell
-          stream={stream}
-          streamId={streamId}
-          onToggleFullscreen={toggleStreamFullscreen}
-        />,
-        container
-      );
-    });
-  };
-
-  /**
-   * Stop all HLS streams
-   */
-  const stopAllHLSStreams = () => {
-    // Close all HLS players
-    Object.keys(hlsPlayers.current).forEach(streamName => {
-      cleanupHLSPlayer(streamName);
-    });
-  };
-
-  /**
-   * Cleanup HLS player
-   * @param {string} streamName - Stream name
-   */
-  const cleanupHLSPlayer = (streamName) => {
-    // Destroy HLS instance if it exists
-    if (hlsPlayers.current[streamName]) {
-      hlsPlayers.current[streamName].destroy();
-      delete hlsPlayers.current[streamName];
+    if (currentPage >= totalPages) {
+      setCurrentPage(Math.max(0, totalPages - 1));
     }
-
-    // Clear refresh timer if it exists
-    if (refreshTimers.current[streamName]) {
-      clearInterval(refreshTimers.current[streamName]);
-      delete refreshTimers.current[streamName];
-    }
-
-    // Clean up detection overlay component if it exists
-    if (detectionOverlays.current[streamName]) {
-      const { container } = detectionOverlays.current[streamName];
-      if (container) {
-        // Unmount the component by rendering null
-        render(null, container);
-      }
-      delete detectionOverlays.current[streamName];
-    } else {
-      // For backward compatibility, also check for container by ID
-      const containerId = `detection-overlay-container-${streamName.replace(/\s+/g, '-')}`;
-      const container = document.getElementById(containerId);
-      if (container) {
-        // Unmount the component by rendering null
-        render(null, container);
-      }
-    }
-  };
+  }, [streams, layout, currentPage, getMaxStreamsForLayout]);
 
   /**
    * Toggle fullscreen mode for a specific stream
    * @param {string} streamName - Stream name
    * @param {Event} event - Click event
-   * @param {HTMLElement} cellElement - Optional cell element reference
+   * @param {HTMLElement} cellElement - The video cell element
    */
   const toggleStreamFullscreen = (streamName, event, cellElement) => {
-    console.log(`Toggling fullscreen for stream: ${streamName}`);
-
-    // If we have a direct reference to the cell element, use it
-    let videoCell = cellElement;
-
-    // Otherwise try to find it by stream name
-    if (!videoCell) {
-      const videoElementId = `video-${streamName.replace(/\s+/g, '-')}`;
-      const videoElement = document.getElementById(videoElementId);
-      videoCell = videoElement ? videoElement.closest('.video-cell') : null;
+    // Prevent default button behavior
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
     }
 
-    if (!videoCell) {
-      console.error('Stream not found:', streamName);
+    if (!streamName) {
+      console.error('Stream name not provided for fullscreen toggle');
+      return;
+    }
+
+    console.log(`Toggling fullscreen for stream: ${streamName}`);
+
+    if (!cellElement) {
+      console.error('Video cell element not provided for fullscreen toggle');
       return;
     }
 
     if (!document.fullscreenElement) {
       console.log('Entering fullscreen mode for video cell');
-      videoCell.requestFullscreen().catch(err => {
+      cellElement.requestFullscreen().catch(err => {
         console.error(`Error attempting to enable fullscreen: ${err.message}`);
         showStatusMessage(`Could not enable fullscreen mode: ${err.message}`);
       });
@@ -435,21 +361,35 @@ export function LiveView({isWebRTCDisabled}) {
     }
   };
 
+  // Memoize the streams to show to prevent unnecessary re-renders
+  const streamsToShow = useMemo(() => getStreamsToShow(), [streams, layout, selectedStream, currentPage, getMaxStreamsForLayout]);
+
   return (
-    <section id="live-page" className={`page ${isFullscreen ? 'fullscreen-mode' : ''}`}>
+    <section
+      id="live-page"
+      className={`page ${isFullscreen ? 'fullscreen-mode' : ''}`}
+    >
       {/* Include the SnapshotManager component */}
       <SnapshotManager />
       {/* Include the FullscreenManager component */}
-      <FullscreenManager isFullscreen={isFullscreen} setIsFullscreen={setIsFullscreen} targetId="live-page" />
-      <div className="page-header flex justify-between items-center mb-4 p-4 bg-white dark:bg-gray-800 rounded-lg shadow">
+      <FullscreenManager
+        isFullscreen={isFullscreen}
+        setIsFullscreen={setIsFullscreen}
+        targetId="live-page"
+      />
+
+      <div className="page-header flex justify-between items-center mb-4 p-4 bg-white dark:bg-gray-800 rounded-lg shadow" style={{ position: 'relative', zIndex: 10, pointerEvents: 'auto' }}>
         <div className="flex items-center space-x-2">
           <h2 className="text-xl font-bold mr-4">Live View</h2>
           <div className="flex space-x-2">
             {!isWebRTCDisabled && (
             <button
               id="hls-toggle-btn"
-              className="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
-              onClick={() => window.location.href = '/index.html'}
+              className="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 inline-block text-center"
+              style={{ position: 'relative', zIndex: 50 }} // Very high z-index to ensure clickability
+              onClick={() => {
+                window.location.href = '/index.html';
+              }}
             >
               WebRTC View
             </button>
@@ -458,7 +398,7 @@ export function LiveView({isWebRTCDisabled}) {
         </div>
         <div className="controls flex items-center space-x-2">
           <div className="flex items-center">
-            <label for="layout-selector" className="mr-2">Layout:</label>
+            <label htmlFor="layout-selector" className="mr-2">Layout:</label>
             <select
               id="layout-selector"
               className="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600"
@@ -467,12 +407,11 @@ export function LiveView({isWebRTCDisabled}) {
                 const newLayout = e.target.value;
                 setLayout(newLayout);
                 setCurrentPage(0); // Reset to first page when layout changes
-                // URL will be updated by the useEffect hook
               }}
             >
               <option value="1">1 Stream</option>
               <option value="2">2 Streams</option>
-              <option value="4" selected>4 Streams</option>
+              <option value="4">4 Streams</option>
               <option value="6">6 Streams</option>
               <option value="9">9 Streams</option>
               <option value="16">16 Streams</option>
@@ -481,7 +420,7 @@ export function LiveView({isWebRTCDisabled}) {
 
           {layout === '1' && (
             <div className="flex items-center">
-              <label for="stream-selector" className="mr-2">Stream:</label>
+              <label htmlFor="stream-selector" className="mr-2">Stream:</label>
               <select
                 id="stream-selector"
                 className="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600"
@@ -489,26 +428,25 @@ export function LiveView({isWebRTCDisabled}) {
                 onChange={(e) => {
                   const newStream = e.target.value;
                   setSelectedStream(newStream);
-                  // URL will be updated by the useEffect hook
                 }}
               >
-                {streams.map(stream =>
+                {streams.map(stream => (
                   <option key={stream.name} value={stream.name}>{stream.name}</option>
-                )}
+                ))}
               </select>
             </div>
           )}
 
           <button
-              id="fullscreen-btn"
-              className="p-2 rounded-full bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 focus:outline-none"
-              onClick={() => toggleFullscreen()}
-              title="Toggle Fullscreen"
+            id="fullscreen-btn"
+            className="p-2 rounded-full bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 focus:outline-none"
+            onClick={() => toggleFullscreen()}
+            title="Toggle Fullscreen"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                 stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path
-                  d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+                d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
             </svg>
           </button>
         </div>
@@ -518,39 +456,82 @@ export function LiveView({isWebRTCDisabled}) {
         <div
           id="video-grid"
           className={`video-container layout-${layout}`}
-          ref={videoGridRef}
         >
-          {isLoading ? (
-            <div className="flex justify-center items-center col-span-full row-span-full h-64 w-full">
-              <div className="flex flex-col items-center justify-center py-8">
-                <div className="inline-block animate-spin rounded-full border-4 border-gray-300 dark:border-gray-600 border-t-blue-600 dark:border-t-blue-500 w-16 h-16"></div>
+          {isLoadingStreams ? (
+              <div className="flex justify-center items-center col-span-full row-span-full h-64 w-full" style={{ pointerEvents: 'none', zIndex: 1 }}>
+                <div className="flex flex-col items-center justify-center py-8">
+                <div
+                  className="inline-block animate-spin rounded-full border-4 border-gray-300 dark:border-gray-600 border-t-blue-600 dark:border-t-blue-500 w-16 h-16"></div>
                 <p className="mt-4 text-gray-700 dark:text-gray-300">Loading streams...</p>
               </div>
+            </div>
+          ) : (isLoading && !isLoadingStreams) ? (
+            <div
+                className="flex justify-center items-center col-span-full row-span-full h-64 w-full"
+                style={{
+                  pointerEvents: 'none',
+                  position: 'relative',
+                  zIndex: 1
+                }}
+            >
+              <div className="flex flex-col items-center justify-center py-8">
+                <div
+                  className="inline-block animate-spin rounded-full border-4 border-gray-300 dark:border-gray-600 border-t-blue-600 dark:border-t-blue-500 w-16 h-16"></div>
+                <p className="mt-4 text-gray-700 dark:text-gray-300">Loading streams...</p>
+              </div>
+            </div>
+          ) : (streamsError) ? (
+            <div className="placeholder flex flex-col justify-center items-center col-span-full row-span-full bg-white dark:bg-gray-800 rounded-lg shadow-md text-center p-8">
+              <p className="mb-6 text-gray-600 dark:text-gray-300 text-lg">Error loading streams: {streamsError.message}</p>
+              <button
+                onClick={() => window.location.reload()}
+                className="btn-primary px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+              >
+                Retry
+              </button>
             </div>
           ) : streams.length === 0 ? (
             <div className="placeholder flex flex-col justify-center items-center col-span-full row-span-full bg-white dark:bg-gray-800 rounded-lg shadow-md text-center p-8">
               <p className="mb-6 text-gray-600 dark:text-gray-300 text-lg">No streams configured</p>
               <a href="streams.html" className="btn-primary px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">Configure Streams</a>
             </div>
-          ) : null}
-          {/* Video cells will be dynamically added by the updateVideoGrid function */}
+          ) : (
+            // Render video cells using our self-contained WebRTCVideoCell component
+            streamsToShow.map(stream => (
+              <HLSVideoCell
+                key={stream.name}
+                stream={stream}
+                onToggleFullscreen={toggleStreamFullscreen}
+                streamId={stream.name} // Add explicit streamId prop to prevent re-renders
+              />
+            ))
+          )}
         </div>
 
         {layout !== '1' && streams.length > getMaxStreamsForLayout() ? (
           <div className="pagination-controls flex justify-center items-center space-x-4 mt-4">
             <button
               className="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
-              onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
+              onClick={() => {
+                console.log('Changing to previous page');
+                setCurrentPage(Math.max(0, currentPage - 1));
+              }}
               disabled={currentPage === 0}
             >
               Previous
             </button>
+
             <span className="text-gray-700 dark:text-gray-300">
               Page {currentPage + 1} of {Math.ceil(streams.length / getMaxStreamsForLayout())}
             </span>
+
             <button
               className="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
-              onClick={() => setCurrentPage(Math.min(Math.ceil(streams.length / getMaxStreamsForLayout()) - 1, currentPage + 1))}
+              onClick={() => {
+                console.log('Changing to next page');
+                const totalPages = Math.ceil(streams.length / getMaxStreamsForLayout());
+                setCurrentPage(Math.min(totalPages - 1, currentPage + 1));
+              }}
               disabled={currentPage >= Math.ceil(streams.length / getMaxStreamsForLayout()) - 1}
             >
               Next
