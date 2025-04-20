@@ -95,8 +95,7 @@ static int is_cache_stale(void) {
  */
 static int refresh_cache(void) {
     if (!cache.initialized) {
-        log_error("Storage manager streams cache not initialized");
-        return -1;
+        init_storage_manager_streams_cache(900);
     }
 
     // Get current stream storage usage

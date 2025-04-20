@@ -1092,6 +1092,29 @@ void *hls_unified_thread_func(void *arg) {
                     break;
                 }
 
+                // CRITICAL FIX: Check if context is still valid before accessing
+                if (!ctx || is_context_pending_deletion(ctx) || is_context_already_freed(ctx)) {
+                    log_warn("Context for stream %s is no longer valid, skipping connection attempt", stream_name);
+                    thread_state = HLS_THREAD_STOPPING;
+                    break;
+                }
+
+                // CRITICAL FIX: Create a local copy of the URL to prevent use-after-free
+                char local_rtsp_url[MAX_PATH_LENGTH];
+                int local_protocol;
+
+                // Copy the URL and protocol with safety checks
+                if (ctx && ctx->rtsp_url[0] != '\0') {
+                    strncpy(local_rtsp_url, ctx->rtsp_url, MAX_PATH_LENGTH - 1);
+                    local_rtsp_url[MAX_PATH_LENGTH - 1] = '\0';
+                    local_protocol = ctx->protocol;
+                } else {
+                    log_error("Invalid RTSP URL for stream %s", stream_name);
+                    thread_state = HLS_THREAD_RECONNECTING;
+                    reconnect_attempt++;
+                    break;
+                }
+
                 // Open input stream
                 input_ctx = NULL;
 
@@ -1099,7 +1122,7 @@ void *hls_unified_thread_func(void *arg) {
                 // This ensures all previous memory operations are completed
                 __sync_synchronize();
 
-                ret = open_input_stream(&input_ctx, ctx->rtsp_url, ctx->protocol);
+                ret = open_input_stream(&input_ctx, local_rtsp_url, local_protocol);
                 if (ret < 0) {
                     char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
                     av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
@@ -1135,8 +1158,16 @@ void *hls_unified_thread_func(void *arg) {
                         break;
                     }
 
-                    // Mark connection as invalid
-                    atomic_store(&ctx->connection_valid, 0);
+                    // CRITICAL FIX: Check if context is still valid before accessing
+                    if (ctx && !is_context_pending_deletion(ctx) && !is_context_already_freed(ctx)) {
+                        // Mark connection as invalid
+                        atomic_store(&ctx->connection_valid, 0);
+                    } else {
+                        log_warn("Context for stream %s is no longer valid, skipping connection state update", stream_name);
+                        // Set thread state to stopping to exit gracefully
+                        thread_state = HLS_THREAD_STOPPING;
+                        break;
+                    }
 
                     // Increment reconnection attempt counter
                     reconnect_attempt++;
@@ -1227,15 +1258,31 @@ void *hls_unified_thread_func(void *arg) {
 
                 // Initialize HLS writer with stream information
                 if (!is_shutdown_initiated() && input_ctx->streams[video_stream_idx]) {
-                    ret = hls_writer_initialize(ctx->writer, input_ctx->streams[video_stream_idx]);
+                    // CRITICAL FIX: Check if context is still valid before accessing
+                    if (ctx && !is_context_pending_deletion(ctx) && !is_context_already_freed(ctx) && ctx->writer) {
+                        ret = hls_writer_initialize(ctx->writer, input_ctx->streams[video_stream_idx]);
+                    } else {
+                        log_warn("Context for stream %s is no longer valid or writer is NULL, skipping HLS writer initialization", stream_name);
+                        // Set thread state to stopping to exit gracefully
+                        thread_state = HLS_THREAD_STOPPING;
+                        break;
+                    }
                     if (ret < 0) {
                         log_error("Failed to initialize HLS writer for stream %s", stream_name);
 
                         // MEMORY LEAK FIX: Use comprehensive cleanup instead of just avformat_close_input
                         comprehensive_ffmpeg_cleanup(&input_ctx, NULL, NULL, NULL);
 
-                        // Mark connection as invalid
-                        atomic_store(&ctx->connection_valid, 0);
+                        // CRITICAL FIX: Check if context is still valid before accessing
+                        if (ctx && !is_context_pending_deletion(ctx) && !is_context_already_freed(ctx)) {
+                            // Mark connection as invalid
+                            atomic_store(&ctx->connection_valid, 0);
+                        } else {
+                            log_warn("Context for stream %s is no longer valid, skipping connection state update", stream_name);
+                            // Set thread state to stopping to exit gracefully
+                            thread_state = HLS_THREAD_STOPPING;
+                            break;
+                        }
 
                         // Increment reconnection attempt counter
                         reconnect_attempt++;
@@ -1346,6 +1393,13 @@ void *hls_unified_thread_func(void *arg) {
                 if (pkt->stream_index == video_stream_idx) {
                     // This is a video packet - process it
 
+                    // CRITICAL FIX: Check if context is still valid before accessing
+                    if (!ctx || is_context_pending_deletion(ctx) || is_context_already_freed(ctx)) {
+                        log_warn("Context for stream %s is no longer valid, skipping packet and exiting thread", stream_name);
+                        thread_state = HLS_THREAD_STOPPING;
+                        break;
+                    }
+
                     // CRITICAL FIX: Check if writer is NULL before accessing it
                     // This prevents segmentation fault during shutdown
                     if (!ctx->writer) {
@@ -1429,8 +1483,16 @@ void *hls_unified_thread_func(void *arg) {
                              stream_name, now - last_packet_time);
                     thread_state = HLS_THREAD_RECONNECTING;
                     reconnect_attempt = 1;
-                    atomic_store(&ctx->connection_valid, 0);
-                    atomic_fetch_add(&ctx->consecutive_failures, 1);
+
+                    // CRITICAL FIX: Check if context is still valid before accessing
+                    if (ctx && !is_context_pending_deletion(ctx) && !is_context_already_freed(ctx)) {
+                        atomic_store(&ctx->connection_valid, 0);
+                        atomic_fetch_add(&ctx->consecutive_failures, 1);
+                    } else {
+                        log_warn("Context for stream %s is no longer valid, skipping connection state update", stream_name);
+                        // Set thread state to stopping to exit gracefully
+                        thread_state = HLS_THREAD_STOPPING;
+                    }
                 }
                 break;
 
@@ -1476,6 +1538,29 @@ void *hls_unified_thread_func(void *arg) {
                     break;
                 }
 
+                // CRITICAL FIX: Check if context is still valid before accessing
+                if (!ctx || is_context_pending_deletion(ctx) || is_context_already_freed(ctx)) {
+                    log_warn("Context for stream %s is no longer valid, skipping reconnection attempt", stream_name);
+                    thread_state = HLS_THREAD_STOPPING;
+                    break;
+                }
+
+                // CRITICAL FIX: Create a local copy of the URL to prevent use-after-free
+                char reconnect_rtsp_url[MAX_PATH_LENGTH];
+                int reconnect_protocol;
+
+                // Copy the URL and protocol with safety checks
+                if (ctx && ctx->rtsp_url[0] != '\0') {
+                    strncpy(reconnect_rtsp_url, ctx->rtsp_url, MAX_PATH_LENGTH - 1);
+                    reconnect_rtsp_url[MAX_PATH_LENGTH - 1] = '\0';
+                    reconnect_protocol = ctx->protocol;
+                } else {
+                    log_error("Invalid RTSP URL for stream %s during reconnection", stream_name);
+                    thread_state = HLS_THREAD_RECONNECTING;
+                    reconnect_attempt++;
+                    break;
+                }
+
                 // Open input stream
                 input_ctx = NULL;
 
@@ -1483,7 +1568,7 @@ void *hls_unified_thread_func(void *arg) {
                 // This ensures all previous memory operations are completed
                 __sync_synchronize();
 
-                ret = open_input_stream(&input_ctx, ctx->rtsp_url, ctx->protocol);
+                ret = open_input_stream(&input_ctx, reconnect_rtsp_url, reconnect_protocol);
                 if (ret < 0) {
                     char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
                     av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);

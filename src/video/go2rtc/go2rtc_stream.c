@@ -162,6 +162,14 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
         }
     }
 
+    // Append timeout parameter to the URL
+    char new_url[URL_BUFFER_SIZE];
+    // URL already has query parameters, append with &
+    snprintf(new_url, URL_BUFFER_SIZE, "%s#timeout=15", modified_url);
+    strncpy(modified_url, new_url, URL_BUFFER_SIZE - 1);
+    modified_url[URL_BUFFER_SIZE - 1] = '\0';
+    log_info("Added timeout parameter to URL: %s", modified_url);
+
     // Prepare stream options if authentication is provided
     char stream_options[URL_BUFFER_SIZE] = {0};
     if (username && password) {

@@ -297,7 +297,11 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port) {
     // Logging configuration
     fprintf(config_file, "log:\n");
     fprintf(config_file, "  level: debug\n\n");  // Use debug level for more verbose logging
-    
+
+    fprintf(config_file, "ffmpeg:\n");
+    fprintf(config_file, "  h264: \"-codec:v libx264 -g:v 30 -preset:v superfast -tune:v zerolatency -profile:v main -level:v 4.1\"\n");
+    fprintf(config_file, "  h265: \"-codec:v libx265 -g:v 30 -preset:v superfast -tune:v zerolatency -profile:v main -level:v 4.1\"\n");
+
     // Streams section (will be populated dynamically)
     fprintf(config_file, "streams:\n");
     fprintf(config_file, "  # Streams will be added dynamically\n");

@@ -230,11 +230,32 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
     }
 
     // Validate input parameters
-    if (!input_ctx || !url || strlen(url) < 5) {
-        log_error("Invalid parameters for open_input_stream: ctx=%p, url=%s",
-                 (void*)input_ctx, url ? url : "NULL");
+    if (!input_ctx) {
+        log_error("Invalid input_ctx parameter for open_input_stream: ctx=NULL");
         return AVERROR(EINVAL);
     }
+
+    // CRITICAL FIX: Add more robust URL validation to prevent use-after-free
+    if (!url) {
+        log_error("Invalid URL parameter for open_input_stream: url=NULL");
+        return AVERROR(EINVAL);
+    }
+
+    // CRITICAL FIX: Create a local copy of the URL to prevent use-after-free
+    char local_url[1024];
+    size_t url_len = strlen(url);
+
+    // Validate URL length
+    if (url_len < 5 || url_len >= sizeof(local_url)) {
+        log_error("Invalid URL length for open_input_stream: %zu", url_len);
+        return AVERROR(EINVAL);
+    }
+
+    // Copy URL to local buffer
+    strncpy(local_url, url, sizeof(local_url) - 1);
+    local_url[sizeof(local_url) - 1] = '\0';
+
+    // Use local_url instead of url from this point forward
 
     // Make sure we're starting with a NULL context
     if (*input_ctx) {
@@ -243,16 +264,16 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
     }
 
     // Check if the RTSP stream exists before trying to connect
-    if (strncmp(url, "rtsp://", 7) == 0) {
-        if (!check_rtsp_stream_exists(url)) {
-            log_error("RTSP stream does not exist: %s", url);
+    if (strncmp(local_url, "rtsp://", 7) == 0) {
+        if (!check_rtsp_stream_exists(local_url)) {
+            log_error("RTSP stream does not exist: %s", local_url);
             return AVERROR(ENOENT); // Return "No such file or directory" error
         }
     }
 
     // Log the stream opening attempt
     log_info("Opening input stream: %s (protocol: %s)",
-            url, protocol == STREAM_PROTOCOL_UDP ? "UDP" : "TCP");
+            local_url, protocol == STREAM_PROTOCOL_UDP ? "UDP" : "TCP");
 
     // Set common options for all protocols
     av_dict_set(&input_options, "protocol_whitelist", "file,udp,rtp,rtsp,tcp,https,tls,http", 0);
@@ -273,10 +294,10 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
 
     if (protocol == STREAM_PROTOCOL_UDP) {
         // Check if this is a multicast stream with robust error handling
-        is_multicast = is_multicast_url(url);
+        is_multicast = is_multicast_url(local_url);
 
         log_info("Using UDP protocol for stream URL: %s (multicast: %s)",
-                url, is_multicast ? "yes" : "no");
+                local_url, is_multicast ? "yes" : "no");
 
         // UDP-specific options with improved buffering for smoother playback
         // Increased buffer size to 16MB as recommended for UDP jitter handling
@@ -306,7 +327,7 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
 
         // Multicast-specific settings with enhanced error handling
         if (is_multicast) {
-            log_info("Configuring multicast-specific settings for %s", url);
+            log_info("Configuring multicast-specific settings for %s", local_url);
 
             // Set appropriate TTL for multicast
             av_dict_set(&input_options, "ttl", "32", 0);
@@ -322,7 +343,7 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
             av_dict_set(&input_options, "rw_timeout", "10000000", 0); // 10 second read/write timeout
         }
     } else {
-        log_info("Using TCP protocol for stream URL: %s", url);
+        log_info("Using TCP protocol for stream URL: %s", local_url);
         // TCP-specific options with improved reliability
         av_dict_set(&input_options, "stimeout", "5000000", 0); // 5 second timeout in microseconds
         av_dict_set(&input_options, "rtsp_transport", "tcp", 0); // Force TCP for RTSP
@@ -338,8 +359,8 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
 
     // Check if this is an ONVIF stream and apply ONVIF-specific options
     // This allows ONVIF to work with either TCP or UDP protocol
-    if (is_onvif_stream(url)) {
-        log_info("Applying ONVIF-specific options for stream URL: %s", url);
+    if (is_onvif_stream(local_url)) {
+        log_info("Applying ONVIF-specific options for stream URL: %s", local_url);
 
         // ONVIF-specific options for better reliability
         av_dict_set(&input_options, "stimeout", "10000000", 0); // 10 second timeout in microseconds
@@ -354,7 +375,7 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
 
         // For onvif_simple_server compatibility
         // Extract username and password from URL if present
-        const char *auth_start = strstr(url, "://");
+        const char *auth_start = strstr(local_url, "://");
         if (auth_start && strchr(auth_start + 3, '@')) {
             // URL contains authentication, extract it for RTSP auth
             char username[64] = {0};
@@ -412,7 +433,7 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
     local_ctx = NULL;
 
     // Open the input stream
-    ret = avformat_open_input(&local_ctx, url, NULL, &input_options);
+    ret = avformat_open_input(&local_ctx, local_url, NULL, &input_options);
 
     if (ret < 0) {
         char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
@@ -420,16 +441,16 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
 
         // Log the error with appropriate context
         log_error("Could not open input stream: %s (error code: %d, message: %s)",
-                 url, ret, error_buf);
+                 local_url, ret, error_buf);
 
         // Log additional context for RTSP errors
-        if (strstr(url, "rtsp://") != NULL) {
-            log_error("RTSP connection failed - server may be down or URL may be incorrect: %s", url);
+        if (strstr(local_url, "rtsp://") != NULL) {
+            log_error("RTSP connection failed - server may be down or URL may be incorrect: %s", local_url);
 
             // Log specific error for 404 Not Found
             if (strstr(error_buf, "404") != NULL || strstr(error_buf, "Not Found") != NULL) {
                 log_error("Failed to connect to stream %s: %s (error code: %d)",
-                         url, error_buf, ret);
+                         local_url, error_buf, ret);
             }
         }
 
@@ -466,12 +487,12 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
 
     // Verify that the context was created with additional safety checks
     if (!*input_ctx) {
-        log_error("Input context is NULL after successful open for URL: %s", url);
+        log_error("Input context is NULL after successful open for URL: %s", local_url);
         return AVERROR(EINVAL);
     }
 
     // Get stream info with enhanced error handling
-    log_debug("Getting stream info for %s", url);
+    log_debug("Getting stream info for %s", local_url);
 
     // MEMORY LEAK FIX: Create a new dictionary for find_stream_info options
     AVDictionary *find_stream_options = NULL;
@@ -553,10 +574,10 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
         size_t i;
 
         // Copy and sanitize the URL
-        for (i = 0; i < sizeof(sanitized_url) - 1 && url[i] != '\0'; i++) {
+        for (i = 0; i < sizeof(sanitized_url) - 1 && local_url[i] != '\0'; i++) {
             // Check if character is printable (ASCII 32-126 plus tab and newline)
-            if ((url[i] >= 32 && url[i] <= 126) || url[i] == '\t' || url[i] == '\n') {
-                sanitized_url[i] = url[i];
+            if ((local_url[i] >= 32 && local_url[i] <= 126) || local_url[i] == '\t' || local_url[i] == '\n') {
+                sanitized_url[i] = local_url[i];
             } else {
                 sanitized_url[i] = '?'; // Replace non-printable characters
             }
@@ -600,7 +621,7 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
             }
         }
     } else {
-        log_warn("Opened input stream but no streams found: %s", url);
+        log_warn("Opened input stream but no streams found: %s", local_url);
     }
 
     // Note: We're not forcing garbage collection here to avoid segmentation faults
