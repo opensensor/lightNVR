@@ -6,11 +6,11 @@
 import { h, render } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
-import { showSnapshotPreview, setupModals, addModalStyles } from './UI.jsx';
+import { setupModals, addModalStyles } from './UI.jsx';
 import { useFullscreenManager, FullscreenManager } from './FullscreenManager.jsx';
-import { DetectionOverlay, takeSnapshotWithDetections } from './DetectionOverlay.jsx';
+import { DetectionOverlay } from './DetectionOverlay.jsx';
 import { SnapshotManager, useSnapshotManager } from './SnapshotManager.jsx';
-import Hls from 'hls.js';
+import { HLSVideoCell } from './HLSVideoCell.jsx';
 
 /**
  * LiveView component
@@ -328,485 +328,33 @@ export function LiveView({isWebRTCDisabled}) {
       }
     });
 
-    // Stagger initialization of HLS players
+    // Render each stream using the HLSVideoCell component
     streamsToShow.forEach((stream, index) => {
-      // Create video cell immediately for UI responsiveness
-      createVideoCell(stream);
+      const streamId = stream.id || stream.name;
+      const container = document.createElement('div');
+      container.className = 'video-cell-container';
+      videoGridRef.current.appendChild(container);
 
-      // Only initialize HLS if it's not already connected
-      if (!hlsPlayers.current[stream.name]) {
-        // Stagger the actual HLS initialization
-        setTimeout(() => {
-          initializeHLSPlayer(stream);
-        }, index * 500); // 500ms delay between each stream initialization
-      } else {
-        console.log(`HLS player for stream ${stream.name} already exists, reusing`);
-      }
+      // Render the HLSVideoCell component
+      render(
+        <HLSVideoCell
+          stream={stream}
+          streamId={streamId}
+          onToggleFullscreen={toggleStreamFullscreen}
+        />,
+        container
+      );
     });
   };
 
   /**
-   * Create video cell without initializing WebRTC
-   * @param {Object} stream - Stream object
+   * Stop all HLS streams
    */
-  const createVideoCell = (stream) => {
-    // Ensure we have an ID for the stream (use name as fallback if needed)
-    const streamId = stream.id || stream.name;
-
-    const videoCell = document.createElement('div');
-    videoCell.className = 'video-cell';
-    videoCell.dataset.streamName = stream.name;
-    videoCell.dataset.streamId = streamId;
-    videoCell.style.position = 'relative'; // Create stacking context
-
-    // Create video element
-    const videoElement = document.createElement('video');
-    videoElement.id = `video-${stream.name.replace(/\s+/g, '-')}`;
-    videoElement.className = 'video-element';
-    videoElement.playsInline = true;
-    videoElement.autoplay = true;
-    videoElement.muted = true;
-
-    // Create loading indicator
-    const loadingIndicator = document.createElement('div');
-    loadingIndicator.className = 'loading-indicator';
-    loadingIndicator.innerHTML = `
-      <div className="spinner"></div>
-      <p>Connecting...</p>
-    `;
-    loadingIndicator.style.position = 'absolute';
-    loadingIndicator.style.top = '0';
-    loadingIndicator.style.left = '0';
-    loadingIndicator.style.width = '100%';
-    loadingIndicator.style.height = '100%';
-    loadingIndicator.style.display = 'flex';
-    loadingIndicator.style.flexDirection = 'column';
-    loadingIndicator.style.justifyContent = 'center';
-    loadingIndicator.style.alignItems = 'center';
-    loadingIndicator.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-    loadingIndicator.style.color = 'white';
-    loadingIndicator.style.zIndex = '20'; // Above video but below controls
-
-    // Create error indicator (hidden by default)
-    const errorIndicator = document.createElement('div');
-    errorIndicator.className = 'error-indicator';
-    errorIndicator.style.display = 'none';
-    errorIndicator.style.position = 'absolute';
-    errorIndicator.style.top = '0';
-    errorIndicator.style.left = '0';
-    errorIndicator.style.width = '100%';
-    errorIndicator.style.height = '100%';
-    errorIndicator.style.flexDirection = 'column';
-    errorIndicator.style.justifyContent = 'center';
-    errorIndicator.style.alignItems = 'center';
-    errorIndicator.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-    errorIndicator.style.color = 'white';
-    errorIndicator.style.zIndex = '20'; // Above video but below controls
-
-    // Create stream name overlay
-    const streamNameOverlay = document.createElement('div');
-    streamNameOverlay.className = 'stream-name-overlay';
-    streamNameOverlay.textContent = stream.name;
-    streamNameOverlay.style.position = 'absolute';
-    streamNameOverlay.style.top = '10px';
-    streamNameOverlay.style.left = '10px';
-    streamNameOverlay.style.padding = '5px 10px';
-    streamNameOverlay.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
-    streamNameOverlay.style.color = 'white';
-    streamNameOverlay.style.borderRadius = '4px';
-    streamNameOverlay.style.fontSize = '14px';
-    streamNameOverlay.style.zIndex = '15'; // Above video but below controls
-
-    // Create stream controls
-    const streamControls = document.createElement('div');
-    streamControls.className = 'stream-controls';
-    streamControls.innerHTML = `
-      <button class="snapshot-btn" title="Take Snapshot" data-id="${streamId}" data-name="${stream.name}">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
-      </button>
-      <button class="fullscreen-btn" title="Toggle Fullscreen" data-id="${streamId}" data-name="${stream.name}">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
-      </button>
-    `;
-    streamControls.style.position = 'absolute';
-    streamControls.style.bottom = '10px';
-    streamControls.style.right = '10px';
-    streamControls.style.display = 'flex';
-    streamControls.style.gap = '10px';
-    streamControls.style.zIndex = '30'; // Above everything else
-    streamControls.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
-    streamControls.style.padding = '5px';
-    streamControls.style.borderRadius = '4px';
-
-    // Add canvas for detection overlay
-    const canvasOverlay = document.createElement('canvas');
-    canvasOverlay.id = `canvas-${stream.name.replace(/\s+/g, '-')}`;
-    canvasOverlay.className = 'detection-overlay';
-    canvasOverlay.style.position = 'absolute';
-    canvasOverlay.style.top = '0';
-    canvasOverlay.style.left = '0';
-    canvasOverlay.style.width = '100%';
-    canvasOverlay.style.height = '100%';
-    canvasOverlay.style.zIndex = '5'; // Above video but below controls
-
-    // Assemble the video cell
-    videoCell.appendChild(videoElement);
-    videoCell.appendChild(loadingIndicator);
-    videoCell.appendChild(errorIndicator);
-    videoCell.appendChild(streamNameOverlay);
-    videoCell.appendChild(streamControls);
-    videoCell.appendChild(canvasOverlay);
-
-    // Add to grid
-    videoGridRef.current.appendChild(videoCell);
-
-    // Make sure all buttons have proper z-index and pointer events
-    const allButtons = videoCell.querySelectorAll('button');
-    allButtons.forEach(button => {
-      button.style.position = 'relative';
-      button.style.zIndex = '30';
-      button.style.pointerEvents = 'auto';
-      button.style.cursor = 'pointer';
-      button.style.backgroundColor = 'transparent';
-      button.style.border = 'none';
-      button.style.padding = '5px';
-      button.style.borderRadius = '4px';
-      button.style.color = 'white';
-      button.style.transition = 'background-color 0.2s';
-
-      // Add hover effect
-      button.addEventListener('mouseover', () => {
-        button.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
-      });
-
-      button.addEventListener('mouseout', () => {
-        button.style.backgroundColor = 'transparent';
-      });
+  const stopAllHLSStreams = () => {
+    // Close all HLS players
+    Object.keys(hlsPlayers.current).forEach(streamName => {
+      cleanupHLSPlayer(streamName);
     });
-
-    // Add event listeners for buttons
-    const snapshotBtn = videoCell.querySelector('.snapshot-btn');
-    if (snapshotBtn) {
-      snapshotBtn.addEventListener('click', (event) => {
-        console.log('Snapshot button clicked for stream:', stream.name);
-        event.preventDefault();
-        event.stopPropagation();
-        takeSnapshot(streamId, event);
-      });
-    }
-
-    const fullscreenBtn = videoCell.querySelector('.fullscreen-btn');
-    if (fullscreenBtn) {
-      fullscreenBtn.addEventListener('click', (event) => {
-        console.log('Fullscreen button clicked for stream:', stream.name);
-        event.preventDefault();
-        event.stopPropagation();
-        toggleStreamFullscreen(stream.name);
-      });
-    }
-  };
-
-  /**
-   * Initialize HLS player for a stream
-   * @param {Object} stream - Stream object
-   */
-  const initializeHLSPlayer = (stream) => {
-    const videoElementId = `video-${stream.name.replace(/\s+/g, '-')}`;
-    const videoElement = document.getElementById(videoElementId);
-    const videoCell = videoElement ? videoElement.closest('.video-cell') : null;
-
-    if (!videoElement || !videoCell) return;
-
-    // Show loading state
-    const loadingIndicator = videoCell.querySelector('.loading-indicator');
-    if (loadingIndicator) {
-      loadingIndicator.style.display = 'flex';
-    }
-
-    // Create canvas overlay for detection bounding boxes
-    const canvasId = `canvas-${stream.name.replace(/\s+/g, '-')}`;
-    let canvasOverlay = document.getElementById(canvasId);
-
-    if (!canvasOverlay) {
-      canvasOverlay = document.createElement('canvas');
-      canvasOverlay.id = canvasId;
-      canvasOverlay.className = 'detection-overlay';
-      canvasOverlay.style.position = 'absolute';
-      canvasOverlay.style.top = '0';
-      canvasOverlay.style.left = '0';
-      canvasOverlay.style.width = '100%';
-      canvasOverlay.style.height = '100%';
-      videoCell.appendChild(canvasOverlay);
-    }
-
-    // Build the HLS stream URL with cache-busting timestamp to prevent stale data
-    const timestamp = Date.now();
-    const hlsStreamUrl = `/hls/${encodeURIComponent(stream.name)}/index.m3u8?_t=${timestamp}`;
-
-    // Check if HLS.js is supported
-    if (Hls.isSupported()) {
-      console.log(`Using HLS.js for stream ${stream.name}`);
-      const hls = new Hls({
-        maxBufferLength: 30,            // Increased from 10 to 30 seconds for better buffering on low-power devices
-        maxMaxBufferLength: 60,         // Increased from 20 to 60 seconds for better buffering on low-power devices
-        liveSyncDurationCount: 4,       // Increased from 3 to 4 segments for better stability
-        liveMaxLatencyDurationCount: 10, // Increased from 5 to 10 segments for better stability on low-power devices
-        liveDurationInfinity: false,    // Don't treat live streams as infinite duration
-        lowLatencyMode: false,          // Disable low latency mode for better stability on low-power devices
-        enableWorker: true,
-        fragLoadingTimeOut: 30000,      // Increased from 20 to 30 seconds timeout for fragment loading
-        manifestLoadingTimeOut: 20000,  // Increased from 15 to 20 seconds timeout for manifest loading
-        levelLoadingTimeOut: 20000,     // Increased from 15 to 20 seconds timeout for level loading
-        backBufferLength: 60,           // Add back buffer length to keep more segments in memory
-        startLevel: -1,                 // Auto-select quality level based on network conditions
-        abrEwmaDefaultEstimate: 500000, // Start with a lower bandwidth estimate (500kbps)
-        abrBandWidthFactor: 0.7,        // Be more conservative with bandwidth estimates
-        abrBandWidthUpFactor: 0.5       // Be more conservative when increasing quality
-      });
-
-      hls.loadSource(hlsStreamUrl);
-      hls.attachMedia(videoElement);
-
-      hls.on(Hls.Events.MANIFEST_PARSED, function() {
-        if (loadingIndicator) {
-          loadingIndicator.style.display = 'none';
-        }
-
-        videoElement.play().catch(error => {
-          console.warn('Auto-play prevented:', error);
-          // Add play button overlay for user interaction
-          addPlayButtonOverlay(videoCell, videoElement);
-        });
-      });
-
-      hls.on(Hls.Events.ERROR, function(event, data) {
-        if (data.fatal) {
-          console.error('HLS error:', data);
-          hls.destroy();
-
-          // Check if the stream was recently enabled
-          const videoCell = videoElement.closest('.video-cell');
-          const loadingIndicator = videoCell.querySelector('.loading-indicator');
-
-          // If the stream was recently enabled (indicated by the loading message),
-          // automatically retry after a short delay
-          if (loadingIndicator &&
-              loadingIndicator.style.display === 'flex') {
-
-            console.log(`Stream ${stream.name} failed to load, retrying in 2 seconds...`);
-
-            // Retry after a delay
-            setTimeout(() => {
-              console.log(`Retrying stream ${stream.name} after failure`);
-              // Fetch updated stream info and reinitialize
-              fetch(`/api/streams/${encodeURIComponent(stream.name)}`)
-                .then(response => response.json())
-                .then(updatedStream => {
-                  // Cleanup existing player
-                  cleanupHLSPlayer(stream.name);
-                  // Reinitialize with updated stream info
-                  initializeHLSPlayer(updatedStream);
-                })
-                .catch(error => {
-                  console.error(`Error fetching stream info for retry: ${error}`);
-                  handleHLSError(stream.name, 'Failed to reconnect');
-                });
-            }, 2000);
-          } else {
-            // Regular error handling for non-startup errors
-            handleHLSError(stream.name, data.details || 'HLS playback error');
-          }
-        }
-      });
-
-      // Set up less frequent refresh to reduce load on low-power devices
-      const refreshInterval = 60000; // 60 seconds
-      const refreshTimer = setInterval(() => {
-        if (videoCell && hls) {
-          console.log(`Refreshing HLS stream for ${stream.name}`);
-          const newTimestamp = Date.now();
-          const newUrl = `/hls/${encodeURIComponent(stream.name)}/index.m3u8?_t=${newTimestamp}`;
-          hls.loadSource(newUrl);
-        } else {
-          // Clear interval if video cell or player no longer exists
-          clearInterval(refreshTimer);
-        }
-      }, refreshInterval);
-
-      // Store hls instance and timer for cleanup
-      hlsPlayers.current[stream.name] = hls;
-      refreshTimers.current[stream.name] = refreshTimer;
-
-      // Detection is now handled by the DetectionOverlay component
-      if (stream.detection_based_recording && stream.detection_model) {
-        console.log(`Detection enabled for stream ${stream.name}`);
-        // Create a React component for the detection overlay
-        const detectionOverlayComponent = document.createElement('div');
-        detectionOverlayComponent.id = `detection-overlay-container-${stream.name.replace(/\s+/g, '-')}`;
-        videoCell.appendChild(detectionOverlayComponent);
-
-        // Render the DetectionOverlay component
-        renderDetectionOverlay(stream.name, videoElement, canvasOverlay);
-      } else {
-        console.log(`Detection not enabled for stream ${stream.name}`);
-      }
-    }
-    // Check if HLS is supported natively (Safari)
-    else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
-      console.log(`Using native HLS support for stream ${stream.name}`);
-      // Native HLS support (Safari)
-      videoElement.src = hlsStreamUrl;
-      videoElement.addEventListener('loadedmetadata', function() {
-        if (loadingIndicator) {
-          loadingIndicator.style.display = 'none';
-        }
-      });
-
-      videoElement.addEventListener('error', function() {
-        handleHLSError(stream.name, 'HLS stream failed to load');
-      });
-    } else {
-      // Fallback for truly unsupported browsers
-      console.error(`HLS not supported for stream ${stream.name} - neither HLS.js nor native support available`);
-      handleHLSError(stream.name, 'HLS not supported by your browser - please use a modern browser');
-    }
-  };
-
-  /**
-   * Add play button overlay for browsers that block autoplay
-   * @param {HTMLElement} videoCell - Video cell element
-   * @param {HTMLVideoElement} videoElement - Video element
-   */
-  const addPlayButtonOverlay = (videoCell, videoElement) => {
-    const playOverlay = document.createElement('div');
-    playOverlay.className = 'play-overlay';
-    playOverlay.innerHTML = '<div class="play-button"></div>';
-    playOverlay.style.position = 'absolute';
-    playOverlay.style.top = '0';
-    playOverlay.style.left = '0';
-    playOverlay.style.width = '100%';
-    playOverlay.style.height = '100%';
-    playOverlay.style.display = 'flex';
-    playOverlay.style.justifyContent = 'center';
-    playOverlay.style.alignItems = 'center';
-    playOverlay.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
-    playOverlay.style.zIndex = '25';
-    playOverlay.style.cursor = 'pointer';
-
-    const playButton = document.createElement('div');
-    playButton.className = 'play-button';
-    playButton.innerHTML = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="white" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <polygon points="5 3 19 12 5 21 5 3"></polygon>
-      </svg>
-    `;
-    playOverlay.appendChild(playButton);
-
-    videoCell.appendChild(playOverlay);
-
-    playOverlay.addEventListener('click', () => {
-      videoElement.play()
-        .then(() => {
-          playOverlay.remove();
-        })
-        .catch(error => {
-          console.error('Play failed:', error);
-        });
-    });
-  };
-
-  /**
-   * Handle HLS error
-   * @param {string} streamName - Stream name
-   * @param {string} message - Error message
-   */
-  const handleHLSError = (streamName, message) => {
-    console.error(`HLS error for stream ${streamName}:`, message);
-
-    // Find the video cell
-    const videoElementId = `video-${streamName.replace(/\s+/g, '-')}`;
-    const videoElement = document.getElementById(videoElementId);
-    if (!videoElement) return;
-
-    const videoCell = videoElement.closest('.video-cell');
-    if (!videoCell) return;
-
-    // Hide loading indicator
-    const loadingIndicator = videoCell.querySelector('.loading-indicator');
-    if (loadingIndicator) {
-      loadingIndicator.style.display = 'none';
-    }
-
-    // Create error indicator if it doesn't exist
-    let errorIndicator = videoCell.querySelector('.error-indicator');
-    if (!errorIndicator) {
-      errorIndicator = document.createElement('div');
-      errorIndicator.className = 'error-indicator';
-      errorIndicator.style.position = 'absolute';
-      errorIndicator.style.top = '0';
-      errorIndicator.style.left = '0';
-      errorIndicator.style.width = '100%';
-      errorIndicator.style.height = '100%';
-      errorIndicator.style.display = 'flex';
-      errorIndicator.style.flexDirection = 'column';
-      errorIndicator.style.justifyContent = 'center';
-      errorIndicator.style.alignItems = 'center';
-      errorIndicator.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-      errorIndicator.style.color = 'white';
-      errorIndicator.style.zIndex = '20'; // Above video but below controls
-      videoCell.appendChild(errorIndicator);
-    }
-
-    errorIndicator.innerHTML = `
-      <div class="error-icon">!</div>
-      <p>${message || 'HLS stream failed'}</p>
-      <button class="retry-button mt-4 px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">Retry</button>
-    `;
-    errorIndicator.style.display = 'flex';
-
-    // Make sure retry button is clickable
-    const retryButton = errorIndicator.querySelector('.retry-button');
-    if (retryButton) {
-      retryButton.style.position = 'relative';
-      retryButton.style.zIndex = '30';
-      retryButton.style.pointerEvents = 'auto';
-
-      retryButton.addEventListener('click', () => {
-        // Show loading indicator
-        if (loadingIndicator) {
-          loadingIndicator.style.display = 'flex';
-        }
-
-        // Hide error indicator
-        errorIndicator.style.display = 'none';
-
-        // Cleanup existing player
-        cleanupHLSPlayer(streamName);
-
-        // Fetch stream info again and reinitialize
-        fetch(`/api/streams/${encodeURIComponent(streamName)}`)
-          .then(response => response.json())
-          .then(streamInfo => {
-            // Reinitialize
-            initializeHLSPlayer(streamInfo);
-          })
-          .catch(error => {
-            console.error('Error fetching stream info:', error);
-
-            // Show error indicator again with new message
-            errorIndicator.style.display = 'flex';
-            const errorMsg = errorIndicator.querySelector('p');
-            if (errorMsg) {
-              errorMsg.textContent = 'Could not reconnect: ' + error.message;
-            }
-
-            // Hide loading indicator
-            if (loadingIndicator) {
-              loadingIndicator.style.display = 'none';
-            }
-          });
-      });
-    }
   };
 
   /**
@@ -824,15 +372,6 @@ export function LiveView({isWebRTCDisabled}) {
     if (refreshTimers.current[streamName]) {
       clearInterval(refreshTimers.current[streamName]);
       delete refreshTimers.current[streamName];
-    }
-
-    // Reset video element
-    const videoElementId = `video-${streamName.replace(/\s+/g, '-')}`;
-    const videoElement = document.getElementById(videoElementId);
-    if (videoElement) {
-      videoElement.pause();
-      videoElement.removeAttribute('src');
-      videoElement.load();
     }
 
     // Clean up detection overlay component if it exists
@@ -855,76 +394,23 @@ export function LiveView({isWebRTCDisabled}) {
   };
 
   /**
-   * Stop all HLS streams
-   */
-  const stopAllHLSStreams = () => {
-    // Close all HLS players
-    Object.keys(hlsPlayers.current).forEach(streamName => {
-      cleanupHLSPlayer(streamName);
-    });
-  };
-
-
-// Note: takeSnapshot is now provided by the useSnapshotManager hook
-
-  /**
-   * Render the DetectionOverlay component for a stream
-   * @param {string} streamName - Stream name
-   * @param {HTMLVideoElement} videoElement - Video element
-   * @param {HTMLCanvasElement} canvasElement - Canvas element (will be replaced by the component)
-   */
-  const renderDetectionOverlay = (streamName, videoElement, canvasElement) => {
-    // Create a ref object for the video element
-    const videoRef = { current: videoElement };
-
-    // Get the container element
-    const containerId = `detection-overlay-container-${streamName.replace(/\s+/g, '-')}`;
-    const container = document.getElementById(containerId);
-
-    if (!container) {
-      console.error(`Detection overlay container not found for stream ${streamName}`);
-      return;
-    }
-
-    // Remove the original canvas element if it exists
-    if (canvasElement && canvasElement.parentNode) {
-      canvasElement.parentNode.removeChild(canvasElement);
-    }
-
-    // Find the stream object
-    const stream = streams.find(s => s.name === streamName);
-    if (!stream) {
-      console.error(`Stream not found for detection overlay: ${streamName}`);
-      return;
-    }
-
-    // Render the DetectionOverlay component
-    const detectionOverlay = render(
-      <DetectionOverlay
-        streamName={streamName}
-        videoRef={videoRef}
-        enabled={true}
-        detectionModel={stream.detection_model}
-      />,
-      container
-    );
-
-    // Store the component reference for cleanup
-    detectionOverlays.current[streamName] = {
-      container,
-      component: detectionOverlay
-    };
-  };
-
-  /**
    * Toggle fullscreen mode for a specific stream
    * @param {string} streamName - Stream name
+   * @param {Event} event - Click event
+   * @param {HTMLElement} cellElement - Optional cell element reference
    */
-  const toggleStreamFullscreen = (streamName) => {
+  const toggleStreamFullscreen = (streamName, event, cellElement) => {
     console.log(`Toggling fullscreen for stream: ${streamName}`);
-    const videoElementId = `video-${streamName.replace(/\s+/g, '-')}`;
-    const videoElement = document.getElementById(videoElementId);
-    const videoCell = videoElement ? videoElement.closest('.video-cell') : null;
+
+    // If we have a direct reference to the cell element, use it
+    let videoCell = cellElement;
+
+    // Otherwise try to find it by stream name
+    if (!videoCell) {
+      const videoElementId = `video-${streamName.replace(/\s+/g, '-')}`;
+      const videoElement = document.getElementById(videoElementId);
+      videoCell = videoElement ? videoElement.closest('.video-cell') : null;
+    }
 
     if (!videoCell) {
       console.error('Stream not found:', streamName);
@@ -940,6 +426,12 @@ export function LiveView({isWebRTCDisabled}) {
     } else {
       console.log('Exiting fullscreen mode');
       document.exitFullscreen();
+    }
+
+    // Prevent event propagation
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
     }
   };
 
