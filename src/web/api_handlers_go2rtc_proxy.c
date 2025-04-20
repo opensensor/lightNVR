@@ -193,31 +193,6 @@ void mg_handle_go2rtc_webrtc_offer_worker(struct mg_connection *c, struct mg_htt
         goto cleanup;
     }
     
-    // Set basic authentication if enabled in the main application
-    if (g_config.web_auth_enabled) {
-        if (curl_easy_setopt(curl, CURLOPT_HTTPAUTH, CURLAUTH_BASIC) != CURLE_OK) {
-            log_error("Failed to set CURLOPT_HTTPAUTH");
-            mg_send_json_error(c, 500, "Failed to set curl options");
-            goto cleanup;
-        }
-        
-        if (curl_easy_setopt(curl, CURLOPT_USERNAME, g_config.web_username) != CURLE_OK) {
-            log_error("Failed to set CURLOPT_USERNAME");
-            mg_send_json_error(c, 500, "Failed to set curl options");
-            goto cleanup;
-        }
-        
-        if (curl_easy_setopt(curl, CURLOPT_PASSWORD, g_config.web_password) != CURLE_OK) {
-            log_error("Failed to set CURLOPT_PASSWORD");
-            mg_send_json_error(c, 500, "Failed to set curl options");
-            goto cleanup;
-        }
-        
-        log_info("Using authentication for go2rtc API request: username=%s", g_config.web_username);
-    } else {
-        log_info("Authentication disabled for go2rtc API request");
-    }
-    
     // Set POST fields directly from the request body
     if (curl_easy_setopt(curl, CURLOPT_POSTFIELDS, offer) != CURLE_OK) {
         log_error("Failed to set CURLOPT_POSTFIELDS");
@@ -290,7 +265,8 @@ void mg_handle_go2rtc_webrtc_offer_worker(struct mg_connection *c, struct mg_htt
                      "Access-Control-Allow-Origin: *\r\n"
                      "Access-Control-Allow-Methods: POST, OPTIONS\r\n"
                      "Access-Control-Allow-Headers: Content-Type, Authorization, Origin, X-Requested-With, Accept\r\n"
-                     "Access-Control-Allow-Credentials: true\r\n",
+                     "Access-Control-Allow-Credentials: true\r\n"
+                     "Connection: close\r\n",
                      "%s", response.data ? response.data : "{}");
     } else {
         log_error("go2rtc API returned error: %ld", http_code);
@@ -481,31 +457,6 @@ void mg_handle_go2rtc_webrtc_ice_worker(struct mg_connection *c, struct mg_http_
         goto cleanup;
     }
     
-    // Set basic authentication if enabled in the main application
-    if (g_config.web_auth_enabled) {
-        if (curl_easy_setopt(curl, CURLOPT_HTTPAUTH, CURLAUTH_BASIC) != CURLE_OK) {
-            log_error("Failed to set CURLOPT_HTTPAUTH");
-            mg_send_json_error(c, 500, "Failed to set curl options");
-            goto cleanup;
-        }
-        
-        if (curl_easy_setopt(curl, CURLOPT_USERNAME, g_config.web_username) != CURLE_OK) {
-            log_error("Failed to set CURLOPT_USERNAME");
-            mg_send_json_error(c, 500, "Failed to set curl options");
-            goto cleanup;
-        }
-        
-        if (curl_easy_setopt(curl, CURLOPT_PASSWORD, g_config.web_password) != CURLE_OK) {
-            log_error("Failed to set CURLOPT_PASSWORD");
-            mg_send_json_error(c, 500, "Failed to set curl options");
-            goto cleanup;
-        }
-        
-        log_info("Using authentication for go2rtc ICE API request: username=%s", g_config.web_username);
-    } else {
-        log_info("Authentication disabled for go2rtc ICE API request");
-    }
-    
     // Set POST fields directly from the request body
     if (curl_easy_setopt(curl, CURLOPT_POSTFIELDS, ice_candidate) != CURLE_OK) {
         log_error("Failed to set CURLOPT_POSTFIELDS");
@@ -578,7 +529,8 @@ void mg_handle_go2rtc_webrtc_ice_worker(struct mg_connection *c, struct mg_http_
                      "Access-Control-Allow-Origin: *\r\n"
                      "Access-Control-Allow-Methods: POST, OPTIONS\r\n"
                      "Access-Control-Allow-Headers: Content-Type, Authorization, Origin, X-Requested-With, Accept\r\n"
-                     "Access-Control-Allow-Credentials: true\r\n",
+                     "Access-Control-Allow-Credentials: true\r\n"
+                     "Connection: close\r\n",
                      "%s", response.data ? response.data : "{}");
     } else {
         log_error("go2rtc API returned error: %ld", http_code);
@@ -625,6 +577,7 @@ void mg_handle_go2rtc_webrtc_options(struct mg_connection *c, struct mg_http_mes
     mg_printf(c, "Access-Control-Allow-Headers: Content-Type, Authorization, Origin, X-Requested-With, Accept\r\n");
     mg_printf(c, "Access-Control-Allow-Credentials: true\r\n");
     mg_printf(c, "Content-Length: 0\r\n\r\n");
+    mg_printf(c, "Connection: close\r\n");
     
     log_info("Successfully handled OPTIONS request for WebRTC API");
 }
@@ -645,6 +598,7 @@ void mg_handle_go2rtc_webrtc_ice_options(struct mg_connection *c, struct mg_http
     mg_printf(c, "Access-Control-Allow-Headers: Content-Type, Authorization, Origin, X-Requested-With, Accept\r\n");
     mg_printf(c, "Access-Control-Allow-Credentials: true\r\n");
     mg_printf(c, "Content-Length: 0\r\n\r\n");
+    mg_printf(c, "Connection: close\r\n");
     
     log_info("Successfully handled OPTIONS request for WebRTC ICE API");
 }

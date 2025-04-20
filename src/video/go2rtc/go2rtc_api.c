@@ -213,7 +213,7 @@ static size_t StaticWriteCallback(void *contents, size_t size, size_t nmemb, voi
     return realsize;
 }
 
-bool go2rtc_api_add_stream(const char *stream_id, const char *stream_url, const char *stream_options) {
+bool go2rtc_api_add_stream(const char *stream_id, const char *stream_url) {
     if (!g_initialized) {
         log_error("go2rtc API client not initialized");
         return false;

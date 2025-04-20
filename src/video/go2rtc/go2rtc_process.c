@@ -277,30 +277,14 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port) {
     fprintf(config_file, "webrtc:\n");
     fprintf(config_file, "  ice_servers:\n");
     fprintf(config_file, "    - urls: [stun:stun.l.google.com:19302]\n\n");
-    
-    // HLS configuration - write segments to our HLS directory
-    fprintf(config_file, "hls:\n");
-    
-    // Use storage_path_hls if specified, otherwise fall back to storage_path
-    const char *base_storage_path = global_config->storage_path;
-    if (global_config->storage_path_hls[0] != '\0') {
-        base_storage_path = global_config->storage_path_hls;
-    }
-    
-    // Configure HLS output path
-    fprintf(config_file, "  path: %s/hls\n", base_storage_path);
-    fprintf(config_file, "  segment: 2\n");  // 2-second segments for lower latency
-    fprintf(config_file, "  window: 10\n");  // Keep 10 segments in the playlist
-    fprintf(config_file, "  cleanup: true\n");  // Clean up old segments
-    fprintf(config_file, "  direct: true\n\n");  // Use direct naming (no URL in path)
-    
+
     // Logging configuration
     fprintf(config_file, "log:\n");
     fprintf(config_file, "  level: debug\n\n");  // Use debug level for more verbose logging
 
     fprintf(config_file, "ffmpeg:\n");
-    fprintf(config_file, "  h264: \"-codec:v libx264 -g:v 30 -preset:v superfast -tune:v zerolatency -profile:v main -level:v 4.1\"\n");
-    fprintf(config_file, "  h265: \"-codec:v libx265 -g:v 30 -preset:v superfast -tune:v zerolatency -profile:v main -level:v 4.1\"\n");
+    fprintf(config_file, "  h264: \"-codec:v libx264 -g:v 30 -preset:v superfast\"\n");
+    fprintf(config_file, "  h265: \"-codec:v libx265 -g:v 30 -preset:v superfast\"\n");
 
     // Streams section (will be populated dynamically)
     fprintf(config_file, "streams:\n");

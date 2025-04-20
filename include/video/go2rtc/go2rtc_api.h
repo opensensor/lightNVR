@@ -23,10 +23,9 @@ bool go2rtc_api_init(const char *api_host, int api_port);
  * 
  * @param stream_id Unique identifier for the stream
  * @param stream_url URL of the stream source (e.g., RTSP URL)
- * @param stream_options Additional options for the stream (can be NULL)
  * @return true if stream was added successfully, false otherwise
  */
-bool go2rtc_api_add_stream(const char *stream_id, const char *stream_url, const char *stream_options);
+bool go2rtc_api_add_stream(const char *stream_id, const char *stream_url);
 
 /**
  * @brief Remove a stream from go2rtc
