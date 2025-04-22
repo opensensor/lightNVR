@@ -230,6 +230,18 @@ export function TimelinePlayer() {
       // This prevents other components from interfering
       timelineState.directVideoControl = true;
 
+      // Preload the next segment's video immediately
+      const nextSegment = segments[nextIndex];
+      const nextVideoUrl = `/api/recordings/play/${nextSegment.id}?t=${Date.now()}`;
+      
+      // Create a temporary video element to preload the next segment
+      const tempVideo = document.createElement('video');
+      tempVideo.preload = 'auto';
+      tempVideo.src = nextVideoUrl;
+      tempVideo.load();
+      
+      console.log(`Preloading next segment ${nextIndex} (ID: ${nextSegment.id})`);
+
       // Update timeline state
       timelineState.setState({
         currentSegmentIndex: nextIndex,
@@ -239,6 +251,25 @@ export function TimelinePlayer() {
         isPlaying: true,
         forceReload: true
       });
+
+      // Get the current video element
+      const video = videoRef.current;
+      if (video) {
+        // Set up the new source immediately to minimize delay
+        video.pause();
+        video.src = nextVideoUrl;
+        video.load();
+        
+        // Set up event listener for when metadata is loaded
+        const onLoadedMetadata = () => {
+          console.log('Next segment metadata loaded, starting playback immediately');
+          video.currentTime = 0; // Start from the beginning of the next segment
+          video.play().catch(e => console.error('Error playing next segment:', e));
+          video.removeEventListener('loadedmetadata', onLoadedMetadata);
+        };
+        
+        video.addEventListener('loadedmetadata', onLoadedMetadata);
+      }
 
       // Reset the directVideoControl flag after a delay
       setTimeout(() => {

@@ -8,6 +8,7 @@
 #include "video/go2rtc/go2rtc_api.h"
 #include "video/go2rtc/go2rtc_integration.h"
 #include "video/go2rtc/dns_cleanup.h"
+#include "core/config.h"
 #include "core/logger.h"
 
 #include <stdio.h>
@@ -28,6 +29,8 @@
 
 // Buffer sizes
 #define URL_BUFFER_SIZE 2048
+
+extern config_t g_config;
 
 // Stream integration state
 static bool g_initialized = false;
@@ -727,46 +730,72 @@ bool go2rtc_stream_start_service(void) {
 
                 // Try to get the process log
                 char log_path[1024];
-                if (g_config_dir) {
-                    snprintf(log_path, sizeof(log_path), "%s/go2rtc.log", g_config_dir);
 
-                    log_warn("Checking go2rtc log file: %s", log_path);
-                    fp = fopen(log_path, "r");
-                    if (fp) {
-                        char log_line[1024];
-                        int lines = 0;
+                // Extract directory from g_config.log_file
+                char log_dir[1024] = {0};
+                if (g_config.log_file[0] != '\0') {
+                    strncpy(log_dir, g_config.log_file, sizeof(log_dir) - 1);
 
-                        // Skip to the end minus 10 lines
-                        fseek(fp, 0, SEEK_END);
-                        long pos = ftell(fp);
-
-                        // Read the last few lines
-                        while (pos > 0 && lines < 10) {
-                            pos--;
-                            fseek(fp, pos, SEEK_SET);
-                            char c = fgetc(fp);
-                            if (c == '\n' && pos > 0) {
-                                lines++;
-                            }
-                        }
-
-                        log_warn("Last few lines of go2rtc log:");
-                        while (fgets(log_line, sizeof(log_line), fp)) {
-                            // Remove newline
-                            size_t len = strlen(log_line);
-                            if (len > 0 && log_line[len-1] == '\n') {
-                                log_line[len-1] = '\0';
-                            }
-                            log_warn("  %s", log_line);
-                        }
-
-                        fclose(fp);
+                    // Find the last slash to get the directory
+                    char *last_slash = strrchr(log_dir, '/');
+                    if (last_slash) {
+                        // Truncate at the last slash to get just the directory
+                        *(last_slash + 1) = '\0';
+                        // Create the go2rtc log path in the same directory as the main log file
+                        snprintf(log_path, sizeof(log_path), "%sgo2rtc.log", log_dir);
+                    } else if (g_config_dir) {
+                        // No directory in the path, fall back to g_config_dir
+                        snprintf(log_path, sizeof(log_path), "%s/go2rtc.log", g_config_dir);
                     } else {
-                        log_warn("Could not open go2rtc log file: %s", log_path);
+                        // No directory in path and no g_config_dir
+                        log_warn("No valid log directory found");
+                        goto skip_log_check;
                     }
+                } else if (g_config_dir) {
+                    // If g_config.log_file is empty, fall back to g_config_dir
+                    snprintf(log_path, sizeof(log_path), "%s/go2rtc.log", g_config_dir);
                 } else {
+                    // No valid log path available
                     log_warn("Config directory not available, cannot check go2rtc log");
+                    goto skip_log_check;
                 }
+
+                log_warn("Checking go2rtc log file: %s", log_path);
+                fp = fopen(log_path, "r");
+                if (fp) {
+                    char log_line[1024];
+                    int lines = 0;
+
+                    // Skip to the end minus 10 lines
+                    fseek(fp, 0, SEEK_END);
+                    long pos = ftell(fp);
+
+                    // Read the last few lines
+                    while (pos > 0 && lines < 10) {
+                        pos--;
+                        fseek(fp, pos, SEEK_SET);
+                        char c = fgetc(fp);
+                        if (c == '\n' && pos > 0) {
+                            lines++;
+                        }
+                    }
+
+                    log_warn("Last few lines of go2rtc log:");
+                    while (fgets(log_line, sizeof(log_line), fp)) {
+                        // Remove newline
+                        size_t len = strlen(log_line);
+                        if (len > 0 && log_line[len-1] == '\n') {
+                            log_line[len-1] = '\0';
+                        }
+                        log_warn("  %s", log_line);
+                    }
+
+                    fclose(fp);
+                } else {
+                    log_warn("Could not open go2rtc log file: %s", log_path);
+                }
+
+                skip_log_check:
             } else {
                 log_error("go2rtc process is not running");
             }

@@ -16,16 +16,34 @@ import { useQuery } from '../../../query-client.js';
 // Utility function to convert between timeline hour and timestamp
 function timelineHourToTimestamp(hour, selectedDate) {
   // Get the selected date or today
-  const date = selectedDate ? new Date(selectedDate) : new Date();
+  // If we have a selectedDate in YYYY-MM-DD format, parse it correctly
+  let date;
 
-  // Reset time components
-  date.setHours(0, 0, 0, 0);
+  console.log(`timelineHourToTimestamp: Converting hour ${hour} for date ${selectedDate}`);
+
+  if (selectedDate && typeof selectedDate === 'string' && selectedDate.includes('-')) {
+    // Parse the date string to avoid timezone issues
+    const [year, month, day] = selectedDate.split('-').map(num => parseInt(num, 10));
+    // Create a date at midnight for the selected date (month is 0-indexed)
+    date = new Date(year, month - 1, day, 0, 0, 0, 0);
+    console.log(`timelineHourToTimestamp: Parsed date - Year: ${year}, Month: ${month}, Day: ${day}`);
+    console.log(`timelineHourToTimestamp: Created date object: ${date.toString()}`);
+  } else {
+    // Fallback to current date
+    date = new Date();
+    date.setHours(0, 0, 0, 0);
+    console.log(`timelineHourToTimestamp: Using current date: ${date.toString()}`);
+  }
 
   // Add the hour component (this is in local time)
   const milliseconds = date.getTime() + (hour * 60 * 60 * 1000);
+  const resultDate = new Date(milliseconds);
+
+  console.log(`timelineHourToTimestamp: Result date for hour ${hour}: ${resultDate.toString()}`);
 
   // Convert to timestamp (seconds)
-  return Math.floor(milliseconds / 1000);
+  const timestamp = Math.floor(milliseconds / 1000);
+  return timestamp;
 }
 
 // Utility function to convert timestamp to timeline hour
@@ -240,11 +258,14 @@ export function TimelinePage() {
 
   // Calculate time range for timeline data
   const getTimeRange = (date) => {
-    const startDate = new Date(date);
-    startDate.setHours(0, 0, 0, 0);
+    // Create a date object at midnight for the selected date
+    // The date string from the input is in YYYY-MM-DD format (local date)
+    const [year, month, day] = date.split('-').map(num => parseInt(num, 10));
 
-    const endDate = new Date(date);
-    endDate.setHours(23, 59, 59, 999);
+    // Create date objects using local date components to avoid timezone issues
+    // Month is 0-indexed in JavaScript Date
+    const startDate = new Date(year, month - 1, day, 0, 0, 0, 0);
+    const endDate = new Date(year, month - 1, day, 23, 59, 59, 999);
 
     // Format dates for API in ISO format
     const startTime = startDate.toISOString();
@@ -255,7 +276,8 @@ export function TimelinePage() {
       startDate: startDate.toString(),
       endDate: endDate.toString(),
       startTime,
-      endTime
+      endTime,
+      year, month, day
     });
 
     return {
@@ -423,7 +445,22 @@ export function TimelinePage() {
   const handleDateChange = (e) => {
     const newDate = e.target.value;
     console.log(`TimelinePage: Date changed to ${newDate}`);
-    setSelectedDate(newDate);
+
+    // Validate the date format (should be YYYY-MM-DD)
+    if (newDate && /^\d{4}-\d{2}-\d{2}$/.test(newDate)) {
+      // Parse the date to ensure it's valid
+      const [year, month, day] = newDate.split('-').map(num => parseInt(num, 10));
+      console.log(`TimelinePage: Parsed date - Year: ${year}, Month: ${month}, Day: ${day}`);
+
+      // Update the selected date
+      setSelectedDate(newDate);
+    } else {
+      console.error(`TimelinePage: Invalid date format: ${newDate}`);
+      // Fallback to today's date in YYYY-MM-DD format
+      const today = formatDateForInput(new Date());
+      console.log(`TimelinePage: Falling back to today's date: ${today}`);
+      setSelectedDate(today);
+    }
   };
 
   // Render content based on state

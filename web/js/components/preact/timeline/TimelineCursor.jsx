@@ -424,14 +424,14 @@ export function TimelineCursor() {
       {/* Invisible wider clickable area */}
       <div className="absolute top-0 bottom-0 left-0 w-full"></div>
 
-      {/* Skinnier needle with no middle chunk */}
-      <div className="absolute top-0 bottom-0 w-0.5 bg-orange-500 left-1/2 transform -translate-x-1/2 pointer-events-none"></div>
+      {/* Skinnier needle with no middle chunk - perfectly centered */}
+      <div className="absolute top-0 bottom-0 w-0.5 bg-orange-500 left-0 right-0 mx-auto pointer-events-none"></div>
 
-      {/* Top handle (black) */}
-      <div className="absolute top-0 left-1/2 w-4 h-4 bg-black rounded-full transform -translate-x-1/2 -translate-y-1/2 shadow-md pointer-events-none"></div>
+      {/* Top handle (black) - perfectly centered */}
+      <div className="absolute top-0 left-0 right-0 mx-auto w-4 h-4 bg-black rounded-full transform -translate-y-1/2 shadow-md pointer-events-none"></div>
 
-      {/* Bottom handle (black) */}
-      <div className="absolute bottom-0 left-1/2 w-4 h-4 bg-black rounded-full transform -translate-x-1/2 translate-y-1/2 shadow-md pointer-events-none"></div>
+      {/* Bottom handle (black) - perfectly centered */}
+      <div className="absolute bottom-0 left-0 right-0 mx-auto w-4 h-4 bg-black rounded-full transform translate-y-1/2 shadow-md pointer-events-none"></div>
     </div>
   );
 }

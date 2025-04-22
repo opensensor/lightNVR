@@ -324,9 +324,9 @@ void mg_handle_get_timeline_segments(struct mg_connection *c, struct mg_http_mes
         cJSON_AddNumberToObject(segment, "start_timestamp", (double)segments[i].start_time);
         cJSON_AddNumberToObject(segment, "end_timestamp", (double)segments[i].end_time);
         
-        // Add local timestamps (adjusted for timezone)
-        cJSON_AddNumberToObject(segment, "local_start_timestamp", (double)segments[i].start_time - timezone_offset);
-        cJSON_AddNumberToObject(segment, "local_end_timestamp", (double)segments[i].end_time - timezone_offset);
+        // Add local timestamps (without timezone adjustment - the browser will handle timezone display)
+        cJSON_AddNumberToObject(segment, "local_start_timestamp", (double)segments[i].start_time);
+        cJSON_AddNumberToObject(segment, "local_end_timestamp", (double)segments[i].end_time);
         
         cJSON_AddItemToArray(segments_array, segment);
     }
