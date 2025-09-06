@@ -78,7 +78,7 @@ static char* create_security_header(const char *username, const char *password, 
     memcpy(concatenated + nonce_len + strlen(created), password, strlen(password) + 1);
     
     // Calculate SHA1 digest
-    mbedtls_sha1_ret((unsigned char*)concatenated, nonce_len + strlen(created) + strlen(password), digest);
+    mbedtls_sha1((unsigned char*)concatenated, nonce_len + strlen(created) + strlen(password), digest);
 
     // Base64 encode the digest
     base64_digest = malloc(((4 * 20) / 3) + 5); // 20 is SHA1 digest length
