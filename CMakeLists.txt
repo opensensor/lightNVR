@@ -345,7 +345,6 @@ set(REBUILD_RECORDINGS_SOURCES
     src/utils/rebuild_recordings.c
     src/core/config.c
     src/core/logger.c
-    src/web/logger_websocket.c
     src/database/db_core.c
     src/database/db_streams.c
     src/database/db_recordings.c

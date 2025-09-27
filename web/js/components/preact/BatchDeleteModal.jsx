@@ -89,12 +89,12 @@ export function BatchDeleteModal() {
   };
 
   /**
-   * Delete recordings by HTTP request (fallback when WebSocket is not available)
+   * Delete recordings by HTTP request
    * @param {Object} params - Delete parameters (ids or filter)
    * @returns {Promise<Object>} Promise that resolves when the operation is complete
    */
   const batchDeleteRecordingsByHttpRequest = (params) => {
-    console.log('Using HTTP fallback for batch delete with params:', params);
+    console.log('Using HTTP for batch delete with params:', params);
 
     return new Promise((resolve, reject) => {
       // Show modal
