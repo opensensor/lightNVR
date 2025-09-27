@@ -363,13 +363,8 @@ export const recordingsAPI = {
           showBatchDeleteModal();
         }
 
-        // Use WebSocket for batch delete
-        // The client ID will be obtained by the batch delete client
-        return await window.batchDeleteClient.deleteWithProgress({ ids: selectedIds });
-      } else {
-        console.log('WebSocket client not available, using HTTP for batch delete');
+        // Use HTTP for batch delete
         return recordingsAPI.deleteSelectedRecordingsHttp(selectedIds);
-      }
     } catch (error) {
       console.error('Error in batch delete operation:', error);
       showStatusMessage('Error in batch delete operation: ' + error.message);
@@ -578,34 +573,8 @@ export const recordingsAPI = {
             }, 60000); // 60 second timeout
           });
 
-          try {
-            // Race between the delete operation and the timeout
-            // Pass the total count to the WebSocket client
-            const result = await Promise.race([
-              window.batchDeleteClient.deleteWithProgress({
-                filter,
-                totalCount // Pass the total count to the WebSocket client
-              }),
-              timeoutPromise
-            ]);
-
-            return result;
-          } catch (wsError) {
-            console.error('WebSocket error or timeout:', wsError);
-
-            // If we got a timeout or server crash, reload the recordings to show what was deleted
-            setTimeout(() => {
-              if (typeof loadRecordings === 'function') {
-                loadRecordings();
-              }
-            }, 1000);
-
-            return handleOperationError(wsError);
-          }
-        } else {
-          console.log('WebSocket client not available, using HTTP for batch delete with filter');
+          // Use HTTP for batch delete with filter
           return recordingsAPI.deleteAllFilteredRecordingsHttp(filter);
-        }
     } catch (error) {
       console.error('Error in delete all operation:', error);
       showStatusMessage('Error in delete all operation: ' + error.message);

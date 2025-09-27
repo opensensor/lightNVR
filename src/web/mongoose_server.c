@@ -693,24 +693,7 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
         // Set Connection: close header for all responses to prevent connection reuse
         c->data[1] = 'C';  // Mark connection to add "Connection: close" header
 
-    } else if (ev == MG_EV_WS_OPEN) {
-        // WebSocket connection opened
-        log_info("WebSocket connection opened");
 
-        // Mark the connection as a WebSocket client
-        c->data[0] = 'W';  // Mark as WebSocket client
-
-        // Note: The WebSocket connection is now handled directly in mg_handle_websocket_upgrade
-
-    } else if (ev == MG_EV_WS_MSG) {
-        // WebSocket message received
-        struct mg_ws_message *wm = (struct mg_ws_message *)ev_data;
-
-        // Log the message for debugging
-        log_debug("WebSocket message received: %.*s", (int)wm->data.len, wm->data.buf);
-
-        // Call the WebSocket message handler directly
-        mg_handle_websocket_message(c, wm);
 
     } else if (ev == MG_EV_WAKEUP) {
         // Wakeup event from worker thread
@@ -909,31 +892,8 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
             handled = true;
         }
         else if (is_api_request) {
-            // Check if this is a WebSocket upgrade request
-            struct mg_str *upgrade_header = mg_http_get_header(hm, "Upgrade");
-            bool is_websocket = false;
-            if (upgrade_header != NULL) {
-                // Extract the header value as a C string for comparison
-                char upgrade_value[32] = {0};
-                size_t len = upgrade_header->len < sizeof(upgrade_value) - 1 ? upgrade_header->len : sizeof(upgrade_value) - 1;
-                memcpy(upgrade_value, upgrade_header->buf, len);
-                upgrade_value[len] = '\0';
-
-                // Case-insensitive comparison
-                is_websocket = (mg_casecmp(upgrade_value, "websocket") == 0);
-            }
-
-            // Special handling for WebSocket upgrade endpoint
-            if (is_websocket && mg_http_match_uri(hm, "/api/ws")) {
-                log_info("Detected WebSocket upgrade request to /api/ws endpoint");
-                // Handle WebSocket upgrade directly without threading
-                // This ensures the upgrade process completes properly
-                mg_handle_websocket_upgrade(c, hm);
-                handled = true;
-            } else {
-                // For other API requests, use the API request handler with threading
-                handled = handle_api_request(c, hm, true);
-            }
+            // Handle API requests with threading
+            handled = handle_api_request(c, hm, true);
         } else if (is_direct_hls) {
             // For direct HLS requests, use the HLS handler
             log_debug("Handling direct HLS request: %s", uri);
@@ -967,36 +927,8 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
         // Connection closed
         log_debug("Connection closed");
 
-        // If this was a WebSocket connection, handle cleanup
-        if (c->is_websocket) {
-            log_info("WebSocket connection closed");
-
-            // Call the WebSocket close handler directly
-            mg_handle_websocket_close(c);
-
-            // Find the component ID for this connection
-            char conn_name[64];
-            snprintf(conn_name, sizeof(conn_name), "websocket_%p", (void*)c);
-
-            // Only update if shutdown coordinator is initialized
-            if (get_shutdown_coordinator() != NULL) {
-                // Mark the component as stopped in the shutdown coordinator
-                // We don't have the component ID stored, but we can search for it by name
-                shutdown_coordinator_t *coordinator = get_shutdown_coordinator();
-
-                pthread_mutex_lock(&coordinator->mutex);
-                for (int i = 0; i < atomic_load(&coordinator->component_count); i++) {
-                    if (strcmp(coordinator->components[i].name, conn_name) == 0) {
-                        // Found the component, update its state
-                        atomic_store(&coordinator->components[i].state, COMPONENT_STOPPED);
-                        log_debug("Updated WebSocket connection %s state to STOPPED in shutdown coordinator",
-                                 conn_name);
-                        break;
-                    }
-                }
-                pthread_mutex_unlock(&coordinator->mutex);
-            }
-        }
+        // Connection cleanup
+        log_debug("Connection closed and cleaned up");
     } else if (ev == MG_EV_ERROR) {
         // Connection error
         log_error("Connection error: %s", (char *)ev_data);
@@ -1006,14 +938,11 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
         // Read/write events - normal socket operations
         // No need to log these high-frequency events
     } else if (ev == 7) {
-        // Event 7 appears to be related to WebSocket data frame start
-        // Handle silently to avoid log spam
+        // Event 7 - handle silently to avoid log spam
     } else if (ev == 8) {
-        // Event 8 appears to be related to WebSocket data frame continuation
-        // Handle silently to avoid log spam
+        // Event 8 - handle silently to avoid log spam
     } else if (ev == 10) {
-        // Event 10 appears to be related to connection activity
-        // Handle silently to avoid log spam
+        // Event 10 - handle silently to avoid log spam
     } else {
         // Other events
         log_debug("Unhandled event: %d", ev);
