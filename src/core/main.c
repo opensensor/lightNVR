@@ -53,7 +53,6 @@ void init_recordings_system(void);
 #include "web/http_server.h"
 #include "web/mongoose_server.h"
 #include "web/api_handlers.h"
-#include "web/websocket_manager.h"
 #include "mongoose.h"
 
 // Include necessary headers for signal handling
@@ -132,7 +131,7 @@ static void alarm_handler(int sig) {
         log_info("Starting detection resources cleanup...");
         cleanup_detection_resources();
 
-        // Force cleanup of websocket connections
+        // Force cleanup of web server connections
         if (web_server_socket >= 0) {
             log_info("Closing web server socket %d", web_server_socket);
             close(web_server_socket);
@@ -1182,9 +1181,8 @@ cleanup:
         // Add a small delay after database shutdown to ensure all resources are properly released
         usleep(100000);  // 100ms
 
-        // Explicitly shutdown WebSocket manager before go2rtc
-        log_info("Explicitly shutting down WebSocket manager before go2rtc...");
-        websocket_manager_shutdown();
+        // Additional cleanup before go2rtc
+        log_info("Performing additional cleanup before go2rtc...");
 
         // Now clean up go2rtc as one of the last steps
         #ifdef USE_GO2RTC

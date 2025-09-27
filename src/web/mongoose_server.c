@@ -16,8 +16,6 @@
 #include "core/logger.h"
 #include "core/shutdown_coordinator.h"
 #include "utils/memory.h"
-#include "web/mongoose_server_websocket.h"
-#include "web/websocket_manager.h"
 #include "web/mongoose_server_multithreading.h"
 #include "web/api_handlers_health.h"
 
@@ -71,10 +69,7 @@ static int match_route(struct mg_http_message *hm);
 #include "web/mongoose_server_static.h"
 #include "web/http_router.h"
 
-// Forward declarations for WebSocket handlers
-void mg_handle_batch_delete_recordings_ws(struct mg_connection *c, struct mg_http_message *hm);
-void mg_handle_websocket_message(struct mg_connection *c, struct mg_ws_message *wm);
-void mg_handle_websocket_close(struct mg_connection *c);
+// Forward declarations for API handlers
 
 
 // API routes table
@@ -125,8 +120,6 @@ static const mg_api_route_t s_api_routes[] = {
     {"GET", "/api/recordings/#", mg_handle_get_recording, false},
     {"DELETE", "/api/recordings/#", mg_handle_delete_recording, true},  // Already uses threading
     {"POST", "/api/recordings/batch-delete", mg_handle_batch_delete_recordings, true},  // Already uses threading
-    {"POST", "/api/recordings/batch-delete-ws", mg_handle_batch_delete_recordings_ws, false},  // Already uses threading
-    {"GET", "/api/ws", mg_handle_websocket_upgrade, false},
 
     // No direct HLS handlers - handled by static file handler
 
@@ -330,9 +323,7 @@ http_server_handle_t mongoose_server_init(const http_server_config_t *config) {
         return NULL;
     }
 
-    // Register WebSocket handlers
-    log_info("Registering WebSocket handlers");
-    websocket_register_handlers();
+    // HTTP server initialization complete
 
     log_info("Using per-request threading for all requests");
 
@@ -436,8 +427,8 @@ void http_server_stop(http_server_handle_t server) {
     server->running = false;
     log_info("Stopping HTTP server");
 
-    // Give WebSocket connections time to send close frames
-    usleep(250000); // 250ms for WebSocket connections to close
+    // Give connections time to close gracefully
+    usleep(250000); // 250ms for connections to close
 
     // Store the listening socket FD before closing connections
     int listening_socket_fd = -1;
@@ -459,17 +450,11 @@ void http_server_stop(http_server_handle_t server) {
 
         // Mark all connections for closing
         c->is_closing = 1;
-
-        // Send proper close frame for WebSocket connections
-        if (c->is_websocket) {
-            mg_ws_send(c, "", 0, WEBSOCKET_OP_CLOSE);
-            log_debug("Sent WebSocket close frame to connection");
-        }
     }
 
     log_info("Marked %d remaining connections for closing", connection_count);
 
-    // Give WebSocket connections a moment to send close frames
+    // Give connections a moment to close gracefully
     usleep(100000); // 100ms
 
     // Second pass: Forcibly close all sockets
@@ -589,11 +574,7 @@ void http_server_destroy(http_server_handle_t server) {
         c->is_closing = 1;
     }
 
-    // First shutdown WebSocket manager to prevent any new WebSocket operations
-    log_info("Shutting down WebSocket manager");
-    websocket_manager_shutdown();
-
-    // Wait a moment for WebSocket connections to finish closing
+    // Wait a moment for connections to finish closing
     usleep(250000);  // 250ms - increased from 100ms for better safety
 
     // Wait longer for connections to finish closing
