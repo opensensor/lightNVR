@@ -7,7 +7,6 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { ContentLoader } from './LoadingIndicator.jsx';
 import { useQuery, useMutation, fetchJSON } from '../../query-client.js';
-import { WebSocketClient } from '../../websocket-client.js';
 
 // Import system components
 import { SystemControls } from './system/SystemControls.jsx';
@@ -195,13 +194,10 @@ export function SystemView() {
     }
   }, [systemInfoData]);
 
-  // Clean up WebSocket subscriptions on unmount
+  // Component cleanup on unmount
   useEffect(() => {
     return () => {
-      if (window.wsClient && typeof window.wsClient.unsubscribe === 'function') {
-        console.log('Cleaning up any WebSocket subscriptions on unmount');
-        window.wsClient.unsubscribe('system/logs');
-      }
+      console.log('SystemView component unmounting');
     };
   }, []);
 
@@ -232,77 +228,9 @@ export function SystemView() {
     shutdownSystemMutation.mutate();
   };
 
-  // Initialize WebSocket client
+  // Component initialization
   useEffect(() => {
-    // Initialize WebSocket client at the parent level
-    // This ensures a single WebSocket connection is shared across all components
-    if (typeof WebSocketClient !== 'undefined') {
-      // Create a global WebSocket client instance
-      window.wsClient = new WebSocketClient();
-      console.log('WebSocket client initialized at application level');
-
-      // Add additional event listeners for debugging
-      if (window.wsClient) {
-        // Log initial connection state
-        console.log('Initial WebSocket connection state:', {
-          connected: window.wsClient.isConnected(),
-          clientId: window.wsClient.getClientId()
-        });
-
-        // Add socket event listeners when socket is created
-        const originalConnect = window.wsClient.connect;
-        window.wsClient.connect = function() {
-          const result = originalConnect.apply(this, arguments);
-
-          // Add event listeners to the new socket
-          if (this.socket) {
-            const originalOnOpen = this.socket.onopen;
-            this.socket.onopen = (event) => {
-              console.log('WebSocket connection opened at application level');
-              if (originalOnOpen) originalOnOpen.call(this, event);
-            };
-
-            const originalOnError = this.socket.onerror;
-            this.socket.onerror = (error) => {
-              console.error('WebSocket error at application level:', error);
-              if (originalOnError) originalOnError.call(this, error);
-            };
-
-            const originalOnClose = this.socket.onclose;
-            this.socket.onclose = (event) => {
-              console.log(`WebSocket connection closed at application level: ${event.code} ${event.reason}`);
-              if (originalOnClose) originalOnClose.call(this, event);
-            };
-
-            const originalOnMessage = this.socket.onmessage;
-            this.socket.onmessage = (event) => {
-              // Only log non-welcome messages at application level to reduce noise
-              if (!event.data.includes('"type":"welcome"')) {
-                console.log('WebSocket message received at application level');
-              }
-              if (originalOnMessage) originalOnMessage.call(this, event);
-            };
-          }
-
-          return result;
-        };
-
-        // Override handleMessage to log when client ID is set
-        const originalHandleMessage = window.wsClient.handleMessage;
-        window.wsClient.handleMessage = function(data) {
-          const clientIdBefore = this.clientId;
-          originalHandleMessage.call(this, data);
-          const clientIdAfter = this.clientId;
-
-          // Log when client ID changes
-          if (clientIdBefore !== clientIdAfter && clientIdAfter) {
-            console.log(`WebSocket client ID changed at application level: ${clientIdAfter}`);
-          }
-        };
-      }
-    } else {
-      console.log('WebSocketClient is not defined, cannot initialize WebSocket client');
-    }
+    console.log('SystemView component initialized');
   }, []);
 
   return (
@@ -341,13 +269,10 @@ export function SystemView() {
           setLogLevel={handleSetLogLevel}
           setLogCount={setLogCount}
           loadLogs={() => {
-            // If using WebSocket, trigger a WebSocket fetch
-            if (window.wsClient && window.wsClient.isConnected()) {
-              console.log('Manually triggering WebSocket fetch for logs');
-              // Find the LogsPoller component and trigger a fetch
-              const event = new CustomEvent('refresh-logs-websocket');
-              window.dispatchEvent(event);
-            }
+            // Trigger a manual log refresh
+            console.log('Manually triggering log refresh');
+            const event = new CustomEvent('refresh-logs');
+            window.dispatchEvent(event);
           }}
           clearLogs={clearLogs}
         />
