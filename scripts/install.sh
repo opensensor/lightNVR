@@ -361,20 +361,37 @@ else
     cat > /etc/systemd/system/lightnvr.service << EOF
 [Unit]
 Description=LightNVR - Lightweight Network Video Recorder
-After=network.target
+After=network.target network-online.target
+Wants=network-online.target
 
 [Service]
 Type=forking
 PIDFile=/var/run/lightnvr.pid
+User=root
+Group=root
+# Set environment variables for proper operation
 Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 Environment="HOME=/root"
-Environment="PWD=/var/lib/lightnvr"
-WorkingDirectory=/var/lib/lightnvr
+Environment="LD_LIBRARY_PATH=/usr/local/lib:/usr/lib:/lib"
+Environment="FFMPEG_DATADIR=/usr/share/ffmpeg"
+# Do NOT set WorkingDirectory - daemon code handles this to avoid SQLite issues
+# Do NOT set PWD environment variable - let the daemon determine the working directory
 ExecStart=$PREFIX/bin/lightnvr -c $CONFIG_DIR/lightnvr.ini -d
+ExecReload=/bin/kill -HUP \$MAINPID
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStartSec=30
+TimeoutStopSec=30
 Restart=on-failure
 RestartSec=5
+# Ensure proper permissions for directories
+ExecStartPre=/bin/mkdir -p $DATA_DIR $LOG_DIR $RUN_DIR
+ExecStartPre=/bin/chown root:root $DATA_DIR $LOG_DIR $RUN_DIR
+ExecStartPre=/bin/chmod 755 $DATA_DIR $LOG_DIR $RUN_DIR
+# Log to journal for better debugging
 StandardOutput=journal
 StandardError=journal
+SyslogIdentifier=lightnvr
 
 [Install]
 WantedBy=multi-user.target

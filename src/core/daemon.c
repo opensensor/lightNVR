@@ -42,7 +42,8 @@ int init_daemon(const char *pid_file) {
         return -1;
     }
 
-    log_info("Starting daemon mode");
+    log_info("Starting daemon mode with PID file: %s", pid_file_path);
+    log_info("Current working directory: %s", getcwd(NULL, 0));
 
     // Fork the process
     pid_t pid = fork();
@@ -53,12 +54,14 @@ int init_daemon(const char *pid_file) {
 
     // Parent process exits
     if (pid > 0) {
-        // Wait briefly to ensure child has time to start
-        usleep(100000); // 100ms
+        log_info("Parent process exiting, child PID: %d", pid);
+        // Wait briefly to ensure child has time to start and write PID file
+        usleep(200000); // 200ms - increased from 100ms for better reliability
         exit(EXIT_SUCCESS);
     }
 
     // Child process continues
+    log_info("Child process starting daemon initialization, PID: %d", getpid());
 
     // Create a new session
     pid_t sid = setsid();
@@ -66,12 +69,16 @@ int init_daemon(const char *pid_file) {
         log_error("Failed to create session: %s", strerror(errno));
         return -1;
     }
+    log_info("Created new session with SID: %d", sid);
 
     // DO NOT change working directory - this causes SQLite locking issues on Linux 4.4
-    log_info("Keeping current working directory for SQLite compatibility");
+    char *cwd = getcwd(NULL, 0);
+    log_info("Keeping current working directory for SQLite compatibility: %s", cwd ? cwd : "unknown");
+    if (cwd) free(cwd);
 
     // Reset file creation mask
     umask(0);
+    log_debug("Reset file creation mask");
 
     // DO NOT close file descriptors in daemon mode
     // This was causing issues with the web server socket
@@ -85,23 +92,42 @@ int init_daemon(const char *pid_file) {
     sa.sa_flags = SA_RESTART;
 
     // Handle termination signals
-    sigaction(SIGTERM, &sa, NULL);
-    sigaction(SIGINT, &sa, NULL);
-    sigaction(SIGHUP, &sa, NULL);
-    sigaction(SIGALRM, &sa, NULL);
-    
+    if (sigaction(SIGTERM, &sa, NULL) != 0) {
+        log_warn("Failed to set SIGTERM handler: %s", strerror(errno));
+    }
+    if (sigaction(SIGINT, &sa, NULL) != 0) {
+        log_warn("Failed to set SIGINT handler: %s", strerror(errno));
+    }
+    if (sigaction(SIGHUP, &sa, NULL) != 0) {
+        log_warn("Failed to set SIGHUP handler: %s", strerror(errno));
+    }
+    if (sigaction(SIGALRM, &sa, NULL) != 0) {
+        log_warn("Failed to set SIGALRM handler: %s", strerror(errno));
+    }
+    log_info("Signal handlers configured");
+
     // Block SIGPIPE to prevent crashes when writing to closed sockets
     sigset_t set;
     sigemptyset(&set);
     sigaddset(&set, SIGPIPE);
-    pthread_sigmask(SIG_BLOCK, &set, NULL);
+    if (pthread_sigmask(SIG_BLOCK, &set, NULL) != 0) {
+        log_warn("Failed to block SIGPIPE: %s", strerror(errno));
+    } else {
+        log_debug("SIGPIPE blocked successfully");
+    }
 
     // Write PID file
+    log_info("Writing PID file...");
     if (write_pid_file(pid_file_path) != 0) {
+        log_error("Failed to write PID file, daemon initialization failed");
         return -1;
     }
 
     log_info("Daemon started successfully with PID %d", getpid());
+
+    // Add a small delay to ensure everything is properly initialized
+    usleep(100000); // 100ms
+
     return 0;
 }
 

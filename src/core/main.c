@@ -12,6 +12,9 @@
 #include <sys/wait.h>
 #include <sys/time.h>
 #include <sys/utsname.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <limits.h>
 
 #include "core/version.h"
@@ -459,6 +462,7 @@ int main(int argc, char *argv[]) {
     char custom_config_path[MAX_PATH_LENGTH] = {0};
 
     // Parse command line arguments
+    bool verbose_mode = false;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-d") == 0 || strcmp(argv[i], "--daemon") == 0) {
             daemon_mode = true;
@@ -472,11 +476,14 @@ int main(int argc, char *argv[]) {
                 log_error("Missing config file path");
                 return EXIT_FAILURE;
             }
+        } else if (strcmp(argv[i], "--verbose") == 0) {
+            verbose_mode = true;
         } else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
             printf("Usage: %s [options]\n", argv[0]);
             printf("Options:\n");
             printf("  -d, --daemon        Run as daemon\n");
             printf("  -c, --config FILE   Use config file\n");
+            printf("  --verbose           Enable verbose logging (debug level)\n");
             printf("  -h, --help          Show this help\n");
             printf("  -v, --version       Show version\n");
             return EXIT_SUCCESS;
@@ -484,6 +491,12 @@ int main(int argc, char *argv[]) {
             // Version already printed in banner
             return EXIT_SUCCESS;
         }
+    }
+
+    // Enable verbose logging if requested
+    if (verbose_mode) {
+        set_log_level(LOG_LEVEL_DEBUG);
+        log_info("Verbose logging enabled");
     }
 
     // Set custom config path if specified
@@ -892,19 +905,49 @@ int main(int argc, char *argv[]) {
     }
 
     // Use the direct mongoose server implementation
+    log_info("Initializing web server on port %d (daemon_mode: %s)",
+             config.web_port, daemon_mode ? "true" : "false");
+
     http_server = mongoose_server_init(&server_config);
     if (!http_server) {
         log_error("Failed to initialize Mongoose web server");
         goto cleanup;
     }
+    log_info("Web server initialized successfully");
 
+    log_info("Starting web server...");
     if (http_server_start(http_server) != 0) {
-        log_error("Failed to start Mongoose web server");
+        log_error("Failed to start Mongoose web server on port %d", config.web_port);
         http_server_destroy(http_server);
         goto cleanup;
     }
 
-    log_info("Mongoose web server started on port %d", config.web_port);
+    log_info("Mongoose web server started successfully on port %d", config.web_port);
+
+    // In daemon mode, add extra verification that the port is actually open
+    if (daemon_mode) {
+        log_info("Daemon mode: Verifying port %d is accessible...", config.web_port);
+        sleep(1); // Give the server a moment to fully initialize
+
+        // Try to verify the port is open
+        int test_socket = socket(AF_INET, SOCK_STREAM, 0);
+        if (test_socket >= 0) {
+            struct sockaddr_in addr;
+            memset(&addr, 0, sizeof(addr));
+            addr.sin_family = AF_INET;
+            addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+            addr.sin_port = htons(config.web_port);
+
+            if (connect(test_socket, (struct sockaddr*)&addr, sizeof(addr)) == 0) {
+                log_info("Port %d verification successful - server is accessible", config.web_port);
+            } else {
+                log_warn("Port %d verification failed - server may not be accessible: %s",
+                        config.web_port, strerror(errno));
+            }
+            close(test_socket);
+        }
+    }
+
     check_and_ensure_services();
     print_detection_stream_status();
     log_info("LightNVR initialized successfully");

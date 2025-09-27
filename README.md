@@ -72,8 +72,31 @@ LightNVR provides a lightweight yet powerful solution for recording and managing
    sudo systemctl start lightnvr
    ```
 
-4. **Access the web interface**:
+4. **Verify the service is running**:
+   ```bash
+   sudo systemctl status lightnvr
+   # Check that port 8080 is open
+   netstat -tlnp | grep :8080
+   ```
+
+5. **Access the web interface**:
    Open a web browser and navigate to `http://your-device-ip:8080`
+
+### Troubleshooting Daemon Mode
+
+If the systemd service starts but port 8080 is not accessible, see the [Daemon Troubleshooting Guide](docs/DAEMON_TROUBLESHOOTING.md).
+
+Quick diagnosis:
+```bash
+# Run the diagnostic script
+sudo ./scripts/diagnose_daemon.sh
+
+# Test daemon mode functionality
+sudo ./scripts/test_daemon_mode.sh
+
+# Validate that fixes are working
+sudo ./scripts/validate_daemon_fix.sh
+```
 
 ### Docker Installation
 
