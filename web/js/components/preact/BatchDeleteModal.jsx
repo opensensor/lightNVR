@@ -1,12 +1,11 @@
 /**
  * LightNVR Web Interface Batch Delete Modal Component
- * Preact component for displaying progress of batch delete operations with WebSocket updates
+ * Preact component for displaying progress of batch delete operations
  */
 
 import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
-import { WebSocketClient, BatchDeleteRecordingsClient } from '../../websocket-client.js';
 
 /**
  * BatchDeleteModal component
@@ -25,92 +24,15 @@ export function BatchDeleteModal() {
     error: false
   });
 
-  // Refs for clients
-  const wsClientRef = useRef(null);
-  const batchDeleteClientRef = useRef(null);
-
-  // Initialize WebSocket client and batch delete client
+  // Component initialization
   useEffect(() => {
-    // Initialize WebSocket client if it doesn't exist
-    if (!window.wsClient) {
-      console.log('Creating WebSocket client in BatchDeleteModal');
-      window.wsClient = new WebSocketClient();
-    }
-    wsClientRef.current = window.wsClient;
+    console.log('BatchDeleteModal initialized');
 
-    // Initialize batch delete client if it doesn't exist
-    if (!window.batchDeleteClient) {
-      console.log('Creating BatchDeleteRecordingsClient');
-      window.batchDeleteClient = new BatchDeleteRecordingsClient(wsClientRef.current);
-      
-      // Set up event handlers
-      window.batchDeleteClient.onProgress((payload) => {
-        console.log('Batch delete progress:', payload);
-        updateProgress(payload);
-      });
-
-      window.batchDeleteClient.onResult((payload) => {
-        console.log('Batch delete result:', payload);
-
-        // Make sure we have valid data
-        const total = payload.total || 0;
-        const succeeded = payload.succeeded || 0;
-        const failed = payload.failed || 0;
-
-        // Update final progress
-        updateProgress({
-          current: total,
-          total: total,
-          succeeded: succeeded,
-          failed: failed,
-          status: 'Batch delete operation complete',
-          complete: true
-        });
-
-        // Show status message
-        const message = payload.success
-          ? `Successfully deleted ${succeeded} recordings`
-          : `Deleted ${succeeded} recordings with ${failed} failures`;
-
-        showStatusMessage(message, 'success', 5000);
-
-        // Reload recordings after a short delay
-        setTimeout(() => {
-          if (typeof window.loadRecordings === 'function') {
-            window.loadRecordings();
-          }
-        }, 1000);
-      });
-
-      window.batchDeleteClient.onError((payload) => {
-        console.error('Batch delete error:', payload);
-
-        // Update progress UI to show error
-        updateProgress({
-          current: 0,
-          total: 0,
-          succeeded: 0,
-          failed: 0,
-          status: `Error: ${payload.error || 'Unknown error'}`,
-          complete: true,
-          error: true
-        });
-
-        // Show error message
-        showStatusMessage(`Error: ${payload.error || 'Unknown error'}`, 'error', 5000);
-      });
-    }
-    batchDeleteClientRef.current = window.batchDeleteClient;
 
     // Make functions globally available
     window.showBatchDeleteModal = showModal;
     window.updateBatchDeleteProgress = updateProgress;
     window.batchDeleteRecordingsByHttpRequest = batchDeleteRecordingsByHttpRequest;
-
-    // Clean up on unmount
-    return () => {
-      // No need to clean up WebSocket client as it might be used by other components
-    };
   }, []);
 
   /**
