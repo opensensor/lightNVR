@@ -1,6 +1,6 @@
 # go2rtc Integration
 
-This document describes the integration of [go2rtc](https://github.com/AlexxIT/go2rtc) with LightNVR to provide WebRTC streaming capabilities.
+This document describes the integration of [go2rtc](https://github.com/AlexxIT/go2rtc) with LightNVR to provide WebRTC streaming capabilities. Note that this is WebRTC (Real-Time Communication) streaming, not WebSocket communication.
 
 ## Overview
 

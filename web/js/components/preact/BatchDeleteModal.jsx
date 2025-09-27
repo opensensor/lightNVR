@@ -337,25 +337,20 @@ export function batchDeleteRecordings(ids) {
     window.showBatchDeleteModal();
   }
 
-  // Initialize batch delete client if needed
-  if (!window.batchDeleteClient && typeof window.wsClient !== 'undefined') {
-    window.batchDeleteClient = new BatchDeleteRecordingsClient(window.wsClient);
-  }
-
-  // Start batch delete operation
-  if (window.batchDeleteClient) {
-    window.batchDeleteClient.deleteWithProgress({ ids })
+  // Use HTTP fallback for batch delete
+  if (typeof window.batchDeleteRecordingsByHttpRequest === 'function') {
+    window.batchDeleteRecordingsByHttpRequest({ ids })
       .catch(error => {
         console.error('Error starting batch delete:', error);
         showStatusMessage(`Error: ${error.message || 'Failed to start batch delete operation'}`, 'error', 5000);
-        
+
         // Close modal if it's open
         if (typeof window.closeBatchDeleteModal === 'function') {
           window.closeBatchDeleteModal();
         }
       });
   } else {
-    showStatusMessage('Batch delete client not available', 'error', 5000);
+    showStatusMessage('Batch delete function not available', 'error', 5000);
   }
 }
 
@@ -379,25 +374,20 @@ export function batchDeleteRecordingsByFilter(filter) {
     window.showBatchDeleteModal();
   }
 
-  // Initialize batch delete client if needed
-  if (!window.batchDeleteClient && typeof window.wsClient !== 'undefined') {
-    window.batchDeleteClient = new BatchDeleteRecordingsClient(window.wsClient);
-  }
-
-  // Start batch delete operation
-  if (window.batchDeleteClient) {
-    window.batchDeleteClient.deleteWithProgress({ filter })
+  // Use HTTP fallback for batch delete
+  if (typeof window.batchDeleteRecordingsByHttpRequest === 'function') {
+    window.batchDeleteRecordingsByHttpRequest({ filter })
       .catch(error => {
         console.error('Error starting batch delete:', error);
         showStatusMessage(`Error: ${error.message || 'Failed to start batch delete operation'}`, 'error', 5000);
-        
+
         // Close modal if it's open
         if (typeof window.closeBatchDeleteModal === 'function') {
           window.closeBatchDeleteModal();
         }
       });
   } else {
-    showStatusMessage('Batch delete client not available', 'error', 5000);
+    showStatusMessage('Batch delete function not available', 'error', 5000);
   }
 }
 

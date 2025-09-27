@@ -15,7 +15,7 @@ The diagram should be a layered architecture diagram with the following componen
 - HTTP/HTTPS Server
 - REST API Endpoints
 - Authentication & Authorization
-- WebSocket for Live Updates
+- HTTP Polling for Live Updates
 
 ### Third Layer: Core Components
 - Stream Manager

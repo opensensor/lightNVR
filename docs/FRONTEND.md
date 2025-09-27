@@ -308,7 +308,9 @@ Internet Explorer is not supported.
 Planned enhancements for the frontend:
 
 1. **Progressive Web App (PWA)** capabilities for offline access
-2. **WebRTC Support** for lower-latency live viewing
+2. **Enhanced WebRTC Support** for lower-latency live viewing (via go2rtc integration)
 3. **Advanced Filtering** for recordings and events
 4. **Customizable Dashboard** with drag-and-drop widgets
 5. **Internationalization** support for multiple languages
+
+**Note:** WebSocket support has been removed as of version 0.11.22 to simplify the architecture. Real-time updates are now handled via HTTP polling.

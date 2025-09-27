@@ -6,6 +6,8 @@ This document describes the REST API endpoints provided by LightNVR.
 
 LightNVR provides a RESTful API that allows you to interact with the system programmatically. The API is accessible via HTTP and returns JSON responses using the cJSON library. The API is served by the Mongoose web server.
 
+**Note:** As of version 0.11.22, WebSocket support has been removed to simplify the architecture. All real-time updates are now handled via HTTP polling.
+
 ## Authentication
 
 If authentication is enabled in the configuration file, all API requests must include authentication credentials. Authentication is performed using HTTP Basic Authentication.
