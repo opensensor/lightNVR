@@ -382,4 +382,7 @@ void start_health_check_thread(void);
 void stop_health_check_thread(void);
 void cleanup_health_check_system(void);
 
+// Log level utility functions
+int log_level_meets_minimum(const char *log_level, const char *min_level);
+
 #endif /* API_HANDLERS_H */

@@ -12,7 +12,6 @@
 
 #include "core/logger.h"
 #include "core/logger_json.h"
-#include "web/logger_websocket.h"
 
 // Logger state
 static struct {
@@ -49,9 +48,6 @@ int init_logger(void) {
         logger.log_file = stderr;
     }
 
-    // Initialize logger WebSocket integration
-    init_logger_websocket();
-
     // Initialize JSON logger if log file is set and the function is available
     extern __attribute__((weak)) int init_json_logger(const char *filename);
     if (logger.log_filename[0] != '\0' && init_json_logger) {
@@ -80,9 +76,6 @@ void shutdown_logger(void) {
     if (shutdown_json_logger) {
         shutdown_json_logger();
     }
-
-    // Shutdown logger WebSocket integration
-    shutdown_logger_websocket();
 }
 
 // Set the log level

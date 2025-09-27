@@ -13,7 +13,6 @@
 
 #include "web/api_handlers.h"
 #include "web/mongoose_adapter.h"
-#include "web/api_handlers_system_ws.h"
 #include "core/logger.h"
 #include "core/config.h"
 #include "mongoose.h"
