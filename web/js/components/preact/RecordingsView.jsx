@@ -17,7 +17,7 @@ import { PaginationControls } from './recordings/PaginationControls.jsx';
 
 // Import utilities
 import { formatUtils } from './recordings/formatUtils.js';
-import { recordingsAPI } from './recordings/recordingsAPI.js';
+import { recordingsAPI } from './recordings/recordingsAPI.jsx';
 import { urlUtils } from './recordings/urlUtils.js';
 import { useQueryClient, invalidateQueries } from '../../query-client.js';
 
