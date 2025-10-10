@@ -225,6 +225,27 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         }
     }
 
+    // Special handling for login page - redirect /login to /login.html
+    if (strcmp(uri, "/login") == 0) {
+        log_info("Redirecting /login to /login.html");
+        mg_printf(c, "HTTP/1.1 302 Found\r\n");
+        mg_printf(c, "Location: /login.html\r\n");
+        mg_printf(c, "Content-Length: 0\r\n");
+        mg_printf(c, "\r\n");
+        return;
+    }
+
+    // Special handling for logout - redirect to login page
+    if (strcmp(uri, "/logout") == 0) {
+        log_info("Redirecting /logout to /login.html");
+        mg_printf(c, "HTTP/1.1 302 Found\r\n");
+        mg_printf(c, "Location: /login.html?logout=1\r\n");
+        mg_printf(c, "Set-Cookie: session=; Path=/; Max-Age=0\r\n");  // Clear session cookie
+        mg_printf(c, "Content-Length: 0\r\n");
+        mg_printf(c, "\r\n");
+        return;
+    }
+
     // Special handling for root path or index.html
     if (strcmp(uri, "/") == 0 || strcmp(uri, "/index.html") == 0) {
         // Check if WebRTC is disabled in the configuration
@@ -232,37 +253,37 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         if (global_config->webrtc_disabled) {
             // WebRTC is disabled, serve hls.html directly
             log_info("WebRTC is disabled, serving hls.html instead of index.html");
-            
+
             // Use hls.html path instead
             char index_path[MAX_PATH_LENGTH * 2];
             snprintf(index_path, sizeof(index_path), "%s/hls.html", server->config.web_root);
-            
+
             // Log the path we're trying to serve
             log_info("Serving hls.html: %s", index_path);
-            
+
             // Use Mongoose's built-in file serving capabilities
             struct mg_http_serve_opts opts = {
                 .root_dir = server->config.web_root,
                 .mime_types = "html=text/html",
                 .extra_headers = "Connection: close\r\n"
             };
-            
+
             mg_http_serve_file(c, hm, index_path, &opts);
             return;
         }
-        
+
         // WebRTC is enabled, serve index.html as normal
         char index_path[MAX_PATH_LENGTH * 2];
-        
+
         // Add debug logging to help diagnose the issue
         log_info("Root path requested, web_root: %s", server->config.web_root);
-        
+
         // Use a direct path to index.html
         snprintf(index_path, sizeof(index_path), "%s/index.html", server->config.web_root);
-        
+
         // Log the path we're trying to serve
         log_info("Serving root path with index file: %s", index_path);
-        
+
         // Check if index.html exists
         struct stat st;
         if (stat(index_path, &st) == 0 && S_ISREG(st.st_mode)) {
@@ -276,7 +297,7 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
                              "txt=text/plain,xml=application/xml,pdf=application/pdf",
                 .extra_headers = "Connection: close\r\n"
             };
-            
+
             log_info("Serving index file for root path using mg_http_serve_file: %s", index_path);
             mg_http_serve_file(c, hm, index_path, &opts);
             return;
