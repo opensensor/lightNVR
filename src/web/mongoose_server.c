@@ -6,6 +6,11 @@
 #include <signal.h>
 #include <unistd.h>
 #include <regex.h>
+#include <fcntl.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <errno.h>
 
 #ifndef MIN
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
@@ -339,6 +344,38 @@ http_server_handle_t mongoose_server_init(const http_server_config_t *config) {
 extern void set_web_server_socket(int socket_fd);
 
 /**
+ * @brief Check if a port is available for binding
+ * @param port Port number to check
+ * @return true if port is available, false otherwise
+ */
+static bool is_port_available(int port) {
+    int test_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (test_socket < 0) {
+        log_warn("Failed to create test socket: %s", strerror(errno));
+        return false;
+    }
+
+    // Set SO_REUSEADDR to match what we'll use for the real socket
+    int reuse = 1;
+    setsockopt(test_socket, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    addr.sin_port = htons(port);
+
+    bool available = (bind(test_socket, (struct sockaddr*)&addr, sizeof(addr)) == 0);
+
+    if (!available) {
+        log_error("Port %d is already in use: %s", port, strerror(errno));
+    }
+
+    close(test_socket);
+    return available;
+}
+
+/**
  * @brief Start HTTP server
  */
 int http_server_start(http_server_handle_t server) {
@@ -352,6 +389,14 @@ int http_server_start(http_server_handle_t server) {
         return 0;
     }
 
+    // Pre-check if the port is available before attempting to bind
+    if (!is_port_available(server->config.port)) {
+        log_error("Cannot start HTTP server: port %d is already in use by another process",
+                  server->config.port);
+        log_error("Please stop the other process or change the web_port in the configuration");
+        return -1;
+    }
+
     // Construct listen URL
     char listen_url[128];
     if (server->config.ssl_enabled) {
@@ -363,23 +408,78 @@ int http_server_start(http_server_handle_t server) {
     // Start listening
     struct mg_connection *c = mg_http_listen(server->mgr, listen_url, mongoose_event_handler, server);
     if (c == NULL) {
-        log_error("Failed to start server on %s", listen_url);
+        log_error("Failed to start server on %s - port may already be in use", listen_url);
+        return -1;
+    }
+
+    // Validate that the connection is actually listening and has a valid socket
+    if (!c->is_listening) {
+        log_error("Connection created but not in listening state on %s", listen_url);
+        c->is_closing = 1;
+        mg_mgr_poll(server->mgr, 0);
+        return -1;
+    }
+
+    // Validate the socket file descriptor
+    if (c->fd == NULL) {
+        log_error("Connection created but socket FD is NULL on %s - port may already be in use", listen_url);
+        c->is_closing = 1;
+        mg_mgr_poll(server->mgr, 0);
+        return -1;
+    }
+
+    int socket_fd = (int)(size_t)c->fd;
+
+    // Validate that the socket FD is a valid file descriptor
+    if (socket_fd < 0) {
+        log_error("Invalid socket file descriptor (%d) on %s - port may already be in use",
+                  socket_fd, listen_url);
+        c->is_closing = 1;
+        mg_mgr_poll(server->mgr, 0);
+        return -1;
+    }
+
+    // Verify the socket is actually bound by checking with fcntl
+    int flags = fcntl(socket_fd, F_GETFL);
+    if (flags == -1) {
+        log_error("Socket FD %d is not valid (fcntl failed: %s) - port %d may already be in use",
+                  socket_fd, strerror(errno), server->config.port);
+        c->is_closing = 1;
+        mg_mgr_poll(server->mgr, 0);
         return -1;
     }
 
     // Store the socket file descriptor for signal handling
-    if (c->fd != NULL) {
-        int socket_fd = (int)(size_t)c->fd;
-        set_web_server_socket(socket_fd);
-        log_debug("Stored web server socket: %d", socket_fd);
+    set_web_server_socket(socket_fd);
+    log_debug("Stored web server socket: %d", socket_fd);
 
-        // Set SO_REUSEADDR to allow immediate reuse of the port after shutdown
-        int reuse = 1;
-        if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) != 0) {
-            log_warn("Failed to set SO_REUSEADDR on listening socket: %s", strerror(errno));
-        } else {
-            log_info("Set SO_REUSEADDR on listening socket to allow immediate port reuse");
+    // Set SO_REUSEADDR to allow immediate reuse of the port after shutdown
+    int reuse = 1;
+    if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) != 0) {
+        log_warn("Failed to set SO_REUSEADDR on listening socket: %s", strerror(errno));
+    } else {
+        log_info("Set SO_REUSEADDR on listening socket to allow immediate port reuse");
+    }
+
+    // Verify the socket is actually bound to the expected port
+    struct sockaddr_in addr;
+    socklen_t addr_len = sizeof(addr);
+    if (getsockname(socket_fd, (struct sockaddr*)&addr, &addr_len) == 0) {
+        int bound_port = ntohs(addr.sin_port);
+        if (bound_port != server->config.port) {
+            log_error("Socket bound to port %d instead of expected port %d",
+                      bound_port, server->config.port);
+            c->is_closing = 1;
+            mg_mgr_poll(server->mgr, 0);
+            return -1;
         }
+        log_info("Verified socket is bound to port %d", bound_port);
+    } else {
+        log_error("Failed to verify socket binding (getsockname failed: %s) - port %d may already be in use",
+                  strerror(errno), server->config.port);
+        c->is_closing = 1;
+        mg_mgr_poll(server->mgr, 0);
+        return -1;
     }
 
     // Configure SSL if enabled
@@ -399,6 +499,8 @@ int http_server_start(http_server_handle_t server) {
     if (pthread_create(&thread, NULL, (void *(*)(void *))mongoose_server_event_loop, server) != 0) {
         log_error("Failed to create server thread");
         server->running = false;
+        c->is_closing = 1;
+        mg_mgr_poll(server->mgr, 0);
         return -1;
     }
 
