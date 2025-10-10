@@ -176,15 +176,19 @@ sudo apt-get install -y \
     build-essential \
     cmake \
     pkg-config \
+    git \
     libsqlite3-dev \
     libavcodec-dev \
     libavformat-dev \
     libavutil-dev \
     libswscale-dev \
-    libmicrohttpd-dev \
     libcurl4-openssl-dev \
-    libssl-dev
+    libmbedtls-dev \
+    curl \
+    wget
 ```
+
+**Note**: `libmbedtls-dev` is **required** for ONVIF support and authentication system (cryptographic functions).
 
 ### Fedora/RHEL/CentOS
 
@@ -197,12 +201,16 @@ sudo dnf install -y \
     make \
     cmake \
     pkgconfig \
+    git \
     sqlite-devel \
     ffmpeg-devel \
-    libmicrohttpd-devel \
     libcurl-devel \
-    openssl-devel
+    mbedtls-devel \
+    curl \
+    wget
 ```
+
+**Note**: `mbedtls-devel` is **required** for ONVIF support and authentication system (cryptographic functions).
 
 ### Arch Linux
 
@@ -212,12 +220,15 @@ sudo dnf install -y \
 sudo pacman -S \
     base-devel \
     cmake \
+    git \
     sqlite \
     ffmpeg \
-    libmicrohttpd \
     curl \
-    openssl
+    wget \
+    mbedtls
 ```
+
+**Note**: `mbedtls` is **required** for ONVIF support and authentication system (cryptographic functions).
 
 ### Ingenic A1
 
@@ -282,15 +293,19 @@ sudo apt-get install -y \
     build-essential \
     cmake \
     pkg-config \
+    git \
     libsqlite3-dev \
     libavcodec-dev \
     libavformat-dev \
     libavutil-dev \
     libswscale-dev \
-    libmicrohttpd-dev \
     libcurl4-openssl-dev \
-    libssl-dev
+    libmbedtls-dev \
+    curl \
+    wget
 ```
+
+**Note**: `libmbedtls-dev` is **required** for ONVIF support and authentication system (cryptographic functions).
 
 #### 2. Build and Install
 

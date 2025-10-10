@@ -6,6 +6,7 @@
 #include "video/go2rtc/go2rtc_integration.h"
 #include "video/go2rtc/go2rtc_consumer.h"
 #include "video/go2rtc/go2rtc_stream.h"
+#include "video/go2rtc/go2rtc_health_monitor.h"
 #include "core/logger.h"
 #include "core/config.h"
 #include "core/shutdown_coordinator.h"  // For is_shutdown_initiated
@@ -263,6 +264,14 @@ bool go2rtc_integration_init(void) {
 
     // Initialize tracking array
     memset(g_tracked_streams, 0, sizeof(g_tracked_streams));
+
+    // Initialize the health monitor
+    if (!go2rtc_health_monitor_init()) {
+        log_warn("Failed to initialize go2rtc health monitor (non-fatal)");
+        // Continue anyway - health monitor is optional
+    } else {
+        log_info("go2rtc health monitor initialized successfully");
+    }
 
     g_initialized = true;
     log_info("go2rtc integration module initialized");
@@ -604,6 +613,9 @@ void go2rtc_integration_cleanup(void) {
     }
 
     log_info("Cleaning up go2rtc integration module");
+
+    // Clean up the health monitor first
+    go2rtc_health_monitor_cleanup();
 
     // Stop all recording and HLS streaming using go2rtc
     for (int i = 0; i < MAX_TRACKED_STREAMS; i++) {

@@ -220,7 +220,10 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     av_dict_set(&options, "hls_segment_type", "mpegts", 0);
 
     // Enable aggressive segment deletion to prevent accumulation
-    av_dict_set(&options, "hls_flags", "delete_segments+discont_start+program_date_time", 0);
+    // delete_segments: Automatically delete old segments
+    // independent_segments: Make each segment independently decodable
+    // program_date_time: Add timestamps for better seeking
+    av_dict_set(&options, "hls_flags", "delete_segments+independent_segments+program_date_time", 0);
 
     // Set start number
     av_dict_set(&options, "start_number", "0", 0);
@@ -239,8 +242,8 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     // Log simplified options for debugging
     log_info("HLS writer options for stream %s (simplified for stability):", writer->stream_name);
     log_info("  hls_time: %s", hls_time);
-    log_info("  hls_list_size: 5");
-    log_info("  hls_flags: delete_segments+independent_segments");
+    log_info("  hls_list_size: 3");
+    log_info("  hls_flags: delete_segments+independent_segments+program_date_time");
     log_info("  hls_segment_type: mpegts");
     log_info("  start_number: 0");
     log_info("  hls_segment_filename: %s", segment_format);
@@ -305,15 +308,10 @@ int hls_writer_initialize(hls_writer_t *writer, const AVStream *input_stream) {
 
     // For H.264 streams, we need to ensure the correct format
     if (input_stream->codecpar->codec_id == AV_CODEC_ID_H264) {
-        // Set the correct codec tag for H.264 in HLS
+        // Set the correct codec tag for H.264 in HLS (0 means auto-detect)
         out_stream->codecpar->codec_tag = 0;
 
-        // Set the correct format for H.264 in HLS
-        AVDictionary *opts = NULL;
-        av_dict_set(&opts, "mpegts_flags", "resend_headers", 0);
-        av_dict_set(&opts, "hls_flags", "single_file", 0);
-
-        // Apply these options to the output context
+        // Apply codec tag to all streams in the output context
         if (writer->output_ctx) {
             for (int i = 0; i < writer->output_ctx->nb_streams; i++) {
                 AVStream *stream = writer->output_ctx->streams[i];
@@ -322,9 +320,6 @@ int hls_writer_initialize(hls_writer_t *writer, const AVStream *input_stream) {
                 }
             }
         }
-
-        // Make sure to free the dictionary to prevent memory leaks
-        av_dict_free(&opts);
 
         log_info("Set correct codec parameters for H.264 in HLS for stream %s", writer->stream_name);
     } else {
