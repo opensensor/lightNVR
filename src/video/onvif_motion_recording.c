@@ -522,6 +522,59 @@ static void* event_processor_thread_func(void *arg) {
 }
 
 /**
+ * Load motion recording configurations from database and apply them
+ */
+static void load_motion_configs_from_database(void) {
+    log_info("Loading motion recording configurations from database");
+
+    // Allocate arrays for configurations and stream names
+    motion_recording_config_t *configs = malloc(MAX_STREAMS * sizeof(motion_recording_config_t));
+    char (*stream_names)[256] = malloc(MAX_STREAMS * 256);
+
+    if (!configs || !stream_names) {
+        log_error("Failed to allocate memory for loading motion configs");
+        if (configs) free(configs);
+        if (stream_names) free(stream_names);
+        return;
+    }
+
+    // Load all configurations from database
+    int count = load_all_motion_configs(configs, stream_names, MAX_STREAMS);
+    if (count < 0) {
+        log_warn("Failed to load motion recording configurations from database");
+        free(configs);
+        free(stream_names);
+        return;
+    }
+
+    if (count == 0) {
+        log_info("No motion recording configurations found in database");
+        free(configs);
+        free(stream_names);
+        return;
+    }
+
+    log_info("Loaded %d motion recording configurations from database", count);
+
+    // Apply each configuration
+    for (int i = 0; i < count; i++) {
+        if (configs[i].enabled) {
+            log_info("Enabling motion recording for stream: %s (pre:%ds, post:%ds)",
+                    stream_names[i], configs[i].pre_buffer_seconds, configs[i].post_buffer_seconds);
+
+            if (enable_motion_recording(stream_names[i], &configs[i]) != 0) {
+                log_error("Failed to enable motion recording for stream: %s", stream_names[i]);
+            }
+        } else {
+            log_debug("Motion recording disabled for stream: %s", stream_names[i]);
+        }
+    }
+
+    free(configs);
+    free(stream_names);
+}
+
+/**
  * Initialize the ONVIF motion recording system
  */
 int init_onvif_motion_recording(void) {
@@ -556,6 +609,9 @@ int init_onvif_motion_recording(void) {
         cleanup_motion_buffer_pool();
         return -1;
     }
+
+    // Load configurations from database and apply them
+    load_motion_configs_from_database();
 
     log_info("ONVIF motion recording system initialized successfully");
     return 0;
@@ -650,6 +706,12 @@ int enable_motion_recording(const char *stream_name, const motion_recording_conf
     }
 
     pthread_mutex_unlock(&ctx->mutex);
+
+    // Save configuration to database
+    if (save_motion_config(stream_name, config) != 0) {
+        log_warn("Failed to save motion recording config to database for stream: %s", stream_name);
+        // Don't fail the operation, just log the warning
+    }
 
     log_info("Enabled motion recording for stream: %s (pre: %ds, post: %ds, max: %ds, buffer: %s)",
              stream_name, config->pre_buffer_seconds, config->post_buffer_seconds,
@@ -774,6 +836,12 @@ int update_motion_recording_config(const char *stream_name, const motion_recordi
     ctx->post_buffer_seconds = config->post_buffer_seconds;
     ctx->max_file_duration = config->max_file_duration;
     pthread_mutex_unlock(&ctx->mutex);
+
+    // Save configuration to database
+    if (update_motion_config(stream_name, config) != 0) {
+        log_warn("Failed to save motion recording config to database for stream: %s", stream_name);
+        // Don't fail the operation, just log the warning
+    }
 
     log_info("Updated motion recording config for stream: %s", stream_name);
     return 0;

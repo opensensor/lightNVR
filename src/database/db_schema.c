@@ -11,10 +11,11 @@
 #include "database/db_schema.h"
 #include "database/db_core.h"
 #include "database/db_schema_utils.h"
+#include "database/db_motion_config.h"
 #include "core/logger.h"
 
 // Current schema version - increment this when adding new migrations
-#define CURRENT_SCHEMA_VERSION 6
+#define CURRENT_SCHEMA_VERSION 7
 
 // Migration function type
 typedef int (*migration_func_t)(void);
@@ -25,6 +26,7 @@ static int migration_v2_to_v3(void);
 static int migration_v3_to_v4(void);
 static int migration_v4_to_v5(void);
 static int migration_v5_to_v6(void);
+static int migration_v6_to_v7(void);
 
 // Array of migration functions
 static migration_func_t migrations[] = {
@@ -33,7 +35,8 @@ static migration_func_t migrations[] = {
     migration_v2_to_v3, // v2->v3
     migration_v3_to_v4, // v3->v4
     migration_v4_to_v5, // v4->v5
-    migration_v5_to_v6  // v5->v6
+    migration_v5_to_v6, // v5->v6
+    migration_v6_to_v7  // v6->v7
 };
 
 /**
@@ -753,4 +756,22 @@ static int migration_v5_to_v6(void) {
 
     log_info("Completed migration v5 to v6 with result: %d", rc);
     return rc;
+}
+
+/**
+ * Migration from version 6 to 7
+ * - Add motion recording configuration tables
+ */
+static int migration_v6_to_v7(void) {
+    log_info("Running migration from v6 to v7: Adding motion recording configuration tables");
+
+    // Initialize motion recording configuration tables
+    int rc = init_motion_config_table();
+    if (rc != 0) {
+        log_error("Failed to initialize motion recording configuration tables");
+        return -1;
+    }
+
+    log_info("Completed migration v6 to v7 successfully");
+    return 0;
 }

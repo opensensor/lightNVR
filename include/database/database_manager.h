@@ -8,6 +8,7 @@
 #include "database/db_detections.h"
 #include "database/db_streams.h"
 #include "database/db_schema.h"
+#include "database/db_motion_config.h"
 
 // This header now just includes all the database module headers
 // All database functionality is now split into logical modules
