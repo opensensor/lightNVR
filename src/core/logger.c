@@ -9,6 +9,7 @@
 #include <sys/types.h>
 #include <errno.h>
 #include <libgen.h>
+#include <syslog.h>
 
 #include "core/logger.h"
 #include "core/logger_json.h"
@@ -20,11 +21,15 @@ static struct {
     int console_logging;
     char log_filename[256];
     pthread_mutex_t mutex;
+    int syslog_enabled;
+    char syslog_ident[64];
 } logger = {
     .log_file = NULL,
     .log_level = LOG_LEVEL_INFO,
     .console_logging = 1,
     .log_filename = "",
+    .syslog_enabled = 0,
+    .syslog_ident = "",
 };
 
 // Log level strings
@@ -66,6 +71,12 @@ void shutdown_logger(void) {
     if (logger.log_file != NULL && logger.log_file != stdout && logger.log_file != stderr) {
         fclose(logger.log_file);
         logger.log_file = NULL;
+    }
+
+    // Close syslog if enabled
+    if (logger.syslog_enabled) {
+        closelog();
+        logger.syslog_enabled = 0;
     }
 
     pthread_mutex_unlock(&logger.mutex);
@@ -309,6 +320,30 @@ void log_message_v(log_level_t level, const char *format, va_list args) {
     fprintf(console, "[%s] [%s] %s\n", timestamp, log_level_strings[level], message);
     fflush(console);
 
+    // Write to syslog if enabled
+    if (logger.syslog_enabled) {
+        // Map our log levels to syslog priorities
+        int syslog_priority;
+        switch (level) {
+            case LOG_LEVEL_ERROR:
+                syslog_priority = LOG_ERR;
+                break;
+            case LOG_LEVEL_WARN:
+                syslog_priority = LOG_WARNING;
+                break;
+            case LOG_LEVEL_INFO:
+                syslog_priority = LOG_INFO;
+                break;
+            case LOG_LEVEL_DEBUG:
+                syslog_priority = LOG_DEBUG;
+                break;
+            default:
+                syslog_priority = LOG_INFO;
+                break;
+        }
+        syslog(syslog_priority, "%s", message);
+    }
+
     pthread_mutex_unlock(&logger.mutex);
 
     // Write to JSON log file if the function is available
@@ -392,4 +427,64 @@ int log_rotate(size_t max_size, int max_files) {
     }
 
     return 0;
+}
+
+// Enable syslog logging
+int enable_syslog(const char *ident, int facility) {
+    if (!ident || ident[0] == '\0') {
+        return -1;
+    }
+
+    pthread_mutex_lock(&logger.mutex);
+
+    // Close existing syslog connection if any
+    if (logger.syslog_enabled) {
+        closelog();
+    }
+
+    // Store the identifier
+    strncpy(logger.syslog_ident, ident, sizeof(logger.syslog_ident) - 1);
+    logger.syslog_ident[sizeof(logger.syslog_ident) - 1] = '\0';
+
+    // Open syslog connection
+    // LOG_PID: include PID with each message
+    // LOG_CONS: write to console if there's an error writing to syslog
+    openlog(logger.syslog_ident, LOG_PID | LOG_CONS, facility);
+
+    logger.syslog_enabled = 1;
+
+    pthread_mutex_unlock(&logger.mutex);
+
+    log_info("Syslog logging enabled (ident: %s, facility: %d)", ident, facility);
+
+    return 0;
+}
+
+// Disable syslog logging
+void disable_syslog(void) {
+    int was_enabled;
+
+    pthread_mutex_lock(&logger.mutex);
+
+    was_enabled = logger.syslog_enabled;
+    if (logger.syslog_enabled) {
+        closelog();
+        logger.syslog_enabled = 0;
+    }
+
+    pthread_mutex_unlock(&logger.mutex);
+
+    // Log after releasing the mutex to avoid deadlock
+    if (was_enabled) {
+        log_info("Syslog logging disabled");
+    }
+}
+
+// Check if syslog is enabled
+int is_syslog_enabled(void) {
+    int enabled;
+    pthread_mutex_lock(&logger.mutex);
+    enabled = logger.syslog_enabled;
+    pthread_mutex_unlock(&logger.mutex);
+    return enabled;
 }

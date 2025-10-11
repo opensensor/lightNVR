@@ -35,6 +35,9 @@ The INI format is a structured configuration format that organizes settings into
 pid_file = /var/run/lightnvr.pid
 log_file = /var/log/lightnvr.log
 log_level = 2  ; 0=ERROR, 1=WARN, 2=INFO, 3=DEBUG
+syslog_enabled = false  ; Enable logging to syslog
+syslog_ident = lightnvr  ; Syslog identifier
+syslog_facility = LOG_USER  ; Syslog facility
 
 [storage]
 path = /var/lib/lightnvr/recordings
@@ -98,16 +101,57 @@ The configuration file is divided into several sections:
 
 ### General Settings
 
-```
-# General Settings
-pid_file=/var/run/lightnvr.pid
-log_file=/var/log/lightnvr.log
-log_level=2  # 0=ERROR, 1=WARN, 2=INFO, 3=DEBUG
+```ini
+[general]
+pid_file = /var/run/lightnvr.pid
+log_file = /var/log/lightnvr.log
+log_level = 2  ; 0=ERROR, 1=WARN, 2=INFO, 3=DEBUG
+syslog_enabled = false  ; Enable logging to syslog
+syslog_ident = lightnvr  ; Syslog identifier (application name)
+syslog_facility = LOG_USER  ; Syslog facility
 ```
 
 - `pid_file`: Path to the PID file
 - `log_file`: Path to the log file
 - `log_level`: Logging level (0=ERROR, 1=WARN, 2=INFO, 3=DEBUG)
+- `syslog_enabled`: Enable logging to syslog for easier system integration and centralized log management (default: false)
+- `syslog_ident`: Syslog identifier/application name used in syslog messages (default: "lightnvr")
+- `syslog_facility`: Syslog facility for categorizing messages. Valid values:
+  - `LOG_USER` (default): User-level messages
+  - `LOG_DAEMON`: System daemon messages
+  - `LOG_LOCAL0` through `LOG_LOCAL7`: Local use facilities for custom applications
+
+#### Syslog Integration
+
+When `syslog_enabled` is set to `true`, LightNVR will send log messages to the system's syslog daemon in addition to the regular log file and console output. This provides several benefits:
+
+- **Centralized Logging**: Integrate with system-wide log management tools
+- **Remote Logging**: Forward logs to remote syslog servers for centralized monitoring
+- **Log Rotation**: Leverage system log rotation policies
+- **Integration with Monitoring Tools**: Use tools like `journalctl`, `rsyslog`, or `syslog-ng`
+
+Example syslog configuration for production use:
+
+```ini
+syslog_enabled = true
+syslog_ident = lightnvr
+syslog_facility = LOG_LOCAL0
+```
+
+To view LightNVR logs via syslog on systemd-based systems:
+
+```bash
+# View all LightNVR logs
+journalctl -t lightnvr
+
+# Follow logs in real-time
+journalctl -t lightnvr -f
+
+# View logs from the last hour
+journalctl -t lightnvr --since "1 hour ago"
+```
+
+On traditional syslog systems, logs will appear in `/var/log/syslog` or `/var/log/messages` depending on your syslog configuration.
 
 ### Storage Settings
 

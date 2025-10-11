@@ -557,6 +557,16 @@ int main(int argc, char *argv[]) {
     // regardless of the configured log level
     log_error("Log level set to %d (%s)", config.log_level, get_log_level_string(config.log_level));
 
+    // Enable syslog if configured
+    if (config.syslog_enabled) {
+        if (enable_syslog(config.syslog_ident, config.syslog_facility) == 0) {
+            log_info("Syslog enabled (ident: %s, facility: %d)",
+                     config.syslog_ident, config.syslog_facility);
+        } else {
+            log_warn("Failed to enable syslog");
+        }
+    }
+
     // Copy configuration to global config
     memcpy(&g_config, &config, sizeof(config_t));
 

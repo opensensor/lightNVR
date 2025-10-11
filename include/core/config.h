@@ -55,6 +55,11 @@ typedef struct {
     char pid_file[MAX_PATH_LENGTH];
     char log_file[MAX_PATH_LENGTH];
     int log_level; // 0=ERROR, 1=WARN, 2=INFO, 3=DEBUG
+
+    // Syslog settings
+    bool syslog_enabled;           // Whether to log to syslog
+    char syslog_ident[64];         // Syslog identifier (default: "lightnvr")
+    int syslog_facility;           // Syslog facility (default: LOG_USER)
     
     // Storage settings
     char storage_path[MAX_PATH_LENGTH];

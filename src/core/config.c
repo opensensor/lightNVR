@@ -7,6 +7,7 @@
 #include <sys/types.h>
 #include <libgen.h>
 #include <ctype.h>
+#include <syslog.h>
 
 #include "ini.h"
 #include "core/config.h"
@@ -27,7 +28,12 @@ void load_default_config(config_t *config) {
     snprintf(config->pid_file, MAX_PATH_LENGTH, "/var/run/lightnvr.pid");
     snprintf(config->log_file, MAX_PATH_LENGTH, "/var/log/lightnvr.log");
     config->log_level = LOG_LEVEL_INFO;
-    
+
+    // Syslog settings
+    config->syslog_enabled = false;
+    snprintf(config->syslog_ident, sizeof(config->syslog_ident), "lightnvr");
+    config->syslog_facility = LOG_USER;
+
     // Storage settings
     snprintf(config->storage_path, MAX_PATH_LENGTH, "/var/lib/lightnvr/recordings");
     config->storage_path_hls[0] = '\0'; // Empty by default, will use storage_path if not specified
@@ -261,6 +267,28 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             strncpy(config->log_file, value, MAX_PATH_LENGTH - 1);
         } else if (strcmp(name, "log_level") == 0) {
             config->log_level = atoi(value);
+        } else if (strcmp(name, "syslog_enabled") == 0) {
+            config->syslog_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        } else if (strcmp(name, "syslog_ident") == 0) {
+            strncpy(config->syslog_ident, value, sizeof(config->syslog_ident) - 1);
+        } else if (strcmp(name, "syslog_facility") == 0) {
+            // Parse syslog facility - support both numeric and string values
+            if (isdigit(value[0])) {
+                config->syslog_facility = atoi(value);
+            } else {
+                // Map facility names to values
+                if (strcmp(value, "LOG_USER") == 0) config->syslog_facility = LOG_USER;
+                else if (strcmp(value, "LOG_DAEMON") == 0) config->syslog_facility = LOG_DAEMON;
+                else if (strcmp(value, "LOG_LOCAL0") == 0) config->syslog_facility = LOG_LOCAL0;
+                else if (strcmp(value, "LOG_LOCAL1") == 0) config->syslog_facility = LOG_LOCAL1;
+                else if (strcmp(value, "LOG_LOCAL2") == 0) config->syslog_facility = LOG_LOCAL2;
+                else if (strcmp(value, "LOG_LOCAL3") == 0) config->syslog_facility = LOG_LOCAL3;
+                else if (strcmp(value, "LOG_LOCAL4") == 0) config->syslog_facility = LOG_LOCAL4;
+                else if (strcmp(value, "LOG_LOCAL5") == 0) config->syslog_facility = LOG_LOCAL5;
+                else if (strcmp(value, "LOG_LOCAL6") == 0) config->syslog_facility = LOG_LOCAL6;
+                else if (strcmp(value, "LOG_LOCAL7") == 0) config->syslog_facility = LOG_LOCAL7;
+                else config->syslog_facility = LOG_USER; // Default
+            }
         }
     }
     // Storage settings
@@ -819,7 +847,25 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "[general]\n");
     fprintf(file, "pid_file = %s\n", config->pid_file);
     fprintf(file, "log_file = %s\n", config->log_file);
-    fprintf(file, "log_level = %d  ; 0=ERROR, 1=WARN, 2=INFO, 3=DEBUG\n\n", config->log_level);
+    fprintf(file, "log_level = %d  ; 0=ERROR, 1=WARN, 2=INFO, 3=DEBUG\n", config->log_level);
+    fprintf(file, "syslog_enabled = %s\n", config->syslog_enabled ? "true" : "false");
+    fprintf(file, "syslog_ident = %s\n", config->syslog_ident);
+
+    // Convert facility number to name for readability
+    const char *facility_name = "LOG_USER";
+    switch (config->syslog_facility) {
+        case LOG_USER: facility_name = "LOG_USER"; break;
+        case LOG_DAEMON: facility_name = "LOG_DAEMON"; break;
+        case LOG_LOCAL0: facility_name = "LOG_LOCAL0"; break;
+        case LOG_LOCAL1: facility_name = "LOG_LOCAL1"; break;
+        case LOG_LOCAL2: facility_name = "LOG_LOCAL2"; break;
+        case LOG_LOCAL3: facility_name = "LOG_LOCAL3"; break;
+        case LOG_LOCAL4: facility_name = "LOG_LOCAL4"; break;
+        case LOG_LOCAL5: facility_name = "LOG_LOCAL5"; break;
+        case LOG_LOCAL6: facility_name = "LOG_LOCAL6"; break;
+        case LOG_LOCAL7: facility_name = "LOG_LOCAL7"; break;
+    }
+    fprintf(file, "syslog_facility = %s  ; Syslog facility for system logging\n\n", facility_name);
     
     // Write storage settings
     fprintf(file, "[storage]\n");

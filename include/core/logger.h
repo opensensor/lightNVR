@@ -111,10 +111,31 @@ int log_rotate(size_t max_size, int max_files);
 
 /**
  * Get the string representation of a log level
- * 
+ *
  * @param level The log level
  * @return String representation of the log level, or "UNKNOWN" if invalid
  */
 const char *get_log_level_string(log_level_t level);
+
+/**
+ * Enable syslog logging
+ *
+ * @param ident Syslog identifier (application name)
+ * @param facility Syslog facility (e.g., LOG_USER, LOG_DAEMON, LOG_LOCAL0-7)
+ * @return 0 on success, non-zero on failure
+ */
+int enable_syslog(const char *ident, int facility);
+
+/**
+ * Disable syslog logging
+ */
+void disable_syslog(void);
+
+/**
+ * Check if syslog is enabled
+ *
+ * @return 1 if syslog is enabled, 0 otherwise
+ */
+int is_syslog_enabled(void);
 
 #endif // LIGHTNVR_LOGGER_H
