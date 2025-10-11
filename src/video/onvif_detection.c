@@ -94,34 +94,63 @@ static char *base64_encode(const unsigned char *input, size_t length) {
     return output;
 }
 
-// Create ONVIF SOAP request with WS-Security
+// Create ONVIF SOAP request with WS-Security (if credentials provided)
 static char *create_onvif_request(const char *username, const char *password, const char *request_body) {
+    char *soap_request = (char *)malloc(4096);
+    if (!soap_request) {
+        return NULL;
+    }
+
+    // Check if credentials are provided (non-empty strings)
+    bool has_credentials = (username && strlen(username) > 0 && password && strlen(password) > 0);
+
+    if (!has_credentials) {
+        // Create SOAP request without WS-Security headers for cameras without authentication
+        log_info("Creating ONVIF request without authentication (no credentials provided)");
+        snprintf(soap_request, 4096,
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+            "<s:Envelope xmlns:s=\"http://www.w3.org/2003/05/soap-envelope\">\n"
+            "  <s:Header/>\n"
+            "  <s:Body xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n"
+            "    %s\n"
+            "  </s:Body>\n"
+            "</s:Envelope>",
+            request_body);
+        return soap_request;
+    }
+
+    // Create SOAP request with WS-Security headers for authenticated cameras
+    log_info("Creating ONVIF request with WS-Security authentication");
+
     // Initialize mbedTLS RNG
     mbedtls_entropy_context entropy;
     mbedtls_ctr_drbg_context ctr_drbg;
     const char *pers = "onvif_detection";
-    
+
     mbedtls_entropy_init(&entropy);
     mbedtls_ctr_drbg_init(&ctr_drbg);
-    
+
     if (mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy,
                              (const unsigned char *)pers, strlen(pers)) != 0) {
         mbedtls_entropy_free(&entropy);
+        free(soap_request);
         return NULL;
     }
-    
+
     // Generate nonce (random bytes)
     unsigned char nonce_raw[16];
     if (mbedtls_ctr_drbg_random(&ctr_drbg, nonce_raw, sizeof(nonce_raw)) != 0) {
         mbedtls_ctr_drbg_free(&ctr_drbg);
         mbedtls_entropy_free(&entropy);
+        free(soap_request);
         return NULL;
     }
-    
+
     char *nonce = base64_encode(nonce_raw, sizeof(nonce_raw));
     if (!nonce) {
         mbedtls_ctr_drbg_free(&ctr_drbg);
         mbedtls_entropy_free(&entropy);
+        free(soap_request);
         return NULL;
     }
 
@@ -136,15 +165,15 @@ static char *create_onvif_request(const char *username, const char *password, co
     // Create the raw digest string (nonce + created + password)
     unsigned char digest_raw[512];
     size_t digest_len = 0;
-    
+
     // Copy nonce raw bytes
     memcpy(digest_raw, nonce_raw, sizeof(nonce_raw));
     digest_len += sizeof(nonce_raw);
-    
+
     // Copy created timestamp
     memcpy(digest_raw + digest_len, created, strlen(created));
     digest_len += strlen(created);
-    
+
     // Copy password
     memcpy(digest_raw + digest_len, password, strlen(password));
     digest_len += strlen(password);
@@ -152,28 +181,21 @@ static char *create_onvif_request(const char *username, const char *password, co
     // Generate SHA-1 hash
     unsigned char hash[20]; // SHA-1 produces 20 bytes
     mbedtls_sha1_context sha1_ctx;
-    
+
     mbedtls_sha1_init(&sha1_ctx);
     mbedtls_sha1_starts(&sha1_ctx);
     mbedtls_sha1_update(&sha1_ctx, digest_raw, digest_len);
     mbedtls_sha1_finish(&sha1_ctx, hash);
     mbedtls_sha1_free(&sha1_ctx);
-    
+
     // Encode hash as base64
     char *digest = base64_encode(hash, 20); // SHA-1 hash is 20 bytes
-    
+
     // Clean up mbedTLS contexts
     mbedtls_ctr_drbg_free(&ctr_drbg);
     mbedtls_entropy_free(&entropy);
 
     // Create the SOAP request with security headers
-    char *soap_request = (char *)malloc(4096);
-    if (!soap_request) {
-        free(nonce);
-        free(digest);
-        return NULL;
-    }
-
     snprintf(soap_request, 4096,
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
         "<s:Envelope xmlns:s=\"http://www.w3.org/2003/05/soap-envelope\" "
@@ -521,10 +543,18 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
         return -1;
     }
 
+    // Validate parameters - allow empty credentials (empty strings) but not NULL pointers
     if (!onvif_url || !username || !password || !result) {
-        log_error("Invalid parameters for detect_motion_onvif");
+        log_error("Invalid parameters for detect_motion_onvif (NULL pointers not allowed)");
         pthread_mutex_unlock(&curl_mutex);
         return -1;
+    }
+
+    // Log credential status for debugging
+    if (strlen(username) == 0 || strlen(password) == 0) {
+        log_info("ONVIF Detection: Using camera without authentication (empty credentials)");
+    } else {
+        log_info("ONVIF Detection: Using camera with authentication (username: %s)", username);
     }
 
     // Get or create subscription

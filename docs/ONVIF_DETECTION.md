@@ -27,9 +27,9 @@ To use ONVIF detection, you need to:
 
 1. Configure a stream with the ONVIF camera URL
 2. Set the detection model to "onvif"
-3. Provide ONVIF credentials (username and password)
+3. Provide ONVIF credentials (username and password) - **optional for cameras without authentication**
 
-Example stream configuration:
+### Example: Camera with Authentication
 
 ```json
 {
@@ -42,6 +42,24 @@ Example stream configuration:
   "is_onvif": true
 }
 ```
+
+### Example: Camera without Authentication
+
+Some cameras don't require authentication for ONVIF events. For these cameras, you can leave the credentials empty:
+
+```json
+{
+  "name": "onvif_camera_no_auth",
+  "url": "rtsp://camera_ip:554/stream",
+  "enabled": true,
+  "detection_model": "onvif",
+  "onvif_username": "",
+  "onvif_password": "",
+  "is_onvif": true
+}
+```
+
+**Note:** When credentials are empty, LightNVR will send ONVIF requests without WS-Security authentication headers. This is compatible with cameras that don't require authentication.
 
 ## Implementation Details
 
@@ -74,15 +92,25 @@ This script creates a test stream configuration and provides instructions for te
 If you encounter issues with ONVIF detection:
 
 1. Check that your camera supports ONVIF Events
-2. Verify your ONVIF credentials
+2. Verify your ONVIF credentials (or try without credentials if your camera doesn't require authentication)
 3. Make sure the camera is accessible from LightNVR
 4. Check the logs for error messages
 
 Common error messages:
 
-- "Failed to create subscription": The camera may not support ONVIF Events or the credentials are incorrect
+- "Failed to create subscription": The camera may not support ONVIF Events, the credentials are incorrect, or the camera requires authentication but none was provided
 - "Failed to pull messages": The subscription may have expired or the camera is not accessible
 - "Failed to extract service name": The subscription address format is not recognized
+- "Camera may require authentication": Try configuring ONVIF credentials in the stream settings
+- "ONVIF detection failed": Check camera connectivity, ONVIF support, and credentials
+
+### Testing Authentication Requirements
+
+If you're unsure whether your camera requires authentication:
+
+1. First try with empty credentials (`onvif_username: ""`, `onvif_password: ""`)
+2. If that fails with authentication errors, configure the proper credentials
+3. Check the logs - they will indicate whether authentication is being used
 
 ## Future Improvements
 

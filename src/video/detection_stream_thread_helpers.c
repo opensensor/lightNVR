@@ -695,12 +695,14 @@ int process_segment_if_needed(stream_detection_thread_t *thread,
                     }
 
                     // If we couldn't extract credentials from the model path, try to get them from the stream config
+                    // Note: Empty credentials are allowed for cameras without authentication
                     if (url[0] == '\0' || username[0] == '\0' || password[0] == '\0') {
                         stream_handle_t stream = get_stream_by_name(thread->stream_name);
                         if (stream) {
                             stream_config_t config;
                             if (get_stream_config(stream, &config) == 0) {
-                                // Use ONVIF credentials from the stream config
+                                // Use ONVIF credentials from the stream config if available
+                                // If config credentials are also empty, that's OK - camera may not need auth
                                 if (username[0] == '\0' && config.onvif_username[0] != '\0') {
                                     strncpy(username, config.onvif_username, sizeof(username) - 1);
                                     username[sizeof(username) - 1] = '\0';
@@ -805,10 +807,15 @@ int process_segment_if_needed(stream_detection_thread_t *thread,
                         }
                     }
 
-                    // If we have valid credentials, call the ONVIF detection function
-                    if (url[0] != '\0' && username[0] != '\0' && password[0] != '\0') {
-                        log_info("[Stream %s] Calling ONVIF detection with URL: %s, username: %s",
-                                thread->stream_name, url, username);
+                    // Call ONVIF detection if we have a valid URL (credentials are optional for some cameras)
+                    if (url[0] != '\0') {
+                        if (username[0] != '\0' && password[0] != '\0') {
+                            log_info("[Stream %s] Calling ONVIF detection with URL: %s, username: %s",
+                                    thread->stream_name, url, username);
+                        } else {
+                            log_info("[Stream %s] Calling ONVIF detection with URL: %s (no credentials - camera may not require authentication)",
+                                    thread->stream_name, url);
+                        }
 
                         // Call the ONVIF detection function
                         result = detect_motion_onvif(url, username, password, &result_struct, thread->stream_name);
@@ -852,11 +859,20 @@ int process_segment_if_needed(stream_detection_thread_t *thread,
                                 log_info("[Stream %s] No motion detected in ONVIF detection", thread->stream_name);
                             }
                         } else {
-                            log_error("[Stream %s] ONVIF detection failed (error code: %d)", thread->stream_name, result);
+                            // Provide helpful error message based on credential status
+                            if (username[0] == '\0' || password[0] == '\0') {
+                                log_error("[Stream %s] ONVIF detection failed (error code: %d). "
+                                         "Camera may require authentication. Please configure ONVIF credentials in stream settings.",
+                                         thread->stream_name, result);
+                            } else {
+                                log_error("[Stream %s] ONVIF detection failed (error code: %d). "
+                                         "Check camera connectivity, ONVIF support, and credentials.",
+                                         thread->stream_name, result);
+                            }
                         }
                     } else {
-                        log_error("[Stream %s] Missing ONVIF credentials (URL: %s, username: %s)",
-                                 thread->stream_name, url[0] ? url : "empty", username[0] ? username : "empty");
+                        log_error("[Stream %s] Missing ONVIF URL - cannot perform ONVIF detection",
+                                 thread->stream_name);
                         result = -1;
                     }
                 } else {
