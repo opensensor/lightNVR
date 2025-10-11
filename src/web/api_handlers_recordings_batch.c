@@ -122,7 +122,12 @@ void batch_delete_recordings_task_function(struct mg_connection *c, struct mg_ht
                 strncpy(file_path_copy, recording.file_path, sizeof(file_path_copy) - 1);
                 file_path_copy[sizeof(file_path_copy) - 1] = '\0';
 
-                if (unlink(file_path_copy) != 0) {
+                // Check if file exists before attempting to delete
+                struct stat st;
+                if (stat(file_path_copy, &st) != 0) {
+                    log_warn("Recording file does not exist: %s (errno: %d)", file_path_copy, errno);
+                    file_deleted = false;
+                } else if (unlink(file_path_copy) != 0) {
                     log_warn("Failed to delete recording file: %s (errno: %d)", file_path_copy, errno);
                     file_deleted = false;
                 } else {
@@ -181,7 +186,11 @@ void batch_delete_recordings_task_function(struct mg_connection *c, struct mg_ht
         // Extract filter parameters
         cJSON *start = cJSON_GetObjectItem(filter, "start");
         cJSON *end = cJSON_GetObjectItem(filter, "end");
-        cJSON *stream = cJSON_GetObjectItem(filter, "stream");
+        // Accept both 'stream' and 'stream_name' for backwards compatibility
+        cJSON *stream = cJSON_GetObjectItem(filter, "stream_name");
+        if (!stream) {
+            stream = cJSON_GetObjectItem(filter, "stream");
+        }
         cJSON *detection = cJSON_GetObjectItem(filter, "detection");
 
         if (start && cJSON_IsString(start)) {
@@ -361,7 +370,12 @@ void batch_delete_recordings_task_function(struct mg_connection *c, struct mg_ht
                 strncpy(file_path_copy, recordings[i].file_path, sizeof(file_path_copy) - 1);
                 file_path_copy[sizeof(file_path_copy) - 1] = '\0';
 
-                if (unlink(file_path_copy) != 0) {
+                // Check if file exists before attempting to delete
+                struct stat st;
+                if (stat(file_path_copy, &st) != 0) {
+                    log_warn("Recording file does not exist: %s (errno: %d)", file_path_copy, errno);
+                    file_deleted = false;
+                } else if (unlink(file_path_copy) != 0) {
                     log_warn("Failed to delete recording file: %s (errno: %d)", file_path_copy, errno);
                     file_deleted = false;
                 } else {
@@ -432,34 +446,7 @@ void batch_delete_recordings_task_function(struct mg_connection *c, struct mg_ht
 void mg_handle_batch_delete_recordings(struct mg_connection *c, struct mg_http_message *hm) {
     log_info("Handling POST /api/recordings/batch-delete request");
 
-    // Send an immediate response to the client before processing the deletion
-    // This prevents the client from waiting for the deletion to complete
-    mg_send_json_response(c, 202, "{\"success\":true,\"message\":\"Batch deletion in progress\"}");
-
-    // Create a thread data structure
-    struct mg_thread_data *data = calloc(1, sizeof(struct mg_thread_data));
-    if (!data) {
-        log_error("Failed to allocate memory for thread data");
-        mg_http_reply(c, 500, "", "Internal Server Error\n");
-        return;
-    }
-
-    // Copy the HTTP message
-    data->message = mg_strdup(hm->message);
-    if (data->message.len == 0) {
-        log_error("Failed to duplicate HTTP message");
-        free(data);
-        mg_http_reply(c, 500, "", "Internal Server Error\n");
-        return;
-    }
-
-    // Set connection ID, manager, and handler function
-    data->conn_id = c->id;
-    data->mgr = c->mgr;
-    data->handler_func = batch_delete_recordings_task_function;
-
-    // Start thread
-    mg_start_thread(mg_thread_function, data);
-
-    log_info("Batch delete recordings task started in a worker thread");
+    // Process the deletion synchronously and send response when complete
+    // This ensures the client receives the actual results
+    batch_delete_recordings_task_function(c, hm);
 }

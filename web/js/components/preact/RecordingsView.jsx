@@ -570,11 +570,9 @@ export function RecordingsView() {
       setSelectedRecordings({});
       setSelectAll(false);
 
-      // Only reload if some recordings were deleted successfully
-      if (result.succeeded > 0) {
-        // Reload recordings
-        loadRecordings();
-      }
+      // Always reload to reflect the changes (even if all recordings were deleted)
+      // This ensures the UI shows the correct state
+      loadRecordings();
     }
   };
 
