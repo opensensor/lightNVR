@@ -18,6 +18,7 @@ LightNVR provides a lightweight yet powerful solution for recording and managing
 - **Protocol Support**: RTSP and ONVIF (basic profile)
 - **Codec Support**: H.264 (primary), H.265 (if resources permit)
 - **Object Detection**: Optional SOD integration for motion and object detection (supports both RealNet and CNN models)
+- **ONVIF Motion Recording**: Automated recording triggered by ONVIF motion detection events
 - **Resolution Support**: Up to 1080p per stream (configurable lower resolutions)
 - **Frame Rate Control**: Configurable from 1-15 FPS per stream to reduce resource usage
 - **Standard Formats**: Records in standard MP4/MKV containers with proper indexing
@@ -122,6 +123,8 @@ docker run -d \
 - [Architecture Overview](docs/ARCHITECTURE.md)
 - [SOD Integration](docs/SOD_INTEGRATION.md)
 - [SOD Unified Detection](docs/SOD_UNIFIED_DETECTION.md)
+- [ONVIF Detection](docs/ONVIF_DETECTION.md)
+- [ONVIF Motion Recording](docs/ONVIF_MOTION_RECORDING.md)
 
 ## Project Structure
 
