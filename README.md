@@ -125,6 +125,7 @@ docker run -d \
 - [SOD Unified Detection](docs/SOD_UNIFIED_DETECTION.md)
 - [ONVIF Detection](docs/ONVIF_DETECTION.md)
 - [ONVIF Motion Recording](docs/ONVIF_MOTION_RECORDING.md)
+- [Motion Buffer System](docs/MOTION_BUFFER.md)
 
 ## Project Structure
 

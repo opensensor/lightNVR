@@ -3,47 +3,37 @@
 #include <string.h>
 #include "video/detection.h"
 #include "video/sod_realnet.h"
+#include "video/sod_integration.h"
 #include "core/logger.h"
 #include "sod/sod.h"
 
 /**
  * Unified test program for SOD RealNet and CNN face detection
- * 
+ *
  * Usage: ./test_sod_unified <image_path> <model_path> [output_path] [model_type]
- * 
+ *
  * Example for RealNet: ./test_sod_unified test.jpg face.realnet.sod output.jpg realnet
  * Example for CNN: ./test_sod_unified test.jpg face_cnn.sod output.jpg cnn
- * 
+ *
  * If model_type is not specified, it will be auto-detected based on the file name.
  */
 
-// Model type constants
+// Model type constants (for compatibility with detect_model_type return values)
 #define MODEL_TYPE_REALNET "realnet"
 #define MODEL_TYPE_CNN "cnn"
 
-/**
- * Detect model type based on file name or content
- * 
- * @param model_path Path to the model file
- * @return String describing the model type ("realnet" or "cnn")
- */
-const char* detect_model_type(const char *model_path) {
-    if (!model_path) {
-        return NULL;
-    }
-    
-    // Check for RealNet models by file name pattern
-    if (strstr(model_path, ".realnet.sod") != NULL) {
-        return MODEL_TYPE_REALNET;
-    }
-    
-    // For other .sod files, assume CNN model
-    const char *ext = strrchr(model_path, '.');
-    if (ext && strcasecmp(ext, ".sod") == 0) {
-        return MODEL_TYPE_CNN;
-    }
-    
-    return NULL; // Unknown model type
+// Helper function to check if model type is RealNet
+static bool is_realnet_model(const char *model_type) {
+    return (strcasecmp(model_type, MODEL_TYPE_REALNET) == 0 ||
+            strcasecmp(model_type, MODEL_TYPE_SOD_REALNET) == 0 ||
+            strstr(model_type, "realnet") != NULL);
+}
+
+// Helper function to check if model type is CNN/SOD
+static bool is_cnn_model(const char *model_type) {
+    return (strcasecmp(model_type, MODEL_TYPE_CNN) == 0 ||
+            strcasecmp(model_type, MODEL_TYPE_SOD) == 0 ||
+            strcmp(model_type, "sod") == 0);
 }
 
 int main(int argc, char *argv[])
@@ -57,35 +47,34 @@ int main(int argc, char *argv[])
     const char *image_path = argv[1];
     const char *model_path = argv[2];
     const char *output_path = argc > 3 ? argv[3] : "out.jpg";
-    
+
     // Determine model type (auto-detect or from command line)
     const char *model_type = NULL;
     if (argc > 4) {
         model_type = argv[4];
-        if (strcasecmp(model_type, MODEL_TYPE_REALNET) != 0 && 
-            strcasecmp(model_type, MODEL_TYPE_CNN) != 0) {
+        if (!is_realnet_model(model_type) && !is_cnn_model(model_type)) {
             fprintf(stderr, "Invalid model type: %s (must be 'realnet' or 'cnn')\n", model_type);
             return 1;
         }
     } else {
         // Auto-detect model type
         model_type = detect_model_type(model_path);
-        if (!model_type) {
+        if (!model_type || strcmp(model_type, "unknown") == 0) {
             fprintf(stderr, "Could not auto-detect model type for: %s\n", model_path);
             fprintf(stderr, "Please specify model type as the fourth argument ('realnet' or 'cnn')\n");
             return 1;
         }
         printf("Auto-detected model type: %s\n", model_type);
     }
-    
+
     // Initialize detection system
     if (init_detection_system() != 0) {
         fprintf(stderr, "Failed to initialize detection system\n");
         return 1;
     }
-    
+
     // Check if model is supported - only for RealNet
-    if (strcasecmp(model_type, MODEL_TYPE_REALNET) == 0 && !is_model_supported(model_path)) {
+    if (is_realnet_model(model_type) && !is_model_supported(model_path)) {
         fprintf(stderr, "RealNet model not supported: %s\n", model_path);
         shutdown_detection_system();
         return 1;
@@ -107,7 +96,7 @@ int main(int argc, char *argv[])
     unsigned char *blob = NULL;
 
     // Load model based on type
-    if (strcasecmp(model_type, MODEL_TYPE_REALNET) == 0) {
+    if (is_realnet_model(model_type)) {
         // Load RealNet model using existing API
         model = load_detection_model(model_path, 5.0f); // RealNet typically uses 5.0 threshold
         if (!model) {
@@ -115,7 +104,7 @@ int main(int argc, char *argv[])
             shutdown_detection_system();
             return 1;
         }
-    } else if (strcasecmp(model_type, MODEL_TYPE_CNN) == 0) {
+    } else if (is_cnn_model(model_type)) {
         // Load CNN model directly using SOD CNN API
         const char *err_msg = NULL;
 
@@ -134,7 +123,7 @@ int main(int argc, char *argv[])
     }
 
     // Load grayscale image for detection - only needed for RealNet
-    if (strcasecmp(model_type, MODEL_TYPE_REALNET) == 0) {
+    if (is_realnet_model(model_type)) {
         gray_img = sod_img_load_grayscale(image_path);
         if (gray_img.data == NULL) {
             fprintf(stderr, "Failed to load grayscale image: %s\n", image_path);
@@ -156,7 +145,7 @@ int main(int argc, char *argv[])
     }
 
     // Run detection based on model type
-    if (strcasecmp(model_type, MODEL_TYPE_REALNET) == 0) {
+    if (is_realnet_model(model_type)) {
         // Convert image to blob for RealNet
         blob = sod_image_to_blob(gray_img);
         if (!blob) {
@@ -178,7 +167,7 @@ int main(int argc, char *argv[])
             shutdown_detection_system();
             return 1;
         }
-    } else if (strcasecmp(model_type, MODEL_TYPE_CNN) == 0) {
+    } else if (is_cnn_model(model_type)) {
         // For CNN, we use the direct CNN API
 
         // Prepare image for CNN
@@ -258,7 +247,7 @@ int main(int argc, char *argv[])
     // Cleanup - be careful with the order and check for NULL pointers
 
     // Free RealNet resources
-    if (strcasecmp(model_type, MODEL_TYPE_REALNET) == 0) {
+    if (is_realnet_model(model_type)) {
         if (blob) {
             sod_image_free_blob(blob);
             blob = NULL;
@@ -275,7 +264,7 @@ int main(int argc, char *argv[])
         }
     }
     // Free CNN resources
-    else if (strcasecmp(model_type, MODEL_TYPE_CNN) == 0) {
+    else if (is_cnn_model(model_type)) {
         if (cnn_blob) {
             // The memory for cnn_blob was allocated by sod_cnn_prepare_image
             // It's managed internally by SOD, so we don't free it directly

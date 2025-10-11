@@ -40,6 +40,7 @@ static int stop_motion_recording_internal(motion_recording_context_t *ctx);
 static void update_recording_state(motion_recording_context_t *ctx, time_t current_time);
 static motion_recording_context_t* get_recording_context(const char *stream_name);
 static motion_recording_context_t* create_recording_context(const char *stream_name);
+static int flush_packet_callback(const AVPacket *packet, void *user_data);
 
 /**
  * Initialize the event queue
@@ -186,13 +187,16 @@ static motion_recording_context_t* create_recording_context(const char *stream_n
             
             // Initialize mutex
             pthread_mutex_init(&recording_contexts[i].mutex, NULL);
-            
+
             // Set default configuration
             recording_contexts[i].pre_buffer_seconds = 5;
             recording_contexts[i].post_buffer_seconds = 10;
             recording_contexts[i].max_file_duration = 300;
             recording_contexts[i].enabled = false;
-            
+            recording_contexts[i].buffer_enabled = false;
+            recording_contexts[i].buffer = NULL;
+            recording_contexts[i].buffer_flushed = false;
+
             pthread_mutex_unlock(&contexts_mutex);
             log_info("Created motion recording context for stream: %s", stream_name);
             return &recording_contexts[i];
@@ -257,6 +261,25 @@ static int generate_recording_path(const char *stream_name, char *path, size_t p
 }
 
 /**
+ * Callback function for flushing buffer packets to recording
+ */
+static int flush_packet_callback(const AVPacket *packet, void *user_data) {
+    if (!packet || !user_data) {
+        return -1;
+    }
+
+    const char *stream_name = (const char *)user_data;
+
+    // TODO: Write packet to the recording file
+    // This will be implemented when we integrate with the MP4 writer
+    // For now, just log that we would write it
+    log_debug("Would flush packet for stream: %s (size: %d, pts: %lld)",
+              stream_name, packet->size, (long long)packet->pts);
+
+    return 0;
+}
+
+/**
  * Start recording for a motion event
  */
 static int start_motion_recording_internal(motion_recording_context_t *ctx) {
@@ -279,6 +302,26 @@ static int start_motion_recording_internal(motion_recording_context_t *ctx) {
         log_error("Failed to generate recording path for stream: %s", ctx->stream_name);
         pthread_mutex_unlock(&ctx->mutex);
         return -1;
+    }
+
+    // Flush pre-event buffer if enabled and not already flushed
+    if (ctx->buffer_enabled && ctx->buffer && !ctx->buffer_flushed) {
+        int packet_count = 0;
+        size_t memory_usage = 0;
+        int duration = 0;
+
+        if (motion_buffer_get_stats(ctx->buffer, &packet_count, &memory_usage, &duration) == 0) {
+            log_info("Flushing pre-event buffer for stream: %s (%d packets, %d seconds)",
+                     ctx->stream_name, packet_count, duration);
+
+            // Flush buffer to recording
+            int flushed = motion_buffer_flush(ctx->buffer, flush_packet_callback, (void *)ctx->stream_name);
+            if (flushed > 0) {
+                ctx->total_buffer_flushes++;
+                ctx->buffer_flushed = true;
+                log_info("Flushed %d packets from pre-event buffer for stream: %s", flushed, ctx->stream_name);
+            }
+        }
     }
 
     // Start MP4 recording using existing infrastructure
@@ -325,12 +368,18 @@ static int stop_motion_recording_internal(motion_recording_context_t *ctx) {
         log_warn("Failed to stop MP4 recording for stream: %s", ctx->stream_name);
     }
 
-    // Update state
-    ctx->state = RECORDING_STATE_IDLE;
+    // Update state - go back to buffering if buffer is enabled, otherwise idle
+    if (ctx->buffer_enabled && ctx->buffer) {
+        ctx->state = RECORDING_STATE_BUFFERING;
+        ctx->buffer_flushed = false; // Reset for next recording
+        log_info("Stopped motion recording for stream: %s, returning to buffering state", ctx->stream_name);
+    } else {
+        ctx->state = RECORDING_STATE_IDLE;
+        log_info("Stopped motion recording for stream: %s", ctx->stream_name);
+    }
+
     ctx->state_change_time = time(NULL);
     ctx->current_file_path[0] = '\0';
-
-    log_info("Stopped motion recording for stream: %s", ctx->stream_name);
 
     pthread_mutex_unlock(&ctx->mutex);
     return 0;
@@ -357,16 +406,18 @@ static void update_recording_state(motion_recording_context_t *ctx, time_t curre
             break;
 
         case RECORDING_STATE_BUFFERING:
-            // Not implemented yet - will be added in Phase 2
+            // Just buffering, waiting for motion
+            // Buffer is being filled by feed_packet_to_motion_buffer()
             break;
 
         case RECORDING_STATE_RECORDING:
-            // Check if we should stop recording (post-buffer timeout)
-            if (current_time - ctx->last_motion_time > ctx->post_buffer_seconds) {
-                log_info("Post-buffer timeout for stream: %s, stopping recording", ctx->stream_name);
-                pthread_mutex_unlock(&ctx->mutex);
-                stop_motion_recording_internal(ctx);
-                return;
+            // Check if motion has ended and we should enter finalizing state
+            if (current_time - ctx->last_motion_time > 2) { // 2 second grace period
+                // Motion has ended, enter finalizing state for post-buffer
+                ctx->state = RECORDING_STATE_FINALIZING;
+                ctx->state_change_time = current_time;
+                log_info("Motion ended for stream: %s, entering finalizing state (post-buffer: %ds)",
+                         ctx->stream_name, ctx->post_buffer_seconds);
             }
 
             // Check if we've exceeded max file duration
@@ -381,7 +432,13 @@ static void update_recording_state(motion_recording_context_t *ctx, time_t curre
             break;
 
         case RECORDING_STATE_FINALIZING:
-            // Not implemented yet - will be added in Phase 2
+            // Post-buffer active, check if we should stop
+            if (current_time - ctx->state_change_time > ctx->post_buffer_seconds) {
+                log_info("Post-buffer timeout for stream: %s, stopping recording", ctx->stream_name);
+                pthread_mutex_unlock(&ctx->mutex);
+                stop_motion_recording_internal(ctx);
+                return;
+            }
             break;
     }
 
@@ -422,7 +479,32 @@ static void* event_processor_thread_func(void *arg) {
         if (event.active) {
             // Motion detected - start or continue recording
             if (ctx->enabled) {
-                start_motion_recording_internal(ctx);
+                pthread_mutex_lock(&ctx->mutex);
+                recording_state_t current_state = ctx->state;
+                pthread_mutex_unlock(&ctx->mutex);
+
+                if (current_state == RECORDING_STATE_RECORDING) {
+                    // Already recording - this is an overlapping event
+                    // Just update the last motion time to extend the recording
+                    pthread_mutex_lock(&ctx->mutex);
+                    ctx->last_motion_time = event.timestamp;
+                    // If we were in FINALIZING, go back to RECORDING
+                    if (ctx->state == RECORDING_STATE_FINALIZING) {
+                        ctx->state = RECORDING_STATE_RECORDING;
+                        log_info("Overlapping motion detected for stream: %s, extending recording", ctx->stream_name);
+                    }
+                    pthread_mutex_unlock(&ctx->mutex);
+                } else if (current_state == RECORDING_STATE_FINALIZING) {
+                    // Motion detected during post-buffer - restart recording
+                    pthread_mutex_lock(&ctx->mutex);
+                    ctx->state = RECORDING_STATE_RECORDING;
+                    ctx->last_motion_time = event.timestamp;
+                    pthread_mutex_unlock(&ctx->mutex);
+                    log_info("Motion detected during post-buffer for stream: %s, continuing recording", ctx->stream_name);
+                } else {
+                    // Start new recording
+                    start_motion_recording_internal(ctx);
+                }
             }
         } else {
             // Motion ended - update last motion time
@@ -445,6 +527,12 @@ static void* event_processor_thread_func(void *arg) {
 int init_onvif_motion_recording(void) {
     log_info("Initializing ONVIF motion recording system");
 
+    // Initialize motion buffer pool (50MB default limit)
+    if (init_motion_buffer_pool(50) != 0) {
+        log_error("Failed to initialize motion buffer pool");
+        return -1;
+    }
+
     // Initialize recording contexts
     pthread_mutex_lock(&contexts_mutex);
     for (int i = 0; i < MAX_STREAMS; i++) {
@@ -456,6 +544,7 @@ int init_onvif_motion_recording(void) {
     // Initialize event queue
     if (init_event_queue() != 0) {
         log_error("Failed to initialize motion event queue");
+        cleanup_motion_buffer_pool();
         return -1;
     }
 
@@ -464,6 +553,7 @@ int init_onvif_motion_recording(void) {
     if (pthread_create(&event_processor_thread, NULL, event_processor_thread_func, NULL) != 0) {
         log_error("Failed to create motion event processor thread");
         cleanup_event_queue();
+        cleanup_motion_buffer_pool();
         return -1;
     }
 
@@ -482,11 +572,18 @@ void cleanup_onvif_motion_recording(void) {
     pthread_cond_broadcast(&event_queue.cond);
     pthread_join(event_processor_thread, NULL);
 
-    // Stop all active recordings
+    // Stop all active recordings and destroy buffers
     pthread_mutex_lock(&contexts_mutex);
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (recording_contexts[i].active) {
             stop_motion_recording_internal(&recording_contexts[i]);
+
+            // Destroy buffer if it exists
+            if (recording_contexts[i].buffer) {
+                destroy_motion_buffer(recording_contexts[i].buffer);
+                recording_contexts[i].buffer = NULL;
+            }
+
             pthread_mutex_destroy(&recording_contexts[i].mutex);
             recording_contexts[i].active = false;
         }
@@ -495,6 +592,9 @@ void cleanup_onvif_motion_recording(void) {
 
     // Cleanup event queue
     cleanup_event_queue();
+
+    // Cleanup motion buffer pool
+    cleanup_motion_buffer_pool();
 
     log_info("ONVIF motion recording system cleaned up");
 }
@@ -524,11 +624,36 @@ int enable_motion_recording(const char *stream_name, const motion_recording_conf
     ctx->pre_buffer_seconds = config->pre_buffer_seconds;
     ctx->post_buffer_seconds = config->post_buffer_seconds;
     ctx->max_file_duration = config->max_file_duration;
+
+    // Create or update buffer if pre-buffering is enabled
+    if (config->pre_buffer_seconds > 0) {
+        if (!ctx->buffer) {
+            // Create new buffer
+            ctx->buffer = create_motion_buffer(stream_name, config->pre_buffer_seconds, BUFFER_MODE_MEMORY);
+            if (ctx->buffer) {
+                ctx->buffer_enabled = true;
+                ctx->state = RECORDING_STATE_BUFFERING;
+                log_info("Created pre-event buffer for stream: %s (%ds)", stream_name, config->pre_buffer_seconds);
+            } else {
+                log_warn("Failed to create pre-event buffer for stream: %s", stream_name);
+                ctx->buffer_enabled = false;
+            }
+        }
+    } else {
+        // Destroy buffer if it exists
+        if (ctx->buffer) {
+            destroy_motion_buffer(ctx->buffer);
+            ctx->buffer = NULL;
+            ctx->buffer_enabled = false;
+            ctx->state = RECORDING_STATE_IDLE;
+        }
+    }
+
     pthread_mutex_unlock(&ctx->mutex);
 
-    log_info("Enabled motion recording for stream: %s (pre: %ds, post: %ds, max: %ds)",
+    log_info("Enabled motion recording for stream: %s (pre: %ds, post: %ds, max: %ds, buffer: %s)",
              stream_name, config->pre_buffer_seconds, config->post_buffer_seconds,
-             config->max_file_duration);
+             config->max_file_duration, ctx->buffer_enabled ? "yes" : "no");
 
     return 0;
 }
@@ -715,3 +840,44 @@ int force_stop_motion_recording(const char *stream_name) {
     return stop_motion_recording_internal(ctx);
 }
 
+/**
+ * Feed a video packet to the motion recording buffer
+ */
+int feed_packet_to_motion_buffer(const char *stream_name, const AVPacket *packet) {
+    if (!stream_name || !packet) {
+        return -1;
+    }
+
+    motion_recording_context_t *ctx = get_recording_context(stream_name);
+    if (!ctx || !ctx->enabled || !ctx->buffer_enabled || !ctx->buffer) {
+        return 0; // Not an error, just not buffering
+    }
+
+    // Add packet to buffer
+    int result = motion_buffer_add_packet(ctx->buffer, packet, time(NULL));
+
+    // Update state to BUFFERING if we're in IDLE
+    if (result == 0 && ctx->state == RECORDING_STATE_IDLE) {
+        pthread_mutex_lock(&ctx->mutex);
+        ctx->state = RECORDING_STATE_BUFFERING;
+        pthread_mutex_unlock(&ctx->mutex);
+    }
+
+    return result;
+}
+
+/**
+ * Get buffer statistics for a stream
+ */
+int get_motion_buffer_stats(const char *stream_name, int *packet_count, size_t *memory_usage, int *duration) {
+    if (!stream_name) {
+        return -1;
+    }
+
+    motion_recording_context_t *ctx = get_recording_context(stream_name);
+    if (!ctx || !ctx->buffer) {
+        return -1;
+    }
+
+    return motion_buffer_get_stats(ctx->buffer, packet_count, memory_usage, duration);
+}

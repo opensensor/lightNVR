@@ -5,7 +5,9 @@
 #include <stdbool.h>
 #include <time.h>
 #include <pthread.h>
+#include <libavformat/avformat.h>
 #include "core/config.h"
+#include "video/motion_buffer.h"
 
 /**
  * ONVIF Motion Detection Recording Module
@@ -52,23 +54,29 @@ typedef struct {
 typedef struct {
     char stream_name[MAX_STREAM_NAME];
     recording_state_t state;
-    
+
     // Configuration
     int pre_buffer_seconds;         // Pre-event buffer duration
     int post_buffer_seconds;        // Post-event buffer duration
     int max_file_duration;          // Maximum recording file duration
     bool enabled;                   // Whether motion recording is enabled
-    
+
+    // Buffer management
+    motion_buffer_t *buffer;        // Circular buffer for pre-event recording
+    bool buffer_enabled;            // Whether buffering is enabled
+
     // State tracking
     time_t last_motion_time;        // Last time motion was detected
     time_t recording_start_time;    // When current recording started
     time_t state_change_time;       // When state last changed
     char current_file_path[MAX_PATH_LENGTH];  // Current recording file
-    
+    bool buffer_flushed;            // Whether buffer has been flushed to recording
+
     // Statistics
     uint64_t total_recordings;      // Total number of recordings created
     uint64_t total_motion_events;   // Total motion events processed
-    
+    uint64_t total_buffer_flushes;  // Total times buffer was flushed
+
     pthread_mutex_t mutex;
     bool active;                    // Whether this context is in use
 } motion_recording_context_t;
@@ -170,11 +178,32 @@ int get_current_motion_recording_path(const char *stream_name, char *path, size_
 
 /**
  * Force stop recording for a stream (for emergency shutdown)
- * 
+ *
  * @param stream_name Name of the stream
  * @return 0 on success, non-zero on failure
  */
 int force_stop_motion_recording(const char *stream_name);
+
+/**
+ * Feed a video packet to the motion recording buffer
+ * This should be called for every video packet to maintain the pre-event buffer
+ *
+ * @param stream_name Name of the stream
+ * @param packet Video packet to buffer
+ * @return 0 on success, non-zero on failure
+ */
+int feed_packet_to_motion_buffer(const char *stream_name, const AVPacket *packet);
+
+/**
+ * Get buffer statistics for a stream
+ *
+ * @param stream_name Name of the stream
+ * @param packet_count Output: number of packets in buffer
+ * @param memory_usage Output: memory usage in bytes
+ * @param duration Output: duration of buffered content in seconds
+ * @return 0 on success, non-zero on failure
+ */
+int get_motion_buffer_stats(const char *stream_name, int *packet_count, size_t *memory_usage, int *duration);
 
 #endif /* LIGHTNVR_ONVIF_MOTION_RECORDING_H */
 
