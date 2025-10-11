@@ -19,6 +19,7 @@
 #include "core/shutdown_coordinator.h"
 #include "video/onvif_detection.h"
 #include "video/detection_result.h"
+#include "video/onvif_motion_recording.h"
 #include "database/db_detections.h"
 
 // Global variables
@@ -605,7 +606,7 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
 
     if (motion_detected) {
         log_info("ONVIF Detection: Motion detected for %s", stream_name);
-        
+
         // Create a single detection that covers the whole frame
         result->count = 1;
         strncpy(result->detections[0].label, "motion", MAX_LABEL_LENGTH - 1);
@@ -619,12 +620,20 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
         // Store the detection in the database if we have a valid stream name
         if (stream_name && stream_name[0] != '\0') {
             store_detections_in_db(stream_name, result, 0); // 0 means use current time
+
+            // Trigger motion recording if enabled
+            process_motion_event(stream_name, true, time(NULL));
         } else {
             log_warn("No stream name provided, skipping database storage");
         }
     } else {
         log_info("ONVIF Detection: No motion detected for %s", stream_name);
         result->count = 0;
+
+        // Notify motion recording that motion has ended
+        if (stream_name && stream_name[0] != '\0') {
+            process_motion_event(stream_name, false, time(NULL));
+        }
     }
 
     return 0;
