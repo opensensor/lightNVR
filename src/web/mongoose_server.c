@@ -34,6 +34,7 @@
 #include "web/api_handlers_go2rtc_proxy.h"
 #include "web/api_handlers_users.h"
 #include "web/api_handlers_health.h"
+#include "web/api_handlers_motion.h"
 
 // Forward declarations for timeline API handlers
 void mg_handle_get_timeline_segments(struct mg_connection *c, struct mg_http_message *hm);
@@ -150,6 +151,16 @@ static const mg_api_route_t s_api_routes[] = {
     {"GET", "/api/timeline/segments", mg_handle_get_timeline_segments, true},  // Opt out of auto-threading to prevent hanging
     {"GET", "/api/timeline/manifest", mg_handle_timeline_manifest, true},
     {"GET", "/api/timeline/play", mg_handle_timeline_playback, false},
+
+    // Motion Recording API
+    {"GET", "/api/motion/config/#", mg_handle_get_motion_config, false},
+    {"POST", "/api/motion/config/#", mg_handle_post_motion_config, false},
+    {"DELETE", "/api/motion/config/#", mg_handle_delete_motion_config, false},
+    {"GET", "/api/motion/stats/#", mg_handle_get_motion_stats, false},
+    {"GET", "/api/motion/recordings/#", mg_handle_get_motion_recordings, false},
+    {"DELETE", "/api/motion/recordings/#", mg_handle_delete_motion_recording, false},
+    {"POST", "/api/motion/cleanup", mg_handle_post_motion_cleanup, false},
+    {"GET", "/api/motion/storage", mg_handle_get_motion_storage, false},
 
     // End of table marker
     {NULL, NULL, NULL, false}

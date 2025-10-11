@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Motion Recording - LightNVR</title>
+  <link rel="stylesheet" href="./css/base.css">
+  <link rel="stylesheet" href="./css/main.css">
+  <link rel="stylesheet" href="./css/components.css">
+  <link rel="stylesheet" href="./css/layout.css">
+  <link rel="icon" href="img/favicon.ico" type="image/x-icon">
+</head>
+<body class="flex flex-col min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+  <div class="container mx-auto px-4 flex flex-col min-h-screen w-full">
+    <header id="header-container" data-active-nav="nav-motion">
+      <!-- Header content will be loaded by JavaScript -->
+    </header>
+
+    <main id="main-content" class="flex-grow">
+      <!-- MotionView component will be rendered here -->
+    </main>
+
+    <footer id="footer-container" class="mt-auto">
+      <!-- Footer content will be loaded by JavaScript -->
+    </footer>
+  </div>
+
+  <!-- Status message container -->
+  <div id="status-message" class="fixed bottom-4 right-4 hidden"></div>
+
+  <script type="module" src="./js/pages/motion-page.jsx"></script>
+</body>
+</html>
+

@@ -85,6 +85,7 @@ export function Header({ version = VERSION }) {
     { id: 'nav-live', href: getLiveViewHref(), label: 'Live View' },
     { id: 'nav-recordings', href: 'recordings.html', label: 'Recordings' },
     { id: 'nav-streams', href: 'streams.html', label: 'Streams' },
+    { id: 'nav-motion', href: 'motion.html', label: 'Motion' },
     { id: 'nav-settings', href: 'settings.html', label: 'Settings' },
     { id: 'nav-users', href: 'users.html', label: 'Users' },
     { id: 'nav-system', href: 'system.html', label: 'System' }
