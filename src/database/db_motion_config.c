@@ -10,9 +10,10 @@
  */
 
 // Initialize the motion recording configuration table
+// NOTE: This function is called from within a database transaction during schema migration,
+// so it should NOT lock/unlock the database mutex (the transaction already holds the lock)
 int init_motion_config_table(void) {
     sqlite3 *db = get_db_handle();
-    pthread_mutex_t *db_mutex = get_db_mutex();
     char *err_msg = NULL;
     int rc;
 
@@ -21,7 +22,8 @@ int init_motion_config_table(void) {
         return -1;
     }
 
-    pthread_mutex_lock(db_mutex);
+    // DO NOT lock the mutex here - this is called from within a transaction
+    // that already holds the lock. Locking again would cause a deadlock.
 
     // Create motion_recording_config table
     const char *create_config_table =
@@ -44,7 +46,6 @@ int init_motion_config_table(void) {
     if (rc != SQLITE_OK) {
         log_error("Failed to create motion_recording_config table: %s", err_msg);
         sqlite3_free(err_msg);
-        pthread_mutex_unlock(db_mutex);
         return -1;
     }
 
@@ -56,7 +57,6 @@ int init_motion_config_table(void) {
     if (rc != SQLITE_OK) {
         log_error("Failed to create index on motion_recording_config: %s", err_msg);
         sqlite3_free(err_msg);
-        pthread_mutex_unlock(db_mutex);
         return -1;
     }
 
@@ -81,34 +81,30 @@ int init_motion_config_table(void) {
     if (rc != SQLITE_OK) {
         log_error("Failed to create motion_recordings table: %s", err_msg);
         sqlite3_free(err_msg);
-        pthread_mutex_unlock(db_mutex);
         return -1;
     }
 
     // Create indexes for faster queries
     const char *create_stream_index =
         "CREATE INDEX IF NOT EXISTS idx_motion_recordings_stream ON motion_recordings(stream_name);";
-    
+
     rc = sqlite3_exec(db, create_stream_index, NULL, NULL, &err_msg);
     if (rc != SQLITE_OK) {
         log_error("Failed to create stream index: %s", err_msg);
         sqlite3_free(err_msg);
-        pthread_mutex_unlock(db_mutex);
         return -1;
     }
 
     const char *create_time_index =
         "CREATE INDEX IF NOT EXISTS idx_motion_recordings_time ON motion_recordings(start_time);";
-    
+
     rc = sqlite3_exec(db, create_time_index, NULL, NULL, &err_msg);
     if (rc != SQLITE_OK) {
         log_error("Failed to create time index: %s", err_msg);
         sqlite3_free(err_msg);
-        pthread_mutex_unlock(db_mutex);
         return -1;
     }
 
-    pthread_mutex_unlock(db_mutex);
     log_info("Motion recording configuration tables initialized successfully");
     return 0;
 }
