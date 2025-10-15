@@ -52,6 +52,7 @@ void init_recordings_system(void);
 #include "database/database_manager.h"
 #include "database/db_schema_cache.h"
 #include "database/db_core.h"
+#include "database/db_recordings_sync.h"
 #include <sqlite3.h>
 #include "web/http_server.h"
 #include "web/mongoose_server.h"
@@ -533,6 +534,14 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
     log_info("Storage manager initialized");
+
+    // Start recording sync thread to ensure database file sizes are accurate
+    log_info("Starting recording sync thread...");
+    if (start_recording_sync_thread(60) != 0) {
+        log_warn("Failed to start recording sync thread, file sizes may not be accurate");
+    } else {
+        log_info("Recording sync thread started");
+    }
 
     // Load stream configurations from database
     if (load_stream_configs(&config) < 0) {
@@ -1195,6 +1204,9 @@ cleanup:
 
         log_info("Shutting down storage manager...");
         shutdown_storage_manager();
+
+        log_info("Shutting down recording sync thread...");
+        stop_recording_sync_thread();
 
         // Add a memory barrier before database shutdown to ensure all previous operations are complete
         __sync_synchronize();

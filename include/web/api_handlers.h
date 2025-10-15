@@ -143,11 +143,19 @@ void mg_handle_delete_recording(struct mg_connection *c, struct mg_http_message 
 
 /**
  * @brief Direct handler for POST /api/recordings/batch-delete
- * 
+ *
  * @param c Mongoose connection
  * @param hm Mongoose HTTP message
  */
 void mg_handle_batch_delete_recordings(struct mg_connection *c, struct mg_http_message *hm);
+
+/**
+ * @brief Direct handler for POST /api/recordings/sync
+ *
+ * @param c Mongoose connection
+ * @param hm Mongoose HTTP message
+ */
+void mg_handle_post_recordings_sync(struct mg_connection *c, struct mg_http_message *hm);
 
 /**
  * @brief Direct handler for GET /api/recordings/play/:id

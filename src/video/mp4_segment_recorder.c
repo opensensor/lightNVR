@@ -295,12 +295,66 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
     // This second pass is causing segmentation faults during shutdown
     av_dict_set(&out_opts, "movflags", "empty_moov", 0);
 
+    // CRITICAL FIX: Validate output_file parameter before attempting to open
+    if (!output_file || output_file[0] == '\0') {
+        log_error("Invalid output file path (NULL or empty)");
+        ret = AVERROR(EINVAL);
+        goto cleanup;
+    }
+
+    // CRITICAL FIX: Validate output_ctx before attempting to open file
+    if (!output_ctx) {
+        log_error("Output context is NULL, cannot open output file");
+        ret = AVERROR(EINVAL);
+        goto cleanup;
+    }
+
+    // Log the output file path for debugging
+    log_debug("Attempting to open output file: %s", output_file);
+
+    // CRITICAL FIX: Check if the output file already exists and remove it
+    // This prevents issues with trying to open a file that's already being written to
+    struct stat st;
+    if (stat(output_file, &st) == 0) {
+        log_warn("Output file already exists: %s (size: %lld bytes), removing it",
+                output_file, (long long)st.st_size);
+        if (unlink(output_file) != 0) {
+            log_error("Failed to remove existing output file: %s (error: %s)",
+                    output_file, strerror(errno));
+            // Continue anyway, avio_open might overwrite it
+        }
+    }
+
     // Open output file
     ret = avio_open(&output_ctx->pb, output_file, AVIO_FLAG_WRITE);
     if (ret < 0) {
-        log_error("Failed to open output file: %d", ret);
+        char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+        av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
+        log_error("Failed to open output file: %d (%s)", ret, error_buf);
+        log_error("Output file path: %s", output_file);
+
+        // Additional diagnostics
+        char *dir_path = strdup(output_file);
+        if (dir_path) {
+            char *last_slash = strrchr(dir_path, '/');
+            if (last_slash) {
+                *last_slash = '\0';
+                struct stat dir_st;
+                if (stat(dir_path, &dir_st) != 0) {
+                    log_error("Directory does not exist: %s", dir_path);
+                } else if (!S_ISDIR(dir_st.st_mode)) {
+                    log_error("Path exists but is not a directory: %s", dir_path);
+                } else if (access(dir_path, W_OK) != 0) {
+                    log_error("Directory is not writable: %s", dir_path);
+                }
+            }
+            free(dir_path);
+        }
+
         goto cleanup;
     }
+
+    log_debug("Successfully opened output file: %s", output_file);
 
     // CRITICAL FIX: Double-check video dimensions before writing header
     if (out_video_stream->codecpar->width == 0 || out_video_stream->codecpar->height == 0) {

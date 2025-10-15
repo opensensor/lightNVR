@@ -126,6 +126,7 @@ static const mg_api_route_t s_api_routes[] = {
     {"GET", "/api/recordings/#", mg_handle_get_recording, false},
     {"DELETE", "/api/recordings/#", mg_handle_delete_recording, true},  // Already uses threading
     {"POST", "/api/recordings/batch-delete", mg_handle_batch_delete_recordings, true},  // Already uses threading
+    {"POST", "/api/recordings/sync", mg_handle_post_recordings_sync, false},  // Sync recordings file sizes
 
     // No direct HLS handlers - handled by static file handler
 
@@ -611,7 +612,7 @@ void http_server_stop(http_server_handle_t server) {
     // Explicitly poll the manager one more time to process closed connections
     mg_mgr_poll(server->mgr, 0);
 
-    // Free Mongoose event manager
+    // Free Mongoose event manager (frees internal resources only)
     mg_mgr_free(server->mgr);
 
     // Reset the web server socket
@@ -674,30 +675,51 @@ void http_server_destroy(http_server_handle_t server) {
         return;
     }
 
+    // CRITICAL FIX: Track whether we called http_server_stop()
+    bool stop_was_called = false;
+
     // Stop server if running
     if (server->running) {
         http_server_stop(server);
+        stop_was_called = true;
     }
 
     // IMPORTANT: Improved shutdown order to prevent memory corruption
 
-    // First, mark all connections as closing to prevent new operations
-    log_info("Marking all connections for closing");
-    for (struct mg_connection *c = server->mgr->conns; c != NULL; c = c->next) {
-        c->is_closing = 1;
+    // If http_server_stop() was called, mg_mgr_free() has already been called
+    // and server->mgr->conns is now invalid. Do NOT access it!
+    //
+    // If http_server_stop() was NOT called (server never started or failed to start),
+    // we need to clean up the manager ourselves
+
+    if (!stop_was_called && server->mgr) {
+        // Server was never started or failed to start
+        // We need to clean up the manager ourselves
+        log_info("Cleaning up manager for server that never started");
+
+        // Mark all connections as closing if any exist
+        if (server->mgr->conns) {
+            log_info("Marking all connections for closing");
+            for (struct mg_connection *c = server->mgr->conns; c != NULL; c = c->next) {
+                c->is_closing = 1;
+            }
+
+            // Wait a moment for connections to finish closing
+            usleep(250000);  // 250ms
+        }
+
+        // Free Mongoose event manager
+        mg_mgr_free(server->mgr);
     }
-
-    // Wait a moment for connections to finish closing
-    usleep(250000);  // 250ms - increased from 100ms for better safety
-
-    // Wait longer for connections to finish closing
-    usleep(250000);  // 250ms - increased from 100ms for better safety
 
     log_info("Multithreading cleanup complete");
 
     // No mutex to destroy
 
     // Free resources
+    // CRITICAL FIX: Only free the manager structure if it exists
+    // mg_mgr_free() was already called (either in http_server_stop() or above)
+    // We just need to free the structure itself
     if (server->mgr) {
         free(server->mgr);
         server->mgr = NULL;  // Avoid double-free
