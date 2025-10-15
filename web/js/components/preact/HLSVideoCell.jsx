@@ -34,7 +34,6 @@ export function HLSVideoCell({
   const cellRef = useRef(null);
   const hlsPlayerRef = useRef(null);
   const detectionOverlayRef = useRef(null);
-  const refreshTimerRef = useRef(null);
 
   // Initialize HLS player when component mounts
   useEffect(() => {
@@ -52,21 +51,42 @@ export function HLSVideoCell({
     if (Hls.isSupported()) {
       console.log(`Using HLS.js for stream ${stream.name}`);
       const hls = new Hls({
-        maxBufferLength: 30,            // Increased from 10 to 30 seconds for better buffering on low-power devices
-        maxMaxBufferLength: 60,         // Increased from 20 to 60 seconds for better buffering on low-power devices
-        liveSyncDurationCount: 4,       // Increased from 3 to 4 segments for better stability
-        liveMaxLatencyDurationCount: 10, // Increased from 5 to 10 segments for better stability on low-power devices
-        liveDurationInfinity: false,    // Don't treat live streams as infinite duration
-        lowLatencyMode: false,          // Disable low latency mode for better stability on low-power devices
-        enableWorker: true,
-        fragLoadingTimeOut: 30000,      // Increased from 20 to 30 seconds timeout for fragment loading
-        manifestLoadingTimeOut: 20000,  // Increased from 15 to 20 seconds timeout for manifest loading
-        levelLoadingTimeOut: 20000,     // Increased from 15 to 20 seconds timeout for level loading
-        backBufferLength: 60,           // Add back buffer length to keep more segments in memory
-        startLevel: -1,                 // Auto-select quality level based on network conditions
-        abrEwmaDefaultEstimate: 500000, // Start with a lower bandwidth estimate (500kbps)
-        abrBandWidthFactor: 0.7,        // Be more conservative with bandwidth estimates
-        abrBandWidthUpFactor: 0.5       // Be more conservative when increasing quality
+        // Buffer management - keep it simple and stable
+        maxBufferLength: 30,            // Maximum buffer length in seconds
+        maxMaxBufferLength: 60,         // Maximum maximum buffer length
+        backBufferLength: 10,           // Reduced back buffer to prevent memory issues
+
+        // Live stream settings
+        liveSyncDurationCount: 3,       // Number of segments to keep in sync
+        liveMaxLatencyDurationCount: 10, // Maximum latency before seeking
+        liveDurationInfinity: false,    // Don't treat live streams as infinite
+        lowLatencyMode: false,          // Disable low latency for stability
+
+        // Loading timeouts
+        fragLoadingTimeOut: 30000,      // Fragment loading timeout
+        manifestLoadingTimeOut: 20000,  // Manifest loading timeout
+        levelLoadingTimeOut: 20000,     // Level loading timeout
+
+        // Quality settings
+        startLevel: -1,                 // Auto-select quality
+        abrEwmaDefaultEstimate: 500000, // Conservative bandwidth estimate
+        abrBandWidthFactor: 0.7,        // Conservative bandwidth factor
+        abrBandWidthUpFactor: 0.5,      // Conservative quality increase
+
+        // Worker and debugging
+        enableWorker: true,             // Use web worker for better performance
+        debug: false,                   // Disable debug logging
+
+        // Buffer flushing - important for preventing appendBuffer errors
+        maxBufferHole: 0.5,             // Maximum buffer hole tolerance
+        maxFragLookUpTolerance: 0.25,   // Fragment lookup tolerance
+
+        // Append error handling
+        appendErrorMaxRetry: 3,         // Retry appending on error
+
+        // Manifest refresh
+        manifestLoadingMaxRetry: 3,     // Retry manifest loading
+        manifestLoadingRetryDelay: 1000 // Delay between manifest retries
       });
 
       hls.loadSource(hlsStreamUrl);
@@ -83,29 +103,47 @@ export function HLSVideoCell({
       });
 
       hls.on(Hls.Events.ERROR, function(event, data) {
-        if (data.fatal) {
-          console.error('HLS error:', data);
-          hls.destroy();
-          setError(data.details || 'HLS playback error');
-          setIsLoading(false);
-          setIsPlaying(false);
+        console.log(`HLS event: ${data.type}, fatal: ${data.fatal}, details: ${data.details}`);
+
+        // Handle non-fatal errors
+        if (!data.fatal) {
+          // Handle buffer errors by trying to recover
+          if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+            console.warn('Non-fatal media error, attempting recovery:', data.details);
+            hls.recoverMediaError();
+          } else if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+            console.warn('Non-fatal network error:', data.details);
+            // Network errors often resolve themselves, just log them
+          }
+          return;
+        }
+
+        // Handle fatal errors
+        console.error('Fatal HLS error:', data);
+
+        switch(data.type) {
+          case Hls.ErrorTypes.NETWORK_ERROR:
+            console.error('Fatal network error encountered, trying to recover');
+            hls.startLoad();
+            break;
+          case Hls.ErrorTypes.MEDIA_ERROR:
+            console.error('Fatal media error encountered, trying to recover');
+            hls.recoverMediaError();
+            break;
+          default:
+            // Cannot recover
+            hls.destroy();
+            setError(data.details || 'HLS playback error');
+            setIsLoading(false);
+            setIsPlaying(false);
+            break;
         }
       });
 
-      // Set up less frequent refresh to reduce load on low-power devices
-      const refreshInterval = 60000; // 60 seconds
-      const refreshTimer = setInterval(() => {
-        if (hls) {
-          console.log(`Refreshing HLS stream for ${stream.name}`);
-          const newTimestamp = Date.now();
-          const newUrl = `/hls/${encodeURIComponent(stream.name)}/index.m3u8?_t=${newTimestamp}`;
-          hls.loadSource(newUrl);
-        }
-      }, refreshInterval);
-
-      // Store hls instance and timer for cleanup
+      // Store hls instance for cleanup
+      // Note: We removed the periodic refresh as it was causing buffer state issues
+      // HLS.js will automatically handle manifest refreshes for live streams
       hlsPlayerRef.current = hls;
-      refreshTimerRef.current = refreshTimer;
     }
     // Check if HLS is supported natively (Safari)
     else if (videoRef.current.canPlayType('application/vnd.apple.mpegurl')) {
@@ -132,19 +170,13 @@ export function HLSVideoCell({
     // Cleanup function
     return () => {
       console.log(`Cleaning up HLS player for stream ${stream.name}`);
-      
-      // Clear refresh timer
-      if (refreshTimerRef.current) {
-        clearInterval(refreshTimerRef.current);
-        refreshTimerRef.current = null;
-      }
-      
+
       // Destroy HLS instance
       if (hlsPlayerRef.current) {
         hlsPlayerRef.current.destroy();
         hlsPlayerRef.current = null;
       }
-      
+
       // Reset video element
       if (videoRef.current) {
         videoRef.current.pause();
