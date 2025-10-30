@@ -5,6 +5,9 @@ services:
     restart: unless-stopped
     ports:
       - "8080:8080"
+      - "1984:1984"  # go2rtc API port
     volumes:
       - ./config:/etc/lightnvr
-      - ./recordings:/var/lib/lightnvr/recordings
+      - ./data:/var/lib/lightnvr/data
+    environment:
+      - TZ=UTC  # Set timezone, change as needed

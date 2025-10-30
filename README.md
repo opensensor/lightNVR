@@ -101,16 +101,36 @@ sudo ./scripts/validate_daemon_fix.sh
 
 ### Docker Installation
 
+#### Using Docker Compose (Recommended)
+
+```bash
+# Clone the repository
+git clone https://github.com/opensensor/lightNVR.git
+cd lightNVR
+
+# Start the container
+docker-compose up -d
+```
+
+The default `docker-compose.yml` will create two volumes:
+- `./config` - Configuration files (mounted to `/etc/lightnvr`)
+- `./data` - Persistent data including database, recordings, and models (mounted to `/var/lib/lightnvr/data`)
+
+#### Using Docker Run
+
 ```bash
 docker pull ghcr.io/opensensor/lightnvr:latest
 docker run -d \
   --name lightnvr \
   --net=host \
   -p 8080:8080 \
+  -p 1984:1984 \
   -v /path/to/config:/etc/lightnvr \
-  -v /path/to/recordings:/var/lib/lightnvr/recordings \
+  -v /path/to/data:/var/lib/lightnvr/data \
   ghcr.io/opensensor/lightnvr:latest
 ```
+
+**Important:** The data volume (`/var/lib/lightnvr/data`) must be persisted to avoid losing the database and recordings on container restart.
 
 ## Documentation
 

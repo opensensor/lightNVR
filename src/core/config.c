@@ -40,7 +40,13 @@ void load_default_config(config_t *config) {
     config->max_storage_size = 0; // 0 means unlimited
     config->retention_days = 30;
     config->auto_delete_oldest = true;
-    
+
+    // MP4 recording settings
+    config->record_mp4_directly = false;
+    snprintf(config->mp4_storage_path, sizeof(config->mp4_storage_path), "/var/lib/lightnvr/recordings/mp4");
+    config->mp4_segment_duration = 900; // 15 minutes
+    config->mp4_retention_days = 30;
+
     // Models settings
     snprintf(config->models_path, MAX_PATH_LENGTH, "/var/lib/lightnvr/models");
     
@@ -303,6 +309,15 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             config->retention_days = atoi(value);
         } else if (strcmp(name, "auto_delete_oldest") == 0) {
             config->auto_delete_oldest = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        } else if (strcmp(name, "record_mp4_directly") == 0) {
+            config->record_mp4_directly = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        } else if (strcmp(name, "mp4_path") == 0) {
+            strncpy(config->mp4_storage_path, value, sizeof(config->mp4_storage_path) - 1);
+            config->mp4_storage_path[sizeof(config->mp4_storage_path) - 1] = '\0';
+        } else if (strcmp(name, "mp4_segment_duration") == 0) {
+            config->mp4_segment_duration = atoi(value);
+        } else if (strcmp(name, "mp4_retention_days") == 0) {
+            config->mp4_retention_days = atoi(value);
         }
     }
     // Models settings
@@ -879,7 +894,16 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "max_size = %llu  ; 0 means unlimited, otherwise bytes\n", (unsigned long long)config->max_storage_size);
     fprintf(file, "retention_days = %d\n", config->retention_days);
     fprintf(file, "auto_delete_oldest = %s\n\n", config->auto_delete_oldest ? "true" : "false");
-    
+
+    // Write MP4 recording settings
+    fprintf(file, "; New recording format options\n");
+    fprintf(file, "record_mp4_directly = %s\n", config->record_mp4_directly ? "true" : "false");
+    if (config->mp4_storage_path[0] != '\0') {
+        fprintf(file, "mp4_path = %s\n", config->mp4_storage_path);
+    }
+    fprintf(file, "mp4_segment_duration = %d\n", config->mp4_segment_duration);
+    fprintf(file, "mp4_retention_days = %d\n\n", config->mp4_retention_days);
+
     // Write models settings
     fprintf(file, "[models]\n");
     fprintf(file, "path = %s\n\n", config->models_path);
