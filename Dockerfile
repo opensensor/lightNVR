@@ -81,8 +81,8 @@ RUN if grep -q "systemctl" scripts/install.sh; then \
 # Build web assets using Vite
 RUN echo "Building web assets..." && \
     cd /opt/web && \
-    # Install npm dependencies
-    npm ci && \
+    # Install npm dependencies (skip dev dependencies like chromedriver which don't support ARM)
+    npm ci --omit=dev && \
     # Build web assets
     npm run build && \
     # Verify build output exists

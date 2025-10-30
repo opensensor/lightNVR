@@ -104,7 +104,7 @@ When you push a tag, GitHub Actions automatically:
 
 2. **Builds web assets** during the Docker build:
    - Installs Node.js 20.x LTS
-   - Runs `npm ci` to install dependencies
+   - Runs `npm ci --omit=dev` to install production dependencies only
    - Runs `npm run build` to build with Vite
    - Copies built assets to `/usr/share/lightnvr/web-template/`
 

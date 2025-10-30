@@ -185,23 +185,37 @@ When you push a tag (e.g., `v0.13.0`):
 ## Backward Compatibility
 
 ### For thinginfo-firmware
-The buildroot package will need updates to build web assets:
 
-**Option 1: Build from source**
-```makefile
-# Add Node.js as build dependency
-LIGHTNVR_DEPENDENCIES += host-nodejs
+✅ **The buildroot package has been updated!**
 
-# Build web assets
-define LIGHTNVR_BUILD_WEB_ASSETS
-    cd $(@D)/web && npm ci && npm run build
-endef
+The `lightnvr-buildroot/` directory now includes the necessary changes to build web assets during the Buildroot build process.
 
-LIGHTNVR_PRE_BUILD_HOOKS += LIGHTNVR_BUILD_WEB_ASSETS
+**What changed in the buildroot package:**
+
+1. **Added `host-nodejs` dependency** (line 12 in `lightnvr.mk`)
+2. **Added pre-build hook** to build web assets (lines 31-41)
+3. **Installation unchanged** - still copies from `web/dist`, but now it's built
+
+**Updated files:**
+- `lightnvr-buildroot/lightnvr.mk` - Main package definition
+- `lightnvr-buildroot/README.md` - Comprehensive documentation
+- `lightnvr-buildroot/CHANGELOG.md` - Change tracking
+
+**To use the updated package:**
+
+```bash
+# Copy to your Buildroot tree
+cp -r lightnvr-buildroot/ /path/to/buildroot/package/lightnvr/
+
+# Rebuild
+make lightnvr-dirclean
+make lightnvr
 ```
 
-**Option 2: Use pre-built releases**
-Download Docker image and extract web assets:
+**Alternative: Use pre-built releases**
+
+If you prefer not to build web assets in Buildroot, you can extract them from Docker images:
+
 ```bash
 docker pull ghcr.io/opensensor/lightnvr:0.13.0
 docker create --name temp ghcr.io/opensensor/lightnvr:0.13.0

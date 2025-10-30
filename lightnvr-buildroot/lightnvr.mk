@@ -9,7 +9,7 @@ LIGHTNVR_LICENSE_FILES = COPYING
 LIGHTNVR_INSTALL_STAGING = YES
 
 # Dependencies
-LIGHTNVR_DEPENDENCIES = thingino-ffmpeg thingino-libcurl sqlite
+LIGHTNVR_DEPENDENCIES = thingino-ffmpeg thingino-libcurl sqlite host-nodejs
 
 ifeq ($(BR2_PACKAGE_MBEDTLS),y)
 LIGHTNVR_DEPENDENCIES += mbedtls
@@ -27,6 +27,18 @@ LIGHTNVR_CONF_OPTS = \
 	-DGO2RTC_BINARY_PATH=/bin/go2rtc \
 	-DGO2RTC_CONFIG_DIR=/etc/lightnvr/go2rtc \
 	-DGO2RTC_API_PORT=1984
+
+# Build web assets before CMake configuration
+# Web assets are no longer checked into git, so we build them here
+define LIGHTNVR_BUILD_WEB_ASSETS
+	@echo "Building LightNVR web assets..."
+	cd $(@D)/web && \
+		npm ci --omit=dev && \
+		npm run build
+	@echo "Web assets built successfully"
+endef
+
+LIGHTNVR_PRE_BUILD_HOOKS += LIGHTNVR_BUILD_WEB_ASSETS
 
 # Main application files installation
 define LIGHTNVR_INSTALL_APP_FILES
