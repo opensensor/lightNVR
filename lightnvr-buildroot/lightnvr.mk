@@ -33,7 +33,7 @@ LIGHTNVR_CONF_OPTS = \
 define LIGHTNVR_BUILD_WEB_ASSETS
 	@echo "Building LightNVR web assets..."
 	cd $(@D)/web && \
-		npm ci --omit=dev && \
+		npm ci --ignore-scripts && \
 		npm run build
 	@echo "Web assets built successfully"
 endef

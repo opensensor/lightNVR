@@ -87,8 +87,8 @@ RUN echo "Building web assets..." && \
     node --version && \
     npm --version && \
     cd /opt/web && \
-    # Install npm dependencies (skip dev dependencies like chromedriver which don't support ARM)
-    npm ci --omit=dev && \
+    # Install npm dependencies (use --ignore-scripts to skip chromedriver install which doesn't support ARM)
+    npm ci --ignore-scripts && \
     # Build web assets
     npm run build && \
     # Verify build output exists
