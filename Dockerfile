@@ -73,7 +73,7 @@ RUN if grep -q "systemctl" scripts/install.sh; then \
     fi
 
 # Clean any existing build files and build the application with go2rtc support
-RUN mkdir -p /etc/lightnvr /var/lib/lightnvr /var/log/lightnvr /var/run/lightnvr /var/lib/lightnvr/recordings && \
+RUN mkdir -p /etc/lightnvr /var/lib/lightnvr/data /var/log/lightnvr /var/run/lightnvr && \
     chmod -R 777 /var/lib/lightnvr /var/log/lightnvr /var/run/lightnvr && \
     # Clean any existing build files
     rm -rf build/ && \
@@ -102,7 +102,7 @@ RUN apt-get update && apt-get install -y \
     rm -rf /var/lib/apt/lists/*
 
 # Create necessary directories in runtime
-RUN mkdir -p /etc/lightnvr /etc/lightnvr/go2rtc /var/lib/lightnvr /var/log/lightnvr /var/run/lightnvr /var/lib/lightnvr/recordings && \
+RUN mkdir -p /etc/lightnvr /etc/lightnvr/go2rtc /var/lib/lightnvr/data /var/log/lightnvr /var/run/lightnvr && \
     chmod -R 777 /var/lib/lightnvr /var/log/lightnvr /var/run/lightnvr
 
 # Copy compiled binary and config files from builder stage
@@ -134,9 +134,11 @@ RUN echo '#!/bin/bash' > /bin/start.sh && \
 # Expose required ports
 EXPOSE 8080 1984
 
-# Volume for configuration and recordings persistence
+# Volume for configuration and data persistence
+# /etc/lightnvr - Configuration files
+# /var/lib/lightnvr/data - Persistent data (database, recordings, models, etc.)
 VOLUME /etc/lightnvr
-VOLUME /var/lib/lightnvr/recordings
+VOLUME /var/lib/lightnvr/data
 
 # Command to start the services
 CMD ["/bin/start.sh"]

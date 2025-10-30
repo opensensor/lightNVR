@@ -125,6 +125,14 @@ typedef struct {
     char go2rtc_binary_path[MAX_PATH_LENGTH];
     char go2rtc_config_dir[MAX_PATH_LENGTH];
     int go2rtc_api_port;
+
+    // go2rtc WebRTC settings for NAT traversal
+    bool go2rtc_webrtc_enabled;           // Enable WebRTC (default: true)
+    int go2rtc_webrtc_listen_port;        // WebRTC listen port (default: 8555)
+    bool go2rtc_stun_enabled;             // Enable STUN servers (default: true)
+    char go2rtc_stun_server[256];         // Primary STUN server (default: stun.l.google.com:19302)
+    char go2rtc_external_ip[64];          // Optional: External IP for NAT (empty = auto-detect)
+    char go2rtc_ice_servers[512];         // Optional: Custom ICE servers (comma-separated)
 } config_t;
 
 /**

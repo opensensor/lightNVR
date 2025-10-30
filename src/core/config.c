@@ -91,6 +91,14 @@ void load_default_config(config_t *config) {
     snprintf(config->go2rtc_binary_path, MAX_PATH_LENGTH, "/usr/local/bin/go2rtc");
     snprintf(config->go2rtc_config_dir, MAX_PATH_LENGTH, "/etc/lightnvr/go2rtc");
     config->go2rtc_api_port = 1984;
+
+    // go2rtc WebRTC settings for NAT traversal
+    config->go2rtc_webrtc_enabled = true;  // Enable WebRTC by default
+    config->go2rtc_webrtc_listen_port = 8555;  // Default WebRTC listen port
+    config->go2rtc_stun_enabled = true;  // Enable STUN by default for NAT traversal
+    snprintf(config->go2rtc_stun_server, sizeof(config->go2rtc_stun_server), "stun.l.google.com:19302");
+    config->go2rtc_external_ip[0] = '\0';  // Empty by default (auto-detect)
+    config->go2rtc_ice_servers[0] = '\0';  // Empty by default (use STUN server)
     
     // Initialize default values for detection-based recording in streams
     for (int i = 0; i < MAX_STREAMS; i++) {
@@ -427,6 +435,21 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             strncpy(config->go2rtc_config_dir, value, MAX_PATH_LENGTH - 1);
         } else if (strcmp(name, "api_port") == 0) {
             config->go2rtc_api_port = atoi(value);
+        } else if (strcmp(name, "webrtc_enabled") == 0) {
+            config->go2rtc_webrtc_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        } else if (strcmp(name, "webrtc_listen_port") == 0) {
+            config->go2rtc_webrtc_listen_port = atoi(value);
+        } else if (strcmp(name, "stun_enabled") == 0) {
+            config->go2rtc_stun_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        } else if (strcmp(name, "stun_server") == 0) {
+            strncpy(config->go2rtc_stun_server, value, sizeof(config->go2rtc_stun_server) - 1);
+            config->go2rtc_stun_server[sizeof(config->go2rtc_stun_server) - 1] = '\0';
+        } else if (strcmp(name, "external_ip") == 0) {
+            strncpy(config->go2rtc_external_ip, value, sizeof(config->go2rtc_external_ip) - 1);
+            config->go2rtc_external_ip[sizeof(config->go2rtc_external_ip) - 1] = '\0';
+        } else if (strcmp(name, "ice_servers") == 0) {
+            strncpy(config->go2rtc_ice_servers, value, sizeof(config->go2rtc_ice_servers) - 1);
+            config->go2rtc_ice_servers[sizeof(config->go2rtc_ice_servers) - 1] = '\0';
         }
     }
     
@@ -947,6 +970,16 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "binary_path = %s\n", config->go2rtc_binary_path);
     fprintf(file, "config_dir = %s\n", config->go2rtc_config_dir);
     fprintf(file, "api_port = %d\n", config->go2rtc_api_port);
+    fprintf(file, "webrtc_enabled = %s\n", config->go2rtc_webrtc_enabled ? "true" : "false");
+    fprintf(file, "webrtc_listen_port = %d\n", config->go2rtc_webrtc_listen_port);
+    fprintf(file, "stun_enabled = %s\n", config->go2rtc_stun_enabled ? "true" : "false");
+    fprintf(file, "stun_server = %s\n", config->go2rtc_stun_server);
+    if (config->go2rtc_external_ip[0] != '\0') {
+        fprintf(file, "external_ip = %s\n", config->go2rtc_external_ip);
+    }
+    if (config->go2rtc_ice_servers[0] != '\0') {
+        fprintf(file, "ice_servers = %s\n", config->go2rtc_ice_servers);
+    }
     
     // Write stream-specific settings
     for (int i = 0; i < config->max_streams; i++) {

@@ -275,10 +275,70 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port) {
         fprintf(config_file, "    password: %s\n", global_config->web_password);
     }
 
-    // WebRTC configuration
-    fprintf(config_file, "webrtc:\n");
-    fprintf(config_file, "  ice_servers:\n");
-    fprintf(config_file, "    - urls: [stun:stun.l.google.com:19302]\n\n");
+    // RTSP configuration
+    fprintf(config_file, "\nrtsp:\n");
+    fprintf(config_file, "  listen: \":8554\"\n");
+
+    // WebRTC configuration for NAT traversal
+    if (global_config->go2rtc_webrtc_enabled) {
+        fprintf(config_file, "\nwebrtc:\n");
+
+        // WebRTC listen port
+        if (global_config->go2rtc_webrtc_listen_port > 0) {
+            fprintf(config_file, "  listen: \":%d\"\n", global_config->go2rtc_webrtc_listen_port);
+        }
+
+        // ICE servers configuration
+        if (global_config->go2rtc_stun_enabled || global_config->go2rtc_ice_servers[0] != '\0') {
+            fprintf(config_file, "  ice_servers:\n");
+
+            // Add custom ICE servers if specified
+            if (global_config->go2rtc_ice_servers[0] != '\0') {
+                // Parse comma-separated ICE servers
+                char ice_servers_copy[512];
+                strncpy(ice_servers_copy, global_config->go2rtc_ice_servers, sizeof(ice_servers_copy) - 1);
+                ice_servers_copy[sizeof(ice_servers_copy) - 1] = '\0';
+
+                char *token = strtok(ice_servers_copy, ",");
+                while (token != NULL) {
+                    // Trim whitespace
+                    while (*token == ' ') token++;
+                    char *end = token + strlen(token) - 1;
+                    while (end > token && *end == ' ') end--;
+                    *(end + 1) = '\0';
+
+                    fprintf(config_file, "    - urls: [\"%s\"]\n", token);
+                    token = strtok(NULL, ",");
+                }
+            } else if (global_config->go2rtc_stun_enabled) {
+                // Use default STUN server
+                fprintf(config_file, "    - urls:\n");
+                fprintf(config_file, "      - \"stun:%s\"\n", global_config->go2rtc_stun_server);
+                fprintf(config_file, "      - \"stun:stun1.l.google.com:19302\"\n");
+            }
+        }
+
+        // Candidates configuration for NAT traversal
+        fprintf(config_file, "  candidates:\n");
+
+        // If external IP is specified, use it
+        if (global_config->go2rtc_external_ip[0] != '\0') {
+            fprintf(config_file, "    - \"%s:%d\"\n",
+                    global_config->go2rtc_external_ip,
+                    global_config->go2rtc_webrtc_listen_port > 0 ? global_config->go2rtc_webrtc_listen_port : 8555);
+        } else {
+            // Auto-detect external IP using wildcard
+            fprintf(config_file, "    - \"*:%d\"\n",
+                    global_config->go2rtc_webrtc_listen_port > 0 ? global_config->go2rtc_webrtc_listen_port : 8555);
+        }
+
+        // Add STUN server as candidate for ICE gathering
+        if (global_config->go2rtc_stun_enabled) {
+            fprintf(config_file, "    - \"stun:%s\"\n", global_config->go2rtc_stun_server);
+        }
+
+        fprintf(config_file, "\n");
+    }
 
     // Logging configuration
     fprintf(config_file, "log:\n");

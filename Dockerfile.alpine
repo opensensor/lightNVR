@@ -22,7 +22,7 @@ WORKDIR /opt
 COPY . .
 
 # Clean any existing build files and build the application
-RUN mkdir -p /etc/lightnvr /var/lib/lightnvr /var/log/lightnvr /var/run/lightnvr /var/lib/lightnvr/recordings && \
+RUN mkdir -p /etc/lightnvr /var/lib/lightnvr/data /var/log/lightnvr /var/run/lightnvr && \
     chmod -R 777 /var/lib/lightnvr /var/log/lightnvr /var/run/lightnvr && \
     # Clean any existing build files
     rm -rf build/ && \
@@ -44,7 +44,7 @@ RUN apk update && apk add --no-cache \
     mbedtls2 
 
 # Create necessary directories in runtime
-RUN mkdir -p /etc/lightnvr /var/lib/lightnvr /var/log/lightnvr /var/run/lightnvr /var/lib/lightnvr/recordings && \
+RUN mkdir -p /etc/lightnvr /var/lib/lightnvr/data /var/log/lightnvr /var/run/lightnvr && \
     chmod -R 777 /var/lib/lightnvr /var/log/lightnvr /var/run/lightnvr
 
 # Copy compiled binary and config files from builder stage
@@ -60,9 +60,11 @@ COPY --from=builder /lib/libsod.so.1 /lib/libsod.so
 # Expose required ports
 EXPOSE 8080
 
-# Volume for configuration and recordings persistence
+# Volume for configuration and data persistence
+# /etc/lightnvr - Configuration files
+# /var/lib/lightnvr/data - Persistent data (database, recordings, models, etc.)
 VOLUME /etc/lightnvr
-VOLUME /var/lib/lightnvr/recordings
+VOLUME /var/lib/lightnvr/data
 
 # Command to start the service
 CMD ["/bin/lightnvr", "-c", "/etc/lightnvr/lightnvr.ini"]
