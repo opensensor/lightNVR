@@ -35,12 +35,8 @@
 // Note: We can't directly access internal FFmpeg structures
 // So we'll use the public API for cleanup
 
-// Static variables to maintain state between segment recordings
-static AVFormatContext *static_input_ctx = NULL;
-static segment_info_t segment_info = {0, false, false};
-
-// Mutex to protect access to static variables
-static pthread_mutex_t static_vars_mutex = PTHREAD_MUTEX_INITIALIZER;
+// BUGFIX: Removed global static variables that were causing stream mixing
+// The input context and segment info are now per-stream, passed as parameters
 
 /**
  * Initialize the MP4 segment recorder
@@ -57,13 +53,8 @@ void mp4_segment_recorder_init(void) {
     avformat_network_init();
     #endif
 
-    // Reset static variables
-    pthread_mutex_lock(&static_vars_mutex);
-    static_input_ctx = NULL;
-    segment_info.segment_index = 0;
-    segment_info.has_audio = false;
-    segment_info.last_frame_was_key = false;
-    pthread_mutex_unlock(&static_vars_mutex);
+    // BUGFIX: No longer need to reset global static variables
+    // Each stream now has its own input context and segment info
 
     log_info("MP4 segment recorder initialized");
 }
@@ -80,6 +71,9 @@ void mp4_segment_recorder_init(void) {
  * the previous segment ended with a keyframe or not. This ensures proper playback
  * of all recorded segments.
  *
+ * BUGFIX: This function now accepts per-stream input context and segment info
+ * to prevent stream mixing when multiple streams are recording simultaneously.
+ *
  * Error handling:
  * - Network errors: The function will return an error code, but the input context
  *   will be preserved if possible so that the caller can retry.
@@ -92,9 +86,12 @@ void mp4_segment_recorder_init(void) {
  * @param output_file The path to the output MP4 file
  * @param duration The duration to record in seconds
  * @param has_audio Flag indicating whether to include audio in the recording
+ * @param input_ctx_ptr Pointer to the input context for this stream (reused between segments)
+ * @param segment_info_ptr Pointer to the segment info for this stream
  * @return 0 on success, negative value on error
  */
-int record_segment(const char *rtsp_url, const char *output_file, int duration, int has_audio) {
+int record_segment(const char *rtsp_url, const char *output_file, int duration, int has_audio,
+                   AVFormatContext **input_ctx_ptr, segment_info_t *segment_info_ptr) {
     int ret = 0;
     AVFormatContext *input_ctx = NULL;
     AVFormatContext *output_ctx = NULL;
@@ -125,10 +122,14 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
     static int64_t waiting_start_time = 0;
     waiting_start_time = 0;  // Reset for each new segment to prevent using stale values
 
-    // Thread-safe access to static segment info
-    pthread_mutex_lock(&static_vars_mutex);
-    segment_index = segment_info.segment_index + 1;
-    pthread_mutex_unlock(&static_vars_mutex);
+    // BUGFIX: Validate input parameters
+    if (!input_ctx_ptr || !segment_info_ptr) {
+        log_error("Invalid parameters: input_ctx_ptr or segment_info_ptr is NULL");
+        return -1;
+    }
+
+    // BUGFIX: Use per-stream segment info instead of global static variable
+    segment_index = segment_info_ptr->segment_index + 1;
 
     log_info("Starting new segment with index %d", segment_index);
 
@@ -136,16 +137,13 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
     log_info("Output file: %s", output_file);
     log_info("Duration: %d seconds", duration);
 
-    // Thread-safe access to static input context
-    pthread_mutex_lock(&static_vars_mutex);
-    if (static_input_ctx) {
-        input_ctx = static_input_ctx;
-        // Clear the static pointer to prevent double free
-        static_input_ctx = NULL;
-        pthread_mutex_unlock(&static_vars_mutex);
+    // BUGFIX: Use per-stream input context instead of global static variable
+    if (*input_ctx_ptr) {
+        input_ctx = *input_ctx_ptr;
+        // Clear the pointer to prevent double free
+        *input_ctx_ptr = NULL;
         log_debug("Using existing input context");
     } else {
-        pthread_mutex_unlock(&static_vars_mutex);
 
         // Set up RTSP options for low latency
         av_dict_set(&opts, "rtsp_transport", "tcp", 0);  // Use TCP for RTSP (more reliable than UDP)
@@ -495,7 +493,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                     start_time = av_gettime();
 
                     // Note if we had a keyframe at the end of the previous segment
-                    if (segment_info.last_frame_was_key && segment_index > 0) {
+                    if (segment_info_ptr->last_frame_was_key && segment_index > 0) {
                         log_info("Previous segment ended with a key frame, and we're starting with a new keyframe");
                     }
                 } else {
@@ -524,12 +522,12 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                     if (is_keyframe) {
                         log_info("Found final key frame, ending recording");
                         // Set flag to indicate the last frame was a key frame
-                        segment_info.last_frame_was_key = true;
+                        segment_info_ptr->last_frame_was_key = true;
                         log_debug("Last frame was a key frame, next segment will start immediately with this keyframe");
                     } else {
                         log_info("Waited %lld seconds for key frame, ending recording with non-key frame", (long long)wait_time);
                         // Clear flag since the last frame was not a key frame
-                        segment_info.last_frame_was_key = false;
+                        segment_info_ptr->last_frame_was_key = false;
                         log_debug("Last frame was NOT a key frame, next segment will wait for a keyframe");
                     }
 
@@ -1036,14 +1034,12 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         }
     }
 
-    // Thread-safe update of segment info for the next segment
-    pthread_mutex_lock(&static_vars_mutex);
-    segment_info.segment_index = segment_index;
-    segment_info.has_audio = has_audio && audio_stream_idx >= 0;
-    pthread_mutex_unlock(&static_vars_mutex);
+    // BUGFIX: Update per-stream segment info for the next segment
+    segment_info_ptr->segment_index = segment_index;
+    segment_info_ptr->has_audio = has_audio && audio_stream_idx >= 0;
 
     log_info("Saved segment info for next segment: index=%d, has_audio=%d, last_frame_was_key=%d",
-            segment_index, has_audio && audio_stream_idx >= 0, segment_info.last_frame_was_key);
+            segment_index, has_audio && audio_stream_idx >= 0, segment_info_ptr->last_frame_was_key);
 
 cleanup:
     // CRITICAL FIX: Aggressive cleanup to prevent memory growth over time
@@ -1112,35 +1108,15 @@ cleanup:
     // CRITICAL FIX: Properly handle the input context to prevent memory leaks
     log_debug("Handling input context cleanup");
 
-    // Store the input context for reuse if recording was successful
+    // BUGFIX: Store the input context in the per-stream variable for reuse if recording was successful
     if (ret >= 0) {
-        pthread_mutex_lock(&static_vars_mutex);
-        // Only store if there's no existing context (should never happen, but just in case)
-        if (static_input_ctx == NULL) {
-            // We can't directly access internal FFmpeg structures
-            // Just store the context as is and rely on FFmpeg's internal reference counting
-
-            static_input_ctx = input_ctx;
-            // Don't close the input context as we're keeping it for the next segment
-            input_ctx = NULL;
-            log_debug("Stored input context for reuse in next segment");
-        } else {
-            // This should never happen, but if it does, close the current context
-            log_warn("Static input context already exists, closing current context");
-
-            // Clean up all streams before closing
-            for (unsigned int i = 0; i < input_ctx->nb_streams; i++) {
-                if (input_ctx->streams[i]) {
-                    // Free any codec parameters
-                    if (input_ctx->streams[i]->codecpar) {
-                        avcodec_parameters_free(&input_ctx->streams[i]->codecpar);
-                    }
-                }
-            }
-
-            avformat_close_input(&input_ctx);
-        }
-        pthread_mutex_unlock(&static_vars_mutex);
+        // Store the input context for reuse in the next segment
+        // We can't directly access internal FFmpeg structures
+        // Just store the context as is and rely on FFmpeg's internal reference counting
+        *input_ctx_ptr = input_ctx;
+        // Don't close the input context as we're keeping it for the next segment
+        input_ctx = NULL;
+        log_debug("Stored input context for reuse in next segment");
     } else
     {
         // If there was an error, close the input context
@@ -1188,35 +1164,11 @@ cleanup:
 /**
  * Clean up all static resources used by the MP4 segment recorder
  * This function should be called during program shutdown to prevent memory leaks
+ *
+ * BUGFIX: No longer needs to clean up global static variables since they were removed.
+ * Input contexts are now per-stream and cleaned up by the thread context.
  */
 void mp4_segment_recorder_cleanup(void) {
-    // Thread-safe cleanup of static resources
-    pthread_mutex_lock(&static_vars_mutex);
-
-    // Clean up static input context if it exists
-    if (static_input_ctx) {
-        log_info("Cleaning up static input context during shutdown");
-
-        // Flush the input context before closing it
-        if (static_input_ctx->pb) {
-            avio_flush(static_input_ctx->pb);
-        }
-
-        // Let avformat_close_input handle the cleanup of streams and codecs
-
-        // Close the input context
-        avformat_close_input(&static_input_ctx);
-        static_input_ctx = NULL;
-        log_debug("Cleaned up static input context during shutdown");
-    }
-
-    // Reset segment info
-    segment_info.segment_index = 0;
-    segment_info.has_audio = false;
-    segment_info.last_frame_was_key = false;
-
-    pthread_mutex_unlock(&static_vars_mutex);
-
     // Call FFmpeg's global cleanup functions to release any global resources
     // This helps clean up resources that might not be freed otherwise
 

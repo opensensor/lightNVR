@@ -56,13 +56,19 @@ static void *mp4_writer_rtsp_thread(void *arg) {
     int segment_duration = thread_ctx->segment_duration;
     mp4_writer_t *writer = thread_ctx->writer;
 
-    AVFormatContext *input_ctx = NULL;
     AVPacket *pkt = NULL;
     int video_stream_idx = -1;
     int audio_stream_idx = -1;
     int ret;
     time_t start_time = time(NULL);  // Record when we started
-    segment_info_t segment_info = {0};  // Initialize segment info for timestamp continuity and keyframe handling
+
+    // BUGFIX: Initialize per-stream context and segment info
+    // These are now stored in the thread context instead of global static variables
+    thread_ctx->input_ctx = NULL;
+    thread_ctx->segment_info.segment_index = 0;
+    thread_ctx->segment_info.has_audio = false;
+    thread_ctx->segment_info.last_frame_was_key = false;
+    pthread_mutex_init(&thread_ctx->context_mutex, NULL);
 
     // Initialize self-management fields
     thread_ctx->retry_count = 0;
@@ -111,13 +117,10 @@ static void *mp4_writer_rtsp_thread(void *arg) {
         return NULL;
     }
 
-    // Initialize segment info
-    segment_info.segment_index = 0;
-    segment_info.has_audio = false;
-    segment_info.last_frame_was_key = false;
-
+    // BUGFIX: Segment info is already initialized in the thread context initialization above
     log_info("Initialized segment info: index=%d, has_audio=%d, last_frame_was_key=%d",
-            segment_info.segment_index, segment_info.has_audio, segment_info.last_frame_was_key);
+            thread_ctx->segment_info.segment_index, thread_ctx->segment_info.has_audio,
+            thread_ctx->segment_info.last_frame_was_key);
 
     // Main loop to record segments
     while (thread_ctx->running && !thread_ctx->shutdown_requested) {
@@ -293,17 +296,17 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                     pkt = NULL;
                 }
 
-                // 2. Close the input context if it exists
-                if (input_ctx) {
+                // 2. BUGFIX: Close the per-stream input context if it exists
+                if (thread_ctx->input_ctx) {
                     // Flush all buffers before closing
-                    if (input_ctx->pb) {
-                        avio_flush(input_ctx->pb);
+                    if (thread_ctx->input_ctx->pb) {
+                        avio_flush(thread_ctx->input_ctx->pb);
                     }
 
                     // Close the input context - this will free all associated resources
                     // Let FFmpeg handle its own memory management
-                    avformat_close_input(&input_ctx);
-                    input_ctx = NULL;
+                    avformat_close_input(&thread_ctx->input_ctx);
+                    thread_ctx->input_ctx = NULL;
                 }
 
                 // 3. Allocate a new packet
@@ -321,29 +324,26 @@ static void *mp4_writer_rtsp_thread(void *arg) {
         // Record the segment with timestamp continuity and keyframe handling
         // BUGFIX: Removed duplicate loop that was causing segments to be double the intended length
         log_info("Starting segment recording with info: index=%d, has_audio=%d, last_frame_was_key=%d",
-                segment_info.segment_index, segment_info.has_audio, segment_info.last_frame_was_key);
+                thread_ctx->segment_info.segment_index, thread_ctx->segment_info.has_audio,
+                thread_ctx->segment_info.last_frame_was_key);
 
-        // MEMORY LEAK FIX: Ensure we don't have any lingering input context before recording
-        // This is a safety measure to prevent resource leaks
-        if (input_ctx) {
-            avformat_close_input(&input_ctx);
-            input_ctx = NULL;
-            log_debug("Closed existing input context before recording new segment");
-        }
-
+        // BUGFIX: Pass per-stream input context and segment info to record_segment
+        // This prevents stream mixing when multiple streams are recording simultaneously
         ret = record_segment(thread_ctx->rtsp_url, thread_ctx->writer->output_path,
-                           segment_duration, thread_ctx->writer->has_audio);
+                           segment_duration, thread_ctx->writer->has_audio,
+                           &thread_ctx->input_ctx, &thread_ctx->segment_info);
 
         log_info("Finished segment recording with info: index=%d, has_audio=%d, last_frame_was_key=%d",
-                segment_info.segment_index, segment_info.has_audio, segment_info.last_frame_was_key);
+                thread_ctx->segment_info.segment_index, thread_ctx->segment_info.has_audio,
+                thread_ctx->segment_info.last_frame_was_key);
 
         if (ret < 0) {
             log_error("Failed to record segment for stream %s (error: %d), implementing retry strategy...",
                      stream_name, ret);
 
-            // Check if input_ctx is NULL after a failed record_segment call
+            // BUGFIX: Check if input_ctx is NULL after a failed record_segment call
             // This can happen if the connection failed and avformat_open_input failed
-            if (input_ctx == NULL) {
+            if (thread_ctx->input_ctx == NULL) {
                 log_warn("Input context is NULL after record_segment failure for stream %s", stream_name);
             }
 
@@ -356,7 +356,7 @@ static void *mp4_writer_rtsp_thread(void *arg) {
             thread_ctx->last_retry_time = time(NULL);
 
             // If input context was closed, set it to NULL so it will be reopened
-            if (!input_ctx) {
+            if (!thread_ctx->input_ctx) {
                 log_info("Input context was closed, will reopen on next attempt");
             }
 
@@ -365,10 +365,10 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                 log_warn("Multiple segment recording failures for %s (%d retries), attempting aggressive recovery",
                         stream_name, thread_ctx->retry_count);
 
-                // Force input context to be recreated
-                if (input_ctx) {
-                    avformat_close_input(&input_ctx);
-                    input_ctx = NULL;
+                // BUGFIX: Force input context to be recreated
+                if (thread_ctx->input_ctx) {
+                    avformat_close_input(&thread_ctx->input_ctx);
+                    thread_ctx->input_ctx = NULL;
                     log_info("Forcibly closed input context to ensure fresh connection on next attempt");
                 }
 
@@ -426,11 +426,11 @@ static void *mp4_writer_rtsp_thread(void *arg) {
         log_debug("Freed packet resources");
     }
 
-    // 2. CRITICAL FIX: Always ensure input_ctx is properly closed to prevent memory leaks
-    if (input_ctx) {
+    // 2. BUGFIX: Always ensure per-stream input_ctx is properly closed to prevent memory leaks
+    if (thread_ctx->input_ctx) {
         // Make a local copy of the context pointer and NULL out the original
-        AVFormatContext *ctx_to_close = input_ctx;
-        input_ctx = NULL;
+        AVFormatContext *ctx_to_close = thread_ctx->input_ctx;
+        thread_ctx->input_ctx = NULL;
 
         // Flush all buffers before closing
         if (ctx_to_close->pb) {
@@ -458,6 +458,9 @@ static void *mp4_writer_rtsp_thread(void *arg) {
         // Log that we've closed the input context to help with debugging
         log_info("Closed input context for stream %s to prevent memory leaks", stream_name);
     }
+
+    // 2b. BUGFIX: Destroy the context mutex
+    pthread_mutex_destroy(&thread_ctx->context_mutex);
 
     // 3. Notify the segment recorder that we're shutting down
     // This helps ensure proper cleanup of shared resources

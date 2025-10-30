@@ -20,6 +20,18 @@
 // Forward declaration
 typedef struct mp4_writer mp4_writer_t;
 
+// Forward declaration for AVFormatContext
+struct AVFormatContext;
+
+/**
+ * Structure to track segment information per stream
+ */
+typedef struct {
+    int segment_index;
+    bool has_audio;
+    bool last_frame_was_key;  // Flag to indicate if the last frame of previous segment was a key frame
+} segment_info_t;
+
 /**
  * Thread-related fields for the MP4 writer
  */
@@ -36,6 +48,11 @@ typedef struct {
     int retry_count;          // Number of consecutive failures
     time_t last_retry_time;   // Time of the last retry attempt
     bool auto_restart;        // Whether to automatically restart on failure
+
+    // Per-stream FFmpeg context and segment info (BUGFIX: moved from global static variables)
+    struct AVFormatContext *input_ctx;  // Input context for this stream (reused between segments)
+    segment_info_t segment_info;        // Segment information for this stream
+    pthread_mutex_t context_mutex;      // Mutex to protect input_ctx and segment_info
 } mp4_writer_thread_t;
 
 // Function declarations

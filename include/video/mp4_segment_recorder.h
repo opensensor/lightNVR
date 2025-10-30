@@ -15,14 +15,8 @@
 #include <stdbool.h>
 #include <libavformat/avformat.h>
 
-/**
- * Structure to track segment information
- */
-typedef struct {
-    int segment_index;
-    bool has_audio;
-    bool last_frame_was_key;  // Flag to indicate if the last frame of previous segment was a key frame
-} segment_info_t;
+// Include the header that defines segment_info_t
+#include "mp4_writer_thread.h"
 
 /**
  * Record an RTSP stream to an MP4 file for a specified duration
@@ -36,6 +30,9 @@ typedef struct {
  * the previous segment ended with a keyframe or not. This ensures proper playback
  * of all recorded segments.
  *
+ * BUGFIX: This function now accepts per-stream input context and segment info
+ * to prevent stream mixing when multiple streams are recording simultaneously.
+ *
  * Error handling:
  * - Network errors: The function will return an error code, but the input context
  *   will be preserved if possible so that the caller can retry.
@@ -48,9 +45,12 @@ typedef struct {
  * @param output_file The path to the output MP4 file
  * @param duration The duration to record in seconds
  * @param has_audio Flag indicating whether to include audio in the recording
+ * @param input_ctx_ptr Pointer to the input context for this stream (reused between segments)
+ * @param segment_info_ptr Pointer to the segment info for this stream
  * @return 0 on success, negative value on error
  */
-int record_segment(const char *rtsp_url, const char *output_file, int duration, int has_audio);
+int record_segment(const char *rtsp_url, const char *output_file, int duration, int has_audio,
+                   AVFormatContext **input_ctx_ptr, segment_info_t *segment_info_ptr);
 
 /**
  * Initialize the MP4 segment recorder
