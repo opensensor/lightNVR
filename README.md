@@ -211,6 +211,7 @@ The configuration files will persist across container restarts and updates.
 - [ONVIF Detection](docs/ONVIF_DETECTION.md)
 - [ONVIF Motion Recording](docs/ONVIF_MOTION_RECORDING.md)
 - [Motion Buffer System](docs/MOTION_BUFFER.md)
+- [Release Process](docs/RELEASE_PROCESS.md) - For maintainers creating releases
 
 ## Project Structure
 

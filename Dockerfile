@@ -4,12 +4,18 @@ FROM debian:bookworm-slim AS builder
 # Set non-interactive mode
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install build dependencies
+# Install build dependencies including Node.js for web assets
 RUN apt-get update && apt-get install -y \
     git cmake build-essential pkg-config file \
     libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
     libcurl4-openssl-dev sqlite3 libsqlite3-dev \
-    libmbedtls-dev curl wget && \
+    libmbedtls-dev curl wget ca-certificates gnupg && \
+    # Install Node.js 20.x (LTS)
+    mkdir -p /etc/apt/keyrings && \
+    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
+    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list && \
+    apt-get update && \
+    apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
 
 # Fetch external dependencies
@@ -71,6 +77,17 @@ RUN ARCH=$(uname -m) && \
 RUN if grep -q "systemctl" scripts/install.sh; then \
         sed -i 's/systemctl/#systemctl/g' scripts/install.sh; \
     fi
+
+# Build web assets using Vite
+RUN echo "Building web assets..." && \
+    cd /opt/web && \
+    # Install npm dependencies
+    npm ci && \
+    # Build web assets
+    npm run build && \
+    # Verify build output exists
+    ls -la dist/ && \
+    echo "Web assets built successfully"
 
 # Clean any existing build files and build the application with go2rtc support
 RUN mkdir -p /etc/lightnvr /var/lib/lightnvr/data /var/log/lightnvr /var/run/lightnvr && \

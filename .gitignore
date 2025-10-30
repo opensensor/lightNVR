@@ -86,5 +86,7 @@ Makefile
 /external
 
 # node modules
-web/dist/node_modules/
 web/node_modules/
+
+# Web build artifacts (built during CI/CD, not checked in)
+web/dist/
