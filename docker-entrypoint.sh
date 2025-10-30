@@ -39,11 +39,11 @@ init_config() {
     # Copy web assets if directory is empty or doesn't exist
     if [ ! -d /var/lib/lightnvr/web ] || [ -z "$(ls -A /var/lib/lightnvr/web 2>/dev/null)" ]; then
         log_info "Copying web assets from template..."
-        if [ -d /usr/share/lightnvr/web-template ]; then
+        if [ -d /usr/share/lightnvr/web-template ] && [ -n "$(ls -A /usr/share/lightnvr/web-template 2>/dev/null)" ]; then
             cp -r /usr/share/lightnvr/web-template/* /var/lib/lightnvr/web/
             log_info "Web assets copied successfully"
         else
-            log_warn "Web template directory not found, web UI may not work"
+            log_warn "Web template directory not found or empty, web UI may not work"
         fi
     else
         log_info "Web assets already exist, skipping copy"
@@ -156,10 +156,12 @@ EOF
     fi
     
     # Set up models if needed
-    if [ -d /usr/share/lightnvr/models ] && [ -z "$(ls -A /var/lib/lightnvr/data/models 2>/dev/null)" ]; then
-        log_info "Copying default models..."
-        cp -r /usr/share/lightnvr/models/* /var/lib/lightnvr/data/models/
-        log_info "Models copied successfully"
+    if [ -d /usr/share/lightnvr/models ] && [ -n "$(ls -A /usr/share/lightnvr/models 2>/dev/null)" ]; then
+        if [ -z "$(ls -A /var/lib/lightnvr/data/models 2>/dev/null)" ]; then
+            log_info "Copying default models..."
+            cp -r /usr/share/lightnvr/models/* /var/lib/lightnvr/data/models/
+            log_info "Models copied successfully"
+        fi
     fi
     
     # Ensure proper permissions
