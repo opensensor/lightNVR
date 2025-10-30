@@ -2,7 +2,13 @@ name: Docker
 
 on:
   push:
-    tags: [ '*.*.*' ]
+    branches:
+      - main
+    tags:
+      - '*.*.*'
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 env:
@@ -40,6 +46,11 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix={{branch}}-
+          labels: |
+            org.opencontainers.image.title=LightNVR
+            org.opencontainers.image.description=Lightweight Network Video Recorder with go2rtc integration
+            org.opencontainers.image.vendor=OpenSensor
 
       - name: Login to GHCR
         uses: docker/login-action@v3
@@ -110,6 +121,11 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=raw,value=latest,enable=true
+            type=sha,prefix={{branch}}-
+          labels: |
+            org.opencontainers.image.title=LightNVR
+            org.opencontainers.image.description=Lightweight Network Video Recorder with go2rtc integration
+            org.opencontainers.image.vendor=OpenSensor
 
       - name: Create and push manifest
         run: |

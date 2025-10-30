@@ -1,13 +1,34 @@
+version: '3.8'
+
 services:
   lightnvr:
     build: .
     container_name: lightnvr
     restart: unless-stopped
     ports:
-      - "8080:8080"
-      - "1984:1984"  # go2rtc API port
+      - "8080:8080"     # Web UI
+      - "8554:8554"     # RTSP
+      - "8555:8555"     # WebRTC TCP
+      - "8555:8555/udp" # WebRTC UDP
+      - "1984:1984"     # go2rtc API
     volumes:
+      # Only mount what needs persistence
+      # DO NOT mount /var/lib/lightnvr directly - it will overwrite web assets!
       - ./config:/etc/lightnvr
       - ./data:/var/lib/lightnvr/data
     environment:
-      - TZ=UTC  # Set timezone, change as needed
+      # Timezone configuration
+      - TZ=UTC  # Change to your timezone (e.g., America/New_York, Europe/London)
+
+      # go2rtc configuration persistence
+      # Set to 'false' to let go2rtc regenerate config on each restart
+      - GO2RTC_CONFIG_PERSIST=true
+
+      # Auto-initialize configuration files on first run
+      - LIGHTNVR_AUTO_INIT=true
+    networks:
+      - lightnvr
+
+networks:
+  lightnvr:
+    driver: bridge

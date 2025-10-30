@@ -98,47 +98,70 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Install only necessary runtime dependencies
 RUN apt-get update && apt-get install -y \
     libavcodec59 libavformat59 libavutil57 libswscale6 \
-    libcurl4 libmbedtls14 libmbedcrypto7 sqlite3 procps && \
+    libcurl4 libmbedtls14 libmbedcrypto7 sqlite3 procps curl && \
     rm -rf /var/lib/apt/lists/*
 
-# Create necessary directories in runtime
-RUN mkdir -p /etc/lightnvr /etc/lightnvr/go2rtc /var/lib/lightnvr/data /var/log/lightnvr /var/run/lightnvr && \
-    chmod -R 777 /var/lib/lightnvr /var/log/lightnvr /var/run/lightnvr
+# Create directory structure
+RUN mkdir -p \
+    /usr/share/lightnvr/web-template \
+    /usr/share/lightnvr/models \
+    /etc/lightnvr \
+    /etc/lightnvr/go2rtc \
+    /var/lib/lightnvr \
+    /var/log/lightnvr \
+    /var/run/lightnvr && \
+    chmod -R 755 /var/lib/lightnvr /var/log/lightnvr /var/run/lightnvr
 
-# Copy compiled binary and config files from builder stage
+# Copy binaries from builder
 COPY --from=builder /bin/lightnvr /bin/lightnvr
 COPY --from=builder /bin/go2rtc /bin/go2rtc
-COPY --from=builder /etc/lightnvr /etc/lightnvr
-COPY --from=builder /var/lib/lightnvr /var/lib/lightnvr
-COPY --from=builder /var/log/lightnvr /var/log/lightnvr
-COPY --from=builder /var/run/lightnvr /var/run/lightnvr
+
+# Copy SOD libraries
 COPY --from=builder /lib/libsod.so.1.1.9 /lib/libsod.so.1.1.9
 COPY --from=builder /lib/libsod.so.1 /lib/libsod.so.1
 COPY --from=builder /lib/libsod.so /lib/libsod.so
-# Copy web assets from Vite build
-COPY --from=builder /opt/web/dist /var/lib/lightnvr/web
+
+# Copy web assets to template location (won't be overwritten by volume mounts)
+COPY --from=builder /opt/web/dist /usr/share/lightnvr/web-template/
+
+# Copy entrypoint script
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Create a startup script to launch both services
 RUN echo '#!/bin/bash' > /bin/start.sh && \
     echo '# Start go2rtc in the background' >> /bin/start.sh && \
-    echo '/bin/go2rtc &' >> /bin/start.sh && \
+    echo '/bin/go2rtc --config /etc/lightnvr/go2rtc/go2rtc.yaml &' >> /bin/start.sh && \
     echo 'GO2RTC_PID=$!' >> /bin/start.sh && \
+    echo '' >> /bin/start.sh && \
+    echo '# Wait a moment for go2rtc to start' >> /bin/start.sh && \
+    echo 'sleep 2' >> /bin/start.sh && \
     echo '' >> /bin/start.sh && \
     echo '# Start lightnvr in the foreground' >> /bin/start.sh && \
     echo 'exec /bin/lightnvr -c /etc/lightnvr/lightnvr.ini' >> /bin/start.sh && \
     echo '' >> /bin/start.sh && \
     echo '# If lightnvr exits, kill go2rtc' >> /bin/start.sh && \
-    echo 'kill $GO2RTC_PID' >> /bin/start.sh && \
+    echo 'kill $GO2RTC_PID 2>/dev/null || true' >> /bin/start.sh && \
     chmod +x /bin/start.sh
 
-# Expose required ports
-EXPOSE 8080 1984
+# Define volumes for persistent data only
+# Note: Do NOT mount /var/lib/lightnvr directly as it will overwrite web assets
+VOLUME ["/etc/lightnvr", "/var/lib/lightnvr/data"]
 
-# Volume for configuration and data persistence
-# /etc/lightnvr - Configuration files
-# /var/lib/lightnvr/data - Persistent data (database, recordings, models, etc.)
-VOLUME /etc/lightnvr
-VOLUME /var/lib/lightnvr/data
+# Expose ports
+EXPOSE 8080 8554 8555 8555/udp 1984
+
+# Environment variables for configuration
+ENV GO2RTC_CONFIG_PERSIST=true \
+    LIGHTNVR_AUTO_INIT=true \
+    LIGHTNVR_WEB_ROOT=/var/lib/lightnvr/web
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8080/ || exit 1
+
+# Use entrypoint script for initialization
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 
 # Command to start the services
 CMD ["/bin/start.sh"]

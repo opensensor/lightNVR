@@ -101,7 +101,7 @@ sudo ./scripts/validate_daemon_fix.sh
 
 ### Docker Installation
 
-#### Using Docker Compose (Recommended)
+#### Quick Start with Docker Compose (Recommended)
 
 ```bash
 # Clone the repository
@@ -110,27 +110,92 @@ cd lightNVR
 
 # Start the container
 docker-compose up -d
+
+# View logs
+docker-compose logs -f
 ```
 
-The default `docker-compose.yml` will create two volumes:
-- `./config` - Configuration files (mounted to `/etc/lightnvr`)
-- `./data` - Persistent data including database, recordings, and models (mounted to `/var/lib/lightnvr/data`)
+The container will automatically:
+- Create default configuration files in `./config`
+- Initialize the database in `./data/database`
+- Set up web assets with working defaults
+- Configure go2rtc with WebRTC/STUN support
+
+Access the web UI at `http://localhost:8080` (default credentials: admin/admin)
 
 #### Using Docker Run
 
 ```bash
 docker pull ghcr.io/opensensor/lightnvr:latest
+
 docker run -d \
   --name lightnvr \
-  --net=host \
+  --restart unless-stopped \
   -p 8080:8080 \
+  -p 8554:8554 \
+  -p 8555:8555 \
+  -p 8555:8555/udp \
   -p 1984:1984 \
-  -v /path/to/config:/etc/lightnvr \
-  -v /path/to/data:/var/lib/lightnvr/data \
+  -v ./config:/etc/lightnvr \
+  -v ./data:/var/lib/lightnvr/data \
+  -e TZ=America/New_York \
   ghcr.io/opensensor/lightnvr:latest
 ```
 
-**Important:** The data volume (`/var/lib/lightnvr/data`) must be persisted to avoid losing the database and recordings on container restart.
+#### Volume Mounts Explained
+
+The container uses two volume mounts for persistence:
+
+- **`/etc/lightnvr`** - Configuration files
+  - `lightnvr.ini` - Main configuration
+  - `go2rtc/go2rtc.yaml` - go2rtc WebRTC/RTSP configuration
+
+- **`/var/lib/lightnvr/data`** - Persistent data
+  - `database/` - SQLite database
+  - `recordings/` - Video recordings (HLS and MP4)
+  - `models/` - Object detection models
+
+**⚠️ Important:** Do NOT mount `/var/lib/lightnvr` directly as it will overwrite web assets!
+
+#### Exposed Ports
+
+- **8080** - Web UI (HTTP)
+- **8554** - RTSP streaming
+- **8555** - WebRTC (TCP/UDP)
+- **1984** - go2rtc API
+
+#### Environment Variables
+
+- `TZ` - Timezone (default: UTC)
+- `GO2RTC_CONFIG_PERSIST` - Persist go2rtc config across restarts (default: true)
+- `LIGHTNVR_AUTO_INIT` - Auto-initialize config files (default: true)
+
+#### First Run
+
+On first run, the container will:
+1. Create default configuration files in `/etc/lightnvr`
+2. Copy web assets to `/var/lib/lightnvr/web`
+3. Initialize the database in `/var/lib/lightnvr/data/database`
+4. Set up go2rtc with WebRTC/STUN configuration
+
+The go2rtc configuration includes STUN servers for WebRTC NAT traversal, so WebRTC streaming should work out-of-the-box in most network environments.
+
+#### Customizing Configuration
+
+After first run, you can customize the configuration:
+
+```bash
+# Edit main configuration
+nano ./config/lightnvr.ini
+
+# Edit go2rtc configuration (WebRTC, RTSP settings)
+nano ./config/go2rtc/go2rtc.yaml
+
+# Restart to apply changes
+docker-compose restart
+```
+
+The configuration files will persist across container restarts and updates.
 
 ## Documentation
 
