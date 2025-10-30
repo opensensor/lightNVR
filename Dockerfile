@@ -10,12 +10,15 @@ RUN apt-get update && apt-get install -y \
     libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
     libcurl4-openssl-dev sqlite3 libsqlite3-dev \
     libmbedtls-dev curl wget ca-certificates gnupg && \
-    # Install Node.js 20.x (LTS)
+    # Install Node.js 20.x (LTS) - includes npm
     mkdir -p /etc/apt/keyrings && \
     curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
     echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list && \
     apt-get update && \
     apt-get install -y nodejs && \
+    # Verify installation
+    node --version && \
+    npm --version && \
     rm -rf /var/lib/apt/lists/*
 
 # Fetch external dependencies
@@ -80,6 +83,9 @@ RUN if grep -q "systemctl" scripts/install.sh; then \
 
 # Build web assets using Vite
 RUN echo "Building web assets..." && \
+    # Verify Node.js and npm are available
+    node --version && \
+    npm --version && \
     cd /opt/web && \
     # Install npm dependencies (skip dev dependencies like chromedriver which don't support ARM)
     npm ci --omit=dev && \
