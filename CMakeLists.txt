@@ -375,7 +375,6 @@ target_link_libraries(lightnvr
         pthread
         dl
         m
-        uuid
 )
 
 # Link libraries for rebuild_recordings utility
