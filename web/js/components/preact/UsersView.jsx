@@ -335,14 +335,14 @@ export function UsersView() {
         <div className="mb-4 flex justify-between items-center">
           <h2 className="text-xl font-semibold">User Management</h2>
           <button
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+            className="btn-primary"
             onClick={handleAddUserClick}
           >
             Add User
           </button>
         </div>
 
-        <div className="bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded relative mb-4">
+        <div className="badge-info border px-4 py-3 rounded relative mb-4">
           <h4 className="font-bold mb-2">No Users Found</h4>
           <p>Click the "Add User" button to create your first user.</p>
         </div>
@@ -364,7 +364,7 @@ export function UsersView() {
       <div className="mb-4 flex justify-between items-center">
         <h2 className="text-xl font-semibold">User Management</h2>
         <button
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+          className="btn-primary"
           onClick={handleAddUserClick}
         >
           Add User

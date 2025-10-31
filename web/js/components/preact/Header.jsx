@@ -110,10 +110,10 @@ export function Header({ version = VERSION }) {
   // Render navigation item
   const renderNavItem = (item) => {
     const isActive = activeNav === item.id;
-    const baseClasses = "text-white no-underline rounded transition-colors";
+    const baseClasses = "no-underline rounded transition-colors";
     const desktopClasses = "px-3 py-2";
     const mobileClasses = "block w-full px-4 py-3 text-left";
-    const activeClass = isActive ? 'bg-blue-600' : 'hover:bg-blue-700';
+    const activeClass = isActive ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]' : 'text-[hsl(var(--card-foreground))] hover:bg-[hsl(var(--primary)/0.8)] hover:text-[hsl(var(--primary-foreground))]';
 
     return (
         <li className={mobileMenuOpen ? "w-full" : "mx-1"}>
@@ -138,11 +138,11 @@ export function Header({ version = VERSION }) {
   };
 
   return (
-      <header className="bg-gray-800 text-white py-2 shadow-md mb-4 w-full" style={{ position: 'relative', zIndex: 20 }}>
+      <header className="py-2 shadow-md mb-4 w-full" style={{ position: 'relative', zIndex: 20, backgroundColor: 'hsl(var(--card))', color: 'hsl(var(--card-foreground))' }}>
         <div className="container mx-auto px-4 flex justify-between items-center">
           <div className="logo flex items-center">
             <h1 className="text-xl font-bold m-0">LightNVR</h1>
-            <span className="version text-blue-200 text-xs ml-2">v{version}</span>
+            <span className="version text-xs ml-2" style={{color: 'hsl(var(--muted-foreground))'}}>v{version}</span>
           </div>
 
           {/* Desktop Navigation */}
@@ -155,12 +155,13 @@ export function Header({ version = VERSION }) {
           {/* User Menu (Desktop) */}
           <div className="user-menu hidden md:flex items-center">
             <span className="mr-2">{username}</span>
-            <a href="#" onClick={handleLogout} className="logout-link text-white no-underline hover:bg-blue-700 px-3 py-1 rounded transition-colors">Logout</a>
+            <a href="#" onClick={handleLogout} className="logout-link no-underline px-3 py-1 rounded transition-colors" style={{color: 'hsl(var(--card-foreground))'}} onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.8)'} onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>Logout</a>
           </div>
 
           {/* Mobile Menu Button */}
           <button
-              className="md:hidden text-white p-2 focus:outline-none"
+              className="md:hidden p-2 focus:outline-none"
+              style={{color: 'hsl(var(--card-foreground))'}}
               onClick={toggleMobileMenu}
               aria-label="Toggle menu"
           >
@@ -172,13 +173,13 @@ export function Header({ version = VERSION }) {
 
         {/* Mobile Navigation */}
         {mobileMenuOpen && (
-            <div className="md:hidden mt-2 border-t border-gray-700 pt-2 container mx-auto px-4">
+            <div className="md:hidden mt-2 border-t pt-2 container mx-auto px-4" style={{borderColor: 'hsl(var(--border))'}}>
               <ul className="list-none m-0 p-0 flex flex-col w-full">
                 {navItems.map(renderNavItem)}
-                <li className="w-full mt-2 pt-2 border-t border-gray-700">
+                <li className="w-full mt-2 pt-2 border-t" style={{borderColor: 'hsl(var(--border))'}}>
                   <div className="flex justify-between items-center px-4 py-2">
                     <span>{username}</span>
-                    <a href="#" onClick={handleLogout} className="logout-link text-white no-underline hover:bg-blue-700 px-3 py-1 rounded transition-colors">Logout</a>
+                    <a href="#" onClick={handleLogout} className="logout-link no-underline px-3 py-1 rounded transition-colors" style={{color: 'hsl(var(--card-foreground))'}} onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.8)'} onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>Logout</a>
                   </div>
                 </li>
               </ul>

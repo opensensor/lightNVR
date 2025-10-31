@@ -164,26 +164,26 @@ export function MotionView() {
     <div className="container mx-auto px-4 py-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-2">Motion Recording</h1>
-        <p className="text-gray-600 dark:text-gray-400">
+        <p className="text-muted-foreground">
           Configure ONVIF motion detection recording for your cameras
         </p>
       </div>
 
       {/* Storage Statistics */}
       {storageStats && (
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-8">
+        <div className="bg-card text-card-foreground rounded-lg shadow-md p-6 mb-8">
           <h2 className="text-xl font-semibold mb-4">Storage Statistics</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded">
-              <div className="text-sm text-gray-600 dark:text-gray-400">Total Recordings</div>
+              <div className="text-sm text-muted-foreground">Total Recordings</div>
               <div className="text-2xl font-bold">{storageStats.total_recordings || 0}</div>
             </div>
             <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded">
-              <div className="text-sm text-gray-600 dark:text-gray-400">Total Size</div>
+              <div className="text-sm text-muted-foreground">Total Size</div>
               <div className="text-2xl font-bold">{formatBytes(storageStats.total_size_bytes || 0)}</div>
             </div>
             <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded">
-              <div className="text-sm text-gray-600 dark:text-gray-400">Disk Usage</div>
+              <div className="text-sm text-muted-foreground">Disk Usage</div>
               <div className="text-2xl font-bold">{(storageStats.disk_space_used_percent || 0).toFixed(1)}%</div>
             </div>
           </div>
@@ -191,8 +191,8 @@ export function MotionView() {
       )}
 
       {/* Streams List */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
-        <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+      <div className="bg-card text-card-foreground rounded-lg shadow-md overflow-hidden">
+        <div className="p-6 border-b border-border">
           <h2 className="text-xl font-semibold">Camera Motion Settings</h2>
         </div>
         
@@ -220,7 +220,7 @@ export function MotionView() {
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+            <tbody className="bg-card text-card-foreground divide-y divide-gray-200 dark:divide-gray-700">
               {streams.map((stream) => (
                 <StreamRow
                   key={stream.name}
@@ -289,37 +289,40 @@ function StreamRow({ stream, onConfigure, onDisable }) {
   return (
     <tr>
       <td className="px-6 py-4 whitespace-nowrap">
-        <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{stream.name}</div>
+        <div className="text-sm font-medium text-foreground">{stream.name}</div>
       </td>
       <td className="px-6 py-4 whitespace-nowrap">
         <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-          isEnabled
-            ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-            : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+          isEnabled ? 'badge-success' : 'badge-muted'
         }`}>
           {isEnabled ? 'Enabled' : 'Disabled'}
         </span>
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
         {configData?.pre_buffer_seconds || '-'}s
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
         {configData?.post_buffer_seconds || '-'}s
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
         {configData?.retention_days || '-'} days
       </td>
       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
         <button
           onClick={() => onConfigure(stream)}
-          className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 mr-4"
+          className="mr-4"
+          style={{color: 'hsl(var(--primary))'}}
+          onMouseOver={(e) => e.currentTarget.style.color = 'hsl(var(--primary) / 0.7)'}
+          onMouseOut={(e) => e.currentTarget.style.color = 'hsl(var(--primary))'}
         >
           Configure
         </button>
         {isEnabled && (
           <button
             onClick={() => onDisable(stream.name)}
-            className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
+            style={{color: 'hsl(var(--danger))'}}
+            onMouseOver={(e) => e.currentTarget.style.color = 'hsl(var(--danger) / 0.7)'}
+            onMouseOut={(e) => e.currentTarget.style.color = 'hsl(var(--danger))'}
           >
             Disable
           </button>
@@ -342,10 +345,10 @@ function ConfigModal({ stream, config, onConfigChange, onSave, onClose, isSaving
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-        <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+      <div className="bg-card text-card-foreground rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <div className="p-6 border-b border-border">
           <h2 className="text-2xl font-bold">Motion Recording Configuration</h2>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">Camera: {stream.name}</p>
+          <p className="text-muted-foreground mt-1">Camera: {stream.name}</p>
         </div>
 
         <div className="p-6 space-y-6">
@@ -360,8 +363,9 @@ function ConfigModal({ stream, config, onConfigChange, onSave, onClose, isSaving
                 checked={config.enabled}
                 onChange={(e) => handleChange('enabled', e.target.checked)}
                 className="sr-only peer"
+                style={{accentColor: 'hsl(var(--primary))'}}
               />
-              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600" style={{backgroundColor: config.enabled ? 'hsl(var(--primary))' : undefined}}></div>
             </label>
           </div>
 
@@ -376,9 +380,9 @@ function ConfigModal({ stream, config, onConfigChange, onSave, onClose, isSaving
               max="30"
               value={config.pre_buffer_seconds}
               onChange={(e) => handleChange('pre_buffer_seconds', parseInt(e.target.value))}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
+              className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
             />
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            <p className="mt-1 text-sm text-muted-foreground">
               Seconds of video to include before motion event (0-30)
             </p>
           </div>
@@ -394,9 +398,9 @@ function ConfigModal({ stream, config, onConfigChange, onSave, onClose, isSaving
               max="60"
               value={config.post_buffer_seconds}
               onChange={(e) => handleChange('post_buffer_seconds', parseInt(e.target.value))}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
+              className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
             />
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            <p className="mt-1 text-sm text-muted-foreground">
               Seconds to continue recording after motion stops (0-60)
             </p>
           </div>
@@ -413,9 +417,9 @@ function ConfigModal({ stream, config, onConfigChange, onSave, onClose, isSaving
               step="60"
               value={config.max_file_duration}
               onChange={(e) => handleChange('max_file_duration', parseInt(e.target.value))}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
+              className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
             />
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            <p className="mt-1 text-sm text-muted-foreground">
               Maximum duration for a single recording file (60-3600 seconds)
             </p>
           </div>
@@ -428,7 +432,7 @@ function ConfigModal({ stream, config, onConfigChange, onSave, onClose, isSaving
             <select
               value={config.codec}
               onChange={(e) => handleChange('codec', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
+              className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
             >
               <option value="h264">H.264</option>
               <option value="h265">H.265</option>
@@ -443,7 +447,7 @@ function ConfigModal({ stream, config, onConfigChange, onSave, onClose, isSaving
             <select
               value={config.quality}
               onChange={(e) => handleChange('quality', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
+              className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
             >
               <option value="low">Low</option>
               <option value="medium">Medium</option>
@@ -462,26 +466,26 @@ function ConfigModal({ stream, config, onConfigChange, onSave, onClose, isSaving
               max="365"
               value={config.retention_days}
               onChange={(e) => handleChange('retention_days', parseInt(e.target.value))}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
+              className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
             />
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            <p className="mt-1 text-sm text-muted-foreground">
               Automatically delete recordings older than this many days (1-365)
             </p>
           </div>
         </div>
 
-        <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end space-x-3">
+        <div className="p-6 border-t border-border flex justify-end space-x-3">
           <button
             onClick={onClose}
             disabled={isSaving}
-            className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+            className="px-4 py-2 border border-input rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             onClick={onSave}
             disabled={isSaving}
-            className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+            className="btn-primary disabled:opacity-50"
           >
             {isSaving ? 'Saving...' : 'Save Configuration'}
           </button>

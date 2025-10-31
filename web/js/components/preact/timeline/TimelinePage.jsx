@@ -475,7 +475,7 @@ export function TimelinePage() {
           <svg className="w-16 h-16 text-gray-400 dark:text-gray-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
           </svg>
-          <p className="text-gray-600 dark:text-gray-400 text-lg">No recordings found for the selected date and stream</p>
+          <p className="text-muted-foreground text-lg">No recordings found for the selected date and stream</p>
         </div>
       );
     }
@@ -491,7 +491,7 @@ export function TimelinePage() {
         {/* Timeline */}
         <div
           id="timeline-container"
-          className="relative w-full h-24 bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg mb-6 overflow-hidden"
+          className="relative w-full h-24 bg-gray-200 dark:bg-gray-700 border border-input rounded-lg mb-6 overflow-hidden"
           ref={timelineContainerRef}
         >
           <TimelineRuler />
@@ -499,7 +499,7 @@ export function TimelinePage() {
           <TimelineCursor />
 
           {/* Instructions for cursor */}
-          <div className="absolute bottom-1 right-2 text-xs text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 bg-opacity-75 dark:bg-opacity-75 px-2 py-1 rounded">
+          <div className="absolute bottom-1 right-2 text-xs text-muted-foreground bg-card text-card-foreground bg-opacity-75 dark:bg-opacity-75 px-2 py-1 rounded">
             Drag the orange dial to navigate
           </div>
         </div>
@@ -513,7 +513,7 @@ export function TimelinePage() {
         <h1 className="text-2xl font-bold">Timeline Playback</h1>
         <div className="ml-4 flex">
           <a href="recordings.html" className="px-3 py-1 bg-gray-300 text-gray-700 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-400 dark:hover:bg-gray-600 rounded-l-md">Table View</a>
-          <a href="timeline.html" className="px-3 py-1 bg-blue-500 text-white rounded-r-md">Timeline View</a>
+          <a href="timeline.html" className="px-3 py-1 rounded-r-md" style={{backgroundColor: 'hsl(var(--primary))', color: 'hsl(var(--primary-foreground))'}}>Timeline View</a>
         </div>
       </div>
 
@@ -555,7 +555,7 @@ export function TimelinePage() {
       </div>
 
       {/* Auto-load message */}
-      <div className="mb-4 text-sm text-gray-500 dark:text-gray-400 italic">
+      <div className="mb-4 text-sm text-muted-foreground italic">
         {isLoadingTimeline ? 'Loading...' : 'Recordings auto-load when stream or date changes'}
       </div>
 

@@ -157,17 +157,17 @@ export function LoginView() {
 
     return baseClass + (
       isSuccess
-        ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200'
-        : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200'
+        ? 'badge-success'
+        : 'badge-danger'
     );
   };
 
   return (
     <section id="login-page" className="page flex items-center justify-center min-h-screen">
-      <div className="login-container w-full max-w-md p-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
+      <div className="login-container w-full max-w-md p-6 bg-card text-card-foreground rounded-lg shadow-lg">
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold">LightNVR</h1>
-          <p className="text-gray-600 dark:text-gray-400">Please sign in to continue</p>
+          <p className="text-muted-foreground">Please sign in to continue</p>
         </div>
 
         {errorMessage && (
@@ -208,7 +208,7 @@ export function LoginView() {
           <div className="form-group">
             <button
                 type="submit"
-                className="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="btn-primary w-full focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={isLoggingIn}
             >
               {isLoggingIn ? 'Signing in...' : 'Sign In'}
@@ -216,7 +216,7 @@ export function LoginView() {
           </div>
         </form>
 
-        <div className="mt-6 text-center text-sm text-gray-600 dark:text-gray-400">
+        <div className="mt-6 text-center text-sm text-muted-foreground">
           <p>Default credentials: admin / admin</p>
           <p className="mt-2">You can change these in Settings after login</p>
         </div>

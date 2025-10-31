@@ -12,8 +12,8 @@
  */
 export function StreamsInfo({ systemInfo, formatBytes }) {
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-      <h3 className="text-lg font-semibold mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">Streams & Recordings</h3>
+    <div className="bg-card text-card-foreground rounded-lg shadow p-4">
+      <h3 className="text-lg font-semibold mb-4 pb-2 border-b border-border">Streams & Recordings</h3>
       <div className="space-y-2">
         <div className="flex justify-between">
           <span className="font-medium">Active Streams:</span>

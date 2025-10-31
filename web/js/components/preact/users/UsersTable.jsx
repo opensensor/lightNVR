@@ -51,20 +51,20 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey }) {
         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
           {users.map(user => (
             <tr key={user.id} className="hover:bg-gray-100 dark:hover:bg-gray-600">
-              <td className="py-3 px-6 border-b border-gray-200 dark:border-gray-700">{user.id}</td>
-              <td className="py-3 px-6 border-b border-gray-200 dark:border-gray-700">{user.username}</td>
-              <td className="py-3 px-6 border-b border-gray-200 dark:border-gray-700">{user.email || '-'}</td>
-              <td className="py-3 px-6 border-b border-gray-200 dark:border-gray-700">{USER_ROLES[user.role] || 'Unknown'}</td>
-              <td className="py-3 px-6 border-b border-gray-200 dark:border-gray-700">
-                <span className={`inline-block px-2 py-1 text-xs font-semibold rounded-full ${user.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+              <td className="py-3 px-6 border-b border-border">{user.id}</td>
+              <td className="py-3 px-6 border-b border-border">{user.username}</td>
+              <td className="py-3 px-6 border-b border-border">{user.email || '-'}</td>
+              <td className="py-3 px-6 border-b border-border">{USER_ROLES[user.role] || 'Unknown'}</td>
+              <td className="py-3 px-6 border-b border-border">
+                <span className={`inline-block px-2 py-1 text-xs font-semibold rounded-full ${user.is_active ? 'badge-success' : 'badge-danger'}`}>
                   {user.is_active ? 'Active' : 'Inactive'}
                 </span>
               </td>
-              <td className="py-3 px-6 border-b border-gray-200 dark:border-gray-700">{user.last_login ? new Date(user.last_login * 1000).toLocaleString() : 'Never'}</td>
-              <td className="py-3 px-6 border-b border-gray-200 dark:border-gray-700">
+              <td className="py-3 px-6 border-b border-border">{user.last_login ? new Date(user.last_login * 1000).toLocaleString() : 'Never'}</td>
+              <td className="py-3 px-6 border-b border-border">
                 <div className="flex space-x-2">
                   <button
-                    className="p-1 text-blue-600 hover:text-blue-800 rounded hover:bg-blue-100 transition-colors"
+                    className="p-1 rounded transition-colors" style={{color: 'hsl(var(--primary))'}} onMouseOver={(e) => {e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.1)'; e.currentTarget.style.color = 'hsl(var(--primary) / 0.7)'}} onMouseOut={(e) => {e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'hsl(var(--primary))'}}
                     onClick={(e) => handleEdit(user, e)}
                     title="Edit User"
                   >
@@ -73,7 +73,7 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey }) {
                     </svg>
                   </button>
                   <button
-                    className="p-1 text-red-600 hover:text-red-800 rounded hover:bg-red-100 transition-colors"
+                    className="p-1 rounded transition-colors" style={{color: 'hsl(var(--danger))'}} onMouseOver={(e) => {e.currentTarget.style.backgroundColor = 'hsl(var(--danger) / 0.1)'; e.currentTarget.style.color = 'hsl(var(--danger) / 0.7)'}} onMouseOut={(e) => {e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'hsl(var(--danger))'}}
                     onClick={(e) => handleDelete(user, e)}
                     title="Delete User"
                   >

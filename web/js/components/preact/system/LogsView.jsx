@@ -72,8 +72,8 @@ function formatLogLevel(level) {
  */
 export function LogsView({ logs, logLevel, logCount, setLogLevel, setLogCount, loadLogs, clearLogs }) {
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 mb-4">
-      <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">
+    <div className="bg-card text-card-foreground rounded-lg shadow p-4 mb-4">
+      <div className="flex justify-between items-center mb-4 pb-2 border-b border-border">
         <h3 className="text-lg font-semibold">System Logs</h3>
         <div className="flex space-x-2">
           <select
@@ -104,14 +104,14 @@ export function LogsView({ logs, logLevel, logCount, setLogLevel, setLogCount, l
           </select>
           <button
             id="refresh-logs-btn"
-            className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+            className="btn-primary focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
             onClick={loadLogs}
           >
             Refresh
           </button>
           <button
             id="clear-logs-btn"
-            className="px-3 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+            className="btn-danger focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
             onClick={clearLogs}
           >
             Clear Logs
@@ -120,11 +120,11 @@ export function LogsView({ logs, logLevel, logCount, setLogLevel, setLogCount, l
       </div>
       <div className="logs-container bg-gray-100 dark:bg-gray-900 rounded p-4 overflow-auto max-h-96 font-mono text-sm">
         {logs.length === 0 ? (
-          <div className="text-gray-500 dark:text-gray-400">No logs found</div>
+          <div className="text-muted-foreground">No logs found</div>
         ) : (
           logs.map((log, index) => (
             <div key={index} className="log-entry mb-1 last:mb-0">
-              <span className="text-gray-500 dark:text-gray-400">{log.timestamp}</span>
+              <span className="text-muted-foreground">{log.timestamp}</span>
               <span className="mx-2">{formatLogLevel(log.level)}</span>
               <span className={`log-message ${log.level === 'error' ? 'text-red-600 dark:text-red-400' : ''}`}>
                 {log.message}

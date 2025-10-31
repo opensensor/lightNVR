@@ -163,7 +163,7 @@ export function SettingsView() {
 
   return (
     <section id="settings-page" class="page">
-      <div class="page-header flex justify-between items-center mb-4 p-4 bg-white dark:bg-gray-800 rounded-lg shadow">
+      <div class="page-header flex justify-between items-center mb-4 p-4 bg-card text-card-foreground rounded-lg shadow">
         <h2 class="text-xl font-bold">Settings</h2>
         <div class="controls">
           <button 
@@ -184,19 +184,19 @@ export function SettingsView() {
       >
         <div class="settings-container space-y-6">
           {/* Appearance Settings */}
-          <div class="settings-group bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-            <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">Appearance</h3>
+          <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
+            <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">Appearance</h3>
             <ThemeCustomizer />
           </div>
 
-          <div class="settings-group bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-            <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">General Settings</h3>
+          <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
+            <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">General Settings</h3>
             <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
               <label for="setting-log-level" class="font-medium">Log Level</label>
               <select 
                 id="setting-log-level" 
                 name="logLevel"
-                class="col-span-2 p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                class="col-span-2 p-2 border border-input rounded bg-background text-foreground"
                 value={settings.logLevel}
                 onChange={handleInputChange}
               >
@@ -207,15 +207,15 @@ export function SettingsView() {
               </select>
             </div>
           </div>
-          <div class="settings-group bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-          <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">Storage Settings</h3>
+          <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
+          <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">Storage Settings</h3>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-storage-path" class="font-medium">Storage Path</label>
             <input 
               type="text" 
               id="setting-storage-path" 
               name="storagePath"
-              class="col-span-2 p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              class="col-span-2 p-2 border border-input rounded bg-background text-foreground"
               value={settings.storagePath}
               onChange={handleInputChange}
             />
@@ -227,11 +227,11 @@ export function SettingsView() {
                 type="text" 
                 id="setting-storage-path-hls" 
                 name="storagePathHls"
-                class="w-full p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                class="w-full p-2 border border-input rounded bg-background text-foreground"
                 value={settings.storagePathHls}
                 onChange={handleInputChange}
               />
-              <span class="hint text-sm text-gray-500 dark:text-gray-400">Optional path for HLS segments. If not specified, Storage Path will be used.</span>
+              <span class="hint text-sm text-muted-foreground">Optional path for HLS segments. If not specified, Storage Path will be used.</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
@@ -242,11 +242,11 @@ export function SettingsView() {
                 id="setting-max-storage" 
                 name="maxStorage"
                 min="0" 
-                class="p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                class="p-2 border border-input rounded bg-background text-foreground"
                 value={settings.maxStorage}
                 onChange={handleInputChange}
               />
-              <span class="hint ml-2 text-sm text-gray-500 dark:text-gray-400">0 = unlimited</span>
+              <span class="hint ml-2 text-sm text-muted-foreground">0 = unlimited</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
@@ -256,7 +256,7 @@ export function SettingsView() {
               id="setting-retention" 
               name="retention"
               min="1" 
-              class="col-span-2 p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              class="col-span-2 p-2 border border-input rounded bg-background text-foreground"
               value={settings.retention}
               onChange={handleInputChange}
             />
@@ -264,11 +264,12 @@ export function SettingsView() {
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-auto-delete" class="font-medium">Auto Delete Oldest</label>
             <div class="col-span-2">
-              <input 
-                type="checkbox" 
-                id="setting-auto-delete" 
+              <input
+                type="checkbox"
+                id="setting-auto-delete"
                 name="autoDelete"
-                class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 dark:bg-gray-700 dark:border-gray-600"
+                class="w-4 h-4 rounded focus:ring-2"
+                style={{accentColor: 'hsl(var(--primary))'}}
                 checked={settings.autoDelete}
                 onChange={handleInputChange}
               />
@@ -280,15 +281,15 @@ export function SettingsView() {
               type="text" 
               id="setting-db-path" 
               name="dbPath"
-              class="col-span-2 p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              class="col-span-2 p-2 border border-input rounded bg-background text-foreground"
               value={settings.dbPath}
               onChange={handleInputChange}
             />
           </div>
           </div>
           
-          <div class="settings-group bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-          <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">Web Interface Settings</h3>
+          <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
+          <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">Web Interface Settings</h3>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-web-port" class="font-medium">Web Port</label>
             <input 
@@ -297,7 +298,7 @@ export function SettingsView() {
               name="webPort"
               min="1" 
               max="65535" 
-              class="col-span-2 p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              class="col-span-2 p-2 border border-input rounded bg-background text-foreground"
               value={settings.webPort}
               onChange={handleInputChange}
             />
@@ -305,11 +306,12 @@ export function SettingsView() {
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-auth-enabled" class="font-medium">Enable Authentication</label>
             <div class="col-span-2">
-              <input 
-                type="checkbox" 
-                id="setting-auth-enabled" 
+              <input
+                type="checkbox"
+                id="setting-auth-enabled"
                 name="authEnabled"
-                class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 dark:bg-gray-700 dark:border-gray-600"
+                class="w-4 h-4 rounded focus:ring-2"
+                style={{accentColor: 'hsl(var(--primary))'}}
                 checked={settings.authEnabled}
                 onChange={handleInputChange}
               />
@@ -321,7 +323,7 @@ export function SettingsView() {
               type="text" 
               id="setting-username" 
               name="username"
-              class="col-span-2 p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              class="col-span-2 p-2 border border-input rounded bg-background text-foreground"
               value={settings.username}
               onChange={handleInputChange}
             />
@@ -332,7 +334,7 @@ export function SettingsView() {
               type="password" 
               id="setting-password" 
               name="password"
-              class="col-span-2 p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              class="col-span-2 p-2 border border-input rounded bg-background text-foreground"
               value={settings.password}
               onChange={handleInputChange}
             />
@@ -340,21 +342,22 @@ export function SettingsView() {
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-webrtc-disabled" class="font-medium">Disable WebRTC (Use HLS Only)</label>
             <div class="col-span-2">
-              <input 
-                type="checkbox" 
-                id="setting-webrtc-disabled" 
+              <input
+                type="checkbox"
+                id="setting-webrtc-disabled"
                 name="webrtcDisabled"
-                class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 dark:bg-gray-700 dark:border-gray-600"
+                class="w-4 h-4 rounded focus:ring-2"
+                style={{accentColor: 'hsl(var(--primary))'}}
                 checked={settings.webrtcDisabled}
                 onChange={handleInputChange}
               />
-              <span class="hint ml-2 text-sm text-gray-500 dark:text-gray-400">When enabled, all streams will use HLS instead of WebRTC</span>
+              <span class="hint ml-2 text-sm text-muted-foreground">When enabled, all streams will use HLS instead of WebRTC</span>
             </div>
           </div>
           </div>
           
-          <div class="settings-group bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-          <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">Memory Optimization</h3>
+          <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
+          <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">Memory Optimization</h3>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-buffer-size" class="font-medium">Buffer Size (KB)</label>
             <input 
@@ -362,7 +365,7 @@ export function SettingsView() {
               id="setting-buffer-size" 
               name="bufferSize"
               min="128" 
-              class="col-span-2 p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              class="col-span-2 p-2 border border-input rounded bg-background text-foreground"
               value={settings.bufferSize}
               onChange={handleInputChange}
             />
@@ -370,11 +373,12 @@ export function SettingsView() {
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-use-swap" class="font-medium">Use Swap File</label>
             <div class="col-span-2">
-              <input 
-                type="checkbox" 
-                id="setting-use-swap" 
+              <input
+                type="checkbox"
+                id="setting-use-swap"
                 name="useSwap"
-                class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 dark:bg-gray-700 dark:border-gray-600"
+                class="w-4 h-4 rounded focus:ring-2"
+                style={{accentColor: 'hsl(var(--primary))'}}
                 checked={settings.useSwap}
                 onChange={handleInputChange}
               />
@@ -387,15 +391,15 @@ export function SettingsView() {
               id="setting-swap-size" 
               name="swapSize"
               min="32" 
-              class="col-span-2 p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              class="col-span-2 p-2 border border-input rounded bg-background text-foreground"
               value={settings.swapSize}
               onChange={handleInputChange}
             />
           </div>
           </div>
           
-          <div class="settings-group bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-          <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">Detection-Based Recording</h3>
+          <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
+          <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">Detection-Based Recording</h3>
           <div class="setting mb-4">
             <p class="setting-description mb-2 text-gray-700 dark:text-gray-300">
               Configure detection-based recording for streams. When enabled, recordings will only be saved when objects are detected.
@@ -417,11 +421,11 @@ export function SettingsView() {
                 id="setting-detection-models-path" 
                 name="detectionModelsPath"
                 placeholder="/var/lib/lightnvr/models" 
-                class="w-full p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                class="w-full p-2 border border-input rounded bg-background text-foreground"
                 value={settings.detectionModelsPath}
                 onChange={handleInputChange}
               />
-              <span class="hint text-sm text-gray-500 dark:text-gray-400">Directory where detection models are stored</span>
+              <span class="hint text-sm text-muted-foreground">Directory where detection models are stored</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
@@ -441,7 +445,7 @@ export function SettingsView() {
                 />
                 <span id="threshold-value" class="ml-2 min-w-[3rem] text-center">{settings.defaultDetectionThreshold}%</span>
               </div>
-              <span class="hint text-sm text-gray-500 dark:text-gray-400">Confidence threshold for detection (0-100%)</span>
+              <span class="hint text-sm text-muted-foreground">Confidence threshold for detection (0-100%)</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
@@ -453,11 +457,11 @@ export function SettingsView() {
                 name="defaultPreBuffer"
                 min="0" 
                 max="60" 
-                class="p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                class="p-2 border border-input rounded bg-background text-foreground"
                 value={settings.defaultPreBuffer}
                 onChange={handleInputChange}
               />
-              <span class="hint text-sm text-gray-500 dark:text-gray-400">Seconds of video to keep before detection</span>
+              <span class="hint text-sm text-muted-foreground">Seconds of video to keep before detection</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
@@ -469,11 +473,11 @@ export function SettingsView() {
                 name="defaultPostBuffer"
                 min="0" 
                 max="300" 
-                class="p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                class="p-2 border border-input rounded bg-background text-foreground"
                 value={settings.defaultPostBuffer}
                 onChange={handleInputChange}
               />
-              <span class="hint text-sm text-gray-500 dark:text-gray-400">Seconds of video to keep after detection</span>
+              <span class="hint text-sm text-muted-foreground">Seconds of video to keep after detection</span>
             </div>
           </div>
           </div>

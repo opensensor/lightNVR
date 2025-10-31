@@ -129,6 +129,46 @@ extern int transcode_audio_packet(const char *stream_name,
                                 const AVStream *input_stream);
 
 /**
+ * Check if a codec is a PCM variant that needs transcoding
+ *
+ * @param codec_id The codec ID to check
+ * @return true if it's a PCM codec, false otherwise
+ */
+static bool is_pcm_codec(enum AVCodecID codec_id) {
+    switch (codec_id) {
+        case AV_CODEC_ID_PCM_S16LE:
+        case AV_CODEC_ID_PCM_S16BE:
+        case AV_CODEC_ID_PCM_U16LE:
+        case AV_CODEC_ID_PCM_U16BE:
+        case AV_CODEC_ID_PCM_S8:
+        case AV_CODEC_ID_PCM_U8:
+        case AV_CODEC_ID_PCM_MULAW:
+        case AV_CODEC_ID_PCM_ALAW:
+        case AV_CODEC_ID_PCM_S32LE:
+        case AV_CODEC_ID_PCM_S32BE:
+        case AV_CODEC_ID_PCM_U32LE:
+        case AV_CODEC_ID_PCM_U32BE:
+        case AV_CODEC_ID_PCM_S24LE:
+        case AV_CODEC_ID_PCM_S24BE:
+        case AV_CODEC_ID_PCM_U24LE:
+        case AV_CODEC_ID_PCM_U24BE:
+        case AV_CODEC_ID_PCM_S24DAUD:
+        case AV_CODEC_ID_PCM_ZORK:
+        case AV_CODEC_ID_PCM_S16LE_PLANAR:
+        case AV_CODEC_ID_PCM_DVD:
+        case AV_CODEC_ID_PCM_F32BE:
+        case AV_CODEC_ID_PCM_F32LE:
+        case AV_CODEC_ID_PCM_F64BE:
+        case AV_CODEC_ID_PCM_F64LE:
+        case AV_CODEC_ID_PCM_BLURAY:
+        case AV_CODEC_ID_PCM_LXF:
+            return true;
+        default:
+            return false;
+    }
+}
+
+/**
  * Write a packet to the MP4 file
  * This function handles both video and audio packets
  *
@@ -152,10 +192,9 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
         return 0;
     }
 
-    // If this is an audio packet with an incompatible codec, try to transcode it
+    // If this is an audio packet with a PCM codec, try to transcode it to AAC
     if (input_stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
-        if (input_stream->codecpar->codec_id == AV_CODEC_ID_PCM_MULAW ||
-            input_stream->codecpar->codec_id == AV_CODEC_ID_PCM_ALAW) {
+        if (is_pcm_codec(input_stream->codecpar->codec_id)) {
 
             // Create a new packet for the transcoded audio
             AVPacket *transcoded_pkt = av_packet_alloc();
@@ -171,7 +210,8 @@ int mp4_writer_write_packet(mp4_writer_t *writer, const AVPacket *in_pkt, const 
                                            input_stream);
 
             if (ret < 0) {
-                log_error("Failed to transcode audio packet for %s", writer->stream_name);
+                log_error("Failed to transcode PCM audio packet for %s (codec_id=%d)",
+                         writer->stream_name, input_stream->codecpar->codec_id);
                 av_packet_free(&transcoded_pkt);
                 return 0; // Return success but don't write the packet
             }

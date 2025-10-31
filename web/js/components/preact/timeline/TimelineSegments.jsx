@@ -407,8 +407,9 @@ export function TimelineSegments({ segments: propSegments }) {
       visibleSegments.push(
         <div
           key={`segment-${mergedIndex}`}
-          className={`timeline-segment absolute rounded-sm transition-all duration-200 ${segment.has_detection ? 'bg-red-500' : 'bg-blue-500'}`}
+          className="timeline-segment absolute rounded-sm transition-all duration-200"
           style={{
+            backgroundColor: segment.has_detection ? 'hsl(var(--danger))' : 'hsl(var(--primary))',
             left: `${startPercent}%`,
             width: `${widthPercent}%`,
             height: `${heightPercent}%`,

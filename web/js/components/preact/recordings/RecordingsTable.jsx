@@ -28,38 +28,39 @@ export function RecordingsTable({
   pagination
 }) {
   return (
-    <div className="recordings-container bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden w-full">
-      <div className="batch-actions p-3 border-b border-gray-200 dark:border-gray-700 flex flex-wrap gap-2 items-center">
-        <div className="selected-count text-sm text-gray-600 dark:text-gray-400 mr-2">
+    <div className="recordings-container bg-card text-card-foreground rounded-lg shadow overflow-hidden w-full">
+      <div className="batch-actions p-3 border-b border-border flex flex-wrap gap-2 items-center">
+        <div className="selected-count text-sm text-muted-foreground mr-2">
           {getSelectedCount() > 0 ?
             `${getSelectedCount()} recording${getSelectedCount() !== 1 ? 's' : ''} selected` :
             'No recordings selected'}
         </div>
         <button
-          className="px-3 py-1.5 bg-red-600 text-white rounded hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="btn-danger disabled:opacity-50 disabled:cursor-not-allowed"
           disabled={getSelectedCount() === 0}
           onClick={() => openDeleteModal('selected')}>
           Delete Selected
         </button>
         <button
-          className="px-3 py-1.5 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+          className="btn-danger"
           onClick={() => openDeleteModal('all')}>
           Delete All Filtered
         </button>
       </div>
       <div className="overflow-x-auto">
-        <table id="recordings-table" className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-          <thead className="bg-gray-50 dark:bg-gray-700">
+        <table id="recordings-table" className="min-w-full divide-y divide-border">
+          <thead className="bg-muted">
             <tr>
               <th className="w-10 px-4 py-3">
                 <input
                   type="checkbox"
                   checked={selectAll}
                   onChange={toggleSelectAll}
-                  className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 dark:focus:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                  className="w-4 h-4 rounded focus:ring-2"
+                  style={{accentColor: 'hsl(var(--primary))'}}
                 />
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer"
+              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer"
                   onClick={() => sortBy('stream_name')}>
                 <div className="flex items-center">
                   Stream
@@ -68,7 +69,7 @@ export function RecordingsTable({
                   )}
                 </div>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer"
+              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer"
                   onClick={() => sortBy('start_time')}>
                 <div className="flex items-center">
                   Start Time
@@ -77,10 +78,10 @@ export function RecordingsTable({
                   )}
                 </div>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Duration
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer"
+              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer"
                   onClick={() => sortBy('size_bytes')}>
                 <div className="flex items-center">
                   Size
@@ -89,29 +90,29 @@ export function RecordingsTable({
                   )}
                 </div>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Detections
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Actions
               </th>
             </tr>
           </thead>
-          <tbody ref={recordingsTableBodyRef} className="bg-white divide-y divide-gray-200 dark:bg-gray-800 dark:divide-gray-700">
+          <tbody ref={recordingsTableBodyRef} className="bg-card divide-y divide-border">
             {recordings.length === 0 ? (
               <tr>
-                <td colSpan="6" className="px-6 py-4 text-center text-gray-500 dark:text-gray-400">
+                <td colSpan="6" className="px-6 py-4 text-center text-muted-foreground">
                   {pagination.totalItems === 0 ? 'No recordings found' : 'Loading recordings...'}
                 </td>
               </tr>
             ) : recordings.map(recording => (
-              <tr key={recording.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+              <tr key={recording.id} className="hover:bg-muted/50">
                 <td className="px-4 py-4 whitespace-nowrap">
                   <input
                     type="checkbox"
                     checked={!!selectedRecordings[recording.id]}
                     onChange={() => toggleRecordingSelection(recording.id)}
-                    className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 dark:focus:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                    className="w-4 h-4 rounded focus:ring-2" style={{accentColor: 'hsl(var(--primary))'}}
                   />
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">{recording.stream || ''}</td>
@@ -131,21 +132,30 @@ export function RecordingsTable({
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="flex space-x-2">
-                    <button className="p-1 rounded-full text-blue-600 hover:bg-blue-100 dark:text-blue-400 dark:hover:bg-blue-900 focus:outline-none"
+                    <button className="p-1 rounded-full focus:outline-none"
+                            style={{color: 'hsl(var(--primary))'}}
+                            onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.1)'}
+                            onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                             onClick={() => playRecording(recording)}
                             title="Play">
                       <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
                         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd"></path>
                       </svg>
                     </button>
-                    <button className="p-1 rounded-full text-green-600 hover:bg-green-100 dark:text-green-400 dark:hover:bg-green-900 focus:outline-none"
+                    <button className="p-1 rounded-full focus:outline-none"
+                            style={{color: 'hsl(var(--success))'}}
+                            onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--success) / 0.1)'}
+                            onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                             onClick={() => downloadRecording(recording)}
                             title="Download">
                       <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
                         <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd"></path>
                       </svg>
                     </button>
-                    <button className="p-1 rounded-full text-red-600 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-900 focus:outline-none"
+                    <button className="p-1 rounded-full focus:outline-none"
+                            style={{color: 'hsl(var(--danger))'}}
+                            onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--danger) / 0.1)'}
+                            onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                             onClick={() => deleteRecording(recording)}
                             title="Delete">
                       <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">

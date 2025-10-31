@@ -48,7 +48,7 @@ static pthread_mutex_t audio_transcoder_mutex = PTHREAD_MUTEX_INITIALIZER;
  * Initialize audio transcoder for a stream
  *
  * @param stream_name Name of the stream
- * @param codec_params Original codec parameters (μ-law)
+ * @param codec_params Original codec parameters (PCM variants including μ-law, A-law, S16LE, etc.)
  * @param time_base Time base of the original stream
  * @return Index of the transcoder in the array, or -1 on error
  */
@@ -81,10 +81,11 @@ static int init_audio_transcoder(const char *stream_name,
         return -1;
     }
 
-    // Find the μ-law decoder
+    // Find the PCM decoder for the specific codec
     decoder = avcodec_find_decoder(codec_params->codec_id);
     if (!decoder) {
-        log_error("Failed to find decoder for μ-law audio in %s", stream_name);
+        log_error("Failed to find decoder for PCM audio (codec_id=%d) in %s",
+                 codec_params->codec_id, stream_name);
         pthread_mutex_unlock(&audio_transcoder_mutex);
         return -1;
     }
@@ -117,7 +118,7 @@ static int init_audio_transcoder(const char *stream_name,
     // Open decoder
     ret = avcodec_open2(audio_transcoders[slot].decoder_ctx, decoder, NULL);
     if (ret < 0) {
-        log_ffmpeg_error(ret, "Failed to open μ-law decoder");
+        log_ffmpeg_error(ret, "Failed to open PCM audio decoder");
         goto cleanup;
     }
 
@@ -283,10 +284,10 @@ void cleanup_audio_transcoder(const char *stream_name) {
 }
 
 /**
- * Transcode an audio packet from μ-law to AAC
+ * Transcode an audio packet from PCM (μ-law, A-law, S16LE, etc.) to AAC
  *
  * @param stream_name Name of the stream
- * @param in_pkt Input packet (μ-law)
+ * @param in_pkt Input packet (PCM format)
  * @param out_pkt Output packet (AAC) - must be allocated by caller
  * @param input_stream Original input stream
  * @return 0 on success, negative on error
@@ -387,9 +388,9 @@ int transcode_audio_packet(const char *stream_name,
 }
 
 /**
- * Transcode audio from μ-law to AAC format
+ * Transcode audio from PCM (μ-law, A-law, S16LE, etc.) to AAC format
  *
- * @param codec_params Original codec parameters (μ-law)
+ * @param codec_params Original codec parameters (PCM format)
  * @param time_base Time base of the original stream
  * @param stream_name Name of the stream (for logging)
  * @param transcoded_params Output parameter to store the transcoded codec parameters
@@ -416,11 +417,11 @@ static int transcode_mulaw_to_aac(const AVCodecParameters *codec_params,
         goto cleanup;
     }
 
-    // Find the μ-law decoder
+    // Find the PCM decoder for the specific codec
     decoder = avcodec_find_decoder(codec_params->codec_id);
     if (!decoder) {
-        log_error("Failed to find decoder for μ-law audio in %s",
-                stream_name ? stream_name : "unknown");
+        log_error("Failed to find decoder for PCM audio (codec_id=%d) in %s",
+                codec_params->codec_id, stream_name ? stream_name : "unknown");
         ret = AVERROR_DECODER_NOT_FOUND;
         goto cleanup;
     }
@@ -533,6 +534,46 @@ cleanup:
 }
 
 /**
+ * Check if a codec is a PCM variant
+ *
+ * @param codec_id The codec ID to check
+ * @return true if it's a PCM codec, false otherwise
+ */
+static bool is_pcm_codec(enum AVCodecID codec_id) {
+    switch (codec_id) {
+        case AV_CODEC_ID_PCM_S16LE:
+        case AV_CODEC_ID_PCM_S16BE:
+        case AV_CODEC_ID_PCM_U16LE:
+        case AV_CODEC_ID_PCM_U16BE:
+        case AV_CODEC_ID_PCM_S8:
+        case AV_CODEC_ID_PCM_U8:
+        case AV_CODEC_ID_PCM_MULAW:
+        case AV_CODEC_ID_PCM_ALAW:
+        case AV_CODEC_ID_PCM_S32LE:
+        case AV_CODEC_ID_PCM_S32BE:
+        case AV_CODEC_ID_PCM_U32LE:
+        case AV_CODEC_ID_PCM_U32BE:
+        case AV_CODEC_ID_PCM_S24LE:
+        case AV_CODEC_ID_PCM_S24BE:
+        case AV_CODEC_ID_PCM_U24LE:
+        case AV_CODEC_ID_PCM_U24BE:
+        case AV_CODEC_ID_PCM_S24DAUD:
+        case AV_CODEC_ID_PCM_ZORK:
+        case AV_CODEC_ID_PCM_S16LE_PLANAR:
+        case AV_CODEC_ID_PCM_DVD:
+        case AV_CODEC_ID_PCM_F32BE:
+        case AV_CODEC_ID_PCM_F32LE:
+        case AV_CODEC_ID_PCM_F64BE:
+        case AV_CODEC_ID_PCM_F64LE:
+        case AV_CODEC_ID_PCM_BLURAY:
+        case AV_CODEC_ID_PCM_LXF:
+            return true;
+        default:
+            return false;
+    }
+}
+
+/**
  * Check if an audio codec is compatible with MP4 format
  *
  * @param codec_id The codec ID to check
@@ -556,16 +597,38 @@ static bool is_audio_codec_compatible_with_mp4(enum AVCodecID codec_id, const ch
             *codec_name = "Opus";
             break;
         case AV_CODEC_ID_PCM_MULAW:
-            *codec_name = "PCM μ-law (mlaw)";
+            *codec_name = "PCM μ-law (G.711 μ-law)";
             is_compatible = false;
             break;
         case AV_CODEC_ID_PCM_ALAW:
-            *codec_name = "PCM A-law (alaw)";
+            *codec_name = "PCM A-law (G.711 A-law)";
+            is_compatible = false;
+            break;
+        case AV_CODEC_ID_PCM_S16LE:
+            *codec_name = "PCM signed 16-bit little-endian";
+            is_compatible = false;
+            break;
+        case AV_CODEC_ID_PCM_S16BE:
+            *codec_name = "PCM signed 16-bit big-endian";
+            is_compatible = false;
+            break;
+        case AV_CODEC_ID_PCM_U8:
+            *codec_name = "PCM unsigned 8-bit";
+            is_compatible = false;
+            break;
+        case AV_CODEC_ID_PCM_S8:
+            *codec_name = "PCM signed 8-bit";
             is_compatible = false;
             break;
         default:
-            *codec_name = "Unknown";
-            // Assume compatible for unknown codecs and let FFmpeg handle it
+            // Check if it's any other PCM codec
+            if (is_pcm_codec(codec_id)) {
+                *codec_name = "PCM (various)";
+                is_compatible = false;
+            } else {
+                *codec_name = "Unknown";
+                // Assume compatible for unknown codecs and let FFmpeg handle it
+            }
             break;
     }
 
@@ -804,21 +867,21 @@ int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, const AVStr
         bool is_compatible = is_audio_codec_compatible_with_mp4(input_stream->codecpar->codec_id, &codec_name);
 
         if (!is_compatible) {
-            // For incompatible codecs, attempt transcoding if it's μ-law
-            if (input_stream->codecpar->codec_id == AV_CODEC_ID_PCM_MULAW) {
-                log_info("Attempting to transcode %s audio to AAC for MP4 compatibility in stream %s", 
+            // For incompatible codecs, attempt transcoding if it's a PCM codec
+            if (is_pcm_codec(input_stream->codecpar->codec_id)) {
+                log_info("Attempting to transcode %s audio to AAC for MP4 compatibility in stream %s",
                         codec_name, writer->stream_name ? writer->stream_name : "unknown");
-                
-                // Try to transcode μ-law to AAC
+
+                // Try to transcode PCM to AAC
                 AVCodecParameters *transcoded_params = NULL;
-                int transcode_ret = transcode_mulaw_to_aac(input_stream->codecpar, 
-                                                         &input_stream->time_base, 
-                                                         writer->stream_name, 
+                int transcode_ret = transcode_mulaw_to_aac(input_stream->codecpar,
+                                                         &input_stream->time_base,
+                                                         writer->stream_name,
                                                          &transcoded_params);
-                
+
                 if (transcode_ret >= 0 && transcoded_params) {
-                    log_info("Successfully transcoded μ-law audio to AAC for stream %s", 
-                            writer->stream_name ? writer->stream_name : "unknown");
+                    log_info("Successfully transcoded %s audio to AAC for stream %s",
+                            codec_name, writer->stream_name ? writer->stream_name : "unknown");
                     
                     // Create a dummy video stream first (MP4 expects video to be the first stream)
                     log_warn("MP4 writer initialization triggered by transcoded audio packet for %s - creating dummy video stream",
@@ -1223,28 +1286,28 @@ int mp4_writer_add_audio_stream(mp4_writer_t *writer, const AVCodecParameters *c
     bool is_compatible = is_audio_codec_compatible_with_mp4(codec_params->codec_id, &codec_name);
 
     if (!is_compatible) {
-        // For incompatible codecs, attempt transcoding if it's μ-law
-        if (codec_params->codec_id == AV_CODEC_ID_PCM_MULAW) {
-            log_info("Attempting to transcode %s audio to AAC for MP4 compatibility in stream %s", 
+        // For incompatible codecs, attempt transcoding if it's a PCM codec
+        if (is_pcm_codec(codec_params->codec_id)) {
+            log_info("Attempting to transcode %s audio to AAC for MP4 compatibility in stream %s",
                     codec_name, writer->stream_name ? writer->stream_name : "unknown");
-            
-            // Try to transcode μ-law to AAC
+
+            // Try to transcode PCM to AAC
             AVCodecParameters *transcoded_params = NULL;
-            int transcode_ret = transcode_mulaw_to_aac(codec_params, &safe_time_base, 
+            int transcode_ret = transcode_mulaw_to_aac(codec_params, &safe_time_base,
                                                      writer->stream_name, &transcoded_params);
-            
+
             if (transcode_ret >= 0 && transcoded_params) {
-                log_info("Successfully transcoded μ-law audio to AAC for stream %s", 
-                        writer->stream_name ? writer->stream_name : "unknown");
-                
+                log_info("Successfully transcoded %s audio to AAC for stream %s",
+                        codec_name, writer->stream_name ? writer->stream_name : "unknown");
+
                 // Free the original codec parameters
                 avcodec_parameters_free(&local_codec_params);
-                
+
                 // Use the transcoded parameters instead
                 local_codec_params = transcoded_params;
-                
+
                 // Update codec name for logging
-                codec_name = "AAC (transcoded from μ-law)";
+                codec_name = "AAC (transcoded from PCM)";
                 is_compatible = true;
             } else {
                 log_error("Failed to transcode %s audio to AAC: %d", codec_name, transcode_ret);
@@ -1257,13 +1320,13 @@ int mp4_writer_add_audio_stream(mp4_writer_t *writer, const AVCodecParameters *c
                          #endif
                         );
                 log_error("Disabling audio recording for this stream");
-                
+
                 // Disable audio for this writer
                 writer->has_audio = 0;
-                
+
                 // Free the codec parameters
                 avcodec_parameters_free(&local_codec_params);
-                
+
                 // Return success but don't add the audio stream
                 return 0;
             }

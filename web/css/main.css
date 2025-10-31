@@ -6,7 +6,7 @@
 
 /* Additional custom styles */
 .page {
-  @apply bg-white dark:bg-gray-800 rounded-lg shadow p-4 mb-4;
+  @apply bg-card text-card-foreground rounded-lg shadow p-4 mb-4;
 }
 
 .fullscreen-mode.page {
@@ -15,11 +15,12 @@
 
 /* Footer styles */
 footer {
-  @apply bg-gray-800 text-white py-3 px-4 flex justify-between items-center text-sm mt-4;
+  @apply bg-card text-card-foreground py-3 px-4 flex justify-between items-center text-sm mt-4;
 }
 
 footer a {
-  @apply text-blue-200 no-underline hover:underline;
+  @apply no-underline hover:underline;
+  color: hsl(var(--primary));
 }
 
 /* Table styles */
@@ -28,15 +29,15 @@ table {
 }
 
 th, td {
-  @apply py-3 px-6 text-left border-b border-gray-200 dark:border-gray-700;
+  @apply py-3 px-6 text-left border-b border-border;
 }
 
 th {
-  @apply bg-gray-50 dark:bg-gray-700 font-semibold;
+  @apply bg-muted font-semibold;
 }
 
 .empty-message {
-  @apply text-center text-gray-500 dark:text-gray-400 py-8;
+  @apply text-center text-muted-foreground py-8;
 }
 
 /* Form styles */
@@ -52,20 +53,22 @@ th {
 .form-group input[type="number"],
 .form-group input[type="password"],
 .form-group select {
-  @apply w-full p-2 border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white;
+  @apply w-full p-2 border border-input rounded bg-background text-foreground;
 }
 
 /* Loading styles */
 .loading-container {
-  @apply flex flex-col justify-center items-center h-screen bg-gray-100 dark:bg-gray-900;
+  @apply flex flex-col justify-center items-center h-screen bg-background;
 }
 
 .loading-container .spinner {
-  @apply w-12 h-12 border-4 border-gray-200 dark:border-gray-700 rounded-full border-t-blue-600 animate-spin mb-4;
+  @apply w-12 h-12 border-4 rounded-full animate-spin mb-4;
+  border-color: hsl(var(--border));
+  border-top-color: hsl(var(--primary));
 }
 
 .loading-container p {
-  @apply text-lg text-gray-700 dark:text-gray-300;
+  @apply text-lg text-foreground;
 }
 
 /* Video player styles */

@@ -264,9 +264,9 @@ export function BatchDeleteModal() {
     
     // Add color class
     if (progress.error) {
-      classes += ' bg-red-500';
+      classes += ' ' + 'bg-[hsl(var(--danger))]';
     } else {
-      classes += ' bg-green-500';
+      classes += ' ' + 'bg-[hsl(var(--success))]';
     }
     
     // Add animation class if needed
@@ -307,8 +307,8 @@ export function BatchDeleteModal() {
       id="batch-delete-modal" 
       className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center z-50"
     >
-      <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md mx-auto p-6 w-full">
-        <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">
+      <div className="relative bg-card text-card-foreground rounded-lg shadow-xl max-w-md mx-auto p-6 w-full">
+        <div className="flex justify-between items-center mb-4 pb-2 border-b border-border">
           <h3 id="batch-delete-modal-title" className="text-xl font-bold text-gray-900 dark:text-white">
             Batch Delete Progress
           </h3>
@@ -332,7 +332,7 @@ export function BatchDeleteModal() {
             ></div>
           </div>
           
-          <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-6">
+          <div className="flex justify-between text-sm text-muted-foreground mb-6">
             <div>{getCountText()}</div>
             <div>{getPercentageText()}</div>
           </div>
@@ -348,15 +348,15 @@ export function BatchDeleteModal() {
             </div>
           </div>
           
-          <div className="text-sm italic text-gray-600 dark:text-gray-400 mb-4">
+          <div className="text-sm italic text-muted-foreground mb-4">
             {progress.message}
           </div>
         </div>
         
-        <div className="flex justify-end pt-2 border-t border-gray-200 dark:border-gray-700">
+        <div className="flex justify-end pt-2 border-t border-border">
           {progress.complete ? (
             <button 
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+              className="btn-primary"
               onClick={closeModal}
             >
               Done

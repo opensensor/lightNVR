@@ -12,8 +12,8 @@
  */
 export function SystemInfo({ systemInfo, formatUptime }) {
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-      <h3 className="text-lg font-semibold mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">System Information</h3>
+    <div className="bg-card text-card-foreground rounded-lg shadow p-4">
+      <h3 className="text-lg font-semibold mb-4 pb-2 border-b border-border">System Information</h3>
       <div className="space-y-2">
         <div className="flex justify-between">
           <span className="font-medium">Version:</span>
@@ -35,8 +35,8 @@ export function SystemInfo({ systemInfo, formatUptime }) {
           <span className="font-medium">CPU Usage:</span>
           <div className="w-32 bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
             <div
-              className="bg-blue-600 h-2.5 rounded-full"
-              style={{ width: `${systemInfo.cpu?.usage || 0}%` }}
+              className="h-2.5 rounded-full"
+              style={{ backgroundColor: 'hsl(var(--primary))', width: `${systemInfo.cpu?.usage || 0}%` }}
             ></div>
           </div>
           <span>{systemInfo.cpu?.usage ? `${systemInfo.cpu.usage.toFixed(1)}%` : 'Unknown'}</span>

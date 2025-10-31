@@ -607,19 +607,19 @@ export function StreamsView() {
 
   return (
     <section id="streams-page" className="page">
-      <div className="page-header flex justify-between items-center mb-4 p-4 bg-white dark:bg-gray-800 rounded-lg shadow">
+      <div className="page-header flex justify-between items-center mb-4 p-4 bg-card text-card-foreground rounded-lg shadow">
         <h2 className="text-xl font-bold">Streams</h2>
         <div className="controls flex space-x-2">
           <button
               id="discover-onvif-btn"
-              className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+              className="btn-success focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
               onClick={() => setOnvifModalVisible(true)}
           >
             Discover ONVIF Cameras
           </button>
           <button
               id="add-stream-btn"
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+              className="btn-primary focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
               onClick={openAddStreamModal}
           >
             Add Stream
@@ -633,22 +633,22 @@ export function StreamsView() {
           loadingMessage="Loading streams..."
           emptyMessage="No streams configured yet. Click 'Add Stream' to create one."
       >
-        <div className="streams-container bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+        <div className="streams-container bg-card text-card-foreground rounded-lg shadow overflow-hidden">
           <div className="overflow-x-auto">
-            <table id="streams-table" className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-              <thead className="bg-gray-50 dark:bg-gray-700">
+            <table id="streams-table" className="min-w-full divide-y divide-border">
+              <thead className="bg-muted">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Name</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">URL</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Resolution</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">FPS</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Recording</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Name</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">URL</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Resolution</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">FPS</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Recording</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
               </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200 dark:bg-gray-800 dark:divide-gray-700">
+              <tbody className="bg-card divide-y divide-border">
               {streams.map(stream => (
-                <tr key={stream.name} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                <tr key={stream.name} className="hover:bg-muted/50">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <span className={`status-indicator w-2 h-2 rounded-full mr-2 ${stream.enabled ? 'status-ok' : 'status-danger'}`} style={{backgroundColor: stream.enabled ? 'hsl(var(--success))' : 'hsl(var(--danger))'}}></span>
@@ -665,7 +665,10 @@ export function StreamsView() {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex space-x-2">
                       <button
-                          className="p-1 rounded-full text-blue-600 hover:bg-blue-100 dark:text-blue-400 dark:hover:bg-blue-900 focus:outline-none"
+                          className="p-1 rounded-full focus:outline-none"
+                          style={{color: 'hsl(var(--primary))'}}
+                          onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.1)'}
+                          onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                           onClick={() => openEditStreamModal(stream.name)}
                           title="Edit"
                       >
@@ -674,7 +677,10 @@ export function StreamsView() {
                         </svg>
                       </button>
                       <button
-                          className="p-1 rounded-full text-red-600 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-900 focus:outline-none"
+                          className="p-1 rounded-full focus:outline-none"
+                          style={{color: 'hsl(var(--danger))'}}
+                          onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--danger) / 0.1)'}
+                          onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                           onClick={() => openDeleteModal(stream)}
                           title="Delete"
                       >
@@ -704,8 +710,8 @@ export function StreamsView() {
 
       {modalVisible && (
         <div id="stream-modal" className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 transition-opacity duration-300">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="bg-card text-card-foreground rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center p-4 border-b border-border">
               <h3 className="text-lg font-medium">{isEditing ? 'Edit Stream' : 'Add Stream'}</h3>
               <span className="text-2xl cursor-pointer" onClick={closeModal}>×</span>
             </div>
@@ -717,7 +723,7 @@ export function StreamsView() {
                       type="text"
                       id="stream-name"
                       name="name"
-                      className={`w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white ${isEditing ? 'bg-gray-100 dark:bg-gray-800' : ''}`}
+                      className={`w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none bg-background text-foreground ${isEditing ? 'bg-muted/30' : ''}`}
                       value={currentStream.name}
                       onChange={handleInputChange}
                       disabled={isEditing}
@@ -730,7 +736,7 @@ export function StreamsView() {
                       type="text"
                       id="stream-url"
                       name="url"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                      className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none bg-background text-foreground"
                       placeholder="rtsp://example.com/stream"
                       value={currentStream.url}
                       onChange={handleInputChange}
@@ -742,36 +748,37 @@ export function StreamsView() {
                       type="checkbox"
                       id="stream-enabled"
                       name="enabled"
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      className="h-4 w-4 border-gray-300 rounded"
+                      style={{accentColor: 'hsl(var(--primary))'}}
                       checked={currentStream.enabled}
                       onChange={handleInputChange}
                   />
                   <label for="stream-enabled" className="ml-2 block text-sm">Stream Active</label>
-                  <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">Enable/disable all stream processing</span>
+                  <span className="ml-2 text-xs text-muted-foreground">Enable/disable all stream processing</span>
                 </div>
                 <div className="form-group flex items-center">
                   <input
                       type="checkbox"
                       id="stream-streaming-enabled"
                       name="streamingEnabled"
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      className="h-4 w-4 border-gray-300 rounded" style={{accentColor: 'hsl(var(--primary))'}}
                       checked={currentStream.streamingEnabled}
                       onChange={handleInputChange}
                   />
                   <label for="stream-streaming-enabled" className="ml-2 block text-sm">Live View Enabled</label>
-                  <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">Enable/disable live viewing in browser</span>
+                  <span className="ml-2 text-xs text-muted-foreground">Enable/disable live viewing in browser</span>
                 </div>
                 <div className="form-group flex items-center">
                   <input
                       type="checkbox"
                       id="stream-is-onvif"
                       name="isOnvif"
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      className="h-4 w-4 border-gray-300 rounded" style={{accentColor: 'hsl(var(--primary))'}}
                       checked={currentStream.isOnvif}
                       onChange={handleInputChange}
                   />
                   <label for="stream-is-onvif" className="ml-2 block text-sm">ONVIF Camera</label>
-                  <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">Mark this stream as an ONVIF camera for special handling</span>
+                  <span className="ml-2 text-xs text-muted-foreground">Mark this stream as an ONVIF camera for special handling</span>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="form-group">
@@ -780,7 +787,7 @@ export function StreamsView() {
                         type="number"
                         id="stream-width"
                         name="width"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                        className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none bg-background text-foreground"
                         min="320"
                         max="1920"
                         value={currentStream.width}
@@ -793,7 +800,7 @@ export function StreamsView() {
                         type="number"
                         id="stream-height"
                         name="height"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                        className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none bg-background text-foreground"
                         min="240"
                         max="1080"
                         value={currentStream.height}
@@ -808,7 +815,7 @@ export function StreamsView() {
                         type="number"
                         id="stream-fps"
                         name="fps"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                        className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none bg-background text-foreground"
                         min="1"
                         max="30"
                         value={currentStream.fps}
@@ -820,7 +827,7 @@ export function StreamsView() {
                     <select
                         id="stream-codec"
                         name="codec"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                        className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none bg-background text-foreground"
                         value={currentStream.codec}
                         onChange={handleInputChange}
                     >
@@ -833,14 +840,14 @@ export function StreamsView() {
                     <select
                         id="stream-protocol"
                         name="protocol"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                        className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none bg-background text-foreground"
                         value={currentStream.protocol}
                         onChange={handleInputChange}
                     >
                       <option value="0">TCP</option>
                       <option value="1">UDP</option>
                     </select>
-                    <span className="text-xs text-gray-500 dark:text-gray-400">Connection protocol (ONVIF cameras use either TCP or UDP)</span>
+                    <span className="text-xs text-muted-foreground">Connection protocol (ONVIF cameras use either TCP or UDP)</span>
                   </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -849,7 +856,7 @@ export function StreamsView() {
                     <select
                         id="stream-priority"
                         name="priority"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                        className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none bg-background text-foreground"
                         value={currentStream.priority}
                         onChange={handleInputChange}
                     >
@@ -864,7 +871,7 @@ export function StreamsView() {
                         type="number"
                         id="stream-segment"
                         name="segment"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                        className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none bg-background text-foreground"
                         min="60"
                         max="3600"
                         value={currentStream.segment}
@@ -877,7 +884,7 @@ export function StreamsView() {
                       type="checkbox"
                       id="stream-record"
                       name="record"
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      className="h-4 w-4 border-gray-300 rounded" style={{accentColor: 'hsl(var(--primary))'}}
                       checked={currentStream.record}
                       onChange={handleInputChange}
                   />
@@ -888,16 +895,16 @@ export function StreamsView() {
                       type="checkbox"
                       id="stream-record-audio"
                       name="recordAudio"
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      className="h-4 w-4 border-gray-300 rounded" style={{accentColor: 'hsl(var(--primary))'}}
                       checked={currentStream.recordAudio}
                       onChange={handleInputChange}
                   />
                   <label for="stream-record-audio" className="ml-2 block text-sm">Record Audio</label>
-                  <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">Include audio in recordings if available in the stream</span>
+                  <span className="ml-2 text-xs text-muted-foreground">Include audio in recordings if available in the stream</span>
                 </div>
 
                 {/* Detection-based recording options */}
-                <div className="mt-6 mb-2 pb-1 border-b border-gray-200 dark:border-gray-700">
+                <div className="mt-6 mb-2 pb-1 border-b border-border">
                   <h4 className="text-md font-medium">Detection-Based Recording</h4>
                 </div>
                 <div className="form-group flex items-center">
@@ -905,12 +912,12 @@ export function StreamsView() {
                       type="checkbox"
                       id="stream-detection-enabled"
                       name="detectionEnabled"
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      className="h-4 w-4 border-gray-300 rounded" style={{accentColor: 'hsl(var(--primary))'}}
                       checked={currentStream.detectionEnabled}
                       onChange={handleInputChange}
                   />
                   <label for="stream-detection-enabled" className="ml-2 block text-sm">Enable Detection-Based Recording</label>
-                  <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">Only record when objects are detected</span>
+                  <span className="ml-2 text-xs text-muted-foreground">Only record when objects are detected</span>
                 </div>
                 <div className="form-group" style={currentStream.detectionEnabled ? '' : 'display: none'}>
                   <label for="stream-detection-model" className="block text-sm font-medium mb-1">Detection Model</label>
@@ -918,7 +925,7 @@ export function StreamsView() {
                     <select
                         id="stream-detection-model"
                         name="detectionModel"
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                        className="flex-1 px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none bg-background text-foreground"
                         value={currentStream.detectionModel}
                         onChange={handleInputChange}
                     >
@@ -929,7 +936,7 @@ export function StreamsView() {
                     </select>
                     <button
                         id="refresh-models-btn"
-                        className="p-2 rounded-md bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 focus:outline-none"
+                        className="p-2 rounded-md bg-secondary hover:bg-secondary/80 text-secondary-foreground focus:outline-none"
                         title="Refresh Models"
                         onClick={loadDetectionModels}
                         type="button"
@@ -947,14 +954,14 @@ export function StreamsView() {
                         type="range"
                         id="stream-detection-threshold"
                         name="detectionThreshold"
-                        className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                        className="flex-1 h-2 bg-muted rounded-lg appearance-none cursor-pointer"
                         min="0"
                         max="100"
                         step="1"
                         value={currentStream.detectionThreshold}
                         onInput={handleThresholdChange}
                     />
-                    <span id="stream-threshold-value" className="font-medium text-blue-600 dark:text-blue-400 min-w-[3rem] text-center">
+                    <span id="stream-threshold-value" className="font-medium min-w-[3rem] text-center" style={{color: 'hsl(var(--primary))'}}>
                       {currentStream.detectionThreshold}%
                     </span>
                   </div>
@@ -966,13 +973,13 @@ export function StreamsView() {
                         type="number"
                         id="stream-detection-interval"
                         name="detectionInterval"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                        className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none bg-background text-foreground"
                         min="1"
                         max="100"
                         value={currentStream.detectionInterval}
                         onChange={handleInputChange}
                     />
-                    <span className="text-xs text-gray-500 dark:text-gray-400">Detect on every Nth frame</span>
+                    <span className="text-xs text-muted-foreground">Detect on every Nth frame</span>
                   </div>
                   <div className="form-group">
                     <label for="stream-pre-buffer" className="block text-sm font-medium mb-1">Pre-detection Buffer (seconds)</label>
@@ -980,13 +987,13 @@ export function StreamsView() {
                         type="number"
                         id="stream-pre-buffer"
                         name="preBuffer"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                        className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none bg-background text-foreground"
                         min="0"
                         max="60"
                         value={currentStream.preBuffer}
                         onChange={handleInputChange}
                     />
-                    <span className="text-xs text-gray-500 dark:text-gray-400">Seconds to keep before detection</span>
+                    <span className="text-xs text-muted-foreground">Seconds to keep before detection</span>
                   </div>
                   <div className="form-group">
                     <label for="stream-post-buffer" className="block text-sm font-medium mb-1">Post-detection Buffer (seconds)</label>
@@ -994,21 +1001,21 @@ export function StreamsView() {
                         type="number"
                         id="stream-post-buffer"
                         name="postBuffer"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                        className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none bg-background text-foreground"
                         min="0"
                         max="300"
                         value={currentStream.postBuffer}
                         onChange={handleInputChange}
                     />
-                    <span className="text-xs text-gray-500 dark:text-gray-400">Seconds to keep after detection</span>
+                    <span className="text-xs text-muted-foreground">Seconds to keep after detection</span>
                   </div>
                 </div>
               </form>
             </div>
-            <div className="flex justify-between p-4 border-t border-gray-200 dark:border-gray-700">
+            <div className="flex justify-between p-4 border-t border-border">
               <button
                   id="stream-test-btn"
-                  className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                  className="px-4 py-2 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors"
                   onClick={testStreamConnection}
                   type="button"
               >
@@ -1017,7 +1024,7 @@ export function StreamsView() {
               <div className="space-x-2">
                 <button
                     id="stream-save-btn"
-                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                    className="btn-primary"
                     onClick={saveStream}
                     type="button"
                 >
@@ -1025,7 +1032,7 @@ export function StreamsView() {
                 </button>
                 <button
                     id="stream-cancel-btn"
-                    className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+                    className="px-4 py-2 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors"
                     onClick={closeModal}
                     type="button"
                 >
@@ -1039,8 +1046,8 @@ export function StreamsView() {
 
       {onvifModalVisible && (
         <div id="onvif-modal" className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 transition-opacity duration-300">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="bg-card text-card-foreground rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center p-4 border-b border-border">
               <h3 className="text-lg font-medium">ONVIF Camera Discovery</h3>
               <span className="text-2xl cursor-pointer" onClick={() => setOnvifModalVisible(false)}>×</span>
             </div>
@@ -1049,7 +1056,7 @@ export function StreamsView() {
                 <h4 className="text-md font-medium">Discovered Devices</h4>
                 <button
                     id="discover-btn"
-                    className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors focus:outline-none"
+                    className="btn-success focus:outline-none"
                     onClick={startOnvifDiscovery}
                     disabled={isDiscovering}
                     type="button"
@@ -1068,39 +1075,39 @@ export function StreamsView() {
               </div>
 
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                  <thead className="bg-gray-50 dark:bg-gray-700">
+                <table className="min-w-full divide-y divide-border">
+                  <thead className="bg-muted">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">IP Address</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Manufacturer</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Model</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">IP Address</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Manufacturer</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Model</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
                   </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-200 dark:bg-gray-800 dark:divide-gray-700">
+                  <tbody className="bg-card divide-y divide-border">
                   {discoveredDevices.length === 0 ? (
                     <tr>
-                      <td colSpan="4" className="px-6 py-4 text-center text-gray-500 dark:text-gray-400">
+                      <td colSpan="4" className="px-6 py-4 text-center text-muted-foreground">
                         {isDiscovering ? (
                           <div className="flex items-center justify-center">
                             <span>Discovering devices</span>
                             <span className="ml-1 flex space-x-1">
-                                <span className="animate-pulse delay-0 h-1.5 w-1.5 bg-gray-500 dark:bg-gray-400 rounded-full"></span>
-                                <span className="animate-pulse delay-150 h-1.5 w-1.5 bg-gray-500 dark:bg-gray-400 rounded-full"></span>
-                                <span className="animate-pulse delay-300 h-1.5 w-1.5 bg-gray-500 dark:bg-gray-400 rounded-full"></span>
+                                <span className="animate-pulse delay-0 h-1.5 w-1.5 bg-muted-foreground rounded-full"></span>
+                                <span className="animate-pulse delay-150 h-1.5 w-1.5 bg-muted-foreground rounded-full"></span>
+                                <span className="animate-pulse delay-300 h-1.5 w-1.5 bg-muted-foreground rounded-full"></span>
                               </span>
                           </div>
                         ) : 'No devices discovered yet. Click "Start Discovery" to scan your network.'}
                       </td>
                     </tr>
                   ) : discoveredDevices.map(device => (
-                    <tr key={device.ip_address} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <tr key={device.ip_address} className="hover:bg-muted/50">
                       <td className="px-6 py-4 whitespace-nowrap">{device.ip_address}</td>
                       <td className="px-6 py-4 whitespace-nowrap">{device.manufacturer || 'Unknown'}</td>
                       <td className="px-6 py-4 whitespace-nowrap">{device.model || 'Unknown'}</td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <button
-                            className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors focus:outline-none"
+                            className="btn-primary focus:outline-none"
                             onClick={() => testOnvifConnection(device)}
                             disabled={isLoadingProfiles && selectedDevice && selectedDevice.ip_address === device.ip_address}
                             type="button"
@@ -1125,7 +1132,7 @@ export function StreamsView() {
 
               <div className="mt-6 mb-4">
                 <h4 className="text-md font-medium mb-2">Authentication</h4>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                <p className="text-sm text-muted-foreground mb-3">
                   Enter credentials to connect to the selected ONVIF device. Credentials are not needed for discovery, only for connecting to devices.
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1135,7 +1142,7 @@ export function StreamsView() {
                         type="text"
                         id="onvif-username"
                         name="username"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                        className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none bg-background text-foreground"
                         placeholder="admin"
                         value={onvifCredentials.username}
                         onChange={handleCredentialChange}
@@ -1147,7 +1154,7 @@ export function StreamsView() {
                         type="password"
                         id="onvif-password"
                         name="password"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                        className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none bg-background text-foreground"
                         placeholder="password"
                         value={onvifCredentials.password}
                         onChange={handleCredentialChange}
@@ -1160,26 +1167,26 @@ export function StreamsView() {
                 <div className="mt-6">
                   <h4 className="text-md font-medium mb-2">Available Profiles for {selectedDevice.ip_address}</h4>
                   <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                      <thead className="bg-gray-50 dark:bg-gray-700">
+                    <table className="min-w-full divide-y divide-border">
+                      <thead className="bg-muted">
                       <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Name</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Resolution</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Encoding</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">FPS</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Name</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Resolution</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Encoding</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">FPS</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
                       </tr>
                       </thead>
-                      <tbody className="bg-white divide-y divide-gray-200 dark:bg-gray-800 dark:divide-gray-700">
+                      <tbody className="bg-card divide-y divide-border">
                       {deviceProfiles.map(profile => (
-                        <tr key={profile.token} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                        <tr key={profile.token} className="hover:bg-muted/50">
                           <td className="px-6 py-4 whitespace-nowrap">{profile.name}</td>
                           <td className="px-6 py-4 whitespace-nowrap">{profile.width}x{profile.height}</td>
                           <td className="px-6 py-4 whitespace-nowrap">{profile.encoding}</td>
                           <td className="px-6 py-4 whitespace-nowrap">{profile.fps}</td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <button
-                                className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 transition-colors focus:outline-none"
+                                className="btn-success focus:outline-none"
                                 onClick={() => addOnvifDeviceAsStream(profile)}
                                 type="button"
                             >
@@ -1194,10 +1201,10 @@ export function StreamsView() {
                 </div>
             )}
             </div>
-            <div className="flex justify-end p-4 border-t border-gray-200 dark:border-gray-700">
+            <div className="flex justify-end p-4 border-t border-border">
               <button
                   id="onvif-close-btn"
-                  className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+                  className="px-4 py-2 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors"
                   onClick={() => setOnvifModalVisible(false)}
                   type="button"
               >
@@ -1210,8 +1217,8 @@ export function StreamsView() {
 
       {showCustomNameInput && (
         <div id="custom-name-modal" className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 transition-opacity duration-300">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full">
-            <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="bg-card text-card-foreground rounded-lg shadow-xl max-w-md w-full">
+            <div className="flex justify-between items-center p-4 border-b border-border">
               <h3 className="text-lg font-medium">Stream Name</h3>
               <span className="text-2xl cursor-pointer" onClick={() => setShowCustomNameInput(false)}>×</span>
             </div>
@@ -1221,25 +1228,25 @@ export function StreamsView() {
                 <input
                     type="text"
                     id="custom-stream-name"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                    className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none bg-background text-foreground"
                     value={customStreamName}
                     onChange={(e) => setCustomStreamName(e.target.value)}
                 />
-                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                <p className="mt-1 text-sm text-muted-foreground">
                   This name will be used to identify the stream in the system.
                 </p>
               </div>
             </div>
-            <div className="flex justify-end p-4 border-t border-gray-200 dark:border-gray-700 space-x-2">
+            <div className="flex justify-end p-4 border-t border-border space-x-2">
               <button
-                  className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+                  className="px-4 py-2 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors"
                   onClick={() => setShowCustomNameInput(false)}
                   type="button"
               >
                 Cancel
               </button>
               <button
-                  className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+                  className="btn-success"
                   onClick={submitOnvifDevice}
                   type="button"
                   disabled={!customStreamName.trim() || isAddingStream}

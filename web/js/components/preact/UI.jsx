@@ -62,7 +62,7 @@ export function DeleteConfirmationModal(props) {
       onClick={handleBackgroundClick}
       onKeyDown={handleKeyDown}
     >
-      <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md mx-auto">
+      <div class="bg-card text-card-foreground rounded-lg shadow-xl p-6 max-w-md mx-auto">
         <div class="mb-4">
           <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{title}</h3>
         </div>
@@ -142,8 +142,8 @@ export function SnapshotPreviewModal({ isOpen, onClose, imageData, streamName, o
       className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
       onClick={handleBackgroundClick}
     >
-      <div className="modal-content bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl max-h-[90vh] flex flex-col transform transition-all duration-300 ease-out scale-95 opacity-0" style={{ width: '90%' }}>
-        <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
+      <div className="modal-content bg-card text-card-foreground rounded-lg shadow-xl max-w-4xl max-h-[90vh] flex flex-col transform transition-all duration-300 ease-out scale-95 opacity-0" style={{ width: '90%' }}>
+        <div className="flex justify-between items-center p-4 border-b border-border">
           <h3 id="snapshot-preview-title" className="text-lg font-semibold text-gray-900 dark:text-white">
             {streamName ? `Snapshot: ${streamName}` : 'Snapshot'}
           </h3>
@@ -162,10 +162,10 @@ export function SnapshotPreviewModal({ isOpen, onClose, imageData, streamName, o
             alt="Snapshot"
           />
         </div>
-        <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end space-x-2">
+        <div className="p-4 border-t border-border flex justify-end space-x-2">
           <button
             id="snapshot-download-btn"
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+            className="btn-primary"
             onClick={onDownload}
           >
             Download
@@ -500,8 +500,8 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
       className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
       onClick={handleBackgroundClick}
     >
-      <div className={`modal-content bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl max-h-[90vh] flex flex-col transform transition-all duration-300 ease-out ${isOpen ? 'scale-100 opacity-100' : 'scale-95 opacity-0'} w-full md:w-[90%]`}>
-        <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
+      <div className={`modal-content bg-card text-card-foreground rounded-lg shadow-xl max-w-4xl max-h-[90vh] flex flex-col transform transition-all duration-300 ease-out ${isOpen ? 'scale-100 opacity-100' : 'scale-95 opacity-0'} w-full md:w-[90%]`}>
+        <div className="flex justify-between items-center p-4 border-b border-border">
           <h3 id="video-preview-title" className="text-lg font-semibold text-gray-900 dark:text-white">
             {title || 'Video'}
           </h3>
@@ -557,7 +557,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
                     key={speed}
                     className={`speed-btn px-3 py-2 rounded-full ${
                       speed === currentSpeed
-                        ? 'bg-green-500 text-white'
+                        ? 'badge-success'
                         : 'bg-gray-200 hover:bg-gray-300'
                     } text-sm font-medium transition-all focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50`}
                     data-speed={speed}
@@ -616,7 +616,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
                     onChange={handleTimeWindowChange}
                   />
 
-                  <div id="detection-sensitivity-value" className="text-xs text-gray-600 dark:text-gray-400 text-center mb-1">
+                  <div id="detection-sensitivity-value" className="text-xs text-muted-foreground text-center mb-1">
                     Time Window: {timeWindow} second{timeWindow !== 1 ? 's' : ''}
                   </div>
                 </div>
@@ -624,7 +624,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
                 <div id="detection-status-indicator" className={`text-center text-sm ${
                   detections.length > 0
                     ? 'font-medium text-green-600 dark:text-green-400'
-                    : 'text-gray-600 dark:text-gray-400'
+                    : 'text-muted-foreground'
                 }`}>
                   {detectionStatus}
                 </div>
@@ -634,7 +634,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
 
           {/* Download button */}
           {downloadUrl && (
-            <div className="flex justify-center mt-4 pt-2 border-t border-gray-200 dark:border-gray-700">
+            <div className="flex justify-center mt-4 pt-2 border-t border-border">
               <a
                 className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center text-sm"
                 href={downloadUrl}

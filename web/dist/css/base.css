@@ -128,7 +128,7 @@
 @layer components {
   /* Status Message */
   .status-message {
-    @apply fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg bg-gray-800 text-white transform translate-y-[-100px] opacity-0 transition-all duration-300;
+    @apply fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg bg-card text-card-foreground transform translate-y-[-100px] opacity-0 transition-all duration-300;
   }
 
   .status-message.visible {
@@ -141,11 +141,11 @@
   }
 
   .modal-content {
-    @apply bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-lg mx-4 overflow-hidden;
+    @apply bg-card text-card-foreground rounded-lg shadow-xl w-full max-w-lg mx-4 overflow-hidden;
   }
 
   .modal-header {
-    @apply flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700;
+    @apply flex justify-between items-center p-4 border-b border-border;
   }
 
   .modal-body {
@@ -153,11 +153,15 @@
   }
 
   .modal-footer {
-    @apply flex justify-end gap-2 p-4 border-t border-gray-200 dark:border-gray-700;
+    @apply flex justify-end gap-2 p-4 border-t border-border;
   }
 
   .modal .close {
-    @apply text-2xl font-bold text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 cursor-pointer;
+    @apply text-2xl font-bold text-muted-foreground cursor-pointer;
+  }
+
+  .modal .close:hover {
+    @apply text-foreground;
   }
 
   /* Video Grid Layouts */

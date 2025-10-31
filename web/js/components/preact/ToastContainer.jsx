@@ -85,19 +85,35 @@ export function ToastContainer() {
       ref={containerRef}
       className="fixed top-20 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2.5 w-full max-w-[450px] pointer-events-none"
     >
-      {toasts.map(toast => (
-        <div
-          key={toast.id}
-          className={`py-3.5 px-4.5 rounded-lg shadow-lg w-full flex items-center pointer-events-auto font-medium
-            ${toast.type === 'success' ? 'bg-green-500 text-white border-l-[6px] border-green-600' :
-              toast.type === 'error' ? 'bg-red-500 text-white border-l-[6px] border-red-700' :
-              toast.type === 'warning' ? 'bg-yellow-500 text-white border-l-[6px] border-yellow-600' :
-              'bg-blue-500 text-white border-l-[6px] border-blue-600'}`}
-          onClick={() => removeToast(toast.id)}
-        >
-          {toast.message}
-        </div>
-      ))}
+      {toasts.map(toast => {
+        const getToastStyles = (type) => {
+          const baseStyles = 'py-3.5 px-4.5 rounded-lg shadow-lg w-full flex items-center pointer-events-auto font-medium border-l-[6px]';
+          const typeStyles = {
+            success: { bg: 'hsl(var(--success))', fg: 'hsl(var(--success-foreground))', border: 'hsl(var(--success) / 0.8)' },
+            error: { bg: 'hsl(var(--danger))', fg: 'hsl(var(--danger-foreground))', border: 'hsl(var(--danger) / 0.8)' },
+            warning: { bg: 'hsl(var(--warning))', fg: 'hsl(var(--warning-foreground))', border: 'hsl(var(--warning) / 0.8)' },
+            info: { bg: 'hsl(var(--info))', fg: 'hsl(var(--info-foreground))', border: 'hsl(var(--info) / 0.8)' }
+          };
+          return { baseStyles, ...typeStyles[type] || typeStyles.info };
+        };
+
+        const styles = getToastStyles(toast.type);
+
+        return (
+          <div
+            key={toast.id}
+            className={styles.baseStyles}
+            style={{
+              backgroundColor: styles.bg,
+              color: styles.fg,
+              borderLeftColor: styles.border
+            }}
+            onClick={() => removeToast(toast.id)}
+          >
+            {toast.message}
+          </div>
+        );
+      })}
     </div>,
     document.body
   );

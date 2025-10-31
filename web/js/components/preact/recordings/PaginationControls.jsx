@@ -11,8 +11,8 @@ import { h } from 'preact';
  */
 export function PaginationControls({ pagination, goToPage }) {
   return (
-    <div className="pagination-controls flex flex-col sm:flex-row justify-between items-center p-4 border-t border-gray-200 dark:border-gray-700">
-      <div className="pagination-info text-sm text-gray-600 dark:text-gray-400 mb-2 sm:mb-0">
+    <div className="pagination-controls flex flex-col sm:flex-row justify-between items-center p-4 border-t border-border">
+      <div className="pagination-info text-sm text-muted-foreground mb-2 sm:mb-0">
         Showing <span id="pagination-showing">{pagination.startItem}-{pagination.endItem}</span> of <span id="pagination-total">{pagination.totalItems}</span> recordings
       </div>
       <div className="pagination-buttons flex items-center space-x-1">

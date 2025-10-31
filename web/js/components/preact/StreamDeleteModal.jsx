@@ -37,8 +37,8 @@ export function StreamDeleteModal({ streamId, streamName, onClose, onDisable, on
 
   return (
     <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 transition-opacity duration-300">
-      <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full">
-        <div class="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
+      <div class="bg-card text-card-foreground rounded-lg shadow-xl max-w-md w-full">
+        <div class="flex justify-between items-center p-4 border-b border-border">
           <h3 class="text-lg font-medium">{isConfirmDelete ? 'Confirm Permanent Deletion' : 'Stream Actions'}</h3>
           <button type="button" class="text-2xl cursor-pointer border-none bg-transparent" onClick={onClose}>×</button>
         </div>
@@ -47,17 +47,17 @@ export function StreamDeleteModal({ streamId, streamName, onClose, onDisable, on
           {!isConfirmDelete ? (
             <div class="mb-6">
               <h4 class="text-lg font-medium mb-2">What would you like to do with "{streamName}"?</h4>
-              <p class="text-gray-600 dark:text-gray-400 mb-4">
+              <p class="text-muted-foreground mb-4">
                 Please choose one of the following options:
               </p>
 
               <div class="space-y-4">
-                <div class="p-4 border border-yellow-200 bg-yellow-50 dark:bg-yellow-900/20 dark:border-yellow-900/30 rounded-lg">
-                  <h5 class="font-medium text-yellow-800 dark:text-yellow-500 mb-2">Disable Stream (Soft Delete)</h5>
-                  <p class="text-gray-600 dark:text-gray-400 mb-2">
+                <div class="p-4 border rounded-lg" style={{borderColor: 'hsl(var(--warning-muted))', backgroundColor: 'hsl(var(--warning-muted) / 0.3)'}}>
+                  <h5 class="font-medium mb-2" style={{color: 'hsl(var(--warning))'}}>Disable Stream (Soft Delete)</h5>
+                  <p class="text-muted-foreground mb-2">
                     This option will disable the stream but keep its configuration in the database. You can re-enable it later.
                   </p>
-                  <ul class="list-disc list-inside text-sm text-gray-600 dark:text-gray-400 mb-3">
+                  <ul class="list-disc list-inside text-sm text-muted-foreground mb-3">
                     <li>Stream will stop processing</li>
                     <li>Live streaming will be disabled</li>
                     <li>Recording will be disabled</li>
@@ -75,12 +75,12 @@ export function StreamDeleteModal({ streamId, streamName, onClose, onDisable, on
                   </button>
                 </div>
 
-                <div class="p-4 border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-900/30 rounded-lg">
-                  <h5 class="font-medium text-red-800 dark:text-red-500 mb-2">Delete Stream (Permanent)</h5>
-                  <p class="text-gray-600 dark:text-gray-400 mb-2">
+                <div class="p-4 border rounded-lg" style={{borderColor: 'hsl(var(--danger-muted))', backgroundColor: 'hsl(var(--danger-muted) / 0.3)'}}>
+                  <h5 class="font-medium mb-2" style={{color: 'hsl(var(--danger))'}}>Delete Stream (Permanent)</h5>
+                  <p class="text-muted-foreground mb-2">
                     This option will permanently delete the stream configuration from the database. This action cannot be undone.
                   </p>
-                  <ul class="list-disc list-inside text-sm text-gray-600 dark:text-gray-400 mb-3">
+                  <ul class="list-disc list-inside text-sm text-muted-foreground mb-3">
                     <li>Stream will be completely removed</li>
                     <li>Configuration is deleted</li>
                     <li>Recordings remain accessible</li>
@@ -103,7 +103,7 @@ export function StreamDeleteModal({ streamId, streamName, onClose, onDisable, on
                 </svg>
               </div>
               <h4 class="text-lg font-medium mb-2 text-center">Are you sure you want to permanently delete "{streamName}"?</h4>
-              <p class="text-gray-600 dark:text-gray-400 mb-4 text-center">
+              <p class="text-muted-foreground mb-4 text-center">
                 This action cannot be undone. The stream configuration will be permanently removed from the database.
               </p>
             </div>

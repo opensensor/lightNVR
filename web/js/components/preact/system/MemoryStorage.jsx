@@ -34,29 +34,29 @@ export function MemoryStorage({ systemInfo, formatBytes }) {
   // These variables ensure the slivers add up to 100% of the combined usage bar
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-      <h3 className="text-lg font-semibold mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">Memory & Storage</h3>
+    <div className="bg-card text-card-foreground rounded-lg shadow p-4">
+      <h3 className="text-lg font-semibold mb-4 pb-2 border-b border-border">Memory & Storage</h3>
       <div className="space-y-4">
         <div>
           <div className="flex justify-between mb-1">
             <span className="font-medium">Process Memory:</span>
             <div>
-              <span className="inline-block px-2 py-0.5 mr-1 text-xs rounded bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+              <span className="inline-block px-2 py-0.5 mr-1 text-xs rounded" style={{backgroundColor: 'hsl(var(--primary-muted))', color: 'hsl(var(--primary))'}}>
                 LightNVR: {formatBytes(lightNvrMemoryUsed)}
               </span>
-              <span className="inline-block px-2 py-0.5 text-xs rounded bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+              <span className="inline-block px-2 py-0.5 text-xs rounded badge-success">
                 go2rtc: {formatBytes(go2rtcMemoryUsed)}
               </span>
             </div>
           </div>
-          <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+          <div className="flex justify-between text-xs text-muted-foreground mb-1">
             <span>Combined: {formatBytes(combinedMemoryUsed)} / {formatBytes(totalSystemMemory)}</span>
             <span>{combinedMemoryPercent}% of total memory</span>
           </div>
           <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700 overflow-hidden">
             <div className="flex h-full" style={{ width: `${combinedMemoryPercent}%` }}>
-              <div className="bg-blue-600 h-2.5" style={{ width: `${lightNvrSlicePercent}%` }}></div>
-              <div className="bg-green-500 h-2.5" style={{ width: `${go2rtcSlicePercent}%` }}></div>
+              <div className="h-2.5" style={{ width: `${lightNvrSlicePercent}%`, backgroundColor: 'hsl(var(--primary))' }}></div>
+              <div className="h-2.5" style={{ width: `${go2rtcSlicePercent}%`, backgroundColor: 'hsl(var(--success))' }}></div>
             </div>
           </div>
         </div>
@@ -70,7 +70,7 @@ export function MemoryStorage({ systemInfo, formatBytes }) {
           </div>
           <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
             <div
-              className="bg-blue-600 h-2.5 rounded-full"
+              className="h-2.5 rounded-full" style={{backgroundColor: 'hsl(var(--primary))'}}
               style={{
                 width: `${systemInfo.systemMemory?.total ?
                   (systemInfo.systemMemory.used / systemInfo.systemMemory.total * 100).toFixed(1) : 0}%`
@@ -88,7 +88,7 @@ export function MemoryStorage({ systemInfo, formatBytes }) {
           </div>
           <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
             <div
-              className="bg-blue-600 h-2.5 rounded-full"
+              className="h-2.5 rounded-full" style={{backgroundColor: 'hsl(var(--primary))'}}
               style={{
                 width: `${systemInfo.disk?.total ?
                   (systemInfo.disk.used / systemInfo.disk.total * 100).toFixed(1) : 0}%`
@@ -106,7 +106,7 @@ export function MemoryStorage({ systemInfo, formatBytes }) {
           </div>
           <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
             <div
-              className="bg-blue-600 h-2.5 rounded-full"
+              className="h-2.5 rounded-full" style={{backgroundColor: 'hsl(var(--primary))'}}
               style={{
                 width: `${systemInfo.systemDisk?.total ?
                   (systemInfo.systemDisk.used / systemInfo.systemDisk.total * 100).toFixed(1) : 0}%`

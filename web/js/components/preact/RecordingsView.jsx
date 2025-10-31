@@ -657,12 +657,12 @@ export function RecordingsView() {
 
   return (
     <section id="recordings-page" class="page">
-      <div class="page-header flex justify-between items-center mb-4 p-4 bg-white dark:bg-gray-800 rounded-lg shadow">
+      <div class="page-header flex justify-between items-center mb-4 p-4 bg-card text-card-foreground rounded-lg shadow">
         <div class="flex items-center">
           <h2 class="text-xl font-bold">Recordings</h2>
           <div class="ml-4 flex">
-            <a href="recordings.html" class="px-3 py-1 bg-blue-500 text-white rounded-l-md">Table View</a>
-            <a href="timeline.html" class="px-3 py-1 bg-gray-300 text-gray-700 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-400 dark:hover:bg-gray-600 rounded-r-md">Timeline View</a>
+            <a href="recordings.html" class="px-3 py-1 rounded-l-md" style={{backgroundColor: 'hsl(var(--primary))', color: 'hsl(var(--primary-foreground))'}}>Table View</a>
+            <a href="timeline.html" class="px-3 py-1 rounded-r-md" style={{backgroundColor: 'hsl(var(--secondary))', color: 'hsl(var(--secondary-foreground))'}} onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary) / 0.8)'} onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'}>Timeline View</a>
           </div>
         </div>
         <button id="toggle-filters-btn"

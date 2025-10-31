@@ -367,7 +367,7 @@ export function TimelineControls() {
       <div className="flex items-center">
         <button
           id="play-button"
-          className="w-10 h-10 rounded-full bg-green-600 hover:bg-green-700 text-white flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-1 transition-colors shadow-sm mr-2"
+          className="w-10 h-10 rounded-full btn-success flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-1 transition-colors shadow-sm mr-2"
           onClick={togglePlayback}
           title={isPlaying ? 'Pause' : 'Play from current position'}
         >

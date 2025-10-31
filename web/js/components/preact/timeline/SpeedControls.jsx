@@ -44,7 +44,7 @@ export function SpeedControls() {
   };
 
   return (
-    <div className="mt-2 mb-4 p-2 border border-green-500 rounded-lg bg-white dark:bg-gray-800 shadow-sm">
+    <div className="mt-2 mb-4 p-2 border border-green-500 rounded-lg bg-card text-card-foreground shadow-sm">
       <div className="flex flex-col items-center">
         <div className="text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">Playback Speed</div>
 
@@ -53,7 +53,7 @@ export function SpeedControls() {
             <button
               key={`speed-${speed}`}
               className={`speed-btn px-2 py-1 text-sm rounded-full ${speed === currentSpeed
-                ? 'bg-green-500 text-white'
+                ? 'badge-success'
                 : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'}
                 font-medium transition-all focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-opacity-50`}
               data-speed={speed}

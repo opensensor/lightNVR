@@ -379,13 +379,13 @@ export function WebRTCView() {
         targetId="live-page"
       />
 
-      <div className="page-header flex justify-between items-center mb-4 p-4 bg-white dark:bg-gray-800 rounded-lg shadow" style={{ position: 'relative', zIndex: 10, pointerEvents: 'auto' }}>
+      <div className="page-header flex justify-between items-center mb-4 p-4 bg-card text-card-foreground rounded-lg shadow" style={{ position: 'relative', zIndex: 10, pointerEvents: 'auto' }}>
         <div className="flex items-center space-x-2">
           <h2 className="text-xl font-bold mr-4">Live View</h2>
           <div className="flex space-x-2">
             <button
               id="hls-toggle-btn"
-              className="px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 inline-block text-center"
+              className="btn-success focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 inline-block text-center"
               style={{ position: 'relative', zIndex: 50 }} // Very high z-index to ensure clickability
               onClick={() => {
                 window.location.href = '/hls.html';
@@ -460,7 +460,7 @@ export function WebRTCView() {
               <div className="flex justify-center items-center col-span-full row-span-full h-64 w-full" style={{ pointerEvents: 'none', zIndex: 1 }}>
                 <div className="flex flex-col items-center justify-center py-8">
                 <div
-                  className="inline-block animate-spin rounded-full border-4 border-gray-300 dark:border-gray-600 border-t-blue-600 dark:border-t-blue-500 w-16 h-16"></div>
+                  className="inline-block animate-spin rounded-full border-4 border-input border-t-blue-600 dark:border-t-blue-500 w-16 h-16"></div>
                 <p className="mt-4 text-gray-700 dark:text-gray-300">Loading streams...</p>
               </div>
             </div>
@@ -475,24 +475,24 @@ export function WebRTCView() {
             >
               <div className="flex flex-col items-center justify-center py-8">
                 <div
-                  className="inline-block animate-spin rounded-full border-4 border-gray-300 dark:border-gray-600 border-t-blue-600 dark:border-t-blue-500 w-16 h-16"></div>
+                  className="inline-block animate-spin rounded-full border-4 border-input border-t-blue-600 dark:border-t-blue-500 w-16 h-16"></div>
                 <p className="mt-4 text-gray-700 dark:text-gray-300">Loading streams...</p>
               </div>
             </div>
           ) : (streamsError) ? (
-            <div className="placeholder flex flex-col justify-center items-center col-span-full row-span-full bg-white dark:bg-gray-800 rounded-lg shadow-md text-center p-8">
+            <div className="placeholder flex flex-col justify-center items-center col-span-full row-span-full bg-card text-card-foreground rounded-lg shadow-md text-center p-8">
               <p className="mb-6 text-gray-600 dark:text-gray-300 text-lg">Error loading streams: {streamsError.message}</p>
               <button
                 onClick={() => window.location.reload()}
-                className="btn-primary px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                className="btn-primary"
               >
                 Retry
               </button>
             </div>
           ) : streams.length === 0 ? (
-            <div className="placeholder flex flex-col justify-center items-center col-span-full row-span-full bg-white dark:bg-gray-800 rounded-lg shadow-md text-center p-8">
+            <div className="placeholder flex flex-col justify-center items-center col-span-full row-span-full bg-card text-card-foreground rounded-lg shadow-md text-center p-8">
               <p className="mb-6 text-gray-600 dark:text-gray-300 text-lg">No streams configured</p>
-              <a href="streams.html" className="btn-primary px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">Configure Streams</a>
+              <a href="streams.html" className="btn-primary">Configure Streams</a>
             </div>
           ) : (
             // Render video cells using our self-contained WebRTCVideoCell component
@@ -510,7 +510,7 @@ export function WebRTCView() {
         {layout !== '1' && streams.length > getMaxStreamsForLayout() ? (
           <div className="pagination-controls flex justify-center items-center space-x-4 mt-4">
             <button
-              className="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={() => {
                 console.log('Changing to previous page');
                 setCurrentPage(Math.max(0, currentPage - 1));
@@ -525,7 +525,7 @@ export function WebRTCView() {
             </span>
 
             <button
-              className="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={() => {
                 console.log('Changing to next page');
                 const totalPages = Math.ceil(streams.length / getMaxStreamsForLayout());

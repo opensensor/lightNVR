@@ -389,11 +389,27 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 
                 // Check for known incompatible audio codecs
                 if (out_audio_stream->codecpar->codec_id == AV_CODEC_ID_PCM_MULAW) {
-                    log_error("PCM μ-law (mlaw) audio codec is not compatible with MP4 format");
-                    log_error("Try disabling audio recording for this stream");
+                    log_error("PCM μ-law (G.711 μ-law) audio codec is not compatible with MP4 format");
+                    log_error("Audio transcoding to AAC should be enabled automatically");
+                    log_error("If the issue persists, try disabling audio recording for this stream");
                 } else if (out_audio_stream->codecpar->codec_id == AV_CODEC_ID_PCM_ALAW) {
-                    log_error("PCM A-law (alaw) audio codec is not compatible with MP4 format");
-                    log_error("Try disabling audio recording for this stream");
+                    log_error("PCM A-law (G.711 A-law) audio codec is not compatible with MP4 format");
+                    log_error("Audio transcoding to AAC should be enabled automatically");
+                    log_error("If the issue persists, try disabling audio recording for this stream");
+                } else if (out_audio_stream->codecpar->codec_id == AV_CODEC_ID_PCM_S16LE) {
+                    log_error("PCM signed 16-bit little-endian audio codec is not compatible with MP4 format");
+                    log_error("Audio transcoding to AAC should be enabled automatically");
+                    log_error("If the issue persists, try disabling audio recording for this stream");
+                } else if (out_audio_stream->codecpar->codec_id == AV_CODEC_ID_PCM_S16BE) {
+                    log_error("PCM signed 16-bit big-endian audio codec is not compatible with MP4 format");
+                    log_error("Audio transcoding to AAC should be enabled automatically");
+                    log_error("If the issue persists, try disabling audio recording for this stream");
+                } else if (out_audio_stream->codecpar->codec_id >= AV_CODEC_ID_PCM_S16LE &&
+                          out_audio_stream->codecpar->codec_id <= AV_CODEC_ID_PCM_LXF) {
+                    log_error("PCM audio codec (codec_id=%d) is not compatible with MP4 format",
+                             out_audio_stream->codecpar->codec_id);
+                    log_error("Audio transcoding to AAC should be enabled automatically");
+                    log_error("If the issue persists, try disabling audio recording for this stream");
                 }
             }
         }

@@ -8,7 +8,9 @@
 
 /* Header styles */
 header {
-    @apply bg-gray-800 text-white py-2 px-4 flex justify-between items-center shadow-md;
+    @apply py-2 px-4 flex justify-between items-center shadow-md;
+    background-color: hsl(var(--card));
+    color: hsl(var(--card-foreground));
     /* Ensure header is always on top and clickable */
     position: relative;
     z-index: 1000;
@@ -23,7 +25,8 @@ header {
 }
 
 .version {
-    @apply text-blue-200 text-xs ml-2;
+    @apply text-xs ml-2;
+    color: hsl(var(--muted-foreground));
 }
 
 nav ul {
@@ -31,7 +34,8 @@ nav ul {
 }
 
 nav a {
-    @apply text-white no-underline py-2 px-4 mx-0.5 rounded transition-colors duration-300;
+    @apply no-underline py-2 px-4 mx-0.5 rounded transition-colors duration-300;
+    color: hsl(var(--card-foreground));
     /* Ensure navigation links are always clickable */
     position: relative;
     z-index: 1001;
@@ -40,7 +44,8 @@ nav a {
 
 nav a:hover,
 nav a.active {
-    @apply bg-blue-600;
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
 }
 
 .user-menu {
@@ -52,16 +57,18 @@ nav a.active {
 }
 
 .user-menu a {
-    @apply text-white no-underline;
+    @apply no-underline;
+    color: hsl(var(--card-foreground));
 }
 
 /* Footer styles */
 footer {
-    @apply bg-gray-800 text-white py-3 px-4 flex justify-between items-center text-sm;
+    @apply py-3 px-4 flex justify-between items-center text-sm;
 }
 
 footer a {
-    @apply text-blue-200 no-underline hover:underline;
+    @apply no-underline hover:underline;
+    color: hsl(var(--primary));
 }
 
 /* Table styles */
@@ -70,15 +77,15 @@ table {
 }
 
 th, td {
-    @apply py-3 px-6 text-left border-b border-gray-200 dark:border-gray-700;
+    @apply py-3 px-6 text-left border-b border-border;
 }
 
 th {
-    @apply bg-gray-50 dark:bg-gray-700 font-semibold;
+    @apply bg-muted font-semibold;
 }
 
 .empty-message {
-    @apply text-center text-gray-500 dark:text-gray-400 py-8;
+    @apply text-center text-muted-foreground py-8;
 }
 
 /* Pagination styles */
@@ -87,7 +94,7 @@ th {
 }
 
 .pagination-info {
-    @apply text-gray-600 dark:text-gray-300 text-sm;
+    @apply text-muted-foreground text-sm;
 }
 
 .pagination-buttons {
@@ -95,15 +102,20 @@ th {
 }
 
 .pagination-buttons button {
-    @apply min-w-8 h-8 p-0 flex items-center justify-center bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded cursor-pointer text-base disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-200 dark:hover:bg-gray-600;
+    @apply min-w-8 h-8 p-0 flex items-center justify-center bg-secondary border border-input rounded cursor-pointer text-base disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+.pagination-buttons button:hover:not(:disabled) {
+    background-color: hsl(var(--secondary) / 0.8);
 }
 
 .pagination-buttons button.active {
-    @apply bg-blue-600 text-white;
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
 }
 
 #pagination-current {
-    @apply px-2 text-sm text-gray-700 dark:text-gray-300;
+    @apply px-2 text-sm text-foreground;
 }
 
 /* Responsive layout styles */

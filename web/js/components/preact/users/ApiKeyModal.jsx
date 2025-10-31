@@ -53,7 +53,7 @@ export function ApiKeyModal({ currentUser, newApiKey, handleGenerateApiKey, copy
                   readOnly
                 />
                 <button
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-r"
+                  className="btn-primary font-bold py-2 px-4 rounded-r"
                   onClick={copyApiKey}
                 >
                   Copy
@@ -69,7 +69,7 @@ export function ApiKeyModal({ currentUser, newApiKey, handleGenerateApiKey, copy
                 Generate a new API key for this user. This will invalidate any existing API key.
               </p>
               <button
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mb-4"
+                className="btn-primary w-full font-bold py-2 px-4 rounded mb-4"
                 onClick={handleGenerateApiKey}
               >
                 Generate New API Key
@@ -80,7 +80,7 @@ export function ApiKeyModal({ currentUser, newApiKey, handleGenerateApiKey, copy
 
         <div className="flex justify-end">
           <button
-            className={newApiKey && newApiKey !== 'Generating...' ? 'px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700' : 'px-4 py-2 bg-gray-300 text-gray-800 dark:bg-gray-600 dark:text-white rounded hover:bg-gray-400 dark:hover:bg-gray-500'}
+            className={newApiKey && newApiKey !== 'Generating...' ? 'btn-primary' : 'btn-secondary'}
             onClick={onClose}
           >
             {newApiKey && newApiKey !== 'Generating...' ? 'Done' : 'Close'}
