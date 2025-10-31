@@ -57,6 +57,7 @@ void init_recordings_system(void);
 #include "web/http_server.h"
 #include "web/mongoose_server.h"
 #include "web/api_handlers.h"
+#include "web/batch_delete_progress.h"
 #include "mongoose.h"
 
 // Include necessary headers for signal handling
@@ -817,6 +818,14 @@ int main(int argc, char *argv[]) {
         log_info("Authentication system initialized successfully");
     }
 
+    // Initialize batch delete progress tracking
+    if (batch_delete_progress_init() != 0) {
+        log_error("Failed to initialize batch delete progress tracking");
+        // Continue anyway, batch delete will still work but without progress tracking
+    } else {
+        log_info("Batch delete progress tracking initialized successfully");
+    }
+
     // Check if detection models exist and start detection-based recording - MOVED TO END OF SETUP
     for (int i = 0; i < config.max_streams; i++) {
         if (config.streams[i].name[0] != '\0' && config.streams[i].enabled &&
@@ -1289,6 +1298,9 @@ cleanup:
         // Shut down remaining components
         http_server_stop(http_server);
         http_server_destroy(http_server);
+
+        // Cleanup batch delete progress tracking
+        batch_delete_progress_cleanup();
 
         shutdown_stream_manager();
         shutdown_stream_state_adapter();

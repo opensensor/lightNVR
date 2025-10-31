@@ -126,6 +126,7 @@ static const mg_api_route_t s_api_routes[] = {
     {"GET", "/api/recordings/#", mg_handle_get_recording, false},
     {"DELETE", "/api/recordings/#", mg_handle_delete_recording, true},  // Already uses threading
     {"POST", "/api/recordings/batch-delete", mg_handle_batch_delete_recordings, true},  // Already uses threading
+    {"GET", "/api/recordings/batch-delete/progress/#", mg_handle_batch_delete_progress, false},  // Progress check is fast
     {"POST", "/api/recordings/sync", mg_handle_post_recordings_sync, false},  // Sync recordings file sizes
 
     // No direct HLS handlers - handled by static file handler

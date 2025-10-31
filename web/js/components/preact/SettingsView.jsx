@@ -7,6 +7,7 @@ import { useState, useEffect } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { ContentLoader } from './LoadingIndicator.jsx';
 import { useQuery, useMutation, fetchJSON } from '../../query-client.js';
+import { ThemeCustomizer } from './ThemeCustomizer.jsx';
 
 /**
  * SettingsView component
@@ -182,6 +183,12 @@ export function SettingsView() {
         emptyMessage="No settings available. Please try again later."
       >
         <div class="settings-container space-y-6">
+          {/* Appearance Settings */}
+          <div class="settings-group bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+            <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">Appearance</h3>
+            <ThemeCustomizer />
+          </div>
+
           <div class="settings-group bg-white dark:bg-gray-800 rounded-lg shadow p-4">
             <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">General Settings</h3>
             <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">

@@ -108,16 +108,16 @@ export function BatchDeleteModal() {
         totalCount = params.totalCount;
       }
 
-      // Update progress to show we're using HTTP
+      // Update progress to show we're starting
       updateProgress({
         current: 0,
         total: totalCount,
-        status: 'Using HTTP fallback for batch delete operation',
+        status: 'Starting batch delete operation...',
         succeeded: 0,
         failed: 0
       });
 
-      // Send HTTP request
+      // Send HTTP request to start the batch delete job
       fetch('/api/recordings/batch-delete', {
         method: 'POST',
         headers: {
@@ -132,41 +132,99 @@ export function BatchDeleteModal() {
         return response.json();
       })
       .then(result => {
-        console.log('HTTP batch delete result:', result);
+        console.log('Batch delete job started:', result);
 
-        // Make sure we have valid data
-        const total = result.total || totalCount || 0;
-        const succeeded = result.succeeded || 0;
-        const failed = result.failed || 0;
+        if (!result.job_id) {
+          throw new Error('No job_id received from server');
+        }
 
-        // Update final progress
-        updateProgress({
-          current: total,
-          total: total,
-          succeeded: succeeded,
-          failed: failed,
-          status: 'Batch delete operation complete',
-          complete: true
-        });
+        const jobId = result.job_id;
 
-        // Show status message
-        const message = result.success
-          ? `Successfully deleted ${succeeded} recordings`
-          : `Deleted ${succeeded} recordings with ${failed} failures`;
+        // Start polling for progress
+        const pollInterval = 500; // Poll every 500ms
+        let pollTimer = null;
 
-        showStatusMessage(message, 'success', 5000);
+        const pollProgress = () => {
+          fetch(`/api/recordings/batch-delete/progress/${jobId}`)
+            .then(response => {
+              if (!response.ok) {
+                throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
+              }
+              return response.json();
+            })
+            .then(progressData => {
+              console.log('Progress update:', progressData);
 
-        // Reload recordings after a short delay
-        setTimeout(() => {
-          if (typeof window.loadRecordings === 'function') {
-            window.loadRecordings();
-          }
-        }, 1000);
+              // Update progress UI
+              updateProgress({
+                current: progressData.current || 0,
+                total: progressData.total || totalCount,
+                succeeded: progressData.succeeded || 0,
+                failed: progressData.failed || 0,
+                status: progressData.status_message || 'Processing...',
+                complete: progressData.complete || false
+              });
 
-        resolve(result);
+              // Check if complete
+              if (progressData.complete) {
+                // Stop polling
+                if (pollTimer) {
+                  clearInterval(pollTimer);
+                  pollTimer = null;
+                }
+
+                // Show status message
+                const succeeded = progressData.succeeded || 0;
+                const failed = progressData.failed || 0;
+                const message = failed === 0
+                  ? `Successfully deleted ${succeeded} recordings`
+                  : `Deleted ${succeeded} recordings with ${failed} failures`;
+
+                showStatusMessage(message, 'success', 5000);
+
+                // Reload recordings after a short delay
+                setTimeout(() => {
+                  if (typeof window.loadRecordings === 'function') {
+                    window.loadRecordings();
+                  }
+                }, 1000);
+
+                resolve(progressData);
+              }
+            })
+            .catch(error => {
+              console.error('Progress polling error:', error);
+
+              // Stop polling
+              if (pollTimer) {
+                clearInterval(pollTimer);
+                pollTimer = null;
+              }
+
+              // Update progress UI to show error
+              updateProgress({
+                current: 0,
+                total: 0,
+                succeeded: 0,
+                failed: 0,
+                status: `Error: ${error.message || 'Unknown error'}`,
+                complete: true,
+                error: true
+              });
+
+              // Show error message
+              showStatusMessage(`Error: ${error.message || 'Unknown error'}`, 'error', 5000);
+
+              reject(error);
+            });
+        };
+
+        // Start polling immediately and then at intervals
+        pollProgress();
+        pollTimer = setInterval(pollProgress, pollInterval);
       })
       .catch(error => {
-        console.error('HTTP batch delete error:', error);
+        console.error('Batch delete start error:', error);
 
         // Update progress UI to show error
         updateProgress({
