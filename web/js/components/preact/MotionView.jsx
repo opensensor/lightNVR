@@ -174,15 +174,15 @@ export function MotionView() {
         <div className="bg-card text-card-foreground rounded-lg shadow-md p-6 mb-8">
           <h2 className="text-xl font-semibold mb-4">Storage Statistics</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded">
+            <div className="bg-muted p-4 rounded">
               <div className="text-sm text-muted-foreground">Total Recordings</div>
               <div className="text-2xl font-bold">{storageStats.total_recordings || 0}</div>
             </div>
-            <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded">
+            <div className="bg-muted p-4 rounded">
               <div className="text-sm text-muted-foreground">Total Size</div>
               <div className="text-2xl font-bold">{formatBytes(storageStats.total_size_bytes || 0)}</div>
             </div>
-            <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded">
+            <div className="bg-muted p-4 rounded">
               <div className="text-sm text-muted-foreground">Disk Usage</div>
               <div className="text-2xl font-bold">{(storageStats.disk_space_used_percent || 0).toFixed(1)}%</div>
             </div>
@@ -197,30 +197,30 @@ export function MotionView() {
         </div>
         
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead className="bg-gray-50 dark:bg-gray-700">
+          <table className="min-w-full divide-y divide-border">
+            <thead className="bg-muted">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Camera
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Status
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Pre-Buffer
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Post-Buffer
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Retention
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                <th className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-card text-card-foreground divide-y divide-gray-200 dark:divide-gray-700">
+            <tbody className="bg-card text-card-foreground divide-y divide-border">
               {streams.map((stream) => (
                 <StreamRow
                   key={stream.name}
@@ -354,7 +354,7 @@ function ConfigModal({ stream, config, onConfigChange, onSave, onClose, isSaving
         <div className="p-6 space-y-6">
           {/* Enabled Toggle */}
           <div className="flex items-center justify-between">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            <label className="text-sm font-medium text-foreground">
               Enable Motion Recording
             </label>
             <label className="relative inline-flex items-center cursor-pointer">
@@ -365,13 +365,13 @@ function ConfigModal({ stream, config, onConfigChange, onSave, onClose, isSaving
                 className="sr-only peer"
                 style={{accentColor: 'hsl(var(--primary))'}}
               />
-              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600" style={{backgroundColor: config.enabled ? 'hsl(var(--primary))' : undefined}}></div>
+              <div className="w-11 h-6 peer-focus:outline-none peer-focus:ring-4 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all" style={{backgroundColor: config.enabled ? 'hsl(var(--primary))' : 'hsl(var(--muted))', borderColor: 'hsl(var(--border))'}}></div>
             </label>
           </div>
 
           {/* Pre-Buffer Seconds */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-foreground mb-2">
               Pre-Event Buffer (seconds)
             </label>
             <input
@@ -380,7 +380,7 @@ function ConfigModal({ stream, config, onConfigChange, onSave, onClose, isSaving
               max="30"
               value={config.pre_buffer_seconds}
               onChange={(e) => handleChange('pre_buffer_seconds', parseInt(e.target.value))}
-              className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
+              className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 bg-background text-foreground"
             />
             <p className="mt-1 text-sm text-muted-foreground">
               Seconds of video to include before motion event (0-30)
@@ -389,7 +389,7 @@ function ConfigModal({ stream, config, onConfigChange, onSave, onClose, isSaving
 
           {/* Post-Buffer Seconds */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-foreground mb-2">
               Post-Event Buffer (seconds)
             </label>
             <input
@@ -398,7 +398,7 @@ function ConfigModal({ stream, config, onConfigChange, onSave, onClose, isSaving
               max="60"
               value={config.post_buffer_seconds}
               onChange={(e) => handleChange('post_buffer_seconds', parseInt(e.target.value))}
-              className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
+              className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 bg-background text-foreground"
             />
             <p className="mt-1 text-sm text-muted-foreground">
               Seconds to continue recording after motion stops (0-60)
@@ -407,7 +407,7 @@ function ConfigModal({ stream, config, onConfigChange, onSave, onClose, isSaving
 
           {/* Max File Duration */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-foreground mb-2">
               Maximum File Duration (seconds)
             </label>
             <input
@@ -417,7 +417,7 @@ function ConfigModal({ stream, config, onConfigChange, onSave, onClose, isSaving
               step="60"
               value={config.max_file_duration}
               onChange={(e) => handleChange('max_file_duration', parseInt(e.target.value))}
-              className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
+              className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 bg-background text-foreground"
             />
             <p className="mt-1 text-sm text-muted-foreground">
               Maximum duration for a single recording file (60-3600 seconds)
@@ -426,13 +426,13 @@ function ConfigModal({ stream, config, onConfigChange, onSave, onClose, isSaving
 
           {/* Codec */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-foreground mb-2">
               Video Codec
             </label>
             <select
               value={config.codec}
               onChange={(e) => handleChange('codec', e.target.value)}
-              className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
+              className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 bg-background text-foreground"
             >
               <option value="h264">H.264</option>
               <option value="h265">H.265</option>
@@ -441,13 +441,13 @@ function ConfigModal({ stream, config, onConfigChange, onSave, onClose, isSaving
 
           {/* Quality */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-foreground mb-2">
               Recording Quality
             </label>
             <select
               value={config.quality}
               onChange={(e) => handleChange('quality', e.target.value)}
-              className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
+              className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 bg-background text-foreground"
             >
               <option value="low">Low</option>
               <option value="medium">Medium</option>
@@ -457,7 +457,7 @@ function ConfigModal({ stream, config, onConfigChange, onSave, onClose, isSaving
 
           {/* Retention Days */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-foreground mb-2">
               Retention Period (days)
             </label>
             <input
@@ -466,7 +466,7 @@ function ConfigModal({ stream, config, onConfigChange, onSave, onClose, isSaving
               max="365"
               value={config.retention_days}
               onChange={(e) => handleChange('retention_days', parseInt(e.target.value))}
-              className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
+              className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 bg-background text-foreground"
             />
             <p className="mt-1 text-sm text-muted-foreground">
               Automatically delete recordings older than this many days (1-365)
@@ -478,7 +478,7 @@ function ConfigModal({ stream, config, onConfigChange, onSave, onClose, isSaving
           <button
             onClick={onClose}
             disabled={isSaving}
-            className="px-4 py-2 border border-input rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+            className="px-4 py-2 border border-input rounded-md shadow-sm text-sm font-medium text-foreground bg-background hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
           >
             Cancel
           </button>

@@ -78,7 +78,7 @@ export function LogsView({ logs, logLevel, logCount, setLogLevel, setLogCount, l
         <div className="flex space-x-2">
           <select
             id="log-level"
-            className="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+            className="px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none bg-background text-foreground"
             value={logLevel}
             onChange={e => {
               const newLevel = e.target.value;
@@ -93,7 +93,7 @@ export function LogsView({ logs, logLevel, logCount, setLogLevel, setLogCount, l
           </select>
           <select
             id="log-count"
-            className="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+            className="px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none bg-background text-foreground"
             value={logCount}
             onChange={e => setLogCount(parseInt(e.target.value, 10))}
           >
@@ -118,7 +118,7 @@ export function LogsView({ logs, logLevel, logCount, setLogLevel, setLogCount, l
           </button>
         </div>
       </div>
-      <div className="logs-container bg-gray-100 dark:bg-gray-900 rounded p-4 overflow-auto max-h-96 font-mono text-sm">
+      <div className="logs-container bg-muted/30 rounded p-4 overflow-auto max-h-96 font-mono text-sm">
         {logs.length === 0 ? (
           <div className="text-muted-foreground">No logs found</div>
         ) : (

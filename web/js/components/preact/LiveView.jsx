@@ -401,7 +401,7 @@ export function LiveView({isWebRTCDisabled}) {
             <label htmlFor="layout-selector" className="mr-2">Layout:</label>
             <select
               id="layout-selector"
-              className="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600"
+              className="px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none bg-background text-foreground"
               value={layout}
               onChange={(e) => {
                 const newLayout = e.target.value;
@@ -423,7 +423,7 @@ export function LiveView({isWebRTCDisabled}) {
               <label htmlFor="stream-selector" className="mr-2">Stream:</label>
               <select
                 id="stream-selector"
-                className="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600"
+                className="px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none bg-background text-foreground"
                 value={selectedStream}
                 onChange={(e) => {
                   const newStream = e.target.value;
@@ -439,7 +439,7 @@ export function LiveView({isWebRTCDisabled}) {
 
           <button
             id="fullscreen-btn"
-            className="p-2 rounded-full bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 focus:outline-none"
+            className="p-2 rounded-full bg-secondary hover:bg-secondary/80 text-secondary-foreground focus:outline-none"
             onClick={() => toggleFullscreen()}
             title="Toggle Fullscreen"
           >
