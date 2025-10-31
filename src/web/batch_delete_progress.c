@@ -7,10 +7,51 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <uuid/uuid.h>
 
 #include "web/batch_delete_progress.h"
 #include "core/logger.h"
+
+/**
+ * @brief Generate a simple UUID v4 without external dependencies
+ *
+ * This is a lightweight UUID generator that doesn't require libuuid.
+ * It generates a random UUID v4 using /dev/urandom or rand() as fallback.
+ *
+ * @param uuid_str Output buffer for UUID string (must be at least 37 bytes)
+ */
+static void generate_uuid_v4(char *uuid_str) {
+    unsigned char uuid[16];
+
+    // Try to read from /dev/urandom for better randomness
+    FILE *f = fopen("/dev/urandom", "rb");
+    if (f) {
+        if (fread(uuid, 1, 16, f) != 16) {
+            // Fallback to rand() if read fails
+            for (int i = 0; i < 16; i++) {
+                uuid[i] = rand() & 0xFF;
+            }
+        }
+        fclose(f);
+    } else {
+        // Fallback to rand() if /dev/urandom is not available
+        for (int i = 0; i < 16; i++) {
+            uuid[i] = rand() & 0xFF;
+        }
+    }
+
+    // Set version (4) and variant bits according to RFC 4122
+    uuid[6] = (uuid[6] & 0x0F) | 0x40;  // Version 4
+    uuid[8] = (uuid[8] & 0x3F) | 0x80;  // Variant 10
+
+    // Format as UUID string: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+    snprintf(uuid_str, 37,
+             "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+             uuid[0], uuid[1], uuid[2], uuid[3],
+             uuid[4], uuid[5],
+             uuid[6], uuid[7],
+             uuid[8], uuid[9],
+             uuid[10], uuid[11], uuid[12], uuid[13], uuid[14], uuid[15]);
+}
 
 // Maximum number of concurrent batch delete jobs
 #define MAX_BATCH_DELETE_JOBS 10
@@ -138,11 +179,9 @@ int batch_delete_progress_create_job(int total, char *job_id_out) {
         log_error("No available slots for new batch delete job");
         return -1;
     }
-    
+
     // Generate a UUID for the job
-    uuid_t uuid;
-    uuid_generate(uuid);
-    uuid_unparse(uuid, g_jobs[slot].job_id);
+    generate_uuid_v4(g_jobs[slot].job_id);
     
     // Initialize the job
     g_jobs[slot].status = BATCH_DELETE_STATUS_PENDING;
