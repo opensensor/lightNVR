@@ -13,7 +13,7 @@ function formatLogLevel(level) {
   // Handle null or undefined level
   if (level === null || level === undefined) {
     return (
-      <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
+      <span className="badge-muted">
         UNKNOWN
       </span>
     );
@@ -25,25 +25,25 @@ function formatLogLevel(level) {
   // Match against known log levels
   if (levelLower === 'error' || levelLower === 'err') {
     return (
-      <span className="px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
+      <span className="badge-danger">
         ERROR
       </span>
     );
   } else if (levelLower === 'warning' || levelLower === 'warn') {
     return (
-      <span className="px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
+      <span className="badge-warning">
         WARN
       </span>
     );
   } else if (levelLower === 'info') {
     return (
-      <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+      <span className="badge-info">
         INFO
       </span>
     );
   } else if (levelLower === 'debug' || levelLower === 'dbg') {
     return (
-      <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
+      <span className="badge-muted">
         DEBUG
       </span>
     );
@@ -51,7 +51,7 @@ function formatLogLevel(level) {
     // For any other value, display it as is (uppercase)
     const levelText = String(level).toUpperCase();
     return (
-      <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
+      <span className="badge-muted">
         {levelText}
       </span>
     );

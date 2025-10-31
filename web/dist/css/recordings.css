@@ -35,9 +35,11 @@
     @apply max-h-0 overflow-hidden py-0 my-0 opacity-0;
 }
 
-/* Filter tag styling - using Tailwind colors instead of custom variables */
+/* Filter tag styling - using theme-aware colors */
 .filter-tag {
-    @apply inline-flex items-center bg-blue-100 dark:bg-blue-900/30 rounded-full py-1 px-3 text-sm text-blue-700 dark:text-blue-300;
+    @apply inline-flex items-center rounded-full py-1 px-3 text-sm;
+    background-color: hsl(var(--info-muted));
+    color: hsl(var(--info-muted-foreground));
 }
 
 .filter-tag .remove-filter {

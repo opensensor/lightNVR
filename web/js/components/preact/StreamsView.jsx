@@ -651,7 +651,7 @@ export function StreamsView() {
                 <tr key={stream.name} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
-                      <span className={`status-indicator w-2 h-2 rounded-full mr-2 ${stream.enabled ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                      <span className={`status-indicator w-2 h-2 rounded-full mr-2 ${stream.enabled ? 'status-ok' : 'status-danger'}`} style={{backgroundColor: stream.enabled ? 'hsl(var(--success))' : 'hsl(var(--danger))'}}></span>
                       {stream.name}
                     </div>
                   </td>

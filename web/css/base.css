@@ -56,6 +56,24 @@
   --input: 240 32% 92%;
   --ring: 240 32% 50%;
   --radius: 0.5rem;
+
+  /* Semantic color variables - adapt to theme */
+  --success: 142 76% 36%;
+  --success-foreground: 0 0% 98%;
+  --success-muted: 142 76% 95%;
+  --success-muted-foreground: 142 76% 25%;
+  --warning: 38 92% 50%;
+  --warning-foreground: 0 0% 98%;
+  --warning-muted: 38 92% 95%;
+  --warning-muted-foreground: 38 92% 30%;
+  --danger: 0 84% 60%;
+  --danger-foreground: 0 0% 98%;
+  --danger-muted: 0 84% 95%;
+  --danger-muted-foreground: 0 84% 40%;
+  --info: 217 91% 60%;
+  --info-foreground: 0 0% 98%;
+  --info-muted: 217 91% 95%;
+  --info-muted-foreground: 217 91% 35%;
 }
 
 /* Dark mode theme variables */
@@ -79,6 +97,24 @@
   --border: 240 32% 20%;
   --input: 240 32% 18%;
   --ring: 240 32% 45%;
+
+  /* Semantic color variables - dark mode */
+  --success: 142 76% 45%;
+  --success-foreground: 0 0% 98%;
+  --success-muted: 142 76% 15%;
+  --success-muted-foreground: 142 76% 70%;
+  --warning: 38 92% 55%;
+  --warning-foreground: 0 0% 10%;
+  --warning-muted: 38 92% 15%;
+  --warning-muted-foreground: 38 92% 75%;
+  --danger: 0 84% 60%;
+  --danger-foreground: 0 0% 98%;
+  --danger-muted: 0 84% 15%;
+  --danger-muted-foreground: 0 84% 75%;
+  --info: 217 91% 60%;
+  --info-foreground: 0 0% 98%;
+  --info-muted: 217 91% 15%;
+  --info-muted-foreground: 217 91% 75%;
 }
 
 /* Base Styles */
@@ -141,38 +177,113 @@
     @apply grid-cols-1 sm:grid-cols-2 lg:grid-cols-4;
   }
 
-  /* Button Styles */
+  /* Button Styles - Theme-aware */
   .btn-primary {
-    @apply px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors;
+    @apply px-4 py-2 rounded transition-colors;
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+  }
+
+  .btn-primary:hover {
+    background-color: hsl(var(--primary) / 0.9);
   }
 
   .btn-secondary {
-    @apply px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors;
+    @apply px-4 py-2 rounded transition-colors;
+    background-color: hsl(var(--secondary));
+    color: hsl(var(--secondary-foreground));
+  }
+
+  .btn-secondary:hover {
+    background-color: hsl(var(--secondary) / 0.8);
   }
 
   .btn-warning {
-    @apply px-4 py-2 bg-amber-500 text-white rounded hover:bg-amber-600 transition-colors;
+    @apply px-4 py-2 rounded transition-colors;
+    background-color: hsl(var(--warning));
+    color: hsl(var(--warning-foreground));
+  }
+
+  .btn-warning:hover {
+    background-color: hsl(var(--warning) / 0.9);
   }
 
   .btn-danger {
-    @apply px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors;
+    @apply px-4 py-2 rounded transition-colors;
+    background-color: hsl(var(--danger));
+    color: hsl(var(--danger-foreground));
   }
 
-  /* Status Indicators */
+  .btn-danger:hover {
+    background-color: hsl(var(--danger) / 0.9);
+  }
+
+  .btn-success {
+    @apply px-4 py-2 rounded transition-colors;
+    background-color: hsl(var(--success));
+    color: hsl(var(--success-foreground));
+  }
+
+  .btn-success:hover {
+    background-color: hsl(var(--success) / 0.9);
+  }
+
+  .btn-info {
+    @apply px-4 py-2 rounded transition-colors;
+    background-color: hsl(var(--info));
+    color: hsl(var(--info-foreground));
+  }
+
+  .btn-info:hover {
+    background-color: hsl(var(--info) / 0.9);
+  }
+
+  /* Status Indicators - Theme-aware */
   .status-ok {
-    @apply text-green-600 dark:text-green-400;
+    color: hsl(var(--success));
   }
 
   .status-warning {
-    @apply text-amber-600 dark:text-amber-400;
+    color: hsl(var(--warning));
   }
 
   .status-danger {
-    @apply text-red-600 dark:text-red-400;
+    color: hsl(var(--danger));
   }
 
   .status-inactive {
-    @apply text-gray-500 dark:text-gray-400;
+    color: hsl(var(--muted-foreground));
+  }
+
+  /* Badge Styles - Theme-aware */
+  .badge-success {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    background-color: hsl(var(--success-muted));
+    color: hsl(var(--success-muted-foreground));
+  }
+
+  .badge-warning {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    background-color: hsl(var(--warning-muted));
+    color: hsl(var(--warning-muted-foreground));
+  }
+
+  .badge-danger {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    background-color: hsl(var(--danger-muted));
+    color: hsl(var(--danger-muted-foreground));
+  }
+
+  .badge-info {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    background-color: hsl(var(--info-muted));
+    color: hsl(var(--info-muted-foreground));
+  }
+
+  .badge-muted {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    background-color: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
   }
 }
 

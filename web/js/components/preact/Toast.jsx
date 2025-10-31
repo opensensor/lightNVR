@@ -8,12 +8,25 @@ import { useState, useEffect, useContext } from 'preact/hooks';
 // Create a context for the toast system
 const ToastContext = createContext(null);
 
-// Toast styles
-const toastColors = {
-  success: '#10b981', // green-500
-  error: '#ef4444',   // red-500
-  warning: '#f59e0b', // yellow-500
-  info: '#3b82f6'     // blue-500
+// Toast colors - using CSS variables for theme support
+const getToastColor = (type) => {
+  const colorMap = {
+    success: 'var(--success)',
+    error: 'var(--danger)',
+    warning: 'var(--warning)',
+    info: 'var(--info)'
+  };
+  return `hsl(${colorMap[type] || colorMap.info})`;
+};
+
+const getToastForegroundColor = (type) => {
+  const colorMap = {
+    success: 'var(--success-foreground)',
+    error: 'var(--danger-foreground)',
+    warning: 'var(--warning-foreground)',
+    info: 'var(--info-foreground)'
+  };
+  return `hsl(${colorMap[type] || colorMap.info})`;
 };
 
 // Toast icons (Unicode symbols)
@@ -65,8 +78,8 @@ const Toast = ({ id, message, type, onRemove }) => {
     boxShadow: '0 3px 10px rgba(0,0,0,0.2)',
     minWidth: '250px',
     textAlign: 'left',
-    color: 'white',
-    backgroundColor: toastColors[type] || toastColors.info,
+    color: getToastForegroundColor(type),
+    backgroundColor: getToastColor(type),
     opacity: isExiting ? 0 : (isVisible ? 1 : 0),
     transform: isExiting ? 'translateY(-20px)' : (isVisible ? 'translateY(0)' : 'translateY(-20px)'),
     transition: 'opacity 0.3s ease, transform 0.3s ease',
@@ -82,7 +95,7 @@ const Toast = ({ id, message, type, onRemove }) => {
     marginLeft: '10px',
     background: 'none',
     border: 'none',
-    color: 'white',
+    color: getToastForegroundColor(type),
     fontSize: '16px',
     cursor: 'pointer',
     opacity: '0.7',

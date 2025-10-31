@@ -46,7 +46,23 @@
           root.style.setProperty('--accent-foreground', themeColors.hue + ' 5% 90%');
           root.style.setProperty('--border', themeColors.hue + ' ' + themeColors.saturation + '% ' + borderLightness + '%');
           root.style.setProperty('--input', themeColors.hue + ' ' + themeColors.saturation + '% ' + Math.round(18 + (intensity * 12)) + '%');
-        } else {
+            root.style.setProperty('--success', '142 76% 45%');
+            root.style.setProperty('--success-foreground', '0 0% 98%');
+            root.style.setProperty('--success-muted', '142 76% 15%');
+            root.style.setProperty('--success-muted-foreground', '142 76% 70%');
+            root.style.setProperty('--warning', '38 92% 55%');
+            root.style.setProperty('--warning-foreground', '0 0% 10%');
+            root.style.setProperty('--warning-muted', '38 92% 15%');
+            root.style.setProperty('--warning-muted-foreground', '38 92% 75%');
+            root.style.setProperty('--danger', '0 84% 60%');
+            root.style.setProperty('--danger-foreground', '0 0% 98%');
+            root.style.setProperty('--danger-muted', '0 84% 15%');
+            root.style.setProperty('--danger-muted-foreground', '0 84% 75%');
+            root.style.setProperty('--info', '217 91% 60%');
+            root.style.setProperty('--info-foreground', '0 0% 98%');
+            root.style.setProperty('--info-muted', '217 91% 15%');
+            root.style.setProperty('--info-muted-foreground', '217 91% 75%');
+          } else {
           const bgLightness = Math.round(98 - (intensity * 5));
           const cardLightness = Math.round(100 - (intensity * 2));
           const foregroundLightness = Math.round(15 + (intensity * 10));
@@ -69,8 +85,24 @@
           root.style.setProperty('--accent-foreground', themeColors.hue + ' 10% ' + foregroundLightness + '%');
           root.style.setProperty('--border', themeColors.hue + ' ' + themeColors.saturation + '% ' + borderLightness + '%');
           root.style.setProperty('--input', themeColors.hue + ' ' + themeColors.saturation + '% ' + Math.round(92 + (intensity * 6)) + '%');
-        }
-      }
+            root.style.setProperty('--success', '142 76% 36%');
+            root.style.setProperty('--success-foreground', '0 0% 98%');
+            root.style.setProperty('--success-muted', '142 76% 95%');
+            root.style.setProperty('--success-muted-foreground', '142 76% 25%');
+            root.style.setProperty('--warning', '38 92% 50%');
+            root.style.setProperty('--warning-foreground', '0 0% 98%');
+            root.style.setProperty('--warning-muted', '38 92% 95%');
+            root.style.setProperty('--warning-muted-foreground', '38 92% 30%');
+            root.style.setProperty('--danger', '0 84% 60%');
+            root.style.setProperty('--danger-foreground', '0 0% 98%');
+            root.style.setProperty('--danger-muted', '0 84% 95%');
+            root.style.setProperty('--danger-muted-foreground', '0 84% 40%');
+            root.style.setProperty('--info', '217 91% 60%');
+            root.style.setProperty('--info-foreground', '0 0% 98%');
+            root.style.setProperty('--info-muted', '217 91% 95%');
+            root.style.setProperty('--info-muted-foreground', '217 91% 35%');
+          }
+          }
       window.__LIGHTNVR_THEME_APPLIED__ = true;
     } catch (e) {
       console.warn('Theme script failed:', e);
