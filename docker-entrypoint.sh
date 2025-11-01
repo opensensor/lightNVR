@@ -154,9 +154,11 @@ EOF
     if [ -d /usr/share/lightnvr/models ] && [ -n "$(ls -A /usr/share/lightnvr/models 2>/dev/null)" ]; then
         if [ -z "$(ls -A /var/lib/lightnvr/data/models 2>/dev/null)" ]; then
             log_info "Copying default models..."
-            cp -r /usr/share/lightnvr/models/* /var/lib/lightnvr/data/models/
-            log_info "Models copied successfully"
+            cp -r /usr/share/lightnvr/models/* /var/lib/lightnvr/data/models/ 2>/dev/null || log_warn "No model files to copy"
+            log_info "Models setup complete"
         fi
+    else
+        log_info "No models to copy, skipping model initialization"
     fi
     
     # Ensure proper permissions
