@@ -28,7 +28,6 @@ init_config() {
     
     # Create directories
     mkdir -p /etc/lightnvr
-    mkdir -p /var/lib/lightnvr/www
     mkdir -p /var/lib/lightnvr/data
     mkdir -p /var/lib/lightnvr/data/recordings
     mkdir -p /var/lib/lightnvr/data/recordings/mp4
@@ -37,16 +36,25 @@ init_config() {
     mkdir -p /var/log/lightnvr
 
     # Copy web assets if directory is empty or doesn't exist
+    # Check if www directory is empty or doesn't exist BEFORE creating it
+    log_info "Checking web assets directory: /var/lib/lightnvr/www"
     if [ ! -d /var/lib/lightnvr/www ] || [ -z "$(ls -A /var/lib/lightnvr/www 2>/dev/null)" ]; then
-        log_info "Copying web assets from template..."
+        log_info "Web assets directory is empty or doesn't exist, copying from template..."
         if [ -d /usr/share/lightnvr/web-template ] && [ -n "$(ls -A /usr/share/lightnvr/web-template 2>/dev/null)" ]; then
+            mkdir -p /var/lib/lightnvr/www
             cp -r /usr/share/lightnvr/web-template/* /var/lib/lightnvr/www/
-            log_info "Web assets copied successfully"
+            log_info "Web assets copied successfully from /usr/share/lightnvr/web-template to /var/lib/lightnvr/www"
+            # Verify the copy
+            if [ -f /var/lib/lightnvr/www/index.html ]; then
+                log_info "Verified: index.html exists at /var/lib/lightnvr/www/index.html"
+            else
+                log_error "ERROR: index.html NOT found at /var/lib/lightnvr/www/index.html after copy!"
+            fi
         else
-            log_warn "Web template directory not found or empty, web UI may not work"
+            log_error "Web template directory not found or empty at /usr/share/lightnvr/web-template, web UI may not work"
         fi
     else
-        log_info "Web assets already exist, skipping copy"
+        log_info "Web assets already exist at /var/lib/lightnvr/www, skipping copy"
     fi
     
     # Create default config if it doesn't exist

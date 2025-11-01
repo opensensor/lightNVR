@@ -126,11 +126,11 @@ RUN apt-get update && apt-get install -y \
 
 # Create directory structure
 RUN mkdir -p \
-    /usr/share/lightnvr/web-template \
     /usr/share/lightnvr/models \
     /etc/lightnvr \
     /etc/lightnvr/go2rtc \
     /var/lib/lightnvr \
+    /var/lib/lightnvr/www \
     /var/log/lightnvr \
     /var/run/lightnvr && \
     chmod -R 755 /var/lib/lightnvr /var/log/lightnvr /var/run/lightnvr
@@ -145,7 +145,7 @@ COPY --from=builder /lib/libsod.so.1 /lib/libsod.so.1
 COPY --from=builder /lib/libsod.so /lib/libsod.so
 
 # Copy web assets to template location (won't be overwritten by volume mounts)
-COPY --from=builder /opt/web/dist /usr/share/lightnvr/web-template/
+COPY --from=builder /opt/web/dist     /var/lib/lightnvr/www \
 
 # Copy entrypoint script
 COPY docker-entrypoint.sh /usr/local/bin/
