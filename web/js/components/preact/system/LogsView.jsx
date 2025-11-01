@@ -64,13 +64,15 @@ function formatLogLevel(level) {
  * @param {Array} props.logs Array of log entries
  * @param {string} props.logLevel Current log level filter
  * @param {number} props.logCount Number of logs to display
+ * @param {number} props.pollingInterval Polling interval in milliseconds
  * @param {Function} props.setLogLevel Function to set log level
  * @param {Function} props.setLogCount Function to set log count
+ * @param {Function} props.setPollingInterval Function to set polling interval
  * @param {Function} props.loadLogs Function to load logs
  * @param {Function} props.clearLogs Function to clear logs
  * @returns {JSX.Element} LogsView component
  */
-export function LogsView({ logs, logLevel, logCount, setLogLevel, setLogCount, loadLogs, clearLogs }) {
+export function LogsView({ logs, logLevel, logCount, pollingInterval, setLogLevel, setLogCount, setPollingInterval, loadLogs, clearLogs }) {
   return (
     <div className="bg-card text-card-foreground rounded-lg shadow p-4 mb-4">
       <div className="flex justify-between items-center mb-4 pb-2 border-b border-border">
@@ -101,6 +103,22 @@ export function LogsView({ logs, logLevel, logCount, setLogLevel, setLogCount, l
             <option value="100">100 lines</option>
             <option value="200">200 lines</option>
             <option value="500">500 lines</option>
+          </select>
+          <select
+            id="polling-interval"
+            className="px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none bg-background text-foreground"
+            value={pollingInterval}
+            onChange={e => {
+              const newInterval = parseInt(e.target.value, 10);
+              console.log(`LogsView: Polling interval changed to ${newInterval}ms`);
+              setPollingInterval(newInterval);
+            }}
+          >
+            <option value="1000">1 sec</option>
+            <option value="3000">3 sec</option>
+            <option value="5000">5 sec</option>
+            <option value="10000">10 sec</option>
+            <option value="30000">30 sec</option>
           </select>
           <button
             id="refresh-logs-btn"

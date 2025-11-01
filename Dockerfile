@@ -177,7 +177,7 @@ EXPOSE 8080 8554 8555 8555/udp 1984
 # Environment variables for configuration
 ENV GO2RTC_CONFIG_PERSIST=true \
     LIGHTNVR_AUTO_INIT=true \
-    LIGHTNVR_WEB_ROOT=/var/lib/lightnvr/web
+    LIGHTNVR_WEB_ROOT=/var/lib/lightnvr/www
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \

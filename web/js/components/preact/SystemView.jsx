@@ -76,6 +76,7 @@ export function SystemView() {
   const [logLevel, setLogLevel] = useState('debug');
   const logLevelRef = useRef('debug');
   const [logCount, setLogCount] = useState(100);
+  const [pollingInterval, setPollingInterval] = useState(5000); // Default to 5 seconds
   const [isRestarting, setIsRestarting] = useState(false);
   const [isShuttingDown, setIsShuttingDown] = useState(false);
   const [hasData, setHasData] = useState(false);
@@ -266,8 +267,10 @@ export function SystemView() {
           logs={logs}
           logLevel={logLevel}
           logCount={logCount}
+          pollingInterval={pollingInterval}
           setLogLevel={handleSetLogLevel}
           setLogCount={setLogCount}
+          setPollingInterval={setPollingInterval}
           loadLogs={() => {
             // Trigger a manual log refresh
             console.log('Manually triggering log refresh');
@@ -280,6 +283,7 @@ export function SystemView() {
         <LogsPoller
           logLevel={logLevel}
           logCount={logCount}
+          pollingInterval={pollingInterval}
           onLogsReceived={handleLogsReceived}
         />
       </ContentLoader>

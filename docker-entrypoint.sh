@@ -28,19 +28,19 @@ init_config() {
     
     # Create directories
     mkdir -p /etc/lightnvr
-    mkdir -p /var/lib/lightnvr/web
+    mkdir -p /var/lib/lightnvr/www
     mkdir -p /var/lib/lightnvr/data
     mkdir -p /var/lib/lightnvr/data/recordings
     mkdir -p /var/lib/lightnvr/data/recordings/mp4
     mkdir -p /var/lib/lightnvr/data/database
     mkdir -p /var/lib/lightnvr/data/models
     mkdir -p /var/log/lightnvr
-    
+
     # Copy web assets if directory is empty or doesn't exist
-    if [ ! -d /var/lib/lightnvr/web ] || [ -z "$(ls -A /var/lib/lightnvr/web 2>/dev/null)" ]; then
+    if [ ! -d /var/lib/lightnvr/www ] || [ -z "$(ls -A /var/lib/lightnvr/www 2>/dev/null)" ]; then
         log_info "Copying web assets from template..."
         if [ -d /usr/share/lightnvr/web-template ] && [ -n "$(ls -A /usr/share/lightnvr/web-template 2>/dev/null)" ]; then
-            cp -r /usr/share/lightnvr/web-template/* /var/lib/lightnvr/web/
+            cp -r /usr/share/lightnvr/web-template/* /var/lib/lightnvr/www/
             log_info "Web assets copied successfully"
         else
             log_warn "Web template directory not found or empty, web UI may not work"
@@ -78,7 +78,7 @@ path = /var/lib/lightnvr/data/database/lightnvr.db
 
 [web]
 port = 8080
-root = /var/lib/lightnvr/web
+root = /var/lib/lightnvr/www
 auth_enabled = true
 username = admin
 password = admin

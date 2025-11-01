@@ -272,91 +272,25 @@ void mg_handle_get_system_logs(struct mg_connection *c, struct mg_http_message *
         return;
     }
 
-    // Parse and add logs to array as objects (similar to WebSocket implementation)
+    // Parse and add logs to array as objects
+    // Note: get_json_logs_tail returns JSON-formatted strings, so we need to parse them
     for (int i = 0; i < count; i++) {
         if (logs[i] != NULL) {
-            // Parse log line (format: [TIMESTAMP] [LEVEL] MESSAGE)
-            char timestamp[32] = "Unknown";
-            char log_level[16] = "info";
-            char *message = logs[i];
-
-            // First, check if this is a standard format log
-            if (logs[i][0] == '[') {
-                char *timestamp_end = strchr(logs[i] + 1, ']');
-                if (timestamp_end) {
-                    size_t timestamp_len = timestamp_end - (logs[i] + 1);
-                    if (timestamp_len < sizeof(timestamp)) {
-                        memcpy(timestamp, logs[i] + 1, timestamp_len);
-                        timestamp[timestamp_len] = '\0';
-
-                        // Look for level
-                        char *level_start = strchr(timestamp_end + 1, '[');
-                        if (level_start) {
-                            char *level_end = strchr(level_start + 1, ']');
-                            if (level_end) {
-                                size_t level_len = level_end - (level_start + 1);
-                                if (level_len < sizeof(log_level)) {
-                                    memcpy(log_level, level_start + 1, level_len);
-                                    log_level[level_len] = '\0';
-
-                                    // Convert to lowercase for consistency
-                                    for (int j = 0; log_level[j]; j++) {
-                                        log_level[j] = tolower(log_level[j]);
-                                    }
-
-                                    // Message starts after level
-                                    message = level_end + 1;
-                                    if (message && *message) {
-                                        while (*message == ' ') message++; // Skip leading spaces
-                                    } else {
-                                        message = ""; // Set to empty string if NULL or empty
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            // Check for alternative format: TIMESTAMP LEVEL MESSAGE
-            else if (isdigit(logs[i][0])) {
-                // Try to parse YYYY-MM-DD HH:MM:SS format
-                if (strlen(logs[i]) > 19 && logs[i][4] == '-' && logs[i][7] == '-' && logs[i][10] == ' ' && logs[i][13] == ':' && logs[i][16] == ':') {
-                    strncpy(timestamp, logs[i], 19);
-                    timestamp[19] = '\0';
-
-                    // Extract level - assume it follows timestamp immediately
-                    char *level_start = logs[i] + 19;
-                    while (*level_start == ' ') level_start++; // Skip spaces
-
-                    // Find end of level (next space)
-                    char *level_end = strchr(level_start, ' ');
-                    if (level_end) {
-                        size_t level_len = level_end - level_start;
-                        if (level_len < sizeof(log_level)) {
-                            memcpy(log_level, level_start, level_len);
-                            log_level[level_len] = '\0';
-
-                            // Convert to lowercase for consistency
-                            for (int j = 0; log_level[j]; j++) {
-                                log_level[j] = tolower(log_level[j]);
-                            }
-
-                            // Message starts after level
-                            message = level_end + 1;
-                            if (message && *message) {
-                                while (*message == ' ') message++; // Skip leading spaces
-                            } else {
-                                message = ""; // Set to empty string if NULL or empty
-                            }
-                        }
-                    }
-                }
+            // Parse the JSON string
+            cJSON *log_json = cJSON_Parse(logs[i]);
+            if (!log_json) {
+                log_error("Failed to parse log JSON: %s", logs[i]);
+                continue;
             }
 
-            // Normalize log level
-            if (strcmp(log_level, "warn") == 0) {
-                strcpy(log_level, "warning");
-            }
+            // Extract fields from JSON
+            cJSON *timestamp_json = cJSON_GetObjectItem(log_json, "timestamp");
+            cJSON *level_json = cJSON_GetObjectItem(log_json, "level");
+            cJSON *message_json = cJSON_GetObjectItem(log_json, "message");
+
+            const char *timestamp = timestamp_json && cJSON_IsString(timestamp_json) ? timestamp_json->valuestring : "Unknown";
+            const char *log_level = level_json && cJSON_IsString(level_json) ? level_json->valuestring : "info";
+            const char *message = message_json && cJSON_IsString(message_json) ? message_json->valuestring : "";
 
             // Check if this log meets the minimum level
             if (log_level_meets_minimum(log_level, level)) {
@@ -370,6 +304,9 @@ void mg_handle_get_system_logs(struct mg_connection *c, struct mg_http_message *
                     cJSON_AddItemToArray(logs_array, log_entry);
                 }
             }
+
+            // Clean up parsed JSON
+            cJSON_Delete(log_json);
         }
     }
 
