@@ -146,7 +146,7 @@ export function StreamsView() {
         queryClient.invalidateQueries({ queryKey: ['streams'] });
       },
       onError: (error) => {
-        showStatusMessage(`Error adding stream: ${error.message}`, 5000, 'error');
+        showStatusMessage(`Error adding stream: ${error.message}`, 'error', 5000);
       }
     }
   );
@@ -181,7 +181,7 @@ export function StreamsView() {
       queryClient.invalidateQueries({ queryKey: ['streams'] });
     },
     onError: (error) => {
-      showStatusMessage(`Error updating stream: ${error.message}`, 5000, 'error');
+      showStatusMessage(`Error updating stream: ${error.message}`, 'error', 5000);
     }
   });
 
@@ -214,13 +214,13 @@ export function StreamsView() {
       },
       onSuccess: (data) => {
         if (data.success) {
-          showStatusMessage('Stream connection successful!', 3000, 'success');
+          showStatusMessage('Stream connection successful!', 'success', 3000);
         } else {
-          showStatusMessage(`Stream connection failed: ${data.message}`, 5000, 'error');
+          showStatusMessage(`Stream connection failed: ${data.message}`, 'error', 5000);
         }
       },
       onError: (error) => {
-        showStatusMessage(`Error testing stream: ${error.message}`, 5000, 'error');
+        showStatusMessage(`Error testing stream: ${error.message}`, 'error', 5000);
       }
     }
   );
@@ -247,7 +247,7 @@ export function StreamsView() {
         });
     },
     onError: (error) => {
-      showStatusMessage(`Error deleting stream: ${error.message}`, 5000, 'error');
+      showStatusMessage(`Error deleting stream: ${error.message}`, 'error', 5000);
     }
   });
 
@@ -272,7 +272,7 @@ export function StreamsView() {
         });
     },
     onError: (error) => {
-      showStatusMessage(`Error disabling stream: ${error.message}`, 5000, 'error');
+      showStatusMessage(`Error disabling stream: ${error.message}`, 'error', 5000);
     }
   });
 
@@ -341,7 +341,7 @@ export function StreamsView() {
             }
           }
         } catch (err) {
-          showStatusMessage(`Motion config save failed: ${err.message}`, 5000, 'error');
+          showStatusMessage(`Motion config save failed: ${err.message}`, 'error', 5000);
         }
         // Ensure both list and details are refreshed after save
         await queryClient.invalidateQueries({ queryKey: ['stream-full', currentStream.name] });
@@ -366,11 +366,11 @@ export function StreamsView() {
   // Trigger a simulated ONVIF motion event for the current stream
   const triggerTestMotionEvent = async () => {
     if (!currentStream?.name) {
-      showStatusMessage('Please set a stream name and save before testing motion.', 5000, 'error');
+      showStatusMessage('Please set a stream name and save before testing motion.', 'error', 5000);
       return;
     }
     if (!currentStream?.isOnvif) {
-      showStatusMessage('Enable "ONVIF Camera" in Basic Settings first.', 5000, 'error');
+      showStatusMessage('Enable "ONVIF Camera" in Basic Settings first.', 'error', 5000);
       return;
     }
     try {
@@ -400,12 +400,12 @@ export function StreamsView() {
         timeout: 15000
       });
       if (data?.success) {
-        showStatusMessage('Test motion event triggered successfully.', 3000, 'success');
+        showStatusMessage('Test motion event triggered successfully.', 'success', 3000);
       } else {
-        showStatusMessage(`Test motion event failed: ${data?.message || 'Unknown error'}`, 5000, 'error');
+        showStatusMessage(`Test motion event failed: ${data?.message || 'Unknown error'}`, 'error', 5000);
       }
     } catch (err) {
-      showStatusMessage(`Error triggering test motion: ${err.message}`, 5000, 'error');
+      showStatusMessage(`Error triggering test motion: ${err.message}`, 'error', 5000);
     }
   };
 
@@ -595,7 +595,7 @@ export function StreamsView() {
         setIsDiscovering(false);
       },
       onError: (error) => {
-        showStatusMessage(`Error discovering ONVIF devices: ${error.message}`, 5000, 'error');
+        showStatusMessage(`Error discovering ONVIF devices: ${error.message}`, 'error', 5000);
         setIsDiscovering(false);
       }
     }
@@ -626,7 +626,7 @@ export function StreamsView() {
       setIsLoadingProfiles(false);
     },
     onError: (error) => {
-      showStatusMessage(`Error loading device profiles: ${error.message}`, 5000, 'error');
+      showStatusMessage(`Error loading device profiles: ${error.message}`, 'error', 5000);
       setIsLoadingProfiles(false);
     }
   });
@@ -644,19 +644,19 @@ export function StreamsView() {
       },
       onSuccess: (data, variables) => {
         if (data.success) {
-          showStatusMessage('Connection successful!', 3000, 'success');
+          showStatusMessage('Connection successful!', 'success', 3000);
           // The device object is no longer passed directly in variables
           // We need to use the selectedDevice state instead
           if (selectedDevice) {
             getDeviceProfiles(selectedDevice);
           }
         } else {
-          showStatusMessage(`Connection failed: ${data.message}`, 5000, 'error');
+          showStatusMessage(`Connection failed: ${data.message}`, 'error', 5000);
           setIsLoadingProfiles(false);
         }
       },
       onError: (error) => {
-        showStatusMessage(`Error testing connection: ${error.message}`, 5000, 'error');
+        showStatusMessage(`Error testing connection: ${error.message}`, 'error', 5000);
         setIsLoadingProfiles(false);
       }
     }
@@ -667,7 +667,7 @@ export function StreamsView() {
   // Submit ONVIF device
   const submitOnvifDevice = () => {
     if (!selectedDevice || !selectedProfile || !customStreamName.trim()) {
-      showStatusMessage('Missing required information', 5000, 'error');
+      showStatusMessage('Missing required information', 'error', 5000);
       return;
     }
 

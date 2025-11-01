@@ -40,6 +40,7 @@
 #include "video/timestamp_manager.h"
 #include "video/onvif_discovery.h"
 #include "video/ffmpeg_leak_detector.h"
+#include "video/onvif_motion_recording.h"
 
 // Include go2rtc headers if USE_GO2RTC is defined
 #ifdef USE_GO2RTC
@@ -777,6 +778,13 @@ int main(int argc, char *argv[]) {
     init_mp4_recording_backend();
     log_info("MP4 writer shutdown system initialized");
 
+    // Initialize ONVIF motion recording system
+    if (init_onvif_motion_recording() != 0) {
+        log_error("Failed to initialize ONVIF motion recording system");
+    } else {
+        log_info("ONVIF motion recording system initialized successfully");
+    }
+
     // Initialize detection system
     if (init_detection_system() != 0) {
         log_error("Failed to initialize detection system");
@@ -1172,6 +1180,10 @@ cleanup:
 
         // Wait for HLS streaming to clean up
         usleep(1000000);  // 1000ms
+
+        // Clean up ONVIF motion recording system before MP4 backend
+        log_info("Cleaning up ONVIF motion recording system...");
+        cleanup_onvif_motion_recording();
 
         // Now clean up MP4 recording
         log_info("Cleaning up MP4 recording backend...");

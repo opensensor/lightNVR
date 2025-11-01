@@ -18,6 +18,14 @@
 // Include the header that defines segment_info_t
 #include "mp4_writer_thread.h"
 
+
+/**
+ * Callback invoked when the first keyframe of a segment is detected and writing begins.
+ * Allows callers to align external metadata (e.g., DB start_time) to the true
+ * recording start aligned to a keyframe.
+ */
+typedef void (*record_segment_started_cb)(void *user_ctx);
+
 /**
  * Record an RTSP stream to an MP4 file for a specified duration
  *
@@ -47,10 +55,13 @@
  * @param has_audio Flag indicating whether to include audio in the recording
  * @param input_ctx_ptr Pointer to the input context for this stream (reused between segments)
  * @param segment_info_ptr Pointer to the segment info for this stream
+ * @param started_cb Optional callback invoked once when the first keyframe is detected
+ * @param cb_ctx Opaque context pointer passed to started_cb
  * @return 0 on success, negative value on error
  */
 int record_segment(const char *rtsp_url, const char *output_file, int duration, int has_audio,
-                   AVFormatContext **input_ctx_ptr, segment_info_t *segment_info_ptr);
+                   AVFormatContext **input_ctx_ptr, segment_info_t *segment_info_ptr,
+                   record_segment_started_cb started_cb, void *cb_ctx);
 
 /**
  * Initialize the MP4 segment recorder

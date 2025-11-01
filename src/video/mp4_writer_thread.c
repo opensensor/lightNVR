@@ -34,6 +34,40 @@
 #include "database/db_recordings.h"
 
 
+// Callback invoked by record_segment when the first keyframe is detected
+// and the segment officially begins. We create the DB metadata here so
+// start_time aligns with the actual playable start.
+static void on_segment_started_cb(void *user_ctx) {
+    mp4_writer_thread_t *thread_ctx = (mp4_writer_thread_t *)user_ctx;
+    if (!thread_ctx || !thread_ctx->writer) return;
+
+    // Avoid duplicate creation in case of any re-entry
+    if (thread_ctx->writer->current_recording_id > 0) return;
+
+    const char *stream_name = thread_ctx->writer->stream_name[0] ? thread_ctx->writer->stream_name : "unknown";
+
+    if (thread_ctx->writer->output_path[0] != '\0') {
+        recording_metadata_t metadata;
+        memset(&metadata, 0, sizeof(recording_metadata_t));
+        strncpy(metadata.stream_name, stream_name, sizeof(metadata.stream_name) - 1);
+        strncpy(metadata.file_path, thread_ctx->writer->output_path, sizeof(metadata.file_path) - 1);
+        metadata.start_time = time(NULL); // Align to keyframe time
+        metadata.end_time = 0;
+        metadata.size_bytes = 0;
+        metadata.is_complete = false;
+
+        uint64_t recording_id = add_recording_metadata(&metadata);
+        if (recording_id == 0) {
+            log_error("Failed to add recording metadata at segment start for stream %s", stream_name);
+        } else {
+            log_info("Added recording at segment start (ID: %llu) for file: %s",
+                     (unsigned long long)recording_id, thread_ctx->writer->output_path);
+            thread_ctx->writer->current_recording_id = recording_id;
+        }
+    }
+}
+
+
 /**
  * RTSP stream reading thread function
  * This function maintains a single RTSP connection across multiple segments
@@ -85,31 +119,7 @@ static void *mp4_writer_rtsp_thread(void *arg) {
 
     log_info("Starting RTSP reading thread for stream %s", stream_name);
 
-    // Add initial recording metadata to the database
-    if (thread_ctx->writer && thread_ctx->writer->output_path[0] != '\0') {
-        recording_metadata_t metadata;
-        memset(&metadata, 0, sizeof(recording_metadata_t));
-
-        // Fill in the metadata
-        strncpy(metadata.stream_name, stream_name, sizeof(metadata.stream_name) - 1);
-        strncpy(metadata.file_path, thread_ctx->writer->output_path, sizeof(metadata.file_path) - 1);
-        metadata.start_time = start_time;
-        metadata.end_time = 0; // Will be updated when recording ends
-        metadata.size_bytes = 0; // Will be updated as recording grows
-        metadata.is_complete = false;
-
-        // Add recording to database
-        uint64_t recording_id = add_recording_metadata(&metadata);
-        if (recording_id == 0) {
-            log_error("Failed to add initial recording metadata for stream %s", stream_name);
-        } else {
-            log_info("Added initial recording to database with ID: %llu for file: %s",
-                    (unsigned long long)recording_id, thread_ctx->writer->output_path);
-
-            // Store the recording ID in the writer for later update
-            thread_ctx->writer->current_recording_id = recording_id;
-        }
-    }
+    // Defer DB creation until the first keyframe is seen so start_time aligns to a playable frame.
 
     // Check if we're still running (might have been stopped during initialization)
     if (!thread_ctx->running || thread_ctx->shutdown_requested) {
@@ -189,26 +199,8 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                 strncpy(current_path, thread_ctx->writer->output_path, MAX_PATH_LENGTH - 1);
                 current_path[MAX_PATH_LENGTH - 1] = '\0';
 
-                // Create recording metadata for the new file
-                recording_metadata_t metadata;
-                memset(&metadata, 0, sizeof(recording_metadata_t));
-
-                // Fill in the metadata
-                strncpy(metadata.stream_name, stream_name, sizeof(metadata.stream_name) - 1);
-                strncpy(metadata.file_path, new_path, sizeof(metadata.file_path) - 1);
-                metadata.start_time = current_time;
-                metadata.end_time = 0; // Will be updated when recording ends
-                metadata.size_bytes = 0; // Will be updated as recording grows
-                metadata.is_complete = false;
-
-                // Add recording to database for the new file
-                uint64_t new_recording_id = add_recording_metadata(&metadata);
-                if (new_recording_id == 0) {
-                    log_error("Failed to add recording metadata for stream %s during rotation", stream_name);
-                } else {
-                    log_info("Added new recording to database with ID: %llu for rotated file: %s",
-                            (unsigned long long)new_recording_id, new_path);
-                }
+                // Defer creation of DB metadata for the new file until first keyframe via callback
+                // so that start_time aligns to a playable keyframe.
 
                 // Mark the previous recording as complete
                 if (thread_ctx->writer->current_recording_id > 0) {
@@ -240,10 +232,10 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                 strncpy(thread_ctx->writer->output_path, new_path, MAX_PATH_LENGTH - 1);
                 thread_ctx->writer->output_path[MAX_PATH_LENGTH - 1] = '\0';
 
-                // Store the new recording ID in the writer for later update
-                if (new_recording_id > 0) {
-                    thread_ctx->writer->current_recording_id = new_recording_id;
-                }
+                // Reset current recording ID; new ID will be assigned on first keyframe of next segment
+                thread_ctx->writer->current_recording_id = 0;
+
+
 
                 // Update rotation time
                 thread_ctx->writer->last_rotation_time = current_time;
@@ -252,7 +244,6 @@ static void *mp4_writer_rtsp_thread(void *arg) {
 
         // Record a segment using the record_segment function
         log_info("Recording segment for stream %s to %s", stream_name, thread_ctx->writer->output_path);
-
         // Use the segment duration from the database or writer
         if (segment_duration > 0) {
             log_info("Using segment duration: %d seconds (from %s)",
@@ -331,7 +322,8 @@ static void *mp4_writer_rtsp_thread(void *arg) {
         // This prevents stream mixing when multiple streams are recording simultaneously
         ret = record_segment(thread_ctx->rtsp_url, thread_ctx->writer->output_path,
                            segment_duration, thread_ctx->writer->has_audio,
-                           &thread_ctx->input_ctx, &thread_ctx->segment_info);
+                           &thread_ctx->input_ctx, &thread_ctx->segment_info,
+                           on_segment_started_cb, thread_ctx);
 
         log_info("Finished segment recording with info: index=%d, has_audio=%d, last_frame_was_key=%d",
                 thread_ctx->segment_info.segment_index, thread_ctx->segment_info.has_audio,

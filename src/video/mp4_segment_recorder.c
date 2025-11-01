@@ -91,7 +91,8 @@ void mp4_segment_recorder_init(void) {
  * @return 0 on success, negative value on error
  */
 int record_segment(const char *rtsp_url, const char *output_file, int duration, int has_audio,
-                   AVFormatContext **input_ctx_ptr, segment_info_t *segment_info_ptr) {
+                   AVFormatContext **input_ctx_ptr, segment_info_t *segment_info_ptr,
+                   record_segment_started_cb started_cb, void *cb_ctx) {
     int ret = 0;
     AVFormatContext *input_ctx = NULL;
     AVFormatContext *output_ctx = NULL;
@@ -115,6 +116,9 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
     int64_t start_time = 0;  // CRITICAL FIX: Initialize to 0 to prevent using uninitialized value
     time_t last_progress = 0;
     int segment_index = 0;
+    // Invoke-once guard for started callback
+    bool started_cb_called = false;
+
 
     // CRITICAL FIX: Initialize static variable for tracking waiting time for keyframes
     // This variable is used to track how long we've been waiting for a keyframe
@@ -504,6 +508,13 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                 if (is_keyframe) {
                     log_info("Found first key frame, starting recording");
                     found_first_keyframe = true;
+
+                        // Notify caller that segment has officially started (aligned to keyframe)
+                        if (!started_cb_called && started_cb) {
+                            started_cb(cb_ctx);
+                            started_cb_called = true;
+                        }
+
 
                     // Reset start time to when we found the first key frame
                     start_time = av_gettime();
