@@ -144,8 +144,8 @@ COPY --from=builder /lib/libsod.so.1.1.9 /lib/libsod.so.1.1.9
 COPY --from=builder /lib/libsod.so.1 /lib/libsod.so.1
 COPY --from=builder /lib/libsod.so /lib/libsod.so
 
-# Copy web assets to template location (won't be overwritten by volume mounts)
-COPY --from=builder /opt/web/dist /var/lib/lightnvr/www
+# Copy web assets (copy CONTENTS of dist into /var/lib/lightnvr/www)
+COPY --from=builder /opt/web/dist/ /var/lib/lightnvr/www/
 
 # Copy entrypoint script
 COPY docker-entrypoint.sh /usr/local/bin/
