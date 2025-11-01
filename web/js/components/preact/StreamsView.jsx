@@ -369,7 +369,32 @@ export function StreamsView() {
       showStatusMessage('Please set a stream name and save before testing motion.', 5000, 'error');
       return;
     }
+    if (!currentStream?.isOnvif) {
+      showStatusMessage('Enable "ONVIF Camera" in Basic Settings first.', 5000, 'error');
+      return;
+    }
     try {
+      // Ensure the server has motion recording enabled with current UI settings
+      if (currentStream.motionRecordingEnabled) {
+        const motionUrl = `/api/motion/config/${encodeURIComponent(currentStream.name)}`;
+        const body = {
+          enabled: true,
+          pre_buffer_seconds: parseInt(currentStream.motionPreBuffer, 10),
+          post_buffer_seconds: parseInt(currentStream.motionPostBuffer, 10),
+          max_file_duration: parseInt(currentStream.motionMaxDuration, 10),
+          codec: currentStream.motionCodec,
+          quality: currentStream.motionQuality,
+          retention_days: parseInt(currentStream.motionRetentionDays, 10)
+        };
+        await fetchJSON(motionUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          timeout: 10000
+        });
+      }
+
+      // Now fire the test motion event
       const data = await fetchJSON(`/api/motion/test/${encodeURIComponent(currentStream.name)}`, {
         method: 'POST',
         timeout: 15000
