@@ -106,6 +106,44 @@ void mp4_writer_set_segment_duration(mp4_writer_t *writer, int segment_duration)
 }
 
 /**
+ * Get the actual end time of a recording based on its start time and video duration
+ */
+static time_t get_recording_end_time(uint64_t recording_id, const char *file_path) {
+    // Get the recording metadata to find the start time
+    recording_metadata_t metadata;
+    if (get_recording_metadata_by_id(recording_id, &metadata) != 0) {
+        log_error("Failed to get recording metadata for ID %llu", (unsigned long long)recording_id);
+        return time(NULL); // Fallback to current time
+    }
+
+    time_t start_time = metadata.start_time;
+
+    // Try to get the actual duration from the MP4 file
+    AVFormatContext *format_ctx = NULL;
+    int64_t duration_seconds = 0;
+
+    if (avformat_open_input(&format_ctx, file_path, NULL, NULL) == 0) {
+        if (avformat_find_stream_info(format_ctx, NULL) >= 0) {
+            if (format_ctx->duration != AV_NOPTS_VALUE) {
+                // Duration is in AV_TIME_BASE units (microseconds)
+                duration_seconds = format_ctx->duration / AV_TIME_BASE;
+                log_info("Got actual duration from MP4 file %s: %ld seconds",
+                        file_path, (long)duration_seconds);
+            }
+        }
+        avformat_close_input(&format_ctx);
+    }
+
+    // Calculate end time as start_time + duration
+    time_t end_time = start_time + duration_seconds;
+
+    log_info("Calculated end_time for recording ID %llu: start=%ld, duration=%ld, end=%ld",
+            (unsigned long long)recording_id, (long)start_time, (long)duration_seconds, (long)end_time);
+
+    return end_time;
+}
+
+/**
  * Close the MP4 writer and release resources
  */
 void mp4_writer_close(mp4_writer_t *writer) {
@@ -130,14 +168,18 @@ void mp4_writer_close(mp4_writer_t *writer) {
             log_info("Final file size for %s: %llu bytes",
                     writer->output_path, (unsigned long long)size_bytes);
 
-            // Mark the recording as complete with the correct file size
-            update_recording_metadata(writer->current_recording_id, time(NULL), size_bytes, true);
+            // Get the actual end time based on the video duration
+            time_t end_time = get_recording_end_time(writer->current_recording_id, writer->output_path);
+
+            // Mark the recording as complete with the correct file size and end time
+            update_recording_metadata(writer->current_recording_id, end_time, size_bytes, true);
             log_info("Marked recording (ID: %llu) as complete during writer close",
                     (unsigned long long)writer->current_recording_id);
         } else if (writer->output_path) {
             log_warn("Failed to get file size for %s during close", writer->output_path);
 
             // Still mark the recording as complete, but with size 0
+            // Use current time as fallback since we can't read the file
             update_recording_metadata(writer->current_recording_id, time(NULL), 0, true);
             log_info("Marked recording (ID: %llu) as complete during writer close (size unknown)",
                     (unsigned long long)writer->current_recording_id);

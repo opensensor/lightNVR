@@ -607,7 +607,8 @@ void mg_handle_go2rtc_webrtc_ice_options(struct mg_connection *c, struct mg_http
 /**
  * @brief Handler for GET /api/webrtc/config
  *
- * Proxies a request to go2rtc to fetch WebRTC configuration (including ICE servers).
+ * Returns WebRTC configuration (including ICE servers) from the go2rtc config.
+ * Since go2rtc doesn't expose this via API, we read it from the global config.
  */
 void mg_handle_go2rtc_webrtc_config(struct mg_connection *c, struct mg_http_message *hm) {
     log_info("Processing WebRTC config request");
@@ -622,76 +623,60 @@ void mg_handle_go2rtc_webrtc_config(struct mg_connection *c, struct mg_http_mess
         }
     }
 
-    CURL *curl = NULL;
-    struct curl_response response = {0};
+    // Get the global config to read ICE server settings
+    extern config_t g_config;
 
-    curl = curl_easy_init();
-    if (!curl) {
-        log_error("Failed to initialize curl");
-        mg_send_json_error(c, 500, "Failed to initialize curl");
-        return;
+    // Build the ICE servers JSON response
+    // Format: {"iceServers": [{"urls": ["stun:server:port"]}, ...]}
+    char json_response[2048];
+    int offset = 0;
+
+    offset += snprintf(json_response + offset, sizeof(json_response) - offset,
+                      "{\"iceServers\":[");
+
+    // Add STUN server if enabled
+    if (g_config.go2rtc_stun_enabled && g_config.go2rtc_stun_server[0] != '\0') {
+        offset += snprintf(json_response + offset, sizeof(json_response) - offset,
+                          "{\"urls\":[\"stun:%s\"]}", g_config.go2rtc_stun_server);
     }
 
-    if (curl_easy_setopt(curl, CURLOPT_URL, "http://localhost:1984/api/webrtc") != CURLE_OK) {
-        log_error("Failed to set CURLOPT_URL");
-        mg_send_json_error(c, 500, "Failed to set curl options");
-        goto cleanup;
+    // Add custom ICE servers if specified
+    if (g_config.go2rtc_ice_servers[0] != '\0') {
+        // Parse comma-separated ICE servers
+        char ice_servers_copy[512];
+        strncpy(ice_servers_copy, g_config.go2rtc_ice_servers, sizeof(ice_servers_copy) - 1);
+        ice_servers_copy[sizeof(ice_servers_copy) - 1] = '\0';
+
+        char *token = strtok(ice_servers_copy, ",");
+        while (token != NULL) {
+            // Trim whitespace
+            while (*token == ' ') token++;
+            char *end = token + strlen(token) - 1;
+            while (end > token && *end == ' ') end--;
+            *(end + 1) = '\0';
+
+            // Add comma if not first entry
+            if (offset > strlen("{\"iceServers\":[")) {
+                offset += snprintf(json_response + offset, sizeof(json_response) - offset, ",");
+            }
+
+            offset += snprintf(json_response + offset, sizeof(json_response) - offset,
+                              "{\"urls\":[\"%s\"]}", token);
+            token = strtok(NULL, ",");
+        }
     }
 
-    if (curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L) != CURLE_OK) {
-        log_error("Failed to set CURLOPT_CONNECTTIMEOUT");
-        mg_send_json_error(c, 500, "Failed to set curl options");
-        goto cleanup;
-    }
+    offset += snprintf(json_response + offset, sizeof(json_response) - offset, "]}");
 
-    if (curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L) != CURLE_OK) {
-        log_error("Failed to set CURLOPT_TIMEOUT");
-        mg_send_json_error(c, 500, "Failed to set curl options");
-        goto cleanup;
-    }
+    log_info("WebRTC config response: %s", json_response);
 
-    if (curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback) != CURLE_OK) {
-        log_error("Failed to set CURLOPT_WRITEFUNCTION");
-        mg_send_json_error(c, 500, "Failed to set curl options");
-        goto cleanup;
-    }
-
-    if (curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response) != CURLE_OK) {
-        log_error("Failed to set CURLOPT_WRITEDATA");
-        mg_send_json_error(c, 500, "Failed to set curl options");
-        goto cleanup;
-    }
-
-    CURLcode res = curl_easy_perform(curl);
-    if (res != CURLE_OK) {
-        log_error("curl_easy_perform() failed: %s", curl_easy_strerror(res));
-        mg_send_json_error(c, 500, "Failed to proxy request to go2rtc API");
-        goto cleanup;
-    }
-
-    long http_code = 0;
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-
-    if (http_code == 200 && response.data) {
-        log_info("WebRTC config response from go2rtc: %s", response.data);
-        mg_http_reply(c, 200,
-                      "Content-Type: application/json\r\n"
-                      "Access-Control-Allow-Origin: *\r\n"
-                      "Access-Control-Allow-Methods: GET, OPTIONS\r\n"
-                      "Access-Control-Allow-Headers: Content-Type, Authorization, Origin, X-Requested-With, Accept\r\n"
-                      "Access-Control-Allow-Credentials: true\r\n"
-                      "Connection: close\r\n",
-                      "%s", response.data ? response.data : "{}");
-    } else {
-        log_error("go2rtc API returned error: %ld", http_code);
-        mg_send_json_error(c, (int)http_code, response.data ? response.data : "Error from go2rtc API");
-    }
-
-cleanup:
-    if (curl) {
-        curl_easy_cleanup(curl);
-    }
-    if (response.data) {
-        free(response.data);
-    }
+    // Send the response
+    mg_http_reply(c, 200,
+                  "Content-Type: application/json\r\n"
+                  "Access-Control-Allow-Origin: *\r\n"
+                  "Access-Control-Allow-Methods: GET, OPTIONS\r\n"
+                  "Access-Control-Allow-Headers: Content-Type, Authorization, Origin, X-Requested-With, Accept\r\n"
+                  "Access-Control-Allow-Credentials: true\r\n"
+                  "Connection: close\r\n",
+                  "%s", json_response);
 }

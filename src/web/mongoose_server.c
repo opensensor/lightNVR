@@ -135,6 +135,8 @@ static const mg_api_route_t s_api_routes[] = {
     // go2rtc WebRTC API
     {"GET", "/api/webrtc/config", mg_handle_go2rtc_webrtc_config, false},
 
+    {"GET", "/api/webrtc/config", mg_handle_go2rtc_webrtc_config, false},  // GET WebRTC config from go2rtc
+    {"OPTIONS", "/api/webrtc/config", mg_handle_go2rtc_webrtc_options, false},  // OPTIONS for WebRTC config
     {"POST", "/api/webrtc", mg_handle_go2rtc_webrtc_offer, true},  // Enable threading for WebRTC offer requests
     {"POST", "/api/webrtc/ice", mg_handle_go2rtc_webrtc_ice, true},  // Enable threading for WebRTC ICE requests
     {"OPTIONS", "/api/webrtc", mg_handle_go2rtc_webrtc_options, false},  // OPTIONS requests are fast, no need for threading

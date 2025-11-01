@@ -213,8 +213,31 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                         log_info("File size for %s: %llu bytes",
                                 current_path, (unsigned long long)size_bytes);
 
-                        // Mark the recording as complete with the correct file size
-                        update_recording_metadata(thread_ctx->writer->current_recording_id, current_time, size_bytes, true);
+                        // Get the actual end time based on the video duration
+                        time_t end_time = current_time;
+
+                        // Try to get the actual duration from the MP4 file
+                        recording_metadata_t metadata;
+                        if (get_recording_metadata_by_id(thread_ctx->writer->current_recording_id, &metadata) == 0) {
+                            time_t start_time = metadata.start_time;
+
+                            AVFormatContext *format_ctx = NULL;
+                            if (avformat_open_input(&format_ctx, current_path, NULL, NULL) == 0) {
+                                if (avformat_find_stream_info(format_ctx, NULL) >= 0) {
+                                    if (format_ctx->duration != AV_NOPTS_VALUE) {
+                                        // Duration is in AV_TIME_BASE units (microseconds)
+                                        int64_t duration_seconds = format_ctx->duration / AV_TIME_BASE;
+                                        end_time = start_time + duration_seconds;
+                                        log_info("Calculated end_time from MP4 duration: start=%ld, duration=%ld, end=%ld",
+                                                (long)start_time, (long)duration_seconds, (long)end_time);
+                                    }
+                                }
+                                avformat_close_input(&format_ctx);
+                            }
+                        }
+
+                        // Mark the recording as complete with the correct file size and end time
+                        update_recording_metadata(thread_ctx->writer->current_recording_id, end_time, size_bytes, true);
                         log_info("Marked previous recording (ID: %llu) as complete for stream %s (size: %llu bytes)",
                                 (unsigned long long)thread_ctx->writer->current_recording_id, stream_name, (unsigned long long)size_bytes);
                     } else {
