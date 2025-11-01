@@ -125,51 +125,71 @@ export function WebRTCVideoCell({
     // Add transceivers
     pc.addTransceiver('video', {direction: 'recvonly'});
 
-    // Create and send offer
-    pc.createOffer()
-      .then(offer => pc.setLocalDescription(offer))
-      .then(() => {
-        // Create a new AbortController for this request
-        abortControllerRef.current = new AbortController();
-        
-        // Format the offer
-        const formattedOffer = {
-          type: pc.localDescription.type,
-          sdp: pc.localDescription.sdp
-        };
+    // Try to fetch ICE servers from go2rtc via LightNVR proxy before creating offer
+    const auth = localStorage.getItem('auth');
+    const configFetch = fetch('/api/webrtc/config', {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        ...(auth ? { 'Authorization': 'Basic ' + auth } : {})
+      }
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(cfg => {
+        if (cfg && cfg.iceServers) {
+          try {
+            pc.setConfiguration({ iceServers: cfg.iceServers });
+          } catch (e) {
+            console.warn('Failed to apply WebRTC config', e);
+          }
+        }
+      })
+      .catch(e => console.warn('Failed to fetch WebRTC config', e));
 
-        // Get auth token if available
-        const auth = localStorage.getItem('auth');
+    configFetch.finally(() => {
+      // Create and send offer
+      pc.createOffer()
+        .then(offer => pc.setLocalDescription(offer))
+        .then(() => {
+          // Create a new AbortController for this request
+          abortControllerRef.current = new AbortController();
 
-        // Send the offer to the server
-        return fetch(`/api/webrtc?src=${encodeURIComponent(stream.name)}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(auth ? { 'Authorization': 'Basic ' + auth } : {})
-          },
-          body: JSON.stringify(formattedOffer),
+          // Format the offer
+          const formattedOffer = {
+            type: pc.localDescription.type,
+            sdp: pc.localDescription.sdp
+          };
+
+          // Send the offer to the server
+          return fetch(`/api/webrtc?src=${encodeURIComponent(stream.name)}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(auth ? { 'Authorization': 'Basic ' + auth } : {})
+            },
+            body: JSON.stringify(formattedOffer),
+          });
+        })
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`Failed to send offer: ${response.status} ${response.statusText}`);
+          }
+          return response.text();
+        })
+        .then(text => {
+          try {
+            return JSON.parse(text);
+          } catch (error) {
+            console.error(`Error parsing JSON for stream ${stream.name}:`, error);
+            throw new Error('Failed to parse WebRTC answer');
+          }
+        })
+        .then(answer => pc.setRemoteDescription(new RTCSessionDescription(answer)))
+        .catch(error => {
+          console.error(`Error setting up WebRTC for stream ${stream.name}:`, error);
+          setError(error.message || 'Failed to establish WebRTC connection');
         });
-      })
-      .then(response => {
-        if (!response.ok) {
-          throw new Error(`Failed to send offer: ${response.status} ${response.statusText}`);
-        }
-        return response.text();
-      })
-      .then(text => {
-        try {
-          return JSON.parse(text);
-        } catch (error) {
-          console.error(`Error parsing JSON for stream ${stream.name}:`, error);
-          throw new Error('Failed to parse WebRTC answer');
-        }
-      })
-      .then(answer => pc.setRemoteDescription(new RTCSessionDescription(answer)))
-      .catch(error => {
-        console.error(`Error setting up WebRTC for stream ${stream.name}:`, error);
-        setError(error.message || 'Failed to establish WebRTC connection');
-      });
+    });
 
     // Set up connection quality monitoring
     const startConnectionMonitoring = () => {
