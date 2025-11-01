@@ -35,28 +35,15 @@ init_config() {
     mkdir -p /var/lib/lightnvr/data/models
     mkdir -p /var/log/lightnvr
 
-    # Copy web assets if directory is empty or doesn't exist
-    # Check if www directory is empty or doesn't exist BEFORE creating it
-    log_info "Checking web assets directory: /var/lib/lightnvr/www"
-    if [ ! -d /var/lib/lightnvr/www ] || [ -z "$(ls -A /var/lib/lightnvr/www 2>/dev/null)" ]; then
-        log_info "Web assets directory is empty or doesn't exist, copying from template..."
-        if [ -d /usr/share/lightnvr/web-template ] && [ -n "$(ls -A /usr/share/lightnvr/web-template 2>/dev/null)" ]; then
-            mkdir -p /var/lib/lightnvr/www
-            cp -r /usr/share/lightnvr/web-template/* /var/lib/lightnvr/www/
-            log_info "Web assets copied successfully from /usr/share/lightnvr/web-template to /var/lib/lightnvr/www"
-            # Verify the copy
-            if [ -f /var/lib/lightnvr/www/index.html ]; then
-                log_info "Verified: index.html exists at /var/lib/lightnvr/www/index.html"
-            else
-                log_error "ERROR: index.html NOT found at /var/lib/lightnvr/www/index.html after copy!"
-            fi
-        else
-            log_error "Web template directory not found or empty at /usr/share/lightnvr/web-template, web UI may not work"
-        fi
+    # Verify web assets exist at the expected location; no fallback copy
+    log_info "Verifying web assets at /var/lib/lightnvr/www"
+    if [ ! -f /var/lib/lightnvr/www/index.html ]; then
+        log_error "Web assets not found at /var/lib/lightnvr/www (missing index.html). The image must include built assets in this location."
+        exit 1
     else
-        log_info "Web assets already exist at /var/lib/lightnvr/www, skipping copy"
+        log_info "Web assets present."
     fi
-    
+
     # Create default config if it doesn't exist
     if [ ! -f /etc/lightnvr/lightnvr.ini ]; then
         log_info "Creating default configuration file..."
