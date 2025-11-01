@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { ContentLoader } from './LoadingIndicator.jsx';
 import { StreamDeleteModal } from './StreamDeleteModal.jsx';
+import { StreamConfigModal } from './StreamConfigModal.jsx';
 import {
   useQuery,
   useMutation,
@@ -35,6 +36,22 @@ export function StreamsView() {
   const [onvifCredentials, setOnvifCredentials] = useState({ username: '', password: '' });
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [isLoadingProfiles, setIsLoadingProfiles] = useState(false);
+
+  // Accordion expanded state for StreamConfigModal sections
+  const [expandedSections, setExpandedSections] = useState({
+    basic: true,
+    recording: false,
+    detection: false,
+    motion: false,
+    advanced: false
+  });
+
+  const toggleSection = (section) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
 
   // Fetch streams data
   const {
@@ -81,12 +98,24 @@ export function StreamsView() {
     segment: 30,
     record: true,
     recordAudio: true,
+    // ONVIF capability flag
+    isOnvif: false,
+    // AI Detection recording
     detectionEnabled: false,
     detectionModel: '',
     detectionThreshold: 50,
     detectionInterval: 10,
     preBuffer: 10,
-    postBuffer: 30
+
+    postBuffer: 30,
+    // Motion (ONVIF) recording defaults
+    motionRecordingEnabled: false,
+    motionPreBuffer: 5,
+    motionPostBuffer: 10,
+    motionMaxDuration: 300,
+    motionRetentionDays: 7,
+    motionCodec: 'h264',
+    motionQuality: 'medium'
   });
   const [isEditing, setIsEditing] = useState(false);
 
@@ -103,6 +132,7 @@ export function StreamsView() {
   // Mutations for saving stream (create or update)
   const createStreamMutation = usePostMutation(
     '/api/streams',
+
     {
       timeout: 15000,
       retries: 1,
@@ -136,10 +166,18 @@ export function StreamsView() {
         retryDelay: 1000
       });
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       showStatusMessage('Stream updated successfully');
+      // Evict per-stream cache so next open fetches fresh data
+      if (variables?.streamName) {
+        queryClient.invalidateQueries({ queryKey: ['stream-full', variables.streamName] });
+        // Also remove to avoid returning cached data before refetch completes
+        if (typeof queryClient.removeQueries === 'function') {
+          queryClient.removeQueries({ queryKey: ['stream-full', variables.streamName], exact: true });
+        }
+      }
       closeModal();
-      // Invalidate and refetch streams data
+      // Invalidate and refetch streams list
       queryClient.invalidateQueries({ queryKey: ['streams'] });
     },
     onError: (error) => {
@@ -258,6 +296,8 @@ export function StreamsView() {
       record: currentStream.record,
       detection_based_recording: currentStream.detectionEnabled,
       detection_model: currentStream.detectionModel,
+      // Persist ONVIF flag expected by backend (camelCase key)
+      isOnvif: !!currentStream.isOnvif,
       detection_threshold: parseInt(currentStream.detectionThreshold, 10),
       detection_interval: parseInt(currentStream.detectionInterval, 10),
       pre_detection_buffer: parseInt(currentStream.preBuffer, 10),
@@ -270,8 +310,44 @@ export function StreamsView() {
       streamData.is_deleted = false;
     }
 
-    // Use mutation to save stream
-    saveStreamMutation.mutate(streamData);
+    // Use mutation to save stream and then handle motion config if applicable
+    saveStreamMutation.mutate(streamData, {
+      onSuccess: async () => {
+        try {
+          if (currentStream.isOnvif) {
+            const motionUrl = `/api/motion/config/${encodeURIComponent(currentStream.name)}`;
+            if (currentStream.motionRecordingEnabled) {
+              const body = {
+                enabled: true,
+                pre_buffer_seconds: parseInt(currentStream.motionPreBuffer, 10),
+                post_buffer_seconds: parseInt(currentStream.motionPostBuffer, 10),
+                max_file_duration: parseInt(currentStream.motionMaxDuration, 10),
+                codec: currentStream.motionCodec,
+                quality: currentStream.motionQuality,
+                retention_days: parseInt(currentStream.motionRetentionDays, 10)
+              };
+              await fetchJSON(motionUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+                timeout: 15000
+              });
+            } else {
+              // Delete motion config if disabling
+              await fetchJSON(motionUrl, {
+                method: 'DELETE',
+                timeout: 15000
+              });
+            }
+          }
+        } catch (err) {
+          showStatusMessage(`Motion config save failed: ${err.message}`, 5000, 'error');
+        }
+        // Ensure both list and details are refreshed after save
+        await queryClient.invalidateQueries({ queryKey: ['stream-full', currentStream.name] });
+        queryClient.invalidateQueries({ queryKey: ['streams'] });
+      }
+    });
   };
 
   // Save stream (wrapper for handleSubmit to use in onClick)
@@ -286,6 +362,28 @@ export function StreamsView() {
       protocol: parseInt(currentStream.protocol, 10)
     });
   };
+
+  // Trigger a simulated ONVIF motion event for the current stream
+  const triggerTestMotionEvent = async () => {
+    if (!currentStream?.name) {
+      showStatusMessage('Please set a stream name and save before testing motion.', 5000, 'error');
+      return;
+    }
+    try {
+      const data = await fetchJSON(`/api/motion/test/${encodeURIComponent(currentStream.name)}`, {
+        method: 'POST',
+        timeout: 15000
+      });
+      if (data?.success) {
+        showStatusMessage('Test motion event triggered successfully.', 3000, 'success');
+      } else {
+        showStatusMessage(`Test motion event failed: ${data?.message || 'Unknown error'}`, 5000, 'error');
+      }
+    } catch (err) {
+      showStatusMessage(`Error triggering test motion: ${err.message}`, 5000, 'error');
+    }
+  };
+
 
   // Open delete modal
   const openDeleteModal = (stream) => {
@@ -315,12 +413,20 @@ export function StreamsView() {
       segment: 30,
       record: true,
       recordAudio: true,
+      isOnvif: false,
       detectionEnabled: false,
       detectionModel: '',
       detectionThreshold: 50,
       detectionInterval: 10,
       preBuffer: 10,
-      postBuffer: 30
+      postBuffer: 30,
+      motionRecordingEnabled: false,
+      motionPreBuffer: 5,
+      motionPostBuffer: 10,
+      motionMaxDuration: 300,
+      motionRetentionDays: 7,
+      motionCodec: 'h264',
+      motionQuality: 'medium'
     });
     setIsEditing(false);
     setModalVisible(true);
@@ -329,18 +435,22 @@ export function StreamsView() {
   // Open edit stream modal
   const openEditStreamModal = async (streamId) => {
     try {
-      // Use queryClient to fetch stream details
-      const stream = await queryClient.fetchQuery({
-        queryKey: ['stream', streamId],
+      // Ensure any cached details are marked stale before fetching
+      await queryClient.invalidateQueries({ queryKey: ['stream-full', streamId] });
+      // Use queryClient to fetch stream details (force fresh)
+      const data = await queryClient.fetchQuery({
+        queryKey: ['stream-full', streamId],
         queryFn: async () => {
-          const response = await fetch(`/api/streams/${encodeURIComponent(streamId)}`);
+          const response = await fetch(`/api/streams/${encodeURIComponent(streamId)}/full`);
           if (!response.ok) {
             throw new Error(`HTTP error ${response.status}`);
           }
           return response.json();
         },
-        staleTime: 10000 // 10 seconds
+        staleTime: 0 // Always fetch fresh when opening modal
       });
+      const stream = data.stream || {};
+      const motion = data.motion_config || null;
 
       setCurrentStream({
         ...stream,
@@ -348,8 +458,8 @@ export function StreamsView() {
         width: stream.width || 1280,
         height: stream.height || 720,
         fps: stream.fps || 15,
-        protocol: stream.protocol?.toString() || '0',
-        priority: stream.priority?.toString() || '5',
+        protocol: (stream.protocol != null ? stream.protocol : 0).toString(),
+        priority: (stream.priority != null ? stream.priority : 5).toString(),
         segment: stream.segment_duration || 30,
         detectionThreshold: stream.detection_threshold || 50,
         detectionInterval: stream.detection_interval || 10,
@@ -357,10 +467,18 @@ export function StreamsView() {
         postBuffer: stream.post_detection_buffer || 30,
         // Map API fields to form fields
         streamingEnabled: stream.streaming_enabled !== undefined ? stream.streaming_enabled : true,
-        isOnvif: stream.is_onvif !== undefined ? stream.is_onvif : false,
+        isOnvif: stream.isOnvif !== undefined ? stream.isOnvif : false,
         detectionEnabled: stream.detection_based_recording || false,
         detectionModel: stream.detection_model || '',
-        recordAudio: stream.record_audio !== undefined ? stream.record_audio : true
+        recordAudio: stream.record_audio !== undefined ? stream.record_audio : true,
+        // Motion config mapping
+        motionRecordingEnabled: motion ? !!motion.enabled : false,
+        motionPreBuffer: motion ? (motion.pre_buffer_seconds || 5) : 5,
+        motionPostBuffer: motion ? (motion.post_buffer_seconds || 10) : 10,
+        motionMaxDuration: motion ? (motion.max_file_duration || 300) : 300,
+        motionRetentionDays: motion ? (motion.retention_days || 7) : 7,
+        motionCodec: motion ? (motion.codec || 'h264') : 'h264',
+        motionQuality: motion ? (motion.quality || 'medium') : 'medium'
       });
       setIsEditing(true);
       setModalVisible(true);
@@ -545,7 +663,8 @@ export function StreamsView() {
       segment_duration: 30,
       record: true,
       record_audio: true,
-      is_onvif: true
+      // Backend expects camelCase key 'isOnvif'
+      isOnvif: true
     };
 
     // Log the stream data for debugging
@@ -709,7 +828,24 @@ export function StreamsView() {
       )}
 
       {modalVisible && (
-        <div id="stream-modal" className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 transition-opacity duration-300">
+        <StreamConfigModal
+          isEditing={isEditing}
+          currentStream={currentStream}
+          detectionModels={detectionModels}
+          expandedSections={expandedSections}
+          onToggleSection={toggleSection}
+          onInputChange={handleInputChange}
+          onThresholdChange={handleThresholdChange}
+          onTestConnection={testStreamConnection}
+          onTestMotion={triggerTestMotionEvent}
+          onSave={handleSubmit}
+          onClose={closeModal}
+          onRefreshModels={loadDetectionModels}
+        />
+      )}
+
+      {onvifModalVisible && (
+        <div id="onvif-modal" className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 transition-opacity duration-300">
           <div className="bg-card text-card-foreground rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center p-4 border-b border-border">
               <h3 className="text-lg font-medium">{isEditing ? 'Edit Stream' : 'Add Stream'}</h3>

@@ -56,5 +56,12 @@ void mg_handle_post_motion_cleanup(struct mg_connection *c, struct mg_http_messa
  */
 void mg_handle_get_motion_storage(struct mg_connection *c, struct mg_http_message *hm);
 
+/**
+ * @brief Handler for POST /api/motion/test/:stream
+ * Simulate an ONVIF motion event for testing
+ */
+void mg_handle_test_motion_event(struct mg_connection *c, struct mg_http_message *hm);
+
+
 #endif /* API_HANDLERS_MOTION_H */
 

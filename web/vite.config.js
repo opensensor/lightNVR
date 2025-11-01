@@ -78,7 +78,7 @@ export default defineConfig({
         recordings: resolve(__dirname, 'recordings.html'),
         settings: resolve(__dirname, 'settings.html'),
         streams: resolve(__dirname, 'streams.html'),
-        motion: resolve(__dirname, 'motion.html'),
+
         system: resolve(__dirname, 'system.html'),
         timeline: resolve(__dirname, 'timeline.html'),
         users: resolve(__dirname, 'users.html'),

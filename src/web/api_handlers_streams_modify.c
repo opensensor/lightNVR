@@ -204,10 +204,10 @@ void mg_handle_post_stream(struct mg_connection *c, struct mg_http_message *hm) 
 
         onvif_test_success = (result == 0);
 
-        // If ONVIF test fails, don't save as ONVIF
+        // If ONVIF test fails, keep user selection but report status
         if (!onvif_test_success) {
-            log_warn("ONVIF test failed for stream %s, disabling ONVIF flag", config.name);
-            config.is_onvif = false;
+            log_warn("ONVIF test failed for stream %s; keeping user-selected ONVIF flag", config.name);
+            // Do not override config.is_onvif here; persist as provided by user
         }
     }
 
@@ -549,10 +549,10 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
                                           config.onvif_password[0] ? config.onvif_password : NULL);
 
         onvif_test_success = (result == 0);
-        // If ONVIF test fails, don't save as ONVIF
+        // If ONVIF test fails, keep user selection but report status
         if (!onvif_test_success) {
-            log_warn("ONVIF test failed for stream %s, disabling ONVIF flag", config.name);
-            config.is_onvif = false;
+            log_warn("ONVIF test failed for stream %s; keeping user-selected ONVIF flag", config.name);
+            // Do not override config.is_onvif here; persist as provided by user
         }
     }
 

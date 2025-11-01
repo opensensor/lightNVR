@@ -97,6 +97,7 @@ static const mg_api_route_t s_api_routes[] = {
     {"GET", "/api/streams", mg_handle_get_streams, true},  // Opt out of auto-threading to prevent double threading
     {"POST", "/api/streams", mg_handle_post_stream, false},
     {"POST", "/api/streams/test", mg_handle_test_stream, false},
+    {"GET", "/api/streams/#/full", mg_handle_get_stream_full, true},  // Aggregated stream + motion config
     {"GET", "/api/streams/#", mg_handle_get_stream, true},  // Opt out of auto-threading to prevent double threading
     {"PUT", "/api/streams/#", mg_handle_put_stream, false},
     {"DELETE", "/api/streams/#", mg_handle_delete_stream, false},
@@ -158,6 +159,7 @@ static const mg_api_route_t s_api_routes[] = {
     {"GET", "/api/motion/config/#", mg_handle_get_motion_config, false},
     {"POST", "/api/motion/config/#", mg_handle_post_motion_config, false},
     {"DELETE", "/api/motion/config/#", mg_handle_delete_motion_config, false},
+    {"POST", "/api/motion/test/#", mg_handle_test_motion_event, false},
     {"GET", "/api/motion/stats/#", mg_handle_get_motion_stats, false},
     {"GET", "/api/motion/recordings/#", mg_handle_get_motion_recordings, false},
     {"DELETE", "/api/motion/recordings/#", mg_handle_delete_motion_recording, false},
