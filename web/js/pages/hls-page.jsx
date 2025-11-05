@@ -10,6 +10,7 @@ import { ToastContainer } from "../components/preact/ToastContainer.jsx";
 import { QueryClientProvider, queryClient } from '../query-client.js';
 import { Header } from "../components/preact/Header.jsx";
 import { Footer } from "../components/preact/Footer.jsx";
+import { setupSessionValidation } from '../utils/auth-utils.js';
 
 /**
  * Main App component that conditionally renders WebRTCView or LiveView
@@ -65,6 +66,9 @@ function App() {
 
 // Render the App component when the DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
+    // Setup session validation (checks every 5 minutes)
+    setupSessionValidation();
+
     // Get the container element
     const container = document.getElementById('main-content');
 

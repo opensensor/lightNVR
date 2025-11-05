@@ -51,16 +51,19 @@ export function HLSVideoCell({
     if (Hls.isSupported()) {
       console.log(`Using HLS.js for stream ${stream.name}`);
       const hls = new Hls({
-        // Buffer management - optimized for stability with increased list size
+        // Buffer management - optimized to prevent stalling
         maxBufferLength: 30,            // Maximum buffer length in seconds
         maxMaxBufferLength: 60,         // Maximum maximum buffer length
-        backBufferLength: 10,           // Reduced back buffer to prevent memory issues
+        backBufferLength: 10,           // Back buffer to prevent memory issues
 
-        // Live stream settings - adjusted for 6-segment playlist
-        liveSyncDurationCount: 3,       // Number of segments to keep in sync
-        liveMaxLatencyDurationCount: 10, // Maximum latency before seeking
+        // Live stream settings - more conservative to prevent buffer stalls
+        liveSyncDurationCount: 4,       // Increased from 3 - more buffer before playback
+        liveMaxLatencyDurationCount: 12, // Increased from 10 - allow more latency before seeking
         liveDurationInfinity: false,    // Don't treat live streams as infinite
         lowLatencyMode: false,          // Disable low latency for stability
+
+        // High water mark - start playback with more buffer
+        highBufferWatchdogPeriod: 3,    // Check buffer health every 3 seconds
 
         // Loading timeouts
         fragLoadingTimeOut: 30000,      // Fragment loading timeout
@@ -80,10 +83,10 @@ export function HLSVideoCell({
         // Buffer flushing - important for preventing appendBuffer errors
         maxBufferHole: 0.5,             // Maximum buffer hole tolerance
         maxFragLookUpTolerance: 0.25,   // Fragment lookup tolerance
-        nudgeMaxRetry: 5,               // Increased retry attempts for buffer nudging
+        nudgeMaxRetry: 5,               // Retry attempts for buffer nudging
 
         // Append error handling - increased retries for better recovery
-        appendErrorMaxRetry: 5,         // Retry appending on error (increased from 3)
+        appendErrorMaxRetry: 5,         // Retry appending on error
 
         // Manifest refresh
         manifestLoadingMaxRetry: 3,     // Retry manifest loading
@@ -104,11 +107,18 @@ export function HLSVideoCell({
       });
 
       hls.on(Hls.Events.ERROR, function(event, data) {
-        console.log(`HLS event: ${data.type}, fatal: ${data.fatal}, details: ${data.details}`);
-
         // Handle non-fatal errors
         if (!data.fatal) {
-          // Handle buffer errors by trying to recover
+          // Don't log or recover from bufferStalledError - it's normal and HLS.js handles it
+          if (data.details === 'bufferStalledError') {
+            // This is a normal buffering event, HLS.js will handle it automatically
+            // Don't call recoverMediaError() as it causes black flicker
+            return;
+          }
+
+          console.log(`HLS non-fatal error: ${data.type}, details: ${data.details}`);
+
+          // Handle other media errors by trying to recover
           if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
             console.warn('Non-fatal media error, attempting recovery:', data.details);
             hls.recoverMediaError();
@@ -118,6 +128,9 @@ export function HLSVideoCell({
           }
           return;
         }
+
+        // Log fatal errors
+        console.error(`HLS fatal error: ${data.type}, details: ${data.details}`);
 
         // Handle fatal errors
         console.error('Fatal HLS error:', data);

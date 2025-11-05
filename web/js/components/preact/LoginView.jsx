@@ -24,7 +24,12 @@ export function LoginView() {
     } else if (urlParams.has('auth_required') && urlParams.has('logout')) {
       setErrorMessage('You have been successfully logged out.');
     } else if (urlParams.has('auth_required')) {
-      setErrorMessage('Authentication required. Please log in to continue.');
+      const reason = urlParams.get('reason');
+      if (reason === 'session_expired') {
+        setErrorMessage('Your session has expired. Please log in again.');
+      } else {
+        setErrorMessage('Authentication required. Please log in to continue.');
+      }
     } else if (urlParams.has('logout')) {
       setErrorMessage('You have been successfully logged out.');
     }

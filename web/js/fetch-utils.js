@@ -4,6 +4,37 @@
  */
 
 /**
+ * Clear authentication state and redirect to login
+ * @param {string} reason - Reason for redirect (optional)
+ */
+function handleAuthenticationFailure(reason = 'Session expired') {
+  console.warn(`Authentication failure: ${reason}`);
+
+  // Clear all auth-related storage
+  localStorage.removeItem('auth');
+
+  // Clear auth cookies
+  document.cookie = "auth=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict";
+  document.cookie = "session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict";
+
+  // Only redirect if we're not already on the login page
+  if (!window.location.pathname.includes('login.html')) {
+    console.log('Redirecting to login page due to authentication failure');
+    window.location.href = '/login.html?auth_required=true&reason=session_expired';
+  }
+}
+
+/**
+ * Check if an error is an authentication error that should trigger redirect
+ * @param {Error} error - The error to check
+ * @returns {boolean} - True if this is an auth error
+ */
+function isAuthenticationError(error) {
+  // Check if error message contains 401 status
+  return error.message && error.message.includes('401');
+}
+
+/**
  * Enhanced fetch function with timeout, retries and error handling
  * @param {string} url - URL to fetch
  * @param {Object} options - Fetch options
@@ -15,6 +46,7 @@ export async function enhancedFetch(url, options = {}) {
     retries = 1,
     retryDelay = 1000,
     signal: externalSignal,
+    skipAuthRedirect = false, // Allow callers to opt-out of auto-redirect (e.g., login page)
     ...fetchOptions
   } = options;
 
@@ -24,6 +56,7 @@ export async function enhancedFetch(url, options = {}) {
     timeout,
     retries,
     retryDelay,
+    skipAuthRedirect,
     ...fetchOptions
   });
 
@@ -65,6 +98,14 @@ export async function enhancedFetch(url, options = {}) {
       // Log the response
       console.log(`enhancedFetch response: ${response.status} ${response.statusText} for ${url}`);
 
+      // Handle 401 Unauthorized - don't retry, just redirect
+      if (response.status === 401) {
+        if (!skipAuthRedirect) {
+          handleAuthenticationFailure('Received 401 Unauthorized response');
+        }
+        throw new Error(`HTTP error 401: Unauthorized`);
+      }
+
       // Check if the response is ok
       if (!response.ok) {
         throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
@@ -81,6 +122,12 @@ export async function enhancedFetch(url, options = {}) {
 
       // Log the error
       console.error(`enhancedFetch error (attempt ${attempt + 1}/${retries + 1}):`, error);
+
+      // If this is an authentication error, don't retry - just fail immediately
+      if (isAuthenticationError(error)) {
+        console.warn(`enhancedFetch: Authentication error detected, not retrying`);
+        throw error;
+      }
 
       // If the request was aborted, don't retry
       if (error.name === 'AbortError') {
