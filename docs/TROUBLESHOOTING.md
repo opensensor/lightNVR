@@ -142,11 +142,36 @@ If streams disconnect frequently:
 3. Verify that the camera isn't overloaded with too many connections
 4. Check if the camera has a limit on concurrent RTSP connections
 
+### HLS Buffer Append Errors (bufferAppendError)
+
+If you see `bufferAppendError` messages in the browser console, this typically indicates that HLS segments are not properly formatted or don't start with keyframes. This has been fixed in recent versions by:
+
+1. **Forcing keyframes at segment boundaries** - The HLS writer now forces keyframes (I-frames) at the start of each segment
+2. **Increased playlist size** - The `hls_list_size` has been increased from 3 to 6 segments for better buffering
+3. **Improved error recovery** - HLS.js retry attempts have been increased
+
+If you still experience issues:
+
+1. **Check camera GOP (Group of Pictures) settings**:
+   - Ensure your camera's keyframe interval is set to 2 seconds or less
+   - Some cameras call this "I-frame interval" or "GOP size"
+   - For a 15 FPS stream, GOP should be 30 frames or less
+   - For a 30 FPS stream, GOP should be 60 frames or less
+
+2. **Verify stream codec**:
+   - Ensure the camera is sending H.264 video
+   - Check that the stream doesn't have B-frames (use baseline or main profile, not high profile)
+
+3. **Check server logs** for HLS writer errors:
+   ```bash
+   docker logs lightnvr | grep -i "hls"
+   ```
+
 ### Live Stream Video Timeouts
 
 If you experience frequent video timeouts in the live stream:
 
-1. **Adjust HLS.js buffer settings** in `web/js/components/video.js`:
+1. **Adjust HLS.js buffer settings** in `web/js/components/preact/HLSVideoCell.jsx`:
    ```javascript
    const hls = new Hls({
        maxBufferLength: 60,            // Increase for more buffering (default: 30)
@@ -162,11 +187,7 @@ If you experience frequent video timeouts in the live stream:
    - For manifest files: Increase the number of attempts and/or the wait time between attempts
    - For segment files: Increase the number of attempts and/or the wait time between attempts
 
-3. **Adjust HLS segment settings** in `src/video/hls_writer.c`:
-   - Increase `hls_list_size` for more segments in the playlist
-   - Add additional HLS flags to improve streaming reliability
-
-4. **Network and hardware considerations**:
+3. **Network and hardware considerations**:
    - Ensure your network has sufficient bandwidth for the configured stream quality
    - If running on limited hardware (like Ingenic A1), reduce stream resolution and framerate
    - Consider enabling hardware acceleration if available

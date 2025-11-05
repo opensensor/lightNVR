@@ -51,12 +51,12 @@ export function HLSVideoCell({
     if (Hls.isSupported()) {
       console.log(`Using HLS.js for stream ${stream.name}`);
       const hls = new Hls({
-        // Buffer management - keep it simple and stable
+        // Buffer management - optimized for stability with increased list size
         maxBufferLength: 30,            // Maximum buffer length in seconds
         maxMaxBufferLength: 60,         // Maximum maximum buffer length
         backBufferLength: 10,           // Reduced back buffer to prevent memory issues
 
-        // Live stream settings
+        // Live stream settings - adjusted for 6-segment playlist
         liveSyncDurationCount: 3,       // Number of segments to keep in sync
         liveMaxLatencyDurationCount: 10, // Maximum latency before seeking
         liveDurationInfinity: false,    // Don't treat live streams as infinite
@@ -80,9 +80,10 @@ export function HLSVideoCell({
         // Buffer flushing - important for preventing appendBuffer errors
         maxBufferHole: 0.5,             // Maximum buffer hole tolerance
         maxFragLookUpTolerance: 0.25,   // Fragment lookup tolerance
+        nudgeMaxRetry: 5,               // Increased retry attempts for buffer nudging
 
-        // Append error handling
-        appendErrorMaxRetry: 3,         // Retry appending on error
+        // Append error handling - increased retries for better recovery
+        appendErrorMaxRetry: 5,         // Retry appending on error (increased from 3)
 
         // Manifest refresh
         manifestLoadingMaxRetry: 3,     // Retry manifest loading

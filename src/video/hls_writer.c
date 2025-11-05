@@ -214,7 +214,7 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     // CRITICAL FIX: Modify HLS options to prevent segmentation faults
     // Use more conservative settings that prioritize stability over low latency
     av_dict_set(&options, "hls_time", hls_time, 0);
-    av_dict_set(&options, "hls_list_size", "3", 0);  // Reduced for faster segment cleanup
+    av_dict_set(&options, "hls_list_size", "6", 0);  // Increased from 3 to 6 for better buffering and stability
 
     // Use MPEG-TS segments for better compatibility and to avoid MP4 moov atom issues
     av_dict_set(&options, "hls_segment_type", "mpegts", 0);
@@ -224,6 +224,13 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     // independent_segments: Make each segment independently decodable
     // program_date_time: Add timestamps for better seeking
     av_dict_set(&options, "hls_flags", "delete_segments+independent_segments+program_date_time", 0);
+
+    // CRITICAL FIX: Force keyframes at segment boundaries to prevent bufferAppendError in HLS.js
+    // This ensures each segment starts with a keyframe (I-frame), making them independently decodable
+    // Format: "expr:gte(t,n_forced*<segment_duration>)" forces a keyframe every segment_duration seconds
+    char force_key_frames[64];
+    snprintf(force_key_frames, sizeof(force_key_frames), "expr:gte(t,n_forced*%d)", segment_duration);
+    av_dict_set(&options, "force_key_frames", force_key_frames, 0);
 
     // Set start number
     av_dict_set(&options, "start_number", "0", 0);
@@ -240,11 +247,12 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     av_dict_set(&options, "hls_segment_filename", segment_format, 0);
 
     // Log simplified options for debugging
-    log_info("HLS writer options for stream %s (simplified for stability):", writer->stream_name);
+    log_info("HLS writer options for stream %s (optimized for stability and compatibility):", writer->stream_name);
     log_info("  hls_time: %s", hls_time);
-    log_info("  hls_list_size: 3");
+    log_info("  hls_list_size: 6");
     log_info("  hls_flags: delete_segments+independent_segments+program_date_time");
     log_info("  hls_segment_type: mpegts");
+    log_info("  force_key_frames: %s", force_key_frames);
     log_info("  start_number: 0");
     log_info("  hls_segment_filename: %s", segment_format);
 
