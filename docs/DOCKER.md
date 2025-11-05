@@ -107,6 +107,74 @@ volumes:
   - ./data:/var/lib/lightnvr  # This will break the web UI!
 ```
 
+### NFS Volume Considerations
+
+When using NFS volumes (common with NAS devices like Synology), there are some important considerations:
+
+#### Permission Issues
+
+NFS volumes may have different permission models than local filesystems. If you encounter "Operation not permitted" errors:
+
+1. **Check NFS mount options**: Ensure your NFS share is mounted with appropriate permissions
+   ```yaml
+   volumes:
+     config:
+       driver_opts:
+         type: "nfs"
+         o: "nfsvers=4,addr=192.168.1.100,rw,nolock"  # Add nolock if needed
+         device: ":/volume1/docker/lightnvr/config"
+   ```
+
+2. **UID/GID mapping**: The container runs as root by default. Ensure your NFS export allows root access or map UIDs appropriately:
+   - On Synology NAS: Enable "Map all users to admin" or "Squash" options in NFS permissions
+   - Or use `all_squash,anonuid=1000,anongid=1000` in NFS export options
+
+3. **Directory pre-creation**: For better reliability with NFS, pre-create the directory structure on your NAS:
+   ```bash
+   # On your NAS or NFS server
+   mkdir -p /volume1/docker/lightnvr/config/go2rtc
+   mkdir -p /volume1/docker/lightnvr/data/recordings/mp4
+   mkdir -p /volume1/docker/lightnvr/data/database
+   mkdir -p /volume1/docker/lightnvr/data/models
+   chmod -R 755 /volume1/docker/lightnvr
+   ```
+
+#### Recording Issues on NFS
+
+If recordings are not being created:
+
+1. **Check write permissions**: The container logs will show write permission test results on startup
+2. **Verify NFS mount**: Ensure the NFS volume is actually mounted inside the container:
+   ```bash
+   docker exec lightnvr-latest ls -la /var/lib/lightnvr/data/recordings/mp4
+   ```
+3. **Check available space**: Ensure your NAS has sufficient free space
+4. **Review logs**: Check for "Failed to open input" or "Operation not permitted" errors:
+   ```bash
+   docker logs lightnvr-latest | grep -i error
+   ```
+
+#### Example NFS Configuration
+
+Here's a complete example for Synology NAS with Traefik:
+
+```yaml
+volumes:
+  config:
+    driver_opts:
+      type: "nfs"
+      o: "nfsvers=4,addr=${IpAddressNFS},rw,nolock"
+      device: ":/${NFSVolumePath}/${SystemId}/lightnvr-config"
+
+  data:
+    driver_opts:
+      type: "nfs"
+      o: "nfsvers=4,addr=${IpAddressNFS},rw,nolock"
+      device: ":/${NFSVolumePath}/${SystemId}/lightnvr-data"
+```
+
+**Note**: The `nolock` option can help with some NFS permission issues but may reduce file locking safety. Use with caution in production environments.
+
 ### Web Assets
 
 Web assets are stored in `/var/lib/lightnvr/web` and are automatically copied from `/usr/share/lightnvr/web-template/` on first run. This ensures:

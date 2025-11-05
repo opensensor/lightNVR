@@ -328,19 +328,45 @@ fi
 if [ -d "web" ]; then
     # Install web interface files
     echo "Installing web interface files..."
-    
+
     # Check if dist directory exists (prebuilt assets)
-    if [ -d "web/dist" ]; then
+    if [ -d "web/dist" ] && [ -f "web/dist/index.html" ]; then
         echo "Found prebuilt web assets, installing from dist directory..."
         cp -r web/dist/* "$DATA_DIR/www/"
         echo "Web interface files installed to $DATA_DIR/www/"
+
+        # Verify installation
+        if [ -f "$DATA_DIR/www/index.html" ]; then
+            echo "✓ Web assets successfully installed"
+        else
+            echo "⚠ Warning: Web assets may not have been installed correctly"
+        fi
     else
-        echo "No prebuilt web assets found, copying web directory as is..."
-        cp -r web/* "$DATA_DIR/www/"
-        echo "Note: For optimized web assets, run scripts/build_and_update_web_vite.sh before installation"
+        echo "⚠ WARNING: No prebuilt web assets found in web/dist/"
+        echo ""
+        echo "The web interface will NOT work without building the assets first!"
+        echo ""
+        echo "To build web assets, run:"
+        echo "  cd web"
+        echo "  npm install"
+        echo "  npm run build"
+        echo "  cd .."
+        echo "  sudo bash scripts/install.sh"
+        echo ""
+        echo "Or use the dedicated script:"
+        echo "  sudo bash scripts/install_web_assets.sh"
+        echo ""
+        read -p "Do you want to continue installation without web assets? (y/N) " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            echo "Installation cancelled. Please build web assets first."
+            exit 1
+        fi
+        echo "Continuing without web assets..."
     fi
 else
-    echo "Web interface directory not found, skipping web installation"
+    echo "⚠ WARNING: Web interface directory not found, skipping web installation"
+    echo "The web interface will NOT be available!"
 fi
 
 # Set permissions

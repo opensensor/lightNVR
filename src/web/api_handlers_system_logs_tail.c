@@ -16,6 +16,7 @@
 #include "core/logger.h"
 #include "core/config.h"
 #include "mongoose.h"
+#include "cJSON.h"
 
 /**
  * @brief Get system logs using tail command
@@ -250,19 +251,11 @@ int get_json_logs_tail(const char *min_level, const char *last_timestamp, char *
             log_lines = new_lines;
         }
 
-        // Create JSON format log entry
-        char json_buffer[8192];
-        snprintf(json_buffer, sizeof(json_buffer),
-                "{\"timestamp\":\"%s\",\"level\":\"%s\",\"message\":\"%s\"}",
-                timestamp[0] ? timestamp : "Unknown",
-                level[0] ? level : "info",
-                message);
-        
-        // Allocate memory for the log line
-        log_lines[log_index] = strdup(json_buffer);
-        if (!log_lines[log_index]) {
-            log_error("Failed to allocate memory for log line");
-            
+        // Create JSON format log entry using cJSON to properly escape strings
+        cJSON *log_entry = cJSON_CreateObject();
+        if (!log_entry) {
+            log_error("Failed to create JSON object for log entry");
+
             // Free previously allocated lines
             for (int i = 0; i < log_index; i++) {
                 if (log_lines[i]) {
@@ -273,7 +266,30 @@ int get_json_logs_tail(const char *min_level, const char *last_timestamp, char *
             pclose(fp);
             return -1;
         }
-        
+
+        cJSON_AddStringToObject(log_entry, "timestamp", timestamp[0] ? timestamp : "Unknown");
+        cJSON_AddStringToObject(log_entry, "level", level[0] ? level : "info");
+        cJSON_AddStringToObject(log_entry, "message", message);
+
+        char *json_str = cJSON_PrintUnformatted(log_entry);
+        cJSON_Delete(log_entry);
+
+        if (!json_str) {
+            log_error("Failed to convert log entry to JSON string");
+
+            // Free previously allocated lines
+            for (int i = 0; i < log_index; i++) {
+                if (log_lines[i]) {
+                    free(log_lines[i]);
+                }
+            }
+            free(log_lines);
+            pclose(fp);
+            return -1;
+        }
+
+        // Store the JSON string (already allocated by cJSON)
+        log_lines[log_index] = json_str;
         log_index++;
     }
     

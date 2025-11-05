@@ -54,10 +54,16 @@ LightNVR provides a lightweight yet powerful solution for recording and managing
    # Clone the repository
    git clone https://github.com/opensensor/lightnvr.git
    cd lightnvr
-   
+
+   # Build web assets (requires Node.js/npm)
+   cd web
+   npm install
+   npm run build
+   cd ..
+
    # Build the software
    ./scripts/build.sh --release
-   
+
    # Install (requires root)
    sudo ./scripts/install.sh
    ```
@@ -83,7 +89,30 @@ LightNVR provides a lightweight yet powerful solution for recording and managing
 5. **Access the web interface**:
    Open a web browser and navigate to `http://your-device-ip:8080`
 
-### Troubleshooting Daemon Mode
+   Default credentials:
+   - Username: `admin`
+   - Password: `admin`
+
+## Troubleshooting
+
+### Blank Web Page
+
+If you see a blank page after installation, the web assets may not have been installed:
+
+```bash
+# Diagnose the issue
+sudo ./scripts/diagnose_web_issue.sh
+
+# Install web assets
+sudo ./scripts/install_web_assets.sh
+
+# Restart service
+sudo systemctl restart lightnvr
+```
+
+See [Web Interface Troubleshooting Guide](docs/TROUBLESHOOTING_WEB_INTERFACE.md) for detailed instructions.
+
+### Daemon Mode Issues
 
 If the systemd service starts but port 8080 is not accessible, see the [Daemon Troubleshooting Guide](docs/DAEMON_TROUBLESHOOTING.md).
 
@@ -98,6 +127,10 @@ sudo ./scripts/test_daemon_mode.sh
 # Validate that fixes are working
 sudo ./scripts/validate_daemon_fix.sh
 ```
+
+### General Troubleshooting
+
+For other issues, see the [General Troubleshooting Guide](docs/TROUBLESHOOTING.md).
 
 ### Docker Installation
 

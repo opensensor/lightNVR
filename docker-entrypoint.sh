@@ -26,14 +26,29 @@ log_error() {
 init_config() {
     log_info "Initializing LightNVR configuration..."
     
-    # Create directories
-    mkdir -p /etc/lightnvr
-    mkdir -p /var/lib/lightnvr/data
-    mkdir -p /var/lib/lightnvr/data/recordings
-    mkdir -p /var/lib/lightnvr/data/recordings/mp4
-    mkdir -p /var/lib/lightnvr/data/database
-    mkdir -p /var/lib/lightnvr/data/models
-    mkdir -p /var/log/lightnvr
+    # Create directories with error handling for NFS volumes
+    log_info "Creating directory structure..."
+
+    # Create directories one by one with error checking
+    for dir in \
+        "/etc/lightnvr" \
+        "/var/lib/lightnvr/data" \
+        "/var/lib/lightnvr/data/recordings" \
+        "/var/lib/lightnvr/data/recordings/mp4" \
+        "/var/lib/lightnvr/data/database" \
+        "/var/lib/lightnvr/data/models" \
+        "/var/log/lightnvr"; do
+
+        if [ ! -d "$dir" ]; then
+            if mkdir -p "$dir" 2>/dev/null; then
+                log_info "Created directory: $dir"
+            else
+                log_warn "Could not create directory: $dir (may already exist or be on NFS)"
+            fi
+        else
+            log_info "Directory already exists: $dir"
+        fi
+    done
 
     # Verify web assets exist at the expected location; no fallback copy
     log_info "Verifying web assets at /var/lib/lightnvr/www"
@@ -161,11 +176,24 @@ EOF
         log_info "No models to copy, skipping model initialization"
     fi
     
-    # Ensure proper permissions
-    chmod -R 755 /var/lib/lightnvr
-    chmod -R 755 /etc/lightnvr
-    chmod -R 755 /var/log/lightnvr
-    
+    # Ensure proper permissions (may fail on NFS, which is okay)
+    log_info "Setting permissions..."
+    chmod -R 755 /var/lib/lightnvr 2>/dev/null || log_warn "Could not set permissions on /var/lib/lightnvr (may be on NFS)"
+    chmod -R 755 /etc/lightnvr 2>/dev/null || log_warn "Could not set permissions on /etc/lightnvr (may be on NFS)"
+    chmod -R 755 /var/log/lightnvr 2>/dev/null || log_warn "Could not set permissions on /var/log/lightnvr"
+
+    # Test write permissions on critical directories
+    log_info "Testing write permissions..."
+    for test_dir in "/var/lib/lightnvr/data" "/etc/lightnvr" "/var/log/lightnvr"; do
+        test_file="$test_dir/.write_test_$$"
+        if touch "$test_file" 2>/dev/null; then
+            rm -f "$test_file" 2>/dev/null
+            log_info "Write permission OK: $test_dir"
+        else
+            log_error "No write permission: $test_dir - This may cause issues!"
+        fi
+    done
+
     log_info "Initialization complete"
 }
 

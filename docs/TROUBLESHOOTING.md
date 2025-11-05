@@ -236,6 +236,28 @@ If recordings are corrupt:
 
 ## Web Interface Issues
 
+> **Note:** For detailed web interface troubleshooting, including blank page issues, see [TROUBLESHOOTING_WEB_INTERFACE.md](TROUBLESHOOTING_WEB_INTERFACE.md)
+
+### Blank Page Issue
+
+If you see a blank page with the title "WebRTC View - LightNVR" but no content:
+
+**Quick Fix:**
+```bash
+# Diagnose the issue
+sudo bash scripts/diagnose_web_issue.sh
+
+# Install/reinstall web assets
+sudo bash scripts/install_web_assets.sh
+
+# Restart service
+sudo systemctl restart lightnvr
+```
+
+**Cause:** Web assets (HTML, CSS, JavaScript files) were not installed to `/var/lib/lightnvr/www/`
+
+See [TROUBLESHOOTING_WEB_INTERFACE.md](TROUBLESHOOTING_WEB_INTERFACE.md) for detailed instructions.
+
 ### Can't Access Web Interface
 
 If you can't access the web interface:
@@ -268,7 +290,7 @@ If you're having trouble with authentication:
    ```bash
    sudo nano /etc/lightnvr/lightnvr.conf
    ```
-   
+
    Update these lines:
    ```
    web_auth_enabled=true
