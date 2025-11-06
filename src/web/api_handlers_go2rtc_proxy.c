@@ -634,10 +634,11 @@ void mg_handle_go2rtc_webrtc_config(struct mg_connection *c, struct mg_http_mess
     offset += snprintf(json_response + offset, sizeof(json_response) - offset,
                       "{\"iceServers\":[");
 
-    // Add STUN server if enabled
+    // Add STUN servers if enabled - include multiple for redundancy
     if (g_config.go2rtc_stun_enabled && g_config.go2rtc_stun_server[0] != '\0') {
         offset += snprintf(json_response + offset, sizeof(json_response) - offset,
-                          "{\"urls\":[\"stun:%s\"]}", g_config.go2rtc_stun_server);
+                          "{\"urls\":[\"stun:%s\",\"stun:stun1.l.google.com:19302\",\"stun:stun2.l.google.com:19302\",\"stun:stun3.l.google.com:19302\",\"stun:stun4.l.google.com:19302\"]}",
+                          g_config.go2rtc_stun_server);
     }
 
     // Add custom ICE servers if specified

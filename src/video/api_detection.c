@@ -604,6 +604,23 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         result->detections[result->count].width = x_max->valuedouble - x_min->valuedouble;
         result->detections[result->count].height = y_max->valuedouble - y_min->valuedouble;
 
+        // Parse optional track_id field
+        cJSON *track_id = cJSON_GetObjectItem(detection, "track_id");
+        if (track_id && cJSON_IsNumber(track_id)) {
+            result->detections[result->count].track_id = (int)track_id->valuedouble;
+        } else {
+            result->detections[result->count].track_id = -1; // No tracking
+        }
+
+        // Parse optional zone_id field
+        cJSON *zone_id = cJSON_GetObjectItem(detection, "zone_id");
+        if (zone_id && cJSON_IsString(zone_id)) {
+            strncpy(result->detections[result->count].zone_id, zone_id->valuestring, MAX_ZONE_ID_LENGTH - 1);
+            result->detections[result->count].zone_id[MAX_ZONE_ID_LENGTH - 1] = '\0';
+        } else {
+            result->detections[result->count].zone_id[0] = '\0'; // Empty zone
+        }
+
         result->count++;
     }
 

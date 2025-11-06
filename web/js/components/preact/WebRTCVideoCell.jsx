@@ -49,10 +49,9 @@ export function WebRTCVideoCell({
 
     // Create a new RTCPeerConnection
     const pc = new RTCPeerConnection({
-      iceTransports: 'all',
+      iceTransportPolicy: 'all',
       bundlePolicy: 'balanced',
-      rtcpCnameCpn: 'LightNVR',
-      rtcpCnameRtp: 'LightNVR',
+      rtcpMuxPolicy: 'require',
       iceCandidatePoolSize: 0,
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -63,16 +62,25 @@ export function WebRTCVideoCell({
 
     // Set up event handlers
     pc.ontrack = (event) => {
-      console.log(`Track received for stream ${stream.name}`);
-      
+      console.log(`Track received for stream ${stream.name}`, event);
+
       if (event.track.kind === 'video') {
         const videoElement = videoRef.current;
-        if (!videoElement) return;
+        if (!videoElement) {
+          console.error(`Video element not found for stream ${stream.name}`);
+          return;
+        }
+
+        console.log(`Setting srcObject for stream ${stream.name}`, event.streams[0]);
 
         // Set srcObject
         videoElement.srcObject = event.streams[0];
-        
+
         // Add event handlers
+        videoElement.onloadedmetadata = () => {
+          console.log(`Video metadata loaded for stream ${stream.name}`);
+        };
+
         videoElement.onloadeddata = () => {
           console.log(`Video data loaded for stream ${stream.name}`);
         };
@@ -82,17 +90,44 @@ export function WebRTCVideoCell({
           setIsLoading(false);
           setIsPlaying(true);
         };
+
+        videoElement.onwaiting = () => {
+          console.log(`Video waiting for data for stream ${stream.name}`);
+        };
+
+        videoElement.onstalled = () => {
+          console.warn(`Video stalled for stream ${stream.name}`);
+        };
+
         videoElement.onerror = (event) => {
           console.error(`Error loading video for stream ${stream.name}:`, event);
+          if (videoElement.error) {
+            console.error(`Video error code: ${videoElement.error.code}, message: ${videoElement.error.message}`);
+          }
           setError('Failed to load video');
           setIsLoading(false);
         };
+
+        // Explicitly start playback
+        console.log(`Attempting to play video for stream ${stream.name}`);
+        videoElement.play()
+          .then(() => {
+            console.log(`Video play() succeeded for stream ${stream.name}`);
+          })
+          .catch(err => {
+            console.error(`Video play() failed for stream ${stream.name}:`, err);
+            // Try again with user interaction if autoplay was blocked
+            if (err.name === 'NotAllowedError') {
+              console.warn(`Autoplay blocked for stream ${stream.name}, user interaction required`);
+              setError('Click to play video (autoplay blocked)');
+            }
+          });
       }
     };
 
     pc.oniceconnectionstatechange = () => {
       console.log(`ICE connection state for stream ${stream.name}: ${pc.iceConnectionState}`);
-      
+
       if (pc.iceConnectionState === 'failed') {
         console.error(`WebRTC ICE connection failed for stream ${stream.name}`);
         setError('WebRTC ICE connection failed');
@@ -100,11 +135,11 @@ export function WebRTCVideoCell({
       } else if (pc.iceConnectionState === 'disconnected') {
         // Connection is temporarily disconnected, log but don't show error yet
         console.warn(`WebRTC ICE connection disconnected for stream ${stream.name}, attempting to recover...`);
-        
+
         // Set a timeout to check if the connection recovers on its own
         setTimeout(() => {
-          if (peerConnectionRef.current && 
-              (peerConnectionRef.current.iceConnectionState === 'disconnected' || 
+          if (peerConnectionRef.current &&
+              (peerConnectionRef.current.iceConnectionState === 'disconnected' ||
                peerConnectionRef.current.iceConnectionState === 'failed')) {
             console.error(`WebRTC ICE connection could not recover for stream ${stream.name}`);
             setError('WebRTC connection lost. Please retry.');
@@ -119,6 +154,35 @@ export function WebRTCVideoCell({
           console.log(`WebRTC connection restored for stream ${stream.name}`);
           setError(null);
         }
+      }
+    };
+
+    // Handle ICE gathering state changes
+    pc.onicegatheringstatechange = () => {
+      console.log(`ICE gathering state for stream ${stream.name}: ${pc.iceGatheringState}`);
+    };
+
+    // Handle ICE candidates - critical for NAT traversal
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        console.log(`ICE candidate for stream ${stream.name}:`, event.candidate.candidate);
+
+        // Send the ICE candidate to the server
+        // Note: go2rtc typically handles ICE candidates in the SDP exchange,
+        // but we log them here for debugging purposes
+        // If trickle ICE is needed, uncomment the code below:
+        /*
+        fetch(`/api/webrtc/ice?src=${encodeURIComponent(stream.name)}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(auth ? { 'Authorization': 'Basic ' + auth } : {})
+          },
+          body: JSON.stringify(event.candidate)
+        }).catch(err => console.warn('Failed to send ICE candidate:', err));
+        */
+      } else {
+        console.log(`ICE gathering complete for stream ${stream.name}`);
       }
     };
 
@@ -147,10 +211,26 @@ export function WebRTCVideoCell({
       .catch(e => console.warn('Failed to fetch WebRTC config', e));
 
     configFetch.finally(() => {
+      // Set a timeout for the entire connection process
+      const connectionTimeout = setTimeout(() => {
+        if (peerConnectionRef.current &&
+            peerConnectionRef.current.iceConnectionState !== 'connected' &&
+            peerConnectionRef.current.iceConnectionState !== 'completed') {
+          console.error(`WebRTC connection timeout for stream ${stream.name}, ICE state: ${peerConnectionRef.current.iceConnectionState}`);
+          setError('Connection timeout. Check network/firewall settings.');
+          setIsLoading(false);
+        }
+      }, 30000); // 30 second timeout
+
       // Create and send offer
       pc.createOffer()
-        .then(offer => pc.setLocalDescription(offer))
+        .then(offer => {
+          console.log(`Created offer for stream ${stream.name}`);
+          return pc.setLocalDescription(offer);
+        })
         .then(() => {
+          console.log(`Set local description for stream ${stream.name}, waiting for ICE gathering...`);
+
           // Create a new AbortController for this request
           abortControllerRef.current = new AbortController();
 
@@ -159,6 +239,8 @@ export function WebRTCVideoCell({
             type: pc.localDescription.type,
             sdp: pc.localDescription.sdp
           };
+
+          console.log(`Sending offer to server for stream ${stream.name}`);
 
           // Send the offer to the server
           return fetch(`/api/webrtc?src=${encodeURIComponent(stream.name)}`, {
@@ -184,10 +266,17 @@ export function WebRTCVideoCell({
             throw new Error('Failed to parse WebRTC answer');
           }
         })
-        .then(answer => pc.setRemoteDescription(new RTCSessionDescription(answer)))
+        .then(answer => {
+          console.log(`Received answer from server for stream ${stream.name}`);
+          return pc.setRemoteDescription(new RTCSessionDescription(answer));
+        })
+        .then(() => {
+          console.log(`Set remote description for stream ${stream.name}, ICE state: ${pc.iceConnectionState}`);
+        })
         .catch(error => {
           console.error(`Error setting up WebRTC for stream ${stream.name}:`, error);
           setError(error.message || 'Failed to establish WebRTC connection');
+          clearTimeout(connectionTimeout);
         });
     });
 

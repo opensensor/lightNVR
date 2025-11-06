@@ -84,6 +84,7 @@ static const mg_api_route_t s_api_routes[] = {
     {"POST", "/api/auth/login", mg_handle_auth_login, false},
     {"POST", "/api/auth/logout", mg_handle_auth_logout, false},
     {"GET", "/api/auth/verify", mg_handle_auth_verify, false},
+    {"GET", "/logout", mg_handle_auth_logout, false},  // Simple GET logout route
 
     // User Management API
     {"GET", "/api/auth/users", mg_handle_users_list, false},

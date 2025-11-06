@@ -39,27 +39,7 @@ export function Header({ version = VERSION }) {
     }
   }, []);
 
-  // Handle logout
-  const handleLogout = (e) => {
-    e.preventDefault();
 
-    // Clear localStorage
-    localStorage.removeItem('auth');
-
-    // Clear cookies
-    document.cookie = "auth=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict";
-    document.cookie = "session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict";
-
-    // Call the logout endpoint to clear browser's basic auth cache
-    fetch('/api/auth/logout', {
-      method: 'POST'
-    }).then(() => {
-      window.location.href = 'login.html?auth_required=true&logout=true';
-    }).catch(() => {
-      // Redirect even if the request fails
-      window.location.href = 'login.html?auth_required=true&logout=true';
-    });
-  };
 
   // Toggle mobile menu
   const toggleMobileMenu = () => {
@@ -154,7 +134,18 @@ export function Header({ version = VERSION }) {
           {/* User Menu (Desktop) */}
           <div className="user-menu hidden md:flex items-center">
             <span className="mr-2">{username}</span>
-            <a href="#" onClick={handleLogout} className="logout-link no-underline px-3 py-1 rounded transition-colors" style={{color: 'hsl(var(--card-foreground))'}} onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.8)'} onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>Logout</a>
+            <a
+              href="/logout"
+              className="logout-link no-underline px-3 py-1 rounded transition-colors"
+              style={{
+                color: 'hsl(var(--card-foreground))',
+                backgroundColor: 'transparent'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.8)'}
+              onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+            >
+              Logout
+            </a>
           </div>
 
           {/* Mobile Menu Button */}
@@ -178,7 +169,18 @@ export function Header({ version = VERSION }) {
                 <li className="w-full mt-2 pt-2 border-t" style={{borderColor: 'hsl(var(--border))'}}>
                   <div className="flex justify-between items-center px-4 py-2">
                     <span>{username}</span>
-                    <a href="#" onClick={handleLogout} className="logout-link no-underline px-3 py-1 rounded transition-colors" style={{color: 'hsl(var(--card-foreground))'}} onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.8)'} onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>Logout</a>
+                    <a
+                      href="/logout"
+                      className="logout-link no-underline px-3 py-1 rounded transition-colors"
+                      style={{
+                        color: 'hsl(var(--card-foreground))',
+                        backgroundColor: 'transparent'
+                      }}
+                      onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.8)'}
+                      onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                    >
+                      Logout
+                    </a>
                   </div>
                 </li>
               </ul>

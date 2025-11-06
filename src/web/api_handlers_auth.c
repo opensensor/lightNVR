@@ -143,10 +143,10 @@ void mg_handle_auth_verify(struct mg_connection *c, struct mg_http_message *hm) 
 }
 
 /**
- * @brief Direct handler for POST /api/auth/logout
+ * @brief Direct handler for /api/auth/logout and /logout
  */
 void mg_handle_auth_logout(struct mg_connection *c, struct mg_http_message *hm) {
-    log_info("Handling POST /api/auth/logout request");
+    log_info("Handling logout request");
     
     // Check if this is an API request
     struct mg_str *content_type = mg_http_get_header(hm, "Content-Type");
@@ -213,7 +213,7 @@ void mg_handle_auth_logout(struct mg_connection *c, struct mg_http_message *hm) 
         c->is_draining = 1;
     }
     
-    log_info("Successfully handled POST /api/auth/logout request");
+    log_info("Successfully handled logout request");
 }
 
 /**

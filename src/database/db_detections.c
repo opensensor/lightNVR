@@ -81,7 +81,7 @@ int store_detections_in_db(const char *stream_name, const detection_result_t *re
         sqlite3_free_table(query_result);
         
         // Create detections table
-        const char *create_detections_table = 
+        const char *create_detections_table =
             "CREATE TABLE IF NOT EXISTS detections ("
             "id INTEGER PRIMARY KEY AUTOINCREMENT,"
             "stream_name TEXT NOT NULL,"
@@ -91,7 +91,9 @@ int store_detections_in_db(const char *stream_name, const detection_result_t *re
             "x REAL NOT NULL,"
             "y REAL NOT NULL,"
             "width REAL NOT NULL,"
-            "height REAL NOT NULL"
+            "height REAL NOT NULL,"
+            "track_id INTEGER DEFAULT -1,"
+            "zone_id TEXT DEFAULT ''"
             ");";
         
         rc = sqlite3_exec(db, create_detections_table, NULL, NULL, &err_msg);
@@ -127,9 +129,9 @@ int store_detections_in_db(const char *stream_name, const detection_result_t *re
         return -1;
     }
     
-    const char *sql = "INSERT INTO detections (stream_name, timestamp, label, confidence, x, y, width, height) "
-                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?);";
-    
+    const char *sql = "INSERT INTO detections (stream_name, timestamp, label, confidence, x, y, width, height, track_id, zone_id) "
+                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
@@ -137,7 +139,7 @@ int store_detections_in_db(const char *stream_name, const detection_result_t *re
         pthread_mutex_unlock(db_mutex);
         return -1;
     }
-    
+
     // Insert each detection
     for (int i = 0; i < result->count; i++) {
         // Bind parameters
@@ -149,6 +151,8 @@ int store_detections_in_db(const char *stream_name, const detection_result_t *re
         sqlite3_bind_double(stmt, 6, result->detections[i].y);
         sqlite3_bind_double(stmt, 7, result->detections[i].width);
         sqlite3_bind_double(stmt, 8, result->detections[i].height);
+        sqlite3_bind_int(stmt, 9, result->detections[i].track_id);
+        sqlite3_bind_text(stmt, 10, result->detections[i].zone_id, -1, SQLITE_STATIC);
         
         // Execute statement
         rc = sqlite3_step(stmt);

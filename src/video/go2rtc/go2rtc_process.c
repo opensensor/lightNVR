@@ -311,10 +311,13 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port) {
                     token = strtok(NULL, ",");
                 }
             } else if (global_config->go2rtc_stun_enabled) {
-                // Use default STUN server
+                // Use default STUN servers - multiple servers for redundancy
                 fprintf(config_file, "    - urls:\n");
                 fprintf(config_file, "      - \"stun:%s\"\n", global_config->go2rtc_stun_server);
                 fprintf(config_file, "      - \"stun:stun1.l.google.com:19302\"\n");
+                fprintf(config_file, "      - \"stun:stun2.l.google.com:19302\"\n");
+                fprintf(config_file, "      - \"stun:stun3.l.google.com:19302\"\n");
+                fprintf(config_file, "      - \"stun:stun4.l.google.com:19302\"\n");
             }
         }
 
@@ -328,6 +331,7 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port) {
                     global_config->go2rtc_webrtc_listen_port > 0 ? global_config->go2rtc_webrtc_listen_port : 8555);
         } else {
             // Auto-detect external IP using wildcard
+            // Use separate entries for IPv4 and IPv6 to handle both
             fprintf(config_file, "    - \"*:%d\"\n",
                     global_config->go2rtc_webrtc_listen_port > 0 ? global_config->go2rtc_webrtc_listen_port : 8555);
         }
