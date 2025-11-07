@@ -16,7 +16,7 @@
 #include "core/logger.h"
 
 // Current schema version - increment this when adding new migrations
-#define CURRENT_SCHEMA_VERSION 8
+#define CURRENT_SCHEMA_VERSION 9
 
 // Migration function type
 typedef int (*migration_func_t)(void);
@@ -29,6 +29,7 @@ static int migration_v4_to_v5(void);
 static int migration_v5_to_v6(void);
 static int migration_v6_to_v7(void);
 static int migration_v7_to_v8(void);
+static int migration_v8_to_v9(void);
 
 // Array of migration functions
 static migration_func_t migrations[] = {
@@ -39,7 +40,8 @@ static migration_func_t migrations[] = {
     migration_v4_to_v5, // v4->v5
     migration_v5_to_v6, // v5->v6
     migration_v6_to_v7, // v6->v7
-    migration_v7_to_v8  // v7->v8
+    migration_v7_to_v8, // v7->v8
+    migration_v8_to_v9  // v8->v9
 };
 
 /**
@@ -794,5 +796,31 @@ static int migration_v7_to_v8(void) {
     }
 
     log_info("Completed migration v7 to v8 successfully");
+    return 0;
+}
+
+/**
+ * Migration from version 8 to 9
+ * - Add track_id and zone_id columns to detections table
+ */
+static int migration_v8_to_v9(void) {
+    log_info("Running migration from v8 to v9: Adding track_id and zone_id columns to detections table");
+
+    int rc = 0;
+
+    // Add track_id column to detections table
+    log_info("Adding track_id column to detections table");
+    rc |= add_column_if_not_exists("detections", "track_id", "INTEGER DEFAULT -1");
+
+    // Add zone_id column to detections table
+    log_info("Adding zone_id column to detections table");
+    rc |= add_column_if_not_exists("detections", "zone_id", "TEXT DEFAULT ''");
+
+    if (rc != 0) {
+        log_error("Failed to add columns to detections table");
+        return -1;
+    }
+
+    log_info("Completed migration v8 to v9 successfully");
     return 0;
 }

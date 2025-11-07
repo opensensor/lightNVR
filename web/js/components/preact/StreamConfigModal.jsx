@@ -338,7 +338,7 @@ export function StreamConfigModal({
                           id="stream-detection-model"
                           name="detectionModel"
                           className="flex-1 px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
-                          value={currentStream.detectionModel}
+                          value={currentStream.detectionModel && (currentStream.detectionModel.startsWith('http://') || currentStream.detectionModel.startsWith('https://')) ? 'api-detection' : currentStream.detectionModel}
                           onChange={onInputChange}
                         >
                           <option value="">Select a model</option>
@@ -357,6 +357,89 @@ export function StreamConfigModal({
                           </svg>
                         </button>
                       </div>
+
+                      {/* Show info box and custom endpoint option for API detection */}
+                      {(currentStream.detectionModel === 'api-detection' ||
+                        (currentStream.detectionModel && (currentStream.detectionModel.startsWith('http://') || currentStream.detectionModel.startsWith('https://')))) && (
+                        <div className="mt-3 space-y-3">
+                          {/* Show info box only when using default endpoint */}
+                          {currentStream.detectionModel === 'api-detection' && (
+                            <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-md">
+                              <p className="text-sm text-blue-200 mb-2">
+                                <strong>ℹ️ Using Default API Endpoint:</strong>
+                              </p>
+                              <p className="text-xs text-blue-300 font-mono bg-black/30 px-2 py-1 rounded">
+                                http://localhost:9001/detect
+                              </p>
+                              <p className="text-xs text-blue-300 mt-2">
+                                Configured in <code className="bg-black/30 px-1 rounded">lightnvr.ini</code> under <code className="bg-black/30 px-1 rounded">[api_detection]</code>
+                              </p>
+                              <p className="text-xs text-yellow-300 mt-2">
+                                ⚠️ Make sure light-object-detect is running on this endpoint
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Show custom endpoint input when using custom URL */}
+                          {currentStream.detectionModel && (currentStream.detectionModel.startsWith('http://') || currentStream.detectionModel.startsWith('https://')) && (
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <label htmlFor="stream-custom-api-url" className="block text-sm font-medium">
+                                  Custom API Endpoint URL
+                                </label>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    // Switch back to default API detection
+                                    const event = {
+                                      target: {
+                                        name: 'detectionModel',
+                                        value: 'api-detection'
+                                      }
+                                    };
+                                    onInputChange(event);
+                                  }}
+                                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                                >
+                                  Use Default Endpoint
+                                </button>
+                              </div>
+                              <input
+                                type="text"
+                                id="stream-custom-api-url"
+                                name="customApiUrl"
+                                className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground font-mono text-sm"
+                                placeholder="http://192.168.1.100:9001/detect"
+                                value={currentStream.detectionModel}
+                                onChange={onInputChange}
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                Enter the full URL to your custom detection API endpoint
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Override button - show only when using default endpoint */}
+                          {currentStream.detectionModel === 'api-detection' && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                // Switch to custom API mode by setting a placeholder URL
+                                const event = {
+                                  target: {
+                                    name: 'customApiUrl',
+                                    value: 'http://'
+                                  }
+                                };
+                                onInputChange(event);
+                              }}
+                              className="w-full px-3 py-2 bg-secondary hover:bg-secondary/80 text-secondary-foreground rounded-md text-sm font-medium transition-colors"
+                            >
+                              Override with Custom Endpoint
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <div>

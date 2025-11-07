@@ -538,6 +538,28 @@ export function StreamsView() {
   // Handle form input change
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
+
+    // Special handling for detection model changes
+    if (name === 'detectionModel') {
+      if (value === 'custom-api') {
+        // When switching to custom API, initialize with empty URL
+        setCurrentStream(prev => ({
+          ...prev,
+          detectionModel: ''
+        }));
+        return;
+      }
+    }
+
+    // Special handling for custom API URL input
+    if (name === 'customApiUrl') {
+      setCurrentStream(prev => ({
+        ...prev,
+        detectionModel: value
+      }));
+      return;
+    }
+
     setCurrentStream(prev => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value

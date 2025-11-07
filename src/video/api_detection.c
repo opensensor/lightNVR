@@ -17,6 +17,7 @@
 #include "video/stream_manager.h"
 #include "video/stream_state.h"
 #include "database/db_detections.h"
+#include "video/go2rtc/go2rtc_snapshot.h"
 
 // Global variables
 static bool initialized = false;
@@ -109,7 +110,7 @@ void shutdown_api_detection_system(void) {
 }
 
 /**
- * Detect objects using the API
+ * Detect objects using the API with go2rtc snapshot
  */
 int detect_objects_api(const char *api_url, const unsigned char *frame_data,
                       int width, int height, int channels, detection_result_t *result,
@@ -122,7 +123,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
 
     // CRITICAL FIX: Add thread safety for curl operations
     pthread_mutex_lock(&curl_mutex);
-    
+
     // Initialize result to empty at the beginning to prevent segmentation fault
     if (result) {
         memset(result, 0, sizeof(detection_result_t));
@@ -131,7 +132,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         pthread_mutex_unlock(&curl_mutex);
         return -1;
     }
-    
+
     // CRITICAL FIX: Check if api_url is the special "api-detection" string
     // If so, get the actual URL from the global config
     const char *actual_api_url = api_url;
@@ -143,7 +144,6 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     }
 
     log_info("API Detection: Starting detection with API URL: %s", actual_api_url);
-    log_info("API Detection: Frame dimensions: %dx%d, channels: %d", width, height, channels);
     log_info("API Detection: Stream name: %s", stream_name ? stream_name : "NULL");
 
     if (!initialized || !curl_handle) {
@@ -152,7 +152,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         return -1;
     }
 
-    if (!actual_api_url || !frame_data || !result) {
+    if (!actual_api_url || !result) {
         log_error("Invalid parameters for detect_objects_api");
         pthread_mutex_unlock(&curl_mutex);
         return -1;
@@ -165,212 +165,147 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         return -1;
     }
 
+    // NEW APPROACH: Use go2rtc to get a JPEG snapshot directly
+    // This eliminates the need for ffmpeg conversion and all the associated logs
+    unsigned char *jpeg_data = NULL;
+    size_t jpeg_size = 0;
+    char temp_filename[256] = {0};
+
+    if (stream_name && go2rtc_get_snapshot(stream_name, &jpeg_data, &jpeg_size)) {
+        log_info("API Detection: Successfully fetched snapshot from go2rtc: %zu bytes", jpeg_size);
+
+        // Write the JPEG data to a temporary file for curl to upload
+        snprintf(temp_filename, sizeof(temp_filename), "/tmp/lightnvr_go2rtc_snapshot_%s_XXXXXX", stream_name);
+        int temp_fd = mkstemp(temp_filename);
+        if (temp_fd >= 0) {
+            ssize_t written = write(temp_fd, jpeg_data, jpeg_size);
+            close(temp_fd);
+
+            if (written != (ssize_t)jpeg_size) {
+                log_error("API Detection: Failed to write snapshot to temp file");
+                free(jpeg_data);
+                unlink(temp_filename);
+                pthread_mutex_unlock(&curl_mutex);
+                return -1;
+            }
+        } else {
+            log_error("API Detection: Failed to create temp file for snapshot");
+            free(jpeg_data);
+            pthread_mutex_unlock(&curl_mutex);
+            return -1;
+        }
+
+        // Free the JPEG data as we've written it to file
+        free(jpeg_data);
+        jpeg_data = NULL;
+    } else {
+        log_warn("API Detection: Failed to get snapshot from go2rtc, falling back to ffmpeg conversion");
+
+        // FALLBACK: Use the old ffmpeg-based approach
+        // Create a temporary file for the raw image data
+        char raw_temp_filename[] = "/tmp/lightnvr_api_detection_XXXXXX";
+        int temp_fd = mkstemp(raw_temp_filename);
+        if (temp_fd < 0) {
+            log_error("Failed to create temporary file: %s", strerror(errno));
+            pthread_mutex_unlock(&curl_mutex);
+            return -1;
+        }
+
+        // Convert file descriptor to FILE pointer
+        FILE *temp_file = fdopen(temp_fd, "wb");
+        if (!temp_file) {
+            log_error("Failed to open temporary file for writing: %s", strerror(errno));
+            close(temp_fd);
+            unlink(raw_temp_filename);
+            pthread_mutex_unlock(&curl_mutex);
+            return -1;
+        }
+
+        // Write the raw image data to the file
+        size_t bytes_written = fwrite(frame_data, 1, width * height * channels, temp_file);
+        fclose(temp_file);
+
+        if (bytes_written != (size_t)(width * height * channels)) {
+            log_error("Failed to write image data to temporary file");
+            unlink(raw_temp_filename);
+            pthread_mutex_unlock(&curl_mutex);
+            return -1;
+        }
+
+        // Convert using ffmpeg
+        snprintf(temp_filename, sizeof(temp_filename), "%s.jpg", raw_temp_filename);
+
+        const char *ffmpeg_pixel_format = (channels == 1) ? "gray" : (channels == 3) ? "rgb24" : "rgba";
+        char ffmpeg_cmd[1024];
+        snprintf(ffmpeg_cmd, sizeof(ffmpeg_cmd),
+                "ffmpeg -loglevel quiet -f rawvideo -pixel_format %s -video_size %dx%d -i %s -y %s 2>/dev/null",
+                ffmpeg_pixel_format, width, height, raw_temp_filename, temp_filename);
+
+        int ffmpeg_result = system(ffmpeg_cmd);
+        unlink(raw_temp_filename); // Clean up raw file
+
+        if (ffmpeg_result != 0) {
+            log_error("API Detection: Failed to convert with ffmpeg");
+            pthread_mutex_unlock(&curl_mutex);
+            return -1;
+        }
+    }
+
     // Set up curl for multipart/form-data
     struct curl_httppost *formpost = NULL;
     struct curl_httppost *lastptr = NULL;
 
-    // Create a temporary file for the image data using mkstemp (safer than tmpnam)
-    char temp_filename[] = "/tmp/lightnvr_api_detection_XXXXXX";
-    int temp_fd = mkstemp(temp_filename);
-    if (temp_fd < 0) {
-        log_error("Failed to create temporary file: %s", strerror(errno));
-        pthread_mutex_unlock(&curl_mutex);
-        return -1;
-    }
-
-    char image_filename[256];
-    snprintf(image_filename, sizeof(image_filename), "%s.jpg", temp_filename);
-
-    // Convert file descriptor to FILE pointer
-    FILE *temp_file = fdopen(temp_fd, "wb");
-    if (!temp_file) {
-        log_error("Failed to open temporary file for writing: %s", strerror(errno));
-        close(temp_fd);
-        unlink(temp_filename);
-        pthread_mutex_unlock(&curl_mutex);
-        return -1;
-    }
-
-    // Write the raw image data to the file
-    size_t bytes_written = fwrite(frame_data, 1, width * height * channels, temp_file);
-    fclose(temp_file);
-
-    if (bytes_written != width * height * channels) {
-        log_error("Failed to write image data to temporary file");
-        remove(temp_filename);
-        pthread_mutex_unlock(&curl_mutex);
-        return -1;
-    }
-
-    // CRITICAL FIX: Modify the request to match the API server's expected format
-    // Based on working curl examples:
-    // curl -X 'POST' 'http://127.0.0.1:9001/api/v1/detect?backend=tflite&confidence_threshold=.5&return_image=false'
-    //   -H 'accept: application/json' -H 'Content-Type: multipart/form-data'
-    //   -F 'file=@image.jpg;type=image/jpeg'
-
-    // CRITICAL FIX: Determine the correct ImageMagick parameters based on channels with safety checks
-    const char *pixel_format = NULL;
-
-    // Validate channels to prevent segmentation faults
-    if (channels <= 0 || channels > 4) {
-        log_error("API Detection: Invalid number of channels: %d (must be 1, 3, or 4)", channels);
-        remove(temp_filename);
-        pthread_mutex_unlock(&curl_mutex);
-        return -1;
-    }
-
-    // Set pixel format based on validated channels
-    if (channels == 1) {
-        pixel_format = "gray";
-        log_info("API Detection: Using grayscale pixel format for %d channel", channels);
-    } else if (channels == 3) {
-        pixel_format = "rgb";
-        log_info("API Detection: Using RGB pixel format for %d channels", channels);
-    } else if (channels == 4) {
-        pixel_format = "rgba";
-        log_info("API Detection: Using RGBA pixel format for %d channels", channels);
-    }
-
-    // Double-check that pixel_format is set
-    if (!pixel_format) {
-        log_error("API Detection: Failed to determine pixel format for %d channels", channels);
-        remove(temp_filename);
-        pthread_mutex_unlock(&curl_mutex);
-        return -1;
-    }
-
-    // Validate width and height to prevent buffer overflows
-    if (width <= 0 || width > 10000 || height <= 0 || height > 10000) {
-        log_error("API Detection: Invalid image dimensions: %dx%d", width, height);
-        remove(temp_filename);
-        pthread_mutex_unlock(&curl_mutex);
-        return -1;
-    }
-
-
-    // Try an alternative approach using ffmpeg with safety checks
-    log_info("API Detection: Trying alternative conversion with ffmpeg");
-    char ffmpeg_cmd[1024] = {0}; // Initialize to zeros
-
-    // Determine the correct ffmpeg pixel format with safety checks
-    const char *ffmpeg_pixel_format = NULL;
-    if (channels == 1) {
-        ffmpeg_pixel_format = "gray";
-    } else if (channels == 3) {
-        ffmpeg_pixel_format = "rgb24";
-    } else if (channels == 4) {
-        ffmpeg_pixel_format = "rgba";
-    } else {
-        log_error("API Detection: Invalid number of channels for ffmpeg: %d", channels);
-        remove(temp_filename);
-        pthread_mutex_unlock(&curl_mutex);
-        return -1;
-    }
-
-    // Format the command with safety checks
-    int cmd_result = snprintf(ffmpeg_cmd, sizeof(ffmpeg_cmd),
-            "ffmpeg -f rawvideo -pixel_format %s -video_size %dx%d -i %s -y %s",
-            ffmpeg_pixel_format, width, height, temp_filename, image_filename);
-
-    // Check for buffer overflow
-    if (cmd_result < 0 || cmd_result >= (int)sizeof(ffmpeg_cmd)) {
-        log_error("API Detection: Command buffer overflow when formatting ffmpeg command");
-        remove(temp_filename);
-        pthread_mutex_unlock(&curl_mutex);
-        return -1;
-    }
-
-    log_info("API Detection: Running ffmpeg command: %s", ffmpeg_cmd);
-
-    int ffmpeg_result = system(ffmpeg_cmd);
-    if (ffmpeg_result != 0) {
-        log_error("API Detection: Failed to convert with ffmpeg (error code: %d)", ffmpeg_result);
-        log_info("API Detection: Falling back to raw data with application/octet-stream MIME type");
-
-        // CRITICAL FIX: Verify that temp_filename exists before adding it to the form
-        struct stat temp_stat;
-        if (stat(temp_filename, &temp_stat) != 0 || temp_stat.st_size == 0) {
-            log_error("API Detection: Temporary file is missing or empty: %s", temp_filename);
-            remove(temp_filename);
-            pthread_mutex_unlock(&curl_mutex);
-            return -1;
-        }
-
-        // Add the file to the form with the correct field name 'file' (not 'image')
-        CURLFORMcode form_result = curl_formadd(&formpost, &lastptr,
-                    CURLFORM_COPYNAME, "file",
-                    CURLFORM_FILE, temp_filename,
-                    CURLFORM_CONTENTTYPE, "application/octet-stream",
-                    CURLFORM_END);
-
-        // Check for curl form errors
-        if (form_result != CURL_FORMADD_OK) {
-            log_error("API Detection: Failed to add file to form (error code: %d)", form_result);
-            remove(temp_filename);
-            pthread_mutex_unlock(&curl_mutex);
-            return -1;
-        }
-    } else {
-        log_info("API Detection: Successfully converted raw data to JPEG with ffmpeg: %s", image_filename);
-
-        // CRITICAL FIX: Verify that image_filename exists before using it
-        struct stat image_stat;
-        if (stat(image_filename, &image_stat) != 0 || image_stat.st_size == 0) {
-            log_error("API Detection: Converted image file is missing or empty: %s", image_filename);
-            remove(temp_filename);
-            pthread_mutex_unlock(&curl_mutex);
-            return -1;
-        }
-    }
-
     // Add the JPEG file to the form
-    // CRITICAL FIX: Check if image_filename exists before adding to form
     struct stat image_stat;
     memory_struct_t chunk = {0};
     chunk.memory = NULL;
     struct curl_slist *headers = NULL;
-    if (stat(image_filename, &image_stat) == 0 && image_stat.st_size > 0) {
+
+    if (stat(temp_filename, &image_stat) == 0 && image_stat.st_size > 0) {
         CURLFORMcode form_result = curl_formadd(&formpost, &lastptr,
                     CURLFORM_COPYNAME, "file",
-                    CURLFORM_FILE, image_filename,
+                    CURLFORM_FILE, temp_filename,
                     CURLFORM_CONTENTTYPE, "image/jpeg",
                     CURLFORM_END);
-                    
+
         if (form_result != CURL_FORMADD_OK) {
             log_error("API Detection: Failed to add JPEG file to form (error code: %d)", form_result);
             free(chunk.memory);
             curl_formfree(formpost);
             curl_slist_free_all(headers);
-            remove(temp_filename);
-            remove(image_filename);
+            unlink(temp_filename);
             result->count = 0;
             pthread_mutex_unlock(&curl_mutex);
             return -1;
         }
-        
-        log_info("API Detection: Successfully added JPEG file to form: %s", image_filename);
+
+        log_info("API Detection: Successfully added JPEG file to form: %s", temp_filename);
     } else {
-        log_error("API Detection: JPEG file missing or empty: %s", image_filename);
+        log_error("API Detection: JPEG file missing or empty: %s", temp_filename);
         // Now we can safely free them
         if (chunk.memory) free(chunk.memory);
         if (formpost) curl_formfree(formpost);
         if (headers) curl_slist_free_all(headers);
-        
-        remove(temp_filename);
-        if (stat(image_filename, &image_stat) == 0) {
-            remove(image_filename);
-        }
+
+        unlink(temp_filename);
         result->count = 0;
         pthread_mutex_unlock(&curl_mutex);
         return -1;
     }
 
+    // Get the backend from config (default to "onnx" if not set)
+    extern config_t g_config;
+    const char *backend = g_config.api_detection_backend;
+    if (!backend || strlen(backend) == 0) {
+        backend = "onnx";
+    }
+
     // Construct the URL with query parameters
     char url_with_params[1024];
     snprintf(url_with_params, sizeof(url_with_params),
-             "%s?backend=tflite&confidence_threshold=0.5&return_image=false",
-             actual_api_url);
-    log_info("API Detection: Using URL with parameters: %s", url_with_params);
+             "%s?backend=%s&confidence_threshold=0.5&return_image=false",
+             actual_api_url, backend);
+    log_info("API Detection: Using URL with parameters: %s (backend: %s)", url_with_params, backend);
 
     // Set up the request with the URL including query parameters
     curl_easy_setopt(curl_handle, CURLOPT_URL, url_with_params);
@@ -400,14 +335,8 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         curl_formfree(formpost);
         curl_slist_free_all(headers);
 
-        // Clean up the temporary files
-        remove(temp_filename);
-        // Remove the JPEG file if it was created by either ImageMagick or ffmpeg
-        struct stat st;
-        if (stat(image_filename, &st) == 0) {
-            log_info("API Detection: Removing temporary JPEG file: %s", image_filename);
-            remove(image_filename);
-        }
+        // Clean up the temporary file
+        unlink(temp_filename);
 
         // Initialize result to empty to prevent segmentation fault
         result->count = 0;
@@ -416,15 +345,6 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     }
 
     CURLcode res = curl_easy_perform(curl_handle);
-
-    // Clean up the temporary files
-    remove(temp_filename);
-    // Remove the JPEG file if it was created by either ImageMagick or ffmpeg
-    struct stat st;
-    if (stat(image_filename, &st) == 0) {
-        log_info("API Detection: Removing temporary JPEG file: %s", image_filename);
-        remove(image_filename);
-    }
 
     // Check for errors
     if (res != CURLE_OK) {
@@ -459,6 +379,9 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         curl_formfree(formpost);
         curl_slist_free_all(headers);
 
+        // Clean up the temporary file
+        unlink(temp_filename);
+
         // Initialize result to empty to prevent segmentation fault
         result->count = 0;
         pthread_mutex_unlock(&curl_mutex);
@@ -474,6 +397,10 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         free(chunk.memory);
         curl_formfree(formpost);
         curl_slist_free_all(headers);
+
+        // Clean up the temporary file
+        unlink(temp_filename);
+
         pthread_mutex_unlock(&curl_mutex);
         return -1;
     }
@@ -485,6 +412,10 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         free(chunk.memory);
         curl_formfree(formpost);
         curl_slist_free_all(headers);
+
+        // Clean up the temporary file
+        unlink(temp_filename);
+
         // Initialize result to empty to prevent segmentation fault
         result->count = 0;
         pthread_mutex_unlock(&curl_mutex);
@@ -515,6 +446,10 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         free(chunk.memory);
         curl_formfree(formpost);
         curl_slist_free_all(headers);
+
+        // Clean up the temporary file
+        unlink(temp_filename);
+
         // Initialize result to empty to prevent segmentation fault
         result->count = 0;
         pthread_mutex_unlock(&curl_mutex);
@@ -535,6 +470,10 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         free(chunk.memory);
         curl_formfree(formpost);
         curl_slist_free_all(headers);
+
+        // Clean up the temporary file
+        unlink(temp_filename);
+
         // Initialize result to empty to prevent segmentation fault
         result->count = 0;
         pthread_mutex_unlock(&curl_mutex);
@@ -636,6 +575,9 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     free(chunk.memory);
     curl_formfree(formpost);
     curl_slist_free_all(headers);
+
+    // Clean up the temporary file AFTER all curl operations are complete
+    unlink(temp_filename);
 
     pthread_mutex_unlock(&curl_mutex);
     return 0;

@@ -35,6 +35,7 @@
 #include "web/api_handlers_users.h"
 #include "web/api_handlers_health.h"
 #include "web/api_handlers_motion.h"
+#include "web/api_handlers_zones.h"
 
 // Forward declarations for timeline API handlers
 void mg_handle_get_timeline_segments(struct mg_connection *c, struct mg_http_message *hm);
@@ -102,6 +103,11 @@ static const mg_api_route_t s_api_routes[] = {
     {"GET", "/api/streams/#", mg_handle_get_stream, true},  // Opt out of auto-threading to prevent double threading
     {"PUT", "/api/streams/#", mg_handle_put_stream, false},
     {"DELETE", "/api/streams/#", mg_handle_delete_stream, false},
+
+    // Detection Zones API
+    {"GET", "/api/streams/#/zones", mg_handle_get_zones, false},
+    {"POST", "/api/streams/#/zones", mg_handle_post_zones, false},
+    {"DELETE", "/api/streams/#/zones", mg_handle_delete_zones, false},
 
     // Settings API
     {"GET", "/api/settings", mg_handle_get_settings, false},

@@ -22,6 +22,30 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
   const [zoneList, setZoneList] = useState(zones);
   const [hoveredPoint, setHoveredPoint] = useState(null);
 
+  // Load zones from the backend API
+  useEffect(() => {
+    const loadZones = async () => {
+      try {
+        const response = await fetch(`/api/streams/${encodeURIComponent(streamName)}/zones`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.zones && Array.isArray(data.zones)) {
+            console.log('Loaded zones from API:', data.zones);
+            setZoneList(data.zones);
+          }
+        } else {
+          console.warn('Failed to load zones:', response.status);
+        }
+      } catch (error) {
+        console.error('Error loading zones:', error);
+      }
+    };
+
+    if (streamName) {
+      loadZones();
+    }
+  }, [streamName]);
+
   // Load snapshot for the stream
   useEffect(() => {
     if (streamName) {
@@ -265,9 +289,32 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
   };
 
   // Save zones
-  const handleSave = () => {
-    onZonesChange(zoneList);
-    onClose();
+  const handleSave = async () => {
+    try {
+      // Save zones to the backend API
+      const response = await fetch(`/api/streams/${encodeURIComponent(streamName)}/zones`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ zones: zoneList }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `HTTP error ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('Zones saved successfully:', result);
+
+      // Update parent component
+      onZonesChange(zoneList);
+      onClose();
+    } catch (error) {
+      console.error('Failed to save zones:', error);
+      alert(`Failed to save zones: ${error.message}`);
+    }
   };
 
   // Update zone property

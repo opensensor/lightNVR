@@ -261,10 +261,9 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port) {
     fprintf(config_file, "api:\n");
     fprintf(config_file, "  listen: :%d\n", api_port);
 
-    // When using credentials with CORS, we can't use a wildcard for origin
-    // Instead, use the server's address and port
-    fprintf(config_file, "  origin: 'http://localhost:%d'\n", global_config->web_port);
-    fprintf(config_file, "  credentials: true\n");  // Allow credentials in CORS requests
+    // Use wildcard for CORS origin to support both localhost and 127.0.0.1
+    // This allows the web interface to access go2rtc API from any local address
+    fprintf(config_file, "  origin: '*'\n");
     fprintf(config_file, "  allow: 'GET, POST, OPTIONS'\n");  // Allow these methods for CORS
     fprintf(config_file, "  headers: 'Origin, X-Requested-With, Content-Type, Accept, Authorization'\n");  // Allow these headers for CORS
 

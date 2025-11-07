@@ -79,6 +79,7 @@ typedef struct {
     
     // API detection settings
     char api_detection_url[MAX_URL_LENGTH]; // URL for the detection API
+    char api_detection_backend[32];        // Backend to use: onnx, tflite, opencv (default: onnx)
 
     // Database settings
     char db_path[MAX_PATH_LENGTH];

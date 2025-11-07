@@ -52,6 +52,7 @@ void load_default_config(config_t *config) {
     
     // API detection settings
     snprintf(config->api_detection_url, MAX_URL_LENGTH, "http://localhost:8000/detect");
+    snprintf(config->api_detection_backend, 32, "onnx"); // Default to ONNX backend
     
     // Database settings
     snprintf(config->db_path, MAX_PATH_LENGTH, "/var/lib/lightnvr/lightnvr.db");
@@ -338,6 +339,9 @@ static int config_ini_handler(void* user, const char* section, const char* name,
     else if (strcmp(section, "api_detection") == 0) {
         if (strcmp(name, "url") == 0) {
             strncpy(config->api_detection_url, value, MAX_URL_LENGTH - 1);
+        } else if (strcmp(name, "backend") == 0) {
+            strncpy(config->api_detection_backend, value, 31);
+            config->api_detection_backend[31] = '\0';
         }
     }
     // Database settings
@@ -933,7 +937,8 @@ int save_config(const config_t *config, const char *path) {
     
     // Write API detection settings
     fprintf(file, "[api_detection]\n");
-    fprintf(file, "url = %s\n\n", config->api_detection_url);
+    fprintf(file, "url = %s\n", config->api_detection_url);
+    fprintf(file, "backend = %s\n\n", config->api_detection_backend);
     
     // Write database settings
     fprintf(file, "[database]\n");
