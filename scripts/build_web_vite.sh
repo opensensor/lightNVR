@@ -46,8 +46,13 @@ if [ ! -d "node_modules" ]; then
 fi
 
 # Build with Vite
-echo "Building web assets with Vite..."
-npm run build
+if [ "$BUILD_SOURCEMAPS" = true ]; then
+    echo "Building web assets with Vite (with source maps)..."
+    BUILD_SOURCEMAPS=true npm run build
+else
+    echo "Building web assets with Vite (without source maps)..."
+    npm run build
+fi
 
 # Check if build was successful
 if [ $? -ne 0 ]; then
