@@ -1,0 +1,16 @@
+{
+  "name": "Dev Container with Build Tools and Node",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "settings": {
+    "terminal.integrated.shell.linux": "/bin/bash"
+  },
+  "extensions": [
+    "ms-vscode.cpptools",
+    "dbaeumer.vscode-eslint"
+  ],
+  "forwardPorts": [],
+  "postCreateCommand": "npm install",
+  "remoteUser": "vscode"
+}
