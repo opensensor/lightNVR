@@ -4,6 +4,21 @@
 
 set -e
 
+# Parse command line arguments
+BUILD_SOURCEMAPS=false
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -m|--with-maps)
+            BUILD_SOURCEMAPS=true
+            shift
+            ;;
+        *)
+            # Unknown option, ignore for compatibility
+            shift
+            ;;
+    esac
+done
+
 # Color codes for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -72,9 +87,14 @@ else
     fi
     
     # Build assets
-    echo -e "${BLUE}Running build...${NC}"
-    npm run build
-    
+    if [ "$BUILD_SOURCEMAPS" = true ]; then
+        echo -e "${BLUE}Running build (with source maps)...${NC}"
+        BUILD_SOURCEMAPS=true npm run build
+    else
+        echo -e "${BLUE}Running build (without source maps)...${NC}"
+        npm run build
+    fi
+
     if [ ! -d "dist" ] || [ ! -f "dist/index.html" ]; then
         echo -e "${RED}Error: Build failed - dist directory not created${NC}"
         exit 1

@@ -149,6 +149,42 @@ You can specify a different configuration file using the `-c` option:
 ./lightnvr -c /path/to/config.conf
 ```
 
+## Building Web Assets
+
+LightNVR includes a web interface built with Vite. By default, the web assets are built **without source maps** to reduce file size, which is especially important for embedded devices.
+
+### Building Web Assets Without Source Maps (Default)
+
+```bash
+# Build web assets (no source maps)
+./scripts/build_web_vite.sh
+```
+
+### Building Web Assets With Source Maps
+
+If you need source maps for debugging, use the `-m` flag:
+
+```bash
+# Build web assets with source maps
+./scripts/build_web_vite.sh -m
+```
+
+**Note**: Source maps can significantly increase the build size (often 2-3x larger). Only use the `-m` flag when you need to debug the web interface.
+
+### Installing Web Assets
+
+To install the web assets to the web root directory:
+
+```bash
+# Install without source maps (default)
+sudo ./scripts/install_web_assets.sh
+
+# Install with source maps (for debugging)
+sudo ./scripts/install_web_assets.sh -m
+```
+
+The web assets will be installed to `/var/lib/lightnvr/www` by default, or to the path specified in `/etc/lightnvr/lightnvr.ini`.
+
 ## Installation
 
 To install LightNVR system-wide, you can use the provided installation script:
