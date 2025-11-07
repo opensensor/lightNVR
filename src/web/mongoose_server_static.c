@@ -91,10 +91,10 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         if (server->config.auth_enabled && mongoose_server_basic_auth_check(hm, server) != 0) {
             log_info("Authentication required for HLS request but authentication failed");
             mg_printf(c, "HTTP/1.1 401 Unauthorized\r\n");
-            mg_printf(c, "WWW-Authenticate: Basic realm=\"LightNVR\"\r\n");
             mg_printf(c, "Content-Type: application/json\r\n");
-            mg_printf(c, "Content-Length: 29\r\n\r\n");
+            mg_printf(c, "Content-Length: 29\r\n");
             mg_printf(c, "Connection: close\r\n");
+            mg_printf(c, "\r\n");
             mg_printf(c, "{\"error\": \"Unauthorized\"}\n");
             return;
         }

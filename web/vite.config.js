@@ -48,8 +48,8 @@ export default defineConfig({
     // Output directory for the build (equivalent to Snowpack's out)
     outDir: 'dist',
 
-    // Enable source maps
-    sourcemap: true,
+    // Enable source maps only if BUILD_SOURCEMAPS env var is set to 'true'
+    sourcemap: process.env.BUILD_SOURCEMAPS === 'true',
 
     // Ensure assets are correctly referenced
     assetsDir: 'assets',
@@ -179,8 +179,8 @@ export default defineConfig({
   css: {
     // PostCSS configuration is loaded from postcss.config.js
     postcss: true,
-    // Ensure CSS files are properly processed
-    devSourcemap: true,
+    // Ensure CSS files are properly processed - only enable in dev or if BUILD_SOURCEMAPS is set
+    devSourcemap: process.env.BUILD_SOURCEMAPS === 'true',
   },
 
   // Preserve the directory structure

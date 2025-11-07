@@ -3,7 +3,7 @@
  * Expanded, responsive modal with accordion sections for stream configuration
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ZoneEditor } from './ZoneEditor.jsx';
 
 /**
@@ -62,6 +62,38 @@ export function StreamConfigModal({
 }) {
   const [showZoneEditor, setShowZoneEditor] = useState(false);
   const [detectionZones, setDetectionZones] = useState(currentStream.detectionZones || []);
+  const [zonesLoading, setZonesLoading] = useState(false);
+
+  // Load zones from API when modal opens for existing stream
+  useEffect(() => {
+    const loadZones = async () => {
+      if (!isEditing || !currentStream.name) {
+        return;
+      }
+
+      setZonesLoading(true);
+      try {
+        const response = await fetch(`/api/streams/${encodeURIComponent(currentStream.name)}/zones`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.zones && Array.isArray(data.zones)) {
+            console.log('Loaded zones for stream config modal:', data.zones);
+            setDetectionZones(data.zones);
+            // Also update parent component
+            onInputChange({ target: { name: 'detectionZones', value: data.zones } });
+          }
+        } else {
+          console.warn('Failed to load zones:', response.status);
+        }
+      } catch (error) {
+        console.error('Error loading zones:', error);
+      } finally {
+        setZonesLoading(false);
+      }
+    };
+
+    loadZones();
+  }, [isEditing, currentStream.name]);
 
   const handleZonesChange = (zones) => {
     setDetectionZones(zones);

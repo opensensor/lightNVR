@@ -106,10 +106,11 @@ void mg_handle_auth_verify(struct mg_connection *c, struct mg_http_message *hm) 
     
     // Check if we have credentials
     if (username[0] == '\0' || password[0] == '\0') {
-        // No credentials provided
+        // No credentials provided - return JSON error instead of WWW-Authenticate
         mg_printf(c, "HTTP/1.1 401 Unauthorized\r\n");
-        mg_printf(c, "WWW-Authenticate: Basic realm=\"LightNVR\"\r\n");
-        mg_printf(c, "Content-Length: 0\r\n\r\n");
+        mg_printf(c, "Content-Type: application/json\r\n");
+        mg_printf(c, "Content-Length: 29\r\n\r\n");
+        mg_printf(c, "{\"error\": \"Unauthorized\"}\n");
         return;
     }
     
@@ -128,11 +129,12 @@ void mg_handle_auth_verify(struct mg_connection *c, struct mg_http_message *hm) 
             return;
         }
         
-        // Authentication failed
+        // Authentication failed - return JSON error instead of WWW-Authenticate
         log_warn("Authentication failed for user: %s", username);
         mg_printf(c, "HTTP/1.1 401 Unauthorized\r\n");
-        mg_printf(c, "WWW-Authenticate: Basic realm=\"LightNVR\"\r\n");
-        mg_printf(c, "Content-Length: 0\r\n\r\n");
+        mg_printf(c, "Content-Type: application/json\r\n");
+        mg_printf(c, "Content-Length: 29\r\n\r\n");
+        mg_printf(c, "{\"error\": \"Unauthorized\"}\n");
         return;
     }
     

@@ -1,6 +1,23 @@
 #!/bin/bash
 # Script to build web assets using Vite
 
+# Parse command line arguments
+BUILD_SOURCEMAPS=false
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -m|--with-maps)
+            BUILD_SOURCEMAPS=true
+            shift
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Usage: $0 [-m|--with-maps]"
+            echo "  -m, --with-maps    Build with source maps (increases build size)"
+            exit 1
+            ;;
+    esac
+done
+
 # Set directories
 WEB_DIR="$(dirname "$(dirname "$0")")/web"
 BUILD_DIR="$WEB_DIR/dist"

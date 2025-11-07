@@ -21,6 +21,8 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
   const [editMode, setEditMode] = useState('draw'); // 'draw', 'edit', 'delete'
   const [zoneList, setZoneList] = useState(zones);
   const [hoveredPoint, setHoveredPoint] = useState(null);
+  const [draggedPoint, setDraggedPoint] = useState(null); // { zoneIndex, pointIndex }
+  const [draggedZone, setDraggedZone] = useState(null); // { zoneIndex, startX, startY }
 
   // Load zones from the backend API
   useEffect(() => {
@@ -118,17 +120,17 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
     // Draw existing zones
     zoneList.forEach((zone, index) => {
       const isSelected = index === selectedZoneIndex;
-      drawZone(ctx, zone, canvas.width, canvas.height, isSelected);
+      drawZone(ctx, zone, canvas.width, canvas.height, isSelected, false, index);
     });
 
     // Draw current zone being drawn
     if (currentZone && currentZone.polygon.length > 0) {
-      drawZone(ctx, currentZone, canvas.width, canvas.height, true, true);
+      drawZone(ctx, currentZone, canvas.width, canvas.height, true, true, null);
     }
   };
 
   // Draw a single zone
-  const drawZone = (ctx, zone, width, height, isSelected, isDrawing = false) => {
+  const drawZone = (ctx, zone, width, height, isSelected, isDrawing = false, zoneIndex = null) => {
     if (!zone.polygon || zone.polygon.length === 0) return;
 
     ctx.save();
@@ -144,7 +146,7 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
         ctx.lineTo(x, y);
       }
     });
-    
+
     if (!isDrawing) {
       ctx.closePath();
     }
@@ -163,13 +165,17 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
     zone.polygon.forEach((point, i) => {
       const x = point.x * width;
       const y = point.y * height;
-      
+
+      // Check if this point is being hovered or dragged
+      const isHovered = hoveredPoint && hoveredPoint.zoneIndex === zoneIndex && hoveredPoint.pointIndex === i;
+      const isDragged = draggedPoint && draggedPoint.zoneIndex === zoneIndex && draggedPoint.pointIndex === i;
+
       ctx.beginPath();
-      ctx.arc(x, y, isSelected ? 6 : 4, 0, 2 * Math.PI);
-      ctx.fillStyle = isSelected ? color : '#ffffff';
+      ctx.arc(x, y, (isHovered || isDragged) ? 8 : (isSelected ? 6 : 4), 0, 2 * Math.PI);
+      ctx.fillStyle = (isHovered || isDragged) ? '#ffffff' : (isSelected ? color : '#ffffff');
       ctx.fill();
       ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
+      ctx.lineWidth = (isHovered || isDragged) ? 3 : 2;
       ctx.stroke();
     });
 
@@ -177,17 +183,17 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
     if (zone.name && zone.polygon.length > 0) {
       const centerX = zone.polygon.reduce((sum, p) => sum + p.x, 0) / zone.polygon.length * width;
       const centerY = zone.polygon.reduce((sum, p) => sum + p.y, 0) / zone.polygon.length * height;
-      
+
       ctx.fillStyle = color;
       ctx.font = 'bold 14px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      
+
       // Draw text background
       const textMetrics = ctx.measureText(zone.name);
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(centerX - textMetrics.width / 2 - 4, centerY - 10, textMetrics.width + 8, 20);
-      
+
       ctx.fillStyle = color;
       ctx.fillText(zone.name, centerX, centerY);
     }
@@ -198,9 +204,101 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
   // Redraw canvas when zones or image changes
   useEffect(() => {
     drawCanvas();
-  }, [zoneList, currentZone, selectedZoneIndex, imageLoaded]);
+  }, [zoneList, currentZone, selectedZoneIndex, imageLoaded, hoveredPoint, draggedPoint, draggedZone]);
 
-  // Handle canvas click
+  // Handle mouse down
+  const handleMouseDown = (e) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+
+    if (editMode === 'edit') {
+      // Check if clicking on a point to drag
+      const point = findPointNearCursor(x, y);
+      if (point) {
+        setDraggedPoint(point);
+        setSelectedZoneIndex(point.zoneIndex);
+        return;
+      }
+
+      // Check if clicking inside a zone to drag the whole zone
+      const clickedZoneIndex = findZoneAtPoint(x, y);
+      if (clickedZoneIndex !== null) {
+        setDraggedZone({ zoneIndex: clickedZoneIndex, startX: x, startY: y });
+        setSelectedZoneIndex(clickedZoneIndex);
+        return;
+      }
+
+      // Otherwise deselect
+      setSelectedZoneIndex(null);
+    }
+  };
+
+  // Handle mouse move
+  const handleMouseMove = (e) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+
+    // Update cursor style based on hover
+    if (editMode === 'edit' && !draggedPoint && !draggedZone) {
+      const point = findPointNearCursor(x, y);
+      if (point) {
+        canvas.style.cursor = 'move';
+        setHoveredPoint(point);
+      } else {
+        const zoneIndex = findZoneAtPoint(x, y);
+        canvas.style.cursor = zoneIndex !== null ? 'grab' : 'default';
+        setHoveredPoint(null);
+      }
+    }
+
+    // Handle point dragging
+    if (draggedPoint) {
+      canvas.style.cursor = 'move';
+      const newZones = [...zoneList];
+      newZones[draggedPoint.zoneIndex].polygon[draggedPoint.pointIndex] = { x, y };
+      setZoneList(newZones);
+    }
+
+    // Handle zone dragging
+    if (draggedZone) {
+      canvas.style.cursor = 'grabbing';
+      const deltaX = x - draggedZone.startX;
+      const deltaY = y - draggedZone.startY;
+
+      const newZones = [...zoneList];
+      const zone = newZones[draggedZone.zoneIndex];
+
+      // Move all points by the delta
+      zone.polygon = zone.polygon.map(point => ({
+        x: Math.max(0, Math.min(1, point.x + deltaX)),
+        y: Math.max(0, Math.min(1, point.y + deltaY))
+      }));
+
+      setZoneList(newZones);
+      // Update start position for next move
+      setDraggedZone({ ...draggedZone, startX: x, startY: y });
+    }
+  };
+
+  // Handle mouse up
+  const handleMouseUp = () => {
+    setDraggedPoint(null);
+    setDraggedZone(null);
+    const canvas = canvasRef.current;
+    if (canvas) {
+      canvas.style.cursor = 'default';
+    }
+  };
+
+  // Handle canvas click (for draw and delete modes)
   const handleCanvasClick = (e) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -225,10 +323,6 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
           polygon: [...currentZone.polygon, { x, y }]
         });
       }
-    } else if (editMode === 'edit') {
-      // Select zone
-      const clickedZoneIndex = findZoneAtPoint(x, y);
-      setSelectedZoneIndex(clickedZoneIndex);
     } else if (editMode === 'delete') {
       // Delete zone
       const clickedZoneIndex = findZoneAtPoint(x, y);
@@ -246,6 +340,21 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
       const zone = zoneList[i];
       if (isPointInPolygon({ x, y }, zone.polygon)) {
         return i;
+      }
+    }
+    return null;
+  };
+
+  // Find point near cursor (for dragging)
+  const findPointNearCursor = (x, y, threshold = 0.02) => {
+    for (let i = 0; i < zoneList.length; i++) {
+      const zone = zoneList[i];
+      for (let j = 0; j < zone.polygon.length; j++) {
+        const point = zone.polygon[j];
+        const distance = Math.sqrt(Math.pow(point.x - x, 2) + Math.pow(point.y - y, 2));
+        if (distance < threshold) {
+          return { zoneIndex: i, pointIndex: j };
+        }
       }
     }
     return null;
@@ -374,6 +483,10 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
               <canvas
                 ref={canvasRef}
                 onClick={handleCanvasClick}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
                 className="w-full h-full cursor-crosshair"
                 style={{ display: imageLoaded ? 'block' : 'none', minHeight: '400px' }}
               />
