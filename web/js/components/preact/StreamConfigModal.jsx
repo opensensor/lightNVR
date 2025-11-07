@@ -4,6 +4,7 @@
  */
 
 import { useState } from 'react';
+import { ZoneEditor } from './ZoneEditor.jsx';
 
 /**
  * Accordion Section Component
@@ -59,7 +60,25 @@ export function StreamConfigModal({
   onClose,
   onRefreshModels
 }) {
+  const [showZoneEditor, setShowZoneEditor] = useState(false);
+  const [detectionZones, setDetectionZones] = useState(currentStream.detectionZones || []);
+
+  const handleZonesChange = (zones) => {
+    setDetectionZones(zones);
+    // Update currentStream with new zones
+    onInputChange({ target: { name: 'detectionZones', value: zones } });
+  };
+
   return (
+    <>
+      {showZoneEditor && (
+        <ZoneEditor
+          streamName={currentStream.name}
+          zones={detectionZones}
+          onZonesChange={handleZonesChange}
+          onClose={() => setShowZoneEditor(false)}
+        />
+      )}
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-card text-card-foreground rounded-lg shadow-xl w-full max-w-5xl max-h-[95vh] overflow-hidden flex flex-col">
         {/* Header */}
@@ -417,6 +436,85 @@ export function StreamConfigModal({
               </div>
             </AccordionSection>
 
+            {/* Detection Zones Section */}
+            {currentStream.detectionEnabled && (
+              <AccordionSection
+                title="Detection Zones"
+                isExpanded={expandedSections.zones}
+                onToggle={() => onToggleSection('zones')}
+                badge="Optional"
+              >
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Define specific regions where object detection should be active. This helps reduce false positives and focus on areas of interest.
+                  </p>
+
+                  <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
+                    <div>
+                      <p className="font-medium">
+                        {detectionZones.length === 0 ? 'No zones configured' : `${detectionZones.length} zone(s) configured`}
+                      </p>
+                      {detectionZones.length > 0 && (
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {detectionZones.filter(z => z.enabled).length} enabled
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowZoneEditor(true)}
+                      className="btn-primary"
+                    >
+                      {detectionZones.length === 0 ? 'Configure Zones' : 'Edit Zones'}
+                    </button>
+                  </div>
+
+                  {detectionZones.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">Configured Zones:</p>
+                      {detectionZones.map((zone, index) => (
+                        <div
+                          key={zone.id}
+                          className="flex items-center justify-between p-3 bg-background border border-border rounded"
+                        >
+                          <div className="flex items-center space-x-3">
+                            <div
+                              className="w-4 h-4 rounded"
+                              style={{ backgroundColor: zone.color || '#3b82f6' }}
+                            />
+                            <span className="font-medium">{zone.name}</span>
+                            <span className="text-sm text-muted-foreground">
+                              ({zone.polygon.length} points)
+                            </span>
+                          </div>
+                          <span className={`text-sm px-2 py-1 rounded ${zone.enabled ? 'bg-success/20 text-success' : 'bg-muted text-muted-foreground'}`}>
+                            {zone.enabled ? 'Enabled' : 'Disabled'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                    <div className="flex">
+                      <svg className="w-5 h-5 text-blue-600 dark:text-blue-400 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                      </svg>
+                      <div className="text-sm text-blue-800 dark:text-blue-200">
+                        <p className="font-medium mb-1">Zone Detection Tips:</p>
+                        <ul className="list-disc list-inside space-y-1 text-xs">
+                          <li>Click "Configure Zones" to draw detection regions on your camera view</li>
+                          <li>Draw polygons by clicking points on the image</li>
+                          <li>Use zones to ignore areas like trees, roads, or sky</li>
+                          <li>Multiple zones can be configured for different areas</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </AccordionSection>
+            )}
+
             {/* Motion Recording Section (ONVIF only) */}
             {currentStream.isOnvif && (
               <AccordionSection
@@ -641,6 +739,7 @@ export function StreamConfigModal({
         </div>
       </div>
     </div>
+    </>
   );
 }
 

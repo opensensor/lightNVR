@@ -29,8 +29,8 @@
 #define SALT_LENGTH 16
 #define SHA256_DIGEST_LENGTH 32
 
-// Default session expiry time (24 hours)
-#define DEFAULT_SESSION_EXPIRY 86400
+// Default session expiry time (7 days)
+#define DEFAULT_SESSION_EXPIRY 604800
 
 // Role names
 static const char *role_names[] = {

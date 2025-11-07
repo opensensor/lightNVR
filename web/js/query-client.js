@@ -22,8 +22,8 @@ export { QueryClient, QueryClientProvider, fetchJSON };
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 30000, // 30 seconds
-      cacheTime: 5 * 60 * 1000, // 5 minutes
+      staleTime: 5 * 60 * 1000, // 5 minutes - data considered fresh
+      cacheTime: 24 * 60 * 60 * 1000, // 24 hours - keep in cache (matches session duration)
       retry: 1,
       refetchOnWindowFocus: false,
     },

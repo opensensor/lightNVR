@@ -423,10 +423,10 @@ void mg_handle_auth_login(struct mg_connection *c, struct mg_http_message *hm) {
     
     // Login successful with database credentials
     log_info("Login successful for user: %s (ID: %lld)", username, (long long)user_id);
-    
-    // Create a session token
+
+    // Create a session token (7 days = 604800 seconds)
     char token[33];
-    rc = db_auth_create_session(user_id, NULL, NULL, 86400, token, sizeof(token));
+    rc = db_auth_create_session(user_id, NULL, NULL, 604800, token, sizeof(token));
     if (rc != 0) {
         log_error("Failed to create session for user: %s", username);
         
@@ -540,10 +540,10 @@ void mg_handle_auth_login(struct mg_connection *c, struct mg_http_message *hm) {
             cJSON_AddStringToObject(response, "redirect", redirect_url);
             cJSON_AddStringToObject(response, "token", token);
             
-            // Send JSON response with session token cookie
+            // Send JSON response with session token cookie (7 days)
             mg_printf(c, "HTTP/1.1 200 OK\r\n");
             mg_printf(c, "Content-Type: application/json\r\n");
-            mg_printf(c, "Set-Cookie: session=%s; Path=/; Max-Age=86400; SameSite=Lax\r\n", token);
+            mg_printf(c, "Set-Cookie: session=%s; Path=/; Max-Age=604800; SameSite=Lax\r\n", token);
             mg_printf(c, "Cache-Control: no-cache, no-store, must-revalidate\r\n");
             mg_printf(c, "Pragma: no-cache\r\n");
             mg_printf(c, "Expires: 0\r\n");
@@ -561,8 +561,8 @@ void mg_handle_auth_login(struct mg_connection *c, struct mg_http_message *hm) {
             // For form submissions, send a redirect response
             mg_printf(c, "HTTP/1.1 302 Found\r\n");
             mg_printf(c, "Location: %s\r\n", redirect_url);
-            // Set a cookie with the session token to maintain session across pages
-            mg_printf(c, "Set-Cookie: session=%s; Path=/; Max-Age=86400; SameSite=Lax\r\n", token);
+            // Set a cookie with the session token to maintain session across pages (7 days)
+            mg_printf(c, "Set-Cookie: session=%s; Path=/; Max-Age=604800; SameSite=Lax\r\n", token);
             // Add Cache-Control headers to prevent caching
             mg_printf(c, "Cache-Control: no-cache, no-store, must-revalidate\r\n");
             mg_printf(c, "Pragma: no-cache\r\n");

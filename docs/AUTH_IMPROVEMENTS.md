@@ -7,7 +7,7 @@ This document describes the improvements made to the lightNVR authentication sys
 ## Problems Addressed
 
 ### 1. **Page Stalling on Token Expiration**
-- **Issue**: When a session token expired (24-hour default), API requests would fail with 401 errors, but the UI would just show errors or hang without redirecting to login
+- **Issue**: When a session token expired (7-day default), API requests would fail with 401 errors, but the UI would just show errors or hang without redirecting to login
 - **Impact**: Poor user experience - users would see broken pages instead of being prompted to log in again
 
 ### 2. **No Global 401 Error Handling**
@@ -132,8 +132,8 @@ Each page now calls `setupSessionValidation()` on load.
 
 ### Session Management
 
-- **Session Duration**: 24 hours (86400 seconds) - defined in `DEFAULT_SESSION_EXPIRY`
-- **Token Storage**: 
+- **Session Duration**: 7 days (604800 seconds) - defined in `DEFAULT_SESSION_EXPIRY`
+- **Token Storage**:
   - Session token stored in HTTP-only cookie (`session`)
   - Basic auth credentials stored in localStorage (`auth`) for backward compatibility
 - **Validation**: Sessions validated against database with expiry check
@@ -182,7 +182,7 @@ While not immediately necessary, these could be considered for future iterations
 **Cons**:
 - Adds complexity
 - Security consideration: when to allow refresh vs. require re-auth
-- Current 24-hour session is already quite generous
+- Current 7-day session is already quite generous
 
 **Recommendation**: Defer - current 5-minute validation + 24-hour session is sufficient
 

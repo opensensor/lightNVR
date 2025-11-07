@@ -42,6 +42,7 @@ export function StreamsView() {
     basic: true,
     recording: false,
     detection: false,
+    zones: false,
     motion: false,
     advanced: false
   });
@@ -106,8 +107,8 @@ export function StreamsView() {
     detectionThreshold: 50,
     detectionInterval: 10,
     preBuffer: 10,
-
     postBuffer: 30,
+    detectionZones: [],
     // Motion (ONVIF) recording defaults
     motionRecordingEnabled: false,
     motionPreBuffer: 5,
@@ -489,6 +490,7 @@ export function StreamsView() {
         detectionThreshold: stream.detection_threshold || 50,
         detectionInterval: stream.detection_interval || 10,
         preBuffer: stream.pre_detection_buffer || 10,
+        detectionZones: stream.detection_zones || [],
         postBuffer: stream.post_detection_buffer || 30,
         // Map API fields to form fields
         streamingEnabled: stream.streaming_enabled !== undefined ? stream.streaming_enabled : true,

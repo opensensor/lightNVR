@@ -12,10 +12,11 @@
 #include "database/db_core.h"
 #include "database/db_schema_utils.h"
 #include "database/db_motion_config.h"
+#include "database/db_zones.h"
 #include "core/logger.h"
 
 // Current schema version - increment this when adding new migrations
-#define CURRENT_SCHEMA_VERSION 7
+#define CURRENT_SCHEMA_VERSION 8
 
 // Migration function type
 typedef int (*migration_func_t)(void);
@@ -27,6 +28,7 @@ static int migration_v3_to_v4(void);
 static int migration_v4_to_v5(void);
 static int migration_v5_to_v6(void);
 static int migration_v6_to_v7(void);
+static int migration_v7_to_v8(void);
 
 // Array of migration functions
 static migration_func_t migrations[] = {
@@ -36,7 +38,8 @@ static migration_func_t migrations[] = {
     migration_v3_to_v4, // v3->v4
     migration_v4_to_v5, // v4->v5
     migration_v5_to_v6, // v5->v6
-    migration_v6_to_v7  // v6->v7
+    migration_v6_to_v7, // v6->v7
+    migration_v7_to_v8  // v7->v8
 };
 
 /**
@@ -773,5 +776,23 @@ static int migration_v6_to_v7(void) {
     }
 
     log_info("Completed migration v6 to v7 successfully");
+    return 0;
+}
+
+/**
+ * Migration from version 7 to 8
+ * - Add detection zones table
+ */
+static int migration_v7_to_v8(void) {
+    log_info("Running migration from v7 to v8: Adding detection zones table");
+
+    // Initialize detection zones table
+    int rc = init_zones_table();
+    if (rc != 0) {
+        log_error("Failed to initialize detection zones table");
+        return -1;
+    }
+
+    log_info("Completed migration v7 to v8 successfully");
     return 0;
 }
