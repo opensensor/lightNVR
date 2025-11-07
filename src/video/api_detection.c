@@ -16,6 +16,7 @@
 #include "video/detection_result.h"
 #include "video/stream_manager.h"
 #include "video/stream_state.h"
+#include "video/zone_filter.h"
 #include "database/db_detections.h"
 #include "video/go2rtc/go2rtc_snapshot.h"
 
@@ -563,8 +564,15 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         result->count++;
     }
 
-    // Store the detections in the database if we have a valid stream name
+    // Filter detections by zones before storing
     if (stream_name && stream_name[0] != '\0') {
+        log_info("API Detection: Filtering %d detections by zones for stream %s", result->count, stream_name);
+        int filter_ret = filter_detections_by_zones(stream_name, result);
+        if (filter_ret != 0) {
+            log_warn("Failed to filter detections by zones, storing all detections");
+        }
+
+        // Store the detections in the database
         store_detections_in_db(stream_name, result, 0); // 0 means use current time
     } else {
         log_warn("No stream name provided, skipping database storage");

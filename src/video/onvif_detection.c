@@ -20,6 +20,7 @@
 #include "video/onvif_detection.h"
 #include "video/detection_result.h"
 #include "video/onvif_motion_recording.h"
+#include "video/zone_filter.h"
 #include "database/db_detections.h"
 
 // Global variables
@@ -617,12 +618,21 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
         result->detections[0].width = 1.0;
         result->detections[0].height = 1.0;
 
-        // Store the detection in the database if we have a valid stream name
+        // Filter detections by zones before storing
         if (stream_name && stream_name[0] != '\0') {
+            log_info("ONVIF Detection: Filtering detections by zones for stream %s", stream_name);
+            int filter_ret = filter_detections_by_zones(stream_name, result);
+            if (filter_ret != 0) {
+                log_warn("Failed to filter detections by zones, storing all detections");
+            }
+
+            // Store the detection in the database
             store_detections_in_db(stream_name, result, 0); // 0 means use current time
 
-            // Trigger motion recording if enabled
-            process_motion_event(stream_name, true, time(NULL));
+            // Trigger motion recording if enabled (only if we still have detections after filtering)
+            if (result->count > 0) {
+                process_motion_event(stream_name, true, time(NULL));
+            }
         } else {
             log_warn("No stream name provided, skipping database storage");
         }
