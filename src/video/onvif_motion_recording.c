@@ -32,6 +32,7 @@ static pthread_mutex_t contexts_mutex = PTHREAD_MUTEX_INITIALIZER;
 // Event processing thread
 static pthread_t event_processor_thread;
 static bool event_processor_running = false;
+static bool event_processor_thread_created = false;
 
 // Forward declarations
 static void* event_processor_thread_func(void *arg);
@@ -605,10 +606,12 @@ int init_onvif_motion_recording(void) {
     event_processor_running = true;
     if (pthread_create(&event_processor_thread, NULL, event_processor_thread_func, NULL) != 0) {
         log_error("Failed to create motion event processor thread");
+        event_processor_running = false;
         cleanup_event_queue();
         cleanup_motion_buffer_pool();
         return -1;
     }
+    event_processor_thread_created = true;
 
     // Load configurations from database and apply them
     load_motion_configs_from_database();
@@ -623,23 +626,38 @@ int init_onvif_motion_recording(void) {
 void cleanup_onvif_motion_recording(void) {
     log_info("Cleaning up ONVIF motion recording system");
 
-    // Stop event processor thread
-    event_processor_running = false;
-    pthread_cond_broadcast(&event_queue.cond);
-    pthread_join(event_processor_thread, NULL);
+    // Stop event processor thread only if it was created
+    if (event_processor_thread_created) {
+        event_processor_running = false;
+        pthread_cond_broadcast(&event_queue.cond);
+        pthread_join(event_processor_thread, NULL);
+        event_processor_thread_created = false;
+        log_info("Event processor thread stopped");
+    }
 
-    // Stop all active recordings and destroy buffers
+    // Stop all active recordings (without holding contexts_mutex to avoid deadlocks)
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        pthread_mutex_lock(&contexts_mutex);
+        bool is_active = recording_contexts[i].active;
+        motion_buffer_t *buffer = recording_contexts[i].buffer;
+        pthread_mutex_unlock(&contexts_mutex);
+
+        if (is_active) {
+            // Stop recording without holding contexts_mutex
+            stop_motion_recording_internal(&recording_contexts[i]);
+
+            // Destroy buffer if it exists (without holding contexts_mutex)
+            if (buffer) {
+                destroy_motion_buffer(buffer);
+            }
+        }
+    }
+
+    // Now destroy all mutexes and mark contexts as inactive
     pthread_mutex_lock(&contexts_mutex);
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (recording_contexts[i].active) {
-            stop_motion_recording_internal(&recording_contexts[i]);
-
-            // Destroy buffer if it exists
-            if (recording_contexts[i].buffer) {
-                destroy_motion_buffer(recording_contexts[i].buffer);
-                recording_contexts[i].buffer = NULL;
-            }
-
+            recording_contexts[i].buffer = NULL;
             pthread_mutex_destroy(&recording_contexts[i].mutex);
             recording_contexts[i].active = false;
         }

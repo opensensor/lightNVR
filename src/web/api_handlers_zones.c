@@ -1,5 +1,6 @@
 #include "web/api_handlers_zones.h"
 #include "web/api_handlers.h"
+#include "web/mongoose_server_auth.h"
 #include "database/db_zones.h"
 #include "core/logger.h"
 #include "cJSON.h"
@@ -10,6 +11,16 @@
  * Handler for GET /api/streams/:stream_name/zones
  */
 void mg_handle_get_zones(struct mg_connection *c, struct mg_http_message *hm) {
+    // Check authentication
+    http_server_t *server = (http_server_t *)c->fn_data;
+    if (server && server->config.auth_enabled) {
+        if (mongoose_server_basic_auth_check(hm, server) != 0) {
+            log_error("Authentication failed for GET zones request");
+            mg_send_json_error(c, 401, "Unauthorized");
+            return;
+        }
+    }
+
     char stream_name[MAX_STREAM_NAME];
 
     // Extract stream name from URL
@@ -96,6 +107,16 @@ void mg_handle_get_zones(struct mg_connection *c, struct mg_http_message *hm) {
  * Handler for POST /api/streams/:stream_name/zones
  */
 void mg_handle_post_zones(struct mg_connection *c, struct mg_http_message *hm) {
+    // Check authentication
+    http_server_t *server = (http_server_t *)c->fn_data;
+    if (server && server->config.auth_enabled) {
+        if (mongoose_server_basic_auth_check(hm, server) != 0) {
+            log_error("Authentication failed for POST zones request");
+            mg_send_json_error(c, 401, "Unauthorized");
+            return;
+        }
+    }
+
     char stream_name[MAX_STREAM_NAME];
 
     // Extract stream name from URL
@@ -237,6 +258,16 @@ void mg_handle_post_zones(struct mg_connection *c, struct mg_http_message *hm) {
  * Handler for DELETE /api/streams/:stream_name/zones
  */
 void mg_handle_delete_zones(struct mg_connection *c, struct mg_http_message *hm) {
+    // Check authentication
+    http_server_t *server = (http_server_t *)c->fn_data;
+    if (server && server->config.auth_enabled) {
+        if (mongoose_server_basic_auth_check(hm, server) != 0) {
+            log_error("Authentication failed for DELETE zones request");
+            mg_send_json_error(c, 401, "Unauthorized");
+            return;
+        }
+    }
+
     char stream_name[MAX_STREAM_NAME];
 
     // Extract stream name from URL

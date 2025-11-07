@@ -60,20 +60,23 @@ void cleanup_motion_buffer_pool(void) {
     if (!pool_initialized) {
         return;
     }
-    
-    pthread_mutex_lock(&buffer_pool.pool_mutex);
-    
-    // Destroy all active buffers
+
+    // First pass: destroy all active buffers (this needs pool_mutex unlocked)
     for (int i = 0; i < 16; i++) {
         if (buffer_pool.buffers[i].active) {
             destroy_motion_buffer(&buffer_pool.buffers[i]);
         }
+    }
+
+    // Second pass: destroy all mutexes (now that buffers are inactive)
+    pthread_mutex_lock(&buffer_pool.pool_mutex);
+    for (int i = 0; i < 16; i++) {
         pthread_mutex_destroy(&buffer_pool.buffers[i].mutex);
     }
-    
     pthread_mutex_unlock(&buffer_pool.pool_mutex);
+
     pthread_mutex_destroy(&buffer_pool.pool_mutex);
-    
+
     pool_initialized = false;
     log_info("Motion buffer pool cleaned up");
 }

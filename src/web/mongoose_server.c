@@ -99,15 +99,16 @@ static const mg_api_route_t s_api_routes[] = {
     {"GET", "/api/streams", mg_handle_get_streams, true},  // Opt out of auto-threading to prevent double threading
     {"POST", "/api/streams", mg_handle_post_stream, false},
     {"POST", "/api/streams/test", mg_handle_test_stream, false},
+
+    // Detection Zones API (must come before /api/streams/# to match correctly)
+    {"GET", "/api/streams/#/zones", mg_handle_get_zones, false},
+    {"POST", "/api/streams/#/zones", mg_handle_post_zones, false},
+    {"DELETE", "/api/streams/#/zones", mg_handle_delete_zones, false},
+
     {"GET", "/api/streams/#/full", mg_handle_get_stream_full, true},  // Aggregated stream + motion config
     {"GET", "/api/streams/#", mg_handle_get_stream, true},  // Opt out of auto-threading to prevent double threading
     {"PUT", "/api/streams/#", mg_handle_put_stream, false},
     {"DELETE", "/api/streams/#", mg_handle_delete_stream, false},
-
-    // Detection Zones API
-    {"GET", "/api/streams/#/zones", mg_handle_get_zones, false},
-    {"POST", "/api/streams/#/zones", mg_handle_post_zones, false},
-    {"DELETE", "/api/streams/#/zones", mg_handle_delete_zones, false},
 
     // Settings API
     {"GET", "/api/settings", mg_handle_get_settings, false},
