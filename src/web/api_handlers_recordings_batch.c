@@ -79,19 +79,29 @@ static void *batch_delete_worker_thread(void *arg) {
                 log_warn("Recording not found: %llu", (unsigned long long)id);
                 error_count++;
             } else {
-                // First delete from database
+                // Save file path before deleting from database
+                char file_path_copy[256];
+                strncpy(file_path_copy, recording.file_path, sizeof(file_path_copy) - 1);
+                file_path_copy[sizeof(file_path_copy) - 1] = '\0';
+
+                // Delete from database FIRST
                 if (delete_recording_metadata(id) != 0) {
                     log_error("Failed to delete recording from database: %llu", (unsigned long long)id);
                     error_count++;
                 } else {
-                    // Then delete the file
-                    char file_path_copy[256];
-                    strncpy(file_path_copy, recording.file_path, sizeof(file_path_copy) - 1);
-                    file_path_copy[sizeof(file_path_copy) - 1] = '\0';
-
+                    // Then delete the file from disk
                     struct stat st;
-                    if (stat(file_path_copy, &st) == 0 && unlink(file_path_copy) == 0) {
-                        log_info("Deleted recording file: %s", file_path_copy);
+                    if (stat(file_path_copy, &st) == 0) {
+                        if (unlink(file_path_copy) != 0) {
+                            log_warn("Failed to delete recording file: %s (error: %s)",
+                                    file_path_copy, strerror(errno));
+                            // File deletion failed but DB entry is already removed
+                        } else {
+                            log_info("Deleted recording file: %s", file_path_copy);
+                        }
+                    } else {
+                        log_warn("Recording file does not exist: %s (already deleted or never created)",
+                                file_path_copy);
                     }
 
                     success_count++;
@@ -217,17 +227,29 @@ static void *batch_delete_worker_thread(void *arg) {
         for (int i = 0; i < count; i++) {
             uint64_t id = recordings[i].id;
 
+            // Save file path before deleting from database
+            char file_path_copy[256];
+            strncpy(file_path_copy, recordings[i].file_path, sizeof(file_path_copy) - 1);
+            file_path_copy[sizeof(file_path_copy) - 1] = '\0';
+
+            // Delete from database FIRST
             if (delete_recording_metadata(id) != 0) {
                 log_error("Failed to delete recording from database: %llu", (unsigned long long)id);
                 error_count++;
             } else {
-                char file_path_copy[256];
-                strncpy(file_path_copy, recordings[i].file_path, sizeof(file_path_copy) - 1);
-                file_path_copy[sizeof(file_path_copy) - 1] = '\0';
-
+                // Then delete the file from disk
                 struct stat st;
-                if (stat(file_path_copy, &st) == 0 && unlink(file_path_copy) == 0) {
-                    log_info("Deleted recording file: %s", file_path_copy);
+                if (stat(file_path_copy, &st) == 0) {
+                    if (unlink(file_path_copy) != 0) {
+                        log_warn("Failed to delete recording file: %s (error: %s)",
+                                file_path_copy, strerror(errno));
+                        // File deletion failed but DB entry is already removed
+                    } else {
+                        log_info("Deleted recording file: %s", file_path_copy);
+                    }
+                } else {
+                    log_warn("Recording file does not exist: %s (already deleted or never created)",
+                            file_path_copy);
                 }
 
                 success_count++;

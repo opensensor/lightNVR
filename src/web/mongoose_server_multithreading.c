@@ -192,7 +192,25 @@ bool mg_handle_request_with_threading(struct mg_connection *c,
  * @param ev_data Event data (mg_str *)
  */
 void mg_handle_wakeup_event(struct mg_connection *c, void *ev_data) {
+  // Validate connection pointer
+  if (!c) {
+    log_error("Wakeup event received with NULL connection");
+    return;
+  }
+
+  // Check if connection is closing or already closed
+  if (c->is_closing) {
+    log_debug("Wakeup event received for closing connection ID %lu, ignoring", c->id);
+    return;
+  }
+
   struct mg_str *data = (struct mg_str *) ev_data;
+
+  // Validate event data
+  if (!data || !data->buf || data->len == 0) {
+    log_warn("Wakeup event received with invalid data for connection ID %lu", c->id);
+    return;
+  }
 
   // Log the wakeup event
   log_debug("Received wakeup event for connection ID %lu: %.*s",

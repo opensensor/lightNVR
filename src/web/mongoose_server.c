@@ -712,16 +712,10 @@ void http_server_destroy(http_server_handle_t server) {
         // We need to clean up the manager ourselves
         log_info("Cleaning up manager for server that never started");
 
-        // Mark all connections as closing if any exist
-        if (server->mgr->conns) {
-            log_info("Marking all connections for closing");
-            for (struct mg_connection *c = server->mgr->conns; c != NULL; c = c->next) {
-                c->is_closing = 1;
-            }
-
-            // Wait a moment for connections to finish closing
-            usleep(250000);  // 250ms
-        }
+        // CRITICAL FIX: Do NOT iterate through connections when server never started
+        // The connection list might be in an inconsistent state (e.g., wakeup pipe only)
+        // and iterating through it can cause segfaults due to corrupted next pointers.
+        // Just call mg_mgr_free() directly which will handle cleanup safely.
 
         // Free Mongoose event manager
         mg_mgr_free(server->mgr);

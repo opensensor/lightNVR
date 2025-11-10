@@ -955,6 +955,7 @@ int main(int argc, char *argv[]) {
     if (http_server_start(http_server) != 0) {
         log_error("Failed to start Mongoose web server on port %d", config.web_port);
         http_server_destroy(http_server);
+        http_server = NULL;  // Prevent double-free in cleanup
         goto cleanup;
     }
 
@@ -1211,8 +1212,11 @@ cleanup:
 
         // Now shut down components
         log_info("Shutting down web server...");
-        http_server_stop(http_server);
-        http_server_destroy(http_server);
+        if (http_server) {
+            http_server_stop(http_server);
+            http_server_destroy(http_server);
+            http_server = NULL;
+        }
 
         log_info("Shutting down stream manager...");
         shutdown_stream_manager();
@@ -1308,8 +1312,11 @@ cleanup:
         cleanup_transcoding_backend();
 
         // Shut down remaining components
-        http_server_stop(http_server);
-        http_server_destroy(http_server);
+        if (http_server) {
+            http_server_stop(http_server);
+            http_server_destroy(http_server);
+            http_server = NULL;
+        }
 
         // Cleanup batch delete progress tracking
         batch_delete_progress_cleanup();

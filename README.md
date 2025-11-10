@@ -1,39 +1,191 @@
 # LightNVR - Lightweight Network Video Recorder
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Docker Pulls](https://img.shields.io/docker/pulls/opensensor/lightnvr)](https://hub.docker.com/r/opensensor/lightnvr)
 
 LightNVR is a tiny, memory-optimized Network Video Recorder software written in C. While originally designed for resource-constrained devices like the Ingenic A1 SoC with only 256MB of RAM, it can run on any Linux system.
 
 ## Overview
 
-LightNVR provides a lightweight yet powerful solution for recording and managing IP camera streams. It's designed to run efficiently on low-power, memory-constrained devices while still providing essential NVR functionality.
+LightNVR provides a lightweight yet powerful solution for recording and managing IP camera streams. It's designed to run efficiently on low-power, memory-constrained devices while still providing essential NVR functionality with a modern, responsive web interface.
 
 ![Live Streams Interface](docs/images/live-streams.png)
 
+> **✨ New Features:** Detection zones with visual polygon editor, customizable themes, enhanced light-object-detect integration, and ultra-low latency WebRTC streaming!
+
 ### Key Features
 
+#### 🎯 Smart Detection & Recording
+- **Detection Zones**: Visual polygon-based zone editor for targeted object detection - define multiple zones per camera with custom class filters and confidence thresholds
+- **light-object-detect Integration**: Seamless integration with [light-object-detect](https://github.com/matteius/light-object-detect) API for ONNX/TFLite-based object detection with zone filtering
+- **ONVIF Motion Recording**: Automated recording triggered by ONVIF motion detection events
+- **Object Detection**: Optional SOD integration for motion and object detection (supports both RealNet and CNN models)
+
+#### 📺 Streaming & Playback
+- **WebRTC Streaming**: Ultra-low latency live viewing with automatic NAT/firewall traversal via STUN/ICE
+- **HLS Streaming**: Adaptive bitrate streaming for broad device compatibility
+- **Dual Streaming Modes**: Toggle between WebRTC (low latency) and HLS (compatibility) on-the-fly
+- **Detection Overlays**: Real-time bounding boxes and labels on live streams
+
+#### 🎨 Modern User Interface
+- **Customizable Themes**: 7 beautiful color themes (Ocean Blue, Forest Green, Royal Purple, Sunset Rose, Golden Amber, Cool Slate, Default)
+- **Dark/Light Mode**: Automatic system preference detection with manual override
+- **Color Intensity Control**: Fine-tune theme brightness and contrast to your preference
+- **Responsive Design**: Built with Tailwind CSS and Preact for smooth, modern UX
+
+#### 🔧 Core Capabilities
 - **Cross-Platform**: Runs on any Linux system, from embedded devices to full servers
 - **Memory Efficient**: Optimized to run on devices with low memory (SBCs and certain SoCs)
 - **Stream Support**: Handle up to 16 video streams (with memory-optimized buffering)
 - **Protocol Support**: RTSP and ONVIF (basic profile)
 - **Codec Support**: H.264 (primary), H.265 (if resources permit)
-- **Object Detection**: Optional SOD integration for motion and object detection (supports both RealNet and CNN models)
-- **ONVIF Motion Recording**: Automated recording triggered by ONVIF motion detection events
 - **Resolution Support**: Up to 1080p per stream (configurable lower resolutions)
 - **Frame Rate Control**: Configurable from 1-15 FPS per stream to reduce resource usage
 - **Standard Formats**: Records in standard MP4/MKV containers with proper indexing
-- **Modern Web Interface**: Responsive UI built with Tailwind CSS and Preact
 - **Storage Management**: Automatic retention policies and disk space management
 - **Reliability**: Automatic recovery after power loss or system failure
 - **Resource Optimization**: Stream prioritization to manage limited RAM
 
+## 🆕 What's New in v0.14+
+
+### Detection Zones (v0.14.0)
+Visual polygon-based zone editor for precise object detection. Draw custom zones, filter by object class, and set per-zone confidence thresholds. Perfect for reducing false positives and focusing on areas that matter.
+
+### Theme Customization (v0.13.0)
+Choose from 7 beautiful color themes with adjustable intensity. Supports both light and dark modes with automatic system preference detection. Make LightNVR match your style!
+
+### Enhanced light-object-detect Integration (v0.14.0)
+Seamless integration with modern ONNX and TFLite models. Configurable detection backends (ONNX, TFLite, OpenCV) with zone-aware filtering and direct go2rtc frame extraction for optimal performance.
+
+### WebRTC Improvements (v0.12.6+)
+Ultra-low latency streaming with automatic NAT/firewall traversal. Configurable STUN servers and ICE configuration for reliable streaming in complex network environments.
+
+### Improved Docker Deployment (v0.12.6+)
+Unified data volume for persistent storage, automatic configuration initialization, and WebRTC support out-of-the-box with STUN server configuration.
+
+---
+
+## 📹 Demo & Media
+
+Screenshots and videos are automatically generated using Playwright automation. To update documentation media:
+
+```bash
+# Install dependencies (one-time)
+npm install --save-dev playwright
+npx playwright install chromium
+
+# Capture all screenshots and videos
+./scripts/update-documentation-media.sh --docker
+
+# Or capture screenshots only
+./scripts/update-documentation-media.sh --screenshots-only
+
+# Capture all theme variations
+./scripts/update-documentation-media.sh --all-themes
+```
+
+See [scripts/README-screenshots.md](scripts/README-screenshots.md) for detailed documentation on the automation system.
+
+> **Note for Contributors**: Screenshots and videos should be generated using the automated scripts to ensure consistency. Manual captures are discouraged unless adding new features not yet covered by automation.
+
+## 💡 Use Cases
+
+LightNVR is perfect for:
+
+- **🏠 Home Security**: Monitor your property with smart detection zones - get alerts only for activity in specific areas
+- **🏢 Small Business**: Cost-effective surveillance with professional features like zone-based detection and retention policies
+- **🔬 IoT & Edge Computing**: Run on resource-constrained devices (Raspberry Pi, SBCs) with minimal memory footprint
+- **🎓 Education & Research**: Learn about video processing, object detection, and real-time streaming with clean, well-documented code
+- **🛠️ DIY Projects**: Build custom surveillance solutions with flexible API integration and modern web interface
+- **📦 Warehouse & Logistics**: Monitor specific zones (loading docks, storage areas) with class-specific detection (person, forklift, etc.)
+
+## 🆚 Why LightNVR?
+
+| Feature | LightNVR | Traditional NVR | Cloud Solutions |
+|---------|----------|-----------------|-----------------|
+| **Memory Footprint** | 256MB minimum | 2GB+ typical | N/A (cloud-based) |
+| **Detection Zones** | ✅ Visual polygon editor | ❌ Usually grid-based or none | ✅ Varies by provider |
+| **Custom Themes** | ✅ 7 themes + intensity control | ❌ Fixed UI | ⚠️ Limited options |
+| **WebRTC Streaming** | ✅ Sub-second latency | ⚠️ Often RTSP only | ✅ Usually supported |
+| **Object Detection** | ✅ ONNX/TFLite/SOD support | ⚠️ Proprietary or limited | ✅ Usually included |
+| **Privacy** | ✅ 100% local, no cloud | ✅ Local | ❌ Data sent to cloud |
+| **Cost** | ✅ Free & open-source | 💰 $200-2000+ | 💰 $10-50/month per camera |
+| **Customization** | ✅ Full source code access | ❌ Closed source | ❌ Limited to API |
+| **Resource Usage** | ✅ Optimized for SBCs | ⚠️ Requires dedicated hardware | N/A |
+| **API Integration** | ✅ RESTful API + WebSocket | ⚠️ Varies | ✅ Usually available |
+
 ## System Requirements
 
 - **Processor**: Any Linux-compatible processor (ARM, x86, MIPS, etc.)
-- **Memory**: unknown RAM minimum (more recommended for multiple streams)
+- **Memory**: 256MB RAM minimum (more recommended for multiple streams)
 - **Storage**: Any storage device accessible by the OS
 - **Network**: Ethernet or WiFi connection
 - **OS**: Linux with kernel 4.4 or newer
+
+## 🌟 Feature Highlights
+
+### Detection Zones - Precision Object Detection
+
+Define custom detection zones with a visual polygon editor. Perfect for monitoring specific areas like doorways, parking spots, or restricted zones while ignoring irrelevant motion.
+
+<!-- TODO: Add screenshot of zone editor with polygon drawing -->
+<!-- Suggested: Screenshot showing the zone editor with multiple colored zones drawn on a camera feed -->
+<!-- Suggested: Short video/GIF demonstrating drawing a zone and configuring class filters -->
+
+**Key capabilities:**
+- Draw unlimited polygons per camera stream
+- Per-zone class filtering (e.g., only detect "person" in Zone A, "car" in Zone B)
+- Adjustable confidence thresholds per zone
+- Color-coded zones for easy identification
+- Enable/disable zones without deleting configuration
+
+### Theme Customization - Your Style, Your Way
+
+Choose from 7 professionally designed color themes and fine-tune the intensity to match your environment and preferences.
+
+<!-- TODO: Add screenshot showing theme selector with different themes -->
+<!-- Suggested: Side-by-side comparison of 2-3 different themes (light and dark mode) -->
+<!-- Suggested: Short video/GIF showing theme switching and intensity adjustment -->
+
+**Available themes:**
+- 🎨 Default (Neutral Gray)
+- 🌊 Ocean Blue
+- 🌲 Forest Green
+- 👑 Royal Purple
+- 🌹 Sunset Rose
+- ⚡ Golden Amber
+- 🗿 Cool Slate
+
+Each theme supports both light and dark modes with adjustable color intensity (0-100%).
+
+### WebRTC Live Streaming - Ultra-Low Latency
+
+Experience real-time camera feeds with sub-second latency using WebRTC technology. Automatic NAT traversal ensures it works even behind firewalls.
+
+<!-- TODO: Add screenshot of WebRTC live view with multiple streams -->
+<!-- Suggested: Screenshot showing 4-6 camera feeds in grid layout with detection overlays -->
+<!-- Suggested: Video demonstrating smooth playback and low latency -->
+
+**Features:**
+- Sub-second latency for real-time monitoring
+- Automatic STUN/ICE configuration for NAT traversal
+- Seamless fallback to HLS for compatibility
+- Real-time detection overlay with bounding boxes
+- Grid layout supporting multiple simultaneous streams
+
+### light-object-detect Integration
+
+Powerful object detection using modern ONNX and TFLite models with zone-aware filtering.
+
+<!-- TODO: Add screenshot showing detection results with zone filtering -->
+<!-- Suggested: Screenshot of detection overlay showing objects detected only within defined zones -->
+
+**Integration features:**
+- Per-stream API endpoint configuration
+- Configurable detection backends (ONNX, TFLite, OpenCV)
+- Zone-based filtering to reduce false positives
+- Track ID and zone ID support for advanced analytics
+- Direct go2rtc frame extraction (no FFmpeg overhead)
 
 ## Screenshots
 
@@ -92,6 +244,27 @@ LightNVR provides a lightweight yet powerful solution for recording and managing
    Default credentials:
    - Username: `admin`
    - Password: `admin`
+
+6. **(Optional) Set up object detection**:
+
+   For advanced object detection with zone filtering, integrate with [light-object-detect](https://github.com/matteius/light-object-detect):
+
+   ```bash
+   # Install light-object-detect (requires Python 3.8+)
+   pip install light-object-detect
+
+   # Start the detection API server (default port 9001)
+   light-object-detect --host 0.0.0.0 --port 9001
+   ```
+
+   Then configure detection in LightNVR:
+   - Navigate to **Streams** → Select a stream → **Configure**
+   - Enable **Detection Based Recording**
+   - Set **API Detection URL** to `http://localhost:9001/api/v1/detect`
+   - Choose detection backend: `onnx` (recommended), `tflite`, or `opencv`
+   - Configure **Detection Zones** to define areas of interest
+
+   See [Zone Configuration Guide](docs/ZONE_CONFIGURATION.md) for detailed zone setup instructions.
 
 ## Troubleshooting
 
@@ -232,18 +405,24 @@ The configuration files will persist across container restarts and updates.
 
 ## Documentation
 
+### Getting Started
 - [Installation Guide](docs/INSTALLATION.md)
 - [Build Instructions](docs/BUILD.md)
 - [Configuration Guide](docs/CONFIGURATION.md)
-- [API Documentation](docs/API.md)
-- [Frontend Architecture](docs/FRONTEND.md)
 - [Troubleshooting Guide](docs/TROUBLESHOOTING.md)
-- [Architecture Overview](docs/ARCHITECTURE.md)
+
+### Features & Integration
+- **[Zone Configuration](docs/ZONE_CONFIGURATION.md)** - Configure detection zones with visual polygon editor
+- [API Documentation](docs/API.md)
 - [SOD Integration](docs/SOD_INTEGRATION.md)
 - [SOD Unified Detection](docs/SOD_UNIFIED_DETECTION.md)
 - [ONVIF Detection](docs/ONVIF_DETECTION.md)
 - [ONVIF Motion Recording](docs/ONVIF_MOTION_RECORDING.md)
 - [Motion Buffer System](docs/MOTION_BUFFER.md)
+
+### Architecture & Development
+- [Architecture Overview](docs/ARCHITECTURE.md)
+- [Frontend Architecture](docs/FRONTEND.md)
 - [Release Process](docs/RELEASE_PROCESS.md) - For maintainers creating releases
 
 ## Project Structure
@@ -291,10 +470,24 @@ This project is licensed under the GNU General Public License v3.0 - see the [LI
 
 ## Acknowledgments
 
-- FFmpeg for video processing capabilities
-- SQLite for efficient database storage
-- Mongoose for the web server
-- cJSON for JSON parsing
-- Tailwind CSS for frontend styling
-- Preact for frontend components
-- All contributors who have helped with the project
+LightNVR is built on the shoulders of giants. Special thanks to:
+
+### Core Technologies
+- **[FFmpeg](https://ffmpeg.org/)** - Video processing and codec support
+- **[go2rtc](https://github.com/AlexxIT/go2rtc)** - WebRTC and RTSP streaming engine
+- **[SQLite](https://www.sqlite.org/)** - Efficient embedded database
+- **[Mongoose](https://github.com/cesanta/mongoose)** - Embedded web server
+- **[cJSON](https://github.com/DaveGamble/cJSON)** - Lightweight JSON parser
+
+### Frontend Stack
+- **[Tailwind CSS](https://tailwindcss.com/)** - Modern utility-first CSS framework
+- **[Preact](https://preactjs.com/)** - Fast 3kB alternative to React
+- **[HLS.js](https://github.com/video-dev/hls.js/)** - JavaScript HLS client
+
+### Detection & AI
+- **[light-object-detect](https://github.com/matteius/light-object-detect)** - ONNX/TFLite object detection API
+- **[SOD](https://github.com/symisc/sod)** - Embedded computer vision library
+
+### Community
+- All contributors who have helped improve LightNVR
+- The open-source community for inspiration and support

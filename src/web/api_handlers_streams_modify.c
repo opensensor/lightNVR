@@ -858,7 +858,37 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
             }
         }
 
-        // Start stream if enabled
+        // If URL or protocol changed, update go2rtc stream registration BEFORE starting the stream
+        // This prevents race conditions where the stream tries to use go2rtc before it's updated
+        if ((url_changed || protocol_changed)) {
+            log_info("URL or protocol changed for stream %s, updating go2rtc registration BEFORE starting stream", config.name);
+
+            // Unregister the old stream from go2rtc
+            if (go2rtc_stream_unregister(config.name)) {
+                log_info("Unregistered stream %s from go2rtc", config.name);
+            } else {
+                log_warn("Failed to unregister stream %s from go2rtc (may not have been registered)", config.name);
+            }
+
+            // Wait a moment for go2rtc to clean up
+            usleep(500000); // 500ms
+
+            // Re-register the stream with the new URL
+            const char *username = (config.onvif_username[0] != '\0') ? config.onvif_username : NULL;
+            const char *password = (config.onvif_password[0] != '\0') ? config.onvif_password : NULL;
+
+            if (go2rtc_stream_register(config.name, config.url, username, password)) {
+                log_info("Re-registered stream %s with go2rtc using new URL", config.name);
+            } else {
+                log_error("Failed to re-register stream %s with go2rtc", config.name);
+                // Continue anyway - the stream may still work
+            }
+
+            // Wait a moment for go2rtc to be ready
+            usleep(500000); // 500ms
+        }
+
+        // Start stream if enabled (AFTER go2rtc has been updated)
         if (config.enabled) {
             log_info("Starting stream %s after configuration update", config.name);
             if (start_stream(stream) != 0) {
@@ -866,37 +896,14 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
                 // Continue anyway
             }
 
-            // If URL or protocol changed, update go2rtc stream registration
-            if ((url_changed || protocol_changed)) {
-                log_info("URL or protocol changed for stream %s, updating go2rtc registration", config.name);
-
-                // Unregister the old stream from go2rtc
-                if (go2rtc_stream_unregister(config.name)) {
-                    log_info("Unregistered stream %s from go2rtc", config.name);
+            // Force restart the HLS stream thread if streaming is enabled and URL/protocol changed
+            if ((url_changed || protocol_changed) && config.streaming_enabled) {
+                log_info("Force restarting HLS stream thread for %s after go2rtc update", config.name);
+                if (restart_hls_stream(config.name) != 0) {
+                    log_warn("Failed to force restart HLS stream for %s", config.name);
+                    // Continue anyway
                 } else {
-                    log_warn("Failed to unregister stream %s from go2rtc (may not have been registered)", config.name);
-                }
-
-                // Re-register the stream with the new URL
-                const char *username = (config.onvif_username[0] != '\0') ? config.onvif_username : NULL;
-                const char *password = (config.onvif_password[0] != '\0') ? config.onvif_password : NULL;
-
-                if (go2rtc_stream_register(config.name, config.url, username, password)) {
-                    log_info("Re-registered stream %s with go2rtc using new URL", config.name);
-                } else {
-                    log_error("Failed to re-register stream %s with go2rtc", config.name);
-                    // Continue anyway - the stream may still work
-                }
-
-                // Force restart the HLS stream thread if streaming is enabled
-                if (config.streaming_enabled) {
-                    log_info("Force restarting HLS stream thread for %s after go2rtc update", config.name);
-                    if (restart_hls_stream(config.name) != 0) {
-                        log_warn("Failed to force restart HLS stream for %s", config.name);
-                        // Continue anyway
-                    } else {
-                        log_info("Successfully force restarted HLS stream for %s", config.name);
-                    }
+                    log_info("Successfully force restarted HLS stream for %s", config.name);
                 }
             }
         }

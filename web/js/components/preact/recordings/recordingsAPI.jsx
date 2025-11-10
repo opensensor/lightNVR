@@ -337,37 +337,12 @@ export const recordingsAPI = {
     }
 
     try {
-      // Check if WebSocket client is available
-      if (window.wsClient) {
-        console.log('Using WebSocket for batch delete operation');
-
-        // Connect the WebSocket client if not already connected
-        if (!window.wsClient.isConnected()) {
-          console.log('WebSocket not connected, connecting now...');
-          window.wsClient.connect();
-        }
-
-        // Initialize batch delete client if needed
-        if (!window.batchDeleteClient) {
-          if (typeof BatchDeleteRecordingsClient !== 'undefined') {
-            console.log('Creating new BatchDeleteRecordingsClient');
-            window.batchDeleteClient = new BatchDeleteRecordingsClient(window.wsClient);
-          } else {
-            console.warn('BatchDeleteRecordingsClient not available, falling back to HTTP');
-            return recordingsAPI.deleteSelectedRecordingsHttp(selectedIds);
-          }
-        }
-
-        // Show batch delete modal
-        if (typeof showBatchDeleteModal === 'function') {
-          showBatchDeleteModal();
-        }
-
-        // Use HTTP for batch delete
-        return recordingsAPI.deleteSelectedRecordingsHttp(selectedIds);
+      // Show batch delete modal
+      if (typeof showBatchDeleteModal === 'function') {
+        showBatchDeleteModal();
       }
 
-      // Use HTTP for batch delete
+      // Use HTTP for batch delete (WebSockets were removed)
       return recordingsAPI.deleteSelectedRecordingsHttp(selectedIds);
     } catch (error) {
       console.error('Error in batch delete operation:', error);
@@ -398,24 +373,101 @@ export const recordingsAPI = {
       });
 
       const result = await response.json();
-      const successCount = result.succeeded;
-      const errorCount = result.failed;
 
-      // Show status message
-      if (successCount > 0 && errorCount === 0) {
-        showStatusMessage(`Successfully deleted ${successCount} recording${successCount !== 1 ? 's' : ''}`);
-      } else if (successCount > 0 && errorCount > 0) {
-        showStatusMessage(`Deleted ${successCount} recording${successCount !== 1 ? 's' : ''}, but failed to delete ${errorCount}`);
+      // Check if we got a job_id (async operation) or direct result (sync operation)
+      if (result.job_id) {
+        console.log('Batch delete started with job_id:', result.job_id);
+
+        // Poll for progress
+        const finalResult = await recordingsAPI.pollBatchDeleteProgress(result.job_id);
+
+        // Show status message
+        const successCount = finalResult.succeeded || 0;
+        const errorCount = finalResult.failed || 0;
+
+        if (successCount > 0 && errorCount === 0) {
+          showStatusMessage(`Successfully deleted ${successCount} recording${successCount !== 1 ? 's' : ''}`);
+        } else if (successCount > 0 && errorCount > 0) {
+          showStatusMessage(`Deleted ${successCount} recording${successCount !== 1 ? 's' : ''}, but failed to delete ${errorCount}`);
+        } else if (errorCount > 0) {
+          showStatusMessage(`Failed to delete ${errorCount} recording${errorCount !== 1 ? 's' : ''}`);
+        }
+
+        return finalResult;
       } else {
-        showStatusMessage(`Failed to delete ${errorCount} recording${errorCount !== 1 ? 's' : ''}`);
-      }
+        // Direct result (old sync behavior)
+        const successCount = result.succeeded || 0;
+        const errorCount = result.failed || 0;
 
-      return result;
+        // Show status message
+        if (successCount > 0 && errorCount === 0) {
+          showStatusMessage(`Successfully deleted ${successCount} recording${successCount !== 1 ? 's' : ''}`);
+        } else if (successCount > 0 && errorCount > 0) {
+          showStatusMessage(`Deleted ${successCount} recording${successCount !== 1 ? 's' : ''}, but failed to delete ${errorCount}`);
+        } else if (errorCount > 0) {
+          showStatusMessage(`Failed to delete ${errorCount} recording${errorCount !== 1 ? 's' : ''}`);
+        }
+
+        return result;
+      }
     } catch (error) {
       console.error('Error in HTTP batch delete operation:', error);
       showStatusMessage('Error in batch delete operation: ' + error.message);
       return { succeeded: 0, failed: 0 };
     }
+  },
+
+  /**
+   * Poll for batch delete progress
+   * @param {string} jobId Job ID to poll
+   * @returns {Promise<Object>} Final result with success and error counts
+   */
+  pollBatchDeleteProgress: async (jobId) => {
+    const maxAttempts = 120; // 2 minutes max (120 * 1 second)
+    let attempts = 0;
+
+    while (attempts < maxAttempts) {
+      try {
+        const response = await fetch(`/api/recordings/batch-delete/progress/${jobId}`);
+        if (!response.ok) {
+          throw new Error(`Failed to get progress: ${response.statusText}`);
+        }
+
+        const progress = await response.json();
+
+        // Update progress UI if available
+        if (typeof window.updateBatchDeleteProgress === 'function') {
+          window.updateBatchDeleteProgress({
+            current: progress.current || 0,
+            total: progress.total || 0,
+            succeeded: progress.succeeded || 0,
+            failed: progress.failed || 0,
+            status: progress.status_message || 'Processing...',
+            complete: progress.complete || false
+          });
+        }
+
+        // Check if complete
+        if (progress.complete) {
+          return {
+            succeeded: progress.succeeded || 0,
+            failed: progress.failed || 0
+          };
+        }
+
+        // Wait 1 second before next poll
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        attempts++;
+      } catch (error) {
+        console.error('Error polling batch delete progress:', error);
+        // Continue polling on error
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        attempts++;
+      }
+    }
+
+    // Timeout
+    throw new Error('Batch delete operation timed out');
   },
 
   /**
@@ -526,63 +578,8 @@ export const recordingsAPI = {
         // Continue anyway, we'll just show an indeterminate progress
       }
 
-      // Set up an error handler in case the operation fails
-      const handleOperationError = (error) => {
-        console.error('Error in delete all operation:', error);
-        showStatusMessage('Error in delete all operation: ' + error.message);
-
-        // Update the progress UI to show the error
-        if (typeof window.updateBatchDeleteProgress === 'function') {
-          window.updateBatchDeleteProgress({
-            current: 0,
-            total: 0,
-            succeeded: 0,
-            failed: 0,
-            status: `Error: ${error.message}`,
-            complete: true
-          });
-        }
-
-        return { succeeded: 0, failed: 0 };
-      };
-
-        // Check if WebSocket client is available
-        if (window.wsClient) {
-          console.log('Using WebSocket for batch delete with filter');
-
-          // Connect the WebSocket client if not already connected
-          if (!window.wsClient.isConnected()) {
-            console.log('WebSocket not connected, connecting now...');
-            window.wsClient.connect();
-          }
-
-          // Initialize batch delete client if needed
-          if (!window.batchDeleteClient) {
-            if (typeof BatchDeleteRecordingsClient !== 'undefined') {
-              console.log('Creating new BatchDeleteRecordingsClient for filtered delete');
-              window.batchDeleteClient = new BatchDeleteRecordingsClient(window.wsClient);
-            } else {
-              console.warn('BatchDeleteRecordingsClient not available, falling back to HTTP');
-              return recordingsAPI.deleteAllFilteredRecordingsHttp(filter);
-            }
-          }
-
-          // Log the client ID being used
-          console.log('Using WebSocket client ID for filtered batch delete:', window.wsClient.getClientId());
-
-          // Set up a timeout to handle server crashes
-          const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => {
-              reject(new Error('Operation timed out or server crashed. Some recordings may have been deleted.'));
-            }, 60000); // 60 second timeout
-          });
-
-          // Use HTTP for batch delete with filter
-          return recordingsAPI.deleteAllFilteredRecordingsHttp(filter);
-        }
-
-        // Use HTTP for batch delete with filter
-        return recordingsAPI.deleteAllFilteredRecordingsHttp(filter);
+      // Use HTTP for batch delete with filter (WebSockets were removed)
+      return recordingsAPI.deleteAllFilteredRecordingsHttp(filter);
     } catch (error) {
       console.error('Error in delete all operation:', error);
       showStatusMessage('Error in delete all operation: ' + error.message);
@@ -612,19 +609,43 @@ export const recordingsAPI = {
       });
 
       const result = await deleteResponse.json();
-      const successCount = result.succeeded;
-      const errorCount = result.failed;
 
-      // Show status message
-      if (successCount > 0 && errorCount === 0) {
-        showStatusMessage(`Successfully deleted ${successCount} recording${successCount !== 1 ? 's' : ''}`);
-      } else if (successCount > 0 && errorCount > 0) {
-        showStatusMessage(`Deleted ${successCount} recording${successCount !== 1 ? 's' : ''}, but failed to delete ${errorCount}`);
+      // Check if we got a job_id (async operation) or direct result (sync operation)
+      if (result.job_id) {
+        console.log('Batch delete started with job_id:', result.job_id);
+
+        // Poll for progress
+        const finalResult = await recordingsAPI.pollBatchDeleteProgress(result.job_id);
+
+        // Show status message
+        const successCount = finalResult.succeeded || 0;
+        const errorCount = finalResult.failed || 0;
+
+        if (successCount > 0 && errorCount === 0) {
+          showStatusMessage(`Successfully deleted ${successCount} recording${successCount !== 1 ? 's' : ''}`);
+        } else if (successCount > 0 && errorCount > 0) {
+          showStatusMessage(`Deleted ${successCount} recording${successCount !== 1 ? 's' : ''}, but failed to delete ${errorCount}`);
+        } else if (errorCount > 0) {
+          showStatusMessage(`Failed to delete ${errorCount} recording${errorCount !== 1 ? 's' : ''}`);
+        }
+
+        return finalResult;
       } else {
-        showStatusMessage(`Failed to delete ${errorCount} recording${errorCount !== 1 ? 's' : ''}`);
-      }
+        // Direct result (old sync behavior)
+        const successCount = result.succeeded || 0;
+        const errorCount = result.failed || 0;
 
-      return result;
+        // Show status message
+        if (successCount > 0 && errorCount === 0) {
+          showStatusMessage(`Successfully deleted ${successCount} recording${successCount !== 1 ? 's' : ''}`);
+        } else if (successCount > 0 && errorCount > 0) {
+          showStatusMessage(`Deleted ${successCount} recording${successCount !== 1 ? 's' : ''}, but failed to delete ${errorCount}`);
+        } else if (errorCount > 0) {
+          showStatusMessage(`Failed to delete ${errorCount} recording${errorCount !== 1 ? 's' : ''}`);
+        }
+
+        return result;
+      }
     } catch (error) {
       console.error('Error in HTTP delete all operation:', error);
       showStatusMessage('Error in delete all operation: ' + error.message);

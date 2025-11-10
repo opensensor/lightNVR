@@ -1,0 +1,21 @@
+# go2rtc configuration file
+api:
+  listen: :1984
+  base_path: /go2rtc/
+
+rtsp:
+  listen: :8554
+
+webrtc:
+  listen: :8555
+  ice_servers:
+    - urls: [stun:stun.l.google.com:19302]
+  candidates:
+    - "*:8555"
+    - stun:stun.l.google.com:19302
+
+log:
+  level: info
+
+streams:
+  # Streams will be added dynamically by LightNVR

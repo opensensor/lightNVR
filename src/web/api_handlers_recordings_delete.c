@@ -92,41 +92,47 @@ void delete_recording_task_function(void *arg) {
     uint64_t id = task->id;
     
     log_info("Processing DELETE /api/recordings/%llu task", (unsigned long long)id);
-    
+
     // Get recording from database
     recording_metadata_t recording;
     memset(&recording, 0, sizeof(recording_metadata_t)); // Initialize to prevent undefined behavior
-    
+
     if (get_recording_metadata_by_id(id, &recording) != 0) {
         log_error("Recording not found: %llu", (unsigned long long)id);
         // Don't send response here - already sent 202
         delete_recording_task_free(task);
         return;
     }
-    
-    // Check if file exists before attempting to delete
-    struct stat st;
-    bool file_exists = (stat(recording.file_path, &st) == 0);
-    
-    // Delete file if it exists
-    if (file_exists) {
-        if (unlink(recording.file_path) != 0) {
-            log_warn("Failed to delete recording file: %s (error: %s)", 
-                    recording.file_path, strerror(errno));
-            // Continue anyway, we'll remove from database
-        } else {
-            log_info("Deleted recording file: %s", recording.file_path);
-        }
-    } else {
-        log_warn("Recording file does not exist: %s", recording.file_path);
-    }
-    
-    // Delete from database
+
+    // Save file path before deleting from database
+    char file_path_copy[256];
+    strncpy(file_path_copy, recording.file_path, sizeof(file_path_copy) - 1);
+    file_path_copy[sizeof(file_path_copy) - 1] = '\0';
+
+    // Delete from database FIRST
     if (delete_recording_metadata(id) != 0) {
         log_error("Failed to delete recording from database: %llu", (unsigned long long)id);
         // Don't send response here - already sent 202
         delete_recording_task_free(task);
         return;
+    }
+
+    log_info("Deleted recording from database: %llu", (unsigned long long)id);
+
+    // Then delete the file from disk
+    struct stat st;
+    if (stat(file_path_copy, &st) == 0) {
+        if (unlink(file_path_copy) != 0) {
+            log_warn("Failed to delete recording file: %s (error: %s)",
+                    file_path_copy, strerror(errno));
+            // File deletion failed but DB entry is already removed
+            // This is acceptable - orphaned files can be cleaned up later
+        } else {
+            log_info("Deleted recording file: %s", file_path_copy);
+        }
+    } else {
+        log_warn("Recording file does not exist: %s (already deleted or never created)", file_path_copy);
+        // This is acceptable - DB entry is removed
     }
     
     // Clean up
