@@ -56,6 +56,8 @@ if(ENABLE_SOD)
     )
     if(CJSON_BUNDLED)
         target_link_libraries(test_sod_unified cjson_lib)
+    elseif(CJSON_FOUND)
+        target_link_libraries(test_sod_unified ${CJSON_LIBRARIES})
     endif()
 
     target_link_libraries(test_sod_voc
@@ -74,6 +76,8 @@ if(ENABLE_SOD)
     )
     if(CJSON_BUNDLED)
         target_link_libraries(test_sod_voc cjson_lib)
+    elseif(CJSON_FOUND)
+        target_link_libraries(test_sod_voc ${CJSON_LIBRARIES})
     endif()
 
     # Set output directory for test binaries
@@ -136,6 +140,8 @@ target_link_libraries(test_stream_detection
 )
 if(CJSON_BUNDLED)
     target_link_libraries(test_stream_detection cjson_lib)
+elseif(CJSON_FOUND)
+    target_link_libraries(test_stream_detection ${CJSON_LIBRARIES})
 endif()
 
 if(ENABLE_SOD)

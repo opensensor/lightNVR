@@ -17,7 +17,7 @@
 #include <errno.h>
 #include <curl/curl.h>
 #include <ctype.h>
-#include "../../external/cjson/cJSON.h"
+#include <cjson/cJSON.h>
 
 // API client configuration
 static char *g_api_host = NULL;

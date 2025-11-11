@@ -11,7 +11,7 @@
 
 #include "core/logger.h"
 #include "core/logger_json.h"
-#include "../external/cjson/cJSON.h"
+#include <cjson/cJSON.h>
 
 // JSON logger state
 static struct {

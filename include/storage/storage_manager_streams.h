@@ -6,7 +6,7 @@
 #ifndef LIGHTNVR_STORAGE_MANAGER_STREAMS_H
 #define LIGHTNVR_STORAGE_MANAGER_STREAMS_H
 
-#include "../../external/cjson/cJSON.h"
+#include <cjson/cJSON.h>
 
 /**
  * Stream storage usage information
