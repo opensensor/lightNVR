@@ -12,10 +12,5 @@
   ],
   "forwardPorts": [],
   "postCreateCommand": "npm install",
-  "remoteUser": "root",  
-  "mounts": [
-    "source=${localWorkspaceFolderBasename}-node_modules,target=${containerWorkspaceFolder}/node_modules,type=volume",
-    "source=${localWorkspaceFolderBasename}-web-node_modules,target=${containerWorkspaceFolder}/web/node_modules,type=volume",
-    "source=${localWorkspaceFolderBasename}-build,target=${containerWorkspaceFolder}/build,type=volume"
-  ]
+  "remoteUser": "root"
 }
