@@ -33,37 +33,41 @@ uint64_t add_recording_metadata(const recording_metadata_t *metadata) {
     }
     
     pthread_mutex_lock(db_mutex);
-    
+
     const char *sql = "INSERT INTO recordings (stream_name, file_path, start_time, end_time, "
-                      "size_bytes, width, height, fps, codec, is_complete) "
-                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
-    
+                      "size_bytes, width, height, fps, codec, is_complete, trigger_type) "
+                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
         pthread_mutex_unlock(db_mutex);
         return 0;
     }
-    
+
     // No longer tracking statements - each function is responsible for finalizing its own statements
-    
+
     // Bind parameters
     sqlite3_bind_text(stmt, 1, metadata->stream_name, -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 2, metadata->file_path, -1, SQLITE_STATIC);
     sqlite3_bind_int64(stmt, 3, (sqlite3_int64)metadata->start_time);
-    
+
     if (metadata->end_time > 0) {
         sqlite3_bind_int64(stmt, 4, (sqlite3_int64)metadata->end_time);
     } else {
         sqlite3_bind_null(stmt, 4);
     }
-    
+
     sqlite3_bind_int64(stmt, 5, (sqlite3_int64)metadata->size_bytes);
     sqlite3_bind_int(stmt, 6, metadata->width);
     sqlite3_bind_int(stmt, 7, metadata->height);
     sqlite3_bind_int(stmt, 8, metadata->fps);
     sqlite3_bind_text(stmt, 9, metadata->codec, -1, SQLITE_STATIC);
     sqlite3_bind_int(stmt, 10, metadata->is_complete ? 1 : 0);
+
+    // Bind trigger_type, default to 'scheduled' if not set
+    const char *trigger_type = (metadata->trigger_type[0] != '\0') ? metadata->trigger_type : "scheduled";
+    sqlite3_bind_text(stmt, 11, trigger_type, -1, SQLITE_STATIC);
     
     // Execute statement
     rc = sqlite3_step(stmt);
@@ -151,27 +155,27 @@ int get_recording_metadata_by_id(uint64_t id, recording_metadata_t *metadata) {
     }
     
     pthread_mutex_lock(db_mutex);
-    
+
     const char *sql = "SELECT id, stream_name, file_path, start_time, end_time, "
-                      "size_bytes, width, height, fps, codec, is_complete "
+                      "size_bytes, width, height, fps, codec, is_complete, trigger_type "
                       "FROM recordings WHERE id = ?;";
-    
+
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
         pthread_mutex_unlock(db_mutex);
         return -1;
     }
-    
+
     // No longer tracking statements - each function is responsible for finalizing its own statements
-    
+
     // Bind parameters
     sqlite3_bind_int64(stmt, 1, (sqlite3_int64)id);
-    
+
     // Execute query and fetch result
     if (sqlite3_step(stmt) == SQLITE_ROW) {
         metadata->id = (uint64_t)sqlite3_column_int64(stmt, 0);
-        
+
         const char *stream = (const char *)sqlite3_column_text(stmt, 1);
         if (stream) {
             strncpy(metadata->stream_name, stream, sizeof(metadata->stream_name) - 1);
@@ -179,7 +183,7 @@ int get_recording_metadata_by_id(uint64_t id, recording_metadata_t *metadata) {
         } else {
             metadata->stream_name[0] = '\0';
         }
-        
+
         const char *path = (const char *)sqlite3_column_text(stmt, 2);
         if (path) {
             strncpy(metadata->file_path, path, sizeof(metadata->file_path) - 1);
@@ -187,20 +191,20 @@ int get_recording_metadata_by_id(uint64_t id, recording_metadata_t *metadata) {
         } else {
             metadata->file_path[0] = '\0';
         }
-        
+
         metadata->start_time = (time_t)sqlite3_column_int64(stmt, 3);
-        
+
         if (sqlite3_column_type(stmt, 4) != SQLITE_NULL) {
             metadata->end_time = (time_t)sqlite3_column_int64(stmt, 4);
         } else {
             metadata->end_time = 0;
         }
-        
+
         metadata->size_bytes = (uint64_t)sqlite3_column_int64(stmt, 5);
         metadata->width = sqlite3_column_int(stmt, 6);
         metadata->height = sqlite3_column_int(stmt, 7);
         metadata->fps = sqlite3_column_int(stmt, 8);
-        
+
         const char *codec = (const char *)sqlite3_column_text(stmt, 9);
         if (codec) {
             strncpy(metadata->codec, codec, sizeof(metadata->codec) - 1);
@@ -208,9 +212,17 @@ int get_recording_metadata_by_id(uint64_t id, recording_metadata_t *metadata) {
         } else {
             metadata->codec[0] = '\0';
         }
-        
+
         metadata->is_complete = sqlite3_column_int(stmt, 10) != 0;
-        
+
+        const char *trigger_type = (const char *)sqlite3_column_text(stmt, 11);
+        if (trigger_type) {
+            strncpy(metadata->trigger_type, trigger_type, sizeof(metadata->trigger_type) - 1);
+            metadata->trigger_type[sizeof(metadata->trigger_type) - 1] = '\0';
+        } else {
+            strncpy(metadata->trigger_type, "scheduled", sizeof(metadata->trigger_type) - 1);
+        }
+
         result = 0; // Success
     }
     
@@ -371,34 +383,28 @@ int get_recording_count(time_t start_time, time_t end_time,
     
     // Build query based on filters
     char sql[1024];
-    
+
+    // Use trigger_type to filter detection-based recordings instead of JOINing with detections table
+    strcpy(sql, "SELECT COUNT(*) FROM recordings WHERE is_complete = 1 AND end_time IS NOT NULL");
+
     if (has_detection) {
-        // Use a JOIN with the detections table to filter recordings with detections
-        strcpy(sql, "SELECT COUNT(DISTINCT r.id) FROM recordings r "
-                    "INNER JOIN detections d ON r.stream_name = d.stream_name "
-                    "WHERE d.timestamp BETWEEN r.start_time AND COALESCE(r.end_time, strftime('%s', 'now')) "
-                    "AND r.is_complete = 1 AND r.end_time IS NOT NULL");
-    } else {
-        // Simple query without detection filter
-        strcpy(sql, "SELECT COUNT(*) FROM recordings WHERE is_complete = 1 AND end_time IS NOT NULL");
+        // Filter by trigger_type = 'detection'
+        strcat(sql, " AND trigger_type = 'detection'");
+        log_info("Adding trigger_type filter for detection-based recordings");
     }
-    
+
     if (start_time > 0) {
         strcat(sql, " AND start_time >= ?");
         log_info("Adding start_time filter: %ld", (long)start_time);
     }
-    
+
     if (end_time > 0) {
         strcat(sql, " AND start_time <= ?");
         log_info("Adding end_time filter: %ld", (long)end_time);
     }
-    
+
     if (stream_name) {
-        if (has_detection) {
-            strcat(sql, " AND r.stream_name = ?");
-        } else {
-            strcat(sql, " AND stream_name = ?");
-        }
+        strcat(sql, " AND stream_name = ?");
     }
     
     log_info("SQL query for get_recording_count: %s", sql);
@@ -497,57 +503,36 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
     
     // Build query based on filters
     char sql[1024];
-    
+
+    // Use trigger_type to filter detection-based recordings instead of JOINing with detections table
+    snprintf(sql, sizeof(sql),
+            "SELECT id, stream_name, file_path, start_time, end_time, "
+            "size_bytes, width, height, fps, codec, is_complete, trigger_type "
+            "FROM recordings WHERE is_complete = 1 AND end_time IS NOT NULL");
+
     if (has_detection) {
-        // Use a JOIN with the detections table to filter recordings with detections
-        snprintf(sql, sizeof(sql), 
-                "SELECT DISTINCT r.id, r.stream_name, r.file_path, r.start_time, r.end_time, "
-                "r.size_bytes, r.width, r.height, r.fps, r.codec, r.is_complete "
-                "FROM recordings r "
-                "INNER JOIN detections d ON r.stream_name = d.stream_name "
-                "WHERE d.timestamp BETWEEN r.start_time AND COALESCE(r.end_time, strftime('%%s', 'now')) "
-                "AND r.is_complete = 1 AND r.end_time IS NOT NULL");
-    } else {
-        // Simple query without detection filter
-        snprintf(sql, sizeof(sql), 
-                "SELECT id, stream_name, file_path, start_time, end_time, "
-                "size_bytes, width, height, fps, codec, is_complete "
-                "FROM recordings WHERE is_complete = 1 AND end_time IS NOT NULL");
+        // Filter by trigger_type = 'detection'
+        strcat(sql, " AND trigger_type = 'detection'");
+        log_info("Adding trigger_type filter for detection-based recordings");
     }
-    
+
     if (start_time > 0) {
-        if (has_detection) {
-            strcat(sql, " AND r.start_time >= ?");
-        } else {
-            strcat(sql, " AND start_time >= ?");
-        }
+        strcat(sql, " AND start_time >= ?");
         log_info("Adding start_time filter to paginated query: %ld", (long)start_time);
     }
-    
+
     if (end_time > 0) {
-        if (has_detection) {
-            strcat(sql, " AND r.start_time <= ?");
-        } else {
-            strcat(sql, " AND start_time <= ?");
-        }
+        strcat(sql, " AND start_time <= ?");
         log_info("Adding end_time filter to paginated query: %ld", (long)end_time);
     }
-    
+
     if (stream_name) {
-        if (has_detection) {
-            strcat(sql, " AND r.stream_name = ?");
-        } else {
-            strcat(sql, " AND stream_name = ?");
-        }
+        strcat(sql, " AND stream_name = ?");
     }
-    
+
     // Add ORDER BY clause with sanitized field and order
     char order_clause[64];
-    if (has_detection) {
-        snprintf(order_clause, sizeof(order_clause), " ORDER BY r.%s %s", safe_sort_field, safe_sort_order);
-    } else {
-        snprintf(order_clause, sizeof(order_clause), " ORDER BY %s %s", safe_sort_field, safe_sort_order);
-    }
+    snprintf(order_clause, sizeof(order_clause), " ORDER BY %s %s", safe_sort_field, safe_sort_order);
     strcat(sql, order_clause);
     
     // Add LIMIT and OFFSET for pagination
@@ -628,9 +613,17 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
             } else {
                 metadata[count].codec[0] = '\0';
             }
-            
+
             metadata[count].is_complete = sqlite3_column_int(stmt, 10) != 0;
-            
+
+            const char *trigger_type = (const char *)sqlite3_column_text(stmt, 11);
+            if (trigger_type) {
+                strncpy(metadata[count].trigger_type, trigger_type, sizeof(metadata[count].trigger_type) - 1);
+                metadata[count].trigger_type[sizeof(metadata[count].trigger_type) - 1] = '\0';
+            } else {
+                strncpy(metadata[count].trigger_type, "scheduled", sizeof(metadata[count].trigger_type) - 1);
+            }
+
             count++;
         }
     }

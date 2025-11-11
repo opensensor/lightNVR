@@ -55,13 +55,14 @@ static void on_segment_started_cb(void *user_ctx) {
         metadata.end_time = 0;
         metadata.size_bytes = 0;
         metadata.is_complete = false;
+        strncpy(metadata.trigger_type, thread_ctx->writer->trigger_type, sizeof(metadata.trigger_type) - 1);
 
         uint64_t recording_id = add_recording_metadata(&metadata);
         if (recording_id == 0) {
             log_error("Failed to add recording metadata at segment start for stream %s", stream_name);
         } else {
-            log_info("Added recording at segment start (ID: %llu) for file: %s",
-                     (unsigned long long)recording_id, thread_ctx->writer->output_path);
+            log_info("Added recording at segment start (ID: %llu, trigger_type: %s) for file: %s",
+                     (unsigned long long)recording_id, metadata.trigger_type, thread_ctx->writer->output_path);
             thread_ctx->writer->current_recording_id = recording_id;
         }
     }

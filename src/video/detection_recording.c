@@ -19,6 +19,7 @@
 #include "video/detection_stream.h"
 #include "video/detection_stream_thread.h"
 #include "database/database_manager.h"
+#include "database/db_recordings.h"
 #include "web/api_handlers_detection_results.h"
 
 // Define model types (same as in detection_integration.c)
@@ -30,17 +31,33 @@
 // Forward declaration of model type detection function
 extern const char* detect_model_type(const char *model_path);
 
+// Structure to hold HLS segment information for pre-detection buffer
+typedef struct {
+    char path[MAX_PATH_LENGTH];     // Full path to the segment file
+    time_t timestamp;                // When this segment was created
+    bool is_valid;                   // Whether this slot contains a valid segment
+} hls_segment_info_t;
+
+#define MAX_PRE_BUFFER_SEGMENTS 10  // Maximum number of segments to keep in buffer
+
 // Structure to track detection-based recording state
 typedef struct {
     char stream_name[MAX_STREAM_NAME];
     char model_path[MAX_PATH_LENGTH];
     detection_model_t model;
     float threshold;
-    int pre_buffer;
+    int pre_buffer;                  // Seconds of pre-detection buffer
     int post_buffer;
     time_t last_detection_time;
     bool recording_active;
     pthread_mutex_t mutex;
+
+    // HLS segment-based pre-detection buffer
+    hls_segment_info_t segment_buffer[MAX_PRE_BUFFER_SEGMENTS];
+    int buffer_head;                 // Write position in circular buffer
+    int buffer_count;                // Number of segments in buffer
+    bool buffer_enabled;             // Whether buffering is enabled
+    char buffer_dir[MAX_PATH_LENGTH]; // Directory for buffered segments
 } detection_recording_t;
 
 // Array to store detection recording states
@@ -56,11 +73,20 @@ void init_detection_recording_system(void) {
     for (int i = 0; i < MAX_STREAMS; i++) {
         memset(&detection_recordings[i], 0, sizeof(detection_recording_t));
         pthread_mutex_init(&detection_recordings[i].mutex, NULL);
+
+        // Initialize segment buffer
+        for (int j = 0; j < MAX_PRE_BUFFER_SEGMENTS; j++) {
+            detection_recordings[i].segment_buffer[j].is_valid = false;
+            detection_recordings[i].segment_buffer[j].path[0] = '\0';
+            detection_recordings[i].segment_buffer[j].timestamp = 0;
+        }
+        detection_recordings[i].buffer_head = 0;
+        detection_recordings[i].buffer_count = 0;
     }
 
     pthread_mutex_unlock(&detection_recordings_mutex);
 
-    log_info("Detection-based recording system initialized");
+    log_info("Detection-based recording system initialized with HLS segment buffering");
 }
 
 /**
@@ -71,6 +97,15 @@ void shutdown_detection_recording_system(void) {
 
     for (int i = 0; i < MAX_STREAMS; i++) {
         pthread_mutex_lock(&detection_recordings[i].mutex);
+
+        // Clean up buffered segments
+        for (int j = 0; j < MAX_PRE_BUFFER_SEGMENTS; j++) {
+            if (detection_recordings[i].segment_buffer[j].is_valid) {
+                // Delete the buffered segment file
+                unlink(detection_recordings[i].segment_buffer[j].path);
+                detection_recordings[i].segment_buffer[j].is_valid = false;
+            }
+        }
 
         if (detection_recordings[i].model) {
             unload_detection_model(detection_recordings[i].model);
@@ -84,6 +119,168 @@ void shutdown_detection_recording_system(void) {
     pthread_mutex_unlock(&detection_recordings_mutex);
 
     log_info("Detection-based recording system shutdown");
+}
+
+/**
+ * Add an HLS segment to the pre-detection buffer
+ * This maintains a circular buffer of the most recent segments
+ */
+static void add_segment_to_buffer(detection_recording_t *rec, const char *segment_path) {
+    if (!rec || !segment_path) {
+        return;
+    }
+
+    pthread_mutex_lock(&rec->mutex);
+
+    // If buffer is disabled or pre_buffer is 0, don't buffer
+    if (!rec->buffer_enabled || rec->pre_buffer <= 0) {
+        pthread_mutex_unlock(&rec->mutex);
+        return;
+    }
+
+    // Get the next slot in the circular buffer
+    int slot = rec->buffer_head;
+
+    // If this slot already has a segment, delete the old file
+    if (rec->segment_buffer[slot].is_valid) {
+        unlink(rec->segment_buffer[slot].path);
+        rec->buffer_count--;
+    }
+
+    // Copy the new segment to the buffer directory
+    char buffer_segment_path[MAX_PATH_LENGTH];
+    snprintf(buffer_segment_path, MAX_PATH_LENGTH, "%s/buffer_%d.ts",
+             rec->buffer_dir, slot);
+
+    // Copy the file
+    FILE *src = fopen(segment_path, "rb");
+    if (src) {
+        FILE *dst = fopen(buffer_segment_path, "wb");
+        if (dst) {
+            char buffer[8192];
+            size_t bytes;
+            while ((bytes = fread(buffer, 1, sizeof(buffer), src)) > 0) {
+                fwrite(buffer, 1, bytes, dst);
+            }
+            fclose(dst);
+
+            // Store segment info
+            strncpy(rec->segment_buffer[slot].path, buffer_segment_path, MAX_PATH_LENGTH - 1);
+            rec->segment_buffer[slot].path[MAX_PATH_LENGTH - 1] = '\0';
+            rec->segment_buffer[slot].timestamp = time(NULL);
+            rec->segment_buffer[slot].is_valid = true;
+            rec->buffer_count++;
+
+            log_debug("Added segment to buffer for stream %s: %s (slot %d, count %d)",
+                     rec->stream_name, buffer_segment_path, slot, rec->buffer_count);
+        }
+        fclose(src);
+    }
+
+    // Move head to next position
+    rec->buffer_head = (rec->buffer_head + 1) % MAX_PRE_BUFFER_SEGMENTS;
+
+    pthread_mutex_unlock(&rec->mutex);
+}
+
+/**
+ * Flush the segment buffer to the beginning of a recording
+ * Returns the path to a concatenated file containing all buffered segments
+ */
+static char* flush_segment_buffer(detection_recording_t *rec) {
+    if (!rec) {
+        return NULL;
+    }
+
+    pthread_mutex_lock(&rec->mutex);
+
+    if (rec->buffer_count == 0) {
+        pthread_mutex_unlock(&rec->mutex);
+        log_info("No buffered segments to flush for stream %s", rec->stream_name);
+        return NULL;
+    }
+
+    // Create output path for the pre-detection MP4 file
+    // Use the recordings directory structure
+    extern config_t g_config;
+    time_t now = time(NULL);
+    struct tm *tm_info = localtime(&now);
+
+    char date_dir[MAX_PATH_LENGTH];
+    snprintf(date_dir, MAX_PATH_LENGTH, "%s/mp4/%s/%04d/%02d/%02d",
+             g_config.storage_path, rec->stream_name,
+             tm_info->tm_year + 1900, tm_info->tm_mon + 1, tm_info->tm_mday);
+
+    // Create directory if it doesn't exist
+    char mkdir_cmd[MAX_PATH_LENGTH + 20];
+    snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p '%s'", date_dir);
+    system(mkdir_cmd);
+
+    // Create output MP4 file path with "predetection" prefix
+    static char concat_path[MAX_PATH_LENGTH];
+    char timestamp_str[32];
+    strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M%S", tm_info);
+    snprintf(concat_path, MAX_PATH_LENGTH, "%s/predetection_%s.mp4",
+             date_dir, timestamp_str);
+
+    // Create concat demuxer file list
+    char concat_list_path[MAX_PATH_LENGTH];
+    snprintf(concat_list_path, MAX_PATH_LENGTH, "%s/concat_list_%ld.txt",
+             rec->buffer_dir, (long)time(NULL));
+
+    FILE *concat_list = fopen(concat_list_path, "w");
+    if (!concat_list) {
+        pthread_mutex_unlock(&rec->mutex);
+        log_error("Failed to create concat list file for stream %s", rec->stream_name);
+        return NULL;
+    }
+
+    // Write all valid segments to the concat list in order (oldest to newest)
+    int start_idx = (rec->buffer_head - rec->buffer_count + MAX_PRE_BUFFER_SEGMENTS) % MAX_PRE_BUFFER_SEGMENTS;
+    for (int i = 0; i < rec->buffer_count; i++) {
+        int idx = (start_idx + i) % MAX_PRE_BUFFER_SEGMENTS;
+        if (rec->segment_buffer[idx].is_valid) {
+            fprintf(concat_list, "file '%s'\n", rec->segment_buffer[idx].path);
+        }
+    }
+    fclose(concat_list);
+
+    pthread_mutex_unlock(&rec->mutex);
+
+    // Use ffmpeg to concatenate the TS segments into an MP4 file with proper timestamp handling
+    // -f concat: Use concat demuxer
+    // -safe 0: Allow absolute paths
+    // -fflags +genpts: Generate presentation timestamps to fix discontinuities
+    // -c copy: Copy streams without re-encoding
+    // -movflags +faststart: Move moov atom to beginning for better compatibility
+    // -avoid_negative_ts make_zero: Shift timestamps to start at 0
+    char cmd[MAX_PATH_LENGTH * 3];
+    snprintf(cmd, sizeof(cmd),
+             "ffmpeg -f concat -safe 0 -fflags +genpts -i '%s' "
+             "-c copy -movflags +faststart -avoid_negative_ts make_zero "
+             "'%s' -y 2>&1 | grep -v 'deprecated pixel format'",
+             concat_list_path, concat_path);
+
+    int ret = system(cmd);
+    unlink(concat_list_path);
+
+    if (ret != 0) {
+        log_error("Failed to concatenate buffered segments for stream %s (exit code: %d)",
+                 rec->stream_name, ret);
+        return NULL;
+    }
+
+    // Verify the output file was created
+    struct stat st;
+    if (stat(concat_path, &st) != 0 || st.st_size == 0) {
+        log_error("Pre-detection MP4 file was not created or is empty: %s", concat_path);
+        return NULL;
+    }
+
+    log_info("Flushed %d buffered segments for stream %s to MP4: %s (%ld bytes)",
+             rec->buffer_count, rec->stream_name, concat_path, (long)st.st_size);
+
+    return concat_path;
 }
 
 /**
@@ -210,6 +407,26 @@ int start_detection_recording(const char *stream_name, const char *model_path, f
     detection_recordings[slot].post_buffer = post_buffer;
     detection_recordings[slot].last_detection_time = 0;
     detection_recordings[slot].recording_active = false;
+
+    // Enable buffering if pre_buffer > 0
+    if (pre_buffer > 0) {
+        detection_recordings[slot].buffer_enabled = true;
+
+        // Create buffer directory
+        snprintf(detection_recordings[slot].buffer_dir, MAX_PATH_LENGTH,
+                 "%s/detection_buffer/%s", g_config.storage_path, stream_name);
+
+        // Create directory if it doesn't exist
+        char mkdir_cmd[MAX_PATH_LENGTH + 20];
+        snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p '%s'", detection_recordings[slot].buffer_dir);
+        system(mkdir_cmd);
+
+        log_info("Enabled pre-detection buffering for stream %s (%d seconds, buffer dir: %s)",
+                 stream_name, pre_buffer, detection_recordings[slot].buffer_dir);
+    } else {
+        detection_recordings[slot].buffer_enabled = false;
+        log_info("Pre-detection buffering disabled for stream %s (pre_buffer = 0)", stream_name);
+    }
 
     pthread_mutex_unlock(&detection_recordings[slot].mutex);
     pthread_mutex_unlock(&detection_recordings_mutex);
@@ -529,14 +746,72 @@ int process_frame_for_recording(const char *stream_name, const unsigned char *fr
             //  Get the pre-buffer size from the stream config
             int pre_buffer = config.pre_detection_buffer;
 
-            // Start MP4 recording directly, using the same file rotation settings as regular recordings
-            int mp4_result = start_mp4_recording(stream_name);
+            // Flush pre-detection buffer if enabled
+            char *buffer_file = NULL;
+            pthread_mutex_lock(&detection_recordings_mutex);
+            for (int i = 0; i < MAX_STREAMS; i++) {
+                if (detection_recordings[i].stream_name[0] != '\0' &&
+                    strcmp(detection_recordings[i].stream_name, stream_name) == 0) {
+                    if (detection_recordings[i].buffer_enabled && detection_recordings[i].buffer_count > 0) {
+                        buffer_file = flush_segment_buffer(&detection_recordings[i]);
+                        if (buffer_file) {
+                            log_info("Flushed pre-detection buffer for stream %s: %s",
+                                     stream_name, buffer_file);
+                        }
+                    }
+                    break;
+                }
+            }
+            pthread_mutex_unlock(&detection_recordings_mutex);
+
+            // If we have a buffer file, save it as a separate pre-detection recording
+            if (buffer_file) {
+                // Get file size
+                struct stat st;
+                if (stat(buffer_file, &st) == 0) {
+                    // Calculate duration (estimate based on typical HLS segment duration)
+                    // Assume 2-6 second segments, use buffer_count * 4 as estimate
+                    int estimated_duration = 0;
+                    pthread_mutex_lock(&detection_recordings_mutex);
+                    for (int i = 0; i < MAX_STREAMS; i++) {
+                        if (detection_recordings[i].stream_name[0] != '\0' &&
+                            strcmp(detection_recordings[i].stream_name, stream_name) == 0) {
+                            estimated_duration = detection_recordings[i].buffer_count * 4; // 4 seconds per segment estimate
+                            break;
+                        }
+                    }
+                    pthread_mutex_unlock(&detection_recordings_mutex);
+
+                    // Save to database as a detection recording
+                    recording_metadata_t metadata;
+                    memset(&metadata, 0, sizeof(recording_metadata_t));
+                    strncpy(metadata.stream_name, stream_name, sizeof(metadata.stream_name) - 1);
+                    strncpy(metadata.file_path, buffer_file, sizeof(metadata.file_path) - 1);
+                    metadata.start_time = time(NULL) - estimated_duration; // Approximate start time
+                    metadata.end_time = time(NULL);
+                    metadata.size_bytes = st.st_size;
+                    metadata.is_complete = true; // Pre-detection buffer is already complete
+                    strncpy(metadata.trigger_type, "detection", sizeof(metadata.trigger_type) - 1);
+                    // Leave width, height, fps, codec as 0/empty - they're not critical for playback
+
+                    uint64_t recording_id = add_recording_metadata(&metadata);
+                    if (recording_id > 0) {
+                        log_info("Saved pre-detection buffer as recording ID %llu: %s (%d seconds, %ld bytes)",
+                                 (unsigned long long)recording_id, buffer_file, estimated_duration, (long)st.st_size);
+                    } else {
+                        log_error("Failed to save pre-detection buffer to database: %s", buffer_file);
+                    }
+                } else {
+                    log_error("Failed to stat pre-detection buffer file: %s", buffer_file);
+                }
+            }
+
+            // Start MP4 recording directly with trigger_type='detection'
+            int mp4_result = start_mp4_recording_with_trigger(stream_name, "detection");
             if (mp4_result == 0) {
-                log_info("Started MP4 recording for detection event on stream %s with pre-buffer of %d seconds",
+                log_info("Started MP4 recording for detection event on stream %s with pre-buffer of %d seconds (trigger_type: detection)",
                          stream_name, pre_buffer);
 
-                // Pre-buffering is no longer used in the new architecture
-                // Each recording thread manages its own RTSP connection directly
                 log_info("Started MP4 recording for detection event on stream %s", stream_name);
 
                 // Update the recording_active flag in the detection_recordings array
@@ -562,8 +837,96 @@ int process_frame_for_recording(const char *stream_name, const unsigned char *fr
         // Check if we're currently recording
         int recording_state = get_recording_state(stream_name);
         if (recording_state > 0) {
-            // If recording and no recent detections, stop recording
-            stop_recording(stream_name);
+            // If recording and no recent detections, stop MP4 recording
+            log_info("No recent detections for stream %s, stopping detection-based recording", stream_name);
+            stop_mp4_recording(stream_name);
+
+            // Update the recording_active flag in the detection_recordings array
+            pthread_mutex_lock(&detection_recordings_mutex);
+            for (int i = 0; i < MAX_STREAMS; i++) {
+                if (detection_recordings[i].stream_name[0] != '\0' &&
+                    strcmp(detection_recordings[i].stream_name, stream_name) == 0) {
+                    pthread_mutex_lock(&detection_recordings[i].mutex);
+                    detection_recordings[i].recording_active = false;
+                    pthread_mutex_unlock(&detection_recordings[i].mutex);
+                    break;
+                }
+            }
+            pthread_mutex_unlock(&detection_recordings_mutex);
+        }
+    }
+
+    return 0;
+}
+
+/**
+ * Check if active detection recordings should be stopped
+ * This is called periodically to ensure recordings don't run forever
+ *
+ * @param stream_name The name of the stream
+ * @return 0 on success, -1 on error
+ */
+int check_detection_recording_timeout(const char *stream_name) {
+    if (!stream_name) {
+        return -1;
+    }
+
+    // Get the stream configuration
+    stream_handle_t stream = get_stream_by_name(stream_name);
+    if (!stream) {
+        return -1;
+    }
+
+    stream_config_t config;
+    if (get_stream_config(stream, &config) != 0) {
+        return -1;
+    }
+
+    // Only check if detection-based recording is enabled
+    if (!config.detection_based_recording) {
+        return 0;
+    }
+
+    // Query the database for recent detections
+    detection_result_t db_result;
+    int db_count = get_detections_from_db(stream_name, &db_result, MAX_DETECTION_AGE);
+
+    if (db_count < 0) {
+        // Database error, don't stop recording
+        return -1;
+    }
+
+    // Check if we have any recent detections above threshold
+    bool has_recent_detections = false;
+    if (db_count > 0) {
+        for (int i = 0; i < db_result.count; i++) {
+            if (db_result.detections[i].confidence >= config.detection_threshold) {
+                has_recent_detections = true;
+                break;
+            }
+        }
+    }
+
+    // If no recent detections and we're recording, stop the recording
+    if (!has_recent_detections) {
+        int recording_state = get_recording_state(stream_name);
+        if (recording_state > 0) {
+            log_info("No recent detections for stream %s in last %d seconds, stopping recording",
+                    stream_name, MAX_DETECTION_AGE);
+            stop_mp4_recording(stream_name);
+
+            // Update the recording_active flag
+            pthread_mutex_lock(&detection_recordings_mutex);
+            for (int i = 0; i < MAX_STREAMS; i++) {
+                if (detection_recordings[i].stream_name[0] != '\0' &&
+                    strcmp(detection_recordings[i].stream_name, stream_name) == 0) {
+                    pthread_mutex_lock(&detection_recordings[i].mutex);
+                    detection_recordings[i].recording_active = false;
+                    pthread_mutex_unlock(&detection_recordings[i].mutex);
+                    break;
+                }
+            }
+            pthread_mutex_unlock(&detection_recordings_mutex);
         }
     }
 
@@ -801,6 +1164,17 @@ int monitor_hls_segments_for_detection(const char *stream_name) {
         // Update the last processed segment
         strncpy(last_processed_segment[stream_idx], newest_segment, MAX_PATH_LENGTH - 1);
         last_processed_segment[stream_idx][MAX_PATH_LENGTH - 1] = '\0';
+
+        // Add this segment to the pre-detection buffer
+        pthread_mutex_lock(&detection_recordings_mutex);
+        for (int i = 0; i < MAX_STREAMS; i++) {
+            if (detection_recordings[i].stream_name[0] != '\0' &&
+                strcmp(detection_recordings[i].stream_name, stream_name) == 0) {
+                add_segment_to_buffer(&detection_recordings[i], newest_segment);
+                break;
+            }
+        }
+        pthread_mutex_unlock(&detection_recordings_mutex);
 
         pthread_mutex_unlock(&last_processed_mutex);
 

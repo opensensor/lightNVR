@@ -144,7 +144,13 @@ static void *mp4_recording_thread(void *arg) {
         return NULL;
     }
 
-    log_info("Created MP4 writer for %s at %s", stream_name, ctx->output_path);
+    // Set trigger type on the writer
+    if (ctx->trigger_type[0] != '\0') {
+        strncpy(ctx->mp4_writer->trigger_type, ctx->trigger_type, sizeof(ctx->mp4_writer->trigger_type) - 1);
+        ctx->mp4_writer->trigger_type[sizeof(ctx->mp4_writer->trigger_type) - 1] = '\0';
+    }
+
+    log_info("Created MP4 writer for %s at %s (trigger_type: %s)", stream_name, ctx->output_path, ctx->mp4_writer->trigger_type);
 
     // Set segment duration in the MP4 writer
     int segment_duration = ctx->config.segment_duration > 0 ? ctx->config.segment_duration : 30;
@@ -386,6 +392,7 @@ int start_mp4_recording(const char *stream_name) {
     memset(ctx, 0, sizeof(mp4_recording_ctx_t));
     memcpy(&ctx->config, &config, sizeof(stream_config_t));
     ctx->running = 1;
+    strncpy(ctx->trigger_type, "scheduled", sizeof(ctx->trigger_type) - 1);
 
     // Create output paths
     config_t *global_config = get_streaming_config();
@@ -528,6 +535,7 @@ int start_mp4_recording_with_url(const char *stream_name, const char *url) {
     ctx->config.url[MAX_PATH_LENGTH - 1] = '\0';
 
     ctx->running = 1;
+    strncpy(ctx->trigger_type, "scheduled", sizeof(ctx->trigger_type) - 1);
 
     // Create output paths
     config_t *global_config = get_streaming_config();
@@ -679,5 +687,251 @@ int stop_mp4_recording(const char *stream_name) {
     }
 
     log_info("Stopped MP4 recording for stream %s", stream_name);
+    return 0;
+}
+
+/**
+ * Start MP4 recording for a stream with a specific trigger type
+ */
+int start_mp4_recording_with_trigger(const char *stream_name, const char *trigger_type) {
+    // Check if shutdown is in progress
+    if (shutdown_in_progress) {
+        log_warn("Cannot start MP4 recording for %s during shutdown", stream_name);
+        return -1;
+    }
+
+    stream_handle_t stream = get_stream_by_name(stream_name);
+    if (!stream) {
+        log_error("Stream %s not found for MP4 recording", stream_name);
+        return -1;
+    }
+
+    stream_config_t config;
+    if (get_stream_config(stream, &config) != 0) {
+        log_error("Failed to get config for stream %s for MP4 recording", stream_name);
+        return -1;
+    }
+
+    // Check if already running
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (recording_contexts[i] && strcmp(recording_contexts[i]->config.name, stream_name) == 0) {
+            log_info("MP4 recording for stream %s already running", stream_name);
+            return 0;  // Already running
+        }
+    }
+
+    log_info("Using standalone recording thread for stream %s with trigger_type: %s", stream_name, trigger_type);
+
+    // Find empty slot
+    int slot = -1;
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (!recording_contexts[i]) {
+            slot = i;
+            break;
+        }
+    }
+
+    if (slot == -1) {
+        log_error("No slot available for new MP4 recording");
+        return -1;
+    }
+
+    // Create context
+    mp4_recording_ctx_t *ctx = malloc(sizeof(mp4_recording_ctx_t));
+    if (!ctx) {
+        log_error("Memory allocation failed for MP4 recording context");
+        return -1;
+    }
+
+    memset(ctx, 0, sizeof(mp4_recording_ctx_t));
+    memcpy(&ctx->config, &config, sizeof(stream_config_t));
+    ctx->running = 1;
+
+    // Set trigger type
+    if (trigger_type) {
+        strncpy(ctx->trigger_type, trigger_type, sizeof(ctx->trigger_type) - 1);
+        ctx->trigger_type[sizeof(ctx->trigger_type) - 1] = '\0';
+    } else {
+        strncpy(ctx->trigger_type, "scheduled", sizeof(ctx->trigger_type) - 1);
+    }
+
+    // Create output paths
+    config_t *global_config = get_streaming_config();
+
+    // Create timestamp for MP4 filename
+    char timestamp_str[32];
+    time_t now = time(NULL);
+    struct tm *tm_info = localtime(&now);
+    strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M%S", tm_info);
+
+    // Create MP4 directory path
+    char mp4_dir[MAX_PATH_LENGTH];
+    if (global_config->record_mp4_directly && global_config->mp4_storage_path[0] != '\0') {
+        snprintf(mp4_dir, MAX_PATH_LENGTH, "%s/%s",
+                global_config->mp4_storage_path, stream_name);
+    } else {
+        snprintf(mp4_dir, MAX_PATH_LENGTH, "%s/mp4/%s",
+                global_config->storage_path, stream_name);
+    }
+
+    // Create MP4 directory if it doesn't exist
+    char dir_cmd[MAX_PATH_LENGTH * 2];
+    snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s", mp4_dir);
+    int ret = system(dir_cmd);
+    if (ret != 0) {
+        log_error("Failed to create MP4 directory: %s (return code: %d)", mp4_dir, ret);
+        free(ctx);
+        return -1;
+    }
+
+    // Set full permissions for MP4 directory
+    snprintf(dir_cmd, sizeof(dir_cmd), "chmod -R 777 %s", mp4_dir);
+    int ret_chmod = system(dir_cmd);
+    if (ret_chmod != 0) {
+        log_warn("Failed to set permissions on MP4 directory: %s (return code: %d)", mp4_dir, ret_chmod);
+    }
+
+    // Full path for the MP4 file
+    snprintf(ctx->output_path, MAX_PATH_LENGTH, "%s/recording_%s.mp4",
+             mp4_dir, timestamp_str);
+
+    // Start recording thread
+    if (pthread_create(&ctx->thread, NULL, mp4_recording_thread, ctx) != 0) {
+        free(ctx);
+        log_error("Failed to create MP4 recording thread for %s", stream_name);
+        return -1;
+    }
+
+    // Store context
+    recording_contexts[slot] = ctx;
+
+    log_info("Started MP4 recording for %s in slot %d with trigger_type: %s", stream_name, slot, trigger_type);
+
+    return 0;
+}
+
+/**
+ * Start MP4 recording for a stream with a specific URL and trigger type
+ */
+int start_mp4_recording_with_url_and_trigger(const char *stream_name, const char *url, const char *trigger_type) {
+    // Check if shutdown is in progress
+    if (shutdown_in_progress) {
+        log_warn("Cannot start MP4 recording for %s during shutdown", stream_name);
+        return -1;
+    }
+
+    stream_handle_t stream = get_stream_by_name(stream_name);
+    if (!stream) {
+        log_error("Stream %s not found for MP4 recording", stream_name);
+        return -1;
+    }
+
+    stream_config_t config;
+    if (get_stream_config(stream, &config) != 0) {
+        log_error("Failed to get config for stream %s for MP4 recording", stream_name);
+        return -1;
+    }
+
+    // Override the URL with the provided one
+    strncpy(config.url, url, sizeof(config.url) - 1);
+    config.url[sizeof(config.url) - 1] = '\0';
+
+    // Check if already running
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (recording_contexts[i] && strcmp(recording_contexts[i]->config.name, stream_name) == 0) {
+            log_info("MP4 recording for stream %s already running", stream_name);
+            return 0;  // Already running
+        }
+    }
+
+    log_info("Using standalone recording thread for stream %s with URL %s and trigger_type: %s",
+             stream_name, url, trigger_type);
+
+    // Find empty slot
+    int slot = -1;
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (!recording_contexts[i]) {
+            slot = i;
+            break;
+        }
+    }
+
+    if (slot == -1) {
+        log_error("No slot available for new MP4 recording");
+        return -1;
+    }
+
+    // Create context
+    mp4_recording_ctx_t *ctx = malloc(sizeof(mp4_recording_ctx_t));
+    if (!ctx) {
+        log_error("Memory allocation failed for MP4 recording context");
+        return -1;
+    }
+
+    memset(ctx, 0, sizeof(mp4_recording_ctx_t));
+    memcpy(&ctx->config, &config, sizeof(stream_config_t));
+    ctx->running = 1;
+
+    // Set trigger type
+    if (trigger_type) {
+        strncpy(ctx->trigger_type, trigger_type, sizeof(ctx->trigger_type) - 1);
+        ctx->trigger_type[sizeof(ctx->trigger_type) - 1] = '\0';
+    } else {
+        strncpy(ctx->trigger_type, "scheduled", sizeof(ctx->trigger_type) - 1);
+    }
+
+    // Create output paths
+    config_t *global_config = get_streaming_config();
+
+    // Create timestamp for MP4 filename
+    char timestamp_str[32];
+    time_t now = time(NULL);
+    struct tm *tm_info = localtime(&now);
+    strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M%S", tm_info);
+
+    // Create MP4 directory path
+    char mp4_dir[MAX_PATH_LENGTH];
+    if (global_config->record_mp4_directly && global_config->mp4_storage_path[0] != '\0') {
+        snprintf(mp4_dir, MAX_PATH_LENGTH, "%s/%s",
+                global_config->mp4_storage_path, stream_name);
+    } else {
+        snprintf(mp4_dir, MAX_PATH_LENGTH, "%s/mp4/%s",
+                global_config->storage_path, stream_name);
+    }
+
+    // Create MP4 directory if it doesn't exist
+    char dir_cmd[MAX_PATH_LENGTH * 2];
+    snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s", mp4_dir);
+    int ret = system(dir_cmd);
+    if (ret != 0) {
+        log_error("Failed to create MP4 directory: %s (return code: %d)", mp4_dir, ret);
+        free(ctx);
+        return -1;
+    }
+
+    // Set full permissions for MP4 directory
+    snprintf(dir_cmd, sizeof(dir_cmd), "chmod -R 777 %s", mp4_dir);
+    int ret_chmod = system(dir_cmd);
+    if (ret_chmod != 0) {
+        log_warn("Failed to set permissions on MP4 directory: %s (return code: %d)", mp4_dir, ret_chmod);
+    }
+
+    // Full path for the MP4 file
+    snprintf(ctx->output_path, MAX_PATH_LENGTH, "%s/recording_%s.mp4",
+             mp4_dir, timestamp_str);
+
+    // Start recording thread
+    if (pthread_create(&ctx->thread, NULL, mp4_recording_thread, ctx) != 0) {
+        free(ctx);
+        log_error("Failed to create MP4 recording thread for %s", stream_name);
+        return -1;
+    }
+
+    // Store context
+    recording_contexts[slot] = ctx;
+
+    log_info("Started MP4 recording for %s in slot %d with URL %s and trigger_type: %s",
+             stream_name, slot, url, trigger_type);
+
     return 0;
 }

@@ -325,8 +325,8 @@ static int start_motion_recording_internal(motion_recording_context_t *ctx) {
         }
     }
 
-    // Start MP4 recording using existing infrastructure
-    int result = start_mp4_recording(ctx->stream_name);
+    // Start MP4 recording using existing infrastructure with trigger_type='motion'
+    int result = start_mp4_recording_with_trigger(ctx->stream_name, "motion");
     if (result != 0) {
         log_error("Failed to start MP4 recording for stream: %s", ctx->stream_name);
         pthread_mutex_unlock(&ctx->mutex);

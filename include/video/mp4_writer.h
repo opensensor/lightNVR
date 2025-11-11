@@ -51,6 +51,9 @@ struct mp4_writer {
     int is_rotating;          // Flag indicating if rotation is in progress
     char output_dir[MAX_PATH_LENGTH]; // Directory where MP4 files are stored
 
+    // Recording trigger type
+    char trigger_type[16];    // 'scheduled', 'detection', 'motion', 'manual'
+
     // RTSP thread context
     mp4_writer_thread_t *thread_ctx;  // Changed from void* to proper type
 

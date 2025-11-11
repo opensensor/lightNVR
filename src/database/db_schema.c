@@ -16,7 +16,7 @@
 #include "core/logger.h"
 
 // Current schema version - increment this when adding new migrations
-#define CURRENT_SCHEMA_VERSION 9
+#define CURRENT_SCHEMA_VERSION 10
 
 // Migration function type
 typedef int (*migration_func_t)(void);
@@ -30,6 +30,7 @@ static int migration_v5_to_v6(void);
 static int migration_v6_to_v7(void);
 static int migration_v7_to_v8(void);
 static int migration_v8_to_v9(void);
+static int migration_v9_to_v10(void);
 
 // Array of migration functions
 static migration_func_t migrations[] = {
@@ -41,7 +42,8 @@ static migration_func_t migrations[] = {
     migration_v5_to_v6, // v5->v6
     migration_v6_to_v7, // v6->v7
     migration_v7_to_v8, // v7->v8
-    migration_v8_to_v9  // v8->v9
+    migration_v8_to_v9, // v8->v9
+    migration_v9_to_v10 // v9->v10
 };
 
 /**
@@ -822,5 +824,28 @@ static int migration_v8_to_v9(void) {
     }
 
     log_info("Completed migration v8 to v9 successfully");
+    return 0;
+}
+
+/**
+ * Migration from version 9 to 10
+ * - Add trigger_type column to recordings table
+ */
+static int migration_v9_to_v10(void) {
+    log_info("Running migration from v9 to v10: Adding trigger_type column to recordings table");
+
+    int rc = 0;
+
+    // Add trigger_type column to recordings table
+    // Values: 'scheduled', 'detection', 'motion', 'manual'
+    log_info("Adding trigger_type column to recordings table");
+    rc |= add_column_if_not_exists("recordings", "trigger_type", "TEXT DEFAULT 'scheduled'");
+
+    if (rc != 0) {
+        log_error("Failed to add trigger_type column to recordings table");
+        return -1;
+    }
+
+    log_info("Completed migration v9 to v10 successfully");
     return 0;
 }

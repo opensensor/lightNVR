@@ -18,6 +18,7 @@ typedef struct {
     int fps;
     char codec[16];
     bool is_complete;
+    char trigger_type[16];  // 'scheduled', 'detection', 'motion', 'manual'
 } recording_metadata_t;
 
 /**

@@ -97,8 +97,12 @@ if [ "$SKIP_INSTALL" = false ]; then
   echo -e "${YELLOW}Installing dependencies...${NC}"
   if [ ! -d "node_modules/playwright" ]; then
     npm install --save-dev playwright
-    npx playwright install chromium
   fi
+
+  # Always ensure Playwright browsers are installed (handles sudo case)
+  echo -e "${YELLOW}Ensuring Playwright browsers are installed...${NC}"
+  npx playwright install chromium
+
   echo -e "${GREEN}✓ Dependencies installed${NC}"
   echo ""
 fi

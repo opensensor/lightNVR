@@ -292,10 +292,10 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         out_audio_stream->time_base = input_ctx->streams[audio_stream_idx]->time_base;
     }
 
-    // CRITICAL FIX: Disable faststart to prevent segmentation faults
-    // The faststart option causes a second pass that moves the moov atom to the beginning of the file
-    // This second pass is causing segmentation faults during shutdown
-    av_dict_set(&out_opts, "movflags", "empty_moov", 0);
+    // Use faststart to move moov atom to beginning for better compatibility
+    // This creates standard MP4 files that play in all applications
+    // The + prefix adds to existing flags rather than replacing them
+    av_dict_set(&out_opts, "movflags", "+faststart", 0);
 
     // CRITICAL FIX: Validate output_file parameter before attempting to open
     if (!output_file || output_file[0] == '\0') {

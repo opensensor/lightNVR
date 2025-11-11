@@ -54,6 +54,7 @@ mp4_writer_t *mp4_writer_create(const char *output_path, const char *stream_name
     writer->last_packet_time = 0;  // Initialize to 0 to indicate no packets written yet
     writer->has_audio = 1;         // Initialize to 1 to enable audio by default
     writer->current_recording_id = 0; // Initialize to 0 to indicate no recording ID yet
+    strncpy(writer->trigger_type, "scheduled", sizeof(writer->trigger_type) - 1); // Default to scheduled
 
     // Initialize audio state
     writer->audio.stream_idx = -1; // Initialize to -1 to indicate no audio stream

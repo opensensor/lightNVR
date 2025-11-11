@@ -933,6 +933,7 @@ static void *stream_detection_thread_func(void *arg) {
     time_t last_segment_check = 0;
     time_t last_model_retry = 0;
     time_t last_log_time = 0;
+    time_t last_recording_check = 0;
     time_t startup_time = time(NULL);
     int consecutive_empty_checks = 0;
     int consecutive_errors = 0;
@@ -974,6 +975,13 @@ static void *stream_detection_thread_func(void *arg) {
         }
 
         time_t current_time = time(NULL);
+
+        // CRITICAL: Check if active recordings should be stopped (every 5 seconds)
+        if (current_time - last_recording_check >= 5) {
+            extern int check_detection_recording_timeout(const char *stream_name);
+            check_detection_recording_timeout(thread->stream_name);
+            last_recording_check = current_time;
+        }
 
         // Log status periodically - always use log_info to ensure visibility
         if (current_time - last_log_time > 10) { // Log every 10 seconds

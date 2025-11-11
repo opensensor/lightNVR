@@ -64,9 +64,18 @@ int process_frame_for_recording(const char *stream_name, const unsigned char *fr
 int get_detection_recording_state(const char *stream_name, bool *recording_active);
 
 /**
+ * Check if active detection recordings should be stopped
+ * This is called periodically to ensure recordings don't run forever
+ *
+ * @param stream_name The name of the stream
+ * @return 0 on success, -1 on error
+ */
+int check_detection_recording_timeout(const char *stream_name);
+
+/**
  * Monitor HLS segments for a stream and submit them to the detection thread pool
  * This function is called periodically to check for new HLS segments
- * 
+ *
  * @param stream_name The name of the stream
  * @return 0 on success, -1 on error
  */

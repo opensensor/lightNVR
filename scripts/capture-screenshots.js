@@ -106,28 +106,39 @@ async function setTheme(page, theme, darkMode = false) {
 
   try {
     // Navigate to settings
-    await page.goto(`${config.url}/settings.html`, { waitUntil: 'networkidle', timeout: 10000 });
-    await sleep(2000); // Wait for Preact components to render
+    await page.goto(`${config.url}/settings.html`, { waitUntil: 'domcontentloaded', timeout: 10000 });
+    await sleep(3000); // Wait for Preact components to render
 
     // Try to set dark mode (optional, may not exist)
     try {
-      // Find the dark mode toggle button (it's a toggle switch, not text button)
-      const darkModeSection = await page.locator('div').filter({ hasText: /Dark Mode/i }).first();
-      await darkModeSection.waitFor({ timeout: 5000 });
+      // Wait for the Appearance section to load
+      await page.waitForSelector('h3:has-text("Appearance")', { timeout: 5000 });
+      console.log('  Found Appearance section');
 
-      // Get the toggle button within the dark mode section
-      const toggleButton = await darkModeSection.locator('button').first();
+      // Find the dark mode card (has border and rounded corners)
+      const darkModeCard = await page.locator('div.bg-card.rounded-lg.border').filter({ hasText: /Dark Mode/i }).first();
+      await darkModeCard.waitFor({ timeout: 5000 });
+      console.log('  Found Dark Mode card');
+
+      // Get the toggle button within the dark mode card (it's a toggle switch)
+      // The button has specific styling for the toggle switch
+      const toggleButton = await darkModeCard.locator('button.relative.inline-flex').first();
+      await toggleButton.waitFor({ timeout: 3000 });
 
       // Check current state by looking at the description text
-      const descText = await darkModeSection.locator('p').textContent();
+      const descText = await darkModeCard.locator('p.text-sm').first().textContent();
       const isDark = descText.includes('Switch to light mode');
+      console.log(`  Current mode: ${isDark ? 'dark' : 'light'}, target: ${darkMode ? 'dark' : 'light'}`);
 
       if (darkMode !== isDark) {
+        console.log('  Toggling dark mode...');
         await toggleButton.click();
         await sleep(1000);
+      } else {
+        console.log('  Dark mode already set correctly');
       }
     } catch (e) {
-      console.log('  Dark mode toggle not found, skipping');
+      console.log(`  Dark mode toggle not found: ${e.message}`);
     }
 
     // Try to set theme (optional, may not exist)
@@ -144,12 +155,16 @@ async function setTheme(page, theme, darkMode = false) {
       };
 
       const themeName = themeNames[theme] || theme;
+      console.log(`  Looking for theme: ${themeName}`);
+
       const themeButton = await page.locator('button').filter({ hasText: themeName }).first();
       await themeButton.waitFor({ timeout: 5000 });
+      console.log('  Found theme button, clicking...');
       await themeButton.click();
       await sleep(1000);
+      console.log(`  ✓ Theme "${themeName}" applied`);
     } catch (e) {
-      console.log(`  Theme button for "${theme}" not found, skipping`);
+      console.log(`  Theme button for "${theme}" not found: ${e.message}`);
     }
 
     console.log('Theme settings applied');
@@ -181,10 +196,117 @@ async function captureScreenshot(page, name, options = {}) {
 async function captureLiveStreams(page) {
   console.log('\n=== Capturing Live Streams ===');
   try {
-    await page.goto(`${config.url}/index.html`, { waitUntil: 'networkidle', timeout: 10000 });
-    await sleep(2000); // Wait for streams to load
+    // Don't wait for networkidle - streams continuously load data
+    await page.goto(`${config.url}/index.html`, { waitUntil: 'domcontentloaded', timeout: 10000 });
 
-    await captureScreenshot(page, 'live-streams', { delay: 2000 });
+    // Wait for streams to load and start playing
+    console.log('  Waiting for video streams to load...');
+    await sleep(5000); // Give more time for initial page load
+
+    // Try to wait for video elements to be present
+    try {
+      await page.waitForSelector('video, canvas, img[alt*="stream"]', { timeout: 5000 });
+      console.log('  Video elements detected');
+
+      // Wait for actual video frames to be rendered (check if video is actually playing)
+      console.log('  Waiting for WebRTC streams to connect and display frames...');
+
+      // Try to ensure videos are playing (in case autoplay is blocked)
+      await page.evaluate(() => {
+        const videos = document.querySelectorAll('video');
+        videos.forEach(v => {
+          if (v.paused) {
+            v.play().catch(e => console.log('Play failed:', e));
+          }
+        });
+      });
+
+      // WebRTC can take 20-60 seconds to establish connection
+      // Check periodically for video to start playing
+      console.log('  Waiting for WebRTC streams to connect (checking every 5s)...');
+      let maxAttempts = 12; // 12 attempts * 5 seconds = 60 seconds max
+      let attempt = 0;
+      let videosPlaying = { playing: 0, total: 0 };
+
+      while (attempt < maxAttempts) {
+        await sleep(5000); // Wait 5 seconds between checks
+        attempt++;
+
+        videosPlaying = await page.evaluate(() => {
+          const videos = document.querySelectorAll('video');
+          let playingCount = 0;
+          videos.forEach(v => {
+            if (v.videoWidth > 0 && v.videoHeight > 0 && v.readyState >= 2) {
+              playingCount++;
+            }
+          });
+          return { total: videos.length, playing: playingCount };
+        });
+
+        console.log(`  Attempt ${attempt}/${maxAttempts}: ${videosPlaying.playing}/${videosPlaying.total} videos playing`);
+
+        // If at least one video is playing, wait a bit more for others and break
+        if (videosPlaying.playing > 0) {
+          console.log('  At least one video playing, waiting for others...');
+          await sleep(10000); // Wait 10 more seconds for other streams
+          break;
+        }
+      }
+
+      if (videosPlaying.playing === 0) {
+        console.log('  ⚠ Warning: No videos playing after 60 seconds, capturing anyway');
+        console.log('  (WebRTC may have failed - check server logs)');
+      } else {
+        console.log(`  ✓ ${videosPlaying.playing} video(s) playing successfully`);
+        await sleep(3000); // Final wait for stability
+      }
+    } catch (e) {
+      console.log(`  Error checking video status: ${e.message}`);
+      await sleep(10000); // Fallback wait
+    }
+
+    await captureScreenshot(page, 'live-streams', { delay: 1000 });
+
+    // Also capture HLS view if available
+    try {
+      console.log('  Checking for HLS view...');
+      await page.goto(`${config.url}/hls.html`, { waitUntil: 'domcontentloaded', timeout: 10000 });
+      await sleep(3000);
+
+      // Wait for HLS video to load
+      await page.waitForSelector('video', { timeout: 5000 });
+      console.log('  HLS video elements detected');
+
+      // Wait for HLS video to actually have content
+      console.log('  Waiting for HLS streams to buffer and play...');
+      await sleep(12000); // 12 seconds for HLS to buffer
+
+      // Check if videos are playing
+      const hlsVideosPlaying = await page.evaluate(() => {
+        const videos = document.querySelectorAll('video');
+        let playingCount = 0;
+        videos.forEach(v => {
+          if (v.videoWidth > 0 && v.videoHeight > 0 && !v.paused) {
+            playingCount++;
+          }
+        });
+        return { total: videos.length, playing: playingCount };
+      });
+
+      console.log(`  Found ${hlsVideosPlaying.playing}/${hlsVideosPlaying.total} HLS videos playing`);
+
+      if (hlsVideosPlaying.playing > 0) {
+        console.log('  HLS videos playing, waiting for stability...');
+        await sleep(3000);
+      } else {
+        console.log('  HLS videos not yet playing, waiting more...');
+        await sleep(5000);
+      }
+
+      await captureScreenshot(page, 'live-streams-hls', { delay: 1000 });
+    } catch (e) {
+      console.log(`  HLS view error: ${e.message}`);
+    }
   } catch (error) {
     console.log(`  ✗ Failed to capture live streams: ${error.message}`);
   }
@@ -218,9 +340,21 @@ async function captureSettingsManagement(page) {
   console.log('\n=== Capturing Settings Management ===');
   try {
     await page.goto(`${config.url}/settings.html`, { waitUntil: 'networkidle', timeout: 10000 });
-    await sleep(1500);
+    await sleep(2000);
 
-    await captureScreenshot(page, 'settings-management', { delay: 1500 });
+    // Scroll down past the theme customizer to show actual settings
+    try {
+      // Find a settings section below appearance (like Storage or Detection)
+      const settingsSection = await page.locator('h3').filter({ hasText: /(Storage|Detection|Recording|System)/i }).first();
+      await settingsSection.waitFor({ timeout: 3000 });
+      await settingsSection.scrollIntoViewIfNeeded();
+      await sleep(500);
+      console.log('  Scrolled to settings section');
+    } catch (e) {
+      console.log('  Could not find settings section to scroll to, capturing current view');
+    }
+
+    await captureScreenshot(page, 'settings-management', { delay: 1000 });
   } catch (error) {
     console.log(`  ✗ Failed to capture settings management: ${error.message}`);
   }
@@ -229,8 +363,9 @@ async function captureSettingsManagement(page) {
 async function captureSystemInfo(page) {
   console.log('\n=== Capturing System Information ===');
   try {
-    await page.goto(`${config.url}/system.html`, { waitUntil: 'networkidle', timeout: 10000 });
-    await sleep(1500);
+    // System page may have continuous updates, use domcontentloaded
+    await page.goto(`${config.url}/system.html`, { waitUntil: 'domcontentloaded', timeout: 10000 });
+    await sleep(2000); // Wait for system stats to load
 
     await captureScreenshot(page, 'system-info', { delay: 1500 });
   } catch (error) {
@@ -238,45 +373,207 @@ async function captureSystemInfo(page) {
   }
 }
 
-async function captureZoneEditor(page) {
-  console.log('\n=== Capturing Zone Editor ===');
+async function captureStreamConfiguration(page) {
+  console.log('\n=== Capturing Stream Configuration ===');
   try {
     await page.goto(`${config.url}/streams.html`, { waitUntil: 'networkidle', timeout: 10000 });
-    await sleep(1500);
+    await sleep(2000);
 
     // Try to open stream configuration modal
     try {
-      const configButton = await page.locator('button').filter({ hasText: /configure/i }).first();
+      // Look for edit button (has title="Edit" attribute)
+      const configButton = await page.locator('button[title="Edit"]').first();
       await configButton.waitFor({ timeout: 5000 });
+      console.log('  Opening stream configuration...');
       await configButton.click();
-      await sleep(1000);
+      await sleep(2000);
 
-      // Click on Detection Zones tab if it exists
+      // Capture the modal with Basic Settings expanded (default)
       try {
-        const zonesTab = await page.locator('button, a').filter({ hasText: /detection zones/i }).first();
-        await zonesTab.waitFor({ timeout: 3000 });
-        await zonesTab.click();
+        console.log('  Capturing Basic Settings section...');
+        await captureScreenshot(page, 'stream-config-basic', { delay: 1000 });
+      } catch (e) {
+        console.log('  Could not capture basic settings');
+      }
+
+      // Try to expand and capture Recording Settings section
+      try {
+        const recordingSection = await page.locator('button').filter({ hasText: /^Recording Settings$/i }).first();
+        await recordingSection.waitFor({ timeout: 3000 });
+        console.log('  Opening Recording Settings section...');
+        await recordingSection.click();
         await sleep(1000);
 
-        await captureScreenshot(page, 'zone-editor', { delay: 1500 });
+        await captureScreenshot(page, 'stream-config-recording', { delay: 1000 });
       } catch (e) {
-        console.log('  Detection Zones tab not found, skipping');
+        console.log('  Recording Settings section not found');
+      }
+
+      // Try to expand and capture AI Detection Recording section
+      let detectionWasEnabled = false;
+      let needToReopenModal = false;
+      try {
+        const detectionSection = await page.locator('button').filter({ hasText: /AI Detection Recording/i }).first();
+        await detectionSection.waitFor({ timeout: 3000 });
+        console.log('  Opening AI Detection Recording section...');
+        await detectionSection.click();
+        await sleep(1000);
+
+        // Check if detection is enabled, if not enable it to show the zones section
+        try {
+          const detectionCheckbox = await page.locator('input#stream-detection-enabled').first();
+          const isChecked = await detectionCheckbox.isChecked();
+          detectionWasEnabled = isChecked;
+
+          if (!isChecked) {
+            console.log('  Detection not enabled, enabling it to showcase zones feature...');
+            await detectionCheckbox.click();
+            await sleep(1500);
+            needToReopenModal = true; // Need to save and reopen to see zones section
+          } else {
+            console.log('  Detection already enabled');
+          }
+        } catch (e) {
+          console.log('  Could not check/enable detection checkbox');
+        }
+
+        // Scroll down within the section to show all detection settings
+        try {
+          const detectionThresholdLabel = await page.locator('label').filter({ hasText: /Detection Threshold|Confidence/i }).first();
+          await detectionThresholdLabel.scrollIntoViewIfNeeded();
+          await sleep(500);
+          console.log('  Scrolled to show detection threshold settings');
+        } catch (e) {
+          console.log('  Could not scroll to detection settings');
+        }
+
+        await captureScreenshot(page, 'stream-config-detection', { delay: 1000 });
+      } catch (e) {
+        console.log('  AI Detection Recording section not found');
+      }
+
+      // If we just enabled detection, save and reopen the modal to see the Detection Zones section
+      if (needToReopenModal) {
+        console.log('  Saving changes and reopening modal to show Detection Zones section...');
+        try {
+          // Scroll to the bottom to make sure the Update button is visible
+          const modal = await page.locator('div.fixed.inset-0').filter({ has: page.locator('h3').filter({ hasText: /Edit Stream|Add Stream/i }) }).first();
+
+          // Scroll modal content to bottom
+          await page.evaluate(() => {
+            const modalContent = document.querySelector('div.overflow-y-auto');
+            if (modalContent) {
+              modalContent.scrollTop = modalContent.scrollHeight;
+            }
+          });
+          await sleep(500);
+
+          const saveButton = await modal.locator('button').filter({ hasText: /Update Stream|Add Stream/i }).last(); // last() to get the one in footer, not header
+          await saveButton.waitFor({ timeout: 3000 });
+          await saveButton.scrollIntoViewIfNeeded();
+          await sleep(500);
+          await saveButton.click();
+          await sleep(4000); // Wait for save to complete and modal to close
+
+          // Reopen the modal
+          const configButton = await page.locator('button[title="Edit"]').first();
+          await configButton.waitFor({ timeout: 5000 });
+          await configButton.click();
+          await sleep(2500);
+          console.log('  Modal reopened, looking for Detection Zones section...');
+        } catch (e) {
+          console.log(`  Could not save and reopen modal: ${e.message}`);
+        }
+      }
+
+      // Scroll down in the modal to find Detection Zones section
+      console.log('  Scrolling down in modal to find Detection Zones section...');
+      await page.evaluate(() => {
+        const modalContent = document.querySelector('div.overflow-y-auto');
+        if (modalContent) {
+          modalContent.scrollTop = modalContent.scrollHeight;
+        }
+      });
+      await sleep(1000);
+
+      // Debug: Take a screenshot of the modal scrolled down to see what sections are available
+      await captureScreenshot(page, 'stream-config-modal-bottom', { delay: 500 });
+      console.log('  Captured modal bottom view for debugging');
+
+      // Try to expand and capture Detection Zones section (only if detection enabled)
+      try {
+        const zonesSection = await page.locator('button').filter({ hasText: /^Detection Zones$/i }).first();
+        await zonesSection.waitFor({ timeout: 5000 });
+        console.log('  Opening Detection Zones section...');
+        await zonesSection.scrollIntoViewIfNeeded();
+        await sleep(500);
+        await zonesSection.click();
+        await sleep(1500);
+
+        await captureScreenshot(page, 'stream-config-zones', { delay: 1000 });
+
+        // Try to open zone editor to showcase the feature
+        try {
+          console.log('  Attempting to open zone editor...');
+          const configureZonesButton = await page.locator('button').filter({ hasText: /Configure Zones|Edit Zones/i }).first();
+          await configureZonesButton.waitFor({ timeout: 3000 });
+          await configureZonesButton.click();
+          await sleep(2500);
+
+          // Wait for zone editor to load
+          try {
+            await page.waitForSelector('canvas', { timeout: 5000 });
+            console.log('  Zone editor opened, waiting for it to fully load...');
+            await sleep(3000); // Give time for canvas to render and any existing zones to draw
+
+            await captureScreenshot(page, 'zone-editor', { delay: 1000 });
+
+            // If there are existing zones, capture that
+            // Otherwise try to show the interface for creating zones
+            try {
+              const zonesList = await page.locator('div, p').filter({ hasText: /zone\(s\)|No zones/i }).first();
+              const zonesText = await zonesList.textContent();
+
+              if (zonesText.includes('No zones')) {
+                console.log('  No zones configured, showing empty zone editor');
+              } else {
+                console.log('  Zones are configured, showing zone editor with zones');
+              }
+            } catch (e) {
+              console.log('  Could not determine zone status');
+            }
+
+            // Close zone editor
+            const closeZoneEditor = await page.locator('button').filter({ hasText: /close|cancel|×/i }).last();
+            await closeZoneEditor.waitFor({ timeout: 2000 });
+            await closeZoneEditor.click();
+            await sleep(1000);
+          } catch (e) {
+            console.log(`  Zone editor canvas not found: ${e.message}`);
+          }
+        } catch (e) {
+          console.log(`  Could not open zone editor: ${e.message}`);
+        }
+      } catch (e) {
+        console.log(`  Detection Zones section not found: ${e.message}`);
       }
 
       // Close modal
       try {
-        const closeButton = await page.locator('button').filter({ hasText: /close|cancel/i }).first();
+        const closeButton = await page.locator('button').filter({ hasText: /close|cancel|×/i }).first();
         await closeButton.waitFor({ timeout: 2000 });
         await closeButton.click();
         await sleep(500);
       } catch (e) {
-        // Modal might auto-close or not exist
+        // Try pressing Escape
+        await page.keyboard.press('Escape');
+        await sleep(500);
       }
     } catch (e) {
-      console.log('  Configure button not found, skipping zone editor');
+      console.log('  Configure button not found, skipping stream configuration');
     }
   } catch (error) {
-    console.log(`  ✗ Failed to capture zone editor: ${error.message}`);
+    console.log(`  ✗ Failed to capture stream configuration: ${error.message}`);
   }
 }
 
@@ -284,19 +581,59 @@ async function captureThemeSelector(page) {
   console.log('\n=== Capturing Theme Selector ===');
   try {
     await page.goto(`${config.url}/settings.html`, { waitUntil: 'networkidle', timeout: 10000 });
-    await sleep(1500);
+    await sleep(2000); // Wait for Preact to render
 
-    // Scroll to theme section
+    // Scroll to appearance section
     try {
-      const themeSection = await page.locator('h3, h2').filter({ hasText: /theme|appearance/i }).first();
-      await themeSection.waitFor({ timeout: 3000 });
-      await themeSection.scrollIntoViewIfNeeded();
+      const appearanceSection = await page.locator('h3').filter({ hasText: /Appearance/i }).first();
+      await appearanceSection.waitFor({ timeout: 5000 });
+      await appearanceSection.scrollIntoViewIfNeeded();
       await sleep(500);
     } catch (e) {
-      console.log('  Theme section not found, capturing full settings page');
+      console.log('  Appearance section not found, capturing full settings page');
     }
 
+    // Capture default theme selector
     await captureScreenshot(page, 'theme-selector', { delay: 1000 });
+
+    // Capture with different themes selected to show variety
+    const themes = ['blue', 'emerald', 'purple', 'rose'];
+    const themeNames = {
+      'blue': 'Ocean Blue',
+      'emerald': 'Forest Green',
+      'purple': 'Royal Purple',
+      'rose': 'Sunset Rose'
+    };
+
+    for (const theme of themes) {
+      try {
+        console.log(`  Capturing theme: ${theme}`);
+        const themeName = themeNames[theme];
+        const themeButton = await page.locator('button').filter({ hasText: themeName }).first();
+        await themeButton.waitFor({ timeout: 3000 });
+        await themeButton.click();
+        await sleep(1500); // Wait for theme to apply
+
+        await captureScreenshot(page, `theme-${theme}`, { delay: 500 });
+      } catch (e) {
+        console.log(`  Could not capture theme ${theme}: ${e.message}`);
+      }
+    }
+
+    // Capture dark mode variant
+    try {
+      console.log('  Capturing dark mode theme selector');
+      const darkModeCard = await page.locator('div.bg-card.rounded-lg.border').filter({ hasText: /Dark Mode/i }).first();
+      await darkModeCard.waitFor({ timeout: 3000 });
+      const toggleButton = await darkModeCard.locator('button.relative.inline-flex').first();
+      await toggleButton.waitFor({ timeout: 3000 });
+      await toggleButton.click();
+      await sleep(1500);
+
+      await captureScreenshot(page, 'theme-selector-dark', { delay: 1000 });
+    } catch (e) {
+      console.log(`  Could not capture dark mode: ${e.message}`);
+    }
   } catch (error) {
     console.log(`  ✗ Failed to capture theme selector: ${error.message}`);
   }
@@ -331,18 +668,36 @@ async function main() {
   console.log(`  Dark Mode: ${config.darkMode}`);
   console.log(`  All Themes: ${config.allThemes}\n`);
   
-  const browser = await chromium.launch({ 
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
+  const browser = await chromium.launch({
+    headless: false, // Use headed mode for better WebRTC support
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--use-fake-ui-for-media-stream', // Auto-accept media permissions
+      '--use-fake-device-for-media-stream', // Use fake camera/mic
+      '--enable-features=NetworkService,NetworkServiceInProcess'
+    ]
   });
-  
+
   const context = await browser.newContext({
     viewport: { width: 1920, height: 1080 },
     deviceScaleFactor: 1,
+    permissions: ['camera', 'microphone'], // Grant media permissions
   });
   
   const page = await context.newPage();
-  
+
+  // Listen to console messages for debugging (filtered)
+  page.on('console', msg => {
+    const text = msg.text();
+    // Only log WebRTC/video related messages
+    if (text.toLowerCase().includes('webrtc') ||
+        text.toLowerCase().includes('ice connection') ||
+        text.toLowerCase().includes('video') && (text.includes('play') || text.includes('load') || text.includes('metadata'))) {
+      console.log(`  [Browser] ${text}`);
+    }
+  });
+
   try {
     // Login
     await login(page, config.username, config.password);
@@ -361,7 +716,7 @@ async function main() {
       await captureRecordingManagement(page);
       await captureSettingsManagement(page);
       await captureSystemInfo(page);
-      await captureZoneEditor(page);
+      await captureStreamConfiguration(page);
       await captureThemeSelector(page);
     }
     

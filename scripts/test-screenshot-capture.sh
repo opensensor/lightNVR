@@ -12,6 +12,14 @@ URL="${1:-http://localhost:8080}"
 echo "Testing screenshot capture against: $URL"
 echo ""
 
+# Check if running as root
+if [ "$EUID" -eq 0 ]; then
+  echo "Warning: Running as root. Playwright browsers may not be installed for root user."
+  echo "Installing Playwright browsers for root..."
+  npx playwright install chromium || true
+  echo ""
+fi
+
 # Check if LightNVR is accessible
 echo "Checking LightNVR accessibility..."
 if ! curl -s -o /dev/null -w "%{http_code}" "$URL/login.html" | grep -q "200"; then
