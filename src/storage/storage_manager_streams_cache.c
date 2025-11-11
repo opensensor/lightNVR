@@ -16,7 +16,7 @@
 #include "storage/storage_manager.h"
 #include "core/logger.h"
 #include "core/config.h"
-#include "../../external/cjson/cJSON.h"
+#include <cjson/cJSON.h>
 
 // Forward declarations for functions from storage_manager_streams.c
 extern int get_stream_storage_usage(const char *storage_path, stream_storage_info_t *stream_info, int max_streams);

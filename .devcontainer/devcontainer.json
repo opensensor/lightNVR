@@ -12,5 +12,5 @@
   ],
   "forwardPorts": [],
   "postCreateCommand": "npm install",
-  "remoteUser": "vscode"
+  "remoteUser": "root"
 }

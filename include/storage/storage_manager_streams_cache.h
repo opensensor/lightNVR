@@ -8,7 +8,7 @@
 
 #include <stdint.h>
 #include "storage/storage_manager_streams.h"
-#include "../../external/cjson/cJSON.h"
+#include <cjson/cJSON.h>
 
 /**
  * Initialize the storage manager streams cache

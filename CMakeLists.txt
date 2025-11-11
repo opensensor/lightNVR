@@ -150,13 +150,26 @@ else()
 endif()
 
 # Find cJSON
-find_package(cJSON QUIET)
-if(NOT cJSON_FOUND)
-    # If not found via find_package, try pkg-config
-    pkg_check_modules(CJSON cjson)
-    if(NOT CJSON_FOUND)
-        message(STATUS "cJSON not found via find_package or pkg-config, will use bundled version")
-        set(CJSON_BUNDLED TRUE)
+pkg_check_modules(CJSON QUIET libcjson)
+if(CJSON_FOUND)
+    # Use pkg-config result (CJSON_LIBRARIES is automatically set)
+    message(STATUS "Found cJSON via pkg-config: ${CJSON_LIBRARIES}")
+else()
+    # Try alternative pkg-config name
+    pkg_check_modules(CJSON QUIET cjson)
+    if(CJSON_FOUND)
+        message(STATUS "Found cJSON via pkg-config (alternative): ${CJSON_LIBRARIES}")
+    else()
+        # Try find_package as last resort
+        find_package(cJSON QUIET)
+        if(cJSON_FOUND)
+            set(CJSON_LIBRARIES cjson)
+            set(CJSON_FOUND TRUE)  # Set this for consistency
+            message(STATUS "Found cJSON via find_package")
+        else()
+            message(STATUS "cJSON not found via pkg-config or find_package, will use bundled version")
+            set(CJSON_BUNDLED TRUE)
+        endif()
     endif()
 endif()
 

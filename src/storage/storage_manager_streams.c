@@ -16,7 +16,7 @@
 #include "storage/storage_manager_streams.h"
 #include "core/logger.h"
 #include "core/config.h"
-#include "../../external/cjson/cJSON.h"
+#include <cjson/cJSON.h>
 
 /**
  * Get storage usage per stream
