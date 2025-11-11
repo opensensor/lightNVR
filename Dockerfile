@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y \
     git cmake build-essential pkg-config file \
     libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
     libcurl4-openssl-dev sqlite3 libsqlite3-dev \
-    libmbedtls-dev curl wget ca-certificates gnupg && \
+    libmbedtls-dev curl wget ca-certificates gnupg libcjson-dev && \
     # Install Node.js 20.x (LTS) - includes npm
     mkdir -p /etc/apt/keyrings && \
     curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
