@@ -109,6 +109,7 @@ void load_default_config(config_t *config) {
         config->streams[i].detection_threshold = 0.5f; // 50% confidence threshold
         config->streams[i].pre_detection_buffer = 5; // 5 seconds before detection
         config->streams[i].post_detection_buffer = 10; // 10 seconds after detection
+        config->streams[i].detection_api_url[0] = '\0'; // Empty = use global config
         config->streams[i].streaming_enabled = true; // Enable streaming by default
         config->streams[i].record_audio = false; // Disable audio recording by default
     }
@@ -406,8 +407,11 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             config->streams[stream_idx].pre_detection_buffer = atoi(value);
         } else if (strcmp(name, "post_detection_buffer") == 0) {
             config->streams[stream_idx].post_detection_buffer = atoi(value);
+        } else if (strcmp(name, "detection_api_url") == 0) {
+            strncpy(config->streams[stream_idx].detection_api_url, value, MAX_URL_LENGTH - 1);
+            config->streams[stream_idx].detection_api_url[MAX_URL_LENGTH - 1] = '\0';
         } else if (strcmp(name, "record_audio") == 0) {
-            config->streams[stream_idx].record_audio = 
+            config->streams[stream_idx].record_audio =
                 (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         }
     }
@@ -994,17 +998,21 @@ int save_config(const config_t *config, const char *path) {
             
             // Write detection-based recording settings if enabled
             if (config->streams[i].detection_based_recording) {
-                fprintf(file, "detection_based_recording = %s\n", 
+                fprintf(file, "detection_based_recording = %s\n",
                         config->streams[i].detection_based_recording ? "true" : "false");
-                
+
                 if (config->streams[i].detection_model[0] != '\0') {
                     fprintf(file, "detection_model = %s\n", config->streams[i].detection_model);
                 }
-                
+
                 fprintf(file, "detection_interval = %d\n", config->streams[i].detection_interval);
                 fprintf(file, "detection_threshold = %.2f\n", config->streams[i].detection_threshold);
                 fprintf(file, "pre_detection_buffer = %d\n", config->streams[i].pre_detection_buffer);
                 fprintf(file, "post_detection_buffer = %d\n", config->streams[i].post_detection_buffer);
+
+                if (config->streams[i].detection_api_url[0] != '\0') {
+                    fprintf(file, "detection_api_url = %s\n", config->streams[i].detection_api_url);
+                }
             }
             
             // Write audio recording setting

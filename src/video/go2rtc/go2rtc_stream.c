@@ -609,6 +609,10 @@ bool go2rtc_stream_is_ready(void) {
     }
 }
 
+int go2rtc_stream_get_api_port(void) {
+    return g_api_port;
+}
+
 bool go2rtc_stream_start_service(void) {
     if (!g_initialized) {
         log_error("go2rtc stream integration not initialized");

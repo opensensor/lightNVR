@@ -910,7 +910,8 @@ int main(int argc, char *argv[]) {
             // Start the detection thread
             if (start_stream_detection_thread(config.streams[i].name, model_path,
                                              config.streams[i].detection_threshold,
-                                             config.streams[i].detection_interval, hls_dir) != 0) {
+                                             config.streams[i].detection_interval, hls_dir,
+                                             config.streams[i].detection_api_url) != 0) {
                 log_warn("Failed to start detection thread for stream %s", config.streams[i].name);
             } else {
                 log_info("Successfully started detection thread for stream %s", config.streams[i].name);
@@ -1430,7 +1431,8 @@ static void check_and_ensure_services(void) {
             log_info("Ensuring detection-based recording is active for stream: %s", config.streams[i].name);
             if (start_stream_detection_thread(config.streams[i].name, config.streams[i].detection_model,
                                              config.streams[i].detection_threshold,
-                                             config.streams[i].detection_interval, NULL) != 0) {
+                                             config.streams[i].detection_interval, NULL,
+                                             config.streams[i].detection_api_url) != 0) {
                 log_warn("Failed to start detection-based recording for stream: %s", config.streams[i].name);
             } else {
                 log_info("Successfully started detection-based recording for stream: %s", config.streams[i].name);

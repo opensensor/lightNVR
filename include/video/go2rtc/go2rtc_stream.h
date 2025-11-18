@@ -61,14 +61,21 @@ bool go2rtc_stream_get_rtsp_url(const char *stream_id, char *buffer, size_t buff
 
 /**
  * @brief Check if go2rtc is running and ready
- * 
+ *
  * @return true if go2rtc is running and ready, false otherwise
  */
 bool go2rtc_stream_is_ready(void);
 
 /**
+ * @brief Get the configured API port
+ *
+ * @return The API port number, or 0 if not initialized
+ */
+int go2rtc_stream_get_api_port(void);
+
+/**
  * @brief Start the go2rtc service
- * 
+ *
  * @return true if service was started successfully, false otherwise
  */
 bool go2rtc_stream_start_service(void);

@@ -352,7 +352,8 @@ int set_stream_detection_recording(stream_handle_t stream, bool enabled, const c
         // Start detection thread
         if (start_stream_detection_thread(stream_name, config_copy.detection_model,
                                          config_copy.detection_threshold,
-                                         config_copy.detection_interval, hls_dir) != 0) {
+                                         config_copy.detection_interval, hls_dir,
+                                         config_copy.detection_api_url) != 0) {
             log_warn("Failed to start detection thread for stream %s", stream_name);
         } else {
             log_info("Successfully started detection thread for stream %s", stream_name);

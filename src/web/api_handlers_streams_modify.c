@@ -259,7 +259,8 @@ void mg_handle_post_stream(struct mg_connection *c, struct mg_http_message *hm) 
             // Start detection thread
             if (start_stream_detection_thread(config.name, config.detection_model,
                                              config.detection_threshold,
-                                             config.detection_interval, hls_dir) != 0) {
+                                             config.detection_interval, hls_dir,
+                                             config.detection_api_url) != 0) {
                 log_warn("Failed to start detection thread for new stream %s", config.name);
             } else {
                 log_info("Successfully started detection thread for new stream %s", config.name);
@@ -620,7 +621,8 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
                                 // Start detection thread
                                 if (start_stream_detection_thread(decoded_id, stream_config.detection_model,
                                                                stream_config.detection_threshold,
-                                                               stream_config.detection_interval, hls_dir) != 0) {
+                                                               stream_config.detection_interval, hls_dir,
+                                                               stream_config.detection_api_url) != 0) {
                                     log_warn("Failed to start detection thread for stream %s", decoded_id);
                                 } else {
                                     log_info("Successfully started detection thread for stream %s", decoded_id);
@@ -768,7 +770,8 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
             // Start detection thread
             if (start_stream_detection_thread(config.name, config.detection_model,
                                              config.detection_threshold,
-                                             config.detection_interval, hls_dir) != 0) {
+                                             config.detection_interval, hls_dir,
+                                             config.detection_api_url) != 0) {
                 log_warn("Failed to start detection thread for stream %s", config.name);
             } else {
                 log_info("Successfully started detection thread for stream %s", config.name);
@@ -795,7 +798,8 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
             // Start detection thread
             if (start_stream_detection_thread(config.name, config.detection_model,
                                              config.detection_threshold,
-                                             config.detection_interval, hls_dir) != 0) {
+                                             config.detection_interval, hls_dir,
+                                             config.detection_api_url) != 0) {
                 log_warn("Failed to restart detection thread for stream %s", config.name);
             } else {
                 log_info("Successfully restarted detection thread for stream %s", config.name);

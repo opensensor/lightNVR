@@ -619,13 +619,21 @@ int process_segment_for_detection(stream_detection_thread_t *thread, const char 
                         // For API models, we need to pass the stream name
                         const char *model_path = get_model_path(thread->model);
 
-                        // Get the API URL - either from the model path if it's a URL,
-                        // or from the global config if it's the special "api-detection" string
+                        // Get the API URL with the following priority:
+                        // 1. Per-stream detection_api_url (if set)
+                        // 2. Model path if it's a full URL
+                        // 3. Global config api_detection_url (if model path is "api-detection")
                         const char *api_url = NULL;
-                        if (model_path && ends_with(model_path, "api-detection")) {
+
+                        // Check for per-stream API URL first
+                        if (thread->detection_api_url[0] != '\0') {
+                            api_url = thread->detection_api_url;
+                            log_info("[Stream %s] Using per-stream detection API URL: %s",
+                                    thread->stream_name, api_url);
+                        } else if (model_path && ends_with(model_path, "api-detection")) {
                             // Get the API URL from the global config
                             api_url = g_config.api_detection_url;
-                            log_info("[Stream %s] Using API detection URL from config: %s",
+                            log_info("[Stream %s] Using API detection URL from global config: %s",
                                     thread->stream_name, api_url ? api_url : "NULL");
                         } else {
                             // Use the model path directly as the URL
@@ -1208,7 +1216,8 @@ void shutdown_stream_detection_system(void) {
  * Start a detection thread for a stream
  */
 int start_stream_detection_thread(const char *stream_name, const char *model_path,
-                                 float threshold, int detection_interval, const char *hls_dir) {
+                                 float threshold, int detection_interval, const char *hls_dir,
+                                 const char *detection_api_url) {
     if (!system_initialized) {
         if (init_stream_detection_system() != 0) {
             log_error("Failed to initialize stream detection system");
@@ -1287,6 +1296,15 @@ int start_stream_detection_thread(const char *stream_name, const char *model_pat
 
     strncpy(thread->hls_dir, hls_dir, MAX_PATH_LENGTH - 1);
     thread->hls_dir[MAX_PATH_LENGTH - 1] = '\0';
+
+    // Store the per-stream detection API URL if provided
+    if (detection_api_url && detection_api_url[0] != '\0') {
+        strncpy(thread->detection_api_url, detection_api_url, MAX_PATH_LENGTH - 1);
+        thread->detection_api_url[MAX_PATH_LENGTH - 1] = '\0';
+        log_info("[Stream %s] Using per-stream detection API URL: %s", stream_name, detection_api_url);
+    } else {
+        thread->detection_api_url[0] = '\0';
+    }
 
     thread->threshold = threshold;
     thread->detection_interval = detection_interval;

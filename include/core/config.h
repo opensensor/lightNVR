@@ -37,10 +37,11 @@ typedef struct {
     float detection_threshold; // Confidence threshold for detection
     int pre_detection_buffer; // Seconds to keep before detection
     int post_detection_buffer; // Seconds to keep after detection
+    char detection_api_url[MAX_URL_LENGTH]; // Per-stream detection API URL override (empty = use global)
     bool streaming_enabled; // Whether HLS streaming is enabled for this stream
     stream_protocol_t protocol; // Stream protocol (TCP, UDP, or ONVIF)
     bool record_audio; // Whether to record audio with video
-    
+
     // ONVIF specific fields
     char onvif_username[64];
     char onvif_password[64];

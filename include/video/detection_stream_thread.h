@@ -16,6 +16,7 @@ typedef struct {
     pthread_t thread;
     char stream_name[MAX_STREAM_NAME];
     char model_path[MAX_PATH_LENGTH];
+    char detection_api_url[MAX_PATH_LENGTH];  // Per-stream detection API URL override
     detection_model_t model;
     float threshold;
     int detection_interval;
@@ -45,16 +46,18 @@ void shutdown_stream_detection_system(void);
 
 /**
  * Start a detection thread for a stream
- * 
+ *
  * @param stream_name The name of the stream
  * @param model_path The path to the detection model
  * @param threshold The detection threshold
  * @param detection_interval The detection interval in seconds
  * @param hls_dir The directory containing HLS segments
+ * @param detection_api_url Per-stream detection API URL override (can be NULL or empty)
  * @return 0 on success, non-zero on failure
  */
-int start_stream_detection_thread(const char *stream_name, const char *model_path, 
-                                 float threshold, int detection_interval, const char *hls_dir);
+int start_stream_detection_thread(const char *stream_name, const char *model_path,
+                                 float threshold, int detection_interval, const char *hls_dir,
+                                 const char *detection_api_url);
 
 /**
  * Stop a detection thread for a stream

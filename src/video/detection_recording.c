@@ -1359,7 +1359,8 @@ int monitor_hls_segments_for_detection(const char *stream_name) {
             }
 
             int result = start_stream_detection_thread(stream_name, full_model_path, threshold,
-                                         config.detection_interval, hls_dir);
+                                         config.detection_interval, hls_dir,
+                                         config.detection_api_url);
 
             if (result == 0) {
                 log_info("Successfully started detection thread for stream %s", stream_name);
@@ -1374,7 +1375,8 @@ int monitor_hls_segments_for_detection(const char *stream_name) {
                     // Try one more time with a delay
                     usleep(500000); // 500ms delay
                     result = start_stream_detection_thread(stream_name, full_model_path, threshold,
-                                                         config.detection_interval, hls_dir);
+                                                         config.detection_interval, hls_dir,
+                                                         config.detection_api_url);
 
                     if (result == 0 && is_stream_detection_thread_running(stream_name)) {
                         log_info("Successfully started detection thread for stream %s on second attempt",

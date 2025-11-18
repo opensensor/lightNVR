@@ -16,7 +16,7 @@
 #include "core/logger.h"
 
 // Current schema version - increment this when adding new migrations
-#define CURRENT_SCHEMA_VERSION 10
+#define CURRENT_SCHEMA_VERSION 11
 
 // Migration function type
 typedef int (*migration_func_t)(void);
@@ -31,6 +31,7 @@ static int migration_v6_to_v7(void);
 static int migration_v7_to_v8(void);
 static int migration_v8_to_v9(void);
 static int migration_v9_to_v10(void);
+static int migration_v10_to_v11(void);
 
 // Array of migration functions
 static migration_func_t migrations[] = {
@@ -43,7 +44,8 @@ static migration_func_t migrations[] = {
     migration_v6_to_v7, // v6->v7
     migration_v7_to_v8, // v7->v8
     migration_v8_to_v9, // v8->v9
-    migration_v9_to_v10 // v9->v10
+    migration_v9_to_v10, // v9->v10
+    migration_v10_to_v11 // v10->v11
 };
 
 /**
@@ -847,5 +849,28 @@ static int migration_v9_to_v10(void) {
     }
 
     log_info("Completed migration v9 to v10 successfully");
+    return 0;
+}
+
+/**
+ * Migration from version 10 to 11
+ * - Add detection_api_url column to streams table for per-stream detection API override
+ */
+static int migration_v10_to_v11(void) {
+    log_info("Running migration from v10 to v11: Adding detection_api_url column to streams table");
+
+    int rc = 0;
+
+    // Add detection_api_url column to streams table
+    // This allows per-stream override of the global detection API URL
+    log_info("Adding detection_api_url column to streams table");
+    rc |= add_column_if_not_exists("streams", "detection_api_url", "TEXT DEFAULT ''");
+
+    if (rc != 0) {
+        log_error("Failed to add detection_api_url column to streams table");
+        return -1;
+    }
+
+    log_info("Completed migration v10 to v11 successfully");
     return 0;
 }

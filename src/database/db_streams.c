@@ -70,7 +70,7 @@ uint64_t add_stream_config(const stream_config_t *stream) {
                                 "fps = ?, codec = ?, priority = ?, record = ?, segment_duration = ?, "
                                 "detection_based_recording = ?, detection_model = ?, detection_threshold = ?, "
                                 "detection_interval = ?, pre_detection_buffer = ?, post_detection_buffer = ?, "
-                                "protocol = ?, is_onvif = ?, record_audio = ? "
+                                "detection_api_url = ?, protocol = ?, is_onvif = ?, record_audio = ? "
                                 "WHERE id = ?;";
 
         rc = sqlite3_prepare_v2(db, update_sql, -1, &stmt, NULL);
@@ -99,18 +99,19 @@ uint64_t add_stream_config(const stream_config_t *stream) {
         sqlite3_bind_int(stmt, 14, stream->detection_interval);
         sqlite3_bind_int(stmt, 15, stream->pre_detection_buffer);
         sqlite3_bind_int(stmt, 16, stream->post_detection_buffer);
+        sqlite3_bind_text(stmt, 17, stream->detection_api_url, -1, SQLITE_STATIC);
 
         // Bind protocol parameter
-        sqlite3_bind_int(stmt, 17, (int)stream->protocol);
+        sqlite3_bind_int(stmt, 18, (int)stream->protocol);
 
         // Bind is_onvif parameter
-        sqlite3_bind_int(stmt, 18, stream->is_onvif ? 1 : 0);
+        sqlite3_bind_int(stmt, 19, stream->is_onvif ? 1 : 0);
 
         // Bind record_audio parameter
-        sqlite3_bind_int(stmt, 19, stream->record_audio ? 1 : 0);
+        sqlite3_bind_int(stmt, 20, stream->record_audio ? 1 : 0);
 
         // Bind ID parameter
-        sqlite3_bind_int64(stmt, 20, (sqlite3_int64)existing_id);
+        sqlite3_bind_int64(stmt, 21, (sqlite3_int64)existing_id);
 
         // Execute statement
         rc = sqlite3_step(stmt);
@@ -151,8 +152,8 @@ uint64_t add_stream_config(const stream_config_t *stream) {
     // No disabled stream found, insert a new one
     const char *sql = "INSERT INTO streams (name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
           "detection_based_recording, detection_model, detection_threshold, detection_interval, "
-          "pre_detection_buffer, post_detection_buffer, protocol, is_onvif, record_audio) "
-          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+          "pre_detection_buffer, post_detection_buffer, detection_api_url, protocol, is_onvif, record_audio) "
+          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -181,15 +182,16 @@ uint64_t add_stream_config(const stream_config_t *stream) {
     sqlite3_bind_int(stmt, 15, stream->detection_interval);
     sqlite3_bind_int(stmt, 16, stream->pre_detection_buffer);
     sqlite3_bind_int(stmt, 17, stream->post_detection_buffer);
+    sqlite3_bind_text(stmt, 18, stream->detection_api_url, -1, SQLITE_STATIC);
 
     // Bind protocol parameter
-    sqlite3_bind_int(stmt, 18, (int)stream->protocol);
+    sqlite3_bind_int(stmt, 19, (int)stream->protocol);
 
     // Bind is_onvif parameter
-    sqlite3_bind_int(stmt, 19, stream->is_onvif ? 1 : 0);
+    sqlite3_bind_int(stmt, 20, stream->is_onvif ? 1 : 0);
 
     // Bind record_audio parameter
-    sqlite3_bind_int(stmt, 20, stream->record_audio ? 1 : 0);
+    sqlite3_bind_int(stmt, 21, stream->record_audio ? 1 : 0);
 
     // Execute statement
     rc = sqlite3_step(stmt);
@@ -253,7 +255,7 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
                       "fps = ?, codec = ?, priority = ?, record = ?, segment_duration = ?, "
                       "detection_based_recording = ?, detection_model = ?, detection_threshold = ?, "
                       "detection_interval = ?, pre_detection_buffer = ?, post_detection_buffer = ?, "
-                      "protocol = ?, is_onvif = ?, record_audio = ? "
+                      "detection_api_url = ?, protocol = ?, is_onvif = ?, record_audio = ? "
                       "WHERE name = ?;";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -283,18 +285,19 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
     sqlite3_bind_int(stmt, 15, stream->detection_interval);
     sqlite3_bind_int(stmt, 16, stream->pre_detection_buffer);
     sqlite3_bind_int(stmt, 17, stream->post_detection_buffer);
+    sqlite3_bind_text(stmt, 18, stream->detection_api_url, -1, SQLITE_STATIC);
 
     // Bind protocol parameter
-    sqlite3_bind_int(stmt, 18, (int)stream->protocol);
+    sqlite3_bind_int(stmt, 19, (int)stream->protocol);
 
     // Bind is_onvif parameter
-    sqlite3_bind_int(stmt, 19, stream->is_onvif ? 1 : 0);
+    sqlite3_bind_int(stmt, 20, stream->is_onvif ? 1 : 0);
 
     // Bind record_audio parameter
-    sqlite3_bind_int(stmt, 20, stream->record_audio ? 1 : 0);
+    sqlite3_bind_int(stmt, 21, stream->record_audio ? 1 : 0);
 
     // Bind the WHERE clause parameter
-    sqlite3_bind_text(stmt, 21, name, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 22, name, -1, SQLITE_STATIC);
 
     // Execute statement
     rc = sqlite3_step(stmt);
@@ -450,10 +453,16 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
     bool has_protocol_column = cached_column_exists("streams", "protocol");
     bool has_onvif_column = cached_column_exists("streams", "is_onvif");
     bool has_record_audio_column = cached_column_exists("streams", "record_audio");
+    bool has_detection_api_url_column = cached_column_exists("streams", "detection_api_url");
 
-    // Prepare SQL based on whether detection columns, protocol column, is_onvif column, and record_audio column exist
+    // Prepare SQL based on whether detection columns, protocol column, is_onvif column, record_audio column, and detection_api_url column exist
     const char *sql;
-    if (has_detection_columns && has_protocol_column && has_onvif_column && has_record_audio_column) {
+    if (has_detection_columns && has_protocol_column && has_onvif_column && has_record_audio_column && has_detection_api_url_column) {
+        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
+              "detection_based_recording, detection_model, detection_threshold, detection_interval, "
+              "pre_detection_buffer, post_detection_buffer, detection_api_url, protocol, is_onvif, record_audio "
+              "FROM streams WHERE name = ?;";
+    } else if (has_detection_columns && has_protocol_column && has_onvif_column && has_record_audio_column) {
         sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
               "detection_based_recording, detection_model, detection_threshold, detection_interval, "
               "pre_detection_buffer, post_detection_buffer, protocol, is_onvif, record_audio "
@@ -549,24 +558,39 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
                 stream->post_detection_buffer = sqlite3_column_int(stmt, 16);
             }
 
-            // Parse protocol if it exists (column 17)
-            if (has_protocol_column && sqlite3_column_count(stmt) > 17) {
-                if (sqlite3_column_type(stmt, 17) != SQLITE_NULL) {
-                    stream->protocol = (stream_protocol_t)sqlite3_column_int(stmt, 17);
+            // Parse detection_api_url if it exists (column 17)
+            int next_col = 17;
+            if (has_detection_api_url_column && sqlite3_column_count(stmt) > next_col) {
+                const char *detection_api_url = (const char *)sqlite3_column_text(stmt, next_col);
+                if (detection_api_url) {
+                    strncpy(stream->detection_api_url, detection_api_url, MAX_URL_LENGTH - 1);
+                    stream->detection_api_url[MAX_URL_LENGTH - 1] = '\0';
                 }
+                next_col++;
+            } else {
+                stream->detection_api_url[0] = '\0';
             }
 
-            // Parse is_onvif if it exists (column 18)
-            if (has_onvif_column && sqlite3_column_count(stmt) > 18) {
-                if (sqlite3_column_type(stmt, 18) != SQLITE_NULL) {
-                    stream->is_onvif = sqlite3_column_int(stmt, 18) != 0;
+            // Parse protocol if it exists
+            if (has_protocol_column && sqlite3_column_count(stmt) > next_col) {
+                if (sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
+                    stream->protocol = (stream_protocol_t)sqlite3_column_int(stmt, next_col);
                 }
+                next_col++;
             }
 
-            // Parse record_audio if it exists (column 19)
-            if (has_record_audio_column && sqlite3_column_count(stmt) > 19) {
-                if (sqlite3_column_type(stmt, 19) != SQLITE_NULL) {
-                    stream->record_audio = sqlite3_column_int(stmt, 19) != 0;
+            // Parse is_onvif if it exists
+            if (has_onvif_column && sqlite3_column_count(stmt) > next_col) {
+                if (sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
+                    stream->is_onvif = sqlite3_column_int(stmt, next_col) != 0;
+                }
+                next_col++;
+            }
+
+            // Parse record_audio if it exists
+            if (has_record_audio_column && sqlite3_column_count(stmt) > next_col) {
+                if (sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
+                    stream->record_audio = sqlite3_column_int(stmt, next_col) != 0;
                 }
             }
         }
