@@ -14,6 +14,7 @@
 #define GO2RTC_PROCESS_MONITOR_H
 
 #include <stdbool.h>
+#include <time.h>
 
 /**
  * @brief Initialize the go2rtc process health monitor
