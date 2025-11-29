@@ -242,7 +242,8 @@ static bool ensure_stream_registered_with_go2rtc(const char *stream_name) {
     // Register the stream with go2rtc
     if (!go2rtc_stream_register(stream_name, config.url,
                                config.onvif_username[0] != '\0' ? config.onvif_username : NULL,
-                               config.onvif_password[0] != '\0' ? config.onvif_password : NULL)) {
+                               config.onvif_password[0] != '\0' ? config.onvif_password : NULL,
+                               config.backchannel_enabled)) {
         log_error("Failed to register stream %s with go2rtc", stream_name);
         return false;
     }
@@ -603,7 +604,8 @@ bool go2rtc_integration_register_all_streams(void) {
             // Register the stream with go2rtc
             if (!go2rtc_stream_register(streams[i].name, streams[i].url,
                                        streams[i].onvif_username[0] != '\0' ? streams[i].onvif_username : NULL,
-                                       streams[i].onvif_password[0] != '\0' ? streams[i].onvif_password : NULL)) {
+                                       streams[i].onvif_password[0] != '\0' ? streams[i].onvif_password : NULL,
+                                       streams[i].backchannel_enabled)) {
                 log_error("Failed to register stream %s with go2rtc", streams[i].name);
                 all_success = false;
                 // Continue with other streams

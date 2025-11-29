@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#include "cJSON.h"
+#include <cjson/cJSON.h>
 
 #include "web/api_handlers.h"
 #include "web/mongoose_adapter.h"
@@ -317,32 +317,35 @@ void mg_handle_auth_login(struct mg_connection *c, struct mg_http_message *hm) {
     
     if (rc != 0) {
         // Fall back to config-based authentication for backward compatibility
-        if (strcmp(username, g_config.web_username) == 0 && 
+        if (strcmp(username, g_config.web_username) == 0 &&
             strcmp(password, g_config.web_password) == 0) {
             // Login successful with config credentials
             log_info("Login successful for user: %s (using config credentials)", username);
-            
+
+            // Calculate session timeout from config
+            int auth_timeout_seconds = g_config.auth_timeout_hours * 3600;
+
             // Create Basic Auth header value
             char auth_credentials[128];
             snprintf(auth_credentials, sizeof(auth_credentials), "%s:%s", username, password);
-            
+
             // Base64 encode the credentials
             char encoded_auth[256];
             mg_base64_encode((unsigned char *)auth_credentials, strlen(auth_credentials), encoded_auth, sizeof(encoded_auth));
-            
+
             // Default redirect to index.html
             const char *redirect_url = "/index.html";
-            
+
             // Check if this is a form submission or an API request
             struct mg_str *content_type = mg_http_get_header(hm, "Content-Type");
             struct mg_str *requested_with = mg_http_get_header(hm, "X-Requested-With");
-            
+
             // Check if content_type contains "application/json"
             bool is_json = false;
             if (content_type) {
                 const char *json_str = "application/json";
                 size_t json_len = strlen(json_str);
-                
+
                 if (content_type->len >= json_len) {
                     for (size_t i = 0; i <= content_type->len - json_len; i++) {
                         if (strncmp(content_type->buf + i, json_str, json_len) == 0) {
@@ -352,20 +355,20 @@ void mg_handle_auth_login(struct mg_connection *c, struct mg_http_message *hm) {
                     }
                 }
             }
-            
+
             bool is_api_request = is_json || requested_with != NULL;
-            
+
             if (is_api_request) {
                 // For API requests, return a JSON success response
                 cJSON *response = cJSON_CreateObject();
                 cJSON_AddBoolToObject(response, "success", 1);
                 cJSON_AddStringToObject(response, "redirect", redirect_url);
-                
-                // Send JSON response with auth cookie
+
+                // Send JSON response with auth cookie (using configured timeout)
                 mg_printf(c, "HTTP/1.1 200 OK\r\n");
                 mg_printf(c, "Content-Type: application/json\r\n");
                 mg_printf(c, "Authorization: Basic %s\r\n", encoded_auth);
-                mg_printf(c, "Set-Cookie: auth=%s; Path=/; Max-Age=86400; SameSite=Lax\r\n", encoded_auth);
+                mg_printf(c, "Set-Cookie: auth=%s; Path=/; Max-Age=%d; SameSite=Lax\r\n", encoded_auth, auth_timeout_seconds);
                 mg_printf(c, "Cache-Control: no-cache, no-store, must-revalidate\r\n");
                 mg_printf(c, "Pragma: no-cache\r\n");
                 mg_printf(c, "Expires: 0\r\n");
@@ -384,8 +387,8 @@ void mg_handle_auth_login(struct mg_connection *c, struct mg_http_message *hm) {
                 mg_printf(c, "HTTP/1.1 302 Found\r\n");
                 mg_printf(c, "Location: %s\r\n", redirect_url);
                 mg_printf(c, "Authorization: Basic %s\r\n", encoded_auth);
-                // Set a cookie with the auth token to help maintain session across pages
-                mg_printf(c, "Set-Cookie: auth=%s; Path=/; Max-Age=86400; SameSite=Lax\r\n", encoded_auth);
+                // Set a cookie with the auth token to help maintain session across pages (using configured timeout)
+                mg_printf(c, "Set-Cookie: auth=%s; Path=/; Max-Age=%d; SameSite=Lax\r\n", encoded_auth, auth_timeout_seconds);
                 // Add Cache-Control headers to prevent caching
                 mg_printf(c, "Cache-Control: no-cache, no-store, must-revalidate\r\n");
                 mg_printf(c, "Pragma: no-cache\r\n");
@@ -426,9 +429,10 @@ void mg_handle_auth_login(struct mg_connection *c, struct mg_http_message *hm) {
     // Login successful with database credentials
     log_info("Login successful for user: %s (ID: %lld)", username, (long long)user_id);
 
-    // Create a session token (7 days = 604800 seconds)
+    // Create a session token using configured timeout
+    int session_timeout_seconds = g_config.auth_timeout_hours * 3600;
     char token[33];
-    rc = db_auth_create_session(user_id, NULL, NULL, 604800, token, sizeof(token));
+    rc = db_auth_create_session(user_id, NULL, NULL, session_timeout_seconds, token, sizeof(token));
     if (rc != 0) {
         log_error("Failed to create session for user: %s", username);
         
@@ -471,22 +475,22 @@ void mg_handle_auth_login(struct mg_connection *c, struct mg_http_message *hm) {
             cJSON_AddBoolToObject(response, "success", 1);
             cJSON_AddStringToObject(response, "redirect", redirect_url);
             
-            // Send JSON response with auth cookie
+            // Send JSON response with auth cookie (using configured timeout)
             mg_printf(c, "HTTP/1.1 200 OK\r\n");
             mg_printf(c, "Content-Type: application/json\r\n");
             mg_printf(c, "Authorization: Basic %s\r\n", encoded_auth);
-            mg_printf(c, "Set-Cookie: auth=%s; Path=/; Max-Age=86400; SameSite=Lax\r\n", encoded_auth);
+            mg_printf(c, "Set-Cookie: auth=%s; Path=/; Max-Age=%d; SameSite=Lax\r\n", encoded_auth, session_timeout_seconds);
             mg_printf(c, "Cache-Control: no-cache, no-store, must-revalidate\r\n");
             mg_printf(c, "Pragma: no-cache\r\n");
             mg_printf(c, "Expires: 0\r\n");
-            
+
             char *json_str = cJSON_PrintUnformatted(response);
             mg_printf(c, "Content-Length: %d\r\n\r\n", (int)strlen(json_str));
             mg_printf(c, "%s", json_str);
-            
+
             cJSON_Delete(response);
             free(json_str);
-            
+
             // Ensure the connection is closed properly
             c->is_draining = 1;
         } else {
@@ -494,8 +498,8 @@ void mg_handle_auth_login(struct mg_connection *c, struct mg_http_message *hm) {
             mg_printf(c, "HTTP/1.1 302 Found\r\n");
             mg_printf(c, "Location: %s\r\n", redirect_url);
             mg_printf(c, "Authorization: Basic %s\r\n", encoded_auth);
-            // Set a cookie with the auth token to help maintain session across pages
-            mg_printf(c, "Set-Cookie: auth=%s; Path=/; Max-Age=86400; SameSite=Lax\r\n", encoded_auth);
+            // Set a cookie with the auth token to help maintain session across pages (using configured timeout)
+            mg_printf(c, "Set-Cookie: auth=%s; Path=/; Max-Age=%d; SameSite=Lax\r\n", encoded_auth, session_timeout_seconds);
             // Add Cache-Control headers to prevent caching
             mg_printf(c, "Cache-Control: no-cache, no-store, must-revalidate\r\n");
             mg_printf(c, "Pragma: no-cache\r\n");
@@ -542,10 +546,10 @@ void mg_handle_auth_login(struct mg_connection *c, struct mg_http_message *hm) {
             cJSON_AddStringToObject(response, "redirect", redirect_url);
             cJSON_AddStringToObject(response, "token", token);
             
-            // Send JSON response with session token cookie (7 days)
+            // Send JSON response with session token cookie (using configured timeout)
             mg_printf(c, "HTTP/1.1 200 OK\r\n");
             mg_printf(c, "Content-Type: application/json\r\n");
-            mg_printf(c, "Set-Cookie: session=%s; Path=/; Max-Age=604800; SameSite=Lax\r\n", token);
+            mg_printf(c, "Set-Cookie: session=%s; Path=/; Max-Age=%d; SameSite=Lax\r\n", token, session_timeout_seconds);
             mg_printf(c, "Cache-Control: no-cache, no-store, must-revalidate\r\n");
             mg_printf(c, "Pragma: no-cache\r\n");
             mg_printf(c, "Expires: 0\r\n");
@@ -563,8 +567,8 @@ void mg_handle_auth_login(struct mg_connection *c, struct mg_http_message *hm) {
             // For form submissions, send a redirect response
             mg_printf(c, "HTTP/1.1 302 Found\r\n");
             mg_printf(c, "Location: %s\r\n", redirect_url);
-            // Set a cookie with the session token to maintain session across pages (7 days)
-            mg_printf(c, "Set-Cookie: session=%s; Path=/; Max-Age=604800; SameSite=Lax\r\n", token);
+            // Set a cookie with the session token to maintain session across pages (using configured timeout)
+            mg_printf(c, "Set-Cookie: session=%s; Path=/; Max-Age=%d; SameSite=Lax\r\n", token, session_timeout_seconds);
             // Add Cache-Control headers to prevent caching
             mg_printf(c, "Cache-Control: no-cache, no-store, must-revalidate\r\n");
             mg_printf(c, "Pragma: no-cache\r\n");

@@ -83,7 +83,8 @@ bool go2rtc_stream_init(const char *binary_path, const char *config_dir, int api
 }
 
 bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
-                           const char *username, const char *password) {
+                           const char *username, const char *password,
+                           bool backchannel_enabled) {
     if (!g_initialized) {
         log_error("go2rtc stream integration not initialized");
         return false;
@@ -95,8 +96,9 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
     }
 
     // Log the input parameters for debugging
-    log_info("Registering stream with go2rtc: id=%s, url=%s, username=%s",
-             stream_id, stream_url, username ? username : "none");
+    log_info("Registering stream with go2rtc: id=%s, url=%s, username=%s, backchannel=%s",
+             stream_id, stream_url, username ? username : "none",
+             backchannel_enabled ? "enabled" : "disabled");
 
     // URL encode the stream ID to handle spaces and special characters
     char encoded_stream_id[URL_BUFFER_SIZE];
@@ -165,13 +167,19 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
         }
     }
 
-    // Append timeout parameter to the URL
+    // Append timeout and backchannel parameters to the URL using fragment (#)
+    // go2rtc uses fragment parameters for stream options
     char new_url[URL_BUFFER_SIZE];
-    // URL already has query parameters, append with &
-    snprintf(new_url, URL_BUFFER_SIZE, "%s#timeout=30", modified_url);
+    if (backchannel_enabled) {
+        // Enable backchannel for two-way audio support
+        snprintf(new_url, URL_BUFFER_SIZE, "%s#timeout=30#backchannel=1", modified_url);
+        log_info("Added timeout and backchannel parameters to URL: %s", new_url);
+    } else {
+        snprintf(new_url, URL_BUFFER_SIZE, "%s#timeout=30", modified_url);
+        log_info("Added timeout parameter to URL: %s", new_url);
+    }
     strncpy(modified_url, new_url, URL_BUFFER_SIZE - 1);
     modified_url[URL_BUFFER_SIZE - 1] = '\0';
-    log_info("Added timeout parameter to URL: %s", modified_url);
 
     // Register stream with go2rtc
     bool result = go2rtc_api_add_stream(encoded_stream_id, modified_url);

@@ -124,7 +124,7 @@ static bool reregister_stream_with_go2rtc(const char *stream_name) {
     const char *password = (config.onvif_password[0] != '\0') ? config.onvif_password : NULL;
 
     log_info("Re-registering stream %s with go2rtc using URL: %s", stream_name, config.url);
-    if (!go2rtc_stream_register(stream_name, config.url, username, password)) {
+    if (!go2rtc_stream_register(stream_name, config.url, username, password, config.backchannel_enabled)) {
         log_error("Failed to re-register stream %s with go2rtc", stream_name);
         return false;
     }

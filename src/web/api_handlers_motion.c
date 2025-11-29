@@ -14,7 +14,7 @@
 #include "video/onvif_motion_recording.h"
 #include "video/motion_storage_manager.h"
 #include "mongoose.h"
-#include "cJSON.h"
+#include <cjson/cJSON.h>
 
 /**
  * Handler for GET /api/motion/config/:stream

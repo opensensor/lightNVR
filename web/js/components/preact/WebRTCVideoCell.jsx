@@ -1,10 +1,11 @@
 /**
  * WebRTCVideoCell Component
  * A self-contained component for displaying a WebRTC video stream
+ * with optional two-way audio (backchannel) support
  */
 
 import { h } from 'preact';
-import { useState, useEffect, useRef } from 'preact/hooks';
+import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { DetectionOverlay, takeSnapshotWithDetections } from './DetectionOverlay.jsx';
 import { SnapshotButton } from './SnapshotManager.jsx';
 import { LoadingIndicator } from './LoadingIndicator.jsx';
@@ -30,6 +31,11 @@ export function WebRTCVideoCell({
   const [isPlaying, setIsPlaying] = useState(false);
   const [connectionQuality, setConnectionQuality] = useState('unknown'); // 'unknown', 'good', 'poor', 'bad'
 
+  // Backchannel (two-way audio) state
+  const [isTalking, setIsTalking] = useState(false);
+  const [microphoneError, setMicrophoneError] = useState(null);
+  const [hasMicrophonePermission, setHasMicrophonePermission] = useState(null);
+
   // Refs
   const videoRef = useRef(null);
   const cellRef = useRef(null);
@@ -38,6 +44,8 @@ export function WebRTCVideoCell({
   const abortControllerRef = useRef(null);
   const connectionMonitorRef = useRef(null);
   const reconnectAttemptsRef = useRef(0);
+  const localStreamRef = useRef(null);
+  const audioSenderRef = useRef(null);
 
   // Initialize WebRTC connection when component mounts
   useEffect(() => {
@@ -188,6 +196,18 @@ export function WebRTCVideoCell({
 
     // Add transceivers
     pc.addTransceiver('video', {direction: 'recvonly'});
+
+    // Add audio transceiver for backchannel support if enabled
+    // Use sendrecv to allow both receiving audio from camera and sending audio to camera
+    if (stream.backchannel_enabled) {
+      console.log(`Adding audio transceiver with sendrecv for backchannel on stream ${stream.name}`);
+      const audioTransceiver = pc.addTransceiver('audio', {direction: 'sendrecv'});
+      // Store reference to the audio sender for later use
+      audioSenderRef.current = audioTransceiver.sender;
+    } else {
+      // Just receive audio from the camera (if available)
+      pc.addTransceiver('audio', {direction: 'recvonly'});
+    }
 
     // Try to fetch ICE servers from go2rtc via LightNVR proxy before creating offer
     const auth = localStorage.getItem('auth');
@@ -373,31 +393,40 @@ export function WebRTCVideoCell({
     // Cleanup function
     return () => {
       console.log(`Cleaning up WebRTC connection for stream ${stream.name}`);
-      
+
       // Stop connection monitoring
       if (connectionMonitorRef.current) {
         clearInterval(connectionMonitorRef.current);
         connectionMonitorRef.current = null;
       }
-      
+
       // Abort any pending fetch requests
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
         abortControllerRef.current = null;
       }
-      
+
+      // Clean up local microphone stream
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach(track => track.stop());
+        localStreamRef.current = null;
+      }
+
       // Clean up video element
       if (videoRef.current && videoRef.current.srcObject) {
         const tracks = videoRef.current.srcObject.getTracks();
         tracks.forEach(track => track.stop());
         videoRef.current.srcObject = null;
       }
-      
+
       // Close peer connection
       if (peerConnectionRef.current) {
         peerConnectionRef.current.close();
         peerConnectionRef.current = null;
       }
+
+      // Reset audio sender ref
+      audioSenderRef.current = null;
     };
   }, [stream]);
 
@@ -406,13 +435,13 @@ export function WebRTCVideoCell({
     // Force a re-render to restart the WebRTC connection
     setError(null);
     setIsLoading(true);
-    
+
     // Clean up existing connection
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
     }
-    
+
     if (videoRef.current && videoRef.current.srcObject) {
       const tracks = videoRef.current.srcObject.getTracks();
       tracks.forEach(track => track.stop());
@@ -422,6 +451,73 @@ export function WebRTCVideoCell({
     // Force a re-render by updating state
     setIsPlaying(false);
   };
+
+  // Start push-to-talk (acquire microphone and send audio)
+  const startTalking = useCallback(async () => {
+    if (!stream.backchannel_enabled || !audioSenderRef.current) {
+      console.warn('Backchannel not enabled or audio sender not available');
+      return;
+    }
+
+    try {
+      setMicrophoneError(null);
+
+      // Request microphone access
+      console.log(`Requesting microphone access for backchannel on stream ${stream.name}`);
+      const localStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      });
+
+      localStreamRef.current = localStream;
+      setHasMicrophonePermission(true);
+
+      // Get the audio track and replace the sender's track
+      const audioTrack = localStream.getAudioTracks()[0];
+      if (audioTrack && audioSenderRef.current) {
+        await audioSenderRef.current.replaceTrack(audioTrack);
+        console.log(`Started sending audio for backchannel on stream ${stream.name}`);
+        setIsTalking(true);
+      }
+    } catch (err) {
+      console.error(`Failed to start backchannel audio for stream ${stream.name}:`, err);
+      setHasMicrophonePermission(false);
+
+      if (err.name === 'NotAllowedError') {
+        setMicrophoneError('Microphone access denied. Please allow microphone access in your browser settings.');
+      } else if (err.name === 'NotFoundError') {
+        setMicrophoneError('No microphone found. Please connect a microphone.');
+      } else {
+        setMicrophoneError(`Microphone error: ${err.message}`);
+      }
+    }
+  }, [stream]);
+
+  // Stop push-to-talk (stop sending audio)
+  const stopTalking = useCallback(async () => {
+    if (!stream.backchannel_enabled) return;
+
+    try {
+      // Stop the local audio track
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach(track => track.stop());
+        localStreamRef.current = null;
+      }
+
+      // Replace the sender's track with null to stop sending
+      if (audioSenderRef.current) {
+        await audioSenderRef.current.replaceTrack(null);
+        console.log(`Stopped sending audio for backchannel on stream ${stream.name}`);
+      }
+
+      setIsTalking(false);
+    } catch (err) {
+      console.error(`Failed to stop backchannel audio for stream ${stream.name}:`, err);
+    }
+  }, [stream]);
 
   return (
     <div
@@ -559,6 +655,36 @@ export function WebRTCVideoCell({
             }}
           />
         </div>
+        {/* Push-to-talk button for backchannel audio */}
+        {stream.backchannel_enabled && isPlaying && (
+          <button
+            className={`ptt-btn ${isTalking ? 'talking' : ''}`}
+            title={isTalking ? 'Release to stop talking' : 'Hold to talk'}
+            onMouseDown={startTalking}
+            onMouseUp={stopTalking}
+            onMouseLeave={stopTalking}
+            onTouchStart={(e) => { e.preventDefault(); startTalking(); }}
+            onTouchEnd={(e) => { e.preventDefault(); stopTalking(); }}
+            style={{
+              backgroundColor: isTalking ? 'rgba(239, 68, 68, 0.8)' : 'transparent',
+              border: 'none',
+              padding: '5px',
+              borderRadius: '4px',
+              color: 'white',
+              cursor: 'pointer',
+              transition: 'background-color 0.2s ease'
+            }}
+            onMouseOver={(e) => !isTalking && (e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)')}
+            onMouseOut={(e) => !isTalking && (e.currentTarget.style.backgroundColor = 'transparent')}
+          >
+            {/* Microphone icon */}
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill={isTalking ? 'white' : 'none'} stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+              <line x1="12" x2="12" y1="19" y2="22"></line>
+            </svg>
+          </button>
+        )}
         <button
           className="fullscreen-btn"
           title="Toggle Fullscreen"
@@ -579,6 +705,26 @@ export function WebRTCVideoCell({
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
         </button>
       </div>
+
+      {/* Microphone error indicator */}
+      {microphoneError && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: '60px',
+            right: '10px',
+            backgroundColor: 'rgba(239, 68, 68, 0.9)',
+            color: 'white',
+            padding: '8px 12px',
+            borderRadius: '4px',
+            fontSize: '12px',
+            maxWidth: '200px',
+            zIndex: 6
+          }}
+        >
+          {microphoneError}
+        </div>
+      )}
 
       {/* Loading indicator */}
       {isLoading && (

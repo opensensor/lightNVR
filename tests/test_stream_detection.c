@@ -54,7 +54,7 @@ int main(int argc, char **argv) {
     }
 
     // Start the detection thread
-    int ret = start_stream_detection_thread(stream_name, model_path, threshold, detection_interval, hls_dir);
+    int ret = start_stream_detection_thread(stream_name, model_path, threshold, detection_interval, hls_dir, NULL);
     if (ret != 0) {
         log_error("Failed to start detection thread for stream %s", stream_name);
         return 1;

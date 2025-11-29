@@ -165,6 +165,14 @@ void mg_handle_post_stream(struct mg_connection *c, struct mg_http_message *hm) 
                 config.record_audio ? "enabled" : "disabled", config.name);
     }
 
+    // Check if backchannel_enabled flag is set in the request
+    cJSON *backchannel_enabled = cJSON_GetObjectItem(stream_json, "backchannel_enabled");
+    if (backchannel_enabled && cJSON_IsBool(backchannel_enabled)) {
+        config.backchannel_enabled = cJSON_IsTrue(backchannel_enabled);
+        log_info("Backchannel audio %s for stream %s",
+                config.backchannel_enabled ? "enabled" : "disabled", config.name);
+    }
+
     // Check if isOnvif flag is set in the request
     cJSON *is_onvif = cJSON_GetObjectItem(stream_json, "isOnvif");
     if (is_onvif && cJSON_IsBool(is_onvif)) {
@@ -491,6 +499,18 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
         }
     }
 
+    cJSON *backchannel_enabled = cJSON_GetObjectItem(stream_json, "backchannel_enabled");
+    if (backchannel_enabled && cJSON_IsBool(backchannel_enabled)) {
+        bool original_backchannel = config.backchannel_enabled;
+        config.backchannel_enabled = cJSON_IsTrue(backchannel_enabled);
+        if (original_backchannel != config.backchannel_enabled) {
+            config_changed = true;
+            log_info("Backchannel audio changed from %s to %s",
+                    original_backchannel ? "enabled" : "disabled",
+                    config.backchannel_enabled ? "enabled" : "disabled");
+        }
+    }
+
     cJSON *protocol = cJSON_GetObjectItem(stream_json, "protocol");
     if (protocol && cJSON_IsNumber(protocol)) {
         stream_protocol_t new_protocol = (stream_protocol_t)protocol->valueint;
@@ -601,7 +621,8 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
                                 log_info("Registering enabled stream %s with go2rtc", decoded_id);
                                 if (go2rtc_stream_register(decoded_id, stream_config.url,
                                                          stream_config.onvif_username[0] != '\0' ? stream_config.onvif_username : NULL,
-                                                         stream_config.onvif_password[0] != '\0' ? stream_config.onvif_password : NULL)) {
+                                                         stream_config.onvif_password[0] != '\0' ? stream_config.onvif_password : NULL,
+                                                         stream_config.backchannel_enabled)) {
                                     log_info("Successfully registered stream %s with go2rtc", decoded_id);
                                 } else {
                                     log_warn("Failed to register stream %s with go2rtc", decoded_id);
@@ -751,7 +772,8 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
                     log_info("Registering stream %s with go2rtc after enabling detection", config.name);
                     if (go2rtc_stream_register(config.name, config.url,
                                              config.onvif_username[0] != '\0' ? config.onvif_username : NULL,
-                                             config.onvif_password[0] != '\0' ? config.onvif_password : NULL)) {
+                                             config.onvif_password[0] != '\0' ? config.onvif_password : NULL,
+                                             config.backchannel_enabled)) {
                         log_info("Successfully registered stream %s with go2rtc", config.name);
                     } else {
                         log_warn("Failed to register stream %s with go2rtc", config.name);
@@ -881,7 +903,7 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
             const char *username = (config.onvif_username[0] != '\0') ? config.onvif_username : NULL;
             const char *password = (config.onvif_password[0] != '\0') ? config.onvif_password : NULL;
 
-            if (go2rtc_stream_register(config.name, config.url, username, password)) {
+            if (go2rtc_stream_register(config.name, config.url, username, password, config.backchannel_enabled)) {
                 log_info("Re-registered stream %s with go2rtc using new URL", config.name);
             } else {
                 log_error("Failed to re-register stream %s with go2rtc", config.name);

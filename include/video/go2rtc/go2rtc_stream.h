@@ -21,15 +21,17 @@ bool go2rtc_stream_init(const char *binary_path, const char *config_dir, int api
 
 /**
  * @brief Register a stream with go2rtc
- * 
+ *
  * @param stream_id Unique identifier for the stream
  * @param stream_url URL of the stream source (e.g., RTSP URL)
  * @param username Optional username for authentication (can be NULL)
  * @param password Optional password for authentication (can be NULL)
+ * @param backchannel_enabled Whether to enable two-way audio (backchannel) support
  * @return true if stream was registered successfully, false otherwise
  */
-bool go2rtc_stream_register(const char *stream_id, const char *stream_url, 
-                           const char *username, const char *password);
+bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
+                           const char *username, const char *password,
+                           bool backchannel_enabled);
 
 /**
  * @brief Unregister a stream from go2rtc

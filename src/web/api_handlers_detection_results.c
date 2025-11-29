@@ -10,7 +10,7 @@
 #include <pthread.h>
 #include <time.h>
 
-#include "cJSON.h"
+#include <cjson/cJSON.h>
 #include "web/api_handlers_detection.h"
 #include "web/api_handlers_common.h"
 #include "core/logger.h"

@@ -48,6 +48,9 @@ typedef struct {
     char onvif_profile[64];
     bool onvif_discovery_enabled; // Whether this camera should be included in discovery
     bool is_onvif; // Whether this stream is an ONVIF camera
+
+    // Two-way audio (backchannel) support
+    bool backchannel_enabled; // Whether two-way audio is enabled for this stream
 } stream_config_t;
 
 // Main configuration structure
@@ -92,6 +95,7 @@ typedef struct {
     char web_username[32];
     char web_password[32]; // Stored as hash in actual implementation
     bool webrtc_disabled;  // Whether WebRTC is disabled (use HLS only)
+    int auth_timeout_hours; // Session timeout in hours (default: 24)
     
     // Web optimization settings
     bool web_compression_enabled;    // Whether to enable gzip compression for text-based responses

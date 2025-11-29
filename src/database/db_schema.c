@@ -16,7 +16,7 @@
 #include "core/logger.h"
 
 // Current schema version - increment this when adding new migrations
-#define CURRENT_SCHEMA_VERSION 11
+#define CURRENT_SCHEMA_VERSION 12
 
 // Migration function type
 typedef int (*migration_func_t)(void);
@@ -32,6 +32,7 @@ static int migration_v7_to_v8(void);
 static int migration_v8_to_v9(void);
 static int migration_v9_to_v10(void);
 static int migration_v10_to_v11(void);
+static int migration_v11_to_v12(void);
 
 // Array of migration functions
 static migration_func_t migrations[] = {
@@ -45,7 +46,8 @@ static migration_func_t migrations[] = {
     migration_v7_to_v8, // v7->v8
     migration_v8_to_v9, // v8->v9
     migration_v9_to_v10, // v9->v10
-    migration_v10_to_v11 // v10->v11
+    migration_v10_to_v11, // v10->v11
+    migration_v11_to_v12 // v11->v12
 };
 
 /**
@@ -872,5 +874,28 @@ static int migration_v10_to_v11(void) {
     }
 
     log_info("Completed migration v10 to v11 successfully");
+    return 0;
+}
+
+/**
+ * Migration from version 11 to 12
+ * - Add backchannel_enabled column to streams table for two-way audio support
+ */
+static int migration_v11_to_v12(void) {
+    log_info("Running migration from v11 to v12: Adding backchannel_enabled column to streams table");
+
+    int rc = 0;
+
+    // Add backchannel_enabled column to streams table
+    // This enables two-way audio (backchannel) support for cameras that support it
+    log_info("Adding backchannel_enabled column to streams table");
+    rc |= add_column_if_not_exists("streams", "backchannel_enabled", "INTEGER DEFAULT 0");
+
+    if (rc != 0) {
+        log_error("Failed to add backchannel_enabled column to streams table");
+        return -1;
+    }
+
+    log_info("Completed migration v11 to v12 successfully");
     return 0;
 }

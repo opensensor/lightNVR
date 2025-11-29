@@ -79,6 +79,7 @@ void mg_handle_get_streams(struct mg_connection *c, struct mg_http_message *hm) 
         cJSON_AddNumberToObject(stream_obj, "protocol", (int)db_streams[i].protocol);
         cJSON_AddBoolToObject(stream_obj, "record_audio", db_streams[i].record_audio);
         cJSON_AddBoolToObject(stream_obj, "isOnvif", db_streams[i].is_onvif);
+        cJSON_AddBoolToObject(stream_obj, "backchannel_enabled", db_streams[i].backchannel_enabled);
 
         // Get stream status
         stream_handle_t stream = get_stream_by_name(db_streams[i].name);
@@ -200,6 +201,7 @@ void mg_handle_get_stream(struct mg_connection *c, struct mg_http_message *hm) {
     cJSON_AddNumberToObject(stream_obj, "protocol", (int)config.protocol);
     cJSON_AddBoolToObject(stream_obj, "record_audio", config.record_audio);
     cJSON_AddBoolToObject(stream_obj, "isOnvif", config.is_onvif);
+    cJSON_AddBoolToObject(stream_obj, "backchannel_enabled", config.backchannel_enabled);
 
     // Get stream status
     stream_status_t stream_status = get_stream_status(stream);
@@ -318,6 +320,7 @@ void mg_handle_get_stream_full(struct mg_connection *c, struct mg_http_message *
     cJSON_AddNumberToObject(stream_obj, "protocol", (int)config.protocol);
     cJSON_AddBoolToObject(stream_obj, "record_audio", config.record_audio);
     cJSON_AddBoolToObject(stream_obj, "isOnvif", config.is_onvif);
+    cJSON_AddBoolToObject(stream_obj, "backchannel_enabled", config.backchannel_enabled);
 
     // Status
     stream_status_t stream_status = get_stream_status(stream);

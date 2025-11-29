@@ -326,9 +326,22 @@ export function StreamConfigModal({
                     />
                     <span className="text-sm font-medium">Record Audio</span>
                   </label>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      id="stream-backchannel-enabled"
+                      name="backchannelEnabled"
+                      className="h-4 w-4 rounded border-gray-300"
+                      style={{accentColor: 'hsl(var(--primary))'}}
+                      checked={currentStream.backchannelEnabled}
+                      onChange={onInputChange}
+                    />
+                    <span className="text-sm font-medium">Two-Way Audio</span>
+                  </label>
                 </div>
                 <p className="text-sm text-muted-foreground">
                   Continuous recording saves all video to disk. Audio recording requires the stream to have an audio track.
+                  Two-way audio enables speaking through the camera's speaker (requires camera support).
                 </p>
               </div>
             </AccordionSection>

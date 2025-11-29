@@ -7,7 +7,7 @@
 #define API_HANDLERS_H
 
 #include "mongoose.h"
-#include "cJSON.h"
+#include <cjson/cJSON.h>
 #include "core/config.h"
 #include "web/api_handlers_auth.h"
 

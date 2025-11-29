@@ -16,7 +16,7 @@
 #include "video/onvif_discovery.h"
 #include "video/stream_manager.h"
 #include "../../external/mongoose/mongoose.h"
-#include "cJSON.h"
+#include <cjson/cJSON.h>
 
 /**
  * @brief Handle GET request for ONVIF discovery status

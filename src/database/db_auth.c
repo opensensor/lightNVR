@@ -1026,8 +1026,9 @@ int db_auth_create_session(int64_t user_id, const char *ip_address, const char *
     // Get current timestamp
     time_t now = time(NULL);
     
-    // Calculate expiry time
-    time_t expires_at = now + (expiry_seconds > 0 ? expiry_seconds : DEFAULT_SESSION_EXPIRY);
+    // Calculate expiry time (use config value as default if not specified)
+    int default_expiry = g_config.auth_timeout_hours > 0 ? g_config.auth_timeout_hours * 3600 : DEFAULT_SESSION_EXPIRY;
+    time_t expires_at = now + (expiry_seconds > 0 ? expiry_seconds : default_expiry);
     
     // Insert the session
     rc = sqlite3_prepare_v2(db,

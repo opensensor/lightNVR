@@ -6,7 +6,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <sqlite3.h>
-#include "cJSON.h"
+#include <cjson/cJSON.h>
 
 #include "web/api_handlers_users.h"
 #include "web/api_handlers_common.h"

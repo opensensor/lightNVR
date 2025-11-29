@@ -149,11 +149,11 @@ else()
     endif()
 endif()
 
-# Find cJSON
+# Find cJSON (required dependency)
 pkg_check_modules(CJSON QUIET libcjson)
 if(CJSON_FOUND)
-    # Use pkg-config result (CJSON_LIBRARIES is automatically set)
     message(STATUS "Found cJSON via pkg-config: ${CJSON_LIBRARIES}")
+    message(STATUS "cJSON include dirs: ${CJSON_INCLUDE_DIRS}")
 else()
     # Try alternative pkg-config name
     pkg_check_modules(CJSON QUIET cjson)
@@ -164,11 +164,21 @@ else()
         find_package(cJSON QUIET)
         if(cJSON_FOUND)
             set(CJSON_LIBRARIES cjson)
-            set(CJSON_FOUND TRUE)  # Set this for consistency
+            set(CJSON_INCLUDE_DIRS ${cJSON_INCLUDE_DIRS})
+            set(CJSON_FOUND TRUE)
             message(STATUS "Found cJSON via find_package")
         else()
-            message(STATUS "cJSON not found via pkg-config or find_package, will use bundled version")
-            set(CJSON_BUNDLED TRUE)
+            # Try to find the library and header manually
+            find_library(CJSON_LIBRARY NAMES cjson)
+            find_path(CJSON_INCLUDE_DIR NAMES cjson/cJSON.h)
+            if(CJSON_LIBRARY AND CJSON_INCLUDE_DIR)
+                set(CJSON_LIBRARIES ${CJSON_LIBRARY})
+                set(CJSON_INCLUDE_DIRS ${CJSON_INCLUDE_DIR})
+                set(CJSON_FOUND TRUE)
+                message(STATUS "Found cJSON manually: ${CJSON_LIBRARY}")
+            else()
+                message(FATAL_ERROR "cJSON library not found. Please install libcjson-dev package.")
+            endif()
         endif()
     endif()
 endif()
@@ -212,29 +222,6 @@ set(MONGOOSE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose/mongoose.c")
 add_library(mongoose_lib STATIC ${MONGOOSE_SOURCES})
 target_include_directories(mongoose_lib INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose")
 
-# Set up cJSON if using bundled version
-if(CJSON_BUNDLED)
-    set(CJSON_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/cjson")
-    # Check if cJSON is already in external directory, if not download it
-    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/cjson/cJSON.c")
-        message(STATUS "Bundled cJSON source not found, will download it")
-        file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/external/cjson")
-        file(DOWNLOAD
-                "https://raw.githubusercontent.com/DaveGamble/cJSON/master/cJSON.c"
-                "${CMAKE_CURRENT_SOURCE_DIR}/external/cjson/cJSON.c"
-                SHOW_PROGRESS
-        )
-        file(DOWNLOAD
-                "https://raw.githubusercontent.com/DaveGamble/cJSON/master/cJSON.h"
-                "${CMAKE_CURRENT_SOURCE_DIR}/external/cjson/cJSON.h"
-                SHOW_PROGRESS
-        )
-    endif()
-    set(CJSON_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/external/cjson/cJSON.c")
-    add_library(cjson_lib STATIC ${CJSON_SOURCES})
-    target_include_directories(cjson_lib INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/external/cjson")
-endif()
-
 # Set up inih library
 set(INIH_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/external/inih/ini.c")
 add_library(inih_lib STATIC ${INIH_SOURCES})
@@ -256,7 +243,8 @@ if(ENABLE_SOD)
     list(APPEND LIGHTNVR_INCLUDE_DIRS ${SOD_INCLUDE_DIR})
 endif()
 
-if(CJSON_FOUND AND NOT CJSON_BUNDLED)
+# Add cJSON include directories
+if(CJSON_INCLUDE_DIRS)
     list(APPEND LIGHTNVR_INCLUDE_DIRS ${CJSON_INCLUDE_DIRS})
 endif()
 
@@ -333,12 +321,6 @@ if(ENABLE_GO2RTC)
     list(APPEND SOURCES ${GO2RTC_SOURCES})
 endif()
 
-# Add cJSON source ONLY if using bundled version AND library wasn't defined
-# (This case shouldn't happen with current logic, but added for robustness)
-# if(CJSON_BUNDLED AND NOT TARGET cjson_lib)
-#    list(APPEND SOURCES ${CJSON_SOURCES})
-# endif()
-
 # Define the shared library
 add_library(lightnvr_lib STATIC ${SOURCES})
 target_include_directories(lightnvr_lib PUBLIC ${LIGHTNVR_INCLUDE_DIRS})
@@ -346,9 +328,6 @@ target_include_directories(lightnvr_lib PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose"
     "${CMAKE_CURRENT_SOURCE_DIR}/external/inih"
 )
-if(CJSON_BUNDLED)
-    target_include_directories(lightnvr_lib PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/external/cjson")
-endif()
 
 # Define the main executable
 add_executable(lightnvr src/core/main.c)
@@ -402,14 +381,9 @@ target_link_libraries(rebuild_recordings
         m
 )
 
-# Link cJSON (either system or bundled static lib)
-if(CJSON_BUNDLED)
-    target_link_libraries(lightnvr cjson_lib)
-    target_link_libraries(rebuild_recordings cjson_lib)
-elseif(CJSON_FOUND)
-    target_link_libraries(lightnvr ${CJSON_LIBRARIES})
-    target_link_libraries(rebuild_recordings ${CJSON_LIBRARIES})
-endif()
+# Link cJSON (system library)
+target_link_libraries(lightnvr ${CJSON_LIBRARIES})
+target_link_libraries(rebuild_recordings ${CJSON_LIBRARIES})
 
 # Link SOD library if enabled
 if(ENABLE_SOD)

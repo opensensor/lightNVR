@@ -6,7 +6,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <curl/curl.h>
-#include <cJSON.h>
+#include <cjson/cJSON.h>
 #include <pthread.h>
 #include <time.h>
 #include <mbedtls/sha1.h>

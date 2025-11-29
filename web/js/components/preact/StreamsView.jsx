@@ -99,6 +99,7 @@ export function StreamsView() {
     segment: 30,
     record: true,
     recordAudio: true,
+    backchannelEnabled: false,
     // ONVIF capability flag
     isOnvif: false,
     // AI Detection recording
@@ -303,7 +304,8 @@ export function StreamsView() {
       detection_interval: parseInt(currentStream.detectionInterval, 10),
       pre_detection_buffer: parseInt(currentStream.preBuffer, 10),
       post_detection_buffer: parseInt(currentStream.postBuffer, 10),
-      record_audio: currentStream.recordAudio
+      record_audio: currentStream.recordAudio,
+      backchannel_enabled: currentStream.backchannelEnabled
     };
 
     // When editing, set is_deleted to false to allow undeleting soft-deleted streams
@@ -439,6 +441,7 @@ export function StreamsView() {
       segment: 30,
       record: true,
       recordAudio: true,
+      backchannelEnabled: false,
       isOnvif: false,
       detectionEnabled: false,
       detectionModel: '',
@@ -498,6 +501,7 @@ export function StreamsView() {
         detectionEnabled: stream.detection_based_recording || false,
         detectionModel: stream.detection_model || '',
         recordAudio: stream.record_audio !== undefined ? stream.record_audio : true,
+        backchannelEnabled: stream.backchannel_enabled !== undefined ? stream.backchannel_enabled : false,
         // Motion config mapping
         motionRecordingEnabled: motion ? !!motion.enabled : false,
         motionPreBuffer: motion ? (motion.pre_buffer_seconds || 5) : 5,
@@ -712,6 +716,7 @@ export function StreamsView() {
       segment_duration: 30,
       record: true,
       record_audio: true,
+      backchannel_enabled: false,
       // Backend expects camelCase key 'isOnvif'
       isOnvif: true
     };

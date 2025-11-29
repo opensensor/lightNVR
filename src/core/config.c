@@ -64,6 +64,8 @@ void load_default_config(config_t *config) {
     snprintf(config->web_username, 32, "admin");
     snprintf(config->web_password, 32, "admin"); // Default password, should be changed
     config->webrtc_disabled = false; // WebRTC is enabled by default
+    config->auth_timeout_hours = 24; // Default session timeout: 24 hours
+    config->auth_timeout_hours = 24; // Default session timeout: 24 hours
     
     // Web optimization settings
     config->web_compression_enabled = true;
@@ -365,6 +367,11 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             strncpy(config->web_password, value, 31);
         } else if (strcmp(name, "webrtc_disabled") == 0) {
             config->webrtc_disabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        } else if (strcmp(name, "auth_timeout_hours") == 0) {
+            config->auth_timeout_hours = atoi(value);
+            if (config->auth_timeout_hours < 1) {
+                config->auth_timeout_hours = 1; // Minimum 1 hour
+            }
         }
     }
     // Stream settings
@@ -956,6 +963,7 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "username = %s\n", config->web_username);
     fprintf(file, "password = %s  ; IMPORTANT: Change this default password!\n", config->web_password);
     fprintf(file, "webrtc_disabled = %s\n", config->webrtc_disabled ? "true" : "false");
+    fprintf(file, "auth_timeout_hours = %d  ; Session timeout in hours (default: 24)\n", config->auth_timeout_hours);
     fprintf(file, "\n");
     
     // Write stream settings
@@ -1067,7 +1075,8 @@ void print_config(const config_t *config) {
     printf("    Web Username: %s\n", config->web_username);
     printf("    Web Password: %s\n", "********");
     printf("    WebRTC Disabled: %s\n", config->webrtc_disabled ? "true" : "false");
-    
+    printf("    Auth Timeout: %d hours\n", config->auth_timeout_hours);
+
     printf("  Stream Settings:\n");
     printf("    Max Streams: %d\n", config->max_streams);
     

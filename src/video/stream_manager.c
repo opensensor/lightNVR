@@ -79,7 +79,8 @@ int init_stream_manager(int max_streams) {
             // Register existing streams with go2rtc if enabled
             #ifdef USE_GO2RTC
             extern bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
-                                              const char *username, const char *password);
+                                              const char *username, const char *password,
+                                              bool backchannel_enabled);
             extern bool go2rtc_stream_is_ready(void);
 
             if (go2rtc_stream_is_ready()) {
@@ -122,7 +123,7 @@ int init_stream_manager(int max_streams) {
                 }
 
                 if (go2rtc_stream_register(streams[i].config.name, streams[i].config.url,
-                                          username, password)) {
+                                          username, password, streams[i].config.backchannel_enabled)) {
                     log_info("Successfully registered stream '%s' with go2rtc", streams[i].config.name);
                 } else {
                     log_warn("Failed to register stream '%s' with go2rtc", streams[i].config.name);
@@ -474,7 +475,8 @@ stream_handle_t add_stream(const stream_config_t *config) {
     // Register stream with go2rtc if enabled
     #ifdef USE_GO2RTC
     extern bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
-                                      const char *username, const char *password);
+                                      const char *username, const char *password,
+                                      bool backchannel_enabled);
     extern bool go2rtc_stream_is_ready(void);
 
     if (go2rtc_stream_is_ready()) {
@@ -516,7 +518,7 @@ stream_handle_t add_stream(const stream_config_t *config) {
             strncpy(password, config->onvif_password, sizeof(password) - 1);
         }
 
-        if (go2rtc_stream_register(config->name, config->url, username, password)) {
+        if (go2rtc_stream_register(config->name, config->url, username, password, config->backchannel_enabled)) {
             log_info("Successfully registered stream '%s' with go2rtc", config->name);
         } else {
             log_warn("Failed to register stream '%s' with go2rtc", config->name);

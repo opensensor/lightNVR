@@ -70,7 +70,8 @@ uint64_t add_stream_config(const stream_config_t *stream) {
                                 "fps = ?, codec = ?, priority = ?, record = ?, segment_duration = ?, "
                                 "detection_based_recording = ?, detection_model = ?, detection_threshold = ?, "
                                 "detection_interval = ?, pre_detection_buffer = ?, post_detection_buffer = ?, "
-                                "detection_api_url = ?, protocol = ?, is_onvif = ?, record_audio = ? "
+                                "detection_api_url = ?, protocol = ?, is_onvif = ?, record_audio = ?, "
+                                "backchannel_enabled = ? "
                                 "WHERE id = ?;";
 
         rc = sqlite3_prepare_v2(db, update_sql, -1, &stmt, NULL);
@@ -110,8 +111,11 @@ uint64_t add_stream_config(const stream_config_t *stream) {
         // Bind record_audio parameter
         sqlite3_bind_int(stmt, 20, stream->record_audio ? 1 : 0);
 
+        // Bind backchannel_enabled parameter
+        sqlite3_bind_int(stmt, 21, stream->backchannel_enabled ? 1 : 0);
+
         // Bind ID parameter
-        sqlite3_bind_int64(stmt, 21, (sqlite3_int64)existing_id);
+        sqlite3_bind_int64(stmt, 22, (sqlite3_int64)existing_id);
 
         // Execute statement
         rc = sqlite3_step(stmt);
@@ -152,8 +156,8 @@ uint64_t add_stream_config(const stream_config_t *stream) {
     // No disabled stream found, insert a new one
     const char *sql = "INSERT INTO streams (name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
           "detection_based_recording, detection_model, detection_threshold, detection_interval, "
-          "pre_detection_buffer, post_detection_buffer, detection_api_url, protocol, is_onvif, record_audio) "
-          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+          "pre_detection_buffer, post_detection_buffer, detection_api_url, protocol, is_onvif, record_audio, backchannel_enabled) "
+          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -192,6 +196,9 @@ uint64_t add_stream_config(const stream_config_t *stream) {
 
     // Bind record_audio parameter
     sqlite3_bind_int(stmt, 21, stream->record_audio ? 1 : 0);
+
+    // Bind backchannel_enabled parameter
+    sqlite3_bind_int(stmt, 22, stream->backchannel_enabled ? 1 : 0);
 
     // Execute statement
     rc = sqlite3_step(stmt);
@@ -249,13 +256,14 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
     // Schema migrations should have already been run during database initialization
     // No need to check for columns here anymore
 
-    // Now update the stream with all fields including detection settings, protocol, is_onvif, and record_audio
+    // Now update the stream with all fields including detection settings, protocol, is_onvif, record_audio, and backchannel_enabled
     const char *sql = "UPDATE streams SET "
                       "name = ?, url = ?, enabled = ?, streaming_enabled = ?, width = ?, height = ?, "
                       "fps = ?, codec = ?, priority = ?, record = ?, segment_duration = ?, "
                       "detection_based_recording = ?, detection_model = ?, detection_threshold = ?, "
                       "detection_interval = ?, pre_detection_buffer = ?, post_detection_buffer = ?, "
-                      "detection_api_url = ?, protocol = ?, is_onvif = ?, record_audio = ? "
+                      "detection_api_url = ?, protocol = ?, is_onvif = ?, record_audio = ?, "
+                      "backchannel_enabled = ? "
                       "WHERE name = ?;";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -296,8 +304,11 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
     // Bind record_audio parameter
     sqlite3_bind_int(stmt, 21, stream->record_audio ? 1 : 0);
 
+    // Bind backchannel_enabled parameter
+    sqlite3_bind_int(stmt, 22, stream->backchannel_enabled ? 1 : 0);
+
     // Bind the WHERE clause parameter
-    sqlite3_bind_text(stmt, 22, name, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 23, name, -1, SQLITE_STATIC);
 
     // Execute statement
     rc = sqlite3_step(stmt);
@@ -454,10 +465,16 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
     bool has_onvif_column = cached_column_exists("streams", "is_onvif");
     bool has_record_audio_column = cached_column_exists("streams", "record_audio");
     bool has_detection_api_url_column = cached_column_exists("streams", "detection_api_url");
+    bool has_backchannel_column = cached_column_exists("streams", "backchannel_enabled");
 
-    // Prepare SQL based on whether detection columns, protocol column, is_onvif column, record_audio column, and detection_api_url column exist
+    // Prepare SQL based on whether detection columns, protocol column, is_onvif column, record_audio column, detection_api_url column, and backchannel_enabled column exist
     const char *sql;
-    if (has_detection_columns && has_protocol_column && has_onvif_column && has_record_audio_column && has_detection_api_url_column) {
+    if (has_detection_columns && has_protocol_column && has_onvif_column && has_record_audio_column && has_detection_api_url_column && has_backchannel_column) {
+        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
+              "detection_based_recording, detection_model, detection_threshold, detection_interval, "
+              "pre_detection_buffer, post_detection_buffer, detection_api_url, protocol, is_onvif, record_audio, backchannel_enabled "
+              "FROM streams WHERE name = ?;";
+    } else if (has_detection_columns && has_protocol_column && has_onvif_column && has_record_audio_column && has_detection_api_url_column) {
         sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
               "detection_based_recording, detection_model, detection_threshold, detection_interval, "
               "pre_detection_buffer, post_detection_buffer, detection_api_url, protocol, is_onvif, record_audio "
@@ -592,6 +609,14 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
                 if (sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
                     stream->record_audio = sqlite3_column_int(stmt, next_col) != 0;
                 }
+                next_col++;
+            }
+
+            // Parse backchannel_enabled if it exists
+            if (has_backchannel_column && sqlite3_column_count(stmt) > next_col) {
+                if (sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
+                    stream->backchannel_enabled = sqlite3_column_int(stmt, next_col) != 0;
+                }
             }
         }
 
@@ -640,10 +665,16 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
     bool has_protocol_column = cached_column_exists("streams", "protocol");
     bool has_onvif_column = cached_column_exists("streams", "is_onvif");
     bool has_record_audio_column = cached_column_exists("streams", "record_audio");
+    bool has_backchannel_column = cached_column_exists("streams", "backchannel_enabled");
 
-    // Prepare SQL based on whether detection columns, protocol column, is_onvif column, and record_audio column exist
+    // Prepare SQL based on whether detection columns, protocol column, is_onvif column, record_audio column, and backchannel_enabled column exist
     const char *sql;
-    if (has_detection_columns && has_protocol_column && has_onvif_column && has_record_audio_column) {
+    if (has_detection_columns && has_protocol_column && has_onvif_column && has_record_audio_column && has_backchannel_column) {
+        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
+              "detection_based_recording, detection_model, detection_threshold, detection_interval, "
+              "pre_detection_buffer, post_detection_buffer, protocol, is_onvif, record_audio, backchannel_enabled "
+              "FROM streams ORDER BY name;";
+    } else if (has_detection_columns && has_protocol_column && has_onvif_column && has_record_audio_column) {
         sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
               "detection_based_recording, detection_model, detection_threshold, detection_interval, "
               "pre_detection_buffer, post_detection_buffer, protocol, is_onvif, record_audio "
@@ -754,6 +785,13 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
             if (has_record_audio_column && sqlite3_column_count(stmt) > 19) {
                 if (sqlite3_column_type(stmt, 19) != SQLITE_NULL) {
                     streams[count].record_audio = sqlite3_column_int(stmt, 19) != 0;
+                }
+            }
+
+            // Parse backchannel_enabled if it exists (column 20)
+            if (has_backchannel_column && sqlite3_column_count(stmt) > 20) {
+                if (sqlite3_column_type(stmt, 20) != SQLITE_NULL) {
+                    streams[count].backchannel_enabled = sqlite3_column_int(stmt, 20) != 0;
                 }
             }
         }

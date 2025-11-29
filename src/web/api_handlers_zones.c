@@ -3,7 +3,7 @@
 #include "web/mongoose_server_auth.h"
 #include "database/db_zones.h"
 #include "core/logger.h"
-#include "cJSON.h"
+#include <cjson/cJSON.h>
 #include <string.h>
 #include <time.h>
 

@@ -16,7 +16,7 @@
 #include "core/logger.h"
 #include "core/config.h"
 #include "mongoose.h"
-#include "cJSON.h"
+#include <cjson/cJSON.h>
 
 /**
  * @brief Get system logs using tail command

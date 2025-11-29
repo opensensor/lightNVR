@@ -6,7 +6,7 @@
 #include <string.h>
 #include <ctype.h>
 
-#include "cJSON.h"
+#include <cjson/cJSON.h>
 #include "web/api_handlers_common.h"
 #include "core/logger.h"
 #include "web/request_response.h"
