@@ -12,6 +12,7 @@
 
 #include "storage/storage_manager.h"
 #include "storage/storage_manager_streams_cache.h"
+#include "database/db_auth.h"
 #include "core/logger.h"
 
 // Storage manager state
@@ -484,6 +485,14 @@ static void* storage_manager_thread_func(void *arg) {
             log_info("Storage manager thread deleted %d recordings", deleted);
         } else if (deleted < 0) {
             log_error("Storage manager thread encountered an error applying retention policy");
+        }
+
+        // Clean up expired authentication sessions
+        int sessions_deleted = db_auth_cleanup_sessions();
+        if (sessions_deleted > 0) {
+            log_info("Storage manager thread cleaned up %d expired sessions", sessions_deleted);
+        } else if (sessions_deleted < 0) {
+            log_warn("Storage manager thread encountered an error cleaning up sessions");
         }
 
         // Check if it's time to refresh the cache

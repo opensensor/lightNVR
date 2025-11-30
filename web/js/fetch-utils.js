@@ -76,8 +76,9 @@ export async function enhancedFetch(url, options = {}) {
     ? combineSignals(externalSignal, timeoutController.signal)
     : timeoutController.signal;
 
-  // Add the signal to fetch options
+  // Add the signal and credentials to fetch options
   const optionsWithSignal = {
+    credentials: 'same-origin', // Include cookies in same-origin requests
     ...fetchOptions,
     signal
   };

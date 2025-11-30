@@ -65,7 +65,6 @@ void load_default_config(config_t *config) {
     snprintf(config->web_password, 32, "admin"); // Default password, should be changed
     config->webrtc_disabled = false; // WebRTC is enabled by default
     config->auth_timeout_hours = 24; // Default session timeout: 24 hours
-    config->auth_timeout_hours = 24; // Default session timeout: 24 hours
     
     // Web optimization settings
     config->web_compression_enabled = true;
