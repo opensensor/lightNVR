@@ -42,10 +42,7 @@ void mg_handle_get_timeline_segments(struct mg_connection *c, struct mg_http_mes
 void mg_handle_timeline_manifest(struct mg_connection *c, struct mg_http_message *hm);
 void mg_handle_timeline_playback(struct mg_connection *c, struct mg_http_message *hm);
 
-// Forward declarations for HLS API handlers
-void mg_handle_hls_master_playlist(struct mg_connection *c, struct mg_http_message *hm);
-void mg_handle_hls_media_playlist(struct mg_connection *c, struct mg_http_message *hm);
-void mg_handle_hls_segment(struct mg_connection *c, struct mg_http_message *hm);
+// Forward declaration for HLS API handler
 void mg_handle_direct_hls_request(struct mg_connection *c, struct mg_http_message *hm);
 
 // Default initial handler capacity
