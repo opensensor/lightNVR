@@ -142,6 +142,25 @@ static void *mp4_writer_rtsp_thread(void *arg) {
             break;
         }
 
+        // Check if force reconnect was signaled (e.g., after go2rtc restart)
+        if (atomic_exchange(&thread_ctx->force_reconnect, 0)) {
+            log_info("Force reconnect signaled for stream %s, closing current connection", stream_name);
+
+            // Close the current input context to force a fresh connection
+            if (thread_ctx->input_ctx) {
+                avformat_close_input(&thread_ctx->input_ctx);
+                thread_ctx->input_ctx = NULL;
+            }
+
+            // Reset retry count to give the reconnection a clean slate
+            thread_ctx->retry_count = 0;
+
+            // Wait a moment for the upstream to be ready (go2rtc may still be initializing streams)
+            sleep(3);
+
+            log_info("Force reconnect: will attempt fresh connection for stream %s", stream_name);
+        }
+
         // Get current time
         time_t current_time = time(NULL);
 
@@ -508,6 +527,7 @@ int mp4_writer_start_recording_thread(mp4_writer_t *writer, const char *rtsp_url
     writer->thread_ctx->writer = writer;
     writer->thread_ctx->running = 0;
     atomic_store(&writer->thread_ctx->shutdown_requested, 0);
+    atomic_store(&writer->thread_ctx->force_reconnect, 0);
     strncpy(writer->thread_ctx->rtsp_url, rtsp_url, sizeof(writer->thread_ctx->rtsp_url) - 1);
     writer->thread_ctx->rtsp_url[sizeof(writer->thread_ctx->rtsp_url) - 1] = '\0';
 
@@ -599,4 +619,24 @@ int mp4_writer_is_recording(mp4_writer_t *writer) {
     }
 
     return thread_ctx->running;
+}
+
+/**
+ * Signal the recording thread to force a reconnection
+ * This is useful when the upstream source (e.g., go2rtc) has restarted
+ */
+void mp4_writer_signal_reconnect(mp4_writer_t *writer) {
+    if (!writer) {
+        return;
+    }
+
+    mp4_writer_thread_t *thread_ctx = (mp4_writer_thread_t *)writer->thread_ctx;
+    if (!thread_ctx) {
+        return;
+    }
+
+    if (thread_ctx->running) {
+        log_info("Signaling force reconnect for recording thread: %s", writer->stream_name);
+        atomic_store(&thread_ctx->force_reconnect, 1);
+    }
 }

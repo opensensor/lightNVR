@@ -935,3 +935,29 @@ int start_mp4_recording_with_url_and_trigger(const char *stream_name, const char
 
     return 0;
 }
+
+/**
+ * Signal all active MP4 recording threads to force reconnection
+ *
+ * This is useful when the upstream source (e.g., go2rtc) has restarted
+ * and all current RTSP connections are stale.
+ */
+void signal_all_mp4_recordings_reconnect(void) {
+    log_info("Signaling all active MP4 recordings to reconnect");
+
+    int signaled_count = 0;
+
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (recording_contexts[i] && recording_contexts[i]->running) {
+            mp4_writer_t *writer = recording_contexts[i]->mp4_writer;
+            if (writer) {
+                log_info("Signaling reconnect for recording: %s",
+                         recording_contexts[i]->config.name);
+                mp4_writer_signal_reconnect(writer);
+                signaled_count++;
+            }
+        }
+    }
+
+    log_info("Signaled %d active MP4 recordings to reconnect", signaled_count);
+}

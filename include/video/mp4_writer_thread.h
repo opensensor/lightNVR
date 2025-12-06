@@ -48,6 +48,7 @@ typedef struct {
     int retry_count;          // Number of consecutive failures
     time_t last_retry_time;   // Time of the last retry attempt
     bool auto_restart;        // Whether to automatically restart on failure
+    atomic_int force_reconnect;  // Flag to signal forced reconnection (e.g., after go2rtc restart)
 
     // Per-stream FFmpeg context and segment info (BUGFIX: moved from global static variables)
     struct AVFormatContext *input_ctx;  // Input context for this stream (reused between segments)
@@ -59,5 +60,14 @@ typedef struct {
 int mp4_writer_start_recording_thread(mp4_writer_t *writer, const char *rtsp_url);
 void mp4_writer_stop_recording_thread(mp4_writer_t *writer);
 int mp4_writer_is_recording(mp4_writer_t *writer);
+
+/**
+ * Signal the recording thread to force a reconnection
+ * This is useful when the upstream source (e.g., go2rtc) has restarted
+ * and the current connection is stale
+ *
+ * @param writer The MP4 writer instance
+ */
+void mp4_writer_signal_reconnect(mp4_writer_t *writer);
 
 #endif /* MP4_WRITER_THREAD_H */

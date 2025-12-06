@@ -55,9 +55,16 @@ void go2rtc_process_cleanup(void);
 
 /**
  * @brief Get the RTSP port used by go2rtc
- * 
+ *
  * @return int The RTSP port
  */
 int go2rtc_process_get_rtsp_port(void);
+
+/**
+ * @brief Get the PID of the go2rtc process
+ *
+ * @return pid_t The process ID, or -1 if not running
+ */
+int go2rtc_process_get_pid(void);
 
 #endif /* GO2RTC_PROCESS_H */

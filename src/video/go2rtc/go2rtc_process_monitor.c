@@ -15,6 +15,7 @@
 #include "video/go2rtc/go2rtc_integration.h"
 #include "video/stream_manager.h"
 #include "video/stream_state.h"
+#include "video/mp4_recording.h"
 #include "core/logger.h"
 #include "core/shutdown_coordinator.h"
 
@@ -216,6 +217,15 @@ static bool restart_go2rtc_process(void) {
     } else {
         log_info("All streams re-registered successfully after go2rtc restart");
     }
+
+    // Wait a moment for streams to be fully available in go2rtc
+    sleep(2);
+
+    // Signal all active MP4 recordings to reconnect
+    // This is necessary because recordings connect to go2rtc's RTSP output,
+    // which becomes unavailable during restart
+    log_info("Signaling MP4 recordings to reconnect after go2rtc restart");
+    signal_all_mp4_recordings_reconnect();
 
     // Update restart tracking
     time_t now = time(NULL);

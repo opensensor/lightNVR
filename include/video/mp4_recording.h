@@ -133,4 +133,13 @@ void unregister_mp4_writer_for_stream(const char *stream_name);
  */
 void close_all_mp4_writers(void);
 
+/**
+ * Signal all active MP4 recording threads to force reconnection
+ *
+ * This is useful when the upstream source (e.g., go2rtc) has restarted
+ * and all current RTSP connections are stale. Each recording thread
+ * will close its current connection and attempt to reconnect.
+ */
+void signal_all_mp4_recordings_reconnect(void);
+
 #endif /* MP4_RECORDING_H */

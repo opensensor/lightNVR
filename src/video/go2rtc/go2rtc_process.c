@@ -1081,3 +1081,44 @@ void go2rtc_process_cleanup(void) {
 
     log_info("go2rtc process manager cleaned up");
 }
+
+/**
+ * @brief Get the PID of the go2rtc process
+ *
+ * This function returns the tracked PID of the go2rtc process.
+ * If the process is not running or not tracked, it returns -1.
+ *
+ * @return int The process ID, or -1 if not running
+ */
+int go2rtc_process_get_pid(void) {
+    // First check if our tracked process is still running
+    if (g_process_pid > 0) {
+        if (kill(g_process_pid, 0) == 0) {
+            return g_process_pid;
+        } else {
+            // Process no longer exists
+            g_process_pid = -1;
+        }
+    }
+
+    // Try to find a running go2rtc process
+    FILE *fp = popen("ps | grep go2rtc | grep -v grep | awk '{print $1}'", "r");
+    if (!fp) {
+        return -1;
+    }
+
+    char line[16];
+    pid_t found_pid = -1;
+
+    while (fgets(line, sizeof(line), fp)) {
+        pid_t pid = atoi(line);
+        if (pid > 0 && is_go2rtc_process(pid)) {
+            found_pid = pid;
+            g_process_pid = pid;  // Update our tracked PID
+            break;
+        }
+    }
+
+    pclose(fp);
+    return found_pid;
+}
