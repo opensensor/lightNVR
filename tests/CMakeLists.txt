@@ -157,6 +157,46 @@ set_target_properties(test_stream_detection
 # Add stream detection test to CTest
 add_test(NAME test_stream_detection COMMAND test_stream_detection)
 
+# Add go2rtc recovery test
+add_executable(test_go2rtc_recovery test_go2rtc_recovery.c)
+
+# Add BUILDING_TEST definition for test builds
+target_compile_definitions(test_go2rtc_recovery PRIVATE BUILDING_TEST)
+
+# Link libraries for go2rtc recovery test
+target_link_libraries(test_go2rtc_recovery
+    lightnvr_lib
+    ${FFMPEG_LIBRARIES}
+    ${SQLITE_LIBRARIES}
+    ${CURL_LIBRARIES}
+    ${SSL_LIBRARIES}
+    pthread
+    dl
+    sqlite3
+    curl
+    mongoose_lib
+    inih_lib
+)
+if(CJSON_BUNDLED)
+    target_link_libraries(test_go2rtc_recovery cjson_lib)
+elseif(CJSON_FOUND)
+    target_link_libraries(test_go2rtc_recovery ${CJSON_LIBRARIES})
+endif()
+
+if(ENABLE_SOD)
+    target_link_libraries(test_go2rtc_recovery sod)
+endif()
+
+# Set output directory for go2rtc recovery test
+set_target_properties(test_go2rtc_recovery
+    PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+)
+
+# Add go2rtc recovery test to CTest
+add_test(NAME test_go2rtc_recovery COMMAND test_go2rtc_recovery)
+
 message(STATUS "Building motion detection optimization tests")
 message(STATUS "Building database backup tests")
 message(STATUS "Building stream detection tests")
+message(STATUS "Building go2rtc recovery tests")
