@@ -630,6 +630,41 @@ export function RecordingsView() {
     deleteRecordingMutation(recording.id);
   };
 
+  // Toggle recording protection
+  const toggleProtection = async (recording) => {
+    const newProtectedState = !recording.protected;
+    try {
+      const response = await fetch(`/api/recordings/${recording.id}/protect`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ protected: newProtectedState }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to ${newProtectedState ? 'protect' : 'unprotect'} recording`);
+      }
+
+      // Update the local state
+      setRecordings(prevRecordings =>
+        prevRecordings.map(r =>
+          r.id === recording.id ? { ...r, protected: newProtectedState } : r
+        )
+      );
+
+      showStatusMessage(
+        newProtectedState
+          ? 'Recording protected from automatic deletion'
+          : 'Recording protection removed',
+        'success'
+      );
+    } catch (error) {
+      console.error('Error toggling protection:', error);
+      showStatusMessage(`Error: ${error.message}`, 'error');
+    }
+  };
+
   // Play recording
   const playRecording = (recording) => {
     console.log('RecordingsView.playRecording called with:', recording);
@@ -716,6 +751,7 @@ export function RecordingsView() {
               playRecording={playRecording}
               downloadRecording={downloadRecording}
               deleteRecording={deleteRecording}
+              toggleProtection={toggleProtection}
               recordingsTableBodyRef={recordingsTableBodyRef}
               pagination={pagination}
             />

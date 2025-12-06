@@ -13,7 +13,17 @@
 #include "storage/storage_manager.h"
 #include "storage/storage_manager_streams_cache.h"
 #include "database/db_auth.h"
+#include "database/db_streams.h"
+#include "database/db_recordings.h"
 #include "core/logger.h"
+
+// Maximum number of streams to process at once
+#define MAX_STREAMS_BATCH 64
+// Maximum recordings to delete per stream per run
+#define MAX_RECORDINGS_PER_STREAM 100
+
+// Forward declarations
+static int apply_legacy_retention_policy(void);
 
 // Storage manager state
 static struct {
@@ -224,52 +234,190 @@ int delete_recording(const char *path) {
     return 0;
 }
 
-// Apply retention policy
+/**
+ * Apply per-stream retention policy
+ *
+ * This function processes each stream individually, applying:
+ * 1. Time-based retention (regular recordings vs detection recordings)
+ * 2. Storage quota enforcement per stream
+ * 3. Orphaned database entry cleanup
+ *
+ * Protected recordings are never deleted.
+ *
+ * @return Number of recordings deleted, or -1 on error
+ */
 int apply_retention_policy(void) {
-    log_info("Applying retention policy (max size: %lu bytes, retention days: %d)",
-             storage_manager.max_size, storage_manager.retention_days);
+    log_info("Applying per-stream retention policy");
 
-    // Get current storage stats
-    storage_stats_t stats;
-    if (get_storage_stats(&stats) != 0) {
-        log_error("Failed to get storage statistics");
+    int total_deleted = 0;
+    uint64_t total_freed = 0;
+
+    // Get list of all stream names
+    char stream_names[MAX_STREAMS_BATCH][64];
+    int stream_count = get_all_stream_names(stream_names, MAX_STREAMS_BATCH);
+
+    if (stream_count < 0) {
+        log_error("Failed to get stream names for retention policy");
         return -1;
     }
 
-    // Check if we need to apply retention policy
-    bool need_cleanup_size = (storage_manager.max_size > 0 && stats.used_space > storage_manager.max_size);
-    bool need_cleanup_days = (storage_manager.retention_days > 0);
-
-    if (!need_cleanup_size && !need_cleanup_days) {
-        log_debug("No retention policy to apply");
+    if (stream_count == 0) {
+        log_debug("No streams found for retention policy");
         return 0;
     }
 
+    log_info("Processing retention policy for %d streams", stream_count);
+
+    // Process each stream
+    for (int s = 0; s < stream_count; s++) {
+        const char *stream_name = stream_names[s];
+        stream_retention_config_t config;
+
+        // Get stream-specific retention config
+        if (get_stream_retention_config(stream_name, &config) != 0) {
+            log_warn("Failed to get retention config for stream %s, using defaults", stream_name);
+            config.retention_days = storage_manager.retention_days > 0 ? storage_manager.retention_days : 30;
+            config.detection_retention_days = config.retention_days * 3; // Default: 3x regular retention
+            config.max_storage_mb = 0; // No quota
+        }
+
+        log_debug("Stream %s: retention=%d days, detection_retention=%d days, max_storage=%lu MB",
+                  stream_name, config.retention_days, config.detection_retention_days,
+                  (unsigned long)config.max_storage_mb);
+
+        // Skip if no retention policy configured
+        if (config.retention_days <= 0 && config.detection_retention_days <= 0 && config.max_storage_mb == 0) {
+            log_debug("No retention policy for stream %s, skipping", stream_name);
+            continue;
+        }
+
+        // Phase 1: Time-based retention cleanup
+        if (config.retention_days > 0 || config.detection_retention_days > 0) {
+            recording_metadata_t recordings[MAX_RECORDINGS_PER_STREAM];
+            int count = get_recordings_for_retention(stream_name,
+                                                     config.retention_days,
+                                                     config.detection_retention_days,
+                                                     recordings,
+                                                     MAX_RECORDINGS_PER_STREAM);
+
+            if (count > 0) {
+                log_info("Stream %s: found %d recordings past retention", stream_name, count);
+
+                for (int i = 0; i < count; i++) {
+                    // Delete the file
+                    if (recordings[i].file_path[0] != '\0') {
+                        if (unlink(recordings[i].file_path) == 0) {
+                            log_debug("Deleted recording: %s (trigger: %s)",
+                                     recordings[i].file_path, recordings[i].trigger_type);
+                            total_freed += recordings[i].size_bytes;
+                            total_deleted++;
+                        } else if (errno != ENOENT) {
+                            log_error("Failed to delete recording file: %s (error: %s)",
+                                     recordings[i].file_path, strerror(errno));
+                        }
+                    }
+
+                    // Delete the database entry
+                    if (delete_recording_metadata(recordings[i].id) != 0) {
+                        log_warn("Failed to delete recording metadata for ID %llu",
+                                (unsigned long long)recordings[i].id);
+                    }
+                }
+            }
+        }
+
+        // Phase 2: Storage quota enforcement
+        if (config.max_storage_mb > 0) {
+            uint64_t current_usage = get_stream_storage_usage_db(stream_name);
+            uint64_t max_bytes = config.max_storage_mb * 1024 * 1024;
+
+            if (current_usage > max_bytes) {
+                uint64_t to_free = current_usage - max_bytes;
+                log_info("Stream %s: over quota by %lu bytes, need to free space",
+                        stream_name, (unsigned long)to_free);
+
+                recording_metadata_t recordings[MAX_RECORDINGS_PER_STREAM];
+                int count = get_recordings_for_quota_enforcement(stream_name,
+                                                                  recordings,
+                                                                  MAX_RECORDINGS_PER_STREAM);
+
+                uint64_t freed = 0;
+                for (int i = 0; i < count && freed < to_free; i++) {
+                    // Delete the file
+                    if (recordings[i].file_path[0] != '\0') {
+                        if (unlink(recordings[i].file_path) == 0) {
+                            log_debug("Deleted recording for quota: %s", recordings[i].file_path);
+                            freed += recordings[i].size_bytes;
+                            total_freed += recordings[i].size_bytes;
+                            total_deleted++;
+                        } else if (errno != ENOENT) {
+                            log_error("Failed to delete recording file: %s (error: %s)",
+                                     recordings[i].file_path, strerror(errno));
+                        }
+                    }
+
+                    // Delete the database entry
+                    if (delete_recording_metadata(recordings[i].id) != 0) {
+                        log_warn("Failed to delete recording metadata for ID %llu",
+                                (unsigned long long)recordings[i].id);
+                    }
+                }
+
+                log_info("Stream %s: freed %lu bytes for quota enforcement",
+                        stream_name, (unsigned long)freed);
+            }
+        }
+    }
+
+    // Phase 3: Clean up orphaned database entries (files that no longer exist)
+    recording_metadata_t orphaned[100];
+    int orphan_count = get_orphaned_db_entries(orphaned, 100);
+
+    if (orphan_count > 0) {
+        log_info("Found %d orphaned database entries, cleaning up", orphan_count);
+
+        for (int i = 0; i < orphan_count; i++) {
+            if (delete_recording_metadata(orphaned[i].id) == 0) {
+                log_debug("Deleted orphaned DB entry: ID %llu, path %s",
+                         (unsigned long long)orphaned[i].id, orphaned[i].file_path);
+            }
+        }
+    }
+
+    // Also apply global retention policy as fallback (for files not in database)
+    if (storage_manager.retention_days > 0 || storage_manager.max_size > 0) {
+        int legacy_deleted = apply_legacy_retention_policy();
+        if (legacy_deleted > 0) {
+            total_deleted += legacy_deleted;
+            log_info("Legacy retention policy deleted %d additional files", legacy_deleted);
+        }
+    }
+
+    log_info("Retention policy complete: deleted %d recordings, freed %lu bytes",
+             total_deleted, (unsigned long)total_freed);
+
+    return total_deleted;
+}
+
+/**
+ * Legacy retention policy for files not tracked in database
+ * This handles cleanup of files that may have been created before database tracking
+ *
+ * @return Number of files deleted
+ */
+static int apply_legacy_retention_policy(void) {
     // Calculate cutoff time for retention days
     time_t now = time(NULL);
-    time_t cutoff_time = now - (storage_manager.retention_days * 86400); // 86400 seconds in a day
+    time_t cutoff_time = now - (storage_manager.retention_days * 86400);
 
-    // Track deleted files
     int deleted_count = 0;
-    uint64_t freed_space = 0;
 
     // Scan the storage directory
     DIR *dir = opendir(storage_manager.storage_path);
     if (!dir) {
         log_error("Failed to open storage directory: %s", strerror(errno));
-        return -1;
+        return 0;
     }
-
-    // First pass: collect all recording files with their timestamps and sizes
-    typedef struct {
-        char path[768];
-        time_t mtime;
-        off_t size;
-    } recording_file_t;
-
-    recording_file_t *files = NULL;
-    int file_count = 0;
-    int file_capacity = 0;
 
     struct dirent *entry;
     while ((entry = readdir(dir)) != NULL) {
@@ -302,37 +450,18 @@ int apply_retention_policy(void) {
                     struct stat rec_st;
                     if (stat(rec_path, &rec_st) == 0 && S_ISREG(rec_st.st_mode)) {
                         // Check if file is older than retention days
-                        if (need_cleanup_days && rec_st.st_mtime < cutoff_time) {
-                            // Delete file directly if it's older than retention days
-                            if (unlink(rec_path) == 0) {
-                                log_debug("Deleted old recording: %s (age: %ld days)",
-                                         rec_path, (now - rec_st.st_mtime) / 86400);
-                                deleted_count++;
-                                freed_space += rec_st.st_size;
-                            } else {
-                                log_error("Failed to delete old recording: %s (error: %s)",
-                                         rec_path, strerror(errno));
-                            }
-                        } else if (need_cleanup_size) {
-                            // Add to files array for size-based cleanup
-                            if (file_count >= file_capacity) {
-                                file_capacity = file_capacity == 0 ? 1000 : file_capacity * 2;
-                                recording_file_t *new_files = realloc(files, file_capacity * sizeof(recording_file_t));
-                                if (!new_files) {
-                                    log_error("Memory allocation failed for recording files array");
-                                    free(files);
-                                    closedir(stream_dir);
-                                    closedir(dir);
-                                    return -1;
+                        if (storage_manager.retention_days > 0 && rec_st.st_mtime < cutoff_time) {
+                            // Check if this file is tracked in database
+                            // If not tracked, delete it
+                            recording_metadata_t meta;
+                            if (get_recording_metadata_by_path(rec_path, &meta) != 0) {
+                                // Not in database, safe to delete
+                                if (unlink(rec_path) == 0) {
+                                    log_debug("Deleted untracked old recording: %s (age: %ld days)",
+                                             rec_path, (now - rec_st.st_mtime) / 86400);
+                                    deleted_count++;
                                 }
-                                files = new_files;
                             }
-
-                            strncpy(files[file_count].path, rec_path, sizeof(files[file_count].path) - 1);
-                            files[file_count].path[sizeof(files[file_count].path) - 1] = '\0';
-                            files[file_count].mtime = rec_st.st_mtime;
-                            files[file_count].size = rec_st.st_size;
-                            file_count++;
                         }
                     }
                 }
@@ -343,46 +472,6 @@ int apply_retention_policy(void) {
     }
 
     closedir(dir);
-
-    // If we need to clean up by size and we still have too much used space
-    if (need_cleanup_size && stats.used_space - freed_space > storage_manager.max_size && file_count > 0) {
-        log_info("Need to free more space: %lu bytes over limit",
-                (stats.used_space - freed_space) - storage_manager.max_size);
-
-        // Sort files by modification time (oldest first)
-        for (int i = 0; i < file_count - 1; i++) {
-            for (int j = 0; j < file_count - i - 1; j++) {
-                if (files[j].mtime > files[j + 1].mtime) {
-                    recording_file_t temp = files[j];
-                    files[j] = files[j + 1];
-                    files[j + 1] = temp;
-                }
-            }
-        }
-
-        // Delete oldest files until we're under the limit
-        for (int i = 0; i < file_count; i++) {
-            if (stats.used_space - freed_space <= storage_manager.max_size) {
-                break;
-            }
-
-            if (unlink(files[i].path) == 0) {
-                log_debug("Deleted recording to free space: %s", files[i].path);
-                deleted_count++;
-                freed_space += files[i].size;
-            } else {
-                log_error("Failed to delete recording: %s (error: %s)",
-                         files[i].path, strerror(errno));
-            }
-        }
-    }
-
-    // Free memory
-    free(files);
-
-    log_info("Retention policy applied: deleted %d files, freed %lu bytes",
-             deleted_count, freed_space);
-
     return deleted_count;
 }
 

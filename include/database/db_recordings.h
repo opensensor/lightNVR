@@ -19,6 +19,8 @@ typedef struct {
     char codec[16];
     bool is_complete;
     char trigger_type[16];  // 'scheduled', 'detection', 'motion', 'manual'
+    bool protected;         // If true, recording is protected from automatic deletion
+    int retention_override_days;  // Custom retention period override (-1 = use stream default)
 } recording_metadata_t;
 
 /**
@@ -89,12 +91,21 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
 
 /**
  * Get recording metadata by ID
- * 
+ *
  * @param id Recording ID
  * @param metadata Pointer to metadata structure to fill
  * @return 0 on success, non-zero on failure
  */
 int get_recording_metadata_by_id(uint64_t id, recording_metadata_t *metadata);
+
+/**
+ * Get recording metadata by file path
+ *
+ * @param file_path File path to search for
+ * @param metadata Pointer to metadata structure to fill
+ * @return 0 on success, non-zero on failure (including not found)
+ */
+int get_recording_metadata_by_path(const char *file_path, recording_metadata_t *metadata);
 
 /**
  * Delete recording metadata from the database
@@ -106,10 +117,76 @@ int delete_recording_metadata(uint64_t id);
 
 /**
  * Delete old recording metadata from the database
- * 
+ *
  * @param max_age Maximum age in seconds
  * @return Number of recordings deleted, or -1 on error
  */
 int delete_old_recording_metadata(uint64_t max_age);
+
+/**
+ * Set protection status for a recording
+ *
+ * @param id Recording ID
+ * @param protected Whether to protect the recording
+ * @return 0 on success, non-zero on failure
+ */
+int set_recording_protected(uint64_t id, bool protected);
+
+/**
+ * Set custom retention override for a recording
+ *
+ * @param id Recording ID
+ * @param days Custom retention days (-1 to remove override)
+ * @return 0 on success, non-zero on failure
+ */
+int set_recording_retention_override(uint64_t id, int days);
+
+/**
+ * Get recordings eligible for deletion based on retention policy
+ * Priority 1: Regular recordings past retention period
+ * Priority 2: Detection recordings past detection retention period
+ * Protected recordings are never returned
+ *
+ * @param stream_name Stream name to filter
+ * @param retention_days Regular recordings retention in days
+ * @param detection_retention_days Detection recordings retention in days
+ * @param recordings Array to fill with recording metadata
+ * @param max_count Maximum number of recordings to return
+ * @return Number of recordings found, or -1 on error
+ */
+int get_recordings_for_retention(const char *stream_name,
+                                 int retention_days,
+                                 int detection_retention_days,
+                                 recording_metadata_t *recordings,
+                                 int max_count);
+
+/**
+ * Get count of protected recordings for a stream
+ *
+ * @param stream_name Stream name (NULL for all streams)
+ * @return Count of protected recordings, or -1 on error
+ */
+int get_protected_recordings_count(const char *stream_name);
+
+/**
+ * Get recordings for quota enforcement (oldest unprotected first)
+ *
+ * @param stream_name Stream name
+ * @param recordings Array to fill with recording metadata
+ * @param max_count Maximum number of recordings to return
+ * @return Number of recordings found, or -1 on error
+ */
+int get_recordings_for_quota_enforcement(const char *stream_name,
+                                         recording_metadata_t *recordings,
+                                         int max_count);
+
+/**
+ * Get orphaned recording entries (DB entries without files)
+ *
+ * @param recordings Array to fill with recording metadata
+ * @param max_count Maximum number of recordings to return
+ * @return Number of recordings found, or -1 on error
+ */
+int get_orphaned_db_entries(recording_metadata_t *recordings, int max_count);
 
 #endif // LIGHTNVR_DB_RECORDINGS_H

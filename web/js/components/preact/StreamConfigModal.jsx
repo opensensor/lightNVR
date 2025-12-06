@@ -343,6 +343,61 @@ export function StreamConfigModal({
                   Continuous recording saves all video to disk. Audio recording requires the stream to have an audio track.
                   Two-way audio enables speaking through the camera's speaker (requires camera support).
                 </p>
+
+                {/* Retention Policy Settings */}
+                <div className="border-t border-border pt-4 mt-4">
+                  <h5 className="text-sm font-semibold mb-3">Retention Policy</h5>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label htmlFor="retention-days" className="block text-sm font-medium mb-2">
+                        Retention Days
+                      </label>
+                      <input
+                        type="number"
+                        id="retention-days"
+                        name="retentionDays"
+                        className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
+                        min="0"
+                        max="365"
+                        value={currentStream.retentionDays || 0}
+                        onChange={onInputChange}
+                      />
+                      <p className="mt-1 text-xs text-muted-foreground">Days to keep regular recordings (0 = unlimited)</p>
+                    </div>
+                    <div>
+                      <label htmlFor="detection-retention-days" className="block text-sm font-medium mb-2">
+                        Detection Retention Days
+                      </label>
+                      <input
+                        type="number"
+                        id="detection-retention-days"
+                        name="detectionRetentionDays"
+                        className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
+                        min="0"
+                        max="365"
+                        value={currentStream.detectionRetentionDays || 0}
+                        onChange={onInputChange}
+                      />
+                      <p className="mt-1 text-xs text-muted-foreground">Days to keep detection recordings (0 = unlimited)</p>
+                    </div>
+                    <div>
+                      <label htmlFor="max-storage-mb" className="block text-sm font-medium mb-2">
+                        Max Storage (MB)
+                      </label>
+                      <input
+                        type="number"
+                        id="max-storage-mb"
+                        name="maxStorageMb"
+                        className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
+                        min="0"
+                        step="100"
+                        value={currentStream.maxStorageMb || 0}
+                        onChange={onInputChange}
+                      />
+                      <p className="mt-1 text-xs text-muted-foreground">Storage quota for this stream (0 = unlimited)</p>
+                    </div>
+                  </div>
+                </div>
               </div>
             </AccordionSection>
 

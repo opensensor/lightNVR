@@ -24,6 +24,7 @@ export function RecordingsTable({
   playRecording,
   downloadRecording,
   deleteRecording,
+  toggleProtection,
   recordingsTableBodyRef,
   pagination
 }) {
@@ -94,6 +95,9 @@ export function RecordingsTable({
                 Detections
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Protected
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Actions
               </th>
             </tr>
@@ -101,7 +105,7 @@ export function RecordingsTable({
           <tbody ref={recordingsTableBodyRef} className="bg-card divide-y divide-border">
             {recordings.length === 0 ? (
               <tr>
-                <td colSpan="6" className="px-6 py-4 text-center text-muted-foreground">
+                <td colSpan="8" className="px-6 py-4 text-center text-muted-foreground">
                   {pagination.totalItems === 0 ? 'No recordings found' : 'Loading recordings...'}
                 </td>
               </tr>
@@ -129,6 +133,31 @@ export function RecordingsTable({
                       Yes
                     </span>
                   ) : ''}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  {recording.protected ? (
+                    <button
+                      className="badge-warning cursor-pointer hover:opacity-80"
+                      onClick={() => toggleProtection && toggleProtection(recording)}
+                      title="Click to unprotect"
+                    >
+                      <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                        <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd"></path>
+                      </svg>
+                      Protected
+                    </button>
+                  ) : (
+                    <button
+                      className="text-muted-foreground hover:text-foreground cursor-pointer text-xs"
+                      onClick={() => toggleProtection && toggleProtection(recording)}
+                      title="Click to protect from deletion"
+                    >
+                      <svg className="w-3 h-3 inline mr-1" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M10 2a5 5 0 00-5 5v2a2 2 0 00-2 2v5a2 2 0 002 2h10a2 2 0 002-2v-5a2 2 0 00-2-2H7V7a3 3 0 015.905-.75 1 1 0 001.937-.5A5.002 5.002 0 0010 2z"></path>
+                      </svg>
+                      Protect
+                    </button>
+                  )}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="flex space-x-2">

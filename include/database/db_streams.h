@@ -2,7 +2,18 @@
 #define LIGHTNVR_DB_STREAMS_H
 
 #include <stdint.h>
+#include <stdbool.h>
 #include "core/config.h"
+
+/**
+ * Stream retention configuration structure
+ * Used for per-stream recording retention policies
+ */
+typedef struct {
+    int retention_days;              // Regular recordings retention (0 = unlimited)
+    int detection_retention_days;    // Detection recordings retention (0 = unlimited)
+    uint64_t max_storage_mb;         // Storage quota in MB (0 = unlimited)
+} stream_retention_config_t;
 
 /**
  * Add a stream configuration to the database
@@ -77,5 +88,40 @@ int get_enabled_stream_count(void);
  * @return 1 if eligible, 0 if not eligible, -1 on error
  */
 int is_stream_eligible_for_live_streaming(const char *stream_name);
+
+/**
+ * Get retention configuration for a stream
+ *
+ * @param stream_name Stream name
+ * @param config Pointer to retention config structure to fill
+ * @return 0 on success, non-zero on failure
+ */
+int get_stream_retention_config(const char *stream_name, stream_retention_config_t *config);
+
+/**
+ * Set retention configuration for a stream
+ *
+ * @param stream_name Stream name
+ * @param config Pointer to retention config structure with new values
+ * @return 0 on success, non-zero on failure
+ */
+int set_stream_retention_config(const char *stream_name, const stream_retention_config_t *config);
+
+/**
+ * Get all stream names for retention policy processing
+ *
+ * @param names Array of stream name buffers (each should be at least 64 chars)
+ * @param max_count Maximum number of stream names to return
+ * @return Number of streams found, or -1 on error
+ */
+int get_all_stream_names(char names[][64], int max_count);
+
+/**
+ * Get storage usage for a stream in bytes
+ *
+ * @param stream_name Stream name
+ * @return Total size in bytes, or 0 on error
+ */
+uint64_t get_stream_storage_usage_db(const char *stream_name);
 
 #endif // LIGHTNVR_DB_STREAMS_H

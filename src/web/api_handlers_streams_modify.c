@@ -173,6 +173,22 @@ void mg_handle_post_stream(struct mg_connection *c, struct mg_http_message *hm) 
                 config.backchannel_enabled ? "enabled" : "disabled", config.name);
     }
 
+    // Parse retention policy settings
+    cJSON *retention_days = cJSON_GetObjectItem(stream_json, "retention_days");
+    if (retention_days && cJSON_IsNumber(retention_days)) {
+        config.retention_days = retention_days->valueint;
+    }
+
+    cJSON *detection_retention_days = cJSON_GetObjectItem(stream_json, "detection_retention_days");
+    if (detection_retention_days && cJSON_IsNumber(detection_retention_days)) {
+        config.detection_retention_days = detection_retention_days->valueint;
+    }
+
+    cJSON *max_storage_mb = cJSON_GetObjectItem(stream_json, "max_storage_mb");
+    if (max_storage_mb && cJSON_IsNumber(max_storage_mb)) {
+        config.max_storage_mb = max_storage_mb->valueint;
+    }
+
     // Check if isOnvif flag is set in the request
     cJSON *is_onvif = cJSON_GetObjectItem(stream_json, "isOnvif");
     if (is_onvif && cJSON_IsBool(is_onvif)) {
@@ -508,6 +524,37 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
             log_info("Backchannel audio changed from %s to %s",
                     original_backchannel ? "enabled" : "disabled",
                     config.backchannel_enabled ? "enabled" : "disabled");
+        }
+    }
+
+    // Parse retention policy settings
+    cJSON *retention_days = cJSON_GetObjectItem(stream_json, "retention_days");
+    if (retention_days && cJSON_IsNumber(retention_days)) {
+        int new_retention = retention_days->valueint;
+        if (config.retention_days != new_retention) {
+            config.retention_days = new_retention;
+            config_changed = true;
+            log_info("Retention days changed to %d for stream %s", new_retention, config.name);
+        }
+    }
+
+    cJSON *detection_retention_days = cJSON_GetObjectItem(stream_json, "detection_retention_days");
+    if (detection_retention_days && cJSON_IsNumber(detection_retention_days)) {
+        int new_detection_retention = detection_retention_days->valueint;
+        if (config.detection_retention_days != new_detection_retention) {
+            config.detection_retention_days = new_detection_retention;
+            config_changed = true;
+            log_info("Detection retention days changed to %d for stream %s", new_detection_retention, config.name);
+        }
+    }
+
+    cJSON *max_storage_mb = cJSON_GetObjectItem(stream_json, "max_storage_mb");
+    if (max_storage_mb && cJSON_IsNumber(max_storage_mb)) {
+        int new_max_storage = max_storage_mb->valueint;
+        if (config.max_storage_mb != new_max_storage) {
+            config.max_storage_mb = new_max_storage;
+            config_changed = true;
+            log_info("Max storage MB changed to %d for stream %s", new_max_storage, config.name);
         }
     }
 

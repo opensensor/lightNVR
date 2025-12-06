@@ -391,6 +391,37 @@ char* mg_parse_json_string(const cJSON *json, const char *key);
  */
 int mg_json_has_key(const cJSON *json, const char *key);
 
+// Retention policy API handlers
+/**
+ * @brief Handler for GET /api/streams/:name/retention
+ */
+void mg_handle_get_stream_retention(struct mg_connection *c, struct mg_http_message *hm);
+
+/**
+ * @brief Handler for PUT /api/streams/:name/retention
+ */
+void mg_handle_put_stream_retention(struct mg_connection *c, struct mg_http_message *hm);
+
+/**
+ * @brief Handler for PUT /api/recordings/:id/protect
+ */
+void mg_handle_put_recording_protect(struct mg_connection *c, struct mg_http_message *hm);
+
+/**
+ * @brief Handler for PUT /api/recordings/:id/retention
+ */
+void mg_handle_put_recording_retention(struct mg_connection *c, struct mg_http_message *hm);
+
+/**
+ * @brief Handler for GET /api/recordings/protected
+ */
+void mg_handle_get_protected_recordings(struct mg_connection *c, struct mg_http_message *hm);
+
+/**
+ * @brief Handler for POST /api/recordings/batch-protect
+ */
+void mg_handle_batch_protect_recordings(struct mg_connection *c, struct mg_http_message *hm);
+
 // Health check functions
 void init_health_check_system(void);
 void update_health_metrics(bool request_succeeded);

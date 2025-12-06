@@ -80,6 +80,9 @@ void mg_handle_get_streams(struct mg_connection *c, struct mg_http_message *hm) 
         cJSON_AddBoolToObject(stream_obj, "record_audio", db_streams[i].record_audio);
         cJSON_AddBoolToObject(stream_obj, "isOnvif", db_streams[i].is_onvif);
         cJSON_AddBoolToObject(stream_obj, "backchannel_enabled", db_streams[i].backchannel_enabled);
+        cJSON_AddNumberToObject(stream_obj, "retention_days", db_streams[i].retention_days);
+        cJSON_AddNumberToObject(stream_obj, "detection_retention_days", db_streams[i].detection_retention_days);
+        cJSON_AddNumberToObject(stream_obj, "max_storage_mb", db_streams[i].max_storage_mb);
 
         // Get stream status
         stream_handle_t stream = get_stream_by_name(db_streams[i].name);
@@ -202,6 +205,9 @@ void mg_handle_get_stream(struct mg_connection *c, struct mg_http_message *hm) {
     cJSON_AddBoolToObject(stream_obj, "record_audio", config.record_audio);
     cJSON_AddBoolToObject(stream_obj, "isOnvif", config.is_onvif);
     cJSON_AddBoolToObject(stream_obj, "backchannel_enabled", config.backchannel_enabled);
+    cJSON_AddNumberToObject(stream_obj, "retention_days", config.retention_days);
+    cJSON_AddNumberToObject(stream_obj, "detection_retention_days", config.detection_retention_days);
+    cJSON_AddNumberToObject(stream_obj, "max_storage_mb", config.max_storage_mb);
 
     // Get stream status
     stream_status_t stream_status = get_stream_status(stream);
@@ -321,6 +327,9 @@ void mg_handle_get_stream_full(struct mg_connection *c, struct mg_http_message *
     cJSON_AddBoolToObject(stream_obj, "record_audio", config.record_audio);
     cJSON_AddBoolToObject(stream_obj, "isOnvif", config.is_onvif);
     cJSON_AddBoolToObject(stream_obj, "backchannel_enabled", config.backchannel_enabled);
+    cJSON_AddNumberToObject(stream_obj, "retention_days", config.retention_days);
+    cJSON_AddNumberToObject(stream_obj, "detection_retention_days", config.detection_retention_days);
+    cJSON_AddNumberToObject(stream_obj, "max_storage_mb", config.max_storage_mb);
 
     // Status
     stream_status_t stream_status = get_stream_status(stream);

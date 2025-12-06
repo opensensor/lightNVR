@@ -102,6 +102,10 @@ static const mg_api_route_t s_api_routes[] = {
     {"POST", "/api/streams/#/zones", mg_handle_post_zones, false},
     {"DELETE", "/api/streams/#/zones", mg_handle_delete_zones, false},
 
+    // Stream Retention API (must come before /api/streams/# to match correctly)
+    {"GET", "/api/streams/#/retention", mg_handle_get_stream_retention, false},
+    {"PUT", "/api/streams/#/retention", mg_handle_put_stream_retention, false},
+
     {"GET", "/api/streams/#/full", mg_handle_get_stream_full, true},  // Aggregated stream + motion config
     {"GET", "/api/streams/#", mg_handle_get_stream, true},  // Opt out of auto-threading to prevent double threading
     {"PUT", "/api/streams/#", mg_handle_put_stream, false},
@@ -129,6 +133,10 @@ static const mg_api_route_t s_api_routes[] = {
     {"GET", "/api/recordings/download/#", mg_handle_download_recording, true},  // Opt out of auto-threading to prevent hanging
     {"GET", "/api/recordings/files/check", mg_handle_check_recording_file, true},  // Already uses threading
     {"DELETE", "/api/recordings/files", mg_handle_delete_recording_file, true},  // Already uses threading
+    {"GET", "/api/recordings/protected", mg_handle_get_protected_recordings, false},  // Get protected recordings count
+    {"POST", "/api/recordings/batch-protect", mg_handle_batch_protect_recordings, false},  // Batch protect/unprotect
+    {"PUT", "/api/recordings/#/protect", mg_handle_put_recording_protect, false},  // Set recording protection
+    {"PUT", "/api/recordings/#/retention", mg_handle_put_recording_retention, false},  // Set recording retention override
     {"GET", "/api/recordings/#", mg_handle_get_recording, false},
     {"DELETE", "/api/recordings/#", mg_handle_delete_recording, true},  // Already uses threading
     {"POST", "/api/recordings/batch-delete", mg_handle_batch_delete_recordings, true},  // Already uses threading

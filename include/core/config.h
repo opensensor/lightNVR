@@ -51,6 +51,11 @@ typedef struct {
 
     // Two-way audio (backchannel) support
     bool backchannel_enabled; // Whether two-way audio is enabled for this stream
+
+    // Per-stream retention policy settings
+    int retention_days;              // Regular recordings retention (0 = use global)
+    int detection_retention_days;    // Detection recordings retention (0 = use global)
+    int max_storage_mb;              // Storage quota in MB (0 = unlimited)
 } stream_config_t;
 
 // Main configuration structure

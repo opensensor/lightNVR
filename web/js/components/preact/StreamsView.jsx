@@ -117,7 +117,11 @@ export function StreamsView() {
     motionMaxDuration: 300,
     motionRetentionDays: 7,
     motionCodec: 'h264',
-    motionQuality: 'medium'
+    motionQuality: 'medium',
+    // Retention policy settings
+    retentionDays: 0,
+    detectionRetentionDays: 0,
+    maxStorageMb: 0
   });
   const [isEditing, setIsEditing] = useState(false);
 
@@ -305,7 +309,11 @@ export function StreamsView() {
       pre_detection_buffer: parseInt(currentStream.preBuffer, 10),
       post_detection_buffer: parseInt(currentStream.postBuffer, 10),
       record_audio: currentStream.recordAudio,
-      backchannel_enabled: currentStream.backchannelEnabled
+      backchannel_enabled: currentStream.backchannelEnabled,
+      // Retention policy settings
+      retention_days: parseInt(currentStream.retentionDays, 10) || 0,
+      detection_retention_days: parseInt(currentStream.detectionRetentionDays, 10) || 0,
+      max_storage_mb: parseInt(currentStream.maxStorageMb, 10) || 0
     };
 
     // When editing, set is_deleted to false to allow undeleting soft-deleted streams
@@ -455,7 +463,10 @@ export function StreamsView() {
       motionMaxDuration: 300,
       motionRetentionDays: 7,
       motionCodec: 'h264',
-      motionQuality: 'medium'
+      motionQuality: 'medium',
+      retentionDays: 0,
+      detectionRetentionDays: 0,
+      maxStorageMb: 0
     });
     setIsEditing(false);
     setModalVisible(true);
@@ -509,7 +520,11 @@ export function StreamsView() {
         motionMaxDuration: motion ? (motion.max_file_duration || 300) : 300,
         motionRetentionDays: motion ? (motion.retention_days || 7) : 7,
         motionCodec: motion ? (motion.codec || 'h264') : 'h264',
-        motionQuality: motion ? (motion.quality || 'medium') : 'medium'
+        motionQuality: motion ? (motion.quality || 'medium') : 'medium',
+        // Retention policy settings
+        retentionDays: stream.retention_days || 0,
+        detectionRetentionDays: stream.detection_retention_days || 0,
+        maxStorageMb: stream.max_storage_mb || 0
       });
       setIsEditing(true);
       setModalVisible(true);

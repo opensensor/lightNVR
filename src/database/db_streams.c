@@ -71,7 +71,7 @@ uint64_t add_stream_config(const stream_config_t *stream) {
                                 "detection_based_recording = ?, detection_model = ?, detection_threshold = ?, "
                                 "detection_interval = ?, pre_detection_buffer = ?, post_detection_buffer = ?, "
                                 "detection_api_url = ?, protocol = ?, is_onvif = ?, record_audio = ?, "
-                                "backchannel_enabled = ? "
+                                "backchannel_enabled = ?, retention_days = ?, detection_retention_days = ?, max_storage_mb = ? "
                                 "WHERE id = ?;";
 
         rc = sqlite3_prepare_v2(db, update_sql, -1, &stmt, NULL);
@@ -114,8 +114,13 @@ uint64_t add_stream_config(const stream_config_t *stream) {
         // Bind backchannel_enabled parameter
         sqlite3_bind_int(stmt, 21, stream->backchannel_enabled ? 1 : 0);
 
+        // Bind retention policy parameters
+        sqlite3_bind_int(stmt, 22, stream->retention_days);
+        sqlite3_bind_int(stmt, 23, stream->detection_retention_days);
+        sqlite3_bind_int(stmt, 24, stream->max_storage_mb);
+
         // Bind ID parameter
-        sqlite3_bind_int64(stmt, 22, (sqlite3_int64)existing_id);
+        sqlite3_bind_int64(stmt, 25, (sqlite3_int64)existing_id);
 
         // Execute statement
         rc = sqlite3_step(stmt);
@@ -156,8 +161,9 @@ uint64_t add_stream_config(const stream_config_t *stream) {
     // No disabled stream found, insert a new one
     const char *sql = "INSERT INTO streams (name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
           "detection_based_recording, detection_model, detection_threshold, detection_interval, "
-          "pre_detection_buffer, post_detection_buffer, detection_api_url, protocol, is_onvif, record_audio, backchannel_enabled) "
-          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+          "pre_detection_buffer, post_detection_buffer, detection_api_url, protocol, is_onvif, record_audio, backchannel_enabled, "
+          "retention_days, detection_retention_days, max_storage_mb) "
+          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -199,6 +205,11 @@ uint64_t add_stream_config(const stream_config_t *stream) {
 
     // Bind backchannel_enabled parameter
     sqlite3_bind_int(stmt, 22, stream->backchannel_enabled ? 1 : 0);
+
+    // Bind retention policy parameters
+    sqlite3_bind_int(stmt, 23, stream->retention_days);
+    sqlite3_bind_int(stmt, 24, stream->detection_retention_days);
+    sqlite3_bind_int(stmt, 25, stream->max_storage_mb);
 
     // Execute statement
     rc = sqlite3_step(stmt);
@@ -256,14 +267,14 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
     // Schema migrations should have already been run during database initialization
     // No need to check for columns here anymore
 
-    // Now update the stream with all fields including detection settings, protocol, is_onvif, record_audio, and backchannel_enabled
+    // Now update the stream with all fields including detection settings, protocol, is_onvif, record_audio, backchannel_enabled, and retention settings
     const char *sql = "UPDATE streams SET "
                       "name = ?, url = ?, enabled = ?, streaming_enabled = ?, width = ?, height = ?, "
                       "fps = ?, codec = ?, priority = ?, record = ?, segment_duration = ?, "
                       "detection_based_recording = ?, detection_model = ?, detection_threshold = ?, "
                       "detection_interval = ?, pre_detection_buffer = ?, post_detection_buffer = ?, "
                       "detection_api_url = ?, protocol = ?, is_onvif = ?, record_audio = ?, "
-                      "backchannel_enabled = ? "
+                      "backchannel_enabled = ?, retention_days = ?, detection_retention_days = ?, max_storage_mb = ? "
                       "WHERE name = ?;";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -307,8 +318,13 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
     // Bind backchannel_enabled parameter
     sqlite3_bind_int(stmt, 22, stream->backchannel_enabled ? 1 : 0);
 
+    // Bind retention policy parameters
+    sqlite3_bind_int(stmt, 23, stream->retention_days);
+    sqlite3_bind_int(stmt, 24, stream->detection_retention_days);
+    sqlite3_bind_int(stmt, 25, stream->max_storage_mb);
+
     // Bind the WHERE clause parameter
-    sqlite3_bind_text(stmt, 23, name, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 26, name, -1, SQLITE_STATIC);
 
     // Execute statement
     rc = sqlite3_step(stmt);
@@ -466,10 +482,17 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
     bool has_record_audio_column = cached_column_exists("streams", "record_audio");
     bool has_detection_api_url_column = cached_column_exists("streams", "detection_api_url");
     bool has_backchannel_column = cached_column_exists("streams", "backchannel_enabled");
+    bool has_retention_columns = cached_column_exists("streams", "retention_days");
 
-    // Prepare SQL based on whether detection columns, protocol column, is_onvif column, record_audio column, detection_api_url column, and backchannel_enabled column exist
+    // Prepare SQL based on whether detection columns, protocol column, is_onvif column, record_audio column, detection_api_url column, backchannel_enabled column, and retention columns exist
     const char *sql;
-    if (has_detection_columns && has_protocol_column && has_onvif_column && has_record_audio_column && has_detection_api_url_column && has_backchannel_column) {
+    if (has_detection_columns && has_protocol_column && has_onvif_column && has_record_audio_column && has_detection_api_url_column && has_backchannel_column && has_retention_columns) {
+        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
+              "detection_based_recording, detection_model, detection_threshold, detection_interval, "
+              "pre_detection_buffer, post_detection_buffer, detection_api_url, protocol, is_onvif, record_audio, backchannel_enabled, "
+              "retention_days, detection_retention_days, max_storage_mb "
+              "FROM streams WHERE name = ?;";
+    } else if (has_detection_columns && has_protocol_column && has_onvif_column && has_record_audio_column && has_detection_api_url_column && has_backchannel_column) {
         sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
               "detection_based_recording, detection_model, detection_threshold, detection_interval, "
               "pre_detection_buffer, post_detection_buffer, detection_api_url, protocol, is_onvif, record_audio, backchannel_enabled "
@@ -617,6 +640,22 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
                 if (sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
                     stream->backchannel_enabled = sqlite3_column_int(stmt, next_col) != 0;
                 }
+                next_col++;
+            }
+
+            // Parse retention columns if they exist
+            if (has_retention_columns && sqlite3_column_count(stmt) > next_col) {
+                if (sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
+                    stream->retention_days = sqlite3_column_int(stmt, next_col);
+                }
+                next_col++;
+                if (sqlite3_column_count(stmt) > next_col && sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
+                    stream->detection_retention_days = sqlite3_column_int(stmt, next_col);
+                }
+                next_col++;
+                if (sqlite3_column_count(stmt) > next_col && sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
+                    stream->max_storage_mb = sqlite3_column_int(stmt, next_col);
+                }
             }
         }
 
@@ -666,10 +705,17 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
     bool has_onvif_column = cached_column_exists("streams", "is_onvif");
     bool has_record_audio_column = cached_column_exists("streams", "record_audio");
     bool has_backchannel_column = cached_column_exists("streams", "backchannel_enabled");
+    bool has_retention_columns = cached_column_exists("streams", "retention_days");
 
-    // Prepare SQL based on whether detection columns, protocol column, is_onvif column, record_audio column, and backchannel_enabled column exist
+    // Prepare SQL based on whether detection columns, protocol column, is_onvif column, record_audio column, backchannel_enabled column, and retention columns exist
     const char *sql;
-    if (has_detection_columns && has_protocol_column && has_onvif_column && has_record_audio_column && has_backchannel_column) {
+    if (has_detection_columns && has_protocol_column && has_onvif_column && has_record_audio_column && has_backchannel_column && has_retention_columns) {
+        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
+              "detection_based_recording, detection_model, detection_threshold, detection_interval, "
+              "pre_detection_buffer, post_detection_buffer, protocol, is_onvif, record_audio, backchannel_enabled, "
+              "retention_days, detection_retention_days, max_storage_mb "
+              "FROM streams ORDER BY name;";
+    } else if (has_detection_columns && has_protocol_column && has_onvif_column && has_record_audio_column && has_backchannel_column) {
         sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
               "detection_based_recording, detection_model, detection_threshold, detection_interval, "
               "pre_detection_buffer, post_detection_buffer, protocol, is_onvif, record_audio, backchannel_enabled "
@@ -792,6 +838,19 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
             if (has_backchannel_column && sqlite3_column_count(stmt) > 20) {
                 if (sqlite3_column_type(stmt, 20) != SQLITE_NULL) {
                     streams[count].backchannel_enabled = sqlite3_column_int(stmt, 20) != 0;
+                }
+            }
+
+            // Parse retention columns if they exist (columns 21, 22, 23)
+            if (has_retention_columns && sqlite3_column_count(stmt) > 21) {
+                if (sqlite3_column_type(stmt, 21) != SQLITE_NULL) {
+                    streams[count].retention_days = sqlite3_column_int(stmt, 21);
+                }
+                if (sqlite3_column_count(stmt) > 22 && sqlite3_column_type(stmt, 22) != SQLITE_NULL) {
+                    streams[count].detection_retention_days = sqlite3_column_int(stmt, 22);
+                }
+                if (sqlite3_column_count(stmt) > 23 && sqlite3_column_type(stmt, 23) != SQLITE_NULL) {
+                    streams[count].max_storage_mb = sqlite3_column_int(stmt, 23);
                 }
             }
         }
@@ -952,4 +1011,223 @@ int count_stream_configs(void) {
     pthread_mutex_unlock(db_mutex);
 
     return count;
+}
+
+/**
+ * Get retention configuration for a stream
+ *
+ * @param stream_name Stream name
+ * @param config Pointer to retention config structure to fill
+ * @return 0 on success, non-zero on failure
+ */
+int get_stream_retention_config(const char *stream_name, stream_retention_config_t *config) {
+    int rc;
+    sqlite3_stmt *stmt;
+    int result = -1;
+
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *db_mutex = get_db_mutex();
+
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
+    if (!stream_name || !config) {
+        log_error("Stream name and config pointer are required");
+        return -1;
+    }
+
+    // Set defaults
+    config->retention_days = 30;
+    config->detection_retention_days = 90;
+    config->max_storage_mb = 0;
+
+    pthread_mutex_lock(db_mutex);
+
+    const char *sql = "SELECT retention_days, detection_retention_days, max_storage_mb "
+                      "FROM streams WHERE name = ?;";
+
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(db_mutex);
+        return -1;
+    }
+
+    sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
+
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        if (sqlite3_column_type(stmt, 0) != SQLITE_NULL) {
+            config->retention_days = sqlite3_column_int(stmt, 0);
+        }
+        if (sqlite3_column_type(stmt, 1) != SQLITE_NULL) {
+            config->detection_retention_days = sqlite3_column_int(stmt, 1);
+        }
+        if (sqlite3_column_type(stmt, 2) != SQLITE_NULL) {
+            config->max_storage_mb = (uint64_t)sqlite3_column_int64(stmt, 2);
+        }
+        result = 0;
+    }
+
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(db_mutex);
+
+    return result;
+}
+
+/**
+ * Set retention configuration for a stream
+ *
+ * @param stream_name Stream name
+ * @param config Pointer to retention config structure with new values
+ * @return 0 on success, non-zero on failure
+ */
+int set_stream_retention_config(const char *stream_name, const stream_retention_config_t *config) {
+    int rc;
+    sqlite3_stmt *stmt;
+
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *db_mutex = get_db_mutex();
+
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
+    if (!stream_name || !config) {
+        log_error("Stream name and config are required");
+        return -1;
+    }
+
+    pthread_mutex_lock(db_mutex);
+
+    const char *sql = "UPDATE streams SET retention_days = ?, detection_retention_days = ?, "
+                      "max_storage_mb = ? WHERE name = ?;";
+
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(db_mutex);
+        return -1;
+    }
+
+    sqlite3_bind_int(stmt, 1, config->retention_days);
+    sqlite3_bind_int(stmt, 2, config->detection_retention_days);
+    sqlite3_bind_int64(stmt, 3, (sqlite3_int64)config->max_storage_mb);
+    sqlite3_bind_text(stmt, 4, stream_name, -1, SQLITE_STATIC);
+
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(db_mutex);
+
+    if (rc != SQLITE_DONE) {
+        log_error("Failed to update stream retention config: %s", sqlite3_errmsg(db));
+        return -1;
+    }
+
+    log_info("Updated retention config for stream %s: retention_days=%d, detection_retention_days=%d, max_storage_mb=%lu",
+             stream_name, config->retention_days, config->detection_retention_days,
+             (unsigned long)config->max_storage_mb);
+
+    return 0;
+}
+
+/**
+ * Get all stream names for retention policy processing
+ *
+ * @param names Array of stream name buffers (each should be at least 64 chars)
+ * @param max_count Maximum number of stream names to return
+ * @return Number of streams found, or -1 on error
+ */
+int get_all_stream_names(char names[][64], int max_count) {
+    int rc;
+    sqlite3_stmt *stmt;
+    int count = 0;
+
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *db_mutex = get_db_mutex();
+
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
+    if (!names || max_count <= 0) {
+        log_error("Invalid parameters for get_all_stream_names");
+        return -1;
+    }
+
+    pthread_mutex_lock(db_mutex);
+
+    const char *sql = "SELECT name FROM streams WHERE enabled = 1 ORDER BY name;";
+
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(db_mutex);
+        return -1;
+    }
+
+    while (sqlite3_step(stmt) == SQLITE_ROW && count < max_count) {
+        const char *name = (const char *)sqlite3_column_text(stmt, 0);
+        if (name) {
+            strncpy(names[count], name, 63);
+            names[count][63] = '\0';
+            count++;
+        }
+    }
+
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(db_mutex);
+
+    return count;
+}
+
+/**
+ * Get storage usage for a stream in bytes
+ *
+ * @param stream_name Stream name
+ * @return Total size in bytes, or 0 on error
+ */
+uint64_t get_stream_storage_usage_db(const char *stream_name) {
+    int rc;
+    sqlite3_stmt *stmt;
+    uint64_t size_bytes = 0;
+
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *db_mutex = get_db_mutex();
+
+    if (!db) {
+        log_error("Database not initialized");
+        return 0;
+    }
+
+    if (!stream_name) {
+        log_error("Stream name is required");
+        return 0;
+    }
+
+    pthread_mutex_lock(db_mutex);
+
+    const char *sql = "SELECT COALESCE(SUM(size_bytes), 0) FROM recordings "
+                      "WHERE stream_name = ? AND is_complete = 1;";
+
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(db_mutex);
+        return 0;
+    }
+
+    sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
+
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        size_bytes = (uint64_t)sqlite3_column_int64(stmt, 0);
+    }
+
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(db_mutex);
+
+    return size_bytes;
 }

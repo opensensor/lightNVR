@@ -16,7 +16,7 @@
 #include "core/logger.h"
 
 // Current schema version - increment this when adding new migrations
-#define CURRENT_SCHEMA_VERSION 12
+#define CURRENT_SCHEMA_VERSION 13
 
 // Migration function type
 typedef int (*migration_func_t)(void);
@@ -33,6 +33,7 @@ static int migration_v8_to_v9(void);
 static int migration_v9_to_v10(void);
 static int migration_v10_to_v11(void);
 static int migration_v11_to_v12(void);
+static int migration_v12_to_v13(void);
 
 // Array of migration functions
 static migration_func_t migrations[] = {
@@ -47,7 +48,8 @@ static migration_func_t migrations[] = {
     migration_v8_to_v9, // v8->v9
     migration_v9_to_v10, // v9->v10
     migration_v10_to_v11, // v10->v11
-    migration_v11_to_v12 // v11->v12
+    migration_v11_to_v12, // v11->v12
+    migration_v12_to_v13  // v12->v13 - Recording retention policies
 };
 
 /**
@@ -897,5 +899,88 @@ static int migration_v11_to_v12(void) {
     }
 
     log_info("Completed migration v11 to v12 successfully");
+    return 0;
+}
+
+/**
+ * Migration from version 12 to 13
+ * - Add per-stream retention policy columns to streams table
+ * - Add recording protection columns to recordings table
+ * - Add indexes for efficient retention policy queries
+ */
+static int migration_v12_to_v13(void) {
+    log_info("Running migration from v12 to v13: Adding recording retention policy support");
+
+    int rc = 0;
+    char *err_msg = NULL;
+    sqlite3 *db = get_db_handle();
+
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
+    // Add retention policy columns to streams table
+    log_info("Adding retention_days column to streams table");
+    rc |= add_column_if_not_exists("streams", "retention_days", "INTEGER DEFAULT 30");
+
+    log_info("Adding detection_retention_days column to streams table");
+    rc |= add_column_if_not_exists("streams", "detection_retention_days", "INTEGER DEFAULT 90");
+
+    log_info("Adding max_storage_mb column to streams table");
+    rc |= add_column_if_not_exists("streams", "max_storage_mb", "INTEGER DEFAULT 0");
+
+    if (rc != 0) {
+        log_error("Failed to add retention columns to streams table");
+        return -1;
+    }
+
+    // Add recording protection columns to recordings table
+    log_info("Adding protected column to recordings table");
+    rc |= add_column_if_not_exists("recordings", "protected", "INTEGER DEFAULT 0");
+
+    log_info("Adding retention_override_days column to recordings table");
+    rc |= add_column_if_not_exists("recordings", "retention_override_days", "INTEGER DEFAULT NULL");
+
+    if (rc != 0) {
+        log_error("Failed to add protection columns to recordings table");
+        return -1;
+    }
+
+    // Create indexes for efficient queries
+    log_info("Creating index on recordings(protected)");
+    int idx_rc = sqlite3_exec(db,
+        "CREATE INDEX IF NOT EXISTS idx_recordings_protected ON recordings(protected);",
+        NULL, NULL, &err_msg);
+    if (idx_rc != SQLITE_OK) {
+        log_warn("Failed to create idx_recordings_protected: %s", err_msg);
+        sqlite3_free(err_msg);
+        err_msg = NULL;
+        // Non-fatal, continue
+    }
+
+    log_info("Creating index on recordings(trigger_type)");
+    idx_rc = sqlite3_exec(db,
+        "CREATE INDEX IF NOT EXISTS idx_recordings_trigger_type ON recordings(trigger_type);",
+        NULL, NULL, &err_msg);
+    if (idx_rc != SQLITE_OK) {
+        log_warn("Failed to create idx_recordings_trigger_type: %s", err_msg);
+        sqlite3_free(err_msg);
+        err_msg = NULL;
+        // Non-fatal, continue
+    }
+
+    log_info("Creating index on recordings(stream_name, start_time)");
+    idx_rc = sqlite3_exec(db,
+        "CREATE INDEX IF NOT EXISTS idx_recordings_stream_time ON recordings(stream_name, start_time);",
+        NULL, NULL, &err_msg);
+    if (idx_rc != SQLITE_OK) {
+        log_warn("Failed to create idx_recordings_stream_time: %s", err_msg);
+        sqlite3_free(err_msg);
+        err_msg = NULL;
+        // Non-fatal, continue
+    }
+
+    log_info("Completed migration v12 to v13 successfully");
     return 0;
 }
