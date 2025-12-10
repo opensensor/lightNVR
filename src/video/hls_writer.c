@@ -186,6 +186,7 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     // This will also update the writer's output_dir field with the safe path if needed
     if (ensure_output_directory(writer) != 0) {
         log_error("Failed to ensure HLS output directory exists: %s", writer->output_dir);
+        pthread_mutex_destroy(&writer->mutex);
         free(writer);
         return NULL;
     }
@@ -202,6 +203,7 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
         char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
         av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
         log_error("Failed to allocate output context for HLS: %s", error_buf);
+        pthread_mutex_destroy(&writer->mutex);
         free(writer);
         return NULL;
     }
@@ -264,9 +266,10 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
         char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
         av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
         log_error("Failed to open HLS output file: %s", error_buf);
-        avformat_free_context(writer->output_ctx);
-        free(writer);
         av_dict_free(&options);
+        avformat_free_context(writer->output_ctx);
+        pthread_mutex_destroy(&writer->mutex);
+        free(writer);
         return NULL;
     }
 
