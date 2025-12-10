@@ -44,6 +44,7 @@ export function StreamsView() {
     detection: false,
     zones: false,
     motion: false,
+    ptz: false,
     advanced: false
   });
 
@@ -118,6 +119,12 @@ export function StreamsView() {
     motionRetentionDays: 7,
     motionCodec: 'h264',
     motionQuality: 'medium',
+    // PTZ control settings
+    ptzEnabled: false,
+    ptzMaxX: 0,
+    ptzMaxY: 0,
+    ptzMaxZ: 0,
+    ptzHasHome: false,
     // Retention policy settings
     retentionDays: 0,
     detectionRetentionDays: 0,
@@ -310,6 +317,12 @@ export function StreamsView() {
       post_detection_buffer: parseInt(currentStream.postBuffer, 10),
       record_audio: currentStream.recordAudio,
       backchannel_enabled: currentStream.backchannelEnabled,
+      // PTZ control settings
+      ptz_enabled: !!currentStream.ptzEnabled,
+      ptz_max_x: parseInt(currentStream.ptzMaxX, 10) || 0,
+      ptz_max_y: parseInt(currentStream.ptzMaxY, 10) || 0,
+      ptz_max_z: parseInt(currentStream.ptzMaxZ, 10) || 0,
+      ptz_has_home: !!currentStream.ptzHasHome,
       // Retention policy settings
       retention_days: parseInt(currentStream.retentionDays, 10) || 0,
       detection_retention_days: parseInt(currentStream.detectionRetentionDays, 10) || 0,
@@ -464,6 +477,11 @@ export function StreamsView() {
       motionRetentionDays: 7,
       motionCodec: 'h264',
       motionQuality: 'medium',
+      ptzEnabled: false,
+      ptzMaxX: 0,
+      ptzMaxY: 0,
+      ptzMaxZ: 0,
+      ptzHasHome: false,
       retentionDays: 0,
       detectionRetentionDays: 0,
       maxStorageMb: 0
@@ -521,6 +539,12 @@ export function StreamsView() {
         motionRetentionDays: motion ? (motion.retention_days || 7) : 7,
         motionCodec: motion ? (motion.codec || 'h264') : 'h264',
         motionQuality: motion ? (motion.quality || 'medium') : 'medium',
+        // PTZ control settings
+        ptzEnabled: stream.ptz_enabled !== undefined ? stream.ptz_enabled : false,
+        ptzMaxX: stream.ptz_max_x || 0,
+        ptzMaxY: stream.ptz_max_y || 0,
+        ptzMaxZ: stream.ptz_max_z || 0,
+        ptzHasHome: stream.ptz_has_home !== undefined ? stream.ptz_has_home : false,
         // Retention policy settings
         retentionDays: stream.retention_days || 0,
         detectionRetentionDays: stream.detection_retention_days || 0,

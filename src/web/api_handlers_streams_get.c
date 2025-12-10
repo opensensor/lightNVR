@@ -83,6 +83,11 @@ void mg_handle_get_streams(struct mg_connection *c, struct mg_http_message *hm) 
         cJSON_AddNumberToObject(stream_obj, "retention_days", db_streams[i].retention_days);
         cJSON_AddNumberToObject(stream_obj, "detection_retention_days", db_streams[i].detection_retention_days);
         cJSON_AddNumberToObject(stream_obj, "max_storage_mb", db_streams[i].max_storage_mb);
+        cJSON_AddBoolToObject(stream_obj, "ptz_enabled", db_streams[i].ptz_enabled);
+        cJSON_AddNumberToObject(stream_obj, "ptz_max_x", db_streams[i].ptz_max_x);
+        cJSON_AddNumberToObject(stream_obj, "ptz_max_y", db_streams[i].ptz_max_y);
+        cJSON_AddNumberToObject(stream_obj, "ptz_max_z", db_streams[i].ptz_max_z);
+        cJSON_AddBoolToObject(stream_obj, "ptz_has_home", db_streams[i].ptz_has_home);
 
         // Get stream status
         stream_handle_t stream = get_stream_by_name(db_streams[i].name);
@@ -208,6 +213,11 @@ void mg_handle_get_stream(struct mg_connection *c, struct mg_http_message *hm) {
     cJSON_AddNumberToObject(stream_obj, "retention_days", config.retention_days);
     cJSON_AddNumberToObject(stream_obj, "detection_retention_days", config.detection_retention_days);
     cJSON_AddNumberToObject(stream_obj, "max_storage_mb", config.max_storage_mb);
+    cJSON_AddBoolToObject(stream_obj, "ptz_enabled", config.ptz_enabled);
+    cJSON_AddNumberToObject(stream_obj, "ptz_max_x", config.ptz_max_x);
+    cJSON_AddNumberToObject(stream_obj, "ptz_max_y", config.ptz_max_y);
+    cJSON_AddNumberToObject(stream_obj, "ptz_max_z", config.ptz_max_z);
+    cJSON_AddBoolToObject(stream_obj, "ptz_has_home", config.ptz_has_home);
 
     // Get stream status
     stream_status_t stream_status = get_stream_status(stream);
@@ -330,6 +340,11 @@ void mg_handle_get_stream_full(struct mg_connection *c, struct mg_http_message *
     cJSON_AddNumberToObject(stream_obj, "retention_days", config.retention_days);
     cJSON_AddNumberToObject(stream_obj, "detection_retention_days", config.detection_retention_days);
     cJSON_AddNumberToObject(stream_obj, "max_storage_mb", config.max_storage_mb);
+    cJSON_AddBoolToObject(stream_obj, "ptz_enabled", config.ptz_enabled);
+    cJSON_AddNumberToObject(stream_obj, "ptz_max_x", config.ptz_max_x);
+    cJSON_AddNumberToObject(stream_obj, "ptz_max_y", config.ptz_max_y);
+    cJSON_AddNumberToObject(stream_obj, "ptz_max_z", config.ptz_max_z);
+    cJSON_AddBoolToObject(stream_obj, "ptz_has_home", config.ptz_has_home);
 
     // Status
     stream_status_t stream_status = get_stream_status(stream);

@@ -847,6 +847,106 @@ export function StreamConfigModal({
               </AccordionSection>
             )}
 
+            {/* PTZ Settings Section (ONVIF only) */}
+            {currentStream.isOnvif && (
+              <AccordionSection
+                title="PTZ Control"
+                isExpanded={expandedSections.ptz}
+                onToggle={() => onToggleSection('ptz')}
+                badge="ONVIF Only"
+              >
+                <div className="space-y-4">
+                  {/* Enable PTZ */}
+                  <div className="flex items-center space-x-3">
+                    <input
+                      type="checkbox"
+                      id="ptz-enabled"
+                      name="ptzEnabled"
+                      className="h-4 w-4 text-primary focus:ring-primary border-input rounded"
+                      checked={currentStream.ptzEnabled || false}
+                      onChange={onInputChange}
+                    />
+                    <label htmlFor="ptz-enabled" className="text-sm font-medium">
+                      Enable PTZ Control
+                    </label>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Enable pan-tilt-zoom controls for this camera via ONVIF PTZ protocol
+                  </p>
+
+                  {currentStream.ptzEnabled && (
+                    <>
+                      {/* PTZ Limits */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                        <div>
+                          <label htmlFor="ptz-max-x" className="block text-sm font-medium mb-2">
+                            Max Pan (X)
+                          </label>
+                          <input
+                            type="number"
+                            id="ptz-max-x"
+                            name="ptzMaxX"
+                            className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
+                            min="0"
+                            value={currentStream.ptzMaxX || 0}
+                            onChange={onInputChange}
+                          />
+                          <p className="mt-1 text-xs text-muted-foreground">0 = no limit</p>
+                        </div>
+
+                        <div>
+                          <label htmlFor="ptz-max-y" className="block text-sm font-medium mb-2">
+                            Max Tilt (Y)
+                          </label>
+                          <input
+                            type="number"
+                            id="ptz-max-y"
+                            name="ptzMaxY"
+                            className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
+                            min="0"
+                            value={currentStream.ptzMaxY || 0}
+                            onChange={onInputChange}
+                          />
+                          <p className="mt-1 text-xs text-muted-foreground">0 = no limit</p>
+                        </div>
+
+                        <div>
+                          <label htmlFor="ptz-max-z" className="block text-sm font-medium mb-2">
+                            Max Zoom (Z)
+                          </label>
+                          <input
+                            type="number"
+                            id="ptz-max-z"
+                            name="ptzMaxZ"
+                            className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
+                            min="0"
+                            value={currentStream.ptzMaxZ || 0}
+                            onChange={onInputChange}
+                          />
+                          <p className="mt-1 text-xs text-muted-foreground">0 = no limit</p>
+                        </div>
+                      </div>
+
+                      {/* Home Position Support */}
+                      <div className="flex items-center space-x-3 mt-4">
+                        <input
+                          type="checkbox"
+                          id="ptz-has-home"
+                          name="ptzHasHome"
+                          className="h-4 w-4 text-primary focus:ring-primary border-input rounded"
+                          checked={currentStream.ptzHasHome || false}
+                          onChange={onInputChange}
+                        />
+                        <label htmlFor="ptz-has-home" className="text-sm font-medium">
+                          Camera supports Home Position
+                        </label>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </AccordionSection>
+            )}
+
             {/* Advanced Settings Section */}
             <AccordionSection
               title="Advanced Settings"

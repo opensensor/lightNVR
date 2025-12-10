@@ -9,6 +9,7 @@ import { DetectionOverlay, takeSnapshotWithDetections } from './DetectionOverlay
 import { SnapshotButton } from './SnapshotManager.jsx';
 import { LoadingIndicator } from './LoadingIndicator.jsx';
 import { showSnapshotPreview } from './UI.jsx';
+import { PTZControls } from './PTZControls.jsx';
 import Hls from 'hls.js';
 
 /**
@@ -28,6 +29,9 @@ export function HLSVideoCell({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
+
+  // PTZ controls state
+  const [showPTZControls, setShowPTZControls] = useState(false);
 
   // Refs
   const videoRef = useRef(null);
@@ -348,6 +352,32 @@ export function HLSVideoCell({
             }}
           />
         </div>
+        {/* PTZ control toggle button */}
+        {stream.ptz_enabled && isPlaying && (
+          <button
+            className={`ptz-toggle-btn ${showPTZControls ? 'active' : ''}`}
+            title={showPTZControls ? 'Hide PTZ Controls' : 'Show PTZ Controls'}
+            onClick={() => setShowPTZControls(!showPTZControls)}
+            style={{
+              backgroundColor: showPTZControls ? 'rgba(59, 130, 246, 0.8)' : 'transparent',
+              border: 'none',
+              padding: '5px',
+              borderRadius: '4px',
+              color: 'white',
+              cursor: 'pointer',
+              transition: 'background-color 0.2s ease'
+            }}
+            onMouseOver={(e) => !showPTZControls && (e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)')}
+            onMouseOut={(e) => !showPTZControls && (e.currentTarget.style.backgroundColor = 'transparent')}
+          >
+            {/* PTZ/Joystick icon */}
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
+              <path d="M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+            </svg>
+          </button>
+        )}
         <button
           className="fullscreen-btn"
           title="Toggle Fullscreen"
@@ -368,6 +398,13 @@ export function HLSVideoCell({
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
         </button>
       </div>
+
+      {/* PTZ Controls overlay */}
+      <PTZControls
+        stream={stream}
+        isVisible={showPTZControls}
+        onClose={() => setShowPTZControls(false)}
+      />
 
       {/* Loading indicator */}
       {isLoading && (

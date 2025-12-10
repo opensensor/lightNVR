@@ -189,6 +189,34 @@ void mg_handle_post_stream(struct mg_connection *c, struct mg_http_message *hm) 
         config.max_storage_mb = max_storage_mb->valueint;
     }
 
+    // Parse PTZ settings
+    cJSON *ptz_enabled = cJSON_GetObjectItem(stream_json, "ptz_enabled");
+    if (ptz_enabled && cJSON_IsBool(ptz_enabled)) {
+        config.ptz_enabled = cJSON_IsTrue(ptz_enabled);
+        log_info("PTZ %s for stream %s",
+                config.ptz_enabled ? "enabled" : "disabled", config.name);
+    }
+
+    cJSON *ptz_max_x = cJSON_GetObjectItem(stream_json, "ptz_max_x");
+    if (ptz_max_x && cJSON_IsNumber(ptz_max_x)) {
+        config.ptz_max_x = ptz_max_x->valueint;
+    }
+
+    cJSON *ptz_max_y = cJSON_GetObjectItem(stream_json, "ptz_max_y");
+    if (ptz_max_y && cJSON_IsNumber(ptz_max_y)) {
+        config.ptz_max_y = ptz_max_y->valueint;
+    }
+
+    cJSON *ptz_max_z = cJSON_GetObjectItem(stream_json, "ptz_max_z");
+    if (ptz_max_z && cJSON_IsNumber(ptz_max_z)) {
+        config.ptz_max_z = ptz_max_z->valueint;
+    }
+
+    cJSON *ptz_has_home = cJSON_GetObjectItem(stream_json, "ptz_has_home");
+    if (ptz_has_home && cJSON_IsBool(ptz_has_home)) {
+        config.ptz_has_home = cJSON_IsTrue(ptz_has_home);
+    }
+
     // Check if isOnvif flag is set in the request
     cJSON *is_onvif = cJSON_GetObjectItem(stream_json, "isOnvif");
     if (is_onvif && cJSON_IsBool(is_onvif)) {
@@ -555,6 +583,54 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
             config.max_storage_mb = new_max_storage;
             config_changed = true;
             log_info("Max storage MB changed to %d for stream %s", new_max_storage, config.name);
+        }
+    }
+
+    // Parse PTZ settings
+    cJSON *ptz_enabled = cJSON_GetObjectItem(stream_json, "ptz_enabled");
+    if (ptz_enabled && cJSON_IsBool(ptz_enabled)) {
+        bool new_ptz_enabled = cJSON_IsTrue(ptz_enabled);
+        if (config.ptz_enabled != new_ptz_enabled) {
+            config.ptz_enabled = new_ptz_enabled;
+            config_changed = true;
+            log_info("PTZ %s for stream %s",
+                    config.ptz_enabled ? "enabled" : "disabled", config.name);
+        }
+    }
+
+    cJSON *ptz_max_x = cJSON_GetObjectItem(stream_json, "ptz_max_x");
+    if (ptz_max_x && cJSON_IsNumber(ptz_max_x)) {
+        int new_ptz_max_x = ptz_max_x->valueint;
+        if (config.ptz_max_x != new_ptz_max_x) {
+            config.ptz_max_x = new_ptz_max_x;
+            config_changed = true;
+        }
+    }
+
+    cJSON *ptz_max_y = cJSON_GetObjectItem(stream_json, "ptz_max_y");
+    if (ptz_max_y && cJSON_IsNumber(ptz_max_y)) {
+        int new_ptz_max_y = ptz_max_y->valueint;
+        if (config.ptz_max_y != new_ptz_max_y) {
+            config.ptz_max_y = new_ptz_max_y;
+            config_changed = true;
+        }
+    }
+
+    cJSON *ptz_max_z = cJSON_GetObjectItem(stream_json, "ptz_max_z");
+    if (ptz_max_z && cJSON_IsNumber(ptz_max_z)) {
+        int new_ptz_max_z = ptz_max_z->valueint;
+        if (config.ptz_max_z != new_ptz_max_z) {
+            config.ptz_max_z = new_ptz_max_z;
+            config_changed = true;
+        }
+    }
+
+    cJSON *ptz_has_home = cJSON_GetObjectItem(stream_json, "ptz_has_home");
+    if (ptz_has_home && cJSON_IsBool(ptz_has_home)) {
+        bool new_ptz_has_home = cJSON_IsTrue(ptz_has_home);
+        if (config.ptz_has_home != new_ptz_has_home) {
+            config.ptz_has_home = new_ptz_has_home;
+            config_changed = true;
         }
     }
 

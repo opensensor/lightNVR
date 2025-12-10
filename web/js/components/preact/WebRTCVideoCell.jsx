@@ -10,6 +10,7 @@ import { DetectionOverlay, takeSnapshotWithDetections } from './DetectionOverlay
 import { SnapshotButton } from './SnapshotManager.jsx';
 import { LoadingIndicator } from './LoadingIndicator.jsx';
 import { showSnapshotPreview } from './UI.jsx';
+import { PTZControls } from './PTZControls.jsx';
 import adapter from 'webrtc-adapter';
 
 /**
@@ -35,6 +36,11 @@ export function WebRTCVideoCell({
   const [isTalking, setIsTalking] = useState(false);
   const [microphoneError, setMicrophoneError] = useState(null);
   const [hasMicrophonePermission, setHasMicrophonePermission] = useState(null);
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [talkMode, setTalkMode] = useState('ptt'); // 'ptt' (push-to-talk) or 'toggle'
+
+  // PTZ controls state
+  const [showPTZControls, setShowPTZControls] = useState(false);
 
   // Refs
   const videoRef = useRef(null);
@@ -46,6 +52,9 @@ export function WebRTCVideoCell({
   const reconnectAttemptsRef = useRef(0);
   const localStreamRef = useRef(null);
   const audioSenderRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const audioLevelIntervalRef = useRef(null);
 
   // Initialize WebRTC connection when component mounts
   useEffect(() => {
@@ -412,6 +421,17 @@ export function WebRTCVideoCell({
         localStreamRef.current = null;
       }
 
+      // Clean up audio level monitoring
+      if (audioLevelIntervalRef.current) {
+        clearInterval(audioLevelIntervalRef.current);
+        audioLevelIntervalRef.current = null;
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close().catch(() => {});
+        audioContextRef.current = null;
+      }
+      analyserRef.current = null;
+
       // Clean up video element
       if (videoRef.current && videoRef.current.srcObject) {
         const tracks = videoRef.current.srcObject.getTracks();
@@ -452,6 +472,50 @@ export function WebRTCVideoCell({
     setIsPlaying(false);
   };
 
+  // Start audio level monitoring
+  const startAudioLevelMonitoring = useCallback((localStream) => {
+    try {
+      // Create audio context and analyser for level monitoring
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+
+      const source = audioContext.createMediaStreamSource(localStream);
+      source.connect(analyser);
+
+      audioContextRef.current = audioContext;
+      analyserRef.current = analyser;
+
+      // Start monitoring audio levels
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      audioLevelIntervalRef.current = setInterval(() => {
+        if (analyserRef.current) {
+          analyserRef.current.getByteFrequencyData(dataArray);
+          // Calculate average level
+          const average = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+          // Normalize to 0-100
+          setAudioLevel(Math.min(100, Math.round((average / 128) * 100)));
+        }
+      }, 50);
+    } catch (err) {
+      console.warn('Failed to start audio level monitoring:', err);
+    }
+  }, []);
+
+  // Stop audio level monitoring
+  const stopAudioLevelMonitoring = useCallback(() => {
+    if (audioLevelIntervalRef.current) {
+      clearInterval(audioLevelIntervalRef.current);
+      audioLevelIntervalRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
+    analyserRef.current = null;
+    setAudioLevel(0);
+  }, []);
+
   // Start push-to-talk (acquire microphone and send audio)
   const startTalking = useCallback(async () => {
     if (!stream.backchannel_enabled || !audioSenderRef.current) {
@@ -475,6 +539,9 @@ export function WebRTCVideoCell({
       localStreamRef.current = localStream;
       setHasMicrophonePermission(true);
 
+      // Start audio level monitoring
+      startAudioLevelMonitoring(localStream);
+
       // Get the audio track and replace the sender's track
       const audioTrack = localStream.getAudioTracks()[0];
       if (audioTrack && audioSenderRef.current) {
@@ -494,13 +561,16 @@ export function WebRTCVideoCell({
         setMicrophoneError(`Microphone error: ${err.message}`);
       }
     }
-  }, [stream]);
+  }, [stream, startAudioLevelMonitoring]);
 
   // Stop push-to-talk (stop sending audio)
   const stopTalking = useCallback(async () => {
     if (!stream.backchannel_enabled) return;
 
     try {
+      // Stop audio level monitoring
+      stopAudioLevelMonitoring();
+
       // Stop the local audio track
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach(track => track.stop());
@@ -517,7 +587,18 @@ export function WebRTCVideoCell({
     } catch (err) {
       console.error(`Failed to stop backchannel audio for stream ${stream.name}:`, err);
     }
-  }, [stream]);
+  }, [stream, stopAudioLevelMonitoring]);
+
+  // Toggle talk mode handler
+  const handleTalkToggle = useCallback(() => {
+    if (talkMode === 'toggle') {
+      if (isTalking) {
+        stopTalking();
+      } else {
+        startTalking();
+      }
+    }
+  }, [talkMode, isTalking, startTalking, stopTalking]);
 
   return (
     <div
@@ -655,18 +736,94 @@ export function WebRTCVideoCell({
             }}
           />
         </div>
-        {/* Push-to-talk button for backchannel audio */}
+        {/* Two-way audio controls for backchannel */}
         {stream.backchannel_enabled && isPlaying && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', position: 'relative' }}>
+            {/* Mode toggle button */}
+            <button
+              className="talk-mode-btn"
+              title={talkMode === 'ptt' ? 'Switch to Toggle Mode' : 'Switch to Push-to-Talk'}
+              onClick={() => setTalkMode(talkMode === 'ptt' ? 'toggle' : 'ptt')}
+              style={{
+                backgroundColor: 'transparent',
+                border: 'none',
+                padding: '3px',
+                borderRadius: '4px',
+                color: 'white',
+                cursor: 'pointer',
+                fontSize: '10px',
+                opacity: 0.7
+              }}
+            >
+              {talkMode === 'ptt' ? 'PTT' : 'TOG'}
+            </button>
+            {/* Main microphone button */}
+            <button
+              className={`ptt-btn ${isTalking ? 'talking' : ''}`}
+              title={talkMode === 'ptt'
+                ? (isTalking ? 'Release to stop talking' : 'Hold to talk')
+                : (isTalking ? 'Click to stop talking' : 'Click to start talking')}
+              onMouseDown={talkMode === 'ptt' ? startTalking : undefined}
+              onMouseUp={talkMode === 'ptt' ? stopTalking : undefined}
+              onMouseLeave={talkMode === 'ptt' ? stopTalking : undefined}
+              onTouchStart={talkMode === 'ptt' ? (e) => { e.preventDefault(); startTalking(); } : undefined}
+              onTouchEnd={talkMode === 'ptt' ? (e) => { e.preventDefault(); stopTalking(); } : undefined}
+              onClick={talkMode === 'toggle' ? handleTalkToggle : undefined}
+              style={{
+                backgroundColor: isTalking ? 'rgba(239, 68, 68, 0.8)' : 'transparent',
+                border: 'none',
+                padding: '5px',
+                borderRadius: '4px',
+                color: 'white',
+                cursor: 'pointer',
+                transition: 'background-color 0.2s ease',
+                position: 'relative'
+              }}
+              onMouseOver={(e) => !isTalking && (e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)')}
+              onMouseOut={(e) => !isTalking && (e.currentTarget.style.backgroundColor = 'transparent')}
+            >
+              {/* Microphone icon */}
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill={isTalking ? 'white' : 'none'} stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                <line x1="12" x2="12" y1="19" y2="22"></line>
+              </svg>
+              {/* Audio level indicator */}
+              {isTalking && audioLevel > 0 && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: '-4px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    width: '20px',
+                    height: '3px',
+                    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                    borderRadius: '2px',
+                    overflow: 'hidden'
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${audioLevel}%`,
+                      height: '100%',
+                      backgroundColor: audioLevel > 70 ? '#22c55e' : audioLevel > 30 ? '#eab308' : '#ef4444',
+                      transition: 'width 0.05s ease-out'
+                    }}
+                  />
+                </div>
+              )}
+            </button>
+          </div>
+        )}
+        {/* PTZ control toggle button */}
+        {stream.ptz_enabled && isPlaying && (
           <button
-            className={`ptt-btn ${isTalking ? 'talking' : ''}`}
-            title={isTalking ? 'Release to stop talking' : 'Hold to talk'}
-            onMouseDown={startTalking}
-            onMouseUp={stopTalking}
-            onMouseLeave={stopTalking}
-            onTouchStart={(e) => { e.preventDefault(); startTalking(); }}
-            onTouchEnd={(e) => { e.preventDefault(); stopTalking(); }}
+            className={`ptz-toggle-btn ${showPTZControls ? 'active' : ''}`}
+            title={showPTZControls ? 'Hide PTZ Controls' : 'Show PTZ Controls'}
+            onClick={() => setShowPTZControls(!showPTZControls)}
             style={{
-              backgroundColor: isTalking ? 'rgba(239, 68, 68, 0.8)' : 'transparent',
+              backgroundColor: showPTZControls ? 'rgba(59, 130, 246, 0.8)' : 'transparent',
               border: 'none',
               padding: '5px',
               borderRadius: '4px',
@@ -674,14 +831,14 @@ export function WebRTCVideoCell({
               cursor: 'pointer',
               transition: 'background-color 0.2s ease'
             }}
-            onMouseOver={(e) => !isTalking && (e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)')}
-            onMouseOut={(e) => !isTalking && (e.currentTarget.style.backgroundColor = 'transparent')}
+            onMouseOver={(e) => !showPTZControls && (e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)')}
+            onMouseOut={(e) => !showPTZControls && (e.currentTarget.style.backgroundColor = 'transparent')}
           >
-            {/* Microphone icon */}
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill={isTalking ? 'white' : 'none'} stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
-              <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-              <line x1="12" x2="12" y1="19" y2="22"></line>
+            {/* PTZ/Joystick icon */}
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
+              <path d="M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
             </svg>
           </button>
         )}
@@ -705,6 +862,13 @@ export function WebRTCVideoCell({
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
         </button>
       </div>
+
+      {/* PTZ Controls overlay */}
+      <PTZControls
+        stream={stream}
+        isVisible={showPTZControls}
+        onClose={() => setShowPTZControls(false)}
+      />
 
       {/* Microphone error indicator */}
       {microphoneError && (

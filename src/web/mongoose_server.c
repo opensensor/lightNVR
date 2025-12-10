@@ -29,6 +29,7 @@
 #include "web/mongoose_adapter.h"
 #include "web/api_handlers.h"
 #include "web/api_handlers_onvif.h"
+#include "web/api_handlers_ptz.h"
 #include "web/api_handlers_timeline.h"
 #include "web/api_handlers_recordings.h"
 #include "web/api_handlers_go2rtc_proxy.h"
@@ -166,6 +167,18 @@ static const mg_api_route_t s_api_routes[] = {
     {"POST", "/api/onvif/discovery/discover", mg_handle_post_discover_onvif_devices, true},  // Already uses threading
     {"POST", "/api/onvif/device/add", mg_handle_post_add_onvif_device_as_stream, false},
     {"POST", "/api/onvif/device/test", mg_handle_post_test_onvif_connection, false},
+
+    // PTZ API (must come before /api/streams/# to match correctly)
+    {"GET", "/api/streams/#/ptz/capabilities", mg_handle_ptz_capabilities, false},
+    {"GET", "/api/streams/#/ptz/presets", mg_handle_ptz_get_presets, false},
+    {"POST", "/api/streams/#/ptz/move", mg_handle_ptz_move, false},
+    {"POST", "/api/streams/#/ptz/stop", mg_handle_ptz_stop, false},
+    {"POST", "/api/streams/#/ptz/absolute", mg_handle_ptz_absolute, false},
+    {"POST", "/api/streams/#/ptz/relative", mg_handle_ptz_relative, false},
+    {"POST", "/api/streams/#/ptz/home", mg_handle_ptz_home, false},
+    {"POST", "/api/streams/#/ptz/sethome", mg_handle_ptz_set_home, false},
+    {"POST", "/api/streams/#/ptz/preset", mg_handle_ptz_goto_preset, false},
+    {"PUT", "/api/streams/#/ptz/preset", mg_handle_ptz_set_preset, false},
 
     // Timeline API
     {"GET", "/api/timeline/segments", mg_handle_get_timeline_segments, true},  // Opt out of auto-threading to prevent hanging

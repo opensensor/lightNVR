@@ -56,6 +56,13 @@ typedef struct {
     int retention_days;              // Regular recordings retention (0 = use global)
     int detection_retention_days;    // Detection recordings retention (0 = use global)
     int max_storage_mb;              // Storage quota in MB (0 = unlimited)
+
+    // PTZ (Pan-Tilt-Zoom) configuration
+    bool ptz_enabled;                // Whether PTZ is enabled for this stream
+    int ptz_max_x;                   // Maximum X (pan) position (0 = no limit)
+    int ptz_max_y;                   // Maximum Y (tilt) position (0 = no limit)
+    int ptz_max_z;                   // Maximum Z (zoom) position (0 = no limit)
+    bool ptz_has_home;               // Whether the camera supports home position
 } stream_config_t;
 
 // Main configuration structure
