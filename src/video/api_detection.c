@@ -17,6 +17,7 @@
 #include "video/stream_manager.h"
 #include "video/stream_state.h"
 #include "video/zone_filter.h"
+#include "video/ffmpeg_utils.h"
 #include "database/db_detections.h"
 #include "video/go2rtc/go2rtc_snapshot.h"
 
@@ -200,53 +201,16 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         free(jpeg_data);
         jpeg_data = NULL;
     } else {
-        log_warn("API Detection: Failed to get snapshot from go2rtc, falling back to ffmpeg conversion");
+        log_warn("API Detection: Failed to get snapshot from go2rtc, falling back to libav JPEG encoding");
 
-        // FALLBACK: Use the old ffmpeg-based approach
-        // Create a temporary file for the raw image data
-        char raw_temp_filename[] = "/tmp/lightnvr_api_detection_XXXXXX";
-        int temp_fd = mkstemp(raw_temp_filename);
-        if (temp_fd < 0) {
-            log_error("Failed to create temporary file: %s", strerror(errno));
-            pthread_mutex_unlock(&curl_mutex);
-            return -1;
-        }
+        // FALLBACK: Use FFmpeg library to encode raw frame to JPEG
+        // Create a temporary filename for the JPEG output
+        snprintf(temp_filename, sizeof(temp_filename), "/tmp/lightnvr_api_detection_%d.jpg", (int)getpid());
 
-        // Convert file descriptor to FILE pointer
-        FILE *temp_file = fdopen(temp_fd, "wb");
-        if (!temp_file) {
-            log_error("Failed to open temporary file for writing: %s", strerror(errno));
-            close(temp_fd);
-            unlink(raw_temp_filename);
-            pthread_mutex_unlock(&curl_mutex);
-            return -1;
-        }
-
-        // Write the raw image data to the file
-        size_t bytes_written = fwrite(frame_data, 1, width * height * channels, temp_file);
-        fclose(temp_file);
-
-        if (bytes_written != (size_t)(width * height * channels)) {
-            log_error("Failed to write image data to temporary file");
-            unlink(raw_temp_filename);
-            pthread_mutex_unlock(&curl_mutex);
-            return -1;
-        }
-
-        // Convert using ffmpeg
-        snprintf(temp_filename, sizeof(temp_filename), "%s.jpg", raw_temp_filename);
-
-        const char *ffmpeg_pixel_format = (channels == 1) ? "gray" : (channels == 3) ? "rgb24" : "rgba";
-        char ffmpeg_cmd[1024];
-        snprintf(ffmpeg_cmd, sizeof(ffmpeg_cmd),
-                "ffmpeg -loglevel quiet -f rawvideo -pixel_format %s -video_size %dx%d -i %s -y %s 2>/dev/null",
-                ffmpeg_pixel_format, width, height, raw_temp_filename, temp_filename);
-
-        int ffmpeg_result = system(ffmpeg_cmd);
-        unlink(raw_temp_filename); // Clean up raw file
-
-        if (ffmpeg_result != 0) {
-            log_error("API Detection: Failed to convert with ffmpeg");
+        // Encode raw image data to JPEG using FFmpeg library
+        int encode_result = ffmpeg_encode_jpeg(frame_data, width, height, channels, 85, temp_filename);
+        if (encode_result != 0) {
+            log_error("API Detection: Failed to encode frame to JPEG using libav");
             pthread_mutex_unlock(&curl_mutex);
             return -1;
         }

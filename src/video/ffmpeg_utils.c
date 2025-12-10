@@ -3,6 +3,12 @@
 #include "video/ffmpeg_leak_detector.h"
 #include "video/stream_protocol.h"
 
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <errno.h>
+#include <string.h>
+#include <libavutil/opt.h>
+
 /**
  * Log FFmpeg error
  */
@@ -324,4 +330,460 @@ int periodic_ffmpeg_reset(AVFormatContext **input_ctx_ptr, const char *url, int 
 
     log_info("Successfully reset FFmpeg resources");
     return 0;
+}
+
+/**
+ * Create a directory recursively (like mkdir -p)
+ */
+int mkdir_recursive(const char *path) {
+    if (!path || !*path) {
+        return -1;
+    }
+
+    // Make a mutable copy of the path
+    char *path_copy = strdup(path);
+    if (!path_copy) {
+        log_error("Failed to allocate memory for path copy");
+        return -1;
+    }
+
+    // Iterate through path components and create each directory
+    char *p = path_copy;
+
+    // Skip leading slash for absolute paths
+    if (*p == '/') {
+        p++;
+    }
+
+    while (*p) {
+        // Find next slash
+        while (*p && *p != '/') {
+            p++;
+        }
+
+        char saved = *p;
+        *p = '\0';
+
+        // Create this directory level
+        if (mkdir(path_copy, 0755) != 0 && errno != EEXIST) {
+            log_error("Failed to create directory %s: %s", path_copy, strerror(errno));
+            free(path_copy);
+            return -1;
+        }
+
+        *p = saved;
+        if (*p) {
+            p++;
+        }
+    }
+
+    free(path_copy);
+    return 0;
+}
+
+/**
+ * Encode raw image data to JPEG using FFmpeg libraries
+ */
+int ffmpeg_encode_jpeg(const unsigned char *frame_data, int width, int height,
+                       int channels, int quality, const char *output_path) {
+    if (!frame_data || !output_path || width <= 0 || height <= 0) {
+        log_error("Invalid parameters for JPEG encoding");
+        return -1;
+    }
+
+    int ret = 0;
+    AVCodecContext *codec_ctx = NULL;
+    AVFrame *frame = NULL;
+    AVPacket *pkt = NULL;
+    struct SwsContext *sws_ctx = NULL;
+    FILE *outfile = NULL;
+
+    // Determine input pixel format based on channels
+    enum AVPixelFormat src_pix_fmt;
+    switch (channels) {
+        case 1:
+            src_pix_fmt = AV_PIX_FMT_GRAY8;
+            break;
+        case 3:
+            src_pix_fmt = AV_PIX_FMT_RGB24;
+            break;
+        case 4:
+            src_pix_fmt = AV_PIX_FMT_RGBA;
+            break;
+        default:
+            log_error("Unsupported channel count: %d", channels);
+            return -1;
+    }
+
+    // Find the MJPEG encoder
+    const AVCodec *codec = avcodec_find_encoder(AV_CODEC_ID_MJPEG);
+    if (!codec) {
+        log_error("MJPEG encoder not found");
+        return -1;
+    }
+
+    // Allocate codec context
+    codec_ctx = avcodec_alloc_context3(codec);
+    if (!codec_ctx) {
+        log_error("Failed to allocate codec context");
+        ret = -1;
+        goto cleanup;
+    }
+
+    // Set codec parameters
+    codec_ctx->width = width;
+    codec_ctx->height = height;
+    codec_ctx->time_base = (AVRational){1, 25};
+    codec_ctx->pix_fmt = AV_PIX_FMT_YUVJ420P;  // JPEG uses YUVJ420P
+
+    // Set quality (1-31, lower is better; convert from 1-100 scale)
+    int qscale = 31 - (quality * 30 / 100);
+    if (qscale < 1) qscale = 1;
+    if (qscale > 31) qscale = 31;
+    codec_ctx->flags |= AV_CODEC_FLAG_QSCALE;
+    codec_ctx->global_quality = qscale * FF_QP2LAMBDA;
+
+    // Open the codec
+    ret = avcodec_open2(codec_ctx, codec, NULL);
+    if (ret < 0) {
+        log_ffmpeg_error(ret, "Failed to open MJPEG codec");
+        goto cleanup;
+    }
+
+    // Allocate frame
+    frame = av_frame_alloc();
+    if (!frame) {
+        log_error("Failed to allocate frame");
+        ret = -1;
+        goto cleanup;
+    }
+
+    frame->format = codec_ctx->pix_fmt;
+    frame->width = width;
+    frame->height = height;
+
+    ret = av_frame_get_buffer(frame, 0);
+    if (ret < 0) {
+        log_ffmpeg_error(ret, "Failed to allocate frame buffer");
+        goto cleanup;
+    }
+
+    // Create scaling context for pixel format conversion
+    sws_ctx = sws_getContext(width, height, src_pix_fmt,
+                             width, height, codec_ctx->pix_fmt,
+                             SWS_BILINEAR, NULL, NULL, NULL);
+    if (!sws_ctx) {
+        log_error("Failed to create scaling context");
+        ret = -1;
+        goto cleanup;
+    }
+
+    // Set up source data pointers
+    const uint8_t *src_data[4] = {frame_data, NULL, NULL, NULL};
+    int src_linesize[4] = {width * channels, 0, 0, 0};
+
+    // Convert pixel format
+    sws_scale(sws_ctx, src_data, src_linesize, 0, height,
+              frame->data, frame->linesize);
+
+    // Allocate packet
+    pkt = av_packet_alloc();
+    if (!pkt) {
+        log_error("Failed to allocate packet");
+        ret = -1;
+        goto cleanup;
+    }
+
+    // Encode the frame
+    ret = avcodec_send_frame(codec_ctx, frame);
+    if (ret < 0) {
+        log_ffmpeg_error(ret, "Failed to send frame for encoding");
+        goto cleanup;
+    }
+
+    ret = avcodec_receive_packet(codec_ctx, pkt);
+    if (ret < 0) {
+        log_ffmpeg_error(ret, "Failed to receive encoded packet");
+        goto cleanup;
+    }
+
+    // Write the JPEG data to file
+    outfile = fopen(output_path, "wb");
+    if (!outfile) {
+        log_error("Failed to open output file %s: %s", output_path, strerror(errno));
+        ret = -1;
+        goto cleanup;
+    }
+
+    if (fwrite(pkt->data, 1, pkt->size, outfile) != (size_t)pkt->size) {
+        log_error("Failed to write JPEG data to file");
+        ret = -1;
+        goto cleanup;
+    }
+
+    log_debug("Encoded JPEG: %dx%d, %d bytes -> %s", width, height, pkt->size, output_path);
+    ret = 0;
+
+cleanup:
+    if (outfile) fclose(outfile);
+    if (pkt) av_packet_free(&pkt);
+    if (sws_ctx) sws_freeContext(sws_ctx);
+    if (frame) av_frame_free(&frame);
+    if (codec_ctx) avcodec_free_context(&codec_ctx);
+
+    return ret;
+}
+
+/**
+ * Concatenate multiple TS segments into a single MP4 file using FFmpeg libraries
+ */
+int ffmpeg_concat_ts_to_mp4(const char **segment_paths, int segment_count,
+                            const char *output_path) {
+    if (!segment_paths || segment_count <= 0 || !output_path) {
+        log_error("Invalid parameters for TS concatenation");
+        return -1;
+    }
+
+    int ret = 0;
+    AVFormatContext *output_ctx = NULL;
+    AVFormatContext **input_contexts = NULL;
+    int *stream_mapping = NULL;
+    int64_t *last_pts = NULL;
+    int64_t *last_dts = NULL;
+    int64_t *pts_offset = NULL;
+    int64_t *dts_offset = NULL;
+    int64_t *first_pts = NULL;
+    int64_t *first_dts = NULL;
+    bool *first_packet = NULL;
+    int output_stream_count = 0;
+    AVDictionary *opts = NULL;
+
+    // Allocate array for input contexts
+    input_contexts = calloc(segment_count, sizeof(AVFormatContext *));
+    if (!input_contexts) {
+        log_error("Failed to allocate input contexts array");
+        return -1;
+    }
+
+    // Open output context
+    ret = avformat_alloc_output_context2(&output_ctx, NULL, "mp4", output_path);
+    if (ret < 0 || !output_ctx) {
+        log_ffmpeg_error(ret, "Failed to create output context");
+        ret = -1;
+        goto cleanup;
+    }
+
+    // Open first input to get stream info
+    ret = avformat_open_input(&input_contexts[0], segment_paths[0], NULL, NULL);
+    if (ret < 0) {
+        log_ffmpeg_error(ret, "Failed to open first input segment");
+        goto cleanup;
+    }
+
+    ret = avformat_find_stream_info(input_contexts[0], NULL);
+    if (ret < 0) {
+        log_ffmpeg_error(ret, "Failed to find stream info");
+        goto cleanup;
+    }
+
+    // Create output streams based on first input
+    output_stream_count = input_contexts[0]->nb_streams;
+    stream_mapping = calloc(output_stream_count, sizeof(int));
+    last_pts = calloc(output_stream_count, sizeof(int64_t));
+    last_dts = calloc(output_stream_count, sizeof(int64_t));
+    pts_offset = calloc(output_stream_count, sizeof(int64_t));
+    dts_offset = calloc(output_stream_count, sizeof(int64_t));
+    first_pts = calloc(output_stream_count, sizeof(int64_t));
+    first_dts = calloc(output_stream_count, sizeof(int64_t));
+    first_packet = calloc(output_stream_count, sizeof(bool));
+
+    if (!stream_mapping || !last_pts || !last_dts || !pts_offset || !dts_offset ||
+        !first_pts || !first_dts || !first_packet) {
+        log_error("Failed to allocate stream tracking arrays");
+        ret = -1;
+        goto cleanup;
+    }
+
+    for (int i = 0; i < output_stream_count; i++) {
+        AVStream *in_stream = input_contexts[0]->streams[i];
+        AVStream *out_stream = avformat_new_stream(output_ctx, NULL);
+        if (!out_stream) {
+            log_error("Failed to create output stream");
+            ret = -1;
+            goto cleanup;
+        }
+
+        ret = avcodec_parameters_copy(out_stream->codecpar, in_stream->codecpar);
+        if (ret < 0) {
+            log_ffmpeg_error(ret, "Failed to copy codec parameters");
+            goto cleanup;
+        }
+        out_stream->codecpar->codec_tag = 0;
+        out_stream->time_base = in_stream->time_base;
+        stream_mapping[i] = i;
+        last_pts[i] = 0;
+        last_dts[i] = 0;
+        pts_offset[i] = 0;
+        dts_offset[i] = 0;
+    }
+
+    // Set movflags for faststart (moov atom at beginning)
+    av_dict_set(&opts, "movflags", "+faststart", 0);
+
+    // Open output file
+    if (!(output_ctx->oformat->flags & AVFMT_NOFILE)) {
+        ret = avio_open(&output_ctx->pb, output_path, AVIO_FLAG_WRITE);
+        if (ret < 0) {
+            log_ffmpeg_error(ret, "Failed to open output file");
+            goto cleanup;
+        }
+    }
+
+    // Write header
+    ret = avformat_write_header(output_ctx, &opts);
+    av_dict_free(&opts);
+    opts = NULL;
+    if (ret < 0) {
+        log_ffmpeg_error(ret, "Failed to write header");
+        goto cleanup;
+    }
+
+    // Process each segment
+    for (int seg = 0; seg < segment_count; seg++) {
+        // Open segment if not already open
+        if (seg > 0) {
+            ret = avformat_open_input(&input_contexts[seg], segment_paths[seg], NULL, NULL);
+            if (ret < 0) {
+                log_warn("Failed to open segment %s, skipping", segment_paths[seg]);
+                continue;
+            }
+            ret = avformat_find_stream_info(input_contexts[seg], NULL);
+            if (ret < 0) {
+                log_warn("Failed to find stream info for segment %s, skipping", segment_paths[seg]);
+                avformat_close_input(&input_contexts[seg]);
+                continue;
+            }
+        }
+
+        AVPacket *pkt = av_packet_alloc();
+        if (!pkt) {
+            log_error("Failed to allocate packet");
+            ret = -1;
+            goto cleanup;
+        }
+
+        // Reset first packet tracking for this segment
+        for (int i = 0; i < output_stream_count; i++) {
+            first_pts[i] = AV_NOPTS_VALUE;
+            first_dts[i] = AV_NOPTS_VALUE;
+            first_packet[i] = true;
+        }
+
+        // Read and write packets
+        while (av_read_frame(input_contexts[seg], pkt) >= 0) {
+            int stream_idx = pkt->stream_index;
+            if (stream_idx >= output_stream_count) {
+                av_packet_unref(pkt);
+                continue;
+            }
+
+            AVStream *in_stream = input_contexts[seg]->streams[stream_idx];
+            AVStream *out_stream = output_ctx->streams[stream_idx];
+
+            // Track first packet timestamps for offset calculation
+            if (first_packet[stream_idx]) {
+                first_pts[stream_idx] = pkt->pts;
+                first_dts[stream_idx] = pkt->dts;
+                first_packet[stream_idx] = false;
+            }
+
+            // Apply timestamp offset and rescale
+            if (pkt->pts != AV_NOPTS_VALUE) {
+                pkt->pts = av_rescale_q(pkt->pts - first_pts[stream_idx],
+                                        in_stream->time_base, out_stream->time_base)
+                           + pts_offset[stream_idx];
+            }
+            if (pkt->dts != AV_NOPTS_VALUE) {
+                pkt->dts = av_rescale_q(pkt->dts - first_dts[stream_idx],
+                                        in_stream->time_base, out_stream->time_base)
+                           + dts_offset[stream_idx];
+            }
+
+            // Ensure DTS <= PTS
+            if (pkt->pts != AV_NOPTS_VALUE && pkt->dts != AV_NOPTS_VALUE && pkt->dts > pkt->pts) {
+                pkt->dts = pkt->pts;
+            }
+
+            // Track last timestamps for next segment offset
+            if (pkt->pts != AV_NOPTS_VALUE) {
+                last_pts[stream_idx] = pkt->pts;
+            }
+            if (pkt->dts != AV_NOPTS_VALUE) {
+                last_dts[stream_idx] = pkt->dts;
+            }
+
+            pkt->duration = av_rescale_q(pkt->duration, in_stream->time_base, out_stream->time_base);
+            pkt->pos = -1;
+
+            ret = av_interleaved_write_frame(output_ctx, pkt);
+            if (ret < 0) {
+                log_warn("Failed to write packet from segment %d", seg);
+            }
+            av_packet_unref(pkt);
+        }
+
+        av_packet_free(&pkt);
+
+        // Update offsets for next segment (add a small gap to avoid timestamp collision)
+        for (int i = 0; i < output_stream_count; i++) {
+            AVStream *out_stream = output_ctx->streams[i];
+            int64_t gap = av_rescale_q(1, (AVRational){1, 90000}, out_stream->time_base);
+            pts_offset[i] = last_pts[i] + gap;
+            dts_offset[i] = last_dts[i] + gap;
+        }
+
+        // Close this segment
+        avformat_close_input(&input_contexts[seg]);
+    }
+
+    // Write trailer
+    ret = av_write_trailer(output_ctx);
+    if (ret < 0) {
+        log_ffmpeg_error(ret, "Failed to write trailer");
+        goto cleanup;
+    }
+
+    log_info("Successfully concatenated %d segments to %s", segment_count, output_path);
+    ret = 0;
+
+cleanup:
+    // Close any remaining input contexts
+    if (input_contexts) {
+        for (int i = 0; i < segment_count; i++) {
+            if (input_contexts[i]) {
+                avformat_close_input(&input_contexts[i]);
+            }
+        }
+        free(input_contexts);
+    }
+
+    // Close output
+    if (output_ctx) {
+        if (!(output_ctx->oformat->flags & AVFMT_NOFILE) && output_ctx->pb) {
+            avio_closep(&output_ctx->pb);
+        }
+        avformat_free_context(output_ctx);
+    }
+
+    if (opts) av_dict_free(&opts);
+    free(stream_mapping);
+    free(last_pts);
+    free(last_dts);
+    free(pts_offset);
+    free(dts_offset);
+    free(first_pts);
+    free(first_dts);
+    free(first_packet);
+
+    return ret;
 }

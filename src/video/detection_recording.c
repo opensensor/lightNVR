@@ -18,6 +18,7 @@
 #include "video/detection_result.h"
 #include "video/detection_stream.h"
 #include "video/detection_stream_thread.h"
+#include "video/ffmpeg_utils.h"
 #include "database/database_manager.h"
 #include "database/db_recordings.h"
 #include "web/api_handlers_detection_results.h"
@@ -211,10 +212,12 @@ static char* flush_segment_buffer(detection_recording_t *rec) {
              g_config.storage_path, rec->stream_name,
              tm_info->tm_year + 1900, tm_info->tm_mon + 1, tm_info->tm_mday);
 
-    // Create directory if it doesn't exist
-    char mkdir_cmd[MAX_PATH_LENGTH + 20];
-    snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p '%s'", date_dir);
-    system(mkdir_cmd);
+    // Create directory if it doesn't exist (using library function instead of system call)
+    if (mkdir_recursive(date_dir) != 0) {
+        pthread_mutex_unlock(&rec->mutex);
+        log_error("Failed to create directory %s", date_dir);
+        return NULL;
+    }
 
     // Create output MP4 file path with "predetection" prefix
     static char concat_path[MAX_PATH_LENGTH];
@@ -223,49 +226,30 @@ static char* flush_segment_buffer(detection_recording_t *rec) {
     snprintf(concat_path, MAX_PATH_LENGTH, "%s/predetection_%s.mp4",
              date_dir, timestamp_str);
 
-    // Create concat demuxer file list
-    char concat_list_path[MAX_PATH_LENGTH];
-    snprintf(concat_list_path, MAX_PATH_LENGTH, "%s/concat_list_%ld.txt",
-             rec->buffer_dir, (long)time(NULL));
+    // Collect valid segment paths for concatenation
+    const char *segment_paths[MAX_PRE_BUFFER_SEGMENTS];
+    int valid_segment_count = 0;
 
-    FILE *concat_list = fopen(concat_list_path, "w");
-    if (!concat_list) {
-        pthread_mutex_unlock(&rec->mutex);
-        log_error("Failed to create concat list file for stream %s", rec->stream_name);
-        return NULL;
-    }
-
-    // Write all valid segments to the concat list in order (oldest to newest)
     int start_idx = (rec->buffer_head - rec->buffer_count + MAX_PRE_BUFFER_SEGMENTS) % MAX_PRE_BUFFER_SEGMENTS;
     for (int i = 0; i < rec->buffer_count; i++) {
         int idx = (start_idx + i) % MAX_PRE_BUFFER_SEGMENTS;
         if (rec->segment_buffer[idx].is_valid) {
-            fprintf(concat_list, "file '%s'\n", rec->segment_buffer[idx].path);
+            segment_paths[valid_segment_count++] = rec->segment_buffer[idx].path;
         }
     }
-    fclose(concat_list);
 
     pthread_mutex_unlock(&rec->mutex);
 
-    // Use ffmpeg to concatenate the TS segments into an MP4 file with proper timestamp handling
-    // -f concat: Use concat demuxer
-    // -safe 0: Allow absolute paths
-    // -fflags +genpts: Generate presentation timestamps to fix discontinuities
-    // -c copy: Copy streams without re-encoding
-    // -movflags +faststart: Move moov atom to beginning for better compatibility
-    // -avoid_negative_ts make_zero: Shift timestamps to start at 0
-    char cmd[MAX_PATH_LENGTH * 3];
-    snprintf(cmd, sizeof(cmd),
-             "ffmpeg -f concat -safe 0 -fflags +genpts -i '%s' "
-             "-c copy -movflags +faststart -avoid_negative_ts make_zero "
-             "'%s' -y 2>&1 | grep -v 'deprecated pixel format'",
-             concat_list_path, concat_path);
+    if (valid_segment_count == 0) {
+        log_error("No valid segments to concatenate for stream %s", rec->stream_name);
+        return NULL;
+    }
 
-    int ret = system(cmd);
-    unlink(concat_list_path);
+    // Use FFmpeg library to concatenate the TS segments into an MP4 file
+    int ret = ffmpeg_concat_ts_to_mp4(segment_paths, valid_segment_count, concat_path);
 
     if (ret != 0) {
-        log_error("Failed to concatenate buffered segments for stream %s (exit code: %d)",
+        log_error("Failed to concatenate buffered segments for stream %s (error code: %d)",
                  rec->stream_name, ret);
         return NULL;
     }
@@ -416,10 +400,10 @@ int start_detection_recording(const char *stream_name, const char *model_path, f
         snprintf(detection_recordings[slot].buffer_dir, MAX_PATH_LENGTH,
                  "%s/detection_buffer/%s", g_config.storage_path, stream_name);
 
-        // Create directory if it doesn't exist
-        char mkdir_cmd[MAX_PATH_LENGTH + 20];
-        snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p '%s'", detection_recordings[slot].buffer_dir);
-        system(mkdir_cmd);
+        // Create directory if it doesn't exist (using library function instead of system call)
+        if (mkdir_recursive(detection_recordings[slot].buffer_dir) != 0) {
+            log_warn("Failed to create buffer directory %s", detection_recordings[slot].buffer_dir);
+        }
 
         log_info("Enabled pre-detection buffering for stream %s (%d seconds, buffer dir: %s)",
                  stream_name, pre_buffer, detection_recordings[slot].buffer_dir);

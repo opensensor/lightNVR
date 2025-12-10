@@ -5,6 +5,8 @@
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
 #include <libavutil/dict.h>
+#include <libavutil/imgutils.h>
+#include <libswscale/swscale.h>
 
 /**
  * Log FFmpeg error
@@ -60,5 +62,41 @@ int periodic_ffmpeg_reset(AVFormatContext **input_ctx_ptr, const char *url, int 
  * @param frame Pointer to the AVFrame to clean up (can be NULL)
  */
 void comprehensive_ffmpeg_cleanup(AVFormatContext **input_ctx, AVCodecContext **codec_ctx, AVPacket **packet, AVFrame **frame);
+
+/**
+ * Encode raw image data to JPEG using FFmpeg libraries
+ * This replaces the need for calling ffmpeg binary for image conversion
+ *
+ * @param frame_data Raw image data (RGB24, RGBA, or grayscale)
+ * @param width Image width
+ * @param height Image height
+ * @param channels Number of color channels (1=gray, 3=RGB, 4=RGBA)
+ * @param quality JPEG quality (1-100, default 85)
+ * @param output_path Path to write the output JPEG file
+ * @return 0 on success, negative value on error
+ */
+int ffmpeg_encode_jpeg(const unsigned char *frame_data, int width, int height,
+                       int channels, int quality, const char *output_path);
+
+/**
+ * Concatenate multiple TS segments into a single MP4 file using FFmpeg libraries
+ * This replaces the need for calling ffmpeg binary with concat demuxer
+ *
+ * @param segment_paths Array of paths to TS segment files
+ * @param segment_count Number of segments in the array
+ * @param output_path Path to write the output MP4 file
+ * @return 0 on success, negative value on error
+ */
+int ffmpeg_concat_ts_to_mp4(const char **segment_paths, int segment_count,
+                            const char *output_path);
+
+/**
+ * Create a directory recursively (like mkdir -p)
+ * This replaces system("mkdir -p ...") calls
+ *
+ * @param path Directory path to create
+ * @return 0 on success, -1 on error
+ */
+int mkdir_recursive(const char *path);
 
 #endif /* FFMPEG_UTILS_H */
