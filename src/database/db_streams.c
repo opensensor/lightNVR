@@ -760,16 +760,17 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
     bool has_protocol_column = cached_column_exists("streams", "protocol");
     bool has_onvif_column = cached_column_exists("streams", "is_onvif");
     bool has_record_audio_column = cached_column_exists("streams", "record_audio");
+    bool has_detection_api_url_column = cached_column_exists("streams", "detection_api_url");
     bool has_backchannel_column = cached_column_exists("streams", "backchannel_enabled");
     bool has_retention_columns = cached_column_exists("streams", "retention_days");
     bool has_ptz_columns = cached_column_exists("streams", "ptz_enabled");
 
-    // Prepare SQL based on whether detection columns, protocol column, is_onvif column, record_audio column, backchannel_enabled column, retention columns, and PTZ columns exist
+    // Prepare SQL based on whether detection columns, protocol column, is_onvif column, record_audio column, detection_api_url column, backchannel_enabled column, retention columns, and PTZ columns exist
     const char *sql;
-    if (has_detection_columns && has_protocol_column && has_onvif_column && has_record_audio_column && has_backchannel_column && has_retention_columns && has_ptz_columns) {
+    if (has_detection_columns && has_protocol_column && has_onvif_column && has_record_audio_column && has_detection_api_url_column && has_backchannel_column && has_retention_columns && has_ptz_columns) {
         sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
               "detection_based_recording, detection_model, detection_threshold, detection_interval, "
-              "pre_detection_buffer, post_detection_buffer, protocol, is_onvif, record_audio, backchannel_enabled, "
+              "pre_detection_buffer, post_detection_buffer, detection_api_url, protocol, is_onvif, record_audio, backchannel_enabled, "
               "retention_days, detection_retention_days, max_storage_mb, "
               "ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home "
               "FROM streams ORDER BY name;";
@@ -877,63 +878,87 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
                 streams[count].post_detection_buffer = sqlite3_column_int(stmt, 16);
             }
 
-            // Parse protocol if it exists (column 17)
-            if (has_protocol_column && sqlite3_column_count(stmt) > 17) {
-                if (sqlite3_column_type(stmt, 17) != SQLITE_NULL) {
-                    streams[count].protocol = (stream_protocol_t)sqlite3_column_int(stmt, 17);
+            // Parse detection_api_url if it exists (column 17)
+            int next_col = 17;
+            if (has_detection_api_url_column && sqlite3_column_count(stmt) > next_col) {
+                const char *detection_api_url = (const char *)sqlite3_column_text(stmt, next_col);
+                if (detection_api_url) {
+                    strncpy(streams[count].detection_api_url, detection_api_url, MAX_URL_LENGTH - 1);
+                    streams[count].detection_api_url[MAX_URL_LENGTH - 1] = '\0';
                 }
+                next_col++;
+            } else {
+                streams[count].detection_api_url[0] = '\0';
             }
 
-            // Parse is_onvif if it exists (column 18)
-            if (has_onvif_column && sqlite3_column_count(stmt) > 18) {
-                if (sqlite3_column_type(stmt, 18) != SQLITE_NULL) {
-                    streams[count].is_onvif = sqlite3_column_int(stmt, 18) != 0;
+            // Parse protocol if it exists
+            if (has_protocol_column && sqlite3_column_count(stmt) > next_col) {
+                if (sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
+                    streams[count].protocol = (stream_protocol_t)sqlite3_column_int(stmt, next_col);
                 }
+                next_col++;
             }
 
-            // Parse record_audio if it exists (column 19)
-            if (has_record_audio_column && sqlite3_column_count(stmt) > 19) {
-                if (sqlite3_column_type(stmt, 19) != SQLITE_NULL) {
-                    streams[count].record_audio = sqlite3_column_int(stmt, 19) != 0;
+            // Parse is_onvif if it exists
+            if (has_onvif_column && sqlite3_column_count(stmt) > next_col) {
+                if (sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
+                    streams[count].is_onvif = sqlite3_column_int(stmt, next_col) != 0;
                 }
+                next_col++;
             }
 
-            // Parse backchannel_enabled if it exists (column 20)
-            if (has_backchannel_column && sqlite3_column_count(stmt) > 20) {
-                if (sqlite3_column_type(stmt, 20) != SQLITE_NULL) {
-                    streams[count].backchannel_enabled = sqlite3_column_int(stmt, 20) != 0;
+            // Parse record_audio if it exists
+            if (has_record_audio_column && sqlite3_column_count(stmt) > next_col) {
+                if (sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
+                    streams[count].record_audio = sqlite3_column_int(stmt, next_col) != 0;
                 }
+                next_col++;
             }
 
-            // Parse retention columns if they exist (columns 21, 22, 23)
-            if (has_retention_columns && sqlite3_column_count(stmt) > 21) {
-                if (sqlite3_column_type(stmt, 21) != SQLITE_NULL) {
-                    streams[count].retention_days = sqlite3_column_int(stmt, 21);
+            // Parse backchannel_enabled if it exists
+            if (has_backchannel_column && sqlite3_column_count(stmt) > next_col) {
+                if (sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
+                    streams[count].backchannel_enabled = sqlite3_column_int(stmt, next_col) != 0;
                 }
-                if (sqlite3_column_count(stmt) > 22 && sqlite3_column_type(stmt, 22) != SQLITE_NULL) {
-                    streams[count].detection_retention_days = sqlite3_column_int(stmt, 22);
-                }
-                if (sqlite3_column_count(stmt) > 23 && sqlite3_column_type(stmt, 23) != SQLITE_NULL) {
-                    streams[count].max_storage_mb = sqlite3_column_int(stmt, 23);
-                }
+                next_col++;
             }
 
-            // Parse PTZ columns if they exist (columns 24, 25, 26, 27, 28)
-            if (has_ptz_columns && sqlite3_column_count(stmt) > 24) {
-                if (sqlite3_column_type(stmt, 24) != SQLITE_NULL) {
-                    streams[count].ptz_enabled = sqlite3_column_int(stmt, 24) != 0;
+            // Parse retention columns if they exist
+            if (has_retention_columns && sqlite3_column_count(stmt) > next_col) {
+                if (sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
+                    streams[count].retention_days = sqlite3_column_int(stmt, next_col);
                 }
-                if (sqlite3_column_count(stmt) > 25 && sqlite3_column_type(stmt, 25) != SQLITE_NULL) {
-                    streams[count].ptz_max_x = sqlite3_column_int(stmt, 25);
+                next_col++;
+                if (sqlite3_column_count(stmt) > next_col && sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
+                    streams[count].detection_retention_days = sqlite3_column_int(stmt, next_col);
                 }
-                if (sqlite3_column_count(stmt) > 26 && sqlite3_column_type(stmt, 26) != SQLITE_NULL) {
-                    streams[count].ptz_max_y = sqlite3_column_int(stmt, 26);
+                next_col++;
+                if (sqlite3_column_count(stmt) > next_col && sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
+                    streams[count].max_storage_mb = sqlite3_column_int(stmt, next_col);
                 }
-                if (sqlite3_column_count(stmt) > 27 && sqlite3_column_type(stmt, 27) != SQLITE_NULL) {
-                    streams[count].ptz_max_z = sqlite3_column_int(stmt, 27);
+                next_col++;
+            }
+
+            // Parse PTZ columns if they exist
+            if (has_ptz_columns && sqlite3_column_count(stmt) > next_col) {
+                if (sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
+                    streams[count].ptz_enabled = sqlite3_column_int(stmt, next_col) != 0;
                 }
-                if (sqlite3_column_count(stmt) > 28 && sqlite3_column_type(stmt, 28) != SQLITE_NULL) {
-                    streams[count].ptz_has_home = sqlite3_column_int(stmt, 28) != 0;
+                next_col++;
+                if (sqlite3_column_count(stmt) > next_col && sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
+                    streams[count].ptz_max_x = sqlite3_column_int(stmt, next_col);
+                }
+                next_col++;
+                if (sqlite3_column_count(stmt) > next_col && sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
+                    streams[count].ptz_max_y = sqlite3_column_int(stmt, next_col);
+                }
+                next_col++;
+                if (sqlite3_column_count(stmt) > next_col && sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
+                    streams[count].ptz_max_z = sqlite3_column_int(stmt, next_col);
+                }
+                next_col++;
+                if (sqlite3_column_count(stmt) > next_col && sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
+                    streams[count].ptz_has_home = sqlite3_column_int(stmt, next_col) != 0;
                 }
             }
         }
