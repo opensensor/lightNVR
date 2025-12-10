@@ -1064,6 +1064,9 @@ void hls_writer_close(hls_writer_t *writer) {
             __sync_synchronize();
             pthread_mutex_unlock(&writer->mutex);
         }
+        // CRITICAL FIX: Reset close state and unlock mutex before early return
+        in_writer_close = false;
+        pthread_mutex_unlock(&close_mutex);
         return;
     }
 

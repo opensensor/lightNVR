@@ -192,6 +192,13 @@ static char *create_onvif_request(const char *username, const char *password, co
 
     // Encode hash as base64
     char *digest = base64_encode(hash, 20); // SHA-1 hash is 20 bytes
+    if (!digest) {
+        mbedtls_ctr_drbg_free(&ctr_drbg);
+        mbedtls_entropy_free(&entropy);
+        free(nonce);
+        free(soap_request);
+        return NULL;
+    }
 
     // Clean up mbedTLS contexts
     mbedtls_ctr_drbg_free(&ctr_drbg);

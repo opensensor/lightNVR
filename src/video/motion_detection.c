@@ -1128,6 +1128,10 @@ int detect_motion(const char *stream_name, const unsigned char *frame_data,
         stream->frame_history = (frame_history_t *)malloc(stream->history_size * sizeof(frame_history_t));
         if (!stream->frame_history) {
             log_error("Failed to allocate memory for frame history");
+            if (stream->grid_scores) {
+                free(stream->grid_scores);
+                stream->grid_scores = NULL;
+            }
             free(processing_frame);
             pthread_mutex_unlock(&stream->mutex);
             return -1;

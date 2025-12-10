@@ -71,6 +71,8 @@ int init_detection_integration(void) {
     if (init_stream_detection_system() != 0) {
         log_error("Failed to initialize stream detection system");
         // This is a critical error now that we've removed the fallback
+        free(active_detection_streams);
+        active_detection_streams = NULL;
         return -1;
     } else {
         log_info("Stream detection system initialized");
