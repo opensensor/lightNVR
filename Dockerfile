@@ -1,5 +1,5 @@
 # Stage 1: Build image
-FROM debian:bookworm-slim AS builder
+FROM debian:trixie-slim AS builder
 
 # Set non-interactive mode
 ENV DEBIAN_FRONTEND=noninteractive
@@ -114,14 +114,15 @@ RUN mkdir -p /etc/lightnvr /var/lib/lightnvr/data /var/log/lightnvr /var/run/lig
     ./scripts/install.sh --prefix=/ --with-go2rtc --go2rtc-config-dir=/etc/lightnvr/go2rtc --without-systemd
 
 # Stage 2: Minimal runtime image
-FROM debian:bookworm-slim AS runtime
+FROM debian:trixie-slim AS runtime
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install only necessary runtime dependencies
+# Trixie has FFmpeg 7.x: libavcodec61, libavformat61, libavutil59, libswscale8
 RUN apt-get update && apt-get install -y \
-    libavcodec59 libavformat59 libavutil57 libswscale6 \
-    libcurl4 libmbedtls14 libmbedcrypto7 sqlite3 procps curl && \
+    libavcodec61 libavformat61 libavutil59 libswscale8 \
+    libcurl4t64 libmbedtls21 libmbedcrypto16 sqlite3 procps curl && \
     rm -rf /var/lib/apt/lists/*
 
 # Create directory structure
