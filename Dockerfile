@@ -10,12 +10,14 @@ RUN apt-get update && apt-get install -y \
     libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
     libcurl4-openssl-dev sqlite3 libsqlite3-dev \
     libmbedtls-dev curl wget ca-certificates gnupg libcjson-dev && \
-    # Install Node.js 20.x (LTS) - includes npm
+    # Try to install Node.js from NodeSource (for amd64/arm64)
+    # For armv7/armhf, NodeSource may not have packages, so we fall back to Debian's nodejs + npm
     mkdir -p /etc/apt/keyrings && \
     curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
     echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list && \
     apt-get update && \
-    apt-get install -y nodejs && \
+    # Install nodejs and npm (npm is separate in Debian's package but bundled in NodeSource)
+    apt-get install -y nodejs npm && \
     # Verify installation
     node --version && \
     npm --version && \
