@@ -1,6 +1,7 @@
 #ifndef FFMPEG_UTILS_H
 #define FFMPEG_UTILS_H
 
+#include <sys/types.h>
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
@@ -98,5 +99,23 @@ int ffmpeg_concat_ts_to_mp4(const char **segment_paths, int segment_count,
  * @return 0 on success, -1 on error
  */
 int mkdir_recursive(const char *path);
+
+/**
+ * Set permissions on a file or directory (like chmod)
+ *
+ * @param path Path to set permissions on
+ * @param mode Permission mode (e.g., 0777)
+ * @return 0 on success, -1 on error
+ */
+int chmod_path(const char *path, mode_t mode);
+
+/**
+ * Recursively set permissions on a directory and its contents (like chmod -R)
+ *
+ * @param path Directory path to chmod recursively
+ * @param mode Permission mode (e.g., 0777)
+ * @return 0 on success, -1 on error
+ */
+int chmod_recursive(const char *path, mode_t mode);
 
 #endif /* FFMPEG_UTILS_H */

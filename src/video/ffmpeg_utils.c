@@ -7,6 +7,7 @@
 #include <sys/types.h>
 #include <errno.h>
 #include <string.h>
+#include <dirent.h>
 #include <libavutil/opt.h>
 
 /**
@@ -378,6 +379,78 @@ int mkdir_recursive(const char *path) {
     }
 
     free(path_copy);
+    return 0;
+}
+
+/**
+ * Set permissions on a file or directory (like chmod)
+ */
+int chmod_path(const char *path, mode_t mode) {
+    if (!path || !*path) {
+        return -1;
+    }
+
+    if (chmod(path, mode) != 0) {
+        log_warn("Failed to chmod %s: %s", path, strerror(errno));
+        return -1;
+    }
+
+    return 0;
+}
+
+/**
+ * Recursively set permissions on a directory and its contents (like chmod -R)
+ * Note: This is a simplified version that only sets permissions on the directory itself
+ * For full recursive chmod, we would need to walk the directory tree
+ */
+int chmod_recursive(const char *path, mode_t mode) {
+    if (!path || !*path) {
+        return -1;
+    }
+
+    struct stat st;
+    if (stat(path, &st) != 0) {
+        log_warn("Failed to stat %s: %s", path, strerror(errno));
+        return -1;
+    }
+
+    // Set permissions on the path itself
+    if (chmod(path, mode) != 0) {
+        log_warn("Failed to chmod %s: %s", path, strerror(errno));
+        return -1;
+    }
+
+    // If it's a directory, recursively process contents
+    if (S_ISDIR(st.st_mode)) {
+        DIR *dir = opendir(path);
+        if (!dir) {
+            log_warn("Failed to open directory %s: %s", path, strerror(errno));
+            return -1;
+        }
+
+        struct dirent *entry;
+        char full_path[PATH_MAX];
+        int result = 0;
+
+        while ((entry = readdir(dir)) != NULL) {
+            // Skip . and ..
+            if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+                continue;
+            }
+
+            snprintf(full_path, sizeof(full_path), "%s/%s", path, entry->d_name);
+
+            // Recursively chmod
+            if (chmod_recursive(full_path, mode) != 0) {
+                result = -1;
+                // Continue processing other entries
+            }
+        }
+
+        closedir(dir);
+        return result;
+    }
+
     return 0;
 }
 

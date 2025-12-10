@@ -749,25 +749,14 @@ int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, const AVStr
         log_info("Ensuring MP4 output directory exists: %s", dir_path);
 
         // Create directory if it doesn't exist
-        char *mkdir_cmd = malloc(PATH_MAX + 10);
-        if (!mkdir_cmd) {
-            log_error("Failed to allocate memory for mkdir command");
-            free(dir_path);
-            return -1;
-        }
-
-        snprintf(mkdir_cmd, PATH_MAX + 10, "mkdir -p %s", dir_path);
-        if (system(mkdir_cmd) != 0) {
+        if (mkdir_recursive(dir_path) != 0) {
             log_warn("Failed to create directory: %s", dir_path);
         }
 
         // Set permissions to ensure it's writable
-        snprintf(mkdir_cmd, PATH_MAX + 10, "chmod -R 777 %s", dir_path);
-        if (system(mkdir_cmd) != 0) {
+        if (chmod_recursive(dir_path, 0777) != 0) {
             log_warn("Failed to set permissions: %s", dir_path);
         }
-
-        free(mkdir_cmd);
     } else {
         // No directory separator found, use current directory
         log_warn("No directory separator found in output path: %s, using current directory",

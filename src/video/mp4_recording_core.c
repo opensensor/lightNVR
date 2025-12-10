@@ -36,6 +36,7 @@
 #include "video/mp4_writer_thread.h"
 #include "video/mp4_segment_recorder.h"
 #include "video/stream_packet_processor.h"
+#include "video/ffmpeg_utils.h"
 
 
 // Hash map for tracking running MP4 recording contexts
@@ -89,10 +90,7 @@ static void *mp4_recording_thread(void *arg) {
         log_error("Output directory does not exist or is not a directory: %s", mp4_dir);
 
         // Recreate it as a last resort
-        char mkdir_cmd[MAX_PATH_LENGTH * 2];
-        snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p %s", mp4_dir);
-
-        int ret_mkdir = system(mkdir_cmd);
+        int ret_mkdir = mkdir_recursive(mp4_dir);
         if (ret_mkdir != 0 || stat(mp4_dir, &st) != 0 || !S_ISDIR(st.st_mode)) {
             log_error("Failed to create output directory: %s (return code: %d)", mp4_dir, ret_mkdir);
             ctx->running = 0;
@@ -100,10 +98,8 @@ static void *mp4_recording_thread(void *arg) {
         }
 
         // Set permissions
-        snprintf(mkdir_cmd, sizeof(mkdir_cmd), "chmod -R 777 %s", mp4_dir);
-        int ret_chmod = system(mkdir_cmd);
-        if (ret_chmod != 0) {
-            log_warn("Failed to set permissions on directory: %s (return code: %d)", mp4_dir, ret_chmod);
+        if (chmod_recursive(mp4_dir, 0777) != 0) {
+            log_warn("Failed to set permissions on directory: %s", mp4_dir);
         }
 
         log_info("Successfully created output directory: %s", mp4_dir);
@@ -114,11 +110,8 @@ static void *mp4_recording_thread(void *arg) {
         log_error("Output directory is not writable: %s", mp4_dir);
 
         // Try to fix permissions
-        char chmod_cmd[MAX_PATH_LENGTH * 2];
-        snprintf(chmod_cmd, sizeof(chmod_cmd), "chmod -R 777 %s", mp4_dir);
-        int ret_chmod = system(chmod_cmd);
-        if (ret_chmod != 0) {
-            log_warn("Failed to set permissions on directory: %s (return code: %d)", mp4_dir, ret_chmod);
+        if (chmod_recursive(mp4_dir, 0777) != 0) {
+            log_warn("Failed to set permissions on directory: %s", mp4_dir);
         }
 
         if (access(mp4_dir, W_OK) != 0) {
@@ -416,9 +409,7 @@ int start_mp4_recording(const char *stream_name) {
     }
 
     // Create MP4 directory if it doesn't exist
-    char dir_cmd[MAX_PATH_LENGTH * 2];
-    snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s", mp4_dir);
-    int ret = system(dir_cmd);
+    int ret = mkdir_recursive(mp4_dir);
     if (ret != 0) {
         log_error("Failed to create MP4 directory: %s (return code: %d)", mp4_dir, ret);
 
@@ -430,8 +421,7 @@ int start_mp4_recording(const char *stream_name) {
             snprintf(parent_dir, MAX_PATH_LENGTH, "%s/mp4", global_config->storage_path);
         }
 
-        snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s", parent_dir);
-        ret = system(dir_cmd);
+        ret = mkdir_recursive(parent_dir);
         if (ret != 0) {
             log_error("Failed to create parent MP4 directory: %s (return code: %d)", parent_dir, ret);
             free(ctx);
@@ -439,8 +429,7 @@ int start_mp4_recording(const char *stream_name) {
         }
 
         // Try again to create the stream-specific directory
-        snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s", mp4_dir);
-        ret = system(dir_cmd);
+        ret = mkdir_recursive(mp4_dir);
         if (ret != 0) {
             log_error("Still failed to create MP4 directory: %s (return code: %d)", mp4_dir, ret);
             free(ctx);
@@ -449,10 +438,8 @@ int start_mp4_recording(const char *stream_name) {
     }
 
     // Set full permissions for MP4 directory
-    snprintf(dir_cmd, sizeof(dir_cmd), "chmod -R 777 %s", mp4_dir);
-    int ret_chmod = system(dir_cmd);
-    if (ret_chmod != 0) {
-        log_warn("Failed to set permissions on MP4 directory: %s (return code: %d)", mp4_dir, ret_chmod);
+    if (chmod_recursive(mp4_dir, 0777) != 0) {
+        log_warn("Failed to set permissions on MP4 directory: %s", mp4_dir);
     }
 
     // Full path for the MP4 file
@@ -559,9 +546,7 @@ int start_mp4_recording_with_url(const char *stream_name, const char *url) {
     }
 
     // Create MP4 directory if it doesn't exist
-    char dir_cmd[MAX_PATH_LENGTH * 2];
-    snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s", mp4_dir);
-    int ret = system(dir_cmd);
+    int ret = mkdir_recursive(mp4_dir);
     if (ret != 0) {
         log_error("Failed to create MP4 directory: %s (return code: %d)", mp4_dir, ret);
 
@@ -573,8 +558,7 @@ int start_mp4_recording_with_url(const char *stream_name, const char *url) {
             snprintf(parent_dir, MAX_PATH_LENGTH, "%s/mp4", global_config->storage_path);
         }
 
-        snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s", parent_dir);
-        ret = system(dir_cmd);
+        ret = mkdir_recursive(parent_dir);
         if (ret != 0) {
             log_error("Failed to create parent MP4 directory: %s (return code: %d)", parent_dir, ret);
             free(ctx);
@@ -582,8 +566,7 @@ int start_mp4_recording_with_url(const char *stream_name, const char *url) {
         }
 
         // Try again to create the stream-specific directory
-        snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s", mp4_dir);
-        ret = system(dir_cmd);
+        ret = mkdir_recursive(mp4_dir);
         if (ret != 0) {
             log_error("Still failed to create MP4 directory: %s (return code: %d)", mp4_dir, ret);
             free(ctx);
@@ -592,10 +575,8 @@ int start_mp4_recording_with_url(const char *stream_name, const char *url) {
     }
 
     // Set full permissions for MP4 directory
-    snprintf(dir_cmd, sizeof(dir_cmd), "chmod -R 777 %s", mp4_dir);
-    int ret_chmod = system(dir_cmd);
-    if (ret_chmod != 0) {
-        log_warn("Failed to set permissions on MP4 directory: %s (return code: %d)", mp4_dir, ret_chmod);
+    if (chmod_recursive(mp4_dir, 0777) != 0) {
+        log_warn("Failed to set permissions on MP4 directory: %s", mp4_dir);
     }
 
     // Full path for the MP4 file
@@ -775,9 +756,7 @@ int start_mp4_recording_with_trigger(const char *stream_name, const char *trigge
     }
 
     // Create MP4 directory if it doesn't exist
-    char dir_cmd[MAX_PATH_LENGTH * 2];
-    snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s", mp4_dir);
-    int ret = system(dir_cmd);
+    int ret = mkdir_recursive(mp4_dir);
     if (ret != 0) {
         log_error("Failed to create MP4 directory: %s (return code: %d)", mp4_dir, ret);
         free(ctx);
@@ -785,10 +764,8 @@ int start_mp4_recording_with_trigger(const char *stream_name, const char *trigge
     }
 
     // Set full permissions for MP4 directory
-    snprintf(dir_cmd, sizeof(dir_cmd), "chmod -R 777 %s", mp4_dir);
-    int ret_chmod = system(dir_cmd);
-    if (ret_chmod != 0) {
-        log_warn("Failed to set permissions on MP4 directory: %s (return code: %d)", mp4_dir, ret_chmod);
+    if (chmod_recursive(mp4_dir, 0777) != 0) {
+        log_warn("Failed to set permissions on MP4 directory: %s", mp4_dir);
     }
 
     // Full path for the MP4 file
@@ -900,9 +877,7 @@ int start_mp4_recording_with_url_and_trigger(const char *stream_name, const char
     }
 
     // Create MP4 directory if it doesn't exist
-    char dir_cmd[MAX_PATH_LENGTH * 2];
-    snprintf(dir_cmd, sizeof(dir_cmd), "mkdir -p %s", mp4_dir);
-    int ret = system(dir_cmd);
+    int ret = mkdir_recursive(mp4_dir);
     if (ret != 0) {
         log_error("Failed to create MP4 directory: %s (return code: %d)", mp4_dir, ret);
         free(ctx);
@@ -910,10 +885,8 @@ int start_mp4_recording_with_url_and_trigger(const char *stream_name, const char
     }
 
     // Set full permissions for MP4 directory
-    snprintf(dir_cmd, sizeof(dir_cmd), "chmod -R 777 %s", mp4_dir);
-    int ret_chmod = system(dir_cmd);
-    if (ret_chmod != 0) {
-        log_warn("Failed to set permissions on MP4 directory: %s (return code: %d)", mp4_dir, ret_chmod);
+    if (chmod_recursive(mp4_dir, 0777) != 0) {
+        log_warn("Failed to set permissions on MP4 directory: %s", mp4_dir);
     }
 
     // Full path for the MP4 file
