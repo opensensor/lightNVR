@@ -52,17 +52,17 @@ RUN mkdir -p /usr/lib/pkgconfig && \
     echo "prefix=/usr\nexec_prefix=\${prefix}\nlibdir=$LIB_DIR\nincludedir=\${prefix}/include\n\nName: mbedx509\nDescription: MbedTLS X509 Library\nVersion: 2.28.0\nLibs: -L\${libdir} -lmbedx509\nCflags: -I\${includedir}" > /usr/lib/pkgconfig/mbedx509.pc && \
     chmod 644 /usr/lib/pkgconfig/mbedtls.pc /usr/lib/pkgconfig/mbedcrypto.pc /usr/lib/pkgconfig/mbedx509.pc
 
-# Download and install go2rtc
-RUN ARCH=$(uname -m) && \
-    case $ARCH in \
-        x86_64) GO2RTC_ARCH="amd64" ;; \
-        aarch64) GO2RTC_ARCH="arm64" ;; \
-        armv7l) GO2RTC_ARCH="arm" ;; \
-        *) echo "Unsupported architecture: $ARCH"; exit 1 ;; \
-    esac && \
+# Build go2rtc from opensensor fork (includes memory leak fixes)
+# Install Go for building go2rtc
+RUN curl -L https://go.dev/dl/go1.23.4.linux-$(dpkg --print-architecture).tar.gz | tar -C /usr/local -xzf - && \
+    export PATH=$PATH:/usr/local/go/bin && \
     mkdir -p /bin /etc/lightnvr/go2rtc && \
-    RELEASE_URL=$(curl -s https://api.github.com/repos/AlexxIT/go2rtc/releases/latest | grep "browser_download_url.*linux_$GO2RTC_ARCH" | cut -d '"' -f 4) && \
-    curl -L -o /bin/go2rtc $RELEASE_URL && \
+    # Clone and build go2rtc from opensensor fork
+    cd /tmp && \
+    git clone --depth 1 --branch fix/memory-leaks https://github.com/opensensor/go2rtc.git && \
+    cd go2rtc && \
+    CGO_ENABLED=0 /usr/local/go/bin/go build -ldflags "-s -w" -trimpath -o /bin/go2rtc . && \
+    cd / && rm -rf /tmp/go2rtc /usr/local/go && \
     chmod +x /bin/go2rtc && \
     # Create basic configuration file
     echo "# go2rtc configuration file" > /etc/lightnvr/go2rtc/go2rtc.yaml && \

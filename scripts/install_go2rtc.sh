@@ -1,5 +1,6 @@
 #!/bin/bash
 # Script to download and install go2rtc for WebRTC streaming
+# Uses opensensor/go2rtc fork with memory leak fixes
 
 set -e
 
@@ -8,6 +9,8 @@ INSTALL_DIR="/usr/local/bin"
 CONFIG_DIR="/etc/lightnvr/go2rtc"
 VERSION="latest"
 ARCH=$(uname -m)
+# Use opensensor fork by default (includes memory leak fixes)
+REPO="opensensor/go2rtc"
 
 # Display usage information
 usage() {
@@ -80,15 +83,20 @@ mkdir -p "$CONFIG_DIR"
 
 # Determine download URL
 if [ "$VERSION" = "latest" ]; then
-    # Get latest release URL
-    RELEASE_URL=$(curl -s https://api.github.com/repos/AlexxIT/go2rtc/releases/latest | grep "browser_download_url.*linux_$GO2RTC_ARCH" | cut -d '"' -f 4)
+    # Get latest release URL from opensensor fork
+    RELEASE_URL=$(curl -s https://api.github.com/repos/$REPO/releases/latest | grep "browser_download_url.*linux_$GO2RTC_ARCH" | cut -d '"' -f 4)
     if [ -z "$RELEASE_URL" ]; then
-        echo "Failed to determine latest release URL. Please specify a version."
-        exit 1
+        echo "Failed to determine latest release URL from $REPO."
+        echo "Falling back to upstream AlexxIT/go2rtc..."
+        RELEASE_URL=$(curl -s https://api.github.com/repos/AlexxIT/go2rtc/releases/latest | grep "browser_download_url.*linux_$GO2RTC_ARCH" | cut -d '"' -f 4)
+        if [ -z "$RELEASE_URL" ]; then
+            echo "Failed to determine latest release URL. Please specify a version."
+            exit 1
+        fi
     fi
 else
-    # Construct URL for specific version
-    RELEASE_URL="https://github.com/AlexxIT/go2rtc/releases/download/$VERSION/go2rtc_linux_$GO2RTC_ARCH"
+    # Construct URL for specific version from opensensor fork
+    RELEASE_URL="https://github.com/$REPO/releases/download/$VERSION/go2rtc_linux_$GO2RTC_ARCH"
 fi
 
 echo "Downloading from: $RELEASE_URL"
@@ -103,7 +111,7 @@ chmod +x "$INSTALL_DIR/go2rtc"
 if [ ! -f "$CONFIG_DIR/go2rtc.yaml" ]; then
     cat > "$CONFIG_DIR/go2rtc.yaml" << EOF
 # go2rtc configuration file
-# See https://github.com/AlexxIT/go2rtc for documentation
+# See https://github.com/opensensor/go2rtc for documentation (fork with memory fixes)
 
 api:
   listen: :1984
