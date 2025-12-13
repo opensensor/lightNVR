@@ -54,7 +54,15 @@ RUN mkdir -p /usr/lib/pkgconfig && \
 
 # Build go2rtc from opensensor fork (includes memory leak fixes)
 # Install Go for building go2rtc
-RUN curl -L https://go.dev/dl/go1.23.4.linux-$(dpkg --print-architecture).tar.gz | tar -C /usr/local -xzf - && \
+# Map dpkg architecture to Go architecture (armhf -> armv6l)
+RUN DPKG_ARCH=$(dpkg --print-architecture) && \
+    case "$DPKG_ARCH" in \
+        amd64) GO_ARCH="amd64" ;; \
+        arm64) GO_ARCH="arm64" ;; \
+        armhf) GO_ARCH="armv6l" ;; \
+        *) echo "Unsupported architecture: $DPKG_ARCH" && exit 1 ;; \
+    esac && \
+    curl -L "https://go.dev/dl/go1.23.4.linux-${GO_ARCH}.tar.gz" | tar -C /usr/local -xzf - && \
     export PATH=$PATH:/usr/local/go/bin && \
     mkdir -p /bin /etc/lightnvr/go2rtc && \
     # Clone and build go2rtc from opensensor fork
