@@ -1,0 +1,165 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800">
+    <!-- Background -->
+    <rect width="1200" height="800" fill="#f8f9fa" />
+
+    <!-- Title -->
+    <text x="600" y="40" font-family="Arial" font-size="24" font-weight="bold" text-anchor="middle">LightNVR State Management Architecture</text>
+
+    <!-- Stream State Manager -->
+    <rect x="100" y="100" width="400" height="320" rx="5" fill="#cfe2ff" stroke="#0d6efd" stroke-width="2" />
+    <text x="300" y="130" font-family="Arial" font-size="18" font-weight="bold" text-anchor="middle">Stream State Manager</text>
+    <text x="300" y="155" font-family="Arial" font-size="14" text-anchor="middle">stream_state_manager_t (src/video/stream_state.c)</text>
+
+    <!-- State Manager Internals -->
+    <rect x="120" y="170" width="360" height="230" rx="5" fill="#e2e3e5" stroke="#6c757d" stroke-width="1" />
+
+    <!-- State Fields -->
+    <text x="140" y="195" font-family="Arial" font-size="14" font-weight="bold" text-anchor="start">Fields:</text>
+    <text x="160" y="220" font-family="Arial" font-size="12" text-anchor="start">• name: Stream identifier</text>
+    <text x="160" y="245" font-family="Arial" font-size="12" text-anchor="start">• state: Current operational state</text>
+    <text x="160" y="270" font-family="Arial" font-size="12" text-anchor="start">• config: Stream configuration</text>
+    <text x="160" y="295" font-family="Arial" font-size="12" text-anchor="start">• features: Streaming/recording flags</text>
+    <text x="160" y="320" font-family="Arial" font-size="12" text-anchor="start">• protocol_state: Transport details</text>
+    <text x="160" y="345" font-family="Arial" font-size="12" text-anchor="start">• timestamp_state: Timing information</text>
+    <text x="160" y="370" font-family="Arial" font-size="12" text-anchor="start">• stats: Performance metrics</text>
+
+    <!-- Mutexes -->
+    <text x="320" y="195" font-family="Arial" font-size="14" font-weight="bold" text-anchor="start">Mutexes:</text>
+    <text x="340" y="220" font-family="Arial" font-size="12" text-anchor="start">• mutex: General state protection</text>
+    <text x="340" y="245" font-family="Arial" font-size="12" text-anchor="start">• state_mutex: State transition protection</text>
+
+    <!-- Reference Counting -->
+    <text x="320" y="290" font-family="Arial" font-size="14" font-weight="bold" text-anchor="start">Reference Counting:</text>
+    <text x="340" y="315" font-family="Arial" font-size="12" text-anchor="start">• ref_count: Total references</text>
+    <text x="340" y="340" font-family="Arial" font-size="12" text-anchor="start">• component_refs: Per-component refs</text>
+    <text x="340" y="365" font-family="Arial" font-size="12" text-anchor="start">• callbacks_enabled: Flag</text>
+
+    <!-- State Machine -->
+    <rect x="700" y="100" width="400" height="320" rx="5" fill="#d1e7dd" stroke="#198754" stroke-width="2" />
+    <text x="900" y="130" font-family="Arial" font-size="18" font-weight="bold" text-anchor="middle">Stream State Machine</text>
+    <text x="900" y="155" font-family="Arial" font-size="14" text-anchor="middle">Operational States (stream_state_t)</text>
+
+    <!-- State Diagram -->
+    <rect x="750" y="170" width="300" height="230" rx="5" fill="#e2e3e5" stroke="#6c757d" stroke-width="1" />
+
+    <!-- State Nodes -->
+    <circle cx="800" cy="220" r="30" fill="#cfe2ff" stroke="#0d6efd" stroke-width="2" />
+    <text x="800" y="225" font-family="Arial" font-size="14" font-weight="bold" text-anchor="middle">INACTIVE</text>
+
+    <circle cx="900" cy="220" r="30" fill="#fff3cd" stroke="#ffc107" stroke-width="2" />
+    <text x="900" y="225" font-family="Arial" font-size="14" font-weight="bold" text-anchor="middle">STARTING</text>
+
+    <circle cx="1000" cy="220" r="30" fill="#d1e7dd" stroke="#198754" stroke-width="2" />
+    <text x="1000" y="225" font-family="Arial" font-size="14" font-weight="bold" text-anchor="middle">ACTIVE</text>
+
+    <circle cx="800" cy="320" r="30" fill="#f8d7da" stroke="#dc3545" stroke-width="2" />
+    <text x="800" y="325" font-family="Arial" font-size="14" font-weight="bold" text-anchor="middle">ERROR</text>
+
+    <circle cx="900" cy="320" r="30" fill="#d1ecf1" stroke="#0dcaf0" stroke-width="2" />
+    <text x="900" y="325" font-family="Arial" font-size="14" font-weight="bold" text-anchor="middle">STOPPING</text>
+
+    <circle cx="1000" cy="320" r="30" fill="#d1d4e3" stroke="#6610f2" stroke-width="2" />
+    <text x="1000" y="325" font-family="Arial" font-size="14" font-weight="bold" text-anchor="middle">RECONNECT</text>
+
+    <!-- State Transitions -->
+    <path d="M830,220 L870,220" fill="none" stroke="#000" stroke-width="1.5" marker-end="url(#arrowhead)" />
+    <path d="M930,220 L970,220" fill="none" stroke="#000" stroke-width="1.5" marker-end="url(#arrowhead)" />
+    <path d="M1000,250 Q1000,285 970,320" fill="none" stroke="#000" stroke-width="1.5" marker-end="url(#arrowhead)" />
+    <path d="M870,320 L830,320" fill="none" stroke="#000" stroke-width="1.5" marker-end="url(#arrowhead)" />
+    <path d="M800,250 L800,290" fill="none" stroke="#000" stroke-width="1.5" marker-end="url(#arrowhead)" />
+    <path d="M900,290 L900,250" fill="none" stroke="#000" stroke-width="1.5" marker-end="url(#arrowhead)" />
+    <path d="M970,320 L930,320" fill="none" stroke="#000" stroke-width="1.5" marker-end="url(#arrowhead)" />
+    <path d="M1000,290 Q900,260 900,250" fill="none" stroke="#000" stroke-width="1.5" marker-end="url(#arrowhead)" />
+
+    <!-- Thread Pool Thread -->
+    <rect x="100" y="460" width="350" height="250" rx="5" fill="#f8d7da" stroke="#dc3545" stroke-width="2" />
+    <text x="275" y="490" font-family="Arial" font-size="18" font-weight="bold" text-anchor="middle">Stream Reader Thread</text>
+    <text x="275" y="515" font-family="Arial" font-size="14" text-anchor="middle">src/video/stream_reader.c</text>
+
+    <rect x="120" y="530" width="310" height="160" rx="5" fill="#e2e3e5" stroke="#6c757d" stroke-width="1" />
+    <text x="140" y="555" font-family="Arial" font-size="14" font-weight="bold" text-anchor="start">stream_reader_ctx_t:</text>
+    <text x="160" y="580" font-family="Arial" font-size="12" text-anchor="start">• config: Stream configuration</text>
+    <text x="160" y="605" font-family="Arial" font-size="12" text-anchor="start">• running: Thread active flag</text>
+    <text x="160" y="630" font-family="Arial" font-size="12" text-anchor="start">• input_ctx: FFmpeg context</text>
+    <text x="160" y="655" font-family="Arial" font-size="12" text-anchor="start">• packet_callback: Function pointer</text>
+    <text x="160" y="680" font-family="Arial" font-size="12" text-anchor="start">• timestamp handling: maintains state</text>
+
+    <!-- Streaming Module -->
+    <rect x="550" y="460" width="250" height="120" rx="5" fill="#fff3cd" stroke="#ffc107" stroke-width="2" />
+    <text x="675" y="490" font-family="Arial" font-size="18" font-weight="bold" text-anchor="middle">HLS Streaming</text>
+    <text x="675" y="515" font-family="Arial" font-size="14" text-anchor="middle">src/video/hls_writer.c</text>
+
+    <rect x="570" y="530" width="210" height="30" rx="5" fill="#e2e3e5" stroke="#6c757d" stroke-width="1" />
+    <text x="675" y="550" font-family="Arial" font-size="12" text-anchor="middle">hls_writer_t: maintains writer state</text>
+
+    <!-- Recording Module -->
+    <rect x="550" y="590" width="250" height="120" rx="5" fill="#d1ecf1" stroke="#0dcaf0" stroke-width="2" />
+    <text x="675" y="620" font-family="Arial" font-size="18" font-weight="bold" text-anchor="middle">MP4 Recording</text>
+    <text x="675" y="645" font-family="Arial" font-size="14" text-anchor="middle">src/video/mp4_writer.c</text>
+
+    <rect x="570" y="660" width="210" height="30" rx="5" fill="#e2e3e5" stroke="#6c757d" stroke-width="1" />
+    <text x="675" y="680" font-family="Arial" font-size="12" text-anchor="middle">mp4_writer_t: maintains writer state</text>
+
+    <!-- Time Management -->
+    <rect x="850" y="460" width="250" height="250" rx="5" fill="#d1d4e3" stroke="#6610f2" stroke-width="2" />
+    <text x="975" y="490" font-family="Arial" font-size="18" font-weight="bold" text-anchor="middle">Timestamp Management</text>
+    <text x="975" y="515" font-family="Arial" font-size="14" text-anchor="middle">src/video/timestamp_manager.c</text>
+
+    <rect x="870" y="530" width="210" height="160" rx="5" fill="#e2e3e5" stroke="#6c757d" stroke-width="1" />
+    <text x="890" y="555" font-family="Arial" font-size="14" font-weight="bold" text-anchor="start">timestamp_tracker_t:</text>
+    <text x="910" y="580" font-family="Arial" font-size="12" text-anchor="start">• stream_name: Stream identifier</text>
+    <text x="910" y="605" font-family="Arial" font-size="12" text-anchor="start">• last_pts/dts: Previous timestamps</text>
+    <text x="910" y="630" font-family="Arial" font-size="12" text-anchor="start">• expected_next_pts: Prediction</text>
+    <text x="910" y="655" font-family="Arial" font-size="12" text-anchor="start">• discontinuity_count: Tracking</text>
+    <text x="910" y="680" font-family="Arial" font-size="12" text-anchor="start">• is_udp_stream: Protocol flag</text>
+
+    <!-- Stream State Adapter -->
+    <rect x="450" y="730" width="300" height="50" rx="5" fill="#deedfb" stroke="#507cc0" stroke-width="2" />
+    <text x="600" y="760" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle">Stream State Adapter (stream_state_adapter.c)</text>
+
+    <!-- State Interaction Arrows -->
+    <!-- Stream State Manager to Components -->
+    <line x1="300" y1="420" x2="300" y2="460" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
+    <line x1="300" y1="420" x2="675" y2="460" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
+    <line x1="300" y1="420" x2="975" y2="460" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
+
+    <!-- Stream Reader to Writers -->
+    <line x1="450" y1="520" x2="550" y2="520" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
+    <line x1="450" y1="650" x2="550" y2="650" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
+
+    <!-- Stream State Manager to Adapter -->
+    <path d="M300,420 Q400,650 450,755" fill="none" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
+
+    <!-- Writers to Timestamp Manager -->
+    <line x1="800" y1="520" x2="850" y2="520" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
+    <line x1="800" y1="650" x2="850" y2="650" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
+
+    <!-- Thread synchronization lines -->
+    <path d="M350,230 Q500,230 750,230" fill="none" stroke="#dc3545" stroke-width="1.5" stroke-dasharray="5,5" />
+    <path d="M350,560 Q500,560 570,560" fill="none" stroke="#dc3545" stroke-width="1.5" stroke-dasharray="5,5" />
+    <path d="M350,620 Q500,620 570,670" fill="none" stroke="#dc3545" stroke-width="1.5" stroke-dasharray="5,5" />
+    <path d="M780,560 Q825,560 870,580" fill="none" stroke="#dc3545" stroke-width="1.5" stroke-dasharray="5,5" />
+
+    <!-- Legend -->
+    <rect x="100" y="730" width="20" height="20" fill="#cfe2ff" stroke="#0d6efd" stroke-width="1" />
+    <text x="130" y="745" font-family="Arial" font-size="12" text-anchor="start">State Management</text>
+
+    <rect x="100" y="760" width="20" height="20" fill="#f8d7da" stroke="#dc3545" stroke-width="1" />
+    <text x="130" y="775" font-family="Arial" font-size="12" text-anchor="start">Stream Reader Thread</text>
+
+    <rect x="250" y="730" width="20" height="20" fill="#fff3cd" stroke="#ffc107" stroke-width="1" />
+    <text x="280" y="745" font-family="Arial" font-size="12" text-anchor="start">HLS Streaming</text>
+
+    <rect x="250" y="760" width="20" height="20" fill="#d1ecf1" stroke="#0dcaf0" stroke-width="1" />
+    <text x="280" y="775" font-family="Arial" font-size="12" text-anchor="start">MP4 Recording</text>
+
+    <line x1="350" y1="760" x2="370" y2="760" stroke="#dc3545" stroke-width="1.5" stroke-dasharray="5,5" />
+    <text x="380" y="765" font-family="Arial" font-size="12" text-anchor="start">Thread Synchronization</text>
+
+    <!-- Arrowhead marker -->
+    <defs>
+        <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#000" />
+        </marker>
+    </defs>
+</svg>

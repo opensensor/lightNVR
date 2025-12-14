@@ -1,0 +1,146 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800">
+    <!-- Background -->
+    <rect width="1200" height="800" fill="#f8f9fa" />
+
+    <!-- Title -->
+    <text x="600" y="40" font-family="Arial" font-size="24" font-weight="bold" text-anchor="middle">LightNVR Thread Architecture</text>
+
+    <!-- Main Process -->
+    <rect x="450" y="80" width="300" height="60" rx="5" fill="#d1e7dd" stroke="#198754" stroke-width="2" />
+    <text x="600" y="115" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle">Main Process (main.c)</text>
+
+    <!-- Web Server Thread -->
+    <rect x="100" y="200" width="250" height="200" rx="5" fill="#cfe2ff" stroke="#0d6efd" stroke-width="2" />
+    <text x="225" y="230" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle">Web Server Thread</text>
+    <text x="225" y="255" font-family="Arial" font-size="14" text-anchor="middle">server_thread_func()</text>
+
+    <!-- Thread Pool -->
+    <rect x="130" y="280" width="190" height="100" rx="5" fill="#e2e3e5" stroke="#6c757d" stroke-width="1" />
+    <text x="225" y="300" font-family="Arial" font-size="14" font-weight="bold" text-anchor="middle">Thread Pool</text>
+    <text x="225" y="320" font-family="Arial" font-size="12" text-anchor="middle">Client request handlers</text>
+    <text x="225" y="340" font-family="Arial" font-size="12" text-anchor="middle">API request processing</text>
+    <text x="225" y="360" font-family="Arial" font-size="12" text-anchor="middle">Static file serving</text>
+
+    <!-- Stream Reader Threads -->
+    <rect x="400" y="200" width="250" height="200" rx="5" fill="#f8d7da" stroke="#dc3545" stroke-width="2" />
+    <text x="525" y="230" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle">Stream Reader Threads</text>
+    <text x="525" y="255" font-family="Arial" font-size="14" text-anchor="middle">stream_reader_thread()</text>
+
+    <!-- Stream Reader Components -->
+    <rect x="420" y="280" width="210" height="100" rx="5" fill="#e2e3e5" stroke="#6c757d" stroke-width="1" />
+    <text x="525" y="300" font-family="Arial" font-size="12" text-anchor="middle">One thread per active stream</text>
+    <text x="525" y="320" font-family="Arial" font-size="12" text-anchor="middle">Reads packets from source</text>
+    <text x="525" y="340" font-family="Arial" font-size="12" text-anchor="middle">Processes timestamps</text>
+    <text x="525" y="360" font-family="Arial" font-size="12" text-anchor="middle">Passes packets to writers</text>
+
+    <!-- HLS Streaming Threads -->
+    <rect x="700" y="200" width="250" height="200" rx="5" fill="#fff3cd" stroke="#ffc107" stroke-width="2" />
+    <text x="825" y="230" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle">HLS Streaming Threads</text>
+    <text x="825" y="255" font-family="Arial" font-size="14" text-anchor="middle">hls_stream_thread()</text>
+
+    <!-- HLS Stream Components -->
+    <rect x="720" y="280" width="210" height="100" rx="5" fill="#e2e3e5" stroke="#6c757d" stroke-width="1" />
+    <text x="825" y="300" font-family="Arial" font-size="12" text-anchor="middle">One thread per HLS stream</text>
+    <text x="825" y="320" font-family="Arial" font-size="12" text-anchor="middle">Creates HLS segments</text>
+    <text x="825" y="340" font-family="Arial" font-size="12" text-anchor="middle">Updates playlist files</text>
+    <text x="825" y="360" font-family="Arial" font-size="12" text-anchor="middle">Handles MP4 recording</text>
+
+    <!-- MP4 Recording Threads -->
+    <rect x="1000" y="200" width="180" height="200" rx="5" fill="#d1ecf1" stroke="#0dcaf0" stroke-width="2" />
+    <text x="1090" y="230" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle">MP4 Recording</text>
+    <text x="1090" y="250" font-family="Arial" font-size="14" text-anchor="middle">Threads</text>
+    <text x="1090" y="270" font-family="Arial" font-size="12" text-anchor="middle">mp4_recording_thread()</text>
+
+    <!-- MP4 Recording Components -->
+    <rect x="1010" y="290" width="160" height="100" rx="5" fill="#e2e3e5" stroke="#6c757d" stroke-width="1" />
+    <text x="1090" y="310" font-family="Arial" font-size="11" text-anchor="middle">One thread per recording</text>
+    <text x="1090" y="330" font-family="Arial" font-size="11" text-anchor="middle">Manages file rotation</text>
+    <text x="1090" y="350" font-family="Arial" font-size="11" text-anchor="middle">Updates DB metadata</text>
+    <text x="1090" y="370" font-family="Arial" font-size="11" text-anchor="middle">Handles cleanup</text>
+
+    <!-- Detection Threads -->
+    <rect x="400" y="450" width="250" height="200" rx="5" fill="#d1d4e3" stroke="#6610f2" stroke-width="2" />
+    <text x="525" y="480" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle">Detection Threads</text>
+    <text x="525" y="500" font-family="Arial" font-size="14" text-anchor="middle">(Detection integration)</text>
+
+    <!-- Detection Components -->
+    <rect x="420" y="520" width="210" height="110" rx="5" fill="#e2e3e5" stroke="#6c757d" stroke-width="1" />
+    <text x="525" y="540" font-family="Arial" font-size="12" text-anchor="middle">Triggered by HLS threads</text>
+    <text x="525" y="560" font-family="Arial" font-size="12" text-anchor="middle">Object detection processing</text>
+    <text x="525" y="580" font-family="Arial" font-size="12" text-anchor="middle">Starts/stops recordings</text>
+    <text x="525" y="600" font-family="Arial" font-size="12" text-anchor="middle">Updates detection database</text>
+
+    <!-- Background Monitoring Thread -->
+    <rect x="700" y="450" width="250" height="100" rx="5" fill="#d6d8db" stroke="#343a40" stroke-width="2" />
+    <text x="825" y="480" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle">Monitoring Thread</text>
+    <text x="825" y="505" font-family="Arial" font-size="12" text-anchor="middle">Main loop in main.c</text>
+    <text x="825" y="525" font-family="Arial" font-size="12" text-anchor="middle">Checks systems, ensures recording</text>
+
+    <!-- Stream State Management -->
+    <rect x="100" y="450" width="250" height="200" rx="5" fill="#deedfb" stroke="#507cc0" stroke-width="2" />
+    <text x="225" y="480" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle">Stream State Management</text>
+    <text x="225" y="505" font-family="Arial" font-size="12" text-anchor="middle">Thread-safe state tracking</text>
+
+    <!-- State Management Components -->
+    <rect x="120" y="520" width="210" height="110" rx="5" fill="#e2e3e5" stroke="#6c757d" stroke-width="1" />
+    <text x="225" y="540" font-family="Arial" font-size="12" text-anchor="middle">Mutex-protected state</text>
+    <text x="225" y="560" font-family="Arial" font-size="12" text-anchor="middle">Reference counting</text>
+    <text x="225" y="580" font-family="Arial" font-size="12" text-anchor="middle">Streaming/recording flags</text>
+    <text x="225" y="600" font-family="Arial" font-size="12" text-anchor="middle">Timestamp management</text>
+
+    <!-- Stream Data Flow -->
+    <rect x="450" y="680" width="300" height="80" rx="5" fill="#e2e3e5" stroke="#6c757d" stroke-width="2" />
+    <text x="600" y="705" font-family="Arial" font-size="16" font-weight="bold" text-anchor="middle">Stream Data Flow</text>
+    <text x="600" y="730" font-family="Arial" font-size="12" text-anchor="middle">Reader → Packet Processing → HLS/MP4 Writers</text>
+    <text x="600" y="750" font-family="Arial" font-size="12" text-anchor="middle">Shared by Stream Reader Thread</text>
+
+    <!-- Arrows for main connections -->
+    <!-- Main to threads -->
+    <line x1="600" y1="140" x2="225" y2="200" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
+    <line x1="600" y1="140" x2="525" y2="200" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
+    <line x1="600" y1="140" x2="825" y2="200" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
+    <line x1="600" y1="140" x2="1090" y2="200" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
+    <line x1="600" y1="140" x2="825" y2="450" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
+
+    <!-- Stream Reader to HLS & MP4 -->
+    <line x1="525" y1="400" x2="825" y2="400" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
+    <path d="M525,400 Q675,440 1090,380" fill="none" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
+
+    <!-- HLS to Detection -->
+    <line x1="825" y1="400" x2="525" y2="450" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
+
+    <!-- State Management connections -->
+    <path d="M225,650 Q425,670 600,680" fill="none" stroke="#000" stroke-width="2" marker-end="url(#arrowhead)" />
+    <path d="M225,450 Q125,350 450,140" fill="none" stroke="#000" stroke-width="1.5" stroke-dasharray="5,5" />
+
+    <!-- Thread synchronization lines -->
+    <path d="M250,350 Q350,375 400,350" fill="none" stroke="#dc3545" stroke-width="1.5" stroke-dasharray="5,5" />
+    <path d="M650,350 Q700,375 700,350" fill="none" stroke="#dc3545" stroke-width="1.5" stroke-dasharray="5,5" />
+    <path d="M950,350 Q1000,375 1000,350" fill="none" stroke="#dc3545" stroke-width="1.5" stroke-dasharray="5,5" />
+
+    <!-- Legend -->
+    <rect x="830" y="570" width="20" height="20" fill="#cfe2ff" stroke="#0d6efd" stroke-width="1" />
+    <text x="860" y="585" font-family="Arial" font-size="12" text-anchor="start">Web Server Thread</text>
+
+    <rect x="830" y="600" width="20" height="20" fill="#f8d7da" stroke="#dc3545" stroke-width="1" />
+    <text x="860" y="615" font-family="Arial" font-size="12" text-anchor="start">Stream Reader Threads</text>
+
+    <rect x="830" y="630" width="20" height="20" fill="#fff3cd" stroke="#ffc107" stroke-width="1" />
+    <text x="860" y="645" font-family="Arial" font-size="12" text-anchor="start">HLS Streaming Threads</text>
+
+    <rect x="830" y="660" width="20" height="20" fill="#d1ecf1" stroke="#0dcaf0" stroke-width="1" />
+    <text x="860" y="675" font-family="Arial" font-size="12" text-anchor="start">MP4 Recording Threads</text>
+
+    <rect x="830" y="690" width="20" height="20" fill="#d1d4e3" stroke="#6610f2" stroke-width="1" />
+    <text x="860" y="705" font-family="Arial" font-size="12" text-anchor="start">Detection Threads</text>
+
+    <line x1="830" y1="720" x2="850" y2="720" stroke="#dc3545" stroke-width="1.5" stroke-dasharray="5,5" />
+    <text x="860" y="725" font-family="Arial" font-size="12" text-anchor="start">Thread Synchronization</text>
+
+    <!-- Arrowhead marker -->
+    <defs>
+        <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#000" />
+        </marker>
+    </defs>
+</svg>

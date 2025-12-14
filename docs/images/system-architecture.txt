@@ -1,0 +1,68 @@
+# System Architecture Diagram for LightNVR
+
+This text file describes the system architecture diagram that should be created for the LightNVR documentation.
+
+## Diagram Layout
+
+The diagram should be a layered architecture diagram with the following components:
+
+### Top Layer: User Interface
+- Web Browser Interface
+- Mobile App Interface (future)
+- API Clients
+
+### Second Layer: Web Server & API
+- HTTP/HTTPS Server
+- REST API Endpoints
+- Authentication & Authorization
+- HTTP Polling for Live Updates
+
+### Third Layer: Core Components
+- Stream Manager
+- Recording Manager
+- Storage Manager
+- Database Manager
+- Configuration Manager
+- Event System
+
+### Fourth Layer: Video Processing
+- Stream Receivers (RTSP/ONVIF)
+- Video Decoders (H.264/H.265)
+- Frame Processors
+- HLS Writer
+- MP4 Writer
+
+### Bottom Layer: System Resources
+- File System
+- Network Stack
+- Hardware Acceleration
+- Memory Management
+- Thread Management
+
+## Component Relationships
+
+The diagram should show the following key relationships:
+
+1. User interfaces connect to the Web Server & API layer
+2. API layer interacts with Core Components
+3. Core Components coordinate with each other
+4. Stream Manager controls Video Processing components
+5. All components interact with System Resources
+
+## Visual Style
+
+- Use a clean, modern style with clear boxes for each component
+- Use different colors for each layer
+- Show data flow with directional arrows
+- Include a legend explaining the components
+- Use icons where appropriate (camera for streams, disk for storage, etc.)
+
+## Key Features to Highlight
+
+- Memory optimization features
+- Thread model
+- Stream prioritization
+- Error recovery mechanisms
+- Modular design
+
+This diagram will help users understand the overall architecture of LightNVR and how the different components interact with each other.
