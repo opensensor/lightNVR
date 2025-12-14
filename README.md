@@ -46,6 +46,27 @@ LightNVR provides a lightweight yet powerful solution for recording and managing
 - **Reliability**: Automatic recovery after power loss or system failure
 - **Resource Optimization**: Stream prioritization to manage limited RAM
 
+## 🧱 Architecture Overview
+
+LightNVR is built as a small, C-based core service with a modern Preact/Tailwind web UI and go2rtc as the streaming backbone. Object detection is handled by an external detection API (typically `light-object-detect`).
+
+| ![Overall Architecture](docs/images/arch-overall.svg) |
+|:------------------------------------------------------:|
+| High-level architecture: web UI, API, core, go2rtc and detection service |
+
+At a high level:
+
+- **Web UI & API layer** – Preact single-page UI served by the embedded HTTP server, plus JSON REST endpoints for streams, recordings, detection, and settings.
+- **Core service** – Stream manager, recorder, retention logic, configuration store, and event system implemented in C for low memory use.
+- **Streaming layer (go2rtc)** – Handles RTSP ingest and provides WebRTC/HLS endpoints. LightNVR configures go2rtc and talks to it directly for `/api/webrtc` and snapshot (`/api/frame.jpeg`) calls.
+- **Detection service** – External HTTP API (e.g. `light-object-detect`) that receives frames from go2rtc and returns object detections which LightNVR stores and overlays.
+- **Storage & system resources** – MP4/HLS writers, file system, DB, and lightweight threading model tuned for small devices.
+
+For more detail, the repository also includes:
+
+- `docs/images/arch-state.svg` – high-level state machine for streams/recordings
+- `docs/images/arch-thread.svg` – thread and worker layout for the core service
+
 ## 🆕 What's New in v0.14+
 
 ### Detection Zones (v0.14.0)
