@@ -498,9 +498,15 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
+**Note:** By contributing to this project, you agree to sign our [Contributor License Agreement (CLA)](CLA.md). The CLA bot will guide you through the process on your first pull request.
+
 ## License
 
 This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
+
+### Commercial Licensing
+
+For organizations that need to integrate lightNVR into proprietary products or cannot comply with GPL requirements, **commercial licenses** are available from OpenSensor Engineering. See [Commercial Licensing & Professional Support](docs/COMMERCIAL.md) for details.
 
 ## Acknowledgments
 
