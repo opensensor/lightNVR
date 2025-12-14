@@ -287,9 +287,25 @@ async function main() {
   console.log(`  Output: ${config.outputDir}`);
   console.log(`  Demo: ${config.demo}\n`);
   
-  const browser = await chromium.launch({ 
+  // Allow overriding browser executable (e.g. system Chrome with H264 support)
+  const browserExecutablePath = process.env.PLAYWRIGHT_BROWSER_PATH || undefined;
+  if (browserExecutablePath) {
+    console.log(`Using custom Playwright browser executable: ${browserExecutablePath}`);
+  } else {
+    console.log('Using default Playwright Chromium executable');
+  }
+
+  const browser = await chromium.launch({
     headless: false, // Show browser for video recording
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
+    executablePath: browserExecutablePath,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-web-security', // Allow cross-origin requests to go2rtc
+      '--disable-features=IsolateOrigins,site-per-process', // Further CORS relaxation
+      '--use-fake-ui-for-media-stream', // Auto-accept media permissions
+      '--use-fake-device-for-media-stream', // Use fake camera/mic
+    ]
   });
   
   const context = await browser.newContext({

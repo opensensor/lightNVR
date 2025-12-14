@@ -218,96 +218,76 @@ export function WebRTCVideoCell({
       pc.addTransceiver('audio', {direction: 'recvonly'});
     }
 
-    // Try to fetch ICE servers from go2rtc via LightNVR proxy before creating offer
-    const auth = localStorage.getItem('auth');
-    const configFetch = fetch('/api/webrtc/config', {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-        ...(auth ? { 'Authorization': 'Basic ' + auth } : {})
+    // Connect directly to go2rtc for WebRTC
+    // go2rtc runs on port 1984 by default
+    const go2rtcPort = 1984;
+    const go2rtcBaseUrl = `http://${window.location.hostname}:${go2rtcPort}`;
+
+    // Set a timeout for the entire connection process
+    const connectionTimeout = setTimeout(() => {
+      if (peerConnectionRef.current &&
+          peerConnectionRef.current.iceConnectionState !== 'connected' &&
+          peerConnectionRef.current.iceConnectionState !== 'completed') {
+        console.error(`WebRTC connection timeout for stream ${stream.name}, ICE state: ${peerConnectionRef.current.iceConnectionState}`);
+        setError('Connection timeout. Check network/firewall settings.');
+        setIsLoading(false);
       }
-    })
-      .then(r => r.ok ? r.json() : null)
-      .then(cfg => {
-        if (cfg && cfg.iceServers) {
-          try {
-            pc.setConfiguration({ iceServers: cfg.iceServers });
-          } catch (e) {
-            console.warn('Failed to apply WebRTC config', e);
-          }
+    }, 30000); // 30 second timeout
+
+    // Create and send offer
+    pc.createOffer()
+      .then(offer => {
+        console.log(`Created offer for stream ${stream.name}`);
+        // For debugging, log a short preview of the SDP
+        if (offer && offer.sdp) {
+          const preview = offer.sdp.substring(0, 120).replace(/\n/g, '\\n');
+          console.log(`SDP offer preview for ${stream.name}: ${preview}...`);
         }
+        return pc.setLocalDescription(offer);
       })
-      .catch(e => console.warn('Failed to fetch WebRTC config', e));
+      .then(() => {
+        console.log(`Set local description for stream ${stream.name}, waiting for ICE gathering...`);
 
-    configFetch.finally(() => {
-      // Set a timeout for the entire connection process
-      const connectionTimeout = setTimeout(() => {
-        if (peerConnectionRef.current &&
-            peerConnectionRef.current.iceConnectionState !== 'connected' &&
-            peerConnectionRef.current.iceConnectionState !== 'completed') {
-          console.error(`WebRTC connection timeout for stream ${stream.name}, ICE state: ${peerConnectionRef.current.iceConnectionState}`);
-          setError('Connection timeout. Check network/firewall settings.');
-          setIsLoading(false);
-        }
-      }, 30000); // 30 second timeout
+        // Create a new AbortController for this request
+        abortControllerRef.current = new AbortController();
 
-      // Create and send offer
-      pc.createOffer()
-        .then(offer => {
-          console.log(`Created offer for stream ${stream.name}`);
-          return pc.setLocalDescription(offer);
-        })
-        .then(() => {
-          console.log(`Set local description for stream ${stream.name}, waiting for ICE gathering...`);
+        console.log(`Sending offer directly to go2rtc for stream ${stream.name}`);
 
-          // Create a new AbortController for this request
-          abortControllerRef.current = new AbortController();
-
-          // Format the offer
-          const formattedOffer = {
-            type: pc.localDescription.type,
-            sdp: pc.localDescription.sdp
-          };
-
-          console.log(`Sending offer to server for stream ${stream.name}`);
-
-          // Send the offer to the server
-          return fetch(`/api/webrtc?src=${encodeURIComponent(stream.name)}`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(auth ? { 'Authorization': 'Basic ' + auth } : {})
-            },
-            body: JSON.stringify(formattedOffer),
-          });
-        })
-        .then(response => {
-          if (!response.ok) {
-            throw new Error(`Failed to send offer: ${response.status} ${response.statusText}`);
-          }
-          return response.text();
-        })
-        .then(text => {
-          try {
-            return JSON.parse(text);
-          } catch (error) {
-            console.error(`Error parsing JSON for stream ${stream.name}:`, error);
-            throw new Error('Failed to parse WebRTC answer');
-          }
-        })
-        .then(answer => {
-          console.log(`Received answer from server for stream ${stream.name}`);
-          return pc.setRemoteDescription(new RTCSessionDescription(answer));
-        })
-        .then(() => {
-          console.log(`Set remote description for stream ${stream.name}, ICE state: ${pc.iceConnectionState}`);
-        })
-        .catch(error => {
-          console.error(`Error setting up WebRTC for stream ${stream.name}:`, error);
-          setError(error.message || 'Failed to establish WebRTC connection');
-          clearTimeout(connectionTimeout);
+        // Send the offer directly to go2rtc
+        // go2rtc expects Content-Type: application/sdp with raw SDP
+        return fetch(`${go2rtcBaseUrl}/api/webrtc?src=${encodeURIComponent(stream.name)}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/sdp',
+          },
+          body: pc.localDescription.sdp,
         });
-    });
+      })
+      .then(async (response) => {
+        const bodyText = await response.text().catch(() => '');
+        if (!response.ok) {
+          console.error(`go2rtc /api/webrtc error for stream ${stream.name}: status=${response.status}, body="${bodyText}"`);
+          throw new Error(`Failed to send offer: ${response.status} ${response.statusText}`);
+        }
+        return bodyText;
+      })
+      .then(sdpAnswer => {
+        console.log(`Received SDP answer from go2rtc for stream ${stream.name}`);
+        // go2rtc returns raw SDP, wrap it in RTCSessionDescription
+        const answer = {
+          type: 'answer',
+          sdp: sdpAnswer
+        };
+        return pc.setRemoteDescription(new RTCSessionDescription(answer));
+      })
+      .then(() => {
+        console.log(`Set remote description for stream ${stream.name}, ICE state: ${pc.iceConnectionState}`);
+      })
+      .catch(error => {
+        console.error(`Error setting up WebRTC for stream ${stream.name}:`, error);
+        setError(error.message || 'Failed to establish WebRTC connection');
+        clearTimeout(connectionTimeout);
+      });
 
     // Set up connection quality monitoring
     const startConnectionMonitoring = () => {

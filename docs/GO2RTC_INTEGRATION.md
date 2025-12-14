@@ -161,6 +161,32 @@ For advanced use cases, you can:
 2. Restart the go2rtc process through LightNVR
 3. Use go2rtc's API directly for custom configurations
 
+## Health Monitoring
+
+LightNVR includes a health monitoring system for go2rtc:
+
+- **API Health Check**: Periodically checks go2rtc's API on port 1984
+- **Stream Monitoring**: Monitors individual stream connections
+- **Consensus Logic**: If all streams are down, it's likely a go2rtc issue (not camera issues)
+- **Auto-restart**: Automatically restarts go2rtc if it becomes unresponsive
+
+Key files:
+- `src/video/go2rtc/go2rtc_health.c`: Health monitoring implementation
+
+## Frame Extraction for Detection
+
+LightNVR uses go2rtc's `frame.jpeg` endpoint for object detection:
+
+```
+http://localhost:1984/api/frame.jpeg?src=[stream-name]
+```
+
+This approach:
+- Avoids FFmpeg decoding overhead
+- Uses go2rtc's efficient frame extraction
+- Provides JPEG images suitable for detection models
+- Reduces memory usage compared to decoding video streams
+
 ## Troubleshooting
 
 ### Common Issues
@@ -179,6 +205,11 @@ For advanced use cases, you can:
    - Ensure your browser supports WebRTC
    - Check if STUN/TURN servers are properly configured
    - Verify network connectivity between client and server
+
+4. **go2rtc becomes unresponsive**
+   - Health monitoring should auto-restart
+   - Check go2rtc logs for memory issues
+   - Verify camera streams are accessible
 
 ### Logs
 

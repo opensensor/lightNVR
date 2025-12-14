@@ -502,7 +502,9 @@ async function captureStreamConfiguration(page) {
 
       // Try to expand and capture Detection Zones section (only if detection enabled)
       try {
-        const zonesSection = await page.locator('button').filter({ hasText: /^Detection Zones$/i }).first();
+        // Match any button that contains "Detection Zones" text. The button also
+        // includes a small "Optional" badge, so avoid strict ^...$ matching.
+        const zonesSection = await page.locator('button').filter({ hasText: /Detection Zones/i }).first();
         await zonesSection.waitFor({ timeout: 5000 });
         console.log('  Opening Detection Zones section...');
         await zonesSection.scrollIntoViewIfNeeded();
@@ -515,23 +517,87 @@ async function captureStreamConfiguration(page) {
         // Try to open zone editor to showcase the feature
         try {
           console.log('  Attempting to open zone editor...');
-          const configureZonesButton = await page.locator('button').filter({ hasText: /Configure Zones|Edit Zones/i }).first();
+          const configureZonesButton = await page
+            .locator('button')
+            .filter({ hasText: /Configure Zones|Edit Zones/i })
+            .first();
           await configureZonesButton.waitFor({ timeout: 3000 });
           await configureZonesButton.click();
           await sleep(2500);
 
           // Wait for zone editor to load
           try {
-            await page.waitForSelector('canvas', { timeout: 5000 });
-            console.log('  Zone editor opened, waiting for it to fully load...');
-            await sleep(3000); // Give time for canvas to render and any existing zones to draw
+            // Scope to the Detection Zone Editor dialog to avoid picking up
+            // any other canvases that might exist on the page.
+            const zoneEditorDialog = page
+              .locator('div')
+              .filter({ hasText: /Detection Zone Editor/i })
+              .first();
 
+            // Wait for the editor container to appear
+            await zoneEditorDialog.waitFor({ timeout: 5000 });
+            console.log('  Zone editor opened, waiting for it to fully load...');
+
+            const canvas = zoneEditorDialog.locator('canvas').first();
+
+            // Wait for the canvas to have a non-zero bounding box so
+            // clicks actually hit the drawing area. The snapshot load
+            // path controls when the canvas is shown.
+            let box = null;
+            for (let i = 0; i < 20; i++) {
+              box = await canvas.boundingBox();
+              if (box && box.width > 0 && box.height > 0) break;
+              await sleep(500);
+            }
+
+            if (!box) {
+              console.log('  Zone editor canvas never became ready for drawing');
+            } else {
+              console.log('  Drawing a sample detection zone for documentation...');
+
+              // Define points relative to the canvas so the clicks are
+              // guaranteed to hit the drawing surface even if there are
+              // other overlays on the page.
+              const points = [
+                { x: box.width * 0.3, y: box.height * 0.3 },
+                { x: box.width * 0.7, y: box.height * 0.3 },
+                { x: box.width * 0.7, y: box.height * 0.7 },
+                { x: box.width * 0.3, y: box.height * 0.7 },
+              ];
+
+              for (const point of points) {
+                await canvas.click({ position: { x: point.x, y: point.y } });
+                await sleep(250);
+              }
+
+              // Complete the polygon so it becomes a saved zone in the
+              // editor UI.
+              try {
+                const completeButton = zoneEditorDialog
+                  .locator('button')
+                  .filter({ hasText: /Complete Zone/i })
+                  .first();
+                await completeButton.waitFor({ timeout: 3000 });
+                await completeButton.click();
+                await sleep(1000);
+              } catch (e) {
+                console.log(`  Could not click Complete Zone button: ${e.message}`);
+              }
+            }
+
+            // Give the UI a moment to render the new zone, then capture
+            // the screenshot of the editor with the zone visible.
+            await sleep(1000);
             await captureScreenshot(page, 'zone-editor', { delay: 1000 });
 
             // If there are existing zones, capture that
-            // Otherwise try to show the interface for creating zones
+            // Otherwise log that we're showing the interface for
+            // creating zones.
             try {
-              const zonesList = await page.locator('div, p').filter({ hasText: /zone\(s\)|No zones/i }).first();
+              const zonesList = await zoneEditorDialog
+                .locator('div, p')
+                .filter({ hasText: /zone\(s\)|No zones/i })
+                .first();
               const zonesText = await zonesList.textContent();
 
               if (zonesText.includes('No zones')) {
@@ -543,11 +609,20 @@ async function captureStreamConfiguration(page) {
               console.log('  Could not determine zone status');
             }
 
-            // Close zone editor
-            const closeZoneEditor = await page.locator('button').filter({ hasText: /close|cancel|×/i }).last();
-            await closeZoneEditor.waitFor({ timeout: 2000 });
-            await closeZoneEditor.click();
-            await sleep(1000);
+            // Save and close zone editor so the configuration modal
+            // reflects the new zone count. Use force to avoid issues
+            // with overlay hit testing in headless mode.
+            try {
+              const saveZonesButton = zoneEditorDialog
+                .locator('button')
+                .filter({ hasText: /Save Zones/i })
+                .first();
+              await saveZonesButton.waitFor({ timeout: 3000 });
+              await saveZonesButton.click({ force: true });
+              await sleep(1000);
+            } catch (e) {
+              console.log(`  Failed to save/close zone editor: ${e.message}`);
+            }
           } catch (e) {
             console.log(`  Zone editor canvas not found: ${e.message}`);
           }
@@ -668,11 +743,22 @@ async function main() {
   console.log(`  Dark Mode: ${config.darkMode}`);
   console.log(`  All Themes: ${config.allThemes}\n`);
   
+  // Allow overriding browser executable (e.g. system Chrome with H264 support)
+  const browserExecutablePath = process.env.PLAYWRIGHT_BROWSER_PATH || undefined;
+  if (browserExecutablePath) {
+    console.log(`Using custom Playwright browser executable: ${browserExecutablePath}`);
+  } else {
+    console.log('Using default Playwright Chromium executable');
+  }
+
   const browser = await chromium.launch({
     headless: false, // Use headed mode for better WebRTC support
+    executablePath: browserExecutablePath,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
+      '--disable-web-security', // Allow cross-origin requests to go2rtc
+      '--disable-features=IsolateOrigins,site-per-process', // Further CORS relaxation
       '--use-fake-ui-for-media-stream', // Auto-accept media permissions
       '--use-fake-device-for-media-stream', // Use fake camera/mic
       '--enable-features=NetworkService,NetworkServiceInProcess'

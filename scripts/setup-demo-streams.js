@@ -79,7 +79,7 @@ async function makeRequest(method, path, data = null, token = null) {
     const url = new URL(path, config.url);
     const isHttps = url.protocol === 'https:';
     const lib = isHttps ? https : http;
-    
+
     const options = {
       hostname: url.hostname,
       port: url.port || (isHttps ? 443 : 80),
@@ -88,24 +88,26 @@ async function makeRequest(method, path, data = null, token = null) {
       headers: {
         'Content-Type': 'application/json',
       },
+      timeout: 30000, // 30 second timeout
     };
-    
+
+    // LightNVR uses session cookies, not Bearer tokens
     if (token) {
-      options.headers['Authorization'] = `Bearer ${token}`;
+      options.headers['Cookie'] = `session=${token}`;
     }
-    
+
     if (data) {
       const body = JSON.stringify(data);
       options.headers['Content-Length'] = Buffer.byteLength(body);
     }
-    
+
     const req = lib.request(options, (res) => {
       let responseData = '';
-      
+
       res.on('data', (chunk) => {
         responseData += chunk;
       });
-      
+
       res.on('end', () => {
         try {
           const parsed = responseData ? JSON.parse(responseData) : {};
@@ -115,15 +117,20 @@ async function makeRequest(method, path, data = null, token = null) {
         }
       });
     });
-    
+
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('Request timeout'));
+    });
+
     req.on('error', (e) => {
       reject(e);
     });
-    
+
     if (data) {
       req.write(JSON.stringify(data));
     }
-    
+
     req.end();
   });
 }
