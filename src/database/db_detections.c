@@ -613,6 +613,9 @@ int has_detections_in_time_range(const char *stream_name, time_t start_time, tim
         return -1;
     }
 
+    log_info("Checking for detections: stream=%s, start=%lld, end=%lld",
+             stream_name, (long long)start_time, (long long)end_time);
+
     pthread_mutex_lock(db_mutex);
 
     // Use EXISTS for efficiency - stops at first match
@@ -632,6 +635,7 @@ int has_detections_in_time_range(const char *stream_name, time_t start_time, tim
     rc = sqlite3_step(stmt);
     if (rc == SQLITE_ROW) {
         has_detections = sqlite3_column_int(stmt, 0);
+        log_info("Detection check result for stream %s: %d", stream_name, has_detections);
     } else {
         log_error("Failed to check for detections: %s", sqlite3_errmsg(db));
         sqlite3_finalize(stmt);

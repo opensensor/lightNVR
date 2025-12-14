@@ -93,6 +93,8 @@ void mg_handle_get_recordings_worker(struct mg_connection *c, struct mg_http_mes
             strncpy(sort_order, param + 6, sizeof(sort_order) - 1);
         } else if (strncmp(param, "detection=", 10) == 0) {
             has_detection = atoi(param + 10);
+        } else if (strncmp(param, "has_detection=", 14) == 0) {
+            has_detection = atoi(param + 14);
         }
         param = strtok(NULL, "&");
     }
