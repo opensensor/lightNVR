@@ -293,7 +293,10 @@ void mg_handle_get_recordings_worker(struct mg_connection *c, struct mg_http_mes
         cJSON_AddStringToObject(recording, "end_time", end_time_str);
         cJSON_AddNumberToObject(recording, "duration", duration);
         cJSON_AddStringToObject(recording, "size", size_str);
-        cJSON_AddBoolToObject(recording, "has_detection", false);
+
+        // Check trigger_type to determine if recording has detections
+        bool has_detection_flag = (strcmp(recordings[i].trigger_type, "detection") == 0);
+        cJSON_AddBoolToObject(recording, "has_detection", has_detection_flag);
         
         cJSON_AddItemToArray(recordings_array, recording);
     }
@@ -427,7 +430,10 @@ void mg_handle_get_recording_worker(struct mg_connection *c, struct mg_http_mess
     cJSON_AddStringToObject(recording_obj, "end_time", end_time_str);
     cJSON_AddNumberToObject(recording_obj, "duration", duration);
     cJSON_AddStringToObject(recording_obj, "size", size_str);
-    cJSON_AddBoolToObject(recording_obj, "has_detection", false); // Default to false as it's not in metadata
+
+    // Check trigger_type to determine if recording has detections
+    bool has_detection_flag = (strcmp(recording.trigger_type, "detection") == 0);
+    cJSON_AddBoolToObject(recording_obj, "has_detection", has_detection_flag);
     
     // Convert to string
     char *json_str = cJSON_PrintUnformatted(recording_obj);
