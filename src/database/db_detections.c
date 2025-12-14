@@ -588,8 +588,66 @@ int get_detections_from_db(const char *stream_name, detection_result_t *result, 
 }
 
 /**
+ * Check if there are any detections for a stream within a time range
+ *
+ * @param stream_name Stream name
+ * @param start_time Start time (inclusive)
+ * @param end_time End time (inclusive)
+ * @return 1 if detections exist, 0 if none, -1 on error
+ */
+int has_detections_in_time_range(const char *stream_name, time_t start_time, time_t end_time) {
+    int rc;
+    sqlite3_stmt *stmt;
+    int has_detections = 0;
+
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *db_mutex = get_db_mutex();
+
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
+    if (!stream_name) {
+        log_error("Stream name is required for has_detections_in_time_range");
+        return -1;
+    }
+
+    pthread_mutex_lock(db_mutex);
+
+    // Use EXISTS for efficiency - stops at first match
+    const char *sql = "SELECT EXISTS(SELECT 1 FROM detections WHERE stream_name = ? AND timestamp >= ? AND timestamp <= ? LIMIT 1);";
+
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(db_mutex);
+        return -1;
+    }
+
+    sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
+    sqlite3_bind_int64(stmt, 2, (sqlite3_int64)start_time);
+    sqlite3_bind_int64(stmt, 3, (sqlite3_int64)end_time);
+
+    rc = sqlite3_step(stmt);
+    if (rc == SQLITE_ROW) {
+        has_detections = sqlite3_column_int(stmt, 0);
+    } else {
+        log_error("Failed to check for detections: %s", sqlite3_errmsg(db));
+        sqlite3_finalize(stmt);
+        pthread_mutex_unlock(db_mutex);
+        return -1;
+    }
+
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(db_mutex);
+
+    return has_detections;
+}
+
+/**
  * Delete old detections from the database
- * 
+ *
  * @param max_age Maximum age in seconds
  * @return Number of detections deleted, or -1 on error
  */

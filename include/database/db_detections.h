@@ -53,8 +53,18 @@ int get_detection_timestamps(const char *stream_name, detection_result_t *result
 int get_detections_from_db(const char *stream_name, detection_result_t *result, uint64_t max_age);
 
 /**
+ * Check if there are any detections for a stream within a time range
+ *
+ * @param stream_name Stream name
+ * @param start_time Start time (inclusive)
+ * @param end_time End time (inclusive)
+ * @return 1 if detections exist, 0 if none, -1 on error
+ */
+int has_detections_in_time_range(const char *stream_name, time_t start_time, time_t end_time);
+
+/**
  * Delete old detections from the database
- * 
+ *
  * @param max_age Maximum age in seconds
  * @return Number of detections deleted, or -1 on error
  */

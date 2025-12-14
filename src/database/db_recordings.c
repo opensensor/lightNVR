@@ -487,27 +487,27 @@ int get_recording_count(time_t start_time, time_t end_time,
     // Build query based on filters
     char sql[1024];
 
-    // Use trigger_type to filter detection-based recordings instead of JOINing with detections table
-    strcpy(sql, "SELECT COUNT(*) FROM recordings WHERE is_complete = 1 AND end_time IS NOT NULL");
+    // Use trigger_type and/or detections table to filter detection-based recordings
+    strcpy(sql, "SELECT COUNT(*) FROM recordings r WHERE r.is_complete = 1 AND r.end_time IS NOT NULL");
 
     if (has_detection) {
-        // Filter by trigger_type = 'detection'
-        strcat(sql, " AND trigger_type = 'detection'");
-        log_info("Adding trigger_type filter for detection-based recordings");
+        // Filter by trigger_type = 'detection' OR existence of detections in the recording's time range
+        strcat(sql, " AND (r.trigger_type = 'detection' OR EXISTS (SELECT 1 FROM detections d WHERE d.stream_name = r.stream_name AND d.timestamp >= r.start_time AND d.timestamp <= r.end_time))");
+        log_info("Adding detection filter (trigger_type OR detections table)");
     }
 
     if (start_time > 0) {
-        strcat(sql, " AND start_time >= ?");
+        strcat(sql, " AND r.start_time >= ?");
         log_info("Adding start_time filter: %ld", (long)start_time);
     }
 
     if (end_time > 0) {
-        strcat(sql, " AND start_time <= ?");
+        strcat(sql, " AND r.start_time <= ?");
         log_info("Adding end_time filter: %ld", (long)end_time);
     }
 
     if (stream_name) {
-        strcat(sql, " AND stream_name = ?");
+        strcat(sql, " AND r.stream_name = ?");
     }
 
     log_info("SQL query for get_recording_count: %s", sql);
@@ -605,37 +605,37 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
     }
 
     // Build query based on filters
-    char sql[1024];
+    char sql[1536];
 
-    // Use trigger_type to filter detection-based recordings instead of JOINing with detections table
+    // Use trigger_type and/or detections table to filter detection-based recordings
     snprintf(sql, sizeof(sql),
-            "SELECT id, stream_name, file_path, start_time, end_time, "
-            "size_bytes, width, height, fps, codec, is_complete, trigger_type "
-            "FROM recordings WHERE is_complete = 1 AND end_time IS NOT NULL");
+            "SELECT r.id, r.stream_name, r.file_path, r.start_time, r.end_time, "
+            "r.size_bytes, r.width, r.height, r.fps, r.codec, r.is_complete, r.trigger_type "
+            "FROM recordings r WHERE r.is_complete = 1 AND r.end_time IS NOT NULL");
 
     if (has_detection) {
-        // Filter by trigger_type = 'detection'
-        strcat(sql, " AND trigger_type = 'detection'");
-        log_info("Adding trigger_type filter for detection-based recordings");
+        // Filter by trigger_type = 'detection' OR existence of detections in the recording's time range
+        strcat(sql, " AND (r.trigger_type = 'detection' OR EXISTS (SELECT 1 FROM detections d WHERE d.stream_name = r.stream_name AND d.timestamp >= r.start_time AND d.timestamp <= r.end_time))");
+        log_info("Adding detection filter (trigger_type OR detections table)");
     }
 
     if (start_time > 0) {
-        strcat(sql, " AND start_time >= ?");
+        strcat(sql, " AND r.start_time >= ?");
         log_info("Adding start_time filter to paginated query: %ld", (long)start_time);
     }
 
     if (end_time > 0) {
-        strcat(sql, " AND start_time <= ?");
+        strcat(sql, " AND r.start_time <= ?");
         log_info("Adding end_time filter to paginated query: %ld", (long)end_time);
     }
 
     if (stream_name) {
-        strcat(sql, " AND stream_name = ?");
+        strcat(sql, " AND r.stream_name = ?");
     }
 
     // Add ORDER BY clause with sanitized field and order
     char order_clause[64];
-    snprintf(order_clause, sizeof(order_clause), " ORDER BY %s %s", safe_sort_field, safe_sort_order);
+    snprintf(order_clause, sizeof(order_clause), " ORDER BY r.%s %s", safe_sort_field, safe_sort_order);
     strcat(sql, order_clause);
 
     // Add LIMIT and OFFSET for pagination

@@ -19,6 +19,7 @@
 #include "mongoose.h"
 #include "database/database_manager.h"
 #include "database/db_recordings.h"
+#include "database/db_detections.h"
 #include "web/mongoose_server_multithreading.h"
 
 /**
@@ -294,8 +295,19 @@ void mg_handle_get_recordings_worker(struct mg_connection *c, struct mg_http_mes
         cJSON_AddNumberToObject(recording, "duration", duration);
         cJSON_AddStringToObject(recording, "size", size_str);
 
-        // Check trigger_type to determine if recording has detections
+        // Check if recording has detections:
+        // 1. trigger_type is 'detection' (detection-triggered recording), OR
+        // 2. There are detection events in the detections table during this recording's time range
         bool has_detection_flag = (strcmp(recordings[i].trigger_type, "detection") == 0);
+        if (!has_detection_flag && recordings[i].start_time > 0 && recordings[i].end_time > 0) {
+            // Check for detections in the time range
+            int det_result = has_detections_in_time_range(recordings[i].stream_name,
+                                                          recordings[i].start_time,
+                                                          recordings[i].end_time);
+            if (det_result > 0) {
+                has_detection_flag = true;
+            }
+        }
         cJSON_AddBoolToObject(recording, "has_detection", has_detection_flag);
         
         cJSON_AddItemToArray(recordings_array, recording);
@@ -431,10 +443,21 @@ void mg_handle_get_recording_worker(struct mg_connection *c, struct mg_http_mess
     cJSON_AddNumberToObject(recording_obj, "duration", duration);
     cJSON_AddStringToObject(recording_obj, "size", size_str);
 
-    // Check trigger_type to determine if recording has detections
+    // Check if recording has detections:
+    // 1. trigger_type is 'detection' (detection-triggered recording), OR
+    // 2. There are detection events in the detections table during this recording's time range
     bool has_detection_flag = (strcmp(recording.trigger_type, "detection") == 0);
+    if (!has_detection_flag && recording.start_time > 0 && recording.end_time > 0) {
+        // Check for detections in the time range
+        int det_result = has_detections_in_time_range(recording.stream_name,
+                                                      recording.start_time,
+                                                      recording.end_time);
+        if (det_result > 0) {
+            has_detection_flag = true;
+        }
+    }
     cJSON_AddBoolToObject(recording_obj, "has_detection", has_detection_flag);
-    
+
     // Convert to string
     char *json_str = cJSON_PrintUnformatted(recording_obj);
     if (!json_str) {
