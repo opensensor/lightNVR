@@ -128,9 +128,9 @@ LightNVR is perfect for:
 
 Define custom detection zones with a visual polygon editor. Perfect for monitoring specific areas like doorways, parking spots, or restricted zones while ignoring irrelevant motion.
 
-<!-- TODO: Add screenshot of zone editor with polygon drawing -->
-<!-- Suggested: Screenshot showing the zone editor with multiple colored zones drawn on a camera feed -->
-<!-- Suggested: Short video/GIF demonstrating drawing a zone and configuring class filters -->
+| ![Detection Zone Editor](docs/images/zone-editor.png) | ![Detection Zones Configuration](docs/images/stream-config-zones.png) |
+|:-----------------------------------------------------:|:--------------------------------------------------------------------:|
+| Interactive zone editor with polygon drawing          | Detection Zones section in stream configuration                      |
 
 **Key capabilities:**
 - Draw unlimited polygons per camera stream
@@ -143,9 +143,13 @@ Define custom detection zones with a visual polygon editor. Perfect for monitori
 
 Choose from 7 professionally designed color themes and fine-tune the intensity to match your environment and preferences.
 
-<!-- TODO: Add screenshot showing theme selector with different themes -->
-<!-- Suggested: Side-by-side comparison of 2-3 different themes (light and dark mode) -->
-<!-- Suggested: Short video/GIF showing theme switching and intensity adjustment -->
+| ![Theme Selector (Light)](docs/images/theme-selector.png) | ![Theme Selector (Dark)](docs/images/theme-selector-dark.png) |
+|:--------------------------------------------------------:|:-----------------------------------------------------------:|
+| Theme selector in light mode                             | Theme selector in dark mode                                 |
+
+| ![Ocean Blue Theme](docs/images/theme-blue.png) | ![Emerald Theme](docs/images/theme-emerald.png) | ![Royal Purple Theme](docs/images/theme-purple.png) | ![Sunset Rose Theme](docs/images/theme-rose.png) |
+|:-----------------------------------------------:|:------------------------------------------------:|:-------------------------------------------------:|:------------------------------------------------:|
+| Ocean Blue                                      | Forest/Emerald Green                            | Royal Purple                                     | Sunset Rose                                      |
 
 **Available themes:**
 - 🎨 Default (Neutral Gray)
@@ -162,9 +166,9 @@ Each theme supports both light and dark modes with adjustable color intensity (0
 
 Experience real-time camera feeds with sub-second latency using WebRTC technology. Automatic NAT traversal ensures it works even behind firewalls.
 
-<!-- TODO: Add screenshot of WebRTC live view with multiple streams -->
-<!-- Suggested: Screenshot showing 4-6 camera feeds in grid layout with detection overlays -->
-<!-- Suggested: Video demonstrating smooth playback and low latency -->
+| ![WebRTC Live Streams](docs/images/live-streams.png) | ![HLS Live Streams](docs/images/live-streams-hls.png) |
+|:---------------------------------------------------:|:----------------------------------------------------:|
+| WebRTC live view with ultra-low latency             | HLS-based live view for compatibility                |
 
 **Features:**
 - Sub-second latency for real-time monitoring
@@ -176,9 +180,6 @@ Experience real-time camera feeds with sub-second latency using WebRTC technolog
 ### light-object-detect Integration
 
 Powerful object detection using modern ONNX and TFLite models with zone-aware filtering.
-
-<!-- TODO: Add screenshot showing detection results with zone filtering -->
-<!-- Suggested: Screenshot of detection overlay showing objects detected only within defined zones -->
 
 **Integration features:**
 - Per-stream API endpoint configuration
@@ -193,7 +194,7 @@ Powerful object detection using modern ONNX and TFLite models with zone-aware fi
 |:-------------------------------------------------------:|:------------------------------------------------------------:|
 | Stream Management                                       | Recording Management                                          |
 
-| ![Settings Management](docs/images/settings-management.png) | ![System Information](docs/images/System.png) |
+| ![Settings Management](docs/images/settings-management.png) | ![System Information](docs/images/system-info.png) |
 |:----------------------------------------------------------:|:--------------------------------------------:|
 | Settings Management                                         | System Information                            |
 
