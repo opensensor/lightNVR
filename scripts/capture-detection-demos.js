@@ -69,11 +69,35 @@ async function captureZoneEditorWithVehicleZone(page) {
   const configureZonesBtn = page.locator('button').filter({ hasText: /Configure Zones|Edit Zones/i }).first();
   await configureZonesBtn.click();
   await sleep(3000);
-  
+
   // Wait for zone editor dialog
   const zoneEditorDialog = page.locator('div').filter({ hasText: /Detection Zone Editor/i }).first();
   await zoneEditorDialog.waitFor({ timeout: 10000 });
-  
+
+  // The snapshot is fetched directly from go2rtc at port 1984 (not proxied)
+  // Wait for the snapshot image to load - go2rtc may need time to grab a frame
+  console.log('  Waiting for go2rtc snapshot to load (direct request to port 1984)...');
+
+  // Wait for the "Snapshot loaded successfully" console message or timeout
+  let snapshotLoaded = false;
+  for (let i = 0; i < 30; i++) { // 15 seconds max wait
+    const loadingIndicator = await zoneEditorDialog.locator('text=Loading stream snapshot').count();
+    if (loadingIndicator === 0) {
+      snapshotLoaded = true;
+      break;
+    }
+    await sleep(500);
+  }
+
+  if (snapshotLoaded) {
+    console.log('  ✓ Snapshot loaded from go2rtc');
+  } else {
+    console.log('  ⚠ Snapshot may not have loaded, continuing anyway');
+  }
+
+  // Extra wait to ensure canvas is fully rendered with the snapshot
+  await sleep(2000);
+
   const canvas = zoneEditorDialog.locator('canvas').first();
   let box = null;
   for (let i = 0; i < 20; i++) {
