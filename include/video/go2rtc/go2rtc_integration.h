@@ -8,6 +8,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <time.h>
 
 /**
  * @brief Initialize the go2rtc integration module
@@ -102,5 +103,90 @@ bool go2rtc_get_rtsp_url(const char *stream_name, char *url, size_t url_size);
  * @return true if successful, false otherwise
  */
 bool go2rtc_integration_get_hls_url(const char *stream_name, char *url, size_t url_size);
+
+/**
+ * @brief Reload stream configuration with go2rtc
+ *
+ * This is the centralized function for updating go2rtc when stream configuration changes.
+ * It handles unregistering the old stream and re-registering with new configuration.
+ * This should be used instead of direct calls to go2rtc_stream_register/unregister
+ * when responding to configuration changes.
+ *
+ * @param stream_name Name of the stream to reload
+ * @param new_url New stream URL (can be NULL to use current config)
+ * @param new_username New username (can be NULL to use current config)
+ * @param new_password New password (can be NULL to use current config)
+ * @param new_backchannel_enabled New backchannel setting (-1 to use current config)
+ * @return true if successful, false otherwise
+ */
+bool go2rtc_integration_reload_stream_config(const char *stream_name,
+                                             const char *new_url,
+                                             const char *new_username,
+                                             const char *new_password,
+                                             int new_backchannel_enabled);
+
+/**
+ * @brief Reload a stream's go2rtc registration from its current database/memory configuration
+ *
+ * This is a convenience function that reloads a stream by looking up its current configuration.
+ * Use this when you know the config has been updated and just want go2rtc to pick up the changes.
+ *
+ * @param stream_name Name of the stream to reload
+ * @return true if successful, false otherwise
+ */
+bool go2rtc_integration_reload_stream(const char *stream_name);
+
+/**
+ * @brief Unregister a stream from go2rtc
+ *
+ * @param stream_name Name of the stream to unregister
+ * @return true if successful, false otherwise
+ */
+bool go2rtc_integration_unregister_stream(const char *stream_name);
+
+/**
+ * @brief Register a single stream with go2rtc (universal entry point for startup and add)
+ *
+ * This function handles:
+ * - Checking if go2rtc is ready
+ * - Looking up stream config from the stream manager if not provided
+ * - Extracting credentials from URL if not in onvif fields
+ * - Registering with go2rtc
+ *
+ * Use this for both initial startup registration and when adding new streams.
+ * This is the single entry point for stream registration.
+ *
+ * @param stream_name Name of the stream to register
+ * @return true if successful, false otherwise
+ */
+bool go2rtc_integration_register_stream(const char *stream_name);
+
+/**
+ * @brief Check if the unified health monitor is running
+ *
+ * @return true if the monitor is running, false otherwise
+ */
+bool go2rtc_integration_monitor_is_running(void);
+
+/**
+ * @brief Get the number of go2rtc process restarts
+ *
+ * @return Number of restarts since initialization
+ */
+int go2rtc_integration_get_restart_count(void);
+
+/**
+ * @brief Get the time of the last go2rtc process restart
+ *
+ * @return Time of last restart, or 0 if never restarted
+ */
+time_t go2rtc_integration_get_last_restart_time(void);
+
+/**
+ * @brief Manually trigger a health check
+ *
+ * @return true if go2rtc is healthy, false otherwise
+ */
+bool go2rtc_integration_check_health(void);
 
 #endif /* GO2RTC_INTEGRATION_H */

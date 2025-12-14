@@ -739,19 +739,11 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
                         // Get the stream configuration to register with go2rtc
                         stream_config_t stream_config;
                         if (get_stream_config_by_name(decoded_id, &stream_config) == 0) {
-                            // Register the stream with go2rtc if go2rtc is ready
-                            if (go2rtc_stream_is_ready()) {
-                                log_info("Registering enabled stream %s with go2rtc", decoded_id);
-                                if (go2rtc_stream_register(decoded_id, stream_config.url,
-                                                         stream_config.onvif_username[0] != '\0' ? stream_config.onvif_username : NULL,
-                                                         stream_config.onvif_password[0] != '\0' ? stream_config.onvif_password : NULL,
-                                                         stream_config.backchannel_enabled)) {
-                                    log_info("Successfully registered stream %s with go2rtc", decoded_id);
-                                } else {
-                                    log_warn("Failed to register stream %s with go2rtc", decoded_id);
-                                }
+                            // Use centralized function to register the stream with go2rtc
+                            if (go2rtc_integration_reload_stream(decoded_id)) {
+                                log_info("Successfully registered stream %s with go2rtc", decoded_id);
                             } else {
-                                log_warn("go2rtc is not ready, stream %s will not be registered", decoded_id);
+                                log_warn("Failed to register stream %s with go2rtc (go2rtc may not be ready)", decoded_id);
                             }
 
                             // If detection is enabled for this stream, start the detection thread
@@ -888,24 +880,11 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
             log_info("Detection enabled for stream %s, starting detection thread with model %s",
                     config.name, config.detection_model);
 
-            // Make sure the stream is registered with go2rtc
-            if (go2rtc_stream_is_ready()) {
-                // Check if the stream is already registered with go2rtc
-                if (!go2rtc_api_stream_exists(config.name)) {
-                    log_info("Registering stream %s with go2rtc after enabling detection", config.name);
-                    if (go2rtc_stream_register(config.name, config.url,
-                                             config.onvif_username[0] != '\0' ? config.onvif_username : NULL,
-                                             config.onvif_password[0] != '\0' ? config.onvif_password : NULL,
-                                             config.backchannel_enabled)) {
-                        log_info("Successfully registered stream %s with go2rtc", config.name);
-                    } else {
-                        log_warn("Failed to register stream %s with go2rtc", config.name);
-                    }
-                } else {
-                    log_info("Stream %s is already registered with go2rtc", config.name);
-                }
+            // Make sure the stream is registered with go2rtc (use centralized function)
+            if (go2rtc_integration_reload_stream(config.name)) {
+                log_info("Successfully ensured stream %s is registered with go2rtc", config.name);
             } else {
-                log_warn("go2rtc is not ready, stream %s will not be registered", config.name);
+                log_warn("Failed to ensure stream %s is registered with go2rtc (go2rtc may not be ready)", config.name);
             }
 
             // Construct HLS directory path
@@ -1012,24 +991,15 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
         if ((url_changed || protocol_changed)) {
             log_info("URL or protocol changed for stream %s, updating go2rtc registration BEFORE starting stream", config.name);
 
-            // Unregister the old stream from go2rtc
-            if (go2rtc_stream_unregister(config.name)) {
-                log_info("Unregistered stream %s from go2rtc", config.name);
+            // Use centralized function to reload stream config in go2rtc
+            // This handles unregister + wait + re-register internally
+            if (go2rtc_integration_reload_stream_config(config.name, config.url,
+                                                        config.onvif_username[0] != '\0' ? config.onvif_username : NULL,
+                                                        config.onvif_password[0] != '\0' ? config.onvif_password : NULL,
+                                                        config.backchannel_enabled ? 1 : 0)) {
+                log_info("Successfully reloaded stream %s in go2rtc with new URL", config.name);
             } else {
-                log_warn("Failed to unregister stream %s from go2rtc (may not have been registered)", config.name);
-            }
-
-            // Wait a moment for go2rtc to clean up
-            usleep(500000); // 500ms
-
-            // Re-register the stream with the new URL
-            const char *username = (config.onvif_username[0] != '\0') ? config.onvif_username : NULL;
-            const char *password = (config.onvif_password[0] != '\0') ? config.onvif_password : NULL;
-
-            if (go2rtc_stream_register(config.name, config.url, username, password, config.backchannel_enabled)) {
-                log_info("Re-registered stream %s with go2rtc using new URL", config.name);
-            } else {
-                log_error("Failed to re-register stream %s with go2rtc", config.name);
+                log_error("Failed to reload stream %s in go2rtc", config.name);
                 // Continue anyway - the stream may still work
             }
 

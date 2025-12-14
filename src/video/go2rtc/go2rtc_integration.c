@@ -1,13 +1,17 @@
 /**
  * @file go2rtc_integration.c
  * @brief Implementation of the go2rtc integration with existing recording and HLS systems
+ *
+ * This module also contains the unified health monitor that handles both:
+ * - Stream-level health (re-registering individual streams when they fail)
+ * - Process-level health (restarting go2rtc when it becomes unresponsive)
  */
 
 #include "video/go2rtc/go2rtc_integration.h"
 #include "video/go2rtc/go2rtc_consumer.h"
 #include "video/go2rtc/go2rtc_stream.h"
-#include "video/go2rtc/go2rtc_health_monitor.h"
-#include "video/go2rtc/go2rtc_process_monitor.h"
+#include "video/go2rtc/go2rtc_process.h"
+#include "video/go2rtc/go2rtc_api.h"
 #include "core/logger.h"
 #include "core/config.h"
 #include "core/shutdown_coordinator.h"  // For is_shutdown_initiated
@@ -22,6 +26,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <pthread.h>
+#include <stdatomic.h>
 
 // Tracking for streams using go2rtc
 #define MAX_TRACKED_STREAMS 16
@@ -43,6 +49,44 @@ typedef struct {
 static go2rtc_stream_tracking_t g_tracked_streams[MAX_TRACKED_STREAMS] = {0};
 static original_stream_config_t g_original_configs[MAX_TRACKED_STREAMS] = {0};
 static bool g_initialized = false;
+
+// ============================================================================
+// Unified Health Monitor Configuration
+// ============================================================================
+
+// Health check interval in seconds (unified for both stream and process checks)
+#define HEALTH_CHECK_INTERVAL_SEC 30
+
+// Stream health: consecutive failures before re-registration
+#define STREAM_MAX_CONSECUTIVE_FAILURES 3
+
+// Stream health: cooldown after re-registration (seconds)
+#define STREAM_REREGISTRATION_COOLDOWN_SEC 60
+
+// Process health: consecutive API failures before restart
+#define PROCESS_MAX_API_FAILURES 3
+
+// Process health: minimum streams for consensus check
+#define PROCESS_MIN_STREAMS_FOR_CONSENSUS 2
+
+// Process health: cooldown after restart (seconds)
+#define PROCESS_RESTART_COOLDOWN_SEC 120
+
+// Process health: max restarts within window
+#define PROCESS_MAX_RESTARTS_PER_WINDOW 5
+#define PROCESS_RESTART_WINDOW_SEC 600  // 10 minutes
+
+// Unified monitor state
+static pthread_t g_monitor_thread;
+static bool g_monitor_running = false;
+static bool g_monitor_initialized = false;
+
+// Process restart tracking
+static int g_restart_count = 0;
+static time_t g_last_restart_time = 0;
+static int g_consecutive_api_failures = 0;
+static time_t g_restart_history[PROCESS_MAX_RESTARTS_PER_WINDOW];
+static int g_restart_history_index = 0;
 
 /**
  * @brief Save original stream configuration
@@ -252,6 +296,341 @@ static bool ensure_stream_registered_with_go2rtc(const char *stream_name) {
     return true;
 }
 
+// ============================================================================
+// Unified Health Monitor Implementation
+// ============================================================================
+
+/**
+ * @brief Check if a stream needs re-registration with go2rtc
+ */
+static bool stream_needs_reregistration(const char *stream_name) {
+    if (!stream_name) {
+        return false;
+    }
+
+    stream_state_manager_t *state = get_stream_state_by_name(stream_name);
+    if (!state) {
+        return false;
+    }
+
+    if (!state->config.enabled) {
+        return false;
+    }
+
+    if (state->state == STREAM_STATE_ERROR || state->state == STREAM_STATE_RECONNECTING) {
+        int failures = atomic_load(&state->protocol_state.reconnect_attempts);
+
+        if (failures >= STREAM_MAX_CONSECUTIVE_FAILURES) {
+            time_t now = time(NULL);
+            time_t last_reregister = atomic_load(&state->protocol_state.last_reconnect_time);
+
+            if (now - last_reregister >= STREAM_REREGISTRATION_COOLDOWN_SEC) {
+                log_info("Stream %s has %d consecutive failures, needs re-registration",
+                        stream_name, failures);
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+/**
+ * @brief Check stream consensus - if all/most streams are down, it's likely go2rtc
+ */
+static bool check_stream_consensus(void) {
+    int total_streams = 0;
+    int failed_streams = 0;
+
+    int stream_count = get_total_stream_count();
+
+    if (stream_count < PROCESS_MIN_STREAMS_FOR_CONSENSUS) {
+        return false;
+    }
+
+    for (int i = 0; i < stream_count; i++) {
+        stream_handle_t stream = get_stream_by_index(i);
+        if (!stream) continue;
+
+        stream_config_t config;
+        if (get_stream_config(stream, &config) != 0) continue;
+
+        if (!config.enabled) continue;
+
+        total_streams++;
+
+        stream_state_manager_t *state = get_stream_state_by_name(config.name);
+        if (state) {
+            pthread_mutex_lock(&state->mutex);
+            stream_state_t current_state = state->state;
+            pthread_mutex_unlock(&state->mutex);
+
+            if (current_state == STREAM_STATE_ERROR ||
+                current_state == STREAM_STATE_RECONNECTING) {
+                failed_streams++;
+            }
+        }
+    }
+
+    if (total_streams >= PROCESS_MIN_STREAMS_FOR_CONSENSUS &&
+        failed_streams == total_streams && total_streams > 0) {
+        log_warn("Stream consensus: %d/%d streams failed - indicates go2rtc issue",
+                 failed_streams, total_streams);
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * @brief Check if we can restart (rate limiting)
+ */
+static bool can_restart_go2rtc(void) {
+    time_t now = time(NULL);
+
+    if (now - g_last_restart_time < PROCESS_RESTART_COOLDOWN_SEC) {
+        log_warn("go2rtc restart blocked: cooldown period (%ld seconds remaining)",
+                 PROCESS_RESTART_COOLDOWN_SEC - (now - g_last_restart_time));
+        return false;
+    }
+
+    int recent_restarts = 0;
+    for (int i = 0; i < PROCESS_MAX_RESTARTS_PER_WINDOW; i++) {
+        if (g_restart_history[i] > 0 && (now - g_restart_history[i]) < PROCESS_RESTART_WINDOW_SEC) {
+            recent_restarts++;
+        }
+    }
+
+    if (recent_restarts >= PROCESS_MAX_RESTARTS_PER_WINDOW) {
+        log_error("go2rtc restart blocked: too many restarts (%d in last %d seconds)",
+                  recent_restarts, PROCESS_RESTART_WINDOW_SEC);
+        return false;
+    }
+
+    return true;
+}
+
+/**
+ * @brief Restart the go2rtc process
+ */
+static bool restart_go2rtc_process(void) {
+    log_warn("Attempting to restart go2rtc process due to health check failure");
+
+    log_info("Stopping go2rtc process...");
+    if (!go2rtc_process_stop()) {
+        log_error("Failed to stop go2rtc process");
+        return false;
+    }
+
+    sleep(2);
+
+    int api_port = go2rtc_stream_get_api_port();
+    if (api_port == 0) {
+        log_error("Failed to get go2rtc API port");
+        return false;
+    }
+
+    log_info("Starting go2rtc process...");
+    if (!go2rtc_process_start(api_port)) {
+        log_error("Failed to start go2rtc process");
+        return false;
+    }
+
+    int retries = 10;
+    while (retries > 0 && !go2rtc_stream_is_ready()) {
+        log_info("Waiting for go2rtc to be ready after restart... (%d retries left)", retries);
+        sleep(2);
+        retries--;
+    }
+
+    if (!go2rtc_stream_is_ready()) {
+        log_error("go2rtc failed to become ready after restart");
+        return false;
+    }
+
+    log_info("go2rtc process restarted successfully");
+
+    log_info("Re-registering all streams with go2rtc after restart");
+    if (!go2rtc_integration_register_all_streams()) {
+        log_warn("Failed to re-register all streams after go2rtc restart");
+    } else {
+        log_info("All streams re-registered successfully after go2rtc restart");
+    }
+
+    sleep(2);
+
+    log_info("Signaling MP4 recordings to reconnect after go2rtc restart");
+    signal_all_mp4_recordings_reconnect();
+
+    time_t now = time(NULL);
+    g_last_restart_time = now;
+    g_restart_count++;
+    g_restart_history[g_restart_history_index] = now;
+    g_restart_history_index = (g_restart_history_index + 1) % PROCESS_MAX_RESTARTS_PER_WINDOW;
+    g_consecutive_api_failures = 0;
+
+    log_info("go2rtc restart completed (total restarts: %d)", g_restart_count);
+
+    return true;
+}
+
+/**
+ * @brief Unified health monitor thread - handles both stream and process health
+ */
+static void *unified_health_monitor_thread(void *arg) {
+    (void)arg;
+
+    log_info("Unified go2rtc health monitor thread started");
+
+    while (g_monitor_running && !is_shutdown_initiated()) {
+        // Sleep for the check interval (1 second at a time for responsiveness)
+        for (int i = 0; i < HEALTH_CHECK_INTERVAL_SEC && g_monitor_running && !is_shutdown_initiated(); i++) {
+            sleep(1);
+        }
+
+        if (!g_monitor_running || is_shutdown_initiated()) {
+            break;
+        }
+
+        // =====================================================================
+        // Phase 1: Process-level health check (check go2rtc API itself)
+        // =====================================================================
+        bool api_healthy = go2rtc_stream_is_ready();
+        bool process_restarted = false;
+
+        if (!api_healthy) {
+            g_consecutive_api_failures++;
+            log_warn("go2rtc API health check failed (consecutive failures: %d/%d)",
+                     g_consecutive_api_failures, PROCESS_MAX_API_FAILURES);
+
+            if (g_consecutive_api_failures >= PROCESS_MAX_API_FAILURES) {
+                log_error("go2rtc API has failed %d consecutive health checks", g_consecutive_api_failures);
+
+                bool consensus_failure = check_stream_consensus();
+                if (consensus_failure) {
+                    log_error("Stream consensus also indicates go2rtc failure - restart required");
+                }
+
+                if (can_restart_go2rtc()) {
+                    if (restart_go2rtc_process()) {
+                        log_info("go2rtc process successfully restarted");
+                        process_restarted = true;
+                    } else {
+                        log_error("Failed to restart go2rtc process");
+                    }
+                }
+            }
+
+            // Skip stream checks if API is unhealthy
+            continue;
+        } else {
+            if (g_consecutive_api_failures > 0) {
+                log_info("go2rtc API health check succeeded, resetting failure counter");
+                g_consecutive_api_failures = 0;
+            }
+        }
+
+        // =====================================================================
+        // Phase 2: Stream-level health check (only if process is healthy)
+        // =====================================================================
+        if (process_restarted) {
+            // Skip stream checks right after restart - give streams time to reconnect
+            continue;
+        }
+
+        int stream_count = get_total_stream_count();
+        log_debug("Health monitor checking %d streams", stream_count);
+
+        for (int i = 0; i < stream_count; i++) {
+            if (!g_monitor_running || is_shutdown_initiated()) {
+                break;
+            }
+
+            stream_handle_t stream = get_stream_by_index(i);
+            if (!stream) continue;
+
+            stream_config_t config;
+            if (get_stream_config(stream, &config) != 0) continue;
+
+            if (stream_needs_reregistration(config.name)) {
+                log_info("Stream %s needs re-registration, attempting to fix", config.name);
+
+                if (go2rtc_integration_reload_stream(config.name)) {
+                    log_info("Successfully re-registered stream %s", config.name);
+
+                    // Update reconnect state
+                    stream_state_manager_t *state = get_stream_state_by_name(config.name);
+                    if (state) {
+                        atomic_store(&state->protocol_state.last_reconnect_time, time(NULL));
+                        atomic_store(&state->protocol_state.reconnect_attempts, 0);
+                    }
+                } else {
+                    log_error("Failed to re-register stream %s", config.name);
+                }
+            }
+        }
+    }
+
+    log_info("Unified go2rtc health monitor thread exiting");
+    return NULL;
+}
+
+/**
+ * @brief Start the unified health monitor
+ */
+static bool start_unified_health_monitor(void) {
+    if (g_monitor_initialized) {
+        log_warn("Unified health monitor already initialized");
+        return true;
+    }
+
+    log_info("Starting unified go2rtc health monitor");
+
+    // Initialize restart tracking
+    memset(g_restart_history, 0, sizeof(g_restart_history));
+    g_restart_history_index = 0;
+    g_restart_count = 0;
+    g_last_restart_time = 0;
+    g_consecutive_api_failures = 0;
+
+    g_monitor_running = true;
+    g_monitor_initialized = true;
+
+    if (pthread_create(&g_monitor_thread, NULL, unified_health_monitor_thread, NULL) != 0) {
+        log_error("Failed to create unified health monitor thread");
+        g_monitor_running = false;
+        g_monitor_initialized = false;
+        return false;
+    }
+
+    log_info("Unified go2rtc health monitor started successfully");
+    return true;
+}
+
+/**
+ * @brief Stop the unified health monitor
+ */
+static void stop_unified_health_monitor(void) {
+    if (!g_monitor_initialized) {
+        return;
+    }
+
+    log_info("Stopping unified go2rtc health monitor");
+
+    g_monitor_running = false;
+
+    if (pthread_join(g_monitor_thread, NULL) != 0) {
+        log_warn("Failed to join unified health monitor thread");
+    }
+
+    g_monitor_initialized = false;
+    log_info("Unified go2rtc health monitor stopped");
+}
+
+// ============================================================================
+// Module Initialization/Cleanup
+// ============================================================================
+
 bool go2rtc_integration_init(void) {
     if (g_initialized) {
         log_warn("go2rtc integration module already initialized");
@@ -267,20 +646,10 @@ bool go2rtc_integration_init(void) {
     // Initialize tracking array
     memset(g_tracked_streams, 0, sizeof(g_tracked_streams));
 
-    // Initialize the stream health monitor
-    if (!go2rtc_health_monitor_init()) {
-        log_warn("Failed to initialize go2rtc stream health monitor (non-fatal)");
+    // Start the unified health monitor (replaces separate stream and process monitors)
+    if (!start_unified_health_monitor()) {
+        log_warn("Failed to start unified health monitor (non-fatal)");
         // Continue anyway - health monitor is optional
-    } else {
-        log_info("go2rtc stream health monitor initialized successfully");
-    }
-
-    // Initialize the process health monitor
-    if (!go2rtc_process_monitor_init()) {
-        log_warn("Failed to initialize go2rtc process health monitor (non-fatal)");
-        // Continue anyway - process monitor is optional
-    } else {
-        log_info("go2rtc process health monitor initialized successfully");
     }
 
     g_initialized = true;
@@ -625,11 +994,8 @@ void go2rtc_integration_cleanup(void) {
 
     log_info("Cleaning up go2rtc integration module");
 
-    // Clean up the process health monitor first
-    go2rtc_process_monitor_cleanup();
-
-    // Clean up the stream health monitor
-    go2rtc_health_monitor_cleanup();
+    // Stop the unified health monitor
+    stop_unified_health_monitor();
 
     // Stop all recording and HLS streaming using go2rtc
     for (int i = 0; i < MAX_TRACKED_STREAMS; i++) {
@@ -781,4 +1147,206 @@ bool go2rtc_integration_get_hls_url(const char *stream_name, char *buffer, size_
 
     log_info("Generated go2rtc HLS URL for stream %s: %s", stream_name, buffer);
     return true;
+}
+
+bool go2rtc_integration_reload_stream_config(const char *stream_name,
+                                             const char *new_url,
+                                             const char *new_username,
+                                             const char *new_password,
+                                             int new_backchannel_enabled) {
+    if (!stream_name) {
+        log_error("go2rtc_integration_reload_stream_config: stream_name is NULL");
+        return false;
+    }
+
+    log_info("Reloading stream configuration for %s in go2rtc", stream_name);
+
+    // Check if go2rtc is ready
+    if (!go2rtc_stream_is_ready()) {
+        log_warn("go2rtc service is not ready, cannot reload stream config");
+        return false;
+    }
+
+    // Get current stream configuration if new values not provided
+    stream_handle_t stream = get_stream_by_name(stream_name);
+    stream_config_t config;
+    bool have_config = false;
+
+    if (stream && get_stream_config(stream, &config) == 0) {
+        have_config = true;
+    }
+
+    // Determine the values to use
+    const char *url = new_url;
+    const char *username = new_username;
+    const char *password = new_password;
+    bool backchannel = (new_backchannel_enabled >= 0) ? (new_backchannel_enabled != 0) : false;
+
+    if (have_config) {
+        if (!url) url = config.url;
+        if (!username) username = config.onvif_username[0] != '\0' ? config.onvif_username : NULL;
+        if (!password) password = config.onvif_password[0] != '\0' ? config.onvif_password : NULL;
+        if (new_backchannel_enabled < 0) backchannel = config.backchannel_enabled;
+    }
+
+    if (!url || url[0] == '\0') {
+        log_error("go2rtc_integration_reload_stream_config: No URL available for stream %s", stream_name);
+        return false;
+    }
+
+    // Unregister the old stream first (don't fail if it wasn't registered)
+    if (go2rtc_stream_unregister(stream_name)) {
+        log_info("Unregistered old stream %s from go2rtc", stream_name);
+    } else {
+        log_info("Stream %s was not registered with go2rtc (or unregister failed)", stream_name);
+    }
+
+    // Wait a moment for go2rtc to clean up
+    usleep(500000); // 500ms
+
+    // Re-register with new configuration
+    if (!go2rtc_stream_register(stream_name, url, username, password, backchannel)) {
+        log_error("Failed to re-register stream %s with go2rtc", stream_name);
+        return false;
+    }
+
+    log_info("Successfully reloaded stream %s in go2rtc with URL: %s", stream_name, url);
+    return true;
+}
+
+bool go2rtc_integration_reload_stream(const char *stream_name) {
+    if (!stream_name) {
+        log_error("go2rtc_integration_reload_stream: stream_name is NULL");
+        return false;
+    }
+
+    // Use the generic reload function with NULL values to use current config
+    return go2rtc_integration_reload_stream_config(stream_name, NULL, NULL, NULL, -1);
+}
+
+bool go2rtc_integration_unregister_stream(const char *stream_name) {
+    if (!stream_name) {
+        log_error("go2rtc_integration_unregister_stream: stream_name is NULL");
+        return false;
+    }
+
+    if (!go2rtc_stream_is_ready()) {
+        log_warn("go2rtc service is not ready, cannot unregister stream");
+        return false;
+    }
+
+    if (go2rtc_stream_unregister(stream_name)) {
+        log_info("Unregistered stream %s from go2rtc", stream_name);
+
+        // Also remove from tracking
+        for (int i = 0; i < MAX_TRACKED_STREAMS; i++) {
+            if (strcmp(g_tracked_streams[i].stream_name, stream_name) == 0) {
+                memset(&g_tracked_streams[i], 0, sizeof(go2rtc_stream_tracking_t));
+                break;
+            }
+        }
+
+        return true;
+    }
+
+    log_warn("Failed to unregister stream %s from go2rtc", stream_name);
+    return false;
+}
+
+bool go2rtc_integration_register_stream(const char *stream_name) {
+    if (!stream_name) {
+        log_error("go2rtc_integration_register_stream: stream_name is NULL");
+        return false;
+    }
+
+    if (!go2rtc_stream_is_ready()) {
+        log_debug("go2rtc service is not ready, cannot register stream %s", stream_name);
+        return false;
+    }
+
+    // Look up the stream config
+    stream_handle_t stream = get_stream_by_name(stream_name);
+    if (!stream) {
+        log_error("Stream %s not found in stream manager", stream_name);
+        return false;
+    }
+
+    stream_config_t config;
+    if (get_stream_config(stream, &config) != 0) {
+        log_error("Failed to get config for stream %s", stream_name);
+        return false;
+    }
+
+    // Determine username and password
+    // Priority: 1) onvif fields, 2) extracted from URL
+    char username[64] = {0};
+    char password[64] = {0};
+
+    if (config.onvif_username[0] != '\0') {
+        strncpy(username, config.onvif_username, sizeof(username) - 1);
+    }
+    if (config.onvif_password[0] != '\0') {
+        strncpy(password, config.onvif_password, sizeof(password) - 1);
+    }
+
+    // If credentials not in onvif fields, try to extract from URL
+    // Format: rtsp://username:password@host:port/path
+    if (username[0] == '\0') {
+        const char *url = config.url;
+        if (strncmp(url, "rtsp://", 7) == 0) {
+            const char *at_sign = strchr(url + 7, '@');
+            if (at_sign) {
+                const char *colon = strchr(url + 7, ':');
+                if (colon && colon < at_sign) {
+                    // Extract username
+                    size_t username_len = colon - (url + 7);
+                    if (username_len < sizeof(username)) {
+                        strncpy(username, url + 7, username_len);
+                        username[username_len] = '\0';
+
+                        // Extract password if not already set
+                        if (password[0] == '\0') {
+                            size_t password_len = at_sign - (colon + 1);
+                            if (password_len < sizeof(password)) {
+                                strncpy(password, colon + 1, password_len);
+                                password[password_len] = '\0';
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Register with go2rtc
+    if (go2rtc_stream_register(stream_name, config.url,
+                               username[0] != '\0' ? username : NULL,
+                               password[0] != '\0' ? password : NULL,
+                               config.backchannel_enabled)) {
+        log_info("Successfully registered stream %s with go2rtc", stream_name);
+        return true;
+    }
+
+    log_warn("Failed to register stream %s with go2rtc", stream_name);
+    return false;
+}
+
+// ============================================================================
+// Public Health Monitor API
+// ============================================================================
+
+bool go2rtc_integration_monitor_is_running(void) {
+    return g_monitor_initialized && g_monitor_running;
+}
+
+int go2rtc_integration_get_restart_count(void) {
+    return g_restart_count;
+}
+
+time_t go2rtc_integration_get_last_restart_time(void) {
+    return g_last_restart_time;
+}
+
+bool go2rtc_integration_check_health(void) {
+    return go2rtc_stream_is_ready();
 }

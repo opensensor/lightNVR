@@ -649,10 +649,11 @@ int process_segment_for_detection(stream_detection_thread_t *thread, const char 
                             // Initialize result to empty to prevent segmentation fault
                             memset(&result, 0, sizeof(detection_result_t));
                         } else {
-                            log_info("[Stream %s] Calling detect_objects_api with URL: %s", thread->stream_name, api_url);
+                            log_info("[Stream %s] Calling detect_objects_api with URL: %s, threshold: %.2f",
+                                    thread->stream_name, api_url, thread->threshold);
                             // CRITICAL FIX: Initialize result to empty before calling API detection
                             memset(&result, 0, sizeof(detection_result_t));
-                            detect_ret = detect_objects_api(api_url, rgb_buffer, target_width, target_height, channels, &result, thread->stream_name);
+                            detect_ret = detect_objects_api(api_url, rgb_buffer, target_width, target_height, channels, &result, thread->stream_name, thread->threshold);
                             log_info("[Stream %s] detect_objects_api returned: %d", thread->stream_name, detect_ret);
                         }
                     } else {

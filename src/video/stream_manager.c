@@ -13,6 +13,9 @@
 #include "video/stream_state.h"
 #include "database/db_streams.h"
 #include "video/detection_stream_thread.h"
+#ifdef USE_GO2RTC
+#include "video/go2rtc/go2rtc_integration.h"
+#endif
 
 // Stream structure
 typedef struct {
@@ -63,7 +66,7 @@ int init_stream_manager(int max_streams) {
 
     initialized = true;
 
-    // Create stream state managers for all existing streams
+    // Create stream state managers for all existing streams and register with go2rtc
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (streams[i].config.name[0] != '\0') {
             stream_state_manager_t *state = get_stream_state_by_name(streams[i].config.name);
@@ -76,59 +79,9 @@ int init_stream_manager(int max_streams) {
                 }
             }
 
-            // Register existing streams with go2rtc if enabled
+            // Register existing streams with go2rtc using the centralized function
             #ifdef USE_GO2RTC
-            extern bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
-                                              const char *username, const char *password,
-                                              bool backchannel_enabled);
-            extern bool go2rtc_stream_is_ready(void);
-
-            if (go2rtc_stream_is_ready()) {
-                log_info("Registering existing stream '%s' with go2rtc", streams[i].config.name);
-
-                // Extract username and password from URL if not set in onvif fields
-                char username[64] = {0};
-                char password[64] = {0};
-
-                if (streams[i].config.onvif_username[0] != '\0') {
-                    strncpy(username, streams[i].config.onvif_username, sizeof(username) - 1);
-                } else {
-                    // Try to extract from URL (format: rtsp://username:password@host:port/path)
-                    const char *url = streams[i].config.url;
-                    if (strncmp(url, "rtsp://", 7) == 0) {
-                        const char *at_sign = strchr(url + 7, '@');
-                        if (at_sign) {
-                            const char *colon = strchr(url + 7, ':');
-                            if (colon && colon < at_sign) {
-                                // Extract username
-                                size_t username_len = colon - (url + 7);
-                                if (username_len < sizeof(username)) {
-                                    strncpy(username, url + 7, username_len);
-                                    username[username_len] = '\0';
-
-                                    // Extract password
-                                    size_t password_len = at_sign - (colon + 1);
-                                    if (password_len < sizeof(password)) {
-                                        strncpy(password, colon + 1, password_len);
-                                        password[password_len] = '\0';
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if (streams[i].config.onvif_password[0] != '\0' && password[0] == '\0') {
-                    strncpy(password, streams[i].config.onvif_password, sizeof(password) - 1);
-                }
-
-                if (go2rtc_stream_register(streams[i].config.name, streams[i].config.url,
-                                          username, password, streams[i].config.backchannel_enabled)) {
-                    log_info("Successfully registered stream '%s' with go2rtc", streams[i].config.name);
-                } else {
-                    log_warn("Failed to register stream '%s' with go2rtc", streams[i].config.name);
-                }
-            }
+            go2rtc_integration_register_stream(streams[i].config.name);
             #endif
         }
     }
@@ -472,64 +425,10 @@ stream_handle_t add_stream(const stream_config_t *config) {
         }
     }
 
-    // Register stream with go2rtc if enabled
+    // Register stream with go2rtc using the centralized function
     #ifdef USE_GO2RTC
-    extern bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
-                                      const char *username, const char *password,
-                                      bool backchannel_enabled);
-    extern bool go2rtc_stream_is_ready(void);
-
-    if (go2rtc_stream_is_ready()) {
-        log_info("Registering stream '%s' with go2rtc", config->name);
-
-        // Extract username and password from URL if not set in onvif fields
-        char username[64] = {0};
-        char password[64] = {0};
-
-        if (config->onvif_username[0] != '\0') {
-            strncpy(username, config->onvif_username, sizeof(username) - 1);
-        } else {
-            // Try to extract from URL (format: rtsp://username:password@host:port/path)
-            const char *url = config->url;
-            if (strncmp(url, "rtsp://", 7) == 0) {
-                const char *at_sign = strchr(url + 7, '@');
-                if (at_sign) {
-                    const char *colon = strchr(url + 7, ':');
-                    if (colon && colon < at_sign) {
-                        // Extract username
-                        size_t username_len = colon - (url + 7);
-                        if (username_len < sizeof(username)) {
-                            strncpy(username, url + 7, username_len);
-                            username[username_len] = '\0';
-
-                            // Extract password
-                            size_t password_len = at_sign - (colon + 1);
-                            if (password_len < sizeof(password)) {
-                                strncpy(password, colon + 1, password_len);
-                                password[password_len] = '\0';
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        if (config->onvif_password[0] != '\0' && password[0] == '\0') {
-            strncpy(password, config->onvif_password, sizeof(password) - 1);
-        }
-
-        if (go2rtc_stream_register(config->name, config->url, username, password, config->backchannel_enabled)) {
-            log_info("Successfully registered stream '%s' with go2rtc", config->name);
-        } else {
-            log_warn("Failed to register stream '%s' with go2rtc", config->name);
-        }
-    } else {
-        log_warn("go2rtc service not ready, stream '%s' will not be registered", config->name);
-    }
+    go2rtc_integration_register_stream(config->name);
     #endif
-
-    // Note: We don't need to update the global configuration anymore
-    // as it's now retrieved directly from the database
 
     log_info("Added stream '%s' in slot %d", config->name, slot);
 
@@ -570,19 +469,9 @@ int remove_stream(stream_handle_t handle) {
     strncpy(stream_name, s->config.name, MAX_STREAM_NAME - 1);
     stream_name[MAX_STREAM_NAME - 1] = '\0';
 
-    // Unregister stream from go2rtc if enabled
+    // Unregister stream from go2rtc using the centralized function
     #ifdef USE_GO2RTC
-    extern bool go2rtc_stream_unregister(const char *stream_id);
-    extern bool go2rtc_stream_is_ready(void);
-
-    if (go2rtc_stream_is_ready()) {
-        log_info("Unregistering stream '%s' from go2rtc", stream_name);
-        if (go2rtc_stream_unregister(stream_name)) {
-            log_info("Successfully unregistered stream '%s' from go2rtc", stream_name);
-        } else {
-            log_warn("Failed to unregister stream '%s' from go2rtc", stream_name);
-        }
-    }
+    go2rtc_integration_unregister_stream(stream_name);
     #endif
 
     // Delete the stream from the database

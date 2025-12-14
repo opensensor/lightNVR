@@ -116,7 +116,7 @@ void shutdown_api_detection_system(void) {
  */
 int detect_objects_api(const char *api_url, const unsigned char *frame_data,
                       int width, int height, int channels, detection_result_t *result,
-                      const char *stream_name) {
+                      const char *stream_name, float threshold) {
     // CRITICAL FIX: Check if we're in shutdown mode or if the stream has been stopped
     if (is_shutdown_initiated()) {
         log_info("API Detection: System shutdown in progress, skipping detection");
@@ -265,12 +265,16 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         backend = "onnx";
     }
 
+    // Use passed threshold, or default to 0.5 if negative/zero
+    float actual_threshold = (threshold > 0.0f) ? threshold : 0.5f;
+
     // Construct the URL with query parameters
     char url_with_params[1024];
     snprintf(url_with_params, sizeof(url_with_params),
-             "%s?backend=%s&confidence_threshold=0.5&return_image=false",
-             actual_api_url, backend);
-    log_info("API Detection: Using URL with parameters: %s (backend: %s)", url_with_params, backend);
+             "%s?backend=%s&confidence_threshold=%.2f&return_image=false",
+             actual_api_url, backend, actual_threshold);
+    log_info("API Detection: Using URL with parameters: %s (backend: %s, threshold: %.2f)",
+             url_with_params, backend, actual_threshold);
 
     // Set up the request with the URL including query parameters
     curl_easy_setopt(curl_handle, CURLOPT_URL, url_with_params);
