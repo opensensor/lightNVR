@@ -149,9 +149,13 @@ LightNVR is perfect for:
 
 Define custom detection zones with a visual polygon editor. Perfect for monitoring specific areas like doorways, parking spots, or restricted zones while ignoring irrelevant motion.
 
-| ![Detection Zone Editor](docs/images/zone-editor.png) | ![Detection Zones Configuration](docs/images/stream-config-zones.png) |
-|:-----------------------------------------------------:|:--------------------------------------------------------------------:|
-| Interactive zone editor with polygon drawing          | Detection Zones section in stream configuration                      |
+| ![Detection Zone Editor](docs/images/zone-editor-demo.png) |
+|:----------------------------------------------------------:|
+| Interactive zone editor with driveway detection zone drawn |
+
+| ![Detection Zones Configuration](docs/images/stream-config-zones.png) |
+|:---------------------------------------------------------------------:|
+| Detection Zones section in stream configuration                       |
 
 **Key capabilities:**
 - Draw unlimited polygons per camera stream
@@ -191,6 +195,10 @@ Experience real-time camera feeds with sub-second latency using WebRTC technolog
 |:---------------------------------------------------:|:----------------------------------------------------:|
 | WebRTC live view with ultra-low latency             | HLS-based live view for compatibility                |
 
+| ![Detection Overlay](docs/images/detection-overlay.png) |
+|:-------------------------------------------------------:|
+| Real-time detection overlays with bounding boxes        |
+
 **Features:**
 - Sub-second latency for real-time monitoring
 - Automatic STUN/ICE configuration for NAT traversal
@@ -214,6 +222,10 @@ Powerful object detection using modern ONNX and TFLite models with zone-aware fi
 | ![Stream Management](docs/images/stream-management.png) | ![Recording Management](docs/images/recording-management.png) |
 |:-------------------------------------------------------:|:------------------------------------------------------------:|
 | Stream Management                                       | Recording Management                                          |
+
+| ![Recording Playback](docs/images/recording-playback.png) |
+|:---------------------------------------------------------:|
+| Recording Playback with video player modal                |
 
 | ![Settings Management](docs/images/settings-management.png) | ![System Information](docs/images/system-info.png) |
 |:----------------------------------------------------------:|:--------------------------------------------:|
