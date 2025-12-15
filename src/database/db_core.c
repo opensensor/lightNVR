@@ -20,6 +20,7 @@
 
 #include "database/db_core.h"
 #include "database/db_schema.h"
+#include "database/db_migrations.h"
 #include "database/db_backup.h"
 #include "core/logger.h"
 
@@ -558,11 +559,11 @@ int init_database(const char *db_path) {
         return -1;
     }
 
-    // Run schema migrations
-    log_info("Running schema migrations");
-    rc = run_schema_migrations();
+    // Run database migrations using the new SQL-file based system
+    log_info("Running database migrations");
+    rc = run_database_migrations();
     if (rc != 0) {
-        log_error("Failed to run schema migrations");
+        log_error("Failed to run database migrations");
         // Finalize any remaining statements before closing
         sqlite3_stmt *stmt;
         while ((stmt = sqlite3_next_stmt(db, NULL)) != NULL) {

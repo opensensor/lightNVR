@@ -344,6 +344,9 @@ set(REBUILD_RECORDINGS_SOURCES
     src/database/db_schema_cache.c
     src/database/db_backup.c
     src/database/db_transaction.c
+    src/database/sqlite_migrate.c
+    src/database/db_migrations.c
+    src/database/db_query_builder.c
 )
 
 # Define the rebuild_recordings utility
@@ -429,6 +432,8 @@ endif()
 # Install targets
 install(TARGETS lightnvr rebuild_recordings DESTINATION bin)
 install(DIRECTORY config/ DESTINATION /etc/lightnvr)
+install(DIRECTORY db/migrations/ DESTINATION share/lightnvr/migrations
+        FILES_MATCHING PATTERN "*.sql")
 
 # Add subdirectories for tests if testing is enabled
 option(BUILD_TESTS "Build the test suite" OFF)

@@ -38,6 +38,7 @@ typedef struct {
     int pre_detection_buffer; // Seconds to keep before detection
     int post_detection_buffer; // Seconds to keep after detection
     char detection_api_url[MAX_URL_LENGTH]; // Per-stream detection API URL override (empty = use global)
+    char buffer_strategy[32];  // Pre-detection buffer strategy: "auto", "go2rtc", "hls_segment", "memory_packet", "mmap_hybrid"
     bool streaming_enabled; // Whether HLS streaming is enabled for this stream
     stream_protocol_t protocol; // Stream protocol (TCP, UDP, or ONVIF)
     bool record_audio; // Whether to record audio with video

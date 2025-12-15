@@ -499,60 +499,26 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
 
     pthread_mutex_lock(db_mutex);
 
-    // Use our cached schema management functions to check for columns
-    bool has_detection_columns = cached_column_exists("streams", "detection_based_recording");
-    bool has_protocol_column = cached_column_exists("streams", "protocol");
-    bool has_onvif_column = cached_column_exists("streams", "is_onvif");
-    bool has_record_audio_column = cached_column_exists("streams", "record_audio");
-    bool has_detection_api_url_column = cached_column_exists("streams", "detection_api_url");
-    bool has_backchannel_column = cached_column_exists("streams", "backchannel_enabled");
-    bool has_retention_columns = cached_column_exists("streams", "retention_days");
-    bool has_ptz_columns = cached_column_exists("streams", "ptz_enabled");
+    // After migrations, all columns are guaranteed to exist
+    // Use a single query with all columns - column indices are fixed
+    const char *sql =
+        "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
+        "detection_based_recording, detection_model, detection_threshold, detection_interval, "
+        "pre_detection_buffer, post_detection_buffer, detection_api_url, protocol, is_onvif, record_audio, backchannel_enabled, "
+        "retention_days, detection_retention_days, max_storage_mb, "
+        "ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home "
+        "FROM streams WHERE name = ?;";
 
-    // Prepare SQL based on whether detection columns, protocol column, is_onvif column, record_audio column, detection_api_url column, backchannel_enabled column, retention columns, and PTZ columns exist
-    const char *sql;
-    if (has_detection_columns && has_protocol_column && has_onvif_column && has_record_audio_column && has_detection_api_url_column && has_backchannel_column && has_retention_columns && has_ptz_columns) {
-        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
-              "detection_based_recording, detection_model, detection_threshold, detection_interval, "
-              "pre_detection_buffer, post_detection_buffer, detection_api_url, protocol, is_onvif, record_audio, backchannel_enabled, "
-              "retention_days, detection_retention_days, max_storage_mb, "
-              "ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home "
-              "FROM streams WHERE name = ?;";
-    } else if (has_detection_columns && has_protocol_column && has_onvif_column && has_record_audio_column && has_detection_api_url_column && has_backchannel_column && has_retention_columns) {
-        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
-              "detection_based_recording, detection_model, detection_threshold, detection_interval, "
-              "pre_detection_buffer, post_detection_buffer, detection_api_url, protocol, is_onvif, record_audio, backchannel_enabled, "
-              "retention_days, detection_retention_days, max_storage_mb "
-              "FROM streams WHERE name = ?;";
-    } else if (has_detection_columns && has_protocol_column && has_onvif_column && has_record_audio_column && has_detection_api_url_column && has_backchannel_column) {
-        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
-              "detection_based_recording, detection_model, detection_threshold, detection_interval, "
-              "pre_detection_buffer, post_detection_buffer, detection_api_url, protocol, is_onvif, record_audio, backchannel_enabled "
-              "FROM streams WHERE name = ?;";
-    } else if (has_detection_columns && has_protocol_column && has_onvif_column && has_record_audio_column && has_detection_api_url_column) {
-        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
-              "detection_based_recording, detection_model, detection_threshold, detection_interval, "
-              "pre_detection_buffer, post_detection_buffer, detection_api_url, protocol, is_onvif, record_audio "
-              "FROM streams WHERE name = ?;";
-    } else if (has_detection_columns && has_protocol_column && has_onvif_column && has_record_audio_column) {
-        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
-              "detection_based_recording, detection_model, detection_threshold, detection_interval, "
-              "pre_detection_buffer, post_detection_buffer, protocol, is_onvif, record_audio "
-              "FROM streams WHERE name = ?;";
-    } else if (has_detection_columns && has_protocol_column) {
-        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
-              "detection_based_recording, detection_model, detection_threshold, detection_interval, "
-              "pre_detection_buffer, post_detection_buffer, protocol "
-              "FROM streams WHERE name = ?;";
-    } else if (has_detection_columns) {
-        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
-              "detection_based_recording, detection_model, detection_threshold, detection_interval, "
-              "pre_detection_buffer, post_detection_buffer "
-              "FROM streams WHERE name = ?;";
-    } else {
-        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration "
-              "FROM streams WHERE name = ?;";
-    }
+    // Column index constants for readability
+    enum {
+        COL_NAME = 0, COL_URL, COL_ENABLED, COL_STREAMING_ENABLED,
+        COL_WIDTH, COL_HEIGHT, COL_FPS, COL_CODEC, COL_PRIORITY, COL_RECORD, COL_SEGMENT_DURATION,
+        COL_DETECTION_BASED_RECORDING, COL_DETECTION_MODEL, COL_DETECTION_THRESHOLD, COL_DETECTION_INTERVAL,
+        COL_PRE_DETECTION_BUFFER, COL_POST_DETECTION_BUFFER, COL_DETECTION_API_URL,
+        COL_PROTOCOL, COL_IS_ONVIF, COL_RECORD_AUDIO, COL_BACKCHANNEL_ENABLED,
+        COL_RETENTION_DAYS, COL_DETECTION_RETENTION_DAYS, COL_MAX_STORAGE_MB,
+        COL_PTZ_ENABLED, COL_PTZ_MAX_X, COL_PTZ_MAX_Y, COL_PTZ_MAX_Z, COL_PTZ_HAS_HOME
+    };
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -561,161 +527,90 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
         return -1;
     }
 
-    // Bind parameters
     sqlite3_bind_text(stmt, 1, name, -1, SQLITE_STATIC);
 
-    // Execute query and fetch result
     if (sqlite3_step(stmt) == SQLITE_ROW) {
-        // Initialize stream with default values
         memset(stream, 0, sizeof(stream_config_t));
 
-        // Set default values for detection settings
-        stream->detection_threshold = 0.5f;
-        stream->detection_interval = 10;
-        stream->pre_detection_buffer = 0;  // Eliminated pre-buffering to prevent live stream delay
-        stream->post_detection_buffer = 3;  // Reduced from 10 to 3 to decrease latency
-
-        // Parse basic stream settings
-        const char *stream_name = (const char *)sqlite3_column_text(stmt, 0);
+        // Basic stream settings
+        const char *stream_name = (const char *)sqlite3_column_text(stmt, COL_NAME);
         if (stream_name) {
             strncpy(stream->name, stream_name, MAX_STREAM_NAME - 1);
             stream->name[MAX_STREAM_NAME - 1] = '\0';
         }
 
-        const char *url = (const char *)sqlite3_column_text(stmt, 1);
+        const char *url = (const char *)sqlite3_column_text(stmt, COL_URL);
         if (url) {
             strncpy(stream->url, url, MAX_URL_LENGTH - 1);
             stream->url[MAX_URL_LENGTH - 1] = '\0';
         }
 
-        stream->enabled = sqlite3_column_int(stmt, 2) != 0;
-        stream->streaming_enabled = sqlite3_column_int(stmt, 3) != 0;
-        stream->width = sqlite3_column_int(stmt, 4);
-        stream->height = sqlite3_column_int(stmt, 5);
-        stream->fps = sqlite3_column_int(stmt, 6);
+        stream->enabled = sqlite3_column_int(stmt, COL_ENABLED) != 0;
+        stream->streaming_enabled = sqlite3_column_int(stmt, COL_STREAMING_ENABLED) != 0;
+        stream->width = sqlite3_column_int(stmt, COL_WIDTH);
+        stream->height = sqlite3_column_int(stmt, COL_HEIGHT);
+        stream->fps = sqlite3_column_int(stmt, COL_FPS);
 
-        const char *codec = (const char *)sqlite3_column_text(stmt, 7);
+        const char *codec = (const char *)sqlite3_column_text(stmt, COL_CODEC);
         if (codec) {
             strncpy(stream->codec, codec, sizeof(stream->codec) - 1);
             stream->codec[sizeof(stream->codec) - 1] = '\0';
         }
 
-        stream->priority = sqlite3_column_int(stmt, 8);
-        stream->record = sqlite3_column_int(stmt, 9) != 0;
-        stream->segment_duration = sqlite3_column_int(stmt, 10);
+        stream->priority = sqlite3_column_int(stmt, COL_PRIORITY);
+        stream->record = sqlite3_column_int(stmt, COL_RECORD) != 0;
+        stream->segment_duration = sqlite3_column_int(stmt, COL_SEGMENT_DURATION);
 
-        // Parse detection settings if columns exist
-        if (has_detection_columns && sqlite3_column_count(stmt) > 11) {
-            stream->detection_based_recording = sqlite3_column_int(stmt, 11) != 0;
+        // Detection settings
+        stream->detection_based_recording = sqlite3_column_int(stmt, COL_DETECTION_BASED_RECORDING) != 0;
 
-            const char *detection_model = (const char *)sqlite3_column_text(stmt, 12);
-            if (detection_model) {
-                strncpy(stream->detection_model, detection_model, MAX_PATH_LENGTH - 1);
-                stream->detection_model[MAX_PATH_LENGTH - 1] = '\0';
-            }
-
-            if (sqlite3_column_type(stmt, 13) != SQLITE_NULL) {
-                stream->detection_threshold = (float)sqlite3_column_double(stmt, 13);
-            }
-
-            if (sqlite3_column_type(stmt, 14) != SQLITE_NULL) {
-                stream->detection_interval = sqlite3_column_int(stmt, 14);
-            }
-
-            if (sqlite3_column_type(stmt, 15) != SQLITE_NULL) {
-                stream->pre_detection_buffer = sqlite3_column_int(stmt, 15);
-            }
-
-            if (sqlite3_column_type(stmt, 16) != SQLITE_NULL) {
-                stream->post_detection_buffer = sqlite3_column_int(stmt, 16);
-            }
-
-            // Parse detection_api_url if it exists (column 17)
-            int next_col = 17;
-            if (has_detection_api_url_column && sqlite3_column_count(stmt) > next_col) {
-                const char *detection_api_url = (const char *)sqlite3_column_text(stmt, next_col);
-                if (detection_api_url) {
-                    strncpy(stream->detection_api_url, detection_api_url, MAX_URL_LENGTH - 1);
-                    stream->detection_api_url[MAX_URL_LENGTH - 1] = '\0';
-                }
-                next_col++;
-            } else {
-                stream->detection_api_url[0] = '\0';
-            }
-
-            // Parse protocol if it exists
-            if (has_protocol_column && sqlite3_column_count(stmt) > next_col) {
-                if (sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
-                    stream->protocol = (stream_protocol_t)sqlite3_column_int(stmt, next_col);
-                }
-                next_col++;
-            }
-
-            // Parse is_onvif if it exists
-            if (has_onvif_column && sqlite3_column_count(stmt) > next_col) {
-                if (sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
-                    stream->is_onvif = sqlite3_column_int(stmt, next_col) != 0;
-                }
-                next_col++;
-            }
-
-            // Parse record_audio if it exists
-            if (has_record_audio_column && sqlite3_column_count(stmt) > next_col) {
-                if (sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
-                    stream->record_audio = sqlite3_column_int(stmt, next_col) != 0;
-                }
-                next_col++;
-            }
-
-            // Parse backchannel_enabled if it exists
-            if (has_backchannel_column && sqlite3_column_count(stmt) > next_col) {
-                if (sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
-                    stream->backchannel_enabled = sqlite3_column_int(stmt, next_col) != 0;
-                }
-                next_col++;
-            }
-
-            // Parse retention columns if they exist
-            if (has_retention_columns && sqlite3_column_count(stmt) > next_col) {
-                if (sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
-                    stream->retention_days = sqlite3_column_int(stmt, next_col);
-                }
-                next_col++;
-                if (sqlite3_column_count(stmt) > next_col && sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
-                    stream->detection_retention_days = sqlite3_column_int(stmt, next_col);
-                }
-                next_col++;
-                if (sqlite3_column_count(stmt) > next_col && sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
-                    stream->max_storage_mb = sqlite3_column_int(stmt, next_col);
-                }
-                next_col++;
-            }
-
-            // Parse PTZ columns if they exist
-            if (has_ptz_columns && sqlite3_column_count(stmt) > next_col) {
-                if (sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
-                    stream->ptz_enabled = sqlite3_column_int(stmt, next_col) != 0;
-                }
-                next_col++;
-                if (sqlite3_column_count(stmt) > next_col && sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
-                    stream->ptz_max_x = sqlite3_column_int(stmt, next_col);
-                }
-                next_col++;
-                if (sqlite3_column_count(stmt) > next_col && sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
-                    stream->ptz_max_y = sqlite3_column_int(stmt, next_col);
-                }
-                next_col++;
-                if (sqlite3_column_count(stmt) > next_col && sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
-                    stream->ptz_max_z = sqlite3_column_int(stmt, next_col);
-                }
-                next_col++;
-                if (sqlite3_column_count(stmt) > next_col && sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
-                    stream->ptz_has_home = sqlite3_column_int(stmt, next_col) != 0;
-                }
-            }
+        const char *detection_model = (const char *)sqlite3_column_text(stmt, COL_DETECTION_MODEL);
+        if (detection_model) {
+            strncpy(stream->detection_model, detection_model, MAX_PATH_LENGTH - 1);
+            stream->detection_model[MAX_PATH_LENGTH - 1] = '\0';
         }
 
-        result = 0; // Success
+        stream->detection_threshold = (sqlite3_column_type(stmt, COL_DETECTION_THRESHOLD) != SQLITE_NULL)
+            ? (float)sqlite3_column_double(stmt, COL_DETECTION_THRESHOLD) : 0.5f;
+        stream->detection_interval = (sqlite3_column_type(stmt, COL_DETECTION_INTERVAL) != SQLITE_NULL)
+            ? sqlite3_column_int(stmt, COL_DETECTION_INTERVAL) : 10;
+        stream->pre_detection_buffer = (sqlite3_column_type(stmt, COL_PRE_DETECTION_BUFFER) != SQLITE_NULL)
+            ? sqlite3_column_int(stmt, COL_PRE_DETECTION_BUFFER) : 0;
+        stream->post_detection_buffer = (sqlite3_column_type(stmt, COL_POST_DETECTION_BUFFER) != SQLITE_NULL)
+            ? sqlite3_column_int(stmt, COL_POST_DETECTION_BUFFER) : 3;
+
+        const char *detection_api_url = (const char *)sqlite3_column_text(stmt, COL_DETECTION_API_URL);
+        if (detection_api_url) {
+            strncpy(stream->detection_api_url, detection_api_url, MAX_URL_LENGTH - 1);
+            stream->detection_api_url[MAX_URL_LENGTH - 1] = '\0';
+        }
+
+        // Protocol and ONVIF
+        stream->protocol = (sqlite3_column_type(stmt, COL_PROTOCOL) != SQLITE_NULL)
+            ? (stream_protocol_t)sqlite3_column_int(stmt, COL_PROTOCOL) : STREAM_PROTOCOL_TCP;
+        stream->is_onvif = sqlite3_column_int(stmt, COL_IS_ONVIF) != 0;
+        stream->record_audio = sqlite3_column_int(stmt, COL_RECORD_AUDIO) != 0;
+        stream->backchannel_enabled = sqlite3_column_int(stmt, COL_BACKCHANNEL_ENABLED) != 0;
+
+        // Retention settings
+        stream->retention_days = (sqlite3_column_type(stmt, COL_RETENTION_DAYS) != SQLITE_NULL)
+            ? sqlite3_column_int(stmt, COL_RETENTION_DAYS) : 0;
+        stream->detection_retention_days = (sqlite3_column_type(stmt, COL_DETECTION_RETENTION_DAYS) != SQLITE_NULL)
+            ? sqlite3_column_int(stmt, COL_DETECTION_RETENTION_DAYS) : 0;
+        stream->max_storage_mb = (sqlite3_column_type(stmt, COL_MAX_STORAGE_MB) != SQLITE_NULL)
+            ? sqlite3_column_int(stmt, COL_MAX_STORAGE_MB) : 0;
+
+        // PTZ settings
+        stream->ptz_enabled = sqlite3_column_int(stmt, COL_PTZ_ENABLED) != 0;
+        stream->ptz_max_x = (sqlite3_column_type(stmt, COL_PTZ_MAX_X) != SQLITE_NULL)
+            ? sqlite3_column_int(stmt, COL_PTZ_MAX_X) : 0;
+        stream->ptz_max_y = (sqlite3_column_type(stmt, COL_PTZ_MAX_Y) != SQLITE_NULL)
+            ? sqlite3_column_int(stmt, COL_PTZ_MAX_Y) : 0;
+        stream->ptz_max_z = (sqlite3_column_type(stmt, COL_PTZ_MAX_Z) != SQLITE_NULL)
+            ? sqlite3_column_int(stmt, COL_PTZ_MAX_Z) : 0;
+        stream->ptz_has_home = sqlite3_column_int(stmt, COL_PTZ_HAS_HOME) != 0;
+
+        result = 0;
     }
 
     // Finalize the prepared statement
@@ -755,55 +650,25 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
 
     pthread_mutex_lock(db_mutex);
 
-    // Use our cached schema management functions to check for columns
-    bool has_detection_columns = cached_column_exists("streams", "detection_based_recording");
-    bool has_protocol_column = cached_column_exists("streams", "protocol");
-    bool has_onvif_column = cached_column_exists("streams", "is_onvif");
-    bool has_record_audio_column = cached_column_exists("streams", "record_audio");
-    bool has_detection_api_url_column = cached_column_exists("streams", "detection_api_url");
-    bool has_backchannel_column = cached_column_exists("streams", "backchannel_enabled");
-    bool has_retention_columns = cached_column_exists("streams", "retention_days");
-    bool has_ptz_columns = cached_column_exists("streams", "ptz_enabled");
+    // After migrations, all columns are guaranteed to exist
+    const char *sql =
+        "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
+        "detection_based_recording, detection_model, detection_threshold, detection_interval, "
+        "pre_detection_buffer, post_detection_buffer, detection_api_url, protocol, is_onvif, record_audio, backchannel_enabled, "
+        "retention_days, detection_retention_days, max_storage_mb, "
+        "ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home "
+        "FROM streams ORDER BY name;";
 
-    // Prepare SQL based on whether detection columns, protocol column, is_onvif column, record_audio column, detection_api_url column, backchannel_enabled column, retention columns, and PTZ columns exist
-    const char *sql;
-    if (has_detection_columns && has_protocol_column && has_onvif_column && has_record_audio_column && has_detection_api_url_column && has_backchannel_column && has_retention_columns && has_ptz_columns) {
-        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
-              "detection_based_recording, detection_model, detection_threshold, detection_interval, "
-              "pre_detection_buffer, post_detection_buffer, detection_api_url, protocol, is_onvif, record_audio, backchannel_enabled, "
-              "retention_days, detection_retention_days, max_storage_mb, "
-              "ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home "
-              "FROM streams ORDER BY name;";
-    } else if (has_detection_columns && has_protocol_column && has_onvif_column && has_record_audio_column && has_backchannel_column && has_retention_columns) {
-        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
-              "detection_based_recording, detection_model, detection_threshold, detection_interval, "
-              "pre_detection_buffer, post_detection_buffer, protocol, is_onvif, record_audio, backchannel_enabled, "
-              "retention_days, detection_retention_days, max_storage_mb "
-              "FROM streams ORDER BY name;";
-    } else if (has_detection_columns && has_protocol_column && has_onvif_column && has_record_audio_column && has_backchannel_column) {
-        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
-              "detection_based_recording, detection_model, detection_threshold, detection_interval, "
-              "pre_detection_buffer, post_detection_buffer, protocol, is_onvif, record_audio, backchannel_enabled "
-              "FROM streams ORDER BY name;";
-    } else if (has_detection_columns && has_protocol_column && has_onvif_column && has_record_audio_column) {
-        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
-              "detection_based_recording, detection_model, detection_threshold, detection_interval, "
-              "pre_detection_buffer, post_detection_buffer, protocol, is_onvif, record_audio "
-              "FROM streams ORDER BY name;";
-    } else if (has_detection_columns && has_protocol_column) {
-        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
-              "detection_based_recording, detection_model, detection_threshold, detection_interval, "
-              "pre_detection_buffer, post_detection_buffer, protocol "
-              "FROM streams ORDER BY name;";
-    } else if (has_detection_columns) {
-        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
-              "detection_based_recording, detection_model, detection_threshold, detection_interval, "
-              "pre_detection_buffer, post_detection_buffer "
-              "FROM streams ORDER BY name;";
-    } else {
-        sql = "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration "
-              "FROM streams ORDER BY name;";
-    }
+    // Column index constants (same as get_stream_config_by_name)
+    enum {
+        COL_NAME = 0, COL_URL, COL_ENABLED, COL_STREAMING_ENABLED,
+        COL_WIDTH, COL_HEIGHT, COL_FPS, COL_CODEC, COL_PRIORITY, COL_RECORD, COL_SEGMENT_DURATION,
+        COL_DETECTION_BASED_RECORDING, COL_DETECTION_MODEL, COL_DETECTION_THRESHOLD, COL_DETECTION_INTERVAL,
+        COL_PRE_DETECTION_BUFFER, COL_POST_DETECTION_BUFFER, COL_DETECTION_API_URL,
+        COL_PROTOCOL, COL_IS_ONVIF, COL_RECORD_AUDIO, COL_BACKCHANNEL_ENABLED,
+        COL_RETENTION_DAYS, COL_DETECTION_RETENTION_DAYS, COL_MAX_STORAGE_MB,
+        COL_PTZ_ENABLED, COL_PTZ_MAX_X, COL_PTZ_MAX_Y, COL_PTZ_MAX_Z, COL_PTZ_HAS_HOME
+    };
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -812,156 +677,87 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
         return -1;
     }
 
-    // Execute query and fetch results
     while (sqlite3_step(stmt) == SQLITE_ROW && count < max_count) {
-        // Initialize stream with default values
-        memset(&streams[count], 0, sizeof(stream_config_t));
+        stream_config_t *s = &streams[count];
+        memset(s, 0, sizeof(stream_config_t));
 
-        // Set default values for detection settings
-        streams[count].detection_threshold = 0.5f;
-        streams[count].detection_interval = 10;
-        streams[count].pre_detection_buffer = 0;  // Eliminated pre-buffering to prevent live stream delay
-        streams[count].post_detection_buffer = 3;  // Reduced from 10 to 3 to decrease latency
-
-        // Parse basic stream settings
-        const char *name = (const char *)sqlite3_column_text(stmt, 0);
+        // Basic settings
+        const char *name = (const char *)sqlite3_column_text(stmt, COL_NAME);
         if (name) {
-            strncpy(streams[count].name, name, MAX_STREAM_NAME - 1);
-            streams[count].name[MAX_STREAM_NAME - 1] = '\0';
+            strncpy(s->name, name, MAX_STREAM_NAME - 1);
+            s->name[MAX_STREAM_NAME - 1] = '\0';
         }
 
-        const char *url = (const char *)sqlite3_column_text(stmt, 1);
+        const char *url = (const char *)sqlite3_column_text(stmt, COL_URL);
         if (url) {
-            strncpy(streams[count].url, url, MAX_URL_LENGTH - 1);
-            streams[count].url[MAX_URL_LENGTH - 1] = '\0';
+            strncpy(s->url, url, MAX_URL_LENGTH - 1);
+            s->url[MAX_URL_LENGTH - 1] = '\0';
         }
 
-        streams[count].enabled = sqlite3_column_int(stmt, 2) != 0;
-        streams[count].streaming_enabled = sqlite3_column_int(stmt, 3) != 0;
-        streams[count].width = sqlite3_column_int(stmt, 4);
-        streams[count].height = sqlite3_column_int(stmt, 5);
-        streams[count].fps = sqlite3_column_int(stmt, 6);
+        s->enabled = sqlite3_column_int(stmt, COL_ENABLED) != 0;
+        s->streaming_enabled = sqlite3_column_int(stmt, COL_STREAMING_ENABLED) != 0;
+        s->width = sqlite3_column_int(stmt, COL_WIDTH);
+        s->height = sqlite3_column_int(stmt, COL_HEIGHT);
+        s->fps = sqlite3_column_int(stmt, COL_FPS);
 
-        const char *codec = (const char *)sqlite3_column_text(stmt, 7);
+        const char *codec = (const char *)sqlite3_column_text(stmt, COL_CODEC);
         if (codec) {
-            strncpy(streams[count].codec, codec, sizeof(streams[count].codec) - 1);
-            streams[count].codec[sizeof(streams[count].codec) - 1] = '\0';
+            strncpy(s->codec, codec, sizeof(s->codec) - 1);
+            s->codec[sizeof(s->codec) - 1] = '\0';
         }
 
-        streams[count].priority = sqlite3_column_int(stmt, 8);
-        streams[count].record = sqlite3_column_int(stmt, 9) != 0;
-        streams[count].segment_duration = sqlite3_column_int(stmt, 10);
+        s->priority = sqlite3_column_int(stmt, COL_PRIORITY);
+        s->record = sqlite3_column_int(stmt, COL_RECORD) != 0;
+        s->segment_duration = sqlite3_column_int(stmt, COL_SEGMENT_DURATION);
 
-        // Parse detection settings if columns exist
-        if (has_detection_columns && sqlite3_column_count(stmt) > 11) {
-            streams[count].detection_based_recording = sqlite3_column_int(stmt, 11) != 0;
+        // Detection settings
+        s->detection_based_recording = sqlite3_column_int(stmt, COL_DETECTION_BASED_RECORDING) != 0;
 
-            const char *detection_model = (const char *)sqlite3_column_text(stmt, 12);
-            if (detection_model) {
-                strncpy(streams[count].detection_model, detection_model, MAX_PATH_LENGTH - 1);
-                streams[count].detection_model[MAX_PATH_LENGTH - 1] = '\0';
-            }
-
-            if (sqlite3_column_type(stmt, 13) != SQLITE_NULL) {
-                streams[count].detection_threshold = (float)sqlite3_column_double(stmt, 13);
-            }
-
-            if (sqlite3_column_type(stmt, 14) != SQLITE_NULL) {
-                streams[count].detection_interval = sqlite3_column_int(stmt, 14);
-            }
-
-            if (sqlite3_column_type(stmt, 15) != SQLITE_NULL) {
-                streams[count].pre_detection_buffer = sqlite3_column_int(stmt, 15);
-            }
-
-            if (sqlite3_column_type(stmt, 16) != SQLITE_NULL) {
-                streams[count].post_detection_buffer = sqlite3_column_int(stmt, 16);
-            }
-
-            // Parse detection_api_url if it exists (column 17)
-            int next_col = 17;
-            if (has_detection_api_url_column && sqlite3_column_count(stmt) > next_col) {
-                const char *detection_api_url = (const char *)sqlite3_column_text(stmt, next_col);
-                if (detection_api_url) {
-                    strncpy(streams[count].detection_api_url, detection_api_url, MAX_URL_LENGTH - 1);
-                    streams[count].detection_api_url[MAX_URL_LENGTH - 1] = '\0';
-                }
-                next_col++;
-            } else {
-                streams[count].detection_api_url[0] = '\0';
-            }
-
-            // Parse protocol if it exists
-            if (has_protocol_column && sqlite3_column_count(stmt) > next_col) {
-                if (sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
-                    streams[count].protocol = (stream_protocol_t)sqlite3_column_int(stmt, next_col);
-                }
-                next_col++;
-            }
-
-            // Parse is_onvif if it exists
-            if (has_onvif_column && sqlite3_column_count(stmt) > next_col) {
-                if (sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
-                    streams[count].is_onvif = sqlite3_column_int(stmt, next_col) != 0;
-                }
-                next_col++;
-            }
-
-            // Parse record_audio if it exists
-            if (has_record_audio_column && sqlite3_column_count(stmt) > next_col) {
-                if (sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
-                    streams[count].record_audio = sqlite3_column_int(stmt, next_col) != 0;
-                }
-                next_col++;
-            }
-
-            // Parse backchannel_enabled if it exists
-            if (has_backchannel_column && sqlite3_column_count(stmt) > next_col) {
-                if (sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
-                    streams[count].backchannel_enabled = sqlite3_column_int(stmt, next_col) != 0;
-                }
-                next_col++;
-            }
-
-            // Parse retention columns if they exist
-            if (has_retention_columns && sqlite3_column_count(stmt) > next_col) {
-                if (sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
-                    streams[count].retention_days = sqlite3_column_int(stmt, next_col);
-                }
-                next_col++;
-                if (sqlite3_column_count(stmt) > next_col && sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
-                    streams[count].detection_retention_days = sqlite3_column_int(stmt, next_col);
-                }
-                next_col++;
-                if (sqlite3_column_count(stmt) > next_col && sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
-                    streams[count].max_storage_mb = sqlite3_column_int(stmt, next_col);
-                }
-                next_col++;
-            }
-
-            // Parse PTZ columns if they exist
-            if (has_ptz_columns && sqlite3_column_count(stmt) > next_col) {
-                if (sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
-                    streams[count].ptz_enabled = sqlite3_column_int(stmt, next_col) != 0;
-                }
-                next_col++;
-                if (sqlite3_column_count(stmt) > next_col && sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
-                    streams[count].ptz_max_x = sqlite3_column_int(stmt, next_col);
-                }
-                next_col++;
-                if (sqlite3_column_count(stmt) > next_col && sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
-                    streams[count].ptz_max_y = sqlite3_column_int(stmt, next_col);
-                }
-                next_col++;
-                if (sqlite3_column_count(stmt) > next_col && sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
-                    streams[count].ptz_max_z = sqlite3_column_int(stmt, next_col);
-                }
-                next_col++;
-                if (sqlite3_column_count(stmt) > next_col && sqlite3_column_type(stmt, next_col) != SQLITE_NULL) {
-                    streams[count].ptz_has_home = sqlite3_column_int(stmt, next_col) != 0;
-                }
-            }
+        const char *detection_model = (const char *)sqlite3_column_text(stmt, COL_DETECTION_MODEL);
+        if (detection_model) {
+            strncpy(s->detection_model, detection_model, MAX_PATH_LENGTH - 1);
+            s->detection_model[MAX_PATH_LENGTH - 1] = '\0';
         }
+
+        s->detection_threshold = (sqlite3_column_type(stmt, COL_DETECTION_THRESHOLD) != SQLITE_NULL)
+            ? (float)sqlite3_column_double(stmt, COL_DETECTION_THRESHOLD) : 0.5f;
+        s->detection_interval = (sqlite3_column_type(stmt, COL_DETECTION_INTERVAL) != SQLITE_NULL)
+            ? sqlite3_column_int(stmt, COL_DETECTION_INTERVAL) : 10;
+        s->pre_detection_buffer = (sqlite3_column_type(stmt, COL_PRE_DETECTION_BUFFER) != SQLITE_NULL)
+            ? sqlite3_column_int(stmt, COL_PRE_DETECTION_BUFFER) : 0;
+        s->post_detection_buffer = (sqlite3_column_type(stmt, COL_POST_DETECTION_BUFFER) != SQLITE_NULL)
+            ? sqlite3_column_int(stmt, COL_POST_DETECTION_BUFFER) : 3;
+
+        const char *detection_api_url = (const char *)sqlite3_column_text(stmt, COL_DETECTION_API_URL);
+        if (detection_api_url) {
+            strncpy(s->detection_api_url, detection_api_url, MAX_URL_LENGTH - 1);
+            s->detection_api_url[MAX_URL_LENGTH - 1] = '\0';
+        }
+
+        // Protocol and ONVIF
+        s->protocol = (sqlite3_column_type(stmt, COL_PROTOCOL) != SQLITE_NULL)
+            ? (stream_protocol_t)sqlite3_column_int(stmt, COL_PROTOCOL) : STREAM_PROTOCOL_TCP;
+        s->is_onvif = sqlite3_column_int(stmt, COL_IS_ONVIF) != 0;
+        s->record_audio = sqlite3_column_int(stmt, COL_RECORD_AUDIO) != 0;
+        s->backchannel_enabled = sqlite3_column_int(stmt, COL_BACKCHANNEL_ENABLED) != 0;
+
+        // Retention settings
+        s->retention_days = (sqlite3_column_type(stmt, COL_RETENTION_DAYS) != SQLITE_NULL)
+            ? sqlite3_column_int(stmt, COL_RETENTION_DAYS) : 0;
+        s->detection_retention_days = (sqlite3_column_type(stmt, COL_DETECTION_RETENTION_DAYS) != SQLITE_NULL)
+            ? sqlite3_column_int(stmt, COL_DETECTION_RETENTION_DAYS) : 0;
+        s->max_storage_mb = (sqlite3_column_type(stmt, COL_MAX_STORAGE_MB) != SQLITE_NULL)
+            ? sqlite3_column_int(stmt, COL_MAX_STORAGE_MB) : 0;
+
+        // PTZ settings
+        s->ptz_enabled = sqlite3_column_int(stmt, COL_PTZ_ENABLED) != 0;
+        s->ptz_max_x = (sqlite3_column_type(stmt, COL_PTZ_MAX_X) != SQLITE_NULL)
+            ? sqlite3_column_int(stmt, COL_PTZ_MAX_X) : 0;
+        s->ptz_max_y = (sqlite3_column_type(stmt, COL_PTZ_MAX_Y) != SQLITE_NULL)
+            ? sqlite3_column_int(stmt, COL_PTZ_MAX_Y) : 0;
+        s->ptz_max_z = (sqlite3_column_type(stmt, COL_PTZ_MAX_Z) != SQLITE_NULL)
+            ? sqlite3_column_int(stmt, COL_PTZ_MAX_Z) : 0;
+        s->ptz_has_home = sqlite3_column_int(stmt, COL_PTZ_HAS_HOME) != 0;
 
         count++;
     }

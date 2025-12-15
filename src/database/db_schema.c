@@ -16,7 +16,7 @@
 #include "core/logger.h"
 
 // Current schema version - increment this when adding new migrations
-#define CURRENT_SCHEMA_VERSION 14
+#define CURRENT_SCHEMA_VERSION 15
 
 // Migration function type
 typedef int (*migration_func_t)(void);
@@ -35,6 +35,7 @@ static int migration_v10_to_v11(void);
 static int migration_v11_to_v12(void);
 static int migration_v12_to_v13(void);
 static int migration_v13_to_v14(void);
+static int migration_v14_to_v15(void);
 
 // Array of migration functions
 static migration_func_t migrations[] = {
@@ -51,7 +52,8 @@ static migration_func_t migrations[] = {
     migration_v10_to_v11, // v10->v11
     migration_v11_to_v12, // v11->v12
     migration_v12_to_v13, // v12->v13 - Recording retention policies
-    migration_v13_to_v14  // v13->v14 - PTZ support
+    migration_v13_to_v14, // v13->v14 - PTZ support
+    migration_v14_to_v15  // v14->v15 - Buffer strategy
 };
 
 /**
@@ -1018,5 +1020,28 @@ static int migration_v13_to_v14(void) {
     }
 
     log_info("Completed migration v13 to v14 successfully");
+    return 0;
+}
+
+/**
+ * Migration from version 14 to 15
+ * - Add buffer_strategy column to streams table for per-stream pre-detection buffer strategy
+ */
+static int migration_v14_to_v15(void) {
+    log_info("Running migration from v14 to v15: Adding buffer_strategy column to streams table");
+
+    int rc = 0;
+
+    // Add buffer_strategy column to streams table
+    // Values: 'auto', 'none', 'go2rtc', 'hls_segment', 'memory_packet', 'mmap_hybrid'
+    log_info("Adding buffer_strategy column to streams table");
+    rc |= add_column_if_not_exists("streams", "buffer_strategy", "TEXT DEFAULT 'auto'");
+
+    if (rc != 0) {
+        log_error("Failed to add buffer_strategy column to streams table");
+        return -1;
+    }
+
+    log_info("Completed migration v14 to v15 successfully");
     return 0;
 }
