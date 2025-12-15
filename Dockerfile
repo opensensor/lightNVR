@@ -67,7 +67,7 @@ RUN DPKG_ARCH=$(dpkg --print-architecture) && \
     mkdir -p /bin /etc/lightnvr/go2rtc && \
     # Clone and build go2rtc from opensensor fork
     cd /tmp && \
-    git clone --depth 1 --branch fix/memory-leaks https://github.com/opensensor/go2rtc.git && \
+    git clone --depth 1 --branch feature/native-jpeg-transcode https://github.com/opensensor/go2rtc.git && \
     cd go2rtc && \
     CGO_ENABLED=0 /usr/local/go/bin/go build -ldflags "-s -w" -trimpath -o /bin/go2rtc . && \
     cd / && rm -rf /tmp/go2rtc /usr/local/go && \
