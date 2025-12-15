@@ -56,7 +56,12 @@ void mg_handle_get_settings(struct mg_connection *c, struct mg_http_message *hm)
     cJSON_AddNumberToObject(settings, "buffer_size", g_config.buffer_size);
     cJSON_AddBoolToObject(settings, "use_swap", g_config.use_swap);
     cJSON_AddNumberToObject(settings, "swap_size", g_config.swap_size / (1024 * 1024)); // Convert bytes to MB
-    
+
+    // Detection buffer defaults
+    cJSON_AddNumberToObject(settings, "pre_detection_buffer", g_config.default_pre_detection_buffer);
+    cJSON_AddNumberToObject(settings, "post_detection_buffer", g_config.default_post_detection_buffer);
+    cJSON_AddStringToObject(settings, "buffer_strategy", g_config.default_buffer_strategy);
+
     // Convert to string
     char *json_str = cJSON_PrintUnformatted(settings);
     if (!json_str) {
@@ -244,7 +249,40 @@ void mg_handle_post_settings(struct mg_connection *c, struct mg_http_message *hm
         settings_changed = true;
         log_info("Updated swap_size: %llu bytes", (unsigned long long)g_config.swap_size);
     }
-    
+
+    // Pre-detection buffer (default for new streams)
+    cJSON *pre_detection_buffer = cJSON_GetObjectItem(settings, "pre_detection_buffer");
+    if (pre_detection_buffer && cJSON_IsNumber(pre_detection_buffer)) {
+        int value = pre_detection_buffer->valueint;
+        // Clamp to valid range
+        if (value < 0) value = 0;
+        if (value > 60) value = 60;
+        g_config.default_pre_detection_buffer = value;
+        settings_changed = true;
+        log_info("Updated default_pre_detection_buffer: %d seconds", g_config.default_pre_detection_buffer);
+    }
+
+    // Post-detection buffer (default for new streams)
+    cJSON *post_detection_buffer = cJSON_GetObjectItem(settings, "post_detection_buffer");
+    if (post_detection_buffer && cJSON_IsNumber(post_detection_buffer)) {
+        int value = post_detection_buffer->valueint;
+        // Clamp to valid range
+        if (value < 0) value = 0;
+        if (value > 300) value = 300;
+        g_config.default_post_detection_buffer = value;
+        settings_changed = true;
+        log_info("Updated default_post_detection_buffer: %d seconds", g_config.default_post_detection_buffer);
+    }
+
+    // Buffer strategy (default for new streams)
+    cJSON *buffer_strategy = cJSON_GetObjectItem(settings, "buffer_strategy");
+    if (buffer_strategy && cJSON_IsString(buffer_strategy)) {
+        strncpy(g_config.default_buffer_strategy, buffer_strategy->valuestring, sizeof(g_config.default_buffer_strategy) - 1);
+        g_config.default_buffer_strategy[sizeof(g_config.default_buffer_strategy) - 1] = '\0';
+        settings_changed = true;
+        log_info("Updated default_buffer_strategy: %s", g_config.default_buffer_strategy);
+    }
+
     // Database path
     cJSON *db_path = cJSON_GetObjectItem(settings, "db_path");
     if (db_path && cJSON_IsString(db_path) && 

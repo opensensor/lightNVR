@@ -98,6 +98,11 @@ typedef struct {
     char api_detection_url[MAX_URL_LENGTH]; // URL for the detection API
     char api_detection_backend[32];        // Backend to use: onnx, tflite, opencv (default: onnx)
 
+    // Global detection buffer defaults (used when per-stream settings are not specified)
+    int default_pre_detection_buffer;      // Default seconds to keep before detection (0-60)
+    int default_post_detection_buffer;     // Default seconds to keep after detection (0-300)
+    char default_buffer_strategy[32];      // Default buffer strategy: auto, go2rtc, hls_segment, memory_packet, mmap_hybrid
+
     // Database settings
     char db_path[MAX_PATH_LENGTH];
     

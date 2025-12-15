@@ -33,7 +33,8 @@ export function SettingsView() {
     detectionModelsPath: '',
     defaultDetectionThreshold: 50,
     defaultPreBuffer: 5,
-    defaultPostBuffer: 10
+    defaultPostBuffer: 10,
+    bufferStrategy: 'auto'
   });
   
   // Fetch settings using useQuery
@@ -102,7 +103,8 @@ export function SettingsView() {
         detectionModelsPath: settingsData.models_path || '',
         defaultDetectionThreshold: settingsData.default_detection_threshold || 50,
         defaultPreBuffer: settingsData.pre_detection_buffer?.toString() || '5',
-        defaultPostBuffer: settingsData.post_detection_buffer?.toString() || '10'
+        defaultPostBuffer: settingsData.post_detection_buffer?.toString() || '10',
+        bufferStrategy: settingsData.buffer_strategy || 'auto'
       };
       
       // Update state with loaded settings
@@ -135,7 +137,8 @@ export function SettingsView() {
       models_path: settings.detectionModelsPath,
       default_detection_threshold: settings.defaultDetectionThreshold,
       pre_detection_buffer: parseInt(settings.defaultPreBuffer, 10),
-      post_detection_buffer: parseInt(settings.defaultPostBuffer, 10)
+      post_detection_buffer: parseInt(settings.defaultPostBuffer, 10),
+      buffer_strategy: settings.bufferStrategy
     };
     
     // Use mutation to save settings
@@ -467,17 +470,38 @@ export function SettingsView() {
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-default-post-buffer" class="font-medium">Default Post-detection Buffer (seconds)</label>
             <div class="col-span-2">
-              <input 
-                type="number" 
-                id="setting-default-post-buffer" 
+              <input
+                type="number"
+                id="setting-default-post-buffer"
                 name="defaultPostBuffer"
-                min="0" 
-                max="300" 
+                min="0"
+                max="300"
                 class="p-2 border border-input rounded bg-background text-foreground"
                 value={settings.defaultPostBuffer}
                 onChange={handleInputChange}
               />
               <span class="hint text-sm text-muted-foreground">Seconds of video to keep after detection</span>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-buffer-strategy" class="font-medium">Default Buffer Strategy</label>
+            <div class="col-span-2">
+              <select
+                id="setting-buffer-strategy"
+                name="bufferStrategy"
+                class="p-2 border border-input rounded bg-background text-foreground"
+                value={settings.bufferStrategy}
+                onChange={handleInputChange}
+              >
+                <option value="auto">Auto (recommended)</option>
+                <option value="go2rtc">go2rtc Native</option>
+                <option value="hls_segment">HLS Segment Tracking</option>
+                <option value="memory_packet">Memory Packet Buffer</option>
+                <option value="mmap_hybrid">Memory-Mapped Hybrid</option>
+              </select>
+              <p class="hint text-sm text-muted-foreground mt-1">
+                How pre-detection video is buffered. "Auto" selects the best strategy based on your setup.
+              </p>
             </div>
           </div>
           </div>

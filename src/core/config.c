@@ -53,7 +53,12 @@ void load_default_config(config_t *config) {
     // API detection settings
     snprintf(config->api_detection_url, MAX_URL_LENGTH, "http://localhost:8000/detect");
     snprintf(config->api_detection_backend, 32, "onnx"); // Default to ONNX backend
-    
+
+    // Global detection buffer defaults
+    config->default_pre_detection_buffer = 5;   // 5 seconds before detection
+    config->default_post_detection_buffer = 10; // 10 seconds after detection
+    snprintf(config->default_buffer_strategy, 32, "auto"); // Auto-select buffer strategy
+
     // Database settings
     snprintf(config->db_path, MAX_PATH_LENGTH, "/var/lib/lightnvr/lightnvr.db");
     
@@ -344,6 +349,19 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         } else if (strcmp(name, "backend") == 0) {
             strncpy(config->api_detection_backend, value, 31);
             config->api_detection_backend[31] = '\0';
+        } else if (strcmp(name, "pre_detection_buffer") == 0) {
+            config->default_pre_detection_buffer = atoi(value);
+            // Clamp to valid range
+            if (config->default_pre_detection_buffer < 0) config->default_pre_detection_buffer = 0;
+            if (config->default_pre_detection_buffer > 60) config->default_pre_detection_buffer = 60;
+        } else if (strcmp(name, "post_detection_buffer") == 0) {
+            config->default_post_detection_buffer = atoi(value);
+            // Clamp to valid range
+            if (config->default_post_detection_buffer < 0) config->default_post_detection_buffer = 0;
+            if (config->default_post_detection_buffer > 300) config->default_post_detection_buffer = 300;
+        } else if (strcmp(name, "buffer_strategy") == 0) {
+            strncpy(config->default_buffer_strategy, value, 31);
+            config->default_buffer_strategy[31] = '\0';
         }
     }
     // Database settings
@@ -948,8 +966,11 @@ int save_config(const config_t *config, const char *path) {
     // Write API detection settings
     fprintf(file, "[api_detection]\n");
     fprintf(file, "url = %s\n", config->api_detection_url);
-    fprintf(file, "backend = %s\n\n", config->api_detection_backend);
-    
+    fprintf(file, "backend = %s\n", config->api_detection_backend);
+    fprintf(file, "pre_detection_buffer = %d\n", config->default_pre_detection_buffer);
+    fprintf(file, "post_detection_buffer = %d\n", config->default_post_detection_buffer);
+    fprintf(file, "buffer_strategy = %s\n\n", config->default_buffer_strategy);
+
     // Write database settings
     fprintf(file, "[database]\n");
     fprintf(file, "path = %s\n\n", config->db_path);
