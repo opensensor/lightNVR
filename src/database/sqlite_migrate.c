@@ -381,19 +381,243 @@ static int add_embedded_migrations(sqlite_migrate_t *ctx) {
 }
 
 /**
- * Execute SQL statements (handles multiple statements separated by semicolons)
+ * Check if a column exists in a table
  */
-static int execute_sql(sqlite3 *db, const char *sql) {
+static bool column_exists(sqlite3 *db, const char *table, const char *column) {
+    char sql[256];
+    snprintf(sql, sizeof(sql), "PRAGMA table_info(%s);", table);
+
+    sqlite3_stmt *stmt;
+    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        return false;
+    }
+
+    bool exists = false;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char *col_name = (const char *)sqlite3_column_text(stmt, 1);
+        if (col_name && strcasecmp(col_name, column) == 0) {
+            exists = true;
+            break;
+        }
+    }
+
+    sqlite3_finalize(stmt);
+    return exists;
+}
+
+/**
+ * Check if a table exists in the database
+ */
+static bool table_exists(sqlite3 *db, const char *table) {
+    const char *sql = "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?;";
+
+    sqlite3_stmt *stmt;
+    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        return false;
+    }
+
+    sqlite3_bind_text(stmt, 1, table, -1, SQLITE_STATIC);
+    bool exists = (sqlite3_step(stmt) == SQLITE_ROW);
+    sqlite3_finalize(stmt);
+
+    return exists;
+}
+
+/**
+ * Check if an index exists in the database
+ */
+static bool index_exists(sqlite3 *db, const char *index_name) {
+    const char *sql = "SELECT 1 FROM sqlite_master WHERE type='index' AND name=?;";
+
+    sqlite3_stmt *stmt;
+    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        return false;
+    }
+
+    sqlite3_bind_text(stmt, 1, index_name, -1, SQLITE_STATIC);
+    bool exists = (sqlite3_step(stmt) == SQLITE_ROW);
+    sqlite3_finalize(stmt);
+
+    return exists;
+}
+
+/**
+ * Execute a single SQL statement with idempotent handling for schema changes.
+ * Returns 0 on success, -1 on error, 1 if skipped (already exists).
+ */
+static int execute_single_statement(sqlite3 *db, const char *sql) {
+    // Skip empty statements
+    while (*sql && isspace((unsigned char)*sql)) sql++;
+    if (*sql == '\0') return 0;
+
+    // Check for ALTER TABLE ... ADD COLUMN and handle idempotently
+    if (strncasecmp(sql, "ALTER TABLE", 11) == 0) {
+        // Parse: ALTER TABLE tablename ADD COLUMN colname ...
+        char table[128] = {0};
+        char column[128] = {0};
+
+        const char *p = sql + 11;
+        while (*p && isspace((unsigned char)*p)) p++;
+
+        // Extract table name
+        int i = 0;
+        while (*p && !isspace((unsigned char)*p) && i < 127) {
+            table[i++] = *p++;
+        }
+        table[i] = '\0';
+
+        // Look for ADD COLUMN
+        while (*p && isspace((unsigned char)*p)) p++;
+        if (strncasecmp(p, "ADD", 3) == 0) {
+            p += 3;
+            while (*p && isspace((unsigned char)*p)) p++;
+            if (strncasecmp(p, "COLUMN", 6) == 0) {
+                p += 6;
+                while (*p && isspace((unsigned char)*p)) p++;
+
+                // Extract column name
+                i = 0;
+                while (*p && !isspace((unsigned char)*p) && i < 127) {
+                    column[i++] = *p++;
+                }
+                column[i] = '\0';
+
+                // Check if column already exists
+                if (table[0] && column[0] && column_exists(db, table, column)) {
+                    log_info("Column %s.%s already exists, skipping", table, column);
+                    return 1; // Skipped
+                }
+            }
+        }
+    }
+
+    // Check for CREATE TABLE IF NOT EXISTS - let SQLite handle it
+    // Check for CREATE INDEX IF NOT EXISTS - let SQLite handle it
+    // These are naturally idempotent with IF NOT EXISTS
+
+    // Execute the statement
     char *err_msg = NULL;
     int rc = sqlite3_exec(db, sql, NULL, NULL, &err_msg);
 
     if (rc != SQLITE_OK) {
+        // Check for common idempotent errors that should be ignored
+        if (err_msg) {
+            // "duplicate column name" - column already exists
+            if (strstr(err_msg, "duplicate column name") != NULL) {
+                log_info("Column already exists (idempotent): %s", err_msg);
+                sqlite3_free(err_msg);
+                return 1; // Skipped, but not an error
+            }
+            // "table already exists" without IF NOT EXISTS
+            if (strstr(err_msg, "table") != NULL && strstr(err_msg, "already exists") != NULL) {
+                log_info("Table already exists (idempotent): %s", err_msg);
+                sqlite3_free(err_msg);
+                return 1; // Skipped
+            }
+            // "index already exists" without IF NOT EXISTS
+            if (strstr(err_msg, "index") != NULL && strstr(err_msg, "already exists") != NULL) {
+                log_info("Index already exists (idempotent): %s", err_msg);
+                sqlite3_free(err_msg);
+                return 1; // Skipped
+            }
+        }
+
         log_error("SQL execution failed: %s", err_msg);
-        log_error("SQL was: %.200s...", sql);
+        log_error("SQL was: %.200s", sql);
         sqlite3_free(err_msg);
         return -1;
     }
 
+    return 0;
+}
+
+/**
+ * Execute SQL statements (handles multiple statements separated by semicolons)
+ * Makes schema changes idempotent by checking for existing columns/tables.
+ */
+static int execute_sql(sqlite3 *db, const char *sql) {
+    // For simple single statements or transactions, use direct exec
+    if (strncasecmp(sql, "BEGIN", 5) == 0 ||
+        strncasecmp(sql, "COMMIT", 6) == 0 ||
+        strncasecmp(sql, "ROLLBACK", 8) == 0) {
+        char *err_msg = NULL;
+        int rc = sqlite3_exec(db, sql, NULL, NULL, &err_msg);
+        if (rc != SQLITE_OK) {
+            log_error("SQL execution failed: %s", err_msg);
+            sqlite3_free(err_msg);
+            return -1;
+        }
+        return 0;
+    }
+
+    // Split SQL into individual statements and execute each one
+    // This allows us to handle each ALTER TABLE independently
+    const char *start = sql;
+    const char *end;
+    char *stmt_copy = NULL;
+    size_t stmt_size = 0;
+
+    while (*start) {
+        // Skip leading whitespace
+        while (*start && isspace((unsigned char)*start)) start++;
+        if (*start == '\0') break;
+
+        // Skip comments
+        if (start[0] == '-' && start[1] == '-') {
+            while (*start && *start != '\n') start++;
+            continue;
+        }
+
+        // Find end of statement (semicolon)
+        end = start;
+        int in_string = 0;
+        while (*end) {
+            if (*end == '\'' && !in_string) {
+                in_string = 1;
+            } else if (*end == '\'' && in_string) {
+                in_string = 0;
+            } else if (*end == ';' && !in_string) {
+                break;
+            }
+            end++;
+        }
+
+        if (end == start) {
+            start = end + 1;
+            continue;
+        }
+
+        // Copy statement for execution
+        size_t len = end - start;
+        if (len + 2 > stmt_size) {
+            stmt_size = len + 256;
+            char *new_copy = realloc(stmt_copy, stmt_size);
+            if (!new_copy) {
+                free(stmt_copy);
+                return -1;
+            }
+            stmt_copy = new_copy;
+        }
+
+        memcpy(stmt_copy, start, len);
+        stmt_copy[len] = ';';
+        stmt_copy[len + 1] = '\0';
+
+        // Execute this statement
+        int result = execute_single_statement(db, stmt_copy);
+        if (result < 0) {
+            free(stmt_copy);
+            return -1;
+        }
+
+        // Move to next statement
+        start = (*end) ? end + 1 : end;
+    }
+
+    free(stmt_copy);
     return 0;
 }
 
