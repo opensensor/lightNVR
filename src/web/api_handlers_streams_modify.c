@@ -292,6 +292,13 @@ void mg_handle_post_stream(struct mg_connection *c, struct mg_http_message *hm) 
         return;
     }
 
+    // Sync streams to go2rtc - this ensures the new stream is registered
+    // even if the inline registration in add_stream() failed
+    if (!go2rtc_sync_streams_from_database()) {
+        log_warn("Failed to sync streams to go2rtc after adding stream %s", config.name);
+        // Continue anyway - stream is created in database
+    }
+
     // Start stream if enabled
     if (config.enabled) {
         if (start_stream(stream) != 0) {
@@ -1151,6 +1158,12 @@ void mg_handle_delete_stream(struct mg_connection *c, struct mg_http_message *hm
                 "Failed to permanently delete stream configuration" :
                 "Failed to disable stream configuration");
         return;
+    }
+
+    // Unregister stream from go2rtc
+    if (!go2rtc_integration_unregister_stream(decoded_id)) {
+        log_warn("Failed to unregister stream %s from go2rtc", decoded_id);
+        // Continue anyway - stream is deleted from database
     }
 
     log_info("%s stream in database: %s",

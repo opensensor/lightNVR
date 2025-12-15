@@ -73,6 +73,20 @@ bool go2rtc_integration_is_using_go2rtc_for_hls(const char *stream_name);
 bool go2rtc_integration_register_all_streams(void);
 
 /**
+ * @brief Sync database streams to go2rtc
+ *
+ * This function reads all enabled streams from the database and ensures
+ * they are registered with go2rtc. It checks if each stream already exists
+ * in go2rtc before registering to avoid duplicate registrations.
+ *
+ * This is the preferred function to call after stream add/update/delete
+ * operations to ensure go2rtc stays in sync with the database.
+ *
+ * @return true if all streams were synced successfully, false otherwise
+ */
+bool go2rtc_sync_streams_from_database(void);
+
+/**
  * @brief Clean up the go2rtc integration module
  */
 void go2rtc_integration_cleanup(void);

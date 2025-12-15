@@ -987,6 +987,97 @@ bool go2rtc_integration_register_all_streams(void) {
     return all_success;
 }
 
+/**
+ * @brief Sync database streams to go2rtc
+ *
+ * This function reads all enabled streams from the database and ensures
+ * they are registered with go2rtc. It checks if each stream already exists
+ * in go2rtc before registering to avoid duplicate registrations.
+ *
+ * This is the preferred function to call after stream add/update/delete
+ * operations to ensure go2rtc stays in sync with the database.
+ *
+ * @return true if all streams were synced successfully, false otherwise
+ */
+bool go2rtc_sync_streams_from_database(void) {
+    if (!g_initialized) {
+        log_warn("go2rtc integration module not initialized, cannot sync streams");
+        return false;
+    }
+
+    // Check if go2rtc is ready
+    if (!go2rtc_stream_is_ready()) {
+        log_warn("go2rtc service is not ready, cannot sync streams");
+        return false;
+    }
+
+    // Get all stream configurations from database
+    stream_config_t db_streams[MAX_STREAMS];
+    int count = get_all_stream_configs(db_streams, MAX_STREAMS);
+
+    if (count < 0) {
+        log_error("Failed to get stream configurations from database");
+        return false;
+    }
+
+    if (count == 0) {
+        log_info("No streams found in database to sync with go2rtc");
+        return true; // Not an error, just no streams
+    }
+
+    log_info("Syncing %d streams from database to go2rtc", count);
+
+    bool all_success = true;
+    int synced = 0;
+    int skipped = 0;
+    int failed = 0;
+
+    for (int i = 0; i < count; i++) {
+        // Skip disabled streams
+        if (!db_streams[i].enabled) {
+            log_debug("Skipping disabled stream %s", db_streams[i].name);
+            skipped++;
+            continue;
+        }
+
+        // Check if stream already exists in go2rtc
+        if (go2rtc_api_stream_exists(db_streams[i].name)) {
+            log_debug("Stream %s already exists in go2rtc, skipping", db_streams[i].name);
+            skipped++;
+            continue;
+        }
+
+        // Stream needs to be registered
+        log_info("Registering missing stream %s with go2rtc", db_streams[i].name);
+
+        // Determine username and password
+        const char *username = NULL;
+        const char *password = NULL;
+
+        if (db_streams[i].onvif_username[0] != '\0') {
+            username = db_streams[i].onvif_username;
+        }
+        if (db_streams[i].onvif_password[0] != '\0') {
+            password = db_streams[i].onvif_password;
+        }
+
+        // Register the stream
+        if (!go2rtc_stream_register(db_streams[i].name, db_streams[i].url,
+                                    username, password,
+                                    db_streams[i].backchannel_enabled)) {
+            log_error("Failed to register stream %s with go2rtc", db_streams[i].name);
+            all_success = false;
+            failed++;
+        } else {
+            log_info("Successfully synced stream %s to go2rtc", db_streams[i].name);
+            synced++;
+        }
+    }
+
+    log_info("go2rtc sync complete: %d synced, %d skipped, %d failed", synced, skipped, failed);
+    return all_success;
+}
+
 void go2rtc_integration_cleanup(void) {
     if (!g_initialized) {
         return;
