@@ -36,6 +36,7 @@ jobs:
             libmicrohttpd-dev \
             libcurl4-openssl-dev \
             libcjson-dev \
+            libmbedtls-dev \
             ffmpeg \
             curl \
             jq
