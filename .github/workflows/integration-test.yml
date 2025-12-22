@@ -51,17 +51,17 @@ jobs:
           # Build go2rtc from the opensensor fork submodule
           cd go2rtc
           echo "Building go2rtc from source..."
-          CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o ../go2rtc
+          CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o ../go2rtc-bin
           cd ..
-          chmod +x go2rtc
-          ./go2rtc --version || echo "go2rtc built successfully"
-          echo "go2rtc binary size: $(stat -c%s go2rtc) bytes"
+          chmod +x go2rtc-bin
+          ./go2rtc-bin --version || echo "go2rtc built successfully"
+          echo "go2rtc binary size: $(stat -c%s go2rtc-bin) bytes"
 
       - name: Start go2rtc with test streams
         run: |
           # Start go2rtc with test configuration in background
           # Test config uses ports 11984 (API), 18554 (RTSP), 18555 (WebRTC)
-          ./go2rtc -config config/go2rtc/go2rtc-test.yaml &
+          ./go2rtc-bin -config config/go2rtc/go2rtc-test.yaml &
           GO2RTC_PID=$!
           echo "GO2RTC_PID=$GO2RTC_PID" >> $GITHUB_ENV
 
@@ -144,7 +144,7 @@ jobs:
           cmake .. \
             -DCMAKE_BUILD_TYPE=Release \
             -DENABLE_GO2RTC=ON \
-            -DGO2RTC_BINARY_PATH=$(pwd)/../go2rtc
+            -DGO2RTC_BINARY_PATH=$(pwd)/../go2rtc-bin
           make -j$(nproc)
 
       - name: Run unit tests
@@ -172,7 +172,7 @@ jobs:
           if [ -n "$GO2RTC_PID" ]; then
             kill $GO2RTC_PID 2>/dev/null || true
           fi
-          
+
           # Clean up test artifacts
-          rm -f test_frame.jpg go2rtc
+          rm -f test_frame*.jpg go2rtc-bin
 
