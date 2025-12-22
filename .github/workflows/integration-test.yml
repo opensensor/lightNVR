@@ -40,13 +40,22 @@ jobs:
             curl \
             jq
 
-      - name: Download go2rtc
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache-dependency-path: go2rtc/go.sum
+
+      - name: Build go2rtc from source
         run: |
-          # Download go2rtc from opensensor fork
-          GO2RTC_VERSION="1.9.9"
-          wget -q "https://github.com/opensensor/go2rtc/releases/download/v${GO2RTC_VERSION}/go2rtc_linux_amd64" -O go2rtc
+          # Build go2rtc from the opensensor fork submodule
+          cd go2rtc
+          echo "Building go2rtc from source..."
+          CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o ../go2rtc
+          cd ..
           chmod +x go2rtc
-          echo "Downloaded go2rtc v${GO2RTC_VERSION}"
+          ./go2rtc --version || echo "go2rtc built successfully"
+          echo "go2rtc binary size: $(stat -c%s go2rtc) bytes"
 
       - name: Start go2rtc with test streams
         run: |
