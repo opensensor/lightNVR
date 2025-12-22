@@ -64,6 +64,9 @@ void mg_handle_get_settings(struct mg_connection *c, struct mg_http_message *hm)
     cJSON_AddNumberToObject(settings, "post_detection_buffer", g_config.default_post_detection_buffer);
     cJSON_AddStringToObject(settings, "buffer_strategy", g_config.default_buffer_strategy);
 
+    // go2rtc settings (needed by frontend for WebRTC connections)
+    cJSON_AddNumberToObject(settings, "go2rtc_api_port", g_config.go2rtc_api_port);
+
     // Convert to string
     char *json_str = cJSON_PrintUnformatted(settings);
     if (!json_str) {

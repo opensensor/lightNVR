@@ -4,6 +4,7 @@
  */
 
 import { useState, useRef, useEffect } from 'react';
+import { getGo2rtcApiPort } from '../../utils/settings-utils.js';
 
 /**
  * ZoneEditor Component
@@ -52,16 +53,24 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
   useEffect(() => {
     if (streamName) {
       // Use go2rtc's snapshot API endpoint directly
-      // go2rtc runs on port 1984 and provides snapshots at: /api/frame.jpeg?src={stream_name}
-      // We need to use the full URL since there's no proxy for this endpoint
-      const go2rtcPort = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-        ? '1984'
-        : '1984'; // In production, go2rtc should be on the same host
-      // Add cache-busting parameter to force fresh snapshot
-      const timestamp = Date.now();
-      const url = `http://${window.location.hostname}:${go2rtcPort}/api/frame.jpeg?src=${encodeURIComponent(streamName)}&t=${timestamp}`;
-      console.log('Loading snapshot from:', url);
-      setSnapshotUrl(url);
+      // Get the port from settings (async)
+      const loadSnapshot = async () => {
+        try {
+          const go2rtcPort = await getGo2rtcApiPort();
+          // Add cache-busting parameter to force fresh snapshot
+          const timestamp = Date.now();
+          const url = `http://${window.location.hostname}:${go2rtcPort}/api/frame.jpeg?src=${encodeURIComponent(streamName)}&t=${timestamp}`;
+          console.log('Loading snapshot from:', url);
+          setSnapshotUrl(url);
+        } catch (err) {
+          console.warn('Failed to get go2rtc port from settings, using default 1984:', err);
+          const timestamp = Date.now();
+          const url = `http://${window.location.hostname}:1984/api/frame.jpeg?src=${encodeURIComponent(streamName)}&t=${timestamp}`;
+          setSnapshotUrl(url);
+        }
+      };
+
+      loadSnapshot();
 
       // Set a timeout to show canvas anyway after 10 seconds
       const timeout = setTimeout(() => {

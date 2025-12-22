@@ -240,7 +240,13 @@ async function globalSetup(): Promise<void> {
   await setupTestDirectories();
   await startLightNVR();
   await waitForGo2rtc();
-  await registerTestStreams();
+
+  // Order matters here:
+  // 1. First add streams to lightNVR (which syncs RTSP URLs to go2rtc)
+  // 2. Then re-register virtual sources with go2rtc (overwriting the RTSP URLs)
+  await addStreamsToLightNVR();
+  await sleep(2000); // Wait for lightNVR's sync to complete
+  await registerTestStreamsWithGo2rtc();
 
   console.log('\n✓ Test environment ready\n');
 }

@@ -275,9 +275,10 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port) {
         fprintf(config_file, "    password: %s\n", global_config->web_password);
     }
 
-    // RTSP configuration
+    // RTSP configuration - use configured port or default to 8554
+    int rtsp_port = global_config->go2rtc_rtsp_port > 0 ? global_config->go2rtc_rtsp_port : 8554;
     fprintf(config_file, "\nrtsp:\n");
-    fprintf(config_file, "  listen: \":8554\"\n");
+    fprintf(config_file, "  listen: \":%d\"\n", rtsp_port);
 
     // WebRTC configuration for NAT traversal
     if (global_config->go2rtc_webrtc_enabled) {

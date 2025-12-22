@@ -11,6 +11,7 @@ import { SnapshotButton } from './SnapshotManager.jsx';
 import { LoadingIndicator } from './LoadingIndicator.jsx';
 import { showSnapshotPreview } from './UI.jsx';
 import { PTZControls } from './PTZControls.jsx';
+import { getGo2rtcBaseUrl } from '../../utils/settings-utils.js';
 import adapter from 'webrtc-adapter';
 
 /**
@@ -64,8 +65,24 @@ export function WebRTCVideoCell({
     setIsLoading(true);
     setError(null);
 
-    // Create a new RTCPeerConnection
-    const pc = new RTCPeerConnection({
+    // Store cleanup functions
+    let connectionTimeout = null;
+    let statsInterval = null;
+    let go2rtcBaseUrl = null;
+
+    // Async function to initialize WebRTC
+    const initWebRTC = async () => {
+      // Get the go2rtc base URL from settings
+      try {
+        go2rtcBaseUrl = await getGo2rtcBaseUrl();
+        console.log(`Using go2rtc base URL: ${go2rtcBaseUrl}`);
+      } catch (err) {
+        console.warn('Failed to get go2rtc URL from settings, using default port 1984:', err);
+        go2rtcBaseUrl = `http://${window.location.hostname}:1984`;
+      }
+
+      // Create a new RTCPeerConnection
+      const pc = new RTCPeerConnection({
       iceTransportPolicy: 'all',
       bundlePolicy: 'balanced',
       rtcpMuxPolicy: 'require',
@@ -219,12 +236,10 @@ export function WebRTCVideoCell({
     }
 
     // Connect directly to go2rtc for WebRTC
-    // go2rtc runs on port 1984 by default
-    const go2rtcPort = 1984;
-    const go2rtcBaseUrl = `http://${window.location.hostname}:${go2rtcPort}`;
+    // go2rtcBaseUrl is set at the start of initWebRTC from settings
 
     // Set a timeout for the entire connection process
-    const connectionTimeout = setTimeout(() => {
+    connectionTimeout = setTimeout(() => {
       if (peerConnectionRef.current &&
           peerConnectionRef.current.iceConnectionState !== 'connected' &&
           peerConnectionRef.current.iceConnectionState !== 'completed') {
@@ -378,6 +393,10 @@ export function WebRTCVideoCell({
         }
       }
     };
+    }; // End of initWebRTC async function
+
+    // Call the async init function
+    initWebRTC();
 
     // Cleanup function
     return () => {

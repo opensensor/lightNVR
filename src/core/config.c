@@ -98,6 +98,7 @@ void load_default_config(config_t *config) {
     snprintf(config->go2rtc_binary_path, MAX_PATH_LENGTH, "/usr/local/bin/go2rtc");
     snprintf(config->go2rtc_config_dir, MAX_PATH_LENGTH, "/etc/lightnvr/go2rtc");
     config->go2rtc_api_port = 1984;
+    config->go2rtc_rtsp_port = 8554;  // Default RTSP listen port
 
     // go2rtc WebRTC settings for NAT traversal
     config->go2rtc_webrtc_enabled = true;  // Enable WebRTC by default
@@ -467,6 +468,10 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             strncpy(config->go2rtc_config_dir, value, MAX_PATH_LENGTH - 1);
         } else if (strcmp(name, "api_port") == 0) {
             config->go2rtc_api_port = atoi(value);
+        } else if (strcmp(name, "rtsp_port") == 0) {
+            config->go2rtc_rtsp_port = atoi(value);
+        } else if (strcmp(name, "webrtc_port") == 0) {
+            config->go2rtc_webrtc_listen_port = atoi(value);
         } else if (strcmp(name, "webrtc_enabled") == 0) {
             config->go2rtc_webrtc_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         } else if (strcmp(name, "webrtc_listen_port") == 0) {

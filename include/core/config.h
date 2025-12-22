@@ -149,6 +149,7 @@ typedef struct {
     char go2rtc_binary_path[MAX_PATH_LENGTH];
     char go2rtc_config_dir[MAX_PATH_LENGTH];
     int go2rtc_api_port;
+    int go2rtc_rtsp_port;                 // RTSP listen port (default: 8554)
 
     // go2rtc WebRTC settings for NAT traversal
     bool go2rtc_webrtc_enabled;           // Enable WebRTC (default: true)
