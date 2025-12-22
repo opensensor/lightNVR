@@ -8,11 +8,13 @@
 #include <cjson/cJSON.h>
 
 #include "web/api_handlers.h"
+#include "web/api_handlers_common.h"
 #include "web/mongoose_adapter.h"
 #include "core/logger.h"
 #include "core/config.h"
 #include "database/db_core.h"
 #include "database/db_streams.h"
+#include "database/db_auth.h"
 #include "video/stream_manager.h"
 #include "video/hls_streaming.h"
 #include "mongoose.h"
@@ -86,7 +88,12 @@ void mg_handle_get_settings(struct mg_connection *c, struct mg_http_message *hm)
  */
 void mg_handle_post_settings(struct mg_connection *c, struct mg_http_message *hm) {
     log_info("Handling POST /api/settings request");
-    
+
+    // Check if user has admin privileges to modify settings
+    if (!mg_check_admin_privileges(c, hm)) {
+        return;  // Error response already sent
+    }
+
     // Parse JSON from request body
     cJSON *settings = mg_parse_json_body(hm);
     if (!settings) {
@@ -94,7 +101,7 @@ void mg_handle_post_settings(struct mg_connection *c, struct mg_http_message *hm
         mg_send_json_error(c, 400, "Invalid JSON in request body");
         return;
     }
-    
+
     // Update settings
     bool settings_changed = false;
     

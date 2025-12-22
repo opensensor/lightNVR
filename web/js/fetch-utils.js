@@ -30,8 +30,20 @@ function handleAuthenticationFailure(reason = 'Session expired') {
  * @returns {boolean} - True if this is an auth error
  */
 function isAuthenticationError(error) {
-  // Check if error message contains 401 status
-  return error.message && error.message.includes('401');
+  // Check if error status is 401 or message contains 401
+  return error.status === 401 || (error.message && error.message.includes('401'));
+}
+
+/**
+ * Custom HTTP error class with status code
+ */
+class HTTPError extends Error {
+  constructor(status, statusText, message) {
+    super(message || `HTTP error ${status}: ${statusText}`);
+    this.name = 'HTTPError';
+    this.status = status;
+    this.statusText = statusText;
+  }
 }
 
 /**
@@ -104,12 +116,27 @@ export async function enhancedFetch(url, options = {}) {
         if (!skipAuthRedirect) {
           handleAuthenticationFailure('Received 401 Unauthorized response');
         }
-        throw new Error(`HTTP error 401: Unauthorized`);
+        throw new HTTPError(401, 'Unauthorized', 'Authentication required');
       }
 
-      // Check if the response is ok
+      // Handle 403 Forbidden - access denied, don't redirect but throw with status
+      if (response.status === 403) {
+        throw new HTTPError(403, 'Forbidden', 'Access denied - insufficient privileges');
+      }
+
+      // Check if the response is ok - try to get error message from response body
       if (!response.ok) {
-        throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
+        let errorMessage = response.statusText;
+        try {
+          const errorBody = await response.json();
+          if (errorBody && errorBody.error) {
+            errorMessage = errorBody.error;
+          }
+        } catch (parseError) {
+          // If we can't parse the response, just use the status text
+          console.debug('Could not parse error response body:', parseError);
+        }
+        throw new HTTPError(response.status, response.statusText, errorMessage);
       }
 
       return response;
@@ -127,6 +154,12 @@ export async function enhancedFetch(url, options = {}) {
       // If this is an authentication error, don't retry - just fail immediately
       if (isAuthenticationError(error)) {
         console.warn(`enhancedFetch: Authentication error detected, not retrying`);
+        throw error;
+      }
+
+      // If this is a client error (4xx), don't retry - it will fail the same way
+      if (error.status && error.status >= 400 && error.status < 500) {
+        console.warn(`enhancedFetch: Client error ${error.status} detected, not retrying`);
         throw error;
       }
 

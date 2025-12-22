@@ -20,12 +20,14 @@ import { formatUtils } from './recordings/formatUtils.js';
 import { recordingsAPI } from './recordings/recordingsAPI.jsx';
 import { urlUtils } from './recordings/urlUtils.js';
 import { useQueryClient, invalidateQueries } from '../../query-client.js';
+import { validateSession } from '../../utils/auth-utils.js';
 
 /**
  * RecordingsView component
  * @returns {JSX.Element} RecordingsView component
  */
 export function RecordingsView() {
+  const [userRole, setUserRole] = useState(null);
   const [recordings, setRecordings] = useState([]);
   const [streams, setStreams] = useState([]);
   const [filtersVisible, setFiltersVisible] = useState(true);
@@ -58,6 +60,21 @@ export function RecordingsView() {
 
   // Get modal context for video playback
   const modalContext = useContext(ModalContext);
+
+  // Check if user can delete recordings (admin or user role, not viewer)
+  const canDelete = userRole === 'admin' || userRole === 'user';
+
+  // Fetch user role on mount
+  useEffect(() => {
+    async function fetchUserRole() {
+      const session = await validateSession();
+      if (session.valid) {
+        setUserRole(session.role);
+        console.log('User role:', session.role);
+      }
+    }
+    fetchUserRole();
+  }, []);
 
   // Store modal context in window for global access
   useEffect(() => {
@@ -754,6 +771,7 @@ export function RecordingsView() {
               toggleProtection={toggleProtection}
               recordingsTableBodyRef={recordingsTableBodyRef}
               pagination={pagination}
+              canDelete={canDelete}
             />
 
             <PaginationControls

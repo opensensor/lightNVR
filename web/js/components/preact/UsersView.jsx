@@ -328,6 +328,63 @@ export function UsersView() {
     );
   }
 
+  // Helper to check if error is auth-related
+  const isAuthError = error && (error.status === 401 || error.status === 403);
+  const isForbiddenError = error && error.status === 403;
+  const isUnauthorizedError = error && error.status === 401;
+
+  // Render error state for auth issues
+  if (isAuthError && users.length === 0) {
+    return (
+      <div>
+        <div className="mb-4 flex justify-between items-center">
+          <h2 className="text-xl font-semibold">User Management</h2>
+        </div>
+
+        <div className={`border px-4 py-3 rounded relative mb-4 ${isForbiddenError ? 'bg-yellow-100 border-yellow-400 text-yellow-700 dark:bg-yellow-900 dark:border-yellow-600 dark:text-yellow-200' : 'bg-red-100 border-red-400 text-red-700 dark:bg-red-900 dark:border-red-600 dark:text-red-200'}`}>
+          <h4 className="font-bold mb-2">
+            {isForbiddenError ? 'Access Denied' : 'Authentication Required'}
+          </h4>
+          <p>
+            {isForbiddenError
+              ? 'You do not have permission to view the users list. Admin privileges are required.'
+              : 'Your session has expired or you are not logged in. Please log in again.'}
+          </p>
+          {isUnauthorizedError && (
+            <button
+              className="mt-3 btn-primary"
+              onClick={() => window.location.href = '/login.html'}
+            >
+              Go to Login
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Render generic error state
+  if (error && users.length === 0) {
+    return (
+      <div>
+        <div className="mb-4 flex justify-between items-center">
+          <h2 className="text-xl font-semibold">User Management</h2>
+          <button
+            className="btn-primary"
+            onClick={() => refetchUsers()}
+          >
+            Retry
+          </button>
+        </div>
+
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4 dark:bg-red-900 dark:border-red-600 dark:text-red-200">
+          <h4 className="font-bold mb-2">Error Loading Users</h4>
+          <p>{error.message || 'An unexpected error occurred while loading users.'}</p>
+        </div>
+      </div>
+    );
+  }
+
   // Render empty state
   if (users.length === 0 && !loading) {
     return (

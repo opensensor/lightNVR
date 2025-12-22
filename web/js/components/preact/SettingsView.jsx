@@ -8,12 +8,14 @@ import { showStatusMessage } from './ToastContainer.jsx';
 import { ContentLoader } from './LoadingIndicator.jsx';
 import { useQuery, useMutation, fetchJSON } from '../../query-client.js';
 import { ThemeCustomizer } from './ThemeCustomizer.jsx';
+import { validateSession } from '../../utils/auth-utils.js';
 
 /**
  * SettingsView component
  * @returns {JSX.Element} SettingsView component
  */
 export function SettingsView() {
+  const [userRole, setUserRole] = useState(null);
   const [settings, setSettings] = useState({
     logLevel: '2',
     storagePath: '/var/lib/lightnvr/recordings',
@@ -36,6 +38,23 @@ export function SettingsView() {
     defaultPostBuffer: 10,
     bufferStrategy: 'auto'
   });
+
+  // Fetch user role on mount
+  useEffect(() => {
+    async function fetchUserRole() {
+      const session = await validateSession();
+      if (session.valid) {
+        setUserRole(session.role);
+        console.log('User role:', session.role);
+      }
+    }
+    fetchUserRole();
+  }, []);
+
+  // Check if user can modify system settings (admin only)
+  const canModifySettings = userRole === 'admin';
+  // Viewers can only see/change theme
+  const isViewer = userRole === 'viewer';
   
   // Fetch settings using useQuery
   const { 
@@ -164,21 +183,53 @@ export function SettingsView() {
     }));
   };
 
+  // For viewers, show only appearance settings
+  if (isViewer) {
+    return (
+      <section id="settings-page" class="page">
+        <div class="page-header flex justify-between items-center mb-4 p-4 bg-card text-card-foreground rounded-lg shadow">
+          <h2 class="text-xl font-bold">Settings</h2>
+        </div>
+
+        <div class="settings-container space-y-6">
+          {/* Appearance Settings - available to all users */}
+          <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
+            <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">Appearance</h3>
+            <ThemeCustomizer />
+          </div>
+
+          <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
+            <p class="text-muted-foreground">
+              System settings are only available to administrators.
+            </p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section id="settings-page" class="page">
       <div class="page-header flex justify-between items-center mb-4 p-4 bg-card text-card-foreground rounded-lg shadow">
         <h2 class="text-xl font-bold">Settings</h2>
-        <div class="controls">
-          <button 
-            id="save-settings-btn" 
-            class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
-            onClick={saveSettings}
-          >
-            Save Settings
-          </button>
+        <div class="controls flex items-center gap-4">
+          {!canModifySettings && (
+            <span class="text-sm text-muted-foreground italic">
+              Read-only (admin privileges required to modify)
+            </span>
+          )}
+          {canModifySettings && (
+            <button
+              id="save-settings-btn"
+              class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+              onClick={saveSettings}
+            >
+              Save Settings
+            </button>
+          )}
         </div>
       </div>
-      
+
       <ContentLoader
         isLoading={isLoading}
         hasData={!!settingsData}
@@ -186,7 +237,7 @@ export function SettingsView() {
         emptyMessage="No settings available. Please try again later."
       >
         <div class="settings-container space-y-6">
-          {/* Appearance Settings */}
+          {/* Appearance Settings - available to all users */}
           <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
             <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">Appearance</h3>
             <ThemeCustomizer />
@@ -196,12 +247,13 @@ export function SettingsView() {
             <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">General Settings</h3>
             <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
               <label for="setting-log-level" class="font-medium">Log Level</label>
-              <select 
-                id="setting-log-level" 
+              <select
+                id="setting-log-level"
                 name="logLevel"
-                class="col-span-2 p-2 border border-input rounded bg-background text-foreground"
+                class="col-span-2 p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
                 value={settings.logLevel}
                 onChange={handleInputChange}
+                disabled={!canModifySettings}
               >
                 <option value="0">Error</option>
                 <option value="1">Warning</option>
@@ -214,25 +266,27 @@ export function SettingsView() {
           <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">Storage Settings</h3>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-storage-path" class="font-medium">Storage Path</label>
-            <input 
-              type="text" 
-              id="setting-storage-path" 
+            <input
+              type="text"
+              id="setting-storage-path"
               name="storagePath"
-              class="col-span-2 p-2 border border-input rounded bg-background text-foreground"
+              class="col-span-2 p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
               value={settings.storagePath}
               onChange={handleInputChange}
+              disabled={!canModifySettings}
             />
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-storage-path-hls" class="font-medium">HLS Storage Path</label>
             <div class="col-span-2">
-              <input 
-                type="text" 
-                id="setting-storage-path-hls" 
+              <input
+                type="text"
+                id="setting-storage-path-hls"
                 name="storagePathHls"
-                class="w-full p-2 border border-input rounded bg-background text-foreground"
+                class="w-full p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
                 value={settings.storagePathHls}
                 onChange={handleInputChange}
+                disabled={!canModifySettings}
               />
               <span class="hint text-sm text-muted-foreground">Optional path for HLS segments. If not specified, Storage Path will be used.</span>
             </div>
@@ -240,28 +294,30 @@ export function SettingsView() {
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-max-storage" class="font-medium">Maximum Storage Size (GB)</label>
             <div class="col-span-2 flex items-center">
-              <input 
-                type="number" 
-                id="setting-max-storage" 
+              <input
+                type="number"
+                id="setting-max-storage"
                 name="maxStorage"
-                min="0" 
-                class="p-2 border border-input rounded bg-background text-foreground"
+                min="0"
+                class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
                 value={settings.maxStorage}
                 onChange={handleInputChange}
+                disabled={!canModifySettings}
               />
               <span class="hint ml-2 text-sm text-muted-foreground">0 = unlimited</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-retention" class="font-medium">Retention Period (days)</label>
-            <input 
-              type="number" 
-              id="setting-retention" 
+            <input
+              type="number"
+              id="setting-retention"
               name="retention"
-              min="1" 
-              class="col-span-2 p-2 border border-input rounded bg-background text-foreground"
+              min="1"
+              class="col-span-2 p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
               value={settings.retention}
               onChange={handleInputChange}
+              disabled={!canModifySettings}
             />
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
@@ -271,22 +327,24 @@ export function SettingsView() {
                 type="checkbox"
                 id="setting-auto-delete"
                 name="autoDelete"
-                class="w-4 h-4 rounded focus:ring-2"
+                class="w-4 h-4 rounded focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed"
                 style={{accentColor: 'hsl(var(--primary))'}}
                 checked={settings.autoDelete}
                 onChange={handleInputChange}
+                disabled={!canModifySettings}
               />
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-db-path" class="font-medium">Database Path</label>
-            <input 
-              type="text" 
-              id="setting-db-path" 
+            <input
+              type="text"
+              id="setting-db-path"
               name="dbPath"
-              class="col-span-2 p-2 border border-input rounded bg-background text-foreground"
+              class="col-span-2 p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
               value={settings.dbPath}
               onChange={handleInputChange}
+              disabled={!canModifySettings}
             />
           </div>
           </div>
@@ -295,15 +353,16 @@ export function SettingsView() {
           <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">Web Interface Settings</h3>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-web-port" class="font-medium">Web Port</label>
-            <input 
-              type="number" 
-              id="setting-web-port" 
+            <input
+              type="number"
+              id="setting-web-port"
               name="webPort"
-              min="1" 
-              max="65535" 
-              class="col-span-2 p-2 border border-input rounded bg-background text-foreground"
+              min="1"
+              max="65535"
+              class="col-span-2 p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
               value={settings.webPort}
               onChange={handleInputChange}
+              disabled={!canModifySettings}
             />
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
@@ -313,33 +372,36 @@ export function SettingsView() {
                 type="checkbox"
                 id="setting-auth-enabled"
                 name="authEnabled"
-                class="w-4 h-4 rounded focus:ring-2"
+                class="w-4 h-4 rounded focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed"
                 style={{accentColor: 'hsl(var(--primary))'}}
                 checked={settings.authEnabled}
                 onChange={handleInputChange}
+                disabled={!canModifySettings}
               />
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-username" class="font-medium">Username</label>
-            <input 
-              type="text" 
-              id="setting-username" 
+            <input
+              type="text"
+              id="setting-username"
               name="username"
-              class="col-span-2 p-2 border border-input rounded bg-background text-foreground"
+              class="col-span-2 p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
               value={settings.username}
               onChange={handleInputChange}
+              disabled={!canModifySettings}
             />
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-password" class="font-medium">Password</label>
-            <input 
-              type="password" 
-              id="setting-password" 
+            <input
+              type="password"
+              id="setting-password"
               name="password"
-              class="col-span-2 p-2 border border-input rounded bg-background text-foreground"
+              class="col-span-2 p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
               value={settings.password}
               onChange={handleInputChange}
+              disabled={!canModifySettings}
             />
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
@@ -349,10 +411,11 @@ export function SettingsView() {
                 type="checkbox"
                 id="setting-webrtc-disabled"
                 name="webrtcDisabled"
-                class="w-4 h-4 rounded focus:ring-2"
+                class="w-4 h-4 rounded focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed"
                 style={{accentColor: 'hsl(var(--primary))'}}
                 checked={settings.webrtcDisabled}
                 onChange={handleInputChange}
+                disabled={!canModifySettings}
               />
               <span class="hint ml-2 text-sm text-muted-foreground">When enabled, all streams will use HLS instead of WebRTC</span>
             </div>
@@ -363,14 +426,15 @@ export function SettingsView() {
           <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">Memory Optimization</h3>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-buffer-size" class="font-medium">Buffer Size (KB)</label>
-            <input 
-              type="number" 
-              id="setting-buffer-size" 
+            <input
+              type="number"
+              id="setting-buffer-size"
               name="bufferSize"
-              min="128" 
-              class="col-span-2 p-2 border border-input rounded bg-background text-foreground"
+              min="128"
+              class="col-span-2 p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
               value={settings.bufferSize}
               onChange={handleInputChange}
+              disabled={!canModifySettings}
             />
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
@@ -380,27 +444,29 @@ export function SettingsView() {
                 type="checkbox"
                 id="setting-use-swap"
                 name="useSwap"
-                class="w-4 h-4 rounded focus:ring-2"
+                class="w-4 h-4 rounded focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed"
                 style={{accentColor: 'hsl(var(--primary))'}}
                 checked={settings.useSwap}
                 onChange={handleInputChange}
+                disabled={!canModifySettings}
               />
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-swap-size" class="font-medium">Swap Size (MB)</label>
-            <input 
-              type="number" 
-              id="setting-swap-size" 
+            <input
+              type="number"
+              id="setting-swap-size"
               name="swapSize"
-              min="32" 
-              class="col-span-2 p-2 border border-input rounded bg-background text-foreground"
+              min="32"
+              class="col-span-2 p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
               value={settings.swapSize}
               onChange={handleInputChange}
+              disabled={!canModifySettings}
             />
           </div>
           </div>
-          
+
           <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
           <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">Detection-Based Recording</h3>
           <div class="setting mb-4">
@@ -408,7 +474,7 @@ export function SettingsView() {
               Configure detection-based recording for streams. When enabled, recordings will only be saved when objects are detected.
             </p>
             <p class="setting-description mb-2 text-gray-700 dark:text-gray-300">
-              <strong>Motion Detection:</strong> Built-in motion detection is available without requiring any external models. 
+              <strong>Motion Detection:</strong> Built-in motion detection is available without requiring any external models.
               Select "motion" as the detection model in stream settings to use this feature.
             </p>
             <p class="setting-description mb-2 text-gray-700 dark:text-gray-300">
@@ -419,14 +485,15 @@ export function SettingsView() {
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-detection-models-path" class="font-medium">Detection Models Path</label>
             <div class="col-span-2">
-              <input 
-                type="text" 
-                id="setting-detection-models-path" 
+              <input
+                type="text"
+                id="setting-detection-models-path"
                 name="detectionModelsPath"
-                placeholder="/var/lib/lightnvr/models" 
-                class="w-full p-2 border border-input rounded bg-background text-foreground"
+                placeholder="/var/lib/lightnvr/models"
+                class="w-full p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
                 value={settings.detectionModelsPath}
                 onChange={handleInputChange}
+                disabled={!canModifySettings}
               />
               <span class="hint text-sm text-muted-foreground">Directory where detection models are stored</span>
             </div>
@@ -435,16 +502,17 @@ export function SettingsView() {
             <label for="setting-default-detection-threshold" class="font-medium">Default Detection Threshold</label>
             <div class="col-span-2">
               <div class="flex items-center">
-                <input 
-                  type="range" 
-                  id="setting-default-detection-threshold" 
+                <input
+                  type="range"
+                  id="setting-default-detection-threshold"
                   name="defaultDetectionThreshold"
-                  min="0" 
-                  max="100" 
-                  step="1" 
-                  class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                  min="0"
+                  max="100"
+                  step="1"
+                  class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 disabled:opacity-60 disabled:cursor-not-allowed"
                   value={settings.defaultDetectionThreshold}
                   onChange={handleThresholdChange}
+                  disabled={!canModifySettings}
                 />
                 <span id="threshold-value" class="ml-2 min-w-[3rem] text-center">{settings.defaultDetectionThreshold}%</span>
               </div>
@@ -454,15 +522,16 @@ export function SettingsView() {
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-default-pre-buffer" class="font-medium">Default Pre-detection Buffer (seconds)</label>
             <div class="col-span-2">
-              <input 
-                type="number" 
-                id="setting-default-pre-buffer" 
+              <input
+                type="number"
+                id="setting-default-pre-buffer"
                 name="defaultPreBuffer"
-                min="0" 
-                max="60" 
-                class="p-2 border border-input rounded bg-background text-foreground"
+                min="0"
+                max="60"
+                class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
                 value={settings.defaultPreBuffer}
                 onChange={handleInputChange}
+                disabled={!canModifySettings}
               />
               <span class="hint text-sm text-muted-foreground">Seconds of video to keep before detection</span>
             </div>
@@ -476,9 +545,10 @@ export function SettingsView() {
                 name="defaultPostBuffer"
                 min="0"
                 max="300"
-                class="p-2 border border-input rounded bg-background text-foreground"
+                class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
                 value={settings.defaultPostBuffer}
                 onChange={handleInputChange}
+                disabled={!canModifySettings}
               />
               <span class="hint text-sm text-muted-foreground">Seconds of video to keep after detection</span>
             </div>
@@ -489,9 +559,10 @@ export function SettingsView() {
               <select
                 id="setting-buffer-strategy"
                 name="bufferStrategy"
-                class="p-2 border border-input rounded bg-background text-foreground"
+                class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
                 value={settings.bufferStrategy}
                 onChange={handleInputChange}
+                disabled={!canModifySettings}
               >
                 <option value="auto">Auto (recommended)</option>
                 <option value="go2rtc">go2rtc Native</option>

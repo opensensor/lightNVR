@@ -153,53 +153,65 @@ static int get_authenticated_user(struct mg_http_message *hm, user_t *user) {
 }
 
 /**
- * @brief Check if the user has admin privileges
+ * @brief Check if the user has admin privileges and send appropriate error response if not
  *
+ * @param c Mongoose connection (used to send error response)
  * @param hm Mongoose HTTP message
- * @return 1 if the user is an admin, 0 otherwise
+ * @return 1 if the user is an admin, 0 otherwise (error response already sent)
  */
-static int check_admin_privileges(struct mg_http_message *hm) {
+static int check_admin_privileges(struct mg_connection *c, struct mg_http_message *hm) {
     user_t user;
     if (get_authenticated_user(hm, &user)) {
-        return (user.role == USER_ROLE_ADMIN);
+        if (user.role == USER_ROLE_ADMIN) {
+            return 1;
+        }
+        // User is authenticated but not admin
+        log_warn("Access denied: User '%s' (role: %s) attempted admin action",
+                 user.username, db_auth_get_role_name(user.role));
+        mg_send_json_error(c, 403, "Forbidden: Admin privileges required");
+        return 0;
     }
+    // User is not authenticated
+    log_warn("Access denied: Unauthenticated request attempted admin action");
+    mg_send_json_error(c, 401, "Unauthorized: Authentication required");
     return 0;
 }
 
 /**
- * @brief Check if the user has permission to view users
+ * @brief Check if the user has permission to view users and send appropriate error response if not
  *
+ * @param c Mongoose connection (used to send error response)
  * @param hm Mongoose HTTP message
- * @return 1 if the user has permission, 0 otherwise
+ * @return 1 if the user has permission, 0 otherwise (error response already sent)
  */
-static int check_view_users_permission(struct mg_http_message *hm) {
+static int check_view_users_permission(struct mg_connection *c, struct mg_http_message *hm) {
     user_t user;
     if (get_authenticated_user(hm, &user)) {
         // Only admin and regular users can view users, viewers cannot
-        return (user.role == USER_ROLE_ADMIN || user.role == USER_ROLE_USER);
+        if (user.role == USER_ROLE_ADMIN || user.role == USER_ROLE_USER) {
+            return 1;
+        }
+        // User is authenticated but doesn't have permission
+        log_warn("Access denied: User '%s' (role: %s) cannot view users",
+                 user.username, db_auth_get_role_name(user.role));
+        mg_send_json_error(c, 403, "Forbidden: Insufficient privileges to view users");
+        return 0;
     }
+    // User is not authenticated
+    log_warn("Access denied: Unauthenticated request attempted to view users");
+    mg_send_json_error(c, 401, "Unauthorized: Authentication required");
     return 0;
 }
 
 /**
- * @brief Check if the user has permission to create users
+ * @brief Check if the user has permission to generate API key and send appropriate error response if not
  *
- * @param hm Mongoose HTTP message
- * @return 1 if the user has permission, 0 otherwise
- */
-static int check_create_user_permission(struct mg_http_message *hm) {
-    // Only admins can create users
-    return check_admin_privileges(hm);
-}
-
-/**
- * @brief Check if the user has permission to generate API key
- *
+ * @param c Mongoose connection (used to send error response)
  * @param hm Mongoose HTTP message
  * @param target_user_id ID of the user for whom the API key is being generated
- * @return 1 if the user has permission, 0 otherwise
+ * @return 1 if the user has permission, 0 otherwise (error response already sent)
  */
-static int check_generate_api_key_permission(struct mg_http_message *hm, int64_t target_user_id) {
+static int check_generate_api_key_permission(struct mg_connection *c, struct mg_http_message *hm, int64_t target_user_id) {
     user_t user;
     if (get_authenticated_user(hm, &user)) {
         // Admins can generate API keys for any user
@@ -211,26 +223,49 @@ static int check_generate_api_key_permission(struct mg_http_message *hm, int64_t
         if (user.role == USER_ROLE_USER && user.id == target_user_id) {
             return 1;
         }
+
+        // User doesn't have permission
+        log_warn("Access denied: User '%s' (role: %s) cannot generate API key for user ID %lld",
+                 user.username, db_auth_get_role_name(user.role), (long long)target_user_id);
+        mg_send_json_error(c, 403, "Forbidden: You can only generate API keys for yourself unless you are an admin");
+        return 0;
     }
+    // User is not authenticated
+    log_warn("Access denied: Unauthenticated request attempted to generate API key");
+    mg_send_json_error(c, 401, "Unauthorized: Authentication required");
     return 0;
 }
 
 /**
- * @brief Check if the user has permission to delete a user
+ * @brief Check if the user has permission to delete a user and send appropriate error response if not
  *
+ * @param c Mongoose connection (used to send error response)
  * @param hm Mongoose HTTP message
  * @param target_user_id ID of the user being deleted
- * @return 1 if the user has permission, 0 otherwise
+ * @return 1 if the user has permission, 0 otherwise (error response already sent)
  */
-static int check_delete_user_permission(struct mg_http_message *hm, int64_t target_user_id) {
+static int check_delete_user_permission(struct mg_connection *c, struct mg_http_message *hm, int64_t target_user_id) {
     user_t user;
     if (get_authenticated_user(hm, &user)) {
         // Only admins can delete users
         if (user.role == USER_ROLE_ADMIN) {
             // Admins cannot delete themselves
-            return (user.id != target_user_id);
+            if (user.id != target_user_id) {
+                return 1;
+            }
+            log_warn("Access denied: Admin '%s' attempted to delete themselves", user.username);
+            mg_send_json_error(c, 403, "Forbidden: You cannot delete yourself");
+            return 0;
         }
+        // User doesn't have permission
+        log_warn("Access denied: User '%s' (role: %s) cannot delete users",
+                 user.username, db_auth_get_role_name(user.role));
+        mg_send_json_error(c, 403, "Forbidden: Only admins can delete users");
+        return 0;
     }
+    // User is not authenticated
+    log_warn("Access denied: Unauthenticated request attempted to delete user");
+    mg_send_json_error(c, 401, "Unauthorized: Authentication required");
     return 0;
 }
 
@@ -269,8 +304,8 @@ void mg_handle_users_list(struct mg_connection *c, struct mg_http_message *hm) {
     log_info("Handling GET /api/auth/users request");
 
     // Check if user has admin role
-    if (!check_admin_privileges(hm)) {
-        return;
+    if (!check_admin_privileges(c, hm)) {
+        return;  // Error response already sent by check_admin_privileges
     }
 
     // Get database handle
@@ -353,8 +388,8 @@ void mg_handle_users_get(struct mg_connection *c, struct mg_http_message *hm) {
     log_info("Handling GET /api/auth/users/:id request");
 
     // Check if user has admin role
-    if (!check_admin_privileges(hm)) {
-        return;
+    if (!check_admin_privileges(c, hm)) {
+        return;  // Error response already sent by check_admin_privileges
     }
 
     // Extract user ID from URL
@@ -556,8 +591,8 @@ void mg_handle_users_create(struct mg_connection *c, struct mg_http_message *hm)
     log_info("Handling POST /api/auth/users request");
 
     // Check if user has admin role
-    if (!check_admin_privileges(hm)) {
-        return;
+    if (!check_admin_privileges(c, hm)) {
+        return;  // Error response already sent by check_admin_privileges
     }
 
     // Parse JSON from request body
@@ -788,8 +823,8 @@ void mg_handle_users_update(struct mg_connection *c, struct mg_http_message *hm)
     log_info("Handling PUT /api/auth/users/:id request");
 
     // Check if user has admin role
-    if (!check_admin_privileges(hm)) {
-        return;
+    if (!check_admin_privileges(c, hm)) {
+        return;  // Error response already sent by check_admin_privileges
     }
 
     // Send an immediate response to the client before processing the request
@@ -941,8 +976,8 @@ void mg_handle_users_delete(struct mg_connection *c, struct mg_http_message *hm)
     log_info("Handling DELETE /api/auth/users/:id request");
 
     // Check if user has admin role
-    if (!check_admin_privileges(hm)) {
-        return;
+    if (!check_admin_privileges(c, hm)) {
+        return;  // Error response already sent by check_admin_privileges
     }
 
     // Extract user ID for permission check
@@ -955,10 +990,9 @@ void mg_handle_users_delete(struct mg_connection *c, struct mg_http_message *hm)
 
     int64_t user_id = strtoll(id_str, NULL, 10);
 
-    // Check if the user has permission to delete this user
-    if (!check_delete_user_permission(hm, user_id)) {
-        mg_send_json_error(c, 403, "Forbidden: You cannot delete this user");
-        return;
+    // Check if the user has permission to delete this user (now includes self-delete check)
+    if (!check_delete_user_permission(c, hm, user_id)) {
+        return;  // Error response already sent by check_delete_user_permission
     }
 
     // Send an immediate response to the client before processing the request
@@ -1090,9 +1124,8 @@ void mg_handle_users_generate_api_key(struct mg_connection *c, struct mg_http_me
     int64_t user_id = strtoll(id_str, NULL, 10);
 
     // Check if the user has permission to generate API key for this user
-    if (!check_generate_api_key_permission(hm, user_id)) {
-        mg_send_json_error(c, 403, "Forbidden: You can only generate API keys for yourself unless you are an admin");
-        return;
+    if (!check_generate_api_key_permission(c, hm, user_id)) {
+        return;  // Error response already sent by check_generate_api_key_permission
     }
 
     // Create a user API task and process it directly

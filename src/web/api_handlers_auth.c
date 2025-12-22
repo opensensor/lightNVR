@@ -32,12 +32,33 @@ int init_auth_system(void) {
 }
 
 /**
+ * @brief Helper to send verify success response with user info
+ */
+static void send_verify_success(struct mg_connection *c, const char *username, user_role_t role) {
+    cJSON *response = cJSON_CreateObject();
+    cJSON_AddBoolToObject(response, "authenticated", 1);
+    cJSON_AddStringToObject(response, "username", username);
+    cJSON_AddStringToObject(response, "role", db_auth_get_role_name(role));
+    cJSON_AddNumberToObject(response, "role_id", (int)role);
+
+    char *json_str = cJSON_PrintUnformatted(response);
+    int json_len = (int)strlen(json_str);
+
+    mg_printf(c, "HTTP/1.1 200 OK\r\n"
+            "Content-Type: application/json\r\n"
+            "Content-Length: %d\r\n\r\n%s", json_len, json_str);
+
+    free(json_str);
+    cJSON_Delete(response);
+}
+
+/**
  * @brief Handle GET /api/auth/verify
- * Lightweight endpoint to verify authentication without returning data
+ * Endpoint to verify authentication and return user info including role
  */
 void mg_handle_auth_verify(struct mg_connection *c, struct mg_http_message *hm) {
     log_info("Handling GET /api/auth/verify request");
-    
+
     // First, check for session token in cookie
     struct mg_str *cookie = mg_http_get_header(hm, "Cookie");
     if (cookie) {
@@ -47,101 +68,107 @@ void mg_handle_auth_verify(struct mg_connection *c, struct mg_http_message *hm) 
             int64_t user_id;
             int rc = db_auth_validate_session(session_token, &user_id);
             if (rc == 0) {
-                // Session is valid
-                log_info("Authentication successful with session token");
-                mg_printf(c, "HTTP/1.1 200 OK\r\n");
-                mg_printf(c, "Content-Length: 0\r\n\r\n");
+                // Session is valid - get user info
+                user_t user;
+                if (db_auth_get_user_by_id(user_id, &user) == 0) {
+                    log_info("Authentication successful with session token for user: %s", user.username);
+                    send_verify_success(c, user.username, user.role);
+                    return;
+                }
+                // Fallback if user lookup fails
+                log_info("Authentication successful with session token (user lookup failed)");
+                send_verify_success(c, "unknown", USER_ROLE_VIEWER);
                 return;
             }
             log_debug("Invalid session token, falling back to other auth methods");
         }
-        
+
         // If session token not found or invalid, check for auth cookie (backward compatibility)
         char auth_cookie[256] = {0};
         if (mg_http_get_var(cookie, "auth", auth_cookie, sizeof(auth_cookie)) > 0) {
             // Decode the auth cookie (base64 encoded username:password)
             char decoded[128] = {0};
             mg_base64_decode(auth_cookie, strlen(auth_cookie), decoded, sizeof(decoded));
-            
+
             // Split the decoded string into username and password
             char *colon = strchr(decoded, ':');
             if (colon) {
                 char username[64] = {0};
                 char password[64] = {0};
-                
+
                 *colon = '\0';
                 strncpy(username, decoded, sizeof(username) - 1);
                 strncpy(password, colon + 1, sizeof(password) - 1);
-                
+
                 // Authenticate with username/password
                 int64_t user_id;
                 int rc = db_auth_authenticate(username, password, &user_id);
-                
+
                 if (rc == 0) {
-                    // Authentication successful
-                    log_info("Authentication successful with auth cookie");
-                    mg_printf(c, "HTTP/1.1 200 OK\r\n");
-                    mg_printf(c, "Content-Length: 0\r\n\r\n");
-                    return;
+                    // Authentication successful - get user info
+                    user_t user;
+                    if (db_auth_get_user_by_id(user_id, &user) == 0) {
+                        log_info("Authentication successful with auth cookie for user: %s", user.username);
+                        send_verify_success(c, user.username, user.role);
+                        return;
+                    }
                 }
-                
+
                 // Fall back to config-based authentication
-                if (strcmp(username, g_config.web_username) == 0 && 
+                if (strcmp(username, g_config.web_username) == 0 &&
                     strcmp(password, g_config.web_password) == 0) {
-                    // Authentication successful with config credentials
+                    // Authentication successful with config credentials - assume admin role
                     log_info("Authentication successful with config credentials (from cookie)");
-                    mg_printf(c, "HTTP/1.1 200 OK\r\n");
-                    mg_printf(c, "Content-Length: 0\r\n\r\n");
+                    send_verify_success(c, username, USER_ROLE_ADMIN);
                     return;
                 }
             }
         }
     }
-    
+
     // If no valid cookie auth, try HTTP Basic Auth
     char username[64] = {0};
     char password[64] = {0};
-    
+
     mg_http_creds(hm, username, sizeof(username), password, sizeof(password));
-    
+
     // Check if we have credentials
     if (username[0] == '\0' || password[0] == '\0') {
-        // No credentials provided - return JSON error instead of WWW-Authenticate
-        mg_printf(c, "HTTP/1.1 401 Unauthorized\r\n");
-        mg_printf(c, "Content-Type: application/json\r\n");
-        mg_printf(c, "Content-Length: 29\r\n\r\n");
-        mg_printf(c, "{\"error\": \"Unauthorized\"}\n");
+        // No credentials provided - return JSON error
+        mg_send_json_error(c, 401, "Unauthorized");
         return;
     }
-    
+
     // Authenticate the user
     int64_t user_id;
     int rc = db_auth_authenticate(username, password, &user_id);
-    
+
     if (rc != 0) {
         // Fall back to config-based authentication for backward compatibility
-        if (strcmp(username, g_config.web_username) == 0 && 
+        if (strcmp(username, g_config.web_username) == 0 &&
             strcmp(password, g_config.web_password) == 0) {
-            // Authentication successful with config credentials
+            // Authentication successful with config credentials - assume admin role
             log_info("Authentication successful with config credentials (from Basic Auth)");
-            mg_printf(c, "HTTP/1.1 200 OK\r\n");
-            mg_printf(c, "Content-Length: 0\r\n\r\n");
+            send_verify_success(c, username, USER_ROLE_ADMIN);
             return;
         }
-        
-        // Authentication failed - return JSON error instead of WWW-Authenticate
+
+        // Authentication failed
         log_warn("Authentication failed for user: %s", username);
-        mg_printf(c, "HTTP/1.1 401 Unauthorized\r\n");
-        mg_printf(c, "Content-Type: application/json\r\n");
-        mg_printf(c, "Content-Length: 29\r\n\r\n");
-        mg_printf(c, "{\"error\": \"Unauthorized\"}\n");
+        mg_send_json_error(c, 401, "Unauthorized");
         return;
     }
-    
-    // Authentication successful
-    log_info("Authentication successful for user: %s (ID: %lld)", username, (long long)user_id);
-    mg_printf(c, "HTTP/1.1 200 OK\r\n");
-    mg_printf(c, "Content-Length: 0\r\n\r\n");
+
+    // Authentication successful - get user info
+    user_t user;
+    if (db_auth_get_user_by_id(user_id, &user) == 0) {
+        log_info("Authentication successful for user: %s (role: %s)", user.username, db_auth_get_role_name(user.role));
+        send_verify_success(c, user.username, user.role);
+    } else {
+        // Fallback if user lookup fails
+        log_info("Authentication successful for user: %s (user lookup failed)", username);
+        send_verify_success(c, username, USER_ROLE_VIEWER);
+    }
 }
 
 /**
@@ -149,72 +176,64 @@ void mg_handle_auth_verify(struct mg_connection *c, struct mg_http_message *hm) 
  */
 void mg_handle_auth_logout(struct mg_connection *c, struct mg_http_message *hm) {
     log_info("Handling logout request");
-    
-    // Check if this is an API request
+
+    // Check if this is an API request (POST method or has JSON content type or X-Requested-With header)
+    bool is_post = mg_strcmp(hm->method, mg_str("POST")) == 0;
     struct mg_str *content_type = mg_http_get_header(hm, "Content-Type");
     struct mg_str *requested_with = mg_http_get_header(hm, "X-Requested-With");
-    
+    struct mg_str *accept = mg_http_get_header(hm, "Accept");
+
+    // Check if Accept header wants JSON
+    bool accepts_json = false;
+    if (accept) {
+        accepts_json = memmem(accept->buf, accept->len, "application/json", 16) != NULL;
+    }
+
     // Check if content_type contains "application/json"
     bool is_json = false;
     if (content_type) {
-        const char *json_str = "application/json";
-        size_t json_len = strlen(json_str);
-        
-        if (content_type->len >= json_len) {
-            for (size_t i = 0; i <= content_type->len - json_len; i++) {
-                if (strncmp(content_type->buf + i, json_str, json_len) == 0) {
-                    is_json = true;
-                    break;
-                }
-            }
-        }
+        is_json = memmem(content_type->buf, content_type->len, "application/json", 16) != NULL;
     }
-    
-    bool is_api_request = is_json || requested_with != NULL;
-    
+
+    bool is_api_request = is_post || is_json || requested_with != NULL || accepts_json;
+
     if (is_api_request) {
         // For API requests, return a JSON success response
         cJSON *response = cJSON_CreateObject();
         cJSON_AddBoolToObject(response, "success", 1);
-        cJSON_AddStringToObject(response, "redirect", "/login.html?auth_required=true&logout=true");
-        
+        cJSON_AddStringToObject(response, "redirect", "/login.html?logout=true");
+
+        char *json_response = cJSON_PrintUnformatted(response);
+        int json_len = (int)strlen(json_response);
+
         // Send JSON response with cleared cookies
-        mg_printf(c, "HTTP/1.1 401 Unauthorized\r\n");  // Use 401 to help clear browser auth cache
-        mg_printf(c, "Content-Type: application/json\r\n");
-        mg_printf(c, "Set-Cookie: auth=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict\r\n");
-        mg_printf(c, "Set-Cookie: session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict\r\n");
-        mg_printf(c, "WWW-Authenticate: Basic realm=\"logout\"\r\n");
-        mg_printf(c, "Cache-Control: no-cache, no-store, must-revalidate\r\n");
-        mg_printf(c, "Pragma: no-cache\r\n");
-        mg_printf(c, "Expires: 0\r\n");
-        
-        char *json_str = cJSON_PrintUnformatted(response);
-        mg_printf(c, "Content-Length: %d\r\n\r\n", (int)strlen(json_str));
-        mg_printf(c, "%s", json_str);
-        
-        cJSON_Delete(response);
-        free(json_str);
-        
-        // Ensure the connection is closed properly
-        c->is_draining = 1;
-    } else {
-        // For form submissions, send a redirect response
-        mg_printf(c, "HTTP/1.1 302 Found\r\n"
-                "Location: /login.html?auth_required=true&logout=true\r\n"
-                "Set-Cookie: auth=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict\r\n"
-                "Set-Cookie: session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict\r\n"
-                // Add WWW-Authenticate header with an invalid realm to clear browser's auth cache
-                "WWW-Authenticate: Basic realm=\"logout\"\r\n"
-                // Add Cache-Control headers to prevent caching
+        mg_printf(c, "HTTP/1.1 200 OK\r\n"
+                "Content-Type: application/json\r\n"
+                "Set-Cookie: auth=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax\r\n"
+                "Set-Cookie: session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax\r\n"
                 "Cache-Control: no-cache, no-store, must-revalidate\r\n"
                 "Pragma: no-cache\r\n"
-                "Expires: 0\r\n"
-                "Content-Length: 0\r\n\r\n");
-        
-        // Ensure the connection is closed properly
-        c->is_draining = 1;
+                "Content-Length: %d\r\n\r\n%s", json_len, json_response);
+
+        cJSON_Delete(response);
+        free(json_response);
+
+        log_info("Sent JSON logout response");
+    } else {
+        // For direct browser navigation (GET request), send a redirect response
+        // Use 303 See Other for a cleaner redirect after logout
+        mg_printf(c, "HTTP/1.1 303 See Other\r\n"
+                "Location: /login.html?logout=true\r\n"
+                "Set-Cookie: auth=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax\r\n"
+                "Set-Cookie: session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax\r\n"
+                "Cache-Control: no-cache, no-store, must-revalidate\r\n"
+                "Pragma: no-cache\r\n"
+                "Content-Length: 0\r\n"
+                "Connection: close\r\n\r\n");
+
+        log_info("Sent redirect logout response");
     }
-    
+
     log_info("Successfully handled logout request");
 }
 

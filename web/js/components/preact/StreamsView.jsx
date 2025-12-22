@@ -3,11 +3,12 @@
  * React component for the streams page
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { ContentLoader } from './LoadingIndicator.jsx';
 import { StreamDeleteModal } from './StreamDeleteModal.jsx';
 import { StreamConfigModal } from './StreamConfigModal.jsx';
+import { validateSession } from '../../utils/auth-utils.js';
 import {
   useQuery,
   useMutation,
@@ -22,6 +23,27 @@ import {
  */
 export function StreamsView() {
   const queryClient = useQueryClient();
+
+  // User role state for permission-based UI
+  const [userRole, setUserRole] = useState(null);
+
+  // Check if user can modify streams (admin or user role, not viewer)
+  const canModifyStreams = userRole === 'admin' || userRole === 'user';
+
+  // Fetch user role on mount
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      try {
+        const result = await validateSession();
+        if (result.valid && result.role) {
+          setUserRole(result.role);
+        }
+      } catch (error) {
+        console.error('Error fetching user role:', error);
+      }
+    };
+    fetchUserRole();
+  }, []);
 
   // State for streams data
   const [modalVisible, setModalVisible] = useState(false);
@@ -821,21 +843,30 @@ export function StreamsView() {
     <section id="streams-page" className="page">
       <div className="page-header flex justify-between items-center mb-4 p-4 bg-card text-card-foreground rounded-lg shadow">
         <h2 className="text-xl font-bold">Streams</h2>
-        <div className="controls flex space-x-2">
-          <button
-              id="discover-onvif-btn"
-              className="btn-success focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
-              onClick={() => setOnvifModalVisible(true)}
-          >
-            Discover ONVIF Cameras
-          </button>
-          <button
-              id="add-stream-btn"
-              className="btn-primary focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
-              onClick={openAddStreamModal}
-          >
-            Add Stream
-          </button>
+        <div className="controls flex items-center space-x-2">
+          {!canModifyStreams && userRole && (
+            <span className="text-sm text-muted-foreground italic mr-2">
+              Read-only (insufficient permissions to modify)
+            </span>
+          )}
+          {canModifyStreams && (
+            <>
+              <button
+                  id="discover-onvif-btn"
+                  className="btn-success focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+                  onClick={() => setOnvifModalVisible(true)}
+              >
+                Discover ONVIF Cameras
+              </button>
+              <button
+                  id="add-stream-btn"
+                  className="btn-primary focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+                  onClick={openAddStreamModal}
+              >
+                Add Stream
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -843,7 +874,7 @@ export function StreamsView() {
           isLoading={isLoading}
           hasData={hasData}
           loadingMessage="Loading streams..."
-          emptyMessage="No streams configured yet. Click 'Add Stream' to create one."
+          emptyMessage={canModifyStreams ? "No streams configured yet. Click 'Add Stream' to create one." : "No streams configured yet."}
       >
         <div className="streams-container bg-card text-card-foreground rounded-lg shadow overflow-hidden">
           <div className="overflow-x-auto">
@@ -876,30 +907,40 @@ export function StreamsView() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex space-x-2">
-                      <button
-                          className="p-1 rounded-full focus:outline-none"
-                          style={{color: 'hsl(var(--primary))'}}
-                          onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.1)'}
-                          onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                          onClick={() => openEditStreamModal(stream.name)}
-                          title="Edit"
-                      >
-                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"></path>
-                        </svg>
-                      </button>
-                      <button
-                          className="p-1 rounded-full focus:outline-none"
-                          style={{color: 'hsl(var(--danger))'}}
-                          onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--danger) / 0.1)'}
-                          onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                          onClick={() => openDeleteModal(stream)}
-                          title="Delete"
-                      >
-                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                          <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd"></path>
-                        </svg>
-                      </button>
+                      {/* Edit button - only show if user can modify streams */}
+                      {canModifyStreams && (
+                        <button
+                            className="p-1 rounded-full focus:outline-none"
+                            style={{color: 'hsl(var(--primary))'}}
+                            onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.1)'}
+                            onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                            onClick={() => openEditStreamModal(stream.name)}
+                            title="Edit"
+                        >
+                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"></path>
+                          </svg>
+                        </button>
+                      )}
+                      {/* Delete button - only show if user can modify streams */}
+                      {canModifyStreams && (
+                        <button
+                            className="p-1 rounded-full focus:outline-none"
+                            style={{color: 'hsl(var(--danger))'}}
+                            onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--danger) / 0.1)'}
+                            onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                            onClick={() => openDeleteModal(stream)}
+                            title="Delete"
+                        >
+                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                            <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd"></path>
+                          </svg>
+                        </button>
+                      )}
+                      {/* Show dash when no actions available */}
+                      {!canModifyStreams && (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </div>
                   </td>
                 </tr>

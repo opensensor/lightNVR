@@ -1008,6 +1008,7 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
         // Check if this is a static asset, HTML file, or HLS request
         is_static_asset = is_static_asset || strstr(uri, ".html") != NULL;
         bool is_api_request = strncasecmp(uri, "/api/", 5) == 0;
+        bool is_logout_request = strcmp(uri, "/logout") == 0;  // Special route for logout
         bool is_direct_hls = strncasecmp(uri, "/hls/", 5) == 0;
         bool handled = false;
 
@@ -1053,8 +1054,8 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
             }
             handled = true;
         }
-        else if (is_api_request) {
-            // Handle API requests with threading
+        else if (is_api_request || is_logout_request) {
+            // Handle API requests (including special /logout route) with threading
             handled = handle_api_request(c, hm, true);
         } else if (is_direct_hls) {
             // For direct HLS requests, use the HLS handler

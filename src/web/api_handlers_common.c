@@ -9,10 +9,102 @@
 #include <cjson/cJSON.h>
 
 #include "web/api_handlers.h"
+#include "web/api_handlers_common.h"
 #include "web/mongoose_adapter.h"
 #include "core/logger.h"
 #include "core/config.h"
+#include "database/db_auth.h"
 #include "mongoose.h"
+
+/**
+ * @brief Get the authenticated user from the request
+ *
+ * @param hm Mongoose HTTP message
+ * @param user Pointer to store the user information
+ * @return 1 if the user is authenticated, 0 otherwise
+ */
+int mg_get_authenticated_user(struct mg_http_message *hm, user_t *user) {
+    if (!user) {
+        return 0;
+    }
+
+    // First, check for session token in cookie
+    struct mg_str *cookie = mg_http_get_header(hm, "Cookie");
+    if (cookie) {
+        char session_token[64] = {0};
+        if (mg_http_get_var(cookie, "session", session_token, sizeof(session_token)) > 0) {
+            // Validate the session token
+            int64_t user_id;
+            int rc = db_auth_validate_session(session_token, &user_id);
+            if (rc == 0) {
+                // Session is valid, get user info
+                rc = db_auth_get_user_by_id(user_id, user);
+                if (rc == 0) {
+                    return 1;
+                }
+            }
+        }
+    }
+
+    // If no valid session, try HTTP Basic Auth
+    char username[64] = {0};
+    char password[64] = {0};
+
+    mg_http_creds(hm, username, sizeof(username), password, sizeof(password));
+
+    // Check if we have credentials
+    if (username[0] != '\0' && password[0] != '\0') {
+        // Authenticate the user
+        int64_t user_id;
+        int rc = db_auth_authenticate(username, password, &user_id);
+
+        if (rc == 0) {
+            // Authentication successful, get user info
+            rc = db_auth_get_user_by_id(user_id, user);
+            if (rc == 0) {
+                return 1;
+            }
+        }
+
+        // Fall back to config-based authentication for backward compatibility
+        if (strcmp(username, g_config.web_username) == 0 &&
+            strcmp(password, g_config.web_password) == 0) {
+            // Config user is treated as admin
+            memset(user, 0, sizeof(user_t));
+            strncpy(user->username, username, sizeof(user->username) - 1);
+            user->role = USER_ROLE_ADMIN;
+            user->is_active = true;
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+/**
+ * @brief Check if the user has admin privileges and send appropriate error response if not
+ *
+ * @param c Mongoose connection (used to send error response)
+ * @param hm Mongoose HTTP message
+ * @return 1 if the user is an admin, 0 otherwise (error response already sent)
+ */
+int mg_check_admin_privileges(struct mg_connection *c, struct mg_http_message *hm) {
+    user_t user;
+    if (mg_get_authenticated_user(hm, &user)) {
+        if (user.role == USER_ROLE_ADMIN) {
+            return 1;
+        }
+        // User is authenticated but not admin
+        log_warn("Access denied: User '%s' (role: %s) attempted admin action",
+                 user.username, db_auth_get_role_name(user.role));
+        mg_send_json_error(c, 403, "Forbidden: Admin privileges required");
+        return 0;
+    }
+    // User is not authenticated
+    log_warn("Access denied: Unauthenticated request attempted admin action");
+    mg_send_json_error(c, 401, "Unauthorized: Authentication required");
+    return 0;
+}
 
 /**
  * @brief Create a JSON string from a config structure

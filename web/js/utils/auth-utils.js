@@ -38,7 +38,7 @@ export function clearAuthState() {
 
 /**
  * Validate current session by making a lightweight API call
- * @returns {Promise<boolean>} - True if session is valid
+ * @returns {Promise<{valid: boolean, username?: string, role?: string, role_id?: number}>} - Session info
  */
 export async function validateSession() {
   try {
@@ -49,12 +49,55 @@ export async function validateSession() {
       skipAuthRedirect: true, // Don't auto-redirect on 401
     });
 
-    return response.ok;
+    if (response.ok) {
+      const data = await response.json();
+      return {
+        valid: true,
+        username: data.username,
+        role: data.role,
+        role_id: data.role_id
+      };
+    }
+    return { valid: false };
   } catch (error) {
     // If we get a 401 or other error, session is invalid
     console.debug('Session validation failed:', error.message);
-    return false;
+    return { valid: false };
   }
+}
+
+/**
+ * Get user info from session
+ * @returns {Promise<{username: string, role: string, role_id: number}|null>} - User info or null
+ */
+export async function getUserInfo() {
+  const session = await validateSession();
+  if (session.valid) {
+    return {
+      username: session.username,
+      role: session.role,
+      role_id: session.role_id
+    };
+  }
+  return null;
+}
+
+/**
+ * Check if user has admin role
+ * @returns {Promise<boolean>}
+ */
+export async function isAdmin() {
+  const session = await validateSession();
+  return session.valid && session.role === 'admin';
+}
+
+/**
+ * Check if user has viewer role (most restrictive)
+ * @returns {Promise<boolean>}
+ */
+export async function isViewer() {
+  const session = await validateSession();
+  return session.valid && session.role === 'viewer';
 }
 
 /**
@@ -119,14 +162,14 @@ export function setupSessionValidation(intervalMs = 5 * 60 * 1000) {
     }
 
     console.debug('Running periodic session validation');
-    const isValid = await validateSession();
+    const session = await validateSession();
 
-    if (!isValid) {
+    if (!session.valid) {
       console.warn('Periodic session validation failed, redirecting to login');
       clearAuthState();
       redirectToLogin('session_expired');
     } else {
-      console.debug('Session validation passed');
+      console.debug('Session validation passed for user:', session.username);
     }
   }, intervalMs);
 
