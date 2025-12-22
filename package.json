@@ -1,5 +1,16 @@
 {
+  "name": "lightnvr",
+  "version": "1.0.0",
+  "description": "LightNVR Integration Tests",
+  "scripts": {
+    "test": "npx playwright test",
+    "test:api": "npx playwright test --grep @api",
+    "test:ui": "npx playwright test --grep @ui",
+    "test:go2rtc": "npx playwright test --grep @go2rtc",
+    "test:report": "npx playwright show-report"
+  },
   "devDependencies": {
+    "@playwright/test": "^1.56.1",
     "playwright": "^1.56.1"
   }
 }
