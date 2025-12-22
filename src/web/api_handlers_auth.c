@@ -62,65 +62,98 @@ void mg_handle_auth_verify(struct mg_connection *c, struct mg_http_message *hm) 
     // First, check for session token in cookie
     struct mg_str *cookie = mg_http_get_header(hm, "Cookie");
     if (cookie) {
-        char session_token[64] = {0};
-        if (mg_http_get_var(cookie, "session", session_token, sizeof(session_token)) > 0) {
-            // Validate the session token
-            int64_t user_id;
-            int rc = db_auth_validate_session(session_token, &user_id);
-            if (rc == 0) {
-                // Session is valid - get user info
-                user_t user;
-                if (db_auth_get_user_by_id(user_id, &user) == 0) {
-                    log_info("Authentication successful with session token for user: %s", user.username);
-                    send_verify_success(c, user.username, user.role);
-                    return;
-                }
-                // Fallback if user lookup fails
-                log_info("Authentication successful with session token (user lookup failed)");
-                send_verify_success(c, "unknown", USER_ROLE_VIEWER);
-                return;
+        // Parse cookie header manually (cookies use ';' separator, not '&')
+        char cookie_str[1024] = {0};
+        size_t cookie_len = cookie->len < sizeof(cookie_str) - 1 ? cookie->len : sizeof(cookie_str) - 1;
+        memcpy(cookie_str, cookie->buf, cookie_len);
+        cookie_str[cookie_len] = '\0';
+
+        // Look for session cookie
+        char *session_start = strstr(cookie_str, "session=");
+        if (session_start) {
+            session_start += 8; // Skip "session="
+            char *session_end = strchr(session_start, ';');
+            if (!session_end) {
+                session_end = session_start + strlen(session_start);
             }
-            log_debug("Invalid session token, falling back to other auth methods");
-        }
 
-        // If session token not found or invalid, check for auth cookie (backward compatibility)
-        char auth_cookie[256] = {0};
-        if (mg_http_get_var(cookie, "auth", auth_cookie, sizeof(auth_cookie)) > 0) {
-            // Decode the auth cookie (base64 encoded username:password)
-            char decoded[128] = {0};
-            mg_base64_decode(auth_cookie, strlen(auth_cookie), decoded, sizeof(decoded));
+            char session_token[64] = {0};
+            size_t token_len = session_end - session_start;
+            if (token_len < sizeof(session_token)) {
+                memcpy(session_token, session_start, token_len);
+                session_token[token_len] = '\0';
 
-            // Split the decoded string into username and password
-            char *colon = strchr(decoded, ':');
-            if (colon) {
-                char username[64] = {0};
-                char password[64] = {0};
-
-                *colon = '\0';
-                strncpy(username, decoded, sizeof(username) - 1);
-                strncpy(password, colon + 1, sizeof(password) - 1);
-
-                // Authenticate with username/password
+                // Validate the session token
                 int64_t user_id;
-                int rc = db_auth_authenticate(username, password, &user_id);
-
+                int rc = db_auth_validate_session(session_token, &user_id);
                 if (rc == 0) {
-                    // Authentication successful - get user info
+                    // Session is valid - get user info
                     user_t user;
                     if (db_auth_get_user_by_id(user_id, &user) == 0) {
-                        log_info("Authentication successful with auth cookie for user: %s", user.username);
+                        log_info("Authentication successful with session token for user: %s", user.username);
                         send_verify_success(c, user.username, user.role);
                         return;
                     }
-                }
-
-                // Fall back to config-based authentication
-                if (strcmp(username, g_config.web_username) == 0 &&
-                    strcmp(password, g_config.web_password) == 0) {
-                    // Authentication successful with config credentials - assume admin role
-                    log_info("Authentication successful with config credentials (from cookie)");
-                    send_verify_success(c, username, USER_ROLE_ADMIN);
+                    // Fallback if user lookup fails
+                    log_info("Authentication successful with session token (user lookup failed)");
+                    send_verify_success(c, "unknown", USER_ROLE_VIEWER);
                     return;
+                }
+                log_debug("Invalid session token, falling back to other auth methods");
+            }
+        }
+
+        // If session token not found or invalid, check for auth cookie (backward compatibility)
+        char *auth_start = strstr(cookie_str, "auth=");
+        if (auth_start) {
+            auth_start += 5; // Skip "auth="
+            char *auth_end = strchr(auth_start, ';');
+            if (!auth_end) {
+                auth_end = auth_start + strlen(auth_start);
+            }
+
+            char auth_cookie[256] = {0};
+            size_t auth_len = auth_end - auth_start;
+            if (auth_len < sizeof(auth_cookie)) {
+                memcpy(auth_cookie, auth_start, auth_len);
+                auth_cookie[auth_len] = '\0';
+
+                // Decode the auth cookie (base64 encoded username:password)
+                char decoded[128] = {0};
+                mg_base64_decode(auth_cookie, strlen(auth_cookie), decoded, sizeof(decoded));
+
+                // Split the decoded string into username and password
+                char *colon = strchr(decoded, ':');
+                if (colon) {
+                    char username[64] = {0};
+                    char password[64] = {0};
+
+                    *colon = '\0';
+                    strncpy(username, decoded, sizeof(username) - 1);
+                    strncpy(password, colon + 1, sizeof(password) - 1);
+
+                    // Authenticate with username/password
+                    int64_t user_id;
+                    int rc = db_auth_authenticate(username, password, &user_id);
+
+                    if (rc == 0) {
+                        // Authentication successful - get user info
+                        user_t user;
+                        if (db_auth_get_user_by_id(user_id, &user) == 0) {
+                            log_info("Authentication successful with auth cookie for user: %s", user.username);
+                            send_verify_success(c, user.username, user.role);
+                            return;
+                        }
+                    }
+
+                    // Fall back to config-based authentication
+                    if (strcmp(username, g_config.web_username) == 0 &&
+                        strcmp(password, g_config.web_password) == 0) {
+                        // Authentication successful with config credentials - assume admin role
+                        log_info("Authentication successful with config credentials (from cookie)");
+                        send_verify_success(c, username, USER_ROLE_ADMIN);
+                        return;
+                    }
                 }
             }
         }

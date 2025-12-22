@@ -1,0 +1,88 @@
+# go2rtc test configuration file
+# This configuration includes virtual test streams for CI/CD and development testing
+#
+# Usage:
+#   go2rtc -config /path/to/go2rtc-test.yaml
+#
+# The virtual streams use FFmpeg's lavfi filters to generate test patterns
+# without requiring any real cameras. This is perfect for:
+#   - CI/CD integration testing
+#   - Local development without cameras
+#   - Testing stream handling and recording
+
+# Test configuration uses different ports to avoid conflicts with production
+api:
+  listen: :11984
+  # Note: base_path removed for simpler API access during testing
+  # Use base_path: /go2rtc/ when running behind lightNVR's reverse proxy
+
+rtsp:
+  listen: :18554
+
+webrtc:
+  listen: :18555
+  ice_servers:
+    - urls: [stun:stun.l.google.com:19302]
+  candidates:
+    - "*:18555"
+    - stun:stun.l.google.com:19302
+
+log:
+  level: info
+
+streams:
+  # ==========================================================================
+  # VIRTUAL TEST STREAMS
+  # These streams generate video using FFmpeg's lavfi filters
+  # No real cameras required - perfect for CI/CD testing
+  # ==========================================================================
+
+  # Standard test pattern with timestamp counter
+  # Good for verifying basic stream connectivity and frame timing
+  test_pattern: ffmpeg:virtual?video&size=720#video=h264
+
+  # SMPTE color bars - standard broadcast test pattern
+  # Good for verifying color accuracy and basic video pipeline
+  test_colorbars: ffmpeg:virtual?video=smptebars&size=720#video=h264
+
+  # Solid color streams - minimal CPU usage
+  # Good for basic connectivity tests and low-resource environments
+  # Note: Using exec source directly as virtual doesn't handle color filter params well
+  test_red: "exec:ffmpeg -re -f lavfi -i color=red:s=640x480:r=10 -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -f rtsp {output}"
+  test_blue: "exec:ffmpeg -re -f lavfi -i color=blue:s=640x480:r=10 -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -f rtsp {output}"
+  test_green: "exec:ffmpeg -re -f lavfi -i color=green:s=640x480:r=10 -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -f rtsp {output}"
+
+  # Mandelbrot fractal zoom - animated pattern
+  # Good for testing motion detection (continuous motion)
+  test_mandelbrot: ffmpeg:virtual?video=mandelbrot&size=640x480#video=h264
+
+  # More elaborate test pattern (testsrc2)
+  # Good for higher resolution testing
+  test_pattern2: ffmpeg:virtual?video=testsrc2&size=1080#video=h264
+
+  # Low framerate stream (5 fps)
+  # Good for testing edge cases with slow streams
+  test_lowfps: ffmpeg:virtual?video=testsrc2&size=640x480&rate=5#video=h264
+
+  # ==========================================================================
+  # STREAM ACCESS INFORMATION (using test ports 11984/18554/18555)
+  # ==========================================================================
+  #
+  # RTSP URLs (for lightNVR stream configuration):
+  #   rtsp://localhost:18554/test_pattern
+  #   rtsp://localhost:18554/test_colorbars
+  #   rtsp://localhost:18554/test_red
+  #   rtsp://localhost:18554/test_blue
+  #   rtsp://localhost:18554/test_green
+  #   rtsp://localhost:18554/test_mandelbrot
+  #   rtsp://localhost:18554/test_pattern2
+  #   rtsp://localhost:18554/test_lowfps
+  #
+  # Web UI:
+  #   http://localhost:11984/
+  #
+  # API:
+  #   http://localhost:11984/api/streams
+  #
+  # ==========================================================================
+

@@ -46,14 +46,21 @@ export function SettingsView() {
       if (session.valid) {
         setUserRole(session.role);
         console.log('User role:', session.role);
+      } else {
+        // Session invalid - set to empty string to indicate fetch completed
+        setUserRole('');
+        console.log('Session validation failed, no role');
       }
     }
     fetchUserRole();
   }, []);
 
+  // Role is still loading if null
+  const roleLoading = userRole === null;
   // Check if user can modify system settings (admin only)
-  const canModifySettings = userRole === 'admin';
-  // Viewers can only see/change theme
+  // While loading, default to enabled so admin doesn't see disabled inputs
+  const canModifySettings = roleLoading || userRole === 'admin';
+  // Viewers can only see/change theme (only applies when role is confirmed)
   const isViewer = userRole === 'viewer';
   
   // Fetch settings using useQuery
@@ -213,7 +220,7 @@ export function SettingsView() {
       <div class="page-header flex justify-between items-center mb-4 p-4 bg-card text-card-foreground rounded-lg shadow">
         <h2 class="text-xl font-bold">Settings</h2>
         <div class="controls flex items-center gap-4">
-          {!canModifySettings && (
+          {!canModifySettings && userRole && (
             <span class="text-sm text-muted-foreground italic">
               Read-only (admin privileges required to modify)
             </span>

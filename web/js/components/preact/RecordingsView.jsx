@@ -61,9 +61,6 @@ export function RecordingsView() {
   // Get modal context for video playback
   const modalContext = useContext(ModalContext);
 
-  // Check if user can delete recordings (admin or user role, not viewer)
-  const canDelete = userRole === 'admin' || userRole === 'user';
-
   // Fetch user role on mount
   useEffect(() => {
     async function fetchUserRole() {
@@ -71,10 +68,20 @@ export function RecordingsView() {
       if (session.valid) {
         setUserRole(session.role);
         console.log('User role:', session.role);
+      } else {
+        // Session invalid - set to empty string to indicate fetch completed
+        setUserRole('');
+        console.log('Session validation failed, no role');
       }
     }
     fetchUserRole();
   }, []);
+
+  // Role is still loading if null
+  const roleLoading = userRole === null;
+  // Check if user can delete recordings (admin or user role, not viewer)
+  // While loading, default to enabled so admin/user doesn't see hidden buttons
+  const canDelete = roleLoading || userRole === 'admin' || userRole === 'user';
 
   // Store modal context in window for global access
   useEffect(() => {

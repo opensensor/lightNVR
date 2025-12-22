@@ -7,6 +7,7 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { ContentLoader } from './LoadingIndicator.jsx';
 import { useQuery, useMutation, fetchJSON } from '../../query-client.js';
+import { validateSession } from '../../utils/auth-utils.js';
 
 // Import system components
 import { SystemControls } from './system/SystemControls.jsx';
@@ -80,6 +81,32 @@ export function SystemView() {
   const [isRestarting, setIsRestarting] = useState(false);
   const [isShuttingDown, setIsShuttingDown] = useState(false);
   const [hasData, setHasData] = useState(false);
+
+  // User role state for permission-based UI
+  const [userRole, setUserRole] = useState(null);
+
+  // Fetch user role on mount
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      try {
+        const result = await validateSession();
+        if (result.valid && result.role) {
+          setUserRole(result.role);
+        } else {
+          setUserRole('');
+        }
+      } catch (error) {
+        console.error('Error fetching user role:', error);
+        setUserRole('');
+      }
+    };
+    fetchUserRole();
+  }, []);
+
+  // Role is still loading if null
+  const roleLoading = userRole === null;
+  // Only admin can restart/shutdown system
+  const canControlSystem = roleLoading || userRole === 'admin';
 
   // Define all query hooks next
   const {
@@ -241,6 +268,7 @@ export function SystemView() {
         shutdownSystem={shutdownSystem}
         isRestarting={isRestarting}
         isShuttingDown={isShuttingDown}
+        canControlSystem={canControlSystem}
       />
 
       <ContentLoader

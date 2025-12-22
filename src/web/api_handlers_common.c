@@ -31,16 +31,36 @@ int mg_get_authenticated_user(struct mg_http_message *hm, user_t *user) {
     // First, check for session token in cookie
     struct mg_str *cookie = mg_http_get_header(hm, "Cookie");
     if (cookie) {
-        char session_token[64] = {0};
-        if (mg_http_get_var(cookie, "session", session_token, sizeof(session_token)) > 0) {
-            // Validate the session token
-            int64_t user_id;
-            int rc = db_auth_validate_session(session_token, &user_id);
-            if (rc == 0) {
-                // Session is valid, get user info
-                rc = db_auth_get_user_by_id(user_id, user);
+        // Parse cookie header manually (cookies use ';' separator, not '&')
+        char cookie_str[1024] = {0};
+        size_t cookie_len = cookie->len < sizeof(cookie_str) - 1 ? cookie->len : sizeof(cookie_str) - 1;
+        memcpy(cookie_str, cookie->buf, cookie_len);
+        cookie_str[cookie_len] = '\0';
+
+        // Look for session cookie
+        char *session_start = strstr(cookie_str, "session=");
+        if (session_start) {
+            session_start += 8; // Skip "session="
+            char *session_end = strchr(session_start, ';');
+            if (!session_end) {
+                session_end = session_start + strlen(session_start);
+            }
+
+            char session_token[64] = {0};
+            size_t token_len = session_end - session_start;
+            if (token_len < sizeof(session_token)) {
+                memcpy(session_token, session_start, token_len);
+                session_token[token_len] = '\0';
+
+                // Validate the session token
+                int64_t user_id;
+                int rc = db_auth_validate_session(session_token, &user_id);
                 if (rc == 0) {
-                    return 1;
+                    // Session is valid, get user info
+                    rc = db_auth_get_user_by_id(user_id, user);
+                    if (rc == 0) {
+                        return 1;
+                    }
                 }
             }
         }

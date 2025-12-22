@@ -1,0 +1,169 @@
+name: Integration Tests
+
+on:
+  push:
+    branches:
+      - main
+      - 'feature/**'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  integration-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            pkg-config \
+            libavcodec-dev \
+            libavformat-dev \
+            libavutil-dev \
+            libswscale-dev \
+            libsqlite3-dev \
+            libmicrohttpd-dev \
+            libcurl4-openssl-dev \
+            libcjson-dev \
+            ffmpeg \
+            curl \
+            jq
+
+      - name: Download go2rtc
+        run: |
+          # Download go2rtc from opensensor fork
+          GO2RTC_VERSION="1.9.9"
+          wget -q "https://github.com/opensensor/go2rtc/releases/download/v${GO2RTC_VERSION}/go2rtc_linux_amd64" -O go2rtc
+          chmod +x go2rtc
+          echo "Downloaded go2rtc v${GO2RTC_VERSION}"
+
+      - name: Start go2rtc with test streams
+        run: |
+          # Start go2rtc with test configuration in background
+          # Test config uses ports 11984 (API), 18554 (RTSP), 18555 (WebRTC)
+          ./go2rtc -config config/go2rtc/go2rtc-test.yaml &
+          GO2RTC_PID=$!
+          echo "GO2RTC_PID=$GO2RTC_PID" >> $GITHUB_ENV
+
+          # Wait for go2rtc to start
+          echo "Waiting for go2rtc to start..."
+          for i in {1..30}; do
+            if curl -s http://localhost:11984/api/streams > /dev/null 2>&1; then
+              echo "go2rtc is ready!"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Verify test streams
+        run: |
+          # Check that test streams are available
+          echo "Checking go2rtc API..."
+          curl -s http://localhost:11984/api/streams | jq .
+
+          # Verify specific test streams exist
+          STREAMS=$(curl -s http://localhost:11984/api/streams)
+
+          for stream in test_pattern test_colorbars test_red test_blue test_green test_mandelbrot test_pattern2 test_lowfps; do
+            if echo "$STREAMS" | jq -e ".[\"$stream\"]" > /dev/null 2>&1; then
+              echo "✓ Stream '$stream' is configured"
+            else
+              echo "✗ Stream '$stream' is NOT configured"
+              exit 1
+            fi
+          done
+
+          echo ""
+          echo "All test streams are available!"
+
+      - name: Test RTSP stream access via FFmpeg
+        run: |
+          # Test that we can actually read frames from the test streams
+          echo "Testing RTSP stream access..."
+
+          # Test multiple streams
+          FAILED=0
+          for stream in test_pattern test_colorbars test_red; do
+            echo "Capturing frame from $stream..."
+            # Use -nostdin and </dev/null to prevent ffmpeg from hanging
+            timeout 30 ffmpeg -nostdin -y -rtsp_transport tcp \
+              -i rtsp://localhost:18554/$stream \
+              -frames:v 1 -update 1 test_frame_$stream.jpg </dev/null >/dev/null 2>&1 || true
+
+            if [ -f test_frame_$stream.jpg ]; then
+              SIZE=$(stat -c%s test_frame_$stream.jpg)
+              if [ "$SIZE" -gt 1000 ]; then
+                echo "✓ Successfully captured frame from $stream (${SIZE} bytes)"
+              else
+                echo "✗ Frame too small from $stream (${SIZE} bytes)"
+                FAILED=1
+              fi
+            else
+              echo "✗ Failed to capture frame from $stream"
+              FAILED=1
+            fi
+          done
+
+          # Show captured frames
+          ls -la test_frame_*.jpg 2>/dev/null || true
+
+          # Get stream info from API
+          echo ""
+          echo "Stream info from go2rtc API:"
+          curl -s "http://localhost:11984/api/streams" | jq 'keys' || true
+
+          if [ $FAILED -eq 1 ]; then
+            echo "Some stream tests failed"
+            exit 1
+          fi
+
+      - name: Build lightNVR
+        run: |
+          mkdir -p build
+          cd build
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DENABLE_GO2RTC=ON \
+            -DGO2RTC_BINARY_PATH=$(pwd)/../go2rtc
+          make -j$(nproc)
+
+      - name: Run unit tests
+        run: |
+          cd build
+          # Run any available unit tests
+          if [ -f test_runner ]; then
+            ./test_runner
+          else
+            echo "No unit test binary found (test_runner)"
+          fi
+
+      # Future: Add integration tests that use lightNVR with test streams
+      # - name: Integration test - Add stream via API
+      #   run: |
+      #     # Start lightNVR
+      #     # Add test_pattern stream via API
+      #     # Verify stream appears in UI
+      #     # Verify recording starts
+
+      - name: Cleanup
+        if: always()
+        run: |
+          # Stop go2rtc
+          if [ -n "$GO2RTC_PID" ]; then
+            kill $GO2RTC_PID 2>/dev/null || true
+          fi
+          
+          # Clean up test artifacts
+          rm -f test_frame.jpg go2rtc
+

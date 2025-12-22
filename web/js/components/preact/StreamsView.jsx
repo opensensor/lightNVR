@@ -27,9 +27,6 @@ export function StreamsView() {
   // User role state for permission-based UI
   const [userRole, setUserRole] = useState(null);
 
-  // Check if user can modify streams (admin or user role, not viewer)
-  const canModifyStreams = userRole === 'admin' || userRole === 'user';
-
   // Fetch user role on mount
   useEffect(() => {
     const fetchUserRole = async () => {
@@ -37,13 +34,24 @@ export function StreamsView() {
         const result = await validateSession();
         if (result.valid && result.role) {
           setUserRole(result.role);
+        } else {
+          // Session invalid - set to empty string to indicate fetch completed
+          setUserRole('');
+          console.log('Session validation failed, no role');
         }
       } catch (error) {
         console.error('Error fetching user role:', error);
+        setUserRole('');
       }
     };
     fetchUserRole();
   }, []);
+
+  // Role is still loading if null
+  const roleLoading = userRole === null;
+  // Check if user can modify streams (admin or user role, not viewer)
+  // While loading, default to enabled so admin/user doesn't see hidden buttons
+  const canModifyStreams = roleLoading || userRole === 'admin' || userRole === 'user';
 
   // State for streams data
   const [modalVisible, setModalVisible] = useState(false);
