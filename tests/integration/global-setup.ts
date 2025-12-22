@@ -14,17 +14,19 @@ import path from 'path';
 
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
 const TEST_DIR = '/tmp/lightnvr-test';
+const TEST_RESULTS_DIR = path.join(PROJECT_ROOT, 'test-results');
 const LIGHTNVR_BIN = path.join(PROJECT_ROOT, 'build/bin/lightnvr');
 const LIGHTNVR_CONFIG = path.join(PROJECT_ROOT, 'config/lightnvr-test.ini');
 const LIGHTNVR_PORT = 18080;
 const GO2RTC_API_PORT = 11984;
+const GO2RTC_RTSP_PORT = 18554;
 
-// Test streams to register with go2rtc
+// Test streams to register with go2rtc and lightNVR
 const TEST_STREAMS = [
-  { name: 'test_pattern', source: 'ffmpeg:virtual?video&size=720#video=h264' },
-  { name: 'test_colorbars', source: 'ffmpeg:virtual?video=smptebars&size=720#video=h264' },
-  { name: 'test_red', source: 'exec:ffmpeg -re -f lavfi -i color=red:s=640x480:r=10 -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -f rtsp {output}' },
-  { name: 'test_mandelbrot', source: 'ffmpeg:virtual?video=mandelbrot&size=640x480#video=h264' },
+  { name: 'test_pattern', source: 'ffmpeg:virtual?video&size=720#video=h264', width: 1280, height: 720 },
+  { name: 'test_colorbars', source: 'ffmpeg:virtual?video=smptebars&size=720#video=h264', width: 1280, height: 720 },
+  { name: 'test_red', source: 'ffmpeg:virtual?video=color&color=red&size=640x480#video=h264', width: 640, height: 480 },
+  { name: 'test_mandelbrot', source: 'ffmpeg:virtual?video=mandelbrot&size=640x480#video=h264', width: 640, height: 480 },
 ];
 
 let lightnvrProcess: ChildProcess | null = null;
@@ -62,6 +64,12 @@ async function setupTestDirectories(): Promise<void> {
   if (existsSync(TEST_DIR)) {
     console.log('Cleaning up existing test directory...');
     rmSync(TEST_DIR, { recursive: true, force: true });
+  }
+
+  // Ensure test-results directory exists for screenshots
+  if (!existsSync(TEST_RESULTS_DIR)) {
+    mkdirSync(TEST_RESULTS_DIR, { recursive: true });
+    console.log('Created test-results directory');
   }
 
   const dirs = [
@@ -152,22 +160,68 @@ async function waitForGo2rtc(): Promise<void> {
   console.log('go2rtc is ready');
 }
 
-async function registerTestStreams(): Promise<void> {
+async function registerTestStreamsWithGo2rtc(): Promise<void> {
   console.log('Registering test streams with go2rtc...');
-  
+
   for (const stream of TEST_STREAMS) {
     try {
       const encodedSource = encodeURIComponent(stream.source);
       const url = `http://localhost:${GO2RTC_API_PORT}/api/streams?name=${stream.name}&src=${encodedSource}`;
-      
+
       const response = await fetch(url, { method: 'PUT' });
       if (response.ok) {
-        console.log(`  ✓ Registered: ${stream.name}`);
+        console.log(`  ✓ Registered with go2rtc: ${stream.name}`);
       } else {
-        console.log(`  ✗ Failed to register: ${stream.name} (${response.status})`);
+        console.log(`  ✗ Failed to register with go2rtc: ${stream.name} (${response.status})`);
       }
     } catch (e) {
-      console.log(`  ✗ Error registering: ${stream.name} - ${e}`);
+      console.log(`  ✗ Error registering with go2rtc: ${stream.name} - ${e}`);
+    }
+  }
+}
+
+async function addStreamsToLightNVR(): Promise<void> {
+  console.log('Adding test streams to lightNVR...');
+
+  const authHeader = 'Basic ' + Buffer.from('admin:admin').toString('base64');
+
+  for (const stream of TEST_STREAMS) {
+    try {
+      // Stream URL points to go2rtc RTSP endpoint
+      const streamUrl = `rtsp://localhost:${GO2RTC_RTSP_PORT}/${stream.name}`;
+
+      const streamConfig = {
+        name: stream.name,
+        url: streamUrl,
+        enabled: true,
+        streaming_enabled: true,
+        width: stream.width,
+        height: stream.height,
+        fps: 15,
+        codec: 'h264',
+        priority: 5,
+        record: false, // Don't record test streams by default
+      };
+
+      const response = await fetch(`http://localhost:${LIGHTNVR_PORT}/api/streams`, {
+        method: 'POST',
+        headers: {
+          'Authorization': authHeader,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(streamConfig),
+      });
+
+      if (response.ok || response.status === 201) {
+        console.log(`  ✓ Added to lightNVR: ${stream.name}`);
+      } else if (response.status === 409) {
+        console.log(`  ⚠ Already exists in lightNVR: ${stream.name}`);
+      } else {
+        const text = await response.text();
+        console.log(`  ✗ Failed to add to lightNVR: ${stream.name} (${response.status}: ${text})`);
+      }
+    } catch (e) {
+      console.log(`  ✗ Error adding to lightNVR: ${stream.name} - ${e}`);
     }
   }
 }
@@ -176,12 +230,18 @@ async function globalSetup(): Promise<void> {
   console.log('\n========================================');
   console.log('LightNVR Integration Test Setup');
   console.log('========================================\n');
-  
+
+  // Create test-results directory for screenshots
+  const testResultsDir = path.join(PROJECT_ROOT, 'test-results');
+  if (!existsSync(testResultsDir)) {
+    mkdirSync(testResultsDir, { recursive: true });
+  }
+
   await setupTestDirectories();
   await startLightNVR();
   await waitForGo2rtc();
   await registerTestStreams();
-  
+
   console.log('\n✓ Test environment ready\n');
 }
 

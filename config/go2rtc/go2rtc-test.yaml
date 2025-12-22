@@ -47,10 +47,9 @@ streams:
 
   # Solid color streams - minimal CPU usage
   # Good for basic connectivity tests and low-resource environments
-  # Note: Using exec source directly as virtual doesn't handle color filter params well
-  test_red: "exec:ffmpeg -re -f lavfi -i color=red:s=640x480:r=10 -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -f rtsp {output}"
-  test_blue: "exec:ffmpeg -re -f lavfi -i color=blue:s=640x480:r=10 -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -f rtsp {output}"
-  test_green: "exec:ffmpeg -re -f lavfi -i color=green:s=640x480:r=10 -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -f rtsp {output}"
+  test_red: ffmpeg:virtual?video=color&color=red&size=640x480#video=h264
+  test_blue: ffmpeg:virtual?video=color&color=blue&size=640x480#video=h264
+  test_green: ffmpeg:virtual?video=color&color=green&size=640x480#video=h264
 
   # Mandelbrot fractal zoom - animated pattern
   # Good for testing motion detection (continuous motion)

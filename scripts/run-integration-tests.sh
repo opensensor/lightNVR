@@ -68,6 +68,13 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Default behavior: if no flags provided, run go2rtc tests with auto start/stop
+if [ "$START_GO2RTC" = false ] && [ "$START_LIGHTNVR" = false ] && [ "$FULL_TEST" = false ]; then
+    START_GO2RTC=true
+    STOP_GO2RTC=true
+    GO2RTC_ONLY=true
+fi
+
 # Helper functions
 log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
@@ -256,12 +263,13 @@ register_test_streams() {
 
     # Define test streams using FFmpeg virtual sources
     # Format: name|source
+    # Note: Using simple virtual sources that work reliably with go2rtc API registration
     local test_streams=(
         "test_pattern|ffmpeg:virtual?video&size=720#video=h264"
         "test_colorbars|ffmpeg:virtual?video=smptebars&size=720#video=h264"
-        "test_red|exec:ffmpeg -re -f lavfi -i color=red:s=640x480:r=10 -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -f rtsp {output}"
-        "test_blue|exec:ffmpeg -re -f lavfi -i color=blue:s=640x480:r=10 -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -f rtsp {output}"
-        "test_green|exec:ffmpeg -re -f lavfi -i color=green:s=640x480:r=10 -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -f rtsp {output}"
+        "test_red|ffmpeg:virtual?video=color&color=red&size=640x480#video=h264"
+        "test_blue|ffmpeg:virtual?video=color&color=blue&size=640x480#video=h264"
+        "test_green|ffmpeg:virtual?video=color&color=green&size=640x480#video=h264"
         "test_mandelbrot|ffmpeg:virtual?video=mandelbrot&size=640x480#video=h264"
         "test_pattern2|ffmpeg:virtual?video=testsrc2&size=1080#video=h264"
         "test_lowfps|ffmpeg:virtual?video&size=480&fps=5#video=h264"
@@ -367,8 +375,12 @@ test_stream_metadata() {
 
     # Check that streams have producers configured
     for stream in test_pattern test_colorbars; do
-        local producers=$(echo "$streams" | jq -r ".[\"$stream\"].producers | length")
-        if [ "$producers" -gt 0 ]; then
+        local producers=$(echo "$streams" | jq -r ".[\"$stream\"].producers | length" 2>/dev/null)
+        # Handle empty or non-numeric values
+        if [ -z "$producers" ] || ! [[ "$producers" =~ ^[0-9]+$ ]]; then
+            log_test "✗ Stream '$stream' metadata not available"
+            failed=1
+        elif [ "$producers" -gt 0 ]; then
             log_test "✓ Stream '$stream' has $producers producer(s)"
         else
             log_test "✗ Stream '$stream' has no producers"
