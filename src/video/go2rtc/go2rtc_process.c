@@ -870,6 +870,20 @@ bool go2rtc_process_start(int api_port) {
     } else if (pid == 0) {
         // Child process
 
+        // Request to receive SIGTERM when parent dies
+        // This ensures go2rtc is terminated even if lightNVR is killed with SIGKILL
+        if (prctl(PR_SET_PDEATHSIG, SIGTERM) == -1) {
+            fprintf(stderr, "Warning: Failed to set parent death signal: %s\n", strerror(errno));
+            // Continue anyway, this is not critical but means we might leak go2rtc on SIGKILL
+        }
+
+        // Double-check parent is still alive after prctl (race condition protection)
+        // If parent died between fork and prctl, we should exit now
+        if (getppid() == 1) {
+            fprintf(stderr, "Parent died before prctl completed, exiting\n");
+            exit(EXIT_FAILURE);
+        }
+
         // Redirect stdout and stderr to log files
         char log_path[1024]; // Use a reasonable fixed size instead of PATH_MAX
 
