@@ -164,10 +164,26 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      - name: Build web frontend
+        run: |
+          cd web
+          npm ci
+          npm run build
+          echo "Web frontend built successfully"
+          ls -la dist/ | head -10
+
       - name: Install Playwright dependencies
         run: |
           npm ci
           npx playwright install --with-deps chromium
+
+      - name: Prepare test environment
+        run: |
+          # Create go2rtc symlink at location expected by test config (./go2rtc/go2rtc)
+          # The submodule is a directory, so we create the binary inside it
+          cp go2rtc-bin go2rtc/go2rtc
+          chmod +x go2rtc/go2rtc
+          echo "go2rtc binary placed at go2rtc/go2rtc"
 
       - name: Run Playwright UI tests
         run: |
