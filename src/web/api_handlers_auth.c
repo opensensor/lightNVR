@@ -46,6 +46,7 @@ static void send_verify_success(struct mg_connection *c, const char *username, u
 
     mg_printf(c, "HTTP/1.1 200 OK\r\n"
             "Content-Type: application/json\r\n"
+            "Connection: close\r\n"
             "Content-Length: %d\r\n\r\n%s", json_len, json_str);
 
     free(json_str);
@@ -246,6 +247,7 @@ void mg_handle_auth_logout(struct mg_connection *c, struct mg_http_message *hm) 
                 "Set-Cookie: session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax\r\n"
                 "Cache-Control: no-cache, no-store, must-revalidate\r\n"
                 "Pragma: no-cache\r\n"
+                "Connection: close\r\n"
                 "Content-Length: %d\r\n\r\n%s", json_len, json_response);
 
         cJSON_Delete(response);
@@ -424,7 +426,8 @@ void mg_handle_auth_login(struct mg_connection *c, struct mg_http_message *hm) {
                 mg_printf(c, "Cache-Control: no-cache, no-store, must-revalidate\r\n");
                 mg_printf(c, "Pragma: no-cache\r\n");
                 mg_printf(c, "Expires: 0\r\n");
-                
+                mg_printf(c, "Connection: close\r\n");
+
                 char *json_str = cJSON_PrintUnformatted(response);
                 mg_printf(c, "Content-Length: %d\r\n\r\n", (int)strlen(json_str));
                 mg_printf(c, "%s", json_str);
@@ -445,9 +448,10 @@ void mg_handle_auth_login(struct mg_connection *c, struct mg_http_message *hm) {
                 mg_printf(c, "Cache-Control: no-cache, no-store, must-revalidate\r\n");
                 mg_printf(c, "Pragma: no-cache\r\n");
                 mg_printf(c, "Expires: 0\r\n");
+                mg_printf(c, "Connection: close\r\n");
                 mg_printf(c, "Content-Length: 0\r\n");
                 mg_printf(c, "\r\n");
-                
+
                 // Ensure the connection is closed properly
                 c->is_draining = 1;
             }
@@ -463,8 +467,9 @@ void mg_handle_auth_login(struct mg_connection *c, struct mg_http_message *hm) {
             mg_printf(c, "HTTP/1.1 302 Found\r\n");
             mg_printf(c, "Location: /login.html?error=1\r\n");
             mg_printf(c, "Content-Length: 0\r\n");
+            mg_printf(c, "Connection: close\r\n");
             mg_printf(c, "\r\n");
-            
+
             // Ensure the connection is closed properly
             c->is_draining = 1;
         } else {
@@ -535,6 +540,7 @@ void mg_handle_auth_login(struct mg_connection *c, struct mg_http_message *hm) {
             mg_printf(c, "Cache-Control: no-cache, no-store, must-revalidate\r\n");
             mg_printf(c, "Pragma: no-cache\r\n");
             mg_printf(c, "Expires: 0\r\n");
+            mg_printf(c, "Connection: close\r\n");
 
             char *json_str = cJSON_PrintUnformatted(response);
             mg_printf(c, "Content-Length: %d\r\n\r\n", (int)strlen(json_str));
@@ -556,9 +562,10 @@ void mg_handle_auth_login(struct mg_connection *c, struct mg_http_message *hm) {
             mg_printf(c, "Cache-Control: no-cache, no-store, must-revalidate\r\n");
             mg_printf(c, "Pragma: no-cache\r\n");
             mg_printf(c, "Expires: 0\r\n");
+            mg_printf(c, "Connection: close\r\n");
             mg_printf(c, "Content-Length: 0\r\n");
             mg_printf(c, "\r\n");
-            
+
             // Ensure the connection is closed properly
             c->is_draining = 1;
         }
@@ -597,7 +604,7 @@ void mg_handle_auth_login(struct mg_connection *c, struct mg_http_message *hm) {
             cJSON_AddBoolToObject(response, "success", 1);
             cJSON_AddStringToObject(response, "redirect", redirect_url);
             cJSON_AddStringToObject(response, "token", token);
-            
+
             // Send JSON response with session token cookie (using configured timeout)
             mg_printf(c, "HTTP/1.1 200 OK\r\n");
             mg_printf(c, "Content-Type: application/json\r\n");
@@ -605,14 +612,15 @@ void mg_handle_auth_login(struct mg_connection *c, struct mg_http_message *hm) {
             mg_printf(c, "Cache-Control: no-cache, no-store, must-revalidate\r\n");
             mg_printf(c, "Pragma: no-cache\r\n");
             mg_printf(c, "Expires: 0\r\n");
-            
+            mg_printf(c, "Connection: close\r\n");
+
             char *json_str = cJSON_PrintUnformatted(response);
             mg_printf(c, "Content-Length: %d\r\n\r\n", (int)strlen(json_str));
             mg_printf(c, "%s", json_str);
-            
+
             cJSON_Delete(response);
             free(json_str);
-            
+
             // Ensure the connection is closed properly
             c->is_draining = 1;
         } else {
@@ -625,9 +633,10 @@ void mg_handle_auth_login(struct mg_connection *c, struct mg_http_message *hm) {
             mg_printf(c, "Cache-Control: no-cache, no-store, must-revalidate\r\n");
             mg_printf(c, "Pragma: no-cache\r\n");
             mg_printf(c, "Expires: 0\r\n");
+            mg_printf(c, "Connection: close\r\n");
             mg_printf(c, "Content-Length: 0\r\n");
             mg_printf(c, "\r\n");
-            
+
             // Ensure the connection is closed properly
             c->is_draining = 1;
         }

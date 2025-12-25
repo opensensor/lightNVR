@@ -92,7 +92,7 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
             log_info("Authentication required for HLS request but authentication failed");
             mg_printf(c, "HTTP/1.1 401 Unauthorized\r\n");
             mg_printf(c, "Content-Type: application/json\r\n");
-            mg_printf(c, "Content-Length: 29\r\n");
+            mg_printf(c, "Content-Length: 26\r\n");
             mg_printf(c, "Connection: close\r\n");
             mg_printf(c, "\r\n");
             mg_printf(c, "{\"error\": \"Unauthorized\"}\n");
@@ -230,6 +230,7 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         log_info("Redirecting /login to /login.html");
         mg_printf(c, "HTTP/1.1 302 Found\r\n");
         mg_printf(c, "Location: /login.html\r\n");
+        mg_printf(c, "Connection: close\r\n");
         mg_printf(c, "Content-Length: 0\r\n");
         mg_printf(c, "\r\n");
         return;
@@ -241,6 +242,7 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         mg_printf(c, "HTTP/1.1 302 Found\r\n");
         mg_printf(c, "Location: /login.html?logout=1\r\n");
         mg_printf(c, "Set-Cookie: session=; Path=/; Max-Age=0\r\n");  // Clear session cookie
+        mg_printf(c, "Connection: close\r\n");
         mg_printf(c, "Content-Length: 0\r\n");
         mg_printf(c, "\r\n");
         return;

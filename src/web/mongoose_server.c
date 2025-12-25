@@ -960,7 +960,8 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
                 log_info("Authentication required for HLS request but no auth provided");
                 mg_printf(c, "HTTP/1.1 401 Unauthorized\r\n");
                 mg_printf(c, "Content-Type: application/json\r\n");
-                mg_printf(c, "Content-Length: 29\r\n");
+                mg_printf(c, "Content-Length: 26\r\n");
+                mg_printf(c, "Connection: close\r\n");
                 mg_printf(c, "\r\n");
                 mg_printf(c, "{\"error\": \"Unauthorized\"}\n");
                 return;
@@ -975,7 +976,8 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
             if (strncmp(uri, "/api/", 5) == 0) {
                 mg_printf(c, "HTTP/1.1 401 Unauthorized\r\n");
                 mg_printf(c, "Content-Type: application/json\r\n");
-                mg_printf(c, "Content-Length: 29\r\n");
+                mg_printf(c, "Content-Length: 26\r\n");
+                mg_printf(c, "Connection: close\r\n");
                 mg_printf(c, "\r\n");
                 mg_printf(c, "{\"error\": \"Unauthorized\"}\n");
                 return;
@@ -991,6 +993,7 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
                     // For other requests, redirect to login page
                     mg_printf(c, "HTTP/1.1 302 Found\r\n");
                     mg_printf(c, "Location: /login.html\r\n");
+                    mg_printf(c, "Connection: close\r\n");
                     mg_printf(c, "Content-Length: 0\r\n");
                     mg_printf(c, "\r\n");
                     return;
@@ -1049,6 +1052,7 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
                 log_info("Index file not found, redirecting to %s", redirect_url);
                 mg_printf(c, "HTTP/1.1 302 Found\r\n");
                 mg_printf(c, "Location: %s\r\n", redirect_url);
+                mg_printf(c, "Connection: close\r\n");
                 mg_printf(c, "Content-Length: 0\r\n");
                 mg_printf(c, "\r\n");
             }

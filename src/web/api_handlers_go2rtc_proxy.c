@@ -576,8 +576,9 @@ void mg_handle_go2rtc_webrtc_options(struct mg_connection *c, struct mg_http_mes
     mg_printf(c, "Access-Control-Allow-Methods: POST, OPTIONS\r\n");
     mg_printf(c, "Access-Control-Allow-Headers: Content-Type, Authorization, Origin, X-Requested-With, Accept\r\n");
     mg_printf(c, "Access-Control-Allow-Credentials: true\r\n");
-    mg_printf(c, "Content-Length: 0\r\n\r\n");
     mg_printf(c, "Connection: close\r\n");
+    mg_printf(c, "Content-Length: 0\r\n");
+    mg_printf(c, "\r\n");
 
     log_info("Successfully handled OPTIONS request for WebRTC API");
 }
@@ -597,8 +598,9 @@ void mg_handle_go2rtc_webrtc_ice_options(struct mg_connection *c, struct mg_http
     mg_printf(c, "Access-Control-Allow-Methods: POST, OPTIONS\r\n");
     mg_printf(c, "Access-Control-Allow-Headers: Content-Type, Authorization, Origin, X-Requested-With, Accept\r\n");
     mg_printf(c, "Access-Control-Allow-Credentials: true\r\n");
-    mg_printf(c, "Content-Length: 0\r\n\r\n");
     mg_printf(c, "Connection: close\r\n");
+    mg_printf(c, "Content-Length: 0\r\n");
+    mg_printf(c, "\r\n");
 
     log_info("Successfully handled OPTIONS request for WebRTC ICE API");
 }
