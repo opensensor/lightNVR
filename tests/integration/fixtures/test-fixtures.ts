@@ -107,11 +107,13 @@ export async function logout(page: Page): Promise<void> {
     const logoutLink = page.locator('a.logout-link, a[href="/logout"], button:has-text("Logout")').first();
     if (await logoutLink.isVisible()) {
       await logoutLink.click();
-      await page.waitForURL('**/login.html', { timeout: CONFIG.DEFAULT_TIMEOUT });
+      // Wait for redirect to login page (with or without query params)
+      await page.waitForURL('**/login.html**', { timeout: CONFIG.DEFAULT_TIMEOUT });
       console.log('Logout successful');
     } else {
       // Fallback: navigate directly to logout
       await page.goto('/logout', { timeout: CONFIG.DEFAULT_TIMEOUT });
+      await page.waitForURL('**/login.html**', { timeout: CONFIG.DEFAULT_TIMEOUT });
     }
   } catch (error) {
     console.error('Logout failed:', (error as Error).message);
