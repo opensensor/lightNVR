@@ -32,10 +32,10 @@ export class StreamsPage extends BasePage {
     return this.page.locator('button').filter({ hasText: /refresh/i }).first();
   }
 
-  // Modal locators - the stream modal is a div that appears when editing/adding
+  // Modal locators - StreamConfigModal is a fixed overlay
   get addStreamModal(): Locator {
-    // The modal content div contains the form
-    return this.page.locator('#stream-name').locator('..').locator('..').locator('..');
+    // The modal is a fixed overlay containing the stream form
+    return this.page.locator('.fixed.inset-0').filter({ has: this.page.locator('#stream-name') }).first();
   }
 
   get streamNameInput(): Locator {
@@ -47,13 +47,13 @@ export class StreamsPage extends BasePage {
   }
 
   get saveButton(): Locator {
-    // Use specific ID from StreamsView.jsx
-    return this.page.locator('#stream-save-btn');
+    // The save button text is "Add Stream" or "Update Stream" - use btn-primary class
+    return this.addStreamModal.locator('button.btn-primary').filter({ hasText: /add stream|update stream|save/i }).first();
   }
 
   get cancelButton(): Locator {
-    // Use specific ID from StreamsView.jsx
-    return this.page.locator('#stream-cancel-btn');
+    // The cancel button is in the modal footer
+    return this.addStreamModal.locator('button').filter({ hasText: /cancel/i }).first();
   }
 
   /**
