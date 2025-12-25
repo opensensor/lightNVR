@@ -19,28 +19,29 @@ export class StreamsPage extends BasePage {
   }
 
   get streamsList(): Locator {
-    return this.page.locator('.streams-list, .stream-grid, .streams-container, [data-testid="streams-list"]');
+    return this.page.locator('#streams-table, .streams-container, table');
   }
 
   get streamCards(): Locator {
-    return this.page.locator('.stream-card, .stream-item, [data-testid="stream-card"]');
+    // Streams are displayed in table rows, not cards - target tbody rows
+    return this.page.locator('#streams-table tbody tr, .streams-container tbody tr');
   }
 
   get refreshButton(): Locator {
     return this.page.locator('button').filter({ hasText: /refresh/i }).first();
   }
 
-  // Modal locators
+  // Modal locators - match the actual modal implementation which uses fixed positioning
   get addStreamModal(): Locator {
-    return this.page.locator('.modal, [role="dialog"]').filter({ hasText: /add|new|create/i });
+    return this.page.locator('.fixed.inset-0').filter({ hasText: /add stream|edit stream/i }).first();
   }
 
   get streamNameInput(): Locator {
-    return this.page.locator('input[name="name"], #stream-name, #name').first();
+    return this.page.locator('#stream-name, input[name="name"]').first();
   }
 
   get streamUrlInput(): Locator {
-    return this.page.locator('input[name="url"], #stream-url, #url').first();
+    return this.page.locator('#stream-url, input[name="url"]').first();
   }
 
   get saveButton(): Locator {
@@ -48,7 +49,8 @@ export class StreamsPage extends BasePage {
   }
 
   get cancelButton(): Locator {
-    return this.page.locator('button').filter({ hasText: /cancel|close/i }).first();
+    // The close button in the modal header has an X icon, look for cancel text or close button
+    return this.page.locator('button').filter({ hasText: /cancel/i }).first();
   }
 
   /**

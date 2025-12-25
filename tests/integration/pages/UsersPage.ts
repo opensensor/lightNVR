@@ -19,44 +19,45 @@ export class UsersPage extends BasePage {
   }
 
   get usersList(): Locator {
-    return this.page.locator('.users-list, .user-grid, table, [data-testid="users-list"]');
+    return this.page.locator('table').first();
   }
 
   get userRows(): Locator {
-    return this.page.locator('.user-row, tr[data-user], [data-testid="user-row"]');
+    // User rows are in tbody, skip the header row
+    return this.page.locator('tbody tr');
   }
 
-  // Add/Edit User Modal
+  // Add/Edit User Modal - uses fixed positioning with bg-black overlay
   get userModal(): Locator {
-    return this.page.locator('.modal, [role="dialog"]');
+    return this.page.locator('.fixed.inset-0').filter({ hasText: /add new user|edit user/i }).first();
   }
 
   get usernameInput(): Locator {
-    return this.page.locator('input[name="username"], #username').first();
+    return this.page.locator('#username, input[name="username"]').first();
   }
 
   get emailInput(): Locator {
-    return this.page.locator('input[name="email"], #email').first();
+    return this.page.locator('#email, input[name="email"]').first();
   }
 
   get passwordInput(): Locator {
-    return this.page.locator('input[name="password"], #password').first();
+    return this.page.locator('#password, input[name="password"]').first();
   }
 
   get roleSelect(): Locator {
-    return this.page.locator('select[name="role"], #role').first();
+    return this.page.locator('#role, select[name="role"]').first();
   }
 
   get isActiveCheckbox(): Locator {
-    return this.page.locator('input[name="is_active"], #is-active').first();
+    return this.page.locator('input[name="is_active"]').first();
   }
 
   get saveButton(): Locator {
-    return this.page.locator('button').filter({ hasText: /save|submit|create/i }).first();
+    return this.page.locator('button').filter({ hasText: /add user|save|submit/i }).first();
   }
 
   get cancelButton(): Locator {
-    return this.page.locator('button').filter({ hasText: /cancel|close/i }).first();
+    return this.page.locator('button').filter({ hasText: /cancel/i }).first();
   }
 
   // Confirmation dialog
