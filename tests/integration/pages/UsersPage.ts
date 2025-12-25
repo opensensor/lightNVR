@@ -130,7 +130,8 @@ export class UsersPage extends BasePage {
       }
     }
     
-    await this.saveButton.click();
+    // Use force: true because the modal backdrop intercepts pointer events
+    await this.saveButton.click({ force: true });
     await sleep(1000);
   }
 
