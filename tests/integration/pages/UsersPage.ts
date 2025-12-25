@@ -15,7 +15,8 @@ export class UsersPage extends BasePage {
   }
 
   get addUserButton(): Locator {
-    return this.page.locator('button').filter({ hasText: /add|new|create/i }).first();
+    // The main page "Add User" button (not in modal)
+    return this.page.locator('button.btn-primary').filter({ hasText: /add user/i }).first();
   }
 
   get usersList(): Locator {
@@ -33,31 +34,33 @@ export class UsersPage extends BasePage {
   }
 
   get usernameInput(): Locator {
-    return this.page.locator('#username, input[name="username"]').first();
+    // Input in the modal form
+    return this.userModal.locator('#username');
   }
 
   get emailInput(): Locator {
-    return this.page.locator('#email, input[name="email"]').first();
+    return this.userModal.locator('#email');
   }
 
   get passwordInput(): Locator {
-    return this.page.locator('#password, input[name="password"]').first();
+    return this.userModal.locator('#password');
   }
 
   get roleSelect(): Locator {
-    return this.page.locator('#role, select[name="role"]').first();
+    return this.userModal.locator('#role');
   }
 
   get isActiveCheckbox(): Locator {
-    return this.page.locator('input[name="is_active"]').first();
+    return this.userModal.locator('input[name="is_active"]');
   }
 
   get saveButton(): Locator {
-    return this.page.locator('button').filter({ hasText: /add user|save|submit/i }).first();
+    // The submit button inside the modal (type="submit")
+    return this.userModal.locator('button[type="submit"]');
   }
 
   get cancelButton(): Locator {
-    return this.page.locator('button').filter({ hasText: /cancel/i }).first();
+    return this.userModal.locator('button').filter({ hasText: /cancel/i }).first();
   }
 
   // Confirmation dialog
@@ -92,47 +95,53 @@ export class UsersPage extends BasePage {
   }
 
   /**
-   * Click add user button
+   * Click add user button and wait for modal to open
    */
   async clickAddUser(): Promise<void> {
     await this.addUserButton.click();
-    await sleep(500);
+    // Wait for the modal to appear by waiting for the username input
+    await this.userModal.waitFor({ state: 'visible', timeout: 5000 });
   }
 
   /**
    * Add a new user via UI
    */
-  async addUser(config: { 
-    username: string; 
-    password: string; 
-    email?: string; 
-    role?: number; 
-    isActive?: boolean 
+  async addUser(config: {
+    username: string;
+    password: string;
+    email?: string;
+    role?: number;
+    isActive?: boolean
   }): Promise<void> {
     await this.clickAddUser();
+
+    // Fill the form fields
     await this.usernameInput.fill(config.username);
     await this.passwordInput.fill(config.password);
-    
+
     if (config.email) {
       await this.emailInput.fill(config.email);
     }
-    
+
     if (config.role !== undefined) {
       await this.roleSelect.selectOption({ value: String(config.role) });
     }
-    
+
     if (config.isActive !== undefined) {
       const checkbox = this.isActiveCheckbox;
       if (config.isActive) {
-        await checkbox.check();
+        await checkbox.check({ force: true });
       } else {
-        await checkbox.uncheck();
+        await checkbox.uncheck({ force: true });
       }
     }
-    
-    // Use force: true because the modal backdrop intercepts pointer events
+
+    // Click save - using force because modal backdrop may intercept events
     await this.saveButton.click({ force: true });
-    await sleep(1000);
+
+    // Wait for modal to close and list to refresh
+    await this.userModal.waitFor({ state: 'hidden', timeout: 10000 });
+    await sleep(2000); // Additional wait for API response and list refresh
   }
 
   /**

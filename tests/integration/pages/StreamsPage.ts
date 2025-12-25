@@ -15,7 +15,8 @@ export class StreamsPage extends BasePage {
   }
 
   get addStreamButton(): Locator {
-    return this.page.locator('button').filter({ hasText: /add|new|create/i }).first();
+    // Use specific ID from StreamsView.jsx
+    return this.page.locator('#add-stream-btn, button:has-text("Add Stream")').first();
   }
 
   get streamsList(): Locator {
@@ -31,26 +32,28 @@ export class StreamsPage extends BasePage {
     return this.page.locator('button').filter({ hasText: /refresh/i }).first();
   }
 
-  // Modal locators - match the actual modal implementation which uses fixed positioning
+  // Modal locators - the stream modal is a div that appears when editing/adding
   get addStreamModal(): Locator {
-    return this.page.locator('.fixed.inset-0').filter({ hasText: /add stream|edit stream/i }).first();
+    // The modal content div contains the form
+    return this.page.locator('#stream-name').locator('..').locator('..').locator('..');
   }
 
   get streamNameInput(): Locator {
-    return this.page.locator('#stream-name, input[name="name"]').first();
+    return this.page.locator('#stream-name');
   }
 
   get streamUrlInput(): Locator {
-    return this.page.locator('#stream-url, input[name="url"]').first();
+    return this.page.locator('#stream-url');
   }
 
   get saveButton(): Locator {
-    return this.page.locator('button').filter({ hasText: /save|submit|create/i }).first();
+    // Use specific ID from StreamsView.jsx
+    return this.page.locator('#stream-save-btn');
   }
 
   get cancelButton(): Locator {
-    // The close button in the modal header has an X icon, look for cancel text or close button
-    return this.page.locator('button').filter({ hasText: /cancel/i }).first();
+    // Use specific ID from StreamsView.jsx
+    return this.page.locator('#stream-cancel-btn');
   }
 
   /**
@@ -76,11 +79,12 @@ export class StreamsPage extends BasePage {
   }
 
   /**
-   * Click add stream button to open modal
+   * Click add stream button to open modal/form
    */
   async clickAddStream(): Promise<void> {
     await this.addStreamButton.click();
-    await sleep(500); // Wait for modal animation
+    // Wait for the stream form to appear by waiting for name input
+    await this.streamNameInput.waitFor({ state: 'visible', timeout: 5000 });
   }
 
   /**
@@ -88,21 +92,25 @@ export class StreamsPage extends BasePage {
    */
   async addStream(config: { name: string; url: string; enabled?: boolean }): Promise<void> {
     await this.clickAddStream();
+
+    // Clear and fill the form fields
+    await this.streamNameInput.clear();
     await this.streamNameInput.fill(config.name);
+    await this.streamUrlInput.clear();
     await this.streamUrlInput.fill(config.url);
 
     if (config.enabled !== undefined) {
-      const enabledCheckbox = this.page.locator('input[name="enabled"], #enabled').first();
+      const enabledCheckbox = this.page.locator('#stream-enabled, input[name="enabled"]').first();
       if (config.enabled) {
-        await enabledCheckbox.check();
+        await enabledCheckbox.check({ force: true });
       } else {
-        await enabledCheckbox.uncheck();
+        await enabledCheckbox.uncheck({ force: true });
       }
     }
 
-    // Use force: true because the modal backdrop intercepts pointer events
+    // Click save and wait for it to complete
     await this.saveButton.click({ force: true });
-    await sleep(1000); // Wait for save
+    await sleep(2000); // Wait for save to complete and list to refresh
   }
 
   /**
