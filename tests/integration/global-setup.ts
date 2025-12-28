@@ -137,25 +137,55 @@ async function startLightNVR(): Promise<void> {
   const authHeader = 'Basic ' + Buffer.from('admin:admin').toString('base64');
   const ready = await waitForService(
     `http://localhost:${LIGHTNVR_PORT}/api/system`,
-    30000,
+    45000,  // 45 seconds - increased to allow for go2rtc startup
     authHeader
   );
-  
+
   if (!ready) {
-    throw new Error('lightNVR failed to start within 30 seconds');
+    // Check if the process is still running
+    if (lightnvrProcess && !lightnvrProcess.killed) {
+      console.error('lightNVR process is still running but not responding');
+    } else {
+      console.error('lightNVR process has exited');
+    }
+
+    // Try to read logs
+    const logPath = '/tmp/lightnvr-test/lightnvr.log';
+    if (existsSync(logPath)) {
+      const logs = readFileSync(logPath, 'utf8');
+      const lastLines = logs.split('\n').slice(-30).join('\n');
+      console.error('Last 30 lines of lightNVR log:\n' + lastLines);
+    }
+
+    throw new Error('lightNVR failed to start within 45 seconds');
   }
   console.log('lightNVR is ready');
 }
 
 async function waitForGo2rtc(): Promise<void> {
-  console.log('Waiting for go2rtc...');
+  console.log('Waiting for go2rtc on port ' + GO2RTC_API_PORT + '...');
+
+  // LightNVR needs time to start go2rtc, so we use a longer timeout
   const ready = await waitForService(
     `http://localhost:${GO2RTC_API_PORT}/api/streams`,
-    30000
+    60000  // 60 seconds timeout - go2rtc startup can take a while
   );
-  
+
   if (!ready) {
-    throw new Error('go2rtc failed to start within 30 seconds');
+    // Try to get more diagnostic information
+    console.error('go2rtc failed to start. Checking lightNVR logs...');
+    const logPath = '/tmp/lightnvr-test/lightnvr.log';
+    if (existsSync(logPath)) {
+      const logs = readFileSync(logPath, 'utf8');
+      const lastLines = logs.split('\n').slice(-50).join('\n');
+      console.error('Last 50 lines of lightNVR log:\n' + lastLines);
+    }
+
+    // Check if go2rtc binary exists
+    const go2rtcBinary = path.join(PROJECT_ROOT, 'go2rtc/go2rtc');
+    console.error('go2rtc binary exists at ' + go2rtcBinary + ': ' + existsSync(go2rtcBinary));
+
+    throw new Error('go2rtc failed to start within 60 seconds');
   }
   console.log('go2rtc is ready');
 }
