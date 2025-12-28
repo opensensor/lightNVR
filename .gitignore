@@ -91,3 +91,7 @@ web/node_modules/
 
 # Web build artifacts (built during CI/CD, not checked in)
 web/dist/
+
+# Playwright test artifacts
+playwright-report/
+test-results/

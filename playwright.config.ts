@@ -36,9 +36,9 @@ export default defineConfig({
   // Limit workers for integration tests
   workers: 1,
 
-  // Reporter - use list for headed mode so output is visible
+  // Reporter - use html in CI for artifact, list for headed/debug mode
   reporter: process.env.CI
-    ? 'github'
+    ? [['github'], ['html', { open: 'never' }]]
     : (isHeaded || isDebug)
       ? 'list'
       : 'html',

@@ -192,6 +192,10 @@ jobs:
             kill $GO2RTC_PID 2>/dev/null || true
           fi
 
+          # Clean any existing playwright reports to ensure fresh state
+          rm -rf playwright-report test-results
+          mkdir -p playwright-report test-results
+
           # Run Playwright tests (uses global-setup.ts to start lightNVR and go2rtc)
           npx playwright test --project=ui
         env:
