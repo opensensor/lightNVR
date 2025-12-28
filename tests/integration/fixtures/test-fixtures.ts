@@ -103,17 +103,30 @@ export async function navigateTo(
  */
 export async function logout(page: Page): Promise<void> {
   try {
-    // Try to find and click logout button/link
-    const logoutLink = page.locator('a.logout-link, a[href="/logout"], button:has-text("Logout")').first();
-    if (await logoutLink.isVisible()) {
-      await logoutLink.click();
-      // Wait for redirect to login page (with or without query params)
+    // Desktop logout link is in the header user-menu (visible on md+)
+    const desktopLogoutLink = page.locator('.user-menu a.logout-link, .user-menu a[href="/logout"]').first();
+
+    // Mobile logout link appears after clicking hamburger menu
+    const mobileMenuButton = page.locator('button[aria-label="Toggle menu"]').first();
+    const mobileLogoutLink = page.locator('li a.logout-link, a.logout-link').first();
+
+    // Check if desktop logout is visible
+    if (await desktopLogoutLink.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await desktopLogoutLink.click();
       await page.waitForURL('**/login.html**', { timeout: CONFIG.DEFAULT_TIMEOUT });
-      console.log('Logout successful');
+      console.log('Logout successful (desktop)');
+    } else if (await mobileMenuButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+      // Open mobile menu and click logout
+      await mobileMenuButton.click();
+      await sleep(500);
+      await mobileLogoutLink.click();
+      await page.waitForURL('**/login.html**', { timeout: CONFIG.DEFAULT_TIMEOUT });
+      console.log('Logout successful (mobile)');
     } else {
-      // Fallback: navigate directly to logout
+      // Fallback: navigate directly to logout endpoint
       await page.goto('/logout', { timeout: CONFIG.DEFAULT_TIMEOUT });
       await page.waitForURL('**/login.html**', { timeout: CONFIG.DEFAULT_TIMEOUT });
+      console.log('Logout successful (direct navigation)');
     }
   } catch (error) {
     console.error('Logout failed:', (error as Error).message);
