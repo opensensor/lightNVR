@@ -50,7 +50,8 @@ export class StreamsPage extends BasePage {
   get saveButton(): Locator {
     // The save button has btn-primary class and text "Add Stream" or "Update Stream"
     // It's in the modal footer alongside the Cancel button
-    return this.page.locator('button.btn-primary').filter({ hasText: /add stream|update stream/i }).first();
+    // Use the modal locator to ensure we're finding the right button (not the zone config button)
+    return this.addStreamModal.locator('button.btn-primary').filter({ hasText: /add stream|update stream/i }).first();
   }
 
   get cancelButton(): Locator {
