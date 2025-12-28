@@ -139,5 +139,44 @@ export class TimelinePage extends BasePage {
     }
     return null;
   }
+
+  /**
+   * Get the selected date from the date picker
+   */
+  async getSelectedDate(): Promise<string | null> {
+    if (await this.datePicker.isVisible()) {
+      return await this.datePicker.inputValue();
+    }
+    return null;
+  }
+
+  /**
+   * Get the date from the URL parameter
+   */
+  getDateFromUrl(): string | null {
+    const url = new URL(this.page.url());
+    return url.searchParams.get('date');
+  }
+
+  /**
+   * Get the currently selected stream from the stream filter
+   */
+  async getSelectedStream(): Promise<string | null> {
+    if (await this.streamFilter.isVisible()) {
+      return await this.streamFilter.inputValue();
+    }
+    return null;
+  }
+
+  /**
+   * Get today's date in YYYY-MM-DD format
+   */
+  static getTodayDate(): string {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
 }
 

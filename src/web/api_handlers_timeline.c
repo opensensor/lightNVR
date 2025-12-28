@@ -142,10 +142,10 @@ void mg_handle_get_timeline_segments(struct mg_connection *c, struct mg_http_mes
             strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%S.000Z", &tm) != NULL ||
             strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%S.000", &tm) != NULL ||
             strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%SZ", &tm) != NULL) {
-            
-            // Set tm_isdst to -1 to let mktime determine if DST is in effect
-            tm.tm_isdst = -1;
-            start_time = mktime(&tm);
+
+            // Convert to UTC timestamp - assume input is already in UTC
+            tm.tm_isdst = 0; // No DST for UTC
+            start_time = timegm(&tm);
             log_info("Parsed start time: %ld", (long)start_time);
         } else if (strptime(decoded_start_time, "%Y-%m-%d", &tm) != NULL) {
             // Handle date-only format (YYYY-MM-DD)
@@ -153,8 +153,8 @@ void mg_handle_get_timeline_segments(struct mg_connection *c, struct mg_http_mes
             tm.tm_hour = 0;
             tm.tm_min = 0;
             tm.tm_sec = 0;
-            tm.tm_isdst = -1;
-            start_time = mktime(&tm);
+            tm.tm_isdst = 0; // No DST for UTC
+            start_time = timegm(&tm);
             log_info("Parsed date-only start time: %ld", (long)start_time);
         } else {
             log_error("Failed to parse start time string: %s", decoded_start_time);
@@ -184,10 +184,10 @@ void mg_handle_get_timeline_segments(struct mg_connection *c, struct mg_http_mes
             strptime(decoded_end_time, "%Y-%m-%dT%H:%M:%S.000Z", &tm) != NULL ||
             strptime(decoded_end_time, "%Y-%m-%dT%H:%M:%S.000", &tm) != NULL ||
             strptime(decoded_end_time, "%Y-%m-%dT%H:%M:%SZ", &tm) != NULL) {
-            
-            // Set tm_isdst to -1 to let mktime determine if DST is in effect
-            tm.tm_isdst = -1;
-            end_time = mktime(&tm);
+
+            // Convert to UTC timestamp - assume input is already in UTC
+            tm.tm_isdst = 0; // No DST for UTC
+            end_time = timegm(&tm);
             log_info("Parsed end time: %ld", (long)end_time);
         } else if (strptime(decoded_end_time, "%Y-%m-%d", &tm) != NULL) {
             // Handle date-only format (YYYY-MM-DD)
@@ -195,8 +195,8 @@ void mg_handle_get_timeline_segments(struct mg_connection *c, struct mg_http_mes
             tm.tm_hour = 23;
             tm.tm_min = 59;
             tm.tm_sec = 59;
-            tm.tm_isdst = -1;
-            end_time = mktime(&tm);
+            tm.tm_isdst = 0; // No DST for UTC
+            end_time = timegm(&tm);
             log_info("Parsed date-only end time: %ld", (long)end_time);
         } else {
             log_error("Failed to parse end time string: %s", decoded_end_time);
@@ -524,10 +524,10 @@ void mg_handle_timeline_manifest(struct mg_connection *c, struct mg_http_message
             strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%S.000Z", &tm) != NULL ||
             strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%S.000", &tm) != NULL ||
             strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%SZ", &tm) != NULL) {
-            
-            // Convert to local timestamp
-            tm.tm_isdst = -1; // Let mktime determine if DST is in effect
-            start_time = mktime(&tm);
+
+            // Convert to UTC timestamp - assume input is already in UTC
+            tm.tm_isdst = 0; // No DST for UTC
+            start_time = timegm(&tm);
             log_info("Parsed start time: %ld", (long)start_time);
         } else if (strptime(decoded_start_time, "%Y-%m-%d", &tm) != NULL) {
             // Handle date-only format (YYYY-MM-DD)
@@ -535,8 +535,8 @@ void mg_handle_timeline_manifest(struct mg_connection *c, struct mg_http_message
             tm.tm_hour = 0;
             tm.tm_min = 0;
             tm.tm_sec = 0;
-            tm.tm_isdst = -1; // Let mktime determine if DST is in effect
-            start_time = mktime(&tm);
+            tm.tm_isdst = 0; // No DST for UTC
+            start_time = timegm(&tm);
             log_info("Parsed date-only start time: %ld", (long)start_time);
         } else {
             log_error("Failed to parse start time string: %s", decoded_start_time);
@@ -545,31 +545,31 @@ void mg_handle_timeline_manifest(struct mg_connection *c, struct mg_http_message
         // Default to 24 hours ago
         start_time = time(NULL) - (24 * 60 * 60);
     }
-    
+
     if (end_time_str[0] != '\0') {
         // URL-decode the time string (replace %3A with :)
         char decoded_end_time[64] = {0};
         strncpy(decoded_end_time, end_time_str, sizeof(decoded_end_time) - 1);
-        
+
         // Replace %3A with :
         char *pos = decoded_end_time;
         while ((pos = strstr(pos, "%3A")) != NULL) {
             *pos = ':';
             memmove(pos + 1, pos + 3, strlen(pos + 3) + 1);
         }
-        
+
         log_info("Parsing end time string (decoded): %s", decoded_end_time);
-        
+
         struct tm tm = {0};
         // Try different time formats
         if (strptime(decoded_end_time, "%Y-%m-%dT%H:%M:%S", &tm) != NULL ||
             strptime(decoded_end_time, "%Y-%m-%dT%H:%M:%S.000Z", &tm) != NULL ||
             strptime(decoded_end_time, "%Y-%m-%dT%H:%M:%S.000", &tm) != NULL ||
             strptime(decoded_end_time, "%Y-%m-%dT%H:%M:%SZ", &tm) != NULL) {
-            
-            // Convert to local timestamp
-            tm.tm_isdst = -1; // Let mktime determine if DST is in effect
-            end_time = mktime(&tm);
+
+            // Convert to UTC timestamp - assume input is already in UTC
+            tm.tm_isdst = 0; // No DST for UTC
+            end_time = timegm(&tm);
             log_info("Parsed end time: %ld", (long)end_time);
         } else if (strptime(decoded_end_time, "%Y-%m-%d", &tm) != NULL) {
             // Handle date-only format (YYYY-MM-DD)
@@ -577,8 +577,8 @@ void mg_handle_timeline_manifest(struct mg_connection *c, struct mg_http_message
             tm.tm_hour = 23;
             tm.tm_min = 59;
             tm.tm_sec = 59;
-            tm.tm_isdst = -1; // Let mktime determine if DST is in effect
-            end_time = mktime(&tm);
+            tm.tm_isdst = 0; // No DST for UTC
+            end_time = timegm(&tm);
             log_info("Parsed date-only end time: %ld", (long)end_time);
         } else {
             log_error("Failed to parse end time string: %s", decoded_end_time);
@@ -692,17 +692,17 @@ void mg_handle_timeline_playback(struct mg_connection *c, struct mg_http_message
             }
             
             log_info("Parsing start time string (decoded): %s", decoded_start_time);
-            
+
             struct tm tm = {0};
             // Try different time formats
             if (strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%S", &tm) != NULL ||
                 strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%S.000Z", &tm) != NULL ||
                 strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%S.000", &tm) != NULL ||
                 strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%SZ", &tm) != NULL) {
-                
-                // Set tm_isdst to -1 to let mktime determine if DST is in effect
-                tm.tm_isdst = -1;
-                start_time = mktime(&tm);
+
+                // Convert to UTC timestamp - assume input is already in UTC
+                tm.tm_isdst = 0; // No DST for UTC
+                start_time = timegm(&tm);
                 log_info("Parsed start time: %ld", (long)start_time);
             } else if (strptime(decoded_start_time, "%Y-%m-%d", &tm) != NULL) {
                 // Handle date-only format (YYYY-MM-DD)
@@ -710,8 +710,8 @@ void mg_handle_timeline_playback(struct mg_connection *c, struct mg_http_message
                 tm.tm_hour = 0;
                 tm.tm_min = 0;
                 tm.tm_sec = 0;
-                tm.tm_isdst = -1;
-                start_time = mktime(&tm);
+                tm.tm_isdst = 0; // No DST for UTC
+                start_time = timegm(&tm);
                 log_info("Parsed date-only start time: %ld", (long)start_time);
             } else {
                 log_error("Failed to parse start time string: %s", decoded_start_time);
