@@ -27,15 +27,16 @@ export class UsersPage extends BasePage {
   }
 
   get userRows(): Locator {
-    // User rows are in tbody - use more specific selector
-    return this.page.locator('table tbody tr');
+    // User rows are in tbody - target rows that contain user data (have td cells)
+    // Exclude header rows and empty states
+    return this.page.locator('table tbody tr').filter({ has: this.page.locator('td') });
   }
 
   // Add/Edit User Modal - uses fixed positioning with bg-black overlay
   get userModal(): Locator {
-    // The modal has fixed inset-0 positioning and contains a form with #username
-    // Use CSS attribute selector for multiple classes
-    return this.page.locator('div[class*="fixed"][class*="inset-0"]').filter({ has: this.page.locator('#username') }).first();
+    // The modal overlay contains a form with #username input
+    // Look for the visible modal overlay that contains the username field
+    return this.page.locator('.fixed.inset-0, div[class*="fixed"][class*="inset-0"]').filter({ has: this.page.locator('#username') }).first();
   }
 
   get usernameInput(): Locator {
@@ -61,12 +62,14 @@ export class UsersPage extends BasePage {
 
   get saveButton(): Locator {
     // The submit button inside the modal - "Add User" button with type="submit" and btn-primary class
-    return this.page.locator('button[type="submit"].btn-primary').filter({ hasText: /add user/i }).first();
+    // Scope to the modal to avoid matching the page-level "Add User" button
+    return this.userModal.locator('button[type="submit"].btn-primary').first();
   }
 
   get cancelButton(): Locator {
     // The cancel button is in the modal, has type="button" and text "Cancel"
-    return this.page.locator('button[type="button"]').filter({ hasText: /^cancel$/i }).first();
+    // Scope to the modal to avoid matching other cancel buttons
+    return this.userModal.locator('button[type="button"]').filter({ hasText: /^cancel$/i }).first();
   }
 
   // Confirmation dialog
@@ -82,7 +85,14 @@ export class UsersPage extends BasePage {
    * Get count of users
    */
   async getUserCount(): Promise<number> {
-    await sleep(500);
+    await sleep(1000);
+    // Wait for table to be visible first
+    try {
+      await this.usersList.waitFor({ state: 'visible', timeout: 5000 });
+    } catch (e) {
+      // Table might not exist if no users
+      return 0;
+    }
     return await this.userRows.count();
   }
 
@@ -97,7 +107,14 @@ export class UsersPage extends BasePage {
    * Check if user exists
    */
   async userExists(username: string): Promise<boolean> {
-    return await this.getUserByUsername(username).isVisible();
+    await sleep(500);
+    const userRow = this.getUserByUsername(username);
+    try {
+      await userRow.waitFor({ state: 'visible', timeout: 3000 });
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 
   /**
@@ -106,9 +123,11 @@ export class UsersPage extends BasePage {
   async clickAddUser(): Promise<void> {
     // Wait for the add user button to be ready
     await this.addUserButton.waitFor({ state: 'visible', timeout: 5000 });
+    await sleep(500);
     await this.addUserButton.click();
     // Wait for the username input to appear (indicates modal is open)
     await this.usernameInput.waitFor({ state: 'visible', timeout: 5000 });
+    await sleep(300);
   }
 
   /**

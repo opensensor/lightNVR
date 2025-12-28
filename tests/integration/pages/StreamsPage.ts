@@ -34,9 +34,9 @@ export class StreamsPage extends BasePage {
 
   // Modal locators - StreamConfigModal is a fixed overlay
   get addStreamModal(): Locator {
-    // The modal is a fixed overlay - use CSS attribute selector for multiple classes
-    // The modal contains the #stream-name input inside it
-    return this.page.locator('div[class*="fixed"][class*="inset-0"]').filter({ has: this.page.locator('#stream-name') }).first();
+    // The modal is a fixed overlay containing the stream form
+    // Look for the visible modal overlay that contains the stream-name field
+    return this.page.locator('.fixed.inset-0, div[class*="fixed"][class*="inset-0"]').filter({ has: this.page.locator('#stream-name') }).first();
   }
 
   get streamNameInput(): Locator {
@@ -55,14 +55,15 @@ export class StreamsPage extends BasePage {
   }
 
   get cancelButton(): Locator {
-    // The cancel button is in the modal with text "Cancel"
-    return this.page.locator('button').filter({ hasText: /^cancel$/i }).first();
+    // The cancel button is in the modal with text "Cancel" - scope to the modal
+    return this.addStreamModal.locator('button').filter({ hasText: /^cancel$/i }).first();
   }
 
   /**
    * Get count of streams displayed
    */
   async getStreamCount(): Promise<number> {
+    await sleep(1000); // Wait for data to load
     // Wait for the streams table to be visible first
     try {
       await this.streamsList.waitFor({ state: 'visible', timeout: 5000 });
@@ -71,7 +72,8 @@ export class StreamsPage extends BasePage {
       return 0;
     }
     await sleep(500); // Wait for list to render
-    return await this.streamCards.count();
+    // Only count rows that have td cells (actual data rows)
+    return await this.streamCards.filter({ has: this.page.locator('td') }).count();
   }
 
   /**
@@ -85,7 +87,14 @@ export class StreamsPage extends BasePage {
    * Check if a stream exists by name
    */
   async streamExists(name: string): Promise<boolean> {
-    return await this.getStreamByName(name).isVisible();
+    await sleep(500);
+    const streamRow = this.getStreamByName(name);
+    try {
+      await streamRow.waitFor({ state: 'visible', timeout: 3000 });
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 
   /**
@@ -94,9 +103,11 @@ export class StreamsPage extends BasePage {
   async clickAddStream(): Promise<void> {
     // Wait for button to be ready
     await this.addStreamButton.waitFor({ state: 'visible', timeout: 5000 });
+    await sleep(500);
     await this.addStreamButton.click();
     // Wait for the stream form to appear by waiting for name input
     await this.streamNameInput.waitFor({ state: 'visible', timeout: 5000 });
+    await sleep(300);
   }
 
   /**
