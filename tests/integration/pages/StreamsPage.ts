@@ -20,12 +20,12 @@ export class StreamsPage extends BasePage {
   }
 
   get streamsList(): Locator {
-    return this.page.locator('#streams-table, .streams-container, table');
+    return this.page.locator('#streams-table').first();
   }
 
   get streamCards(): Locator {
-    // Streams are displayed in table rows, not cards - target tbody rows
-    return this.page.locator('#streams-table tbody tr, .streams-container tbody tr');
+    // Streams are displayed in table rows - target tbody rows in #streams-table
+    return this.page.locator('#streams-table tbody tr');
   }
 
   get refreshButton(): Locator {
@@ -60,6 +60,13 @@ export class StreamsPage extends BasePage {
    * Get count of streams displayed
    */
   async getStreamCount(): Promise<number> {
+    // Wait for the streams table to be visible first
+    try {
+      await this.streamsList.waitFor({ state: 'visible', timeout: 5000 });
+    } catch (e) {
+      // Table might not exist if no streams
+      return 0;
+    }
     await sleep(500); // Wait for list to render
     return await this.streamCards.count();
   }
@@ -82,6 +89,8 @@ export class StreamsPage extends BasePage {
    * Click add stream button to open modal/form
    */
   async clickAddStream(): Promise<void> {
+    // Wait for button to be ready
+    await this.addStreamButton.waitFor({ state: 'visible', timeout: 5000 });
     await this.addStreamButton.click();
     // Wait for the stream form to appear by waiting for name input
     await this.streamNameInput.waitFor({ state: 'visible', timeout: 5000 });

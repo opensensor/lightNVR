@@ -11,12 +11,14 @@ export class UsersPage extends BasePage {
 
   // Locators
   get pageTitle(): Locator {
-    return this.page.locator('h1, .page-title').first();
+    // UsersView has h2 with "User Management"
+    return this.page.locator('h2').filter({ hasText: /user management/i }).first();
   }
 
   get addUserButton(): Locator {
-    // The main page "Add User" button (not in modal)
-    return this.page.locator('button.btn-primary').filter({ hasText: /add user/i }).first();
+    // The main page "Add User" button (not in modal) - btn-primary with Add User text
+    // Make it more specific to avoid matching modal button
+    return this.page.locator('button.btn-primary').filter({ hasText: /^add user$/i }).first();
   }
 
   get usersList(): Locator {
@@ -24,34 +26,35 @@ export class UsersPage extends BasePage {
   }
 
   get userRows(): Locator {
-    // User rows are in tbody, skip the header row
-    return this.page.locator('tbody tr');
+    // User rows are in tbody - use more specific selector
+    return this.page.locator('table tbody tr');
   }
 
   // Add/Edit User Modal - uses fixed positioning with bg-black overlay
   get userModal(): Locator {
-    return this.page.locator('.fixed.inset-0').filter({ hasText: /add new user|edit user/i }).first();
+    // The modal has fixed inset-0 positioning and contains a form with #username
+    return this.page.locator('.fixed.inset-0').filter({ has: this.page.locator('#username') }).first();
   }
 
   get usernameInput(): Locator {
-    // Input in the modal form
-    return this.userModal.locator('#username');
+    // Input in the modal form - use page-level locator since modal might not be found yet
+    return this.page.locator('#username');
   }
 
   get emailInput(): Locator {
-    return this.userModal.locator('#email');
+    return this.page.locator('#email');
   }
 
   get passwordInput(): Locator {
-    return this.userModal.locator('#password');
+    return this.page.locator('#password');
   }
 
   get roleSelect(): Locator {
-    return this.userModal.locator('#role');
+    return this.page.locator('#role');
   }
 
   get isActiveCheckbox(): Locator {
-    return this.userModal.locator('input[name="is_active"]');
+    return this.page.locator('input[name="is_active"]');
   }
 
   get saveButton(): Locator {
@@ -60,7 +63,8 @@ export class UsersPage extends BasePage {
   }
 
   get cancelButton(): Locator {
-    return this.userModal.locator('button').filter({ hasText: /cancel/i }).first();
+    // The cancel button is in the modal, has type="button" and text "Cancel"
+    return this.userModal.locator('button[type="button"]').filter({ hasText: /cancel/i }).first();
   }
 
   // Confirmation dialog
@@ -98,9 +102,11 @@ export class UsersPage extends BasePage {
    * Click add user button and wait for modal to open
    */
   async clickAddUser(): Promise<void> {
+    // Wait for the add user button to be ready
+    await this.addUserButton.waitFor({ state: 'visible', timeout: 5000 });
     await this.addUserButton.click();
-    // Wait for the modal to appear by waiting for the username input
-    await this.userModal.waitFor({ state: 'visible', timeout: 5000 });
+    // Wait for the username input to appear (indicates modal is open)
+    await this.usernameInput.waitFor({ state: 'visible', timeout: 5000 });
   }
 
   /**
@@ -139,8 +145,8 @@ export class UsersPage extends BasePage {
     // Click save - using force because modal backdrop may intercept events
     await this.saveButton.click({ force: true });
 
-    // Wait for modal to close and list to refresh
-    await this.userModal.waitFor({ state: 'hidden', timeout: 10000 });
+    // Wait for username input to disappear (modal closed)
+    await this.usernameInput.waitFor({ state: 'hidden', timeout: 10000 });
     await sleep(2000); // Additional wait for API response and list refresh
   }
 
