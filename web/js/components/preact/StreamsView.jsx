@@ -133,6 +133,10 @@ export function StreamsView() {
     backchannelEnabled: false,
     // ONVIF capability flag
     isOnvif: false,
+    // ONVIF credentials (for cameras that require authentication)
+    onvifUsername: '',
+    onvifPassword: '',
+    onvifProfile: '',
     // AI Detection recording
     detectionEnabled: false,
     detectionModel: '',
@@ -341,6 +345,10 @@ export function StreamsView() {
       detection_model: currentStream.detectionModel,
       // Persist ONVIF flag expected by backend (camelCase key)
       isOnvif: !!currentStream.isOnvif,
+      // ONVIF credentials (for motion detection, PTZ, etc.)
+      onvif_username: currentStream.onvifUsername || '',
+      onvif_password: currentStream.onvifPassword || '',
+      onvif_profile: currentStream.onvifProfile || '',
       detection_threshold: parseInt(currentStream.detectionThreshold, 10),
       detection_interval: parseInt(currentStream.detectionInterval, 10),
       pre_detection_buffer: parseInt(currentStream.preBuffer, 10),
@@ -494,6 +502,9 @@ export function StreamsView() {
       recordAudio: true,
       backchannelEnabled: false,
       isOnvif: false,
+      onvifUsername: '',
+      onvifPassword: '',
+      onvifProfile: '',
       detectionEnabled: false,
       detectionModel: '',
       detectionThreshold: 50,
@@ -557,6 +568,10 @@ export function StreamsView() {
         // Map API fields to form fields
         streamingEnabled: stream.streaming_enabled !== undefined ? stream.streaming_enabled : true,
         isOnvif: stream.isOnvif !== undefined ? stream.isOnvif : false,
+        // ONVIF credentials
+        onvifUsername: stream.onvif_username || '',
+        onvifPassword: stream.onvif_password || '',
+        onvifProfile: stream.onvif_profile || '',
         detectionEnabled: stream.detection_based_recording || false,
         detectionModel: stream.detection_model || '',
         recordAudio: stream.record_audio !== undefined ? stream.record_audio : true,

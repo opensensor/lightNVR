@@ -219,8 +219,56 @@ export function StreamConfigModal({
                     />
                     <span className="text-sm font-medium">ONVIF Camera</span>
                   </label>
-                  <span className="ml-2 text-xs text-muted-foreground">Enables motion detection features</span>
+                  <span className="ml-2 text-xs text-muted-foreground">Enables motion detection and PTZ features</span>
                 </div>
+
+                {/* ONVIF Credentials - shown when ONVIF Camera is enabled */}
+                {currentStream.isOnvif && (
+                  <div className="col-span-2 p-4 bg-muted/50 rounded-lg border border-border">
+                    <h4 className="text-sm font-medium mb-3">ONVIF Credentials</h4>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      Enter credentials for ONVIF features (motion detection, PTZ control). Leave empty if your camera doesn't require authentication.
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label htmlFor="stream-onvif-username" className="block text-sm font-medium mb-1">Username</label>
+                        <input
+                          type="text"
+                          id="stream-onvif-username"
+                          name="onvifUsername"
+                          className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
+                          placeholder="admin"
+                          value={currentStream.onvifUsername || ''}
+                          onChange={onInputChange}
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="stream-onvif-password" className="block text-sm font-medium mb-1">Password</label>
+                        <input
+                          type="password"
+                          id="stream-onvif-password"
+                          name="onvifPassword"
+                          className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
+                          placeholder="••••••••"
+                          value={currentStream.onvifPassword || ''}
+                          onChange={onInputChange}
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="stream-onvif-profile" className="block text-sm font-medium mb-1">Profile (optional)</label>
+                        <input
+                          type="text"
+                          id="stream-onvif-profile"
+                          name="onvifProfile"
+                          className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
+                          placeholder="Profile_1"
+                          value={currentStream.onvifProfile || ''}
+                          onChange={onInputChange}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <label htmlFor="stream-width" className="block text-sm font-medium mb-2">Width</label>

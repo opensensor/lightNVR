@@ -147,8 +147,6 @@ static const mg_api_route_t s_api_routes[] = {
     // No direct HLS handlers - handled by static file handler
 
     // go2rtc WebRTC API
-    {"GET", "/api/webrtc/config", mg_handle_go2rtc_webrtc_config, false},
-
     {"GET", "/api/webrtc/config", mg_handle_go2rtc_webrtc_config, false},  // GET WebRTC config from go2rtc
     {"OPTIONS", "/api/webrtc/config", mg_handle_go2rtc_webrtc_options, false},  // OPTIONS for WebRTC config
     {"POST", "/api/webrtc", mg_handle_go2rtc_webrtc_offer, true},  // Enable threading for WebRTC offer requests

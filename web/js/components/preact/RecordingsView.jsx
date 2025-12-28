@@ -725,12 +725,19 @@ export function RecordingsView() {
           </div>
         </div>
         <button id="toggle-filters-btn"
-                class="p-2 rounded-full bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 focus:outline-none"
-                title="Toggle Filters"
+                class={`p-2 rounded-full focus:outline-none flex items-center gap-2 transition-colors ${
+                  filtersVisible
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600'
+                }`}
+                style={filtersVisible ? {backgroundColor: 'hsl(var(--primary))', color: 'hsl(var(--primary-foreground))'} : {}}
+                title={filtersVisible ? "Hide Filters" : "Show Filters"}
                 onClick={toggleFilters}>
+          {/* Filter funnel icon */}
           <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-            <path fill-rule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"></path>
+            <path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L12 11.414V15a1 1 0 01-.293.707l-2 2A1 1 0 018 17v-5.586L3.293 6.707A1 1 0 013 6V3z" clip-rule="evenodd"></path>
           </svg>
+          <span class="text-sm hidden sm:inline">{filtersVisible ? 'Hide Filters' : 'Filters'}</span>
         </button>
       </div>
 
