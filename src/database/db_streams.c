@@ -72,7 +72,8 @@ uint64_t add_stream_config(const stream_config_t *stream) {
                                 "detection_interval = ?, pre_detection_buffer = ?, post_detection_buffer = ?, "
                                 "detection_api_url = ?, protocol = ?, is_onvif = ?, record_audio = ?, "
                                 "backchannel_enabled = ?, retention_days = ?, detection_retention_days = ?, max_storage_mb = ?, "
-                                "ptz_enabled = ?, ptz_max_x = ?, ptz_max_y = ?, ptz_max_z = ?, ptz_has_home = ? "
+                                "ptz_enabled = ?, ptz_max_x = ?, ptz_max_y = ?, ptz_max_z = ?, ptz_has_home = ?, "
+                                "onvif_username = ?, onvif_password = ?, onvif_profile = ? "
                                 "WHERE id = ?;";
 
         rc = sqlite3_prepare_v2(db, update_sql, -1, &stmt, NULL);
@@ -127,8 +128,13 @@ uint64_t add_stream_config(const stream_config_t *stream) {
         sqlite3_bind_int(stmt, 28, stream->ptz_max_z);
         sqlite3_bind_int(stmt, 29, stream->ptz_has_home ? 1 : 0);
 
+        // Bind ONVIF credentials
+        sqlite3_bind_text(stmt, 30, stream->onvif_username, -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 31, stream->onvif_password, -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 32, stream->onvif_profile, -1, SQLITE_STATIC);
+
         // Bind ID parameter
-        sqlite3_bind_int64(stmt, 30, (sqlite3_int64)existing_id);
+        sqlite3_bind_int64(stmt, 33, (sqlite3_int64)existing_id);
 
         // Execute statement
         rc = sqlite3_step(stmt);
@@ -171,8 +177,9 @@ uint64_t add_stream_config(const stream_config_t *stream) {
           "detection_based_recording, detection_model, detection_threshold, detection_interval, "
           "pre_detection_buffer, post_detection_buffer, detection_api_url, protocol, is_onvif, record_audio, backchannel_enabled, "
           "retention_days, detection_retention_days, max_storage_mb, "
-          "ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home) "
-          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+          "ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home, "
+          "onvif_username, onvif_password, onvif_profile) "
+          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -226,6 +233,11 @@ uint64_t add_stream_config(const stream_config_t *stream) {
     sqlite3_bind_int(stmt, 28, stream->ptz_max_y);
     sqlite3_bind_int(stmt, 29, stream->ptz_max_z);
     sqlite3_bind_int(stmt, 30, stream->ptz_has_home ? 1 : 0);
+
+    // Bind ONVIF credentials
+    sqlite3_bind_text(stmt, 31, stream->onvif_username, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 32, stream->onvif_password, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 33, stream->onvif_profile, -1, SQLITE_STATIC);
 
     // Execute statement
     rc = sqlite3_step(stmt);
@@ -283,7 +295,7 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
     // Schema migrations should have already been run during database initialization
     // No need to check for columns here anymore
 
-    // Now update the stream with all fields including detection settings, protocol, is_onvif, record_audio, backchannel_enabled, retention settings, and PTZ
+    // Now update the stream with all fields including detection settings, protocol, is_onvif, record_audio, backchannel_enabled, retention settings, PTZ, and ONVIF credentials
     const char *sql = "UPDATE streams SET "
                       "name = ?, url = ?, enabled = ?, streaming_enabled = ?, width = ?, height = ?, "
                       "fps = ?, codec = ?, priority = ?, record = ?, segment_duration = ?, "
@@ -291,7 +303,8 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
                       "detection_interval = ?, pre_detection_buffer = ?, post_detection_buffer = ?, "
                       "detection_api_url = ?, protocol = ?, is_onvif = ?, record_audio = ?, "
                       "backchannel_enabled = ?, retention_days = ?, detection_retention_days = ?, max_storage_mb = ?, "
-                      "ptz_enabled = ?, ptz_max_x = ?, ptz_max_y = ?, ptz_max_z = ?, ptz_has_home = ? "
+                      "ptz_enabled = ?, ptz_max_x = ?, ptz_max_y = ?, ptz_max_z = ?, ptz_has_home = ?, "
+                      "onvif_username = ?, onvif_password = ?, onvif_profile = ? "
                       "WHERE name = ?;";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -347,8 +360,13 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
     sqlite3_bind_int(stmt, 29, stream->ptz_max_z);
     sqlite3_bind_int(stmt, 30, stream->ptz_has_home ? 1 : 0);
 
+    // Bind ONVIF credentials
+    sqlite3_bind_text(stmt, 31, stream->onvif_username, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 32, stream->onvif_password, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 33, stream->onvif_profile, -1, SQLITE_STATIC);
+
     // Bind the WHERE clause parameter
-    sqlite3_bind_text(stmt, 31, name, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 34, name, -1, SQLITE_STATIC);
 
     // Execute statement
     rc = sqlite3_step(stmt);
@@ -506,7 +524,8 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
         "detection_based_recording, detection_model, detection_threshold, detection_interval, "
         "pre_detection_buffer, post_detection_buffer, detection_api_url, protocol, is_onvif, record_audio, backchannel_enabled, "
         "retention_days, detection_retention_days, max_storage_mb, "
-        "ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home "
+        "ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home, "
+        "onvif_username, onvif_password, onvif_profile "
         "FROM streams WHERE name = ?;";
 
     // Column index constants for readability
@@ -517,7 +536,8 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
         COL_PRE_DETECTION_BUFFER, COL_POST_DETECTION_BUFFER, COL_DETECTION_API_URL,
         COL_PROTOCOL, COL_IS_ONVIF, COL_RECORD_AUDIO, COL_BACKCHANNEL_ENABLED,
         COL_RETENTION_DAYS, COL_DETECTION_RETENTION_DAYS, COL_MAX_STORAGE_MB,
-        COL_PTZ_ENABLED, COL_PTZ_MAX_X, COL_PTZ_MAX_Y, COL_PTZ_MAX_Z, COL_PTZ_HAS_HOME
+        COL_PTZ_ENABLED, COL_PTZ_MAX_X, COL_PTZ_MAX_Y, COL_PTZ_MAX_Z, COL_PTZ_HAS_HOME,
+        COL_ONVIF_USERNAME, COL_ONVIF_PASSWORD, COL_ONVIF_PROFILE
     };
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -609,6 +629,25 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
         stream->ptz_max_z = (sqlite3_column_type(stmt, COL_PTZ_MAX_Z) != SQLITE_NULL)
             ? sqlite3_column_int(stmt, COL_PTZ_MAX_Z) : 0;
         stream->ptz_has_home = sqlite3_column_int(stmt, COL_PTZ_HAS_HOME) != 0;
+
+        // ONVIF credentials
+        const char *onvif_username = (const char *)sqlite3_column_text(stmt, COL_ONVIF_USERNAME);
+        if (onvif_username) {
+            strncpy(stream->onvif_username, onvif_username, sizeof(stream->onvif_username) - 1);
+            stream->onvif_username[sizeof(stream->onvif_username) - 1] = '\0';
+        }
+
+        const char *onvif_password = (const char *)sqlite3_column_text(stmt, COL_ONVIF_PASSWORD);
+        if (onvif_password) {
+            strncpy(stream->onvif_password, onvif_password, sizeof(stream->onvif_password) - 1);
+            stream->onvif_password[sizeof(stream->onvif_password) - 1] = '\0';
+        }
+
+        const char *onvif_profile = (const char *)sqlite3_column_text(stmt, COL_ONVIF_PROFILE);
+        if (onvif_profile) {
+            strncpy(stream->onvif_profile, onvif_profile, sizeof(stream->onvif_profile) - 1);
+            stream->onvif_profile[sizeof(stream->onvif_profile) - 1] = '\0';
+        }
 
         result = 0;
     }

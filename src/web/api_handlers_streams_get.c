@@ -88,6 +88,9 @@ void mg_handle_get_streams(struct mg_connection *c, struct mg_http_message *hm) 
         cJSON_AddNumberToObject(stream_obj, "ptz_max_y", db_streams[i].ptz_max_y);
         cJSON_AddNumberToObject(stream_obj, "ptz_max_z", db_streams[i].ptz_max_z);
         cJSON_AddBoolToObject(stream_obj, "ptz_has_home", db_streams[i].ptz_has_home);
+        cJSON_AddStringToObject(stream_obj, "onvif_username", db_streams[i].onvif_username);
+        cJSON_AddStringToObject(stream_obj, "onvif_password", db_streams[i].onvif_password);
+        cJSON_AddStringToObject(stream_obj, "onvif_profile", db_streams[i].onvif_profile);
 
         // Get stream status
         stream_handle_t stream = get_stream_by_name(db_streams[i].name);
@@ -218,6 +221,9 @@ void mg_handle_get_stream(struct mg_connection *c, struct mg_http_message *hm) {
     cJSON_AddNumberToObject(stream_obj, "ptz_max_y", config.ptz_max_y);
     cJSON_AddNumberToObject(stream_obj, "ptz_max_z", config.ptz_max_z);
     cJSON_AddBoolToObject(stream_obj, "ptz_has_home", config.ptz_has_home);
+    cJSON_AddStringToObject(stream_obj, "onvif_username", config.onvif_username);
+    cJSON_AddStringToObject(stream_obj, "onvif_password", config.onvif_password);
+    cJSON_AddStringToObject(stream_obj, "onvif_profile", config.onvif_profile);
 
     // Get stream status
     stream_status_t stream_status = get_stream_status(stream);
@@ -345,6 +351,9 @@ void mg_handle_get_stream_full(struct mg_connection *c, struct mg_http_message *
     cJSON_AddNumberToObject(stream_obj, "ptz_max_y", config.ptz_max_y);
     cJSON_AddNumberToObject(stream_obj, "ptz_max_z", config.ptz_max_z);
     cJSON_AddBoolToObject(stream_obj, "ptz_has_home", config.ptz_has_home);
+    cJSON_AddStringToObject(stream_obj, "onvif_username", config.onvif_username);
+    cJSON_AddStringToObject(stream_obj, "onvif_password", config.onvif_password);
+    cJSON_AddStringToObject(stream_obj, "onvif_profile", config.onvif_profile);
 
     // Status
     stream_status_t stream_status = get_stream_status(stream);

@@ -162,44 +162,41 @@ docker restart lightnvr
 
 ### Pre-built Packages
 
-Pre-built packages are available for some distributions.
+Pre-built packages are available from GitHub Releases.
+
+#### Downloading from GitHub Releases
+
+1. Visit the [LightNVR Releases page](https://github.com/opensensor/lightNVR/releases)
+2. Download the appropriate package for your platform:
+   - `.deb` packages for Debian/Ubuntu
+   - `.tar.gz` archives for other Linux distributions
 
 #### Debian/Ubuntu
 
 ```bash
-# Add the repository
-echo "deb https://packages.lightnvr.org/debian stable main" | sudo tee /etc/apt/sources.list.d/lightnvr.list
-wget -qO - https://packages.lightnvr.org/debian/pubkey.gpg | sudo apt-key add -
+# Download the latest .deb package from GitHub Releases
+wget https://github.com/opensensor/lightNVR/releases/latest/download/lightnvr_<version>_<arch>.deb
 
-# Update package lists
-sudo apt-get update
+# Install the package
+sudo dpkg -i lightnvr_<version>_<arch>.deb
 
-# Install LightNVR
-sudo apt-get install lightnvr
+# Install any missing dependencies
+sudo apt-get install -f
 ```
 
-#### Fedora/RHEL/CentOS
+#### Other Distributions
+
+For other distributions, download the tarball and install manually:
 
 ```bash
-# Add the repository
-sudo dnf config-manager --add-repo https://packages.lightnvr.org/fedora/lightnvr.repo
+# Download and extract
+wget https://github.com/opensensor/lightNVR/releases/latest/download/lightnvr-<version>-linux-<arch>.tar.gz
+tar -xzf lightnvr-<version>-linux-<arch>.tar.gz
 
-# Install LightNVR
-sudo dnf install lightnvr
-```
-
-#### Arch Linux
-
-LightNVR is available in the AUR:
-
-```bash
-# Using yay
-yay -S lightnvr
-
-# Or using manual AUR installation
-git clone https://aur.archlinux.org/lightnvr.git
-cd lightnvr
-makepkg -si
+# Install (adjust paths as needed)
+sudo cp lightnvr /usr/local/bin/
+sudo mkdir -p /etc/lightnvr
+sudo cp lightnvr.ini.default /etc/lightnvr/lightnvr.ini
 ```
 
 ## Platform-Specific Instructions

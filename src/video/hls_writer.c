@@ -524,6 +524,7 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
     if (!pkt->data || pkt->size <= 0) {
         log_warn("Invalid packet data for stream %s (data=%p, size=%d)",
                 writer->stream_name, pkt->data, pkt->size);
+        av_packet_free(&out_pkt_ptr);  // MEMORY LEAK FIX: Free allocated packet before early return
         return -1;
     }
 

@@ -139,7 +139,6 @@ EOF
 # go2rtc configuration file
 api:
   listen: :1984
-  base_path: /go2rtc/
 
 rtsp:
   listen: :8554

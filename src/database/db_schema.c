@@ -16,7 +16,7 @@
 #include "core/logger.h"
 
 // Current schema version - increment this when adding new migrations
-#define CURRENT_SCHEMA_VERSION 15
+#define CURRENT_SCHEMA_VERSION 16
 
 // Migration function type
 typedef int (*migration_func_t)(void);
@@ -36,6 +36,7 @@ static int migration_v11_to_v12(void);
 static int migration_v12_to_v13(void);
 static int migration_v13_to_v14(void);
 static int migration_v14_to_v15(void);
+static int migration_v15_to_v16(void);
 
 // Array of migration functions
 static migration_func_t migrations[] = {
@@ -53,7 +54,8 @@ static migration_func_t migrations[] = {
     migration_v11_to_v12, // v11->v12
     migration_v12_to_v13, // v12->v13 - Recording retention policies
     migration_v13_to_v14, // v13->v14 - PTZ support
-    migration_v14_to_v15  // v14->v15 - Buffer strategy
+    migration_v14_to_v15, // v14->v15 - Buffer strategy
+    migration_v15_to_v16  // v15->v16 - ONVIF credentials
 };
 
 /**
@@ -1043,5 +1045,35 @@ static int migration_v14_to_v15(void) {
     }
 
     log_info("Completed migration v14 to v15 successfully");
+    return 0;
+}
+
+/**
+ * Migration from version 15 to 16
+ * - Add ONVIF credentials columns to streams table
+ */
+static int migration_v15_to_v16(void) {
+    log_info("Running migration from v15 to v16: Adding ONVIF credentials columns to streams table");
+
+    int rc = 0;
+
+    // Add onvif_username column to streams table
+    log_info("Adding onvif_username column to streams table");
+    rc |= add_column_if_not_exists("streams", "onvif_username", "TEXT DEFAULT ''");
+
+    // Add onvif_password column to streams table
+    log_info("Adding onvif_password column to streams table");
+    rc |= add_column_if_not_exists("streams", "onvif_password", "TEXT DEFAULT ''");
+
+    // Add onvif_profile column to streams table
+    log_info("Adding onvif_profile column to streams table");
+    rc |= add_column_if_not_exists("streams", "onvif_profile", "TEXT DEFAULT ''");
+
+    if (rc != 0) {
+        log_error("Failed to add ONVIF credentials columns to streams table");
+        return -1;
+    }
+
+    log_info("Completed migration v15 to v16 successfully");
     return 0;
 }
