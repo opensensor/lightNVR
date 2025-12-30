@@ -136,7 +136,6 @@ Example configuration:
 ```yaml
 api:
   listen: :1984
-  base_path: /go2rtc/
 
 webrtc:
   ice_servers:

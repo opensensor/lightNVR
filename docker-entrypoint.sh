@@ -160,7 +160,13 @@ EOF
         log_info "Default go2rtc configuration created at /etc/lightnvr/go2rtc/go2rtc.yaml"
     else
         if [ -f /etc/lightnvr/go2rtc/go2rtc.yaml ]; then
-            log_info "go2rtc configuration already exists, preserving existing config"
+            log_info "go2rtc configuration already exists, checking for compatibility..."
+            # Remove base_path if present - it causes 404 errors when lightNVR communicates with go2rtc
+            if grep -q "base_path:" /etc/lightnvr/go2rtc/go2rtc.yaml 2>/dev/null; then
+                log_warn "Found base_path in go2rtc config - removing it for compatibility with lightNVR"
+                sed -i '/base_path:/d' /etc/lightnvr/go2rtc/go2rtc.yaml
+                log_info "Removed base_path from go2rtc configuration"
+            fi
         fi
     fi
     

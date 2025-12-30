@@ -1233,8 +1233,12 @@ bool go2rtc_integration_get_hls_url(const char *stream_name, char *buffer, size_
     }
 
     // Format the HLS URL
-    // The format is http://localhost:1984/api/stream.m3u8?src={stream_name}
-    snprintf(buffer, buffer_size, "http://localhost:1984/api/stream.m3u8?src=%s", stream_name);
+    // The format is http://localhost:{port}/api/stream.m3u8?src={stream_name}
+    int api_port = go2rtc_stream_get_api_port();
+    if (api_port == 0) {
+        api_port = 1984; // Fallback to default port
+    }
+    snprintf(buffer, buffer_size, "http://localhost:%d/api/stream.m3u8?src=%s", api_port, stream_name);
 
     log_info("Generated go2rtc HLS URL for stream %s: %s", stream_name, buffer);
     return true;
