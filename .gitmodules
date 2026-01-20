@@ -1,4 +1,3 @@
 [submodule "go2rtc"]
 	path = go2rtc
-	url = https://github.com/opensensor/go2rtc.git
-	branch = feature/native-jpeg-transcode
+	url = https://github.com/AlexxIT/go2rtc.git

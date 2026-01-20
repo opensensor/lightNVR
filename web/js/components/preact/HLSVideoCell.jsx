@@ -10,6 +10,7 @@ import { SnapshotButton } from './SnapshotManager.jsx';
 import { LoadingIndicator } from './LoadingIndicator.jsx';
 import { showSnapshotPreview } from './UI.jsx';
 import { PTZControls } from './PTZControls.jsx';
+import { getGo2rtcBaseUrl } from '../../utils/settings-utils.js';
 import Hls from 'hls.js';
 
 /**
@@ -47,147 +48,175 @@ export function HLSVideoCell({
     setIsLoading(true);
     setError(null);
 
-    // Build the HLS stream URL with cache-busting timestamp to prevent stale data
-    const timestamp = Date.now();
-    const hlsStreamUrl = `/hls/${encodeURIComponent(stream.name)}/index.m3u8?_t=${timestamp}`;
+    // Track if component is still mounted
+    let isMounted = true;
+    let hls = null;
 
-    // Check if HLS.js is supported
-    if (Hls.isSupported()) {
-      console.log(`Using HLS.js for stream ${stream.name}`);
-      const hls = new Hls({
-        // Buffer management - optimized to prevent stalling
-        maxBufferLength: 30,            // Maximum buffer length in seconds
-        maxMaxBufferLength: 60,         // Maximum maximum buffer length
-        backBufferLength: 10,           // Back buffer to prevent memory issues
+    // Async initialization function
+    const initHls = async () => {
+      // Get go2rtc base URL for HLS streaming
+      let go2rtcBaseUrl;
+      try {
+        go2rtcBaseUrl = await getGo2rtcBaseUrl();
+        console.log(`Using go2rtc base URL for HLS: ${go2rtcBaseUrl}`);
+      } catch (err) {
+        console.warn('Failed to get go2rtc URL from settings, using default port 1984:', err);
+        go2rtcBaseUrl = `http://${window.location.hostname}:1984`;
+      }
 
-        // Live stream settings - more conservative to prevent buffer stalls
-        liveSyncDurationCount: 4,       // Increased from 3 - more buffer before playback
-        liveMaxLatencyDurationCount: 12, // Increased from 10 - allow more latency before seeking
-        liveDurationInfinity: false,    // Don't treat live streams as infinite
-        lowLatencyMode: false,          // Disable low latency for stability
+      // Check if component was unmounted during async operation
+      if (!isMounted) return;
 
-        // High water mark - start playback with more buffer
-        highBufferWatchdogPeriod: 3,    // Check buffer health every 3 seconds
+      // Build the HLS stream URL using go2rtc's dynamic HLS endpoint
+      // This provides fresh, never-stale video directly from go2rtc
+      const hlsStreamUrl = `${go2rtcBaseUrl}/api/stream.m3u8?src=${encodeURIComponent(stream.name)}`;
+      console.log(`HLS stream URL: ${hlsStreamUrl}`);
 
-        // Loading timeouts
-        fragLoadingTimeOut: 30000,      // Fragment loading timeout
-        manifestLoadingTimeOut: 20000,  // Manifest loading timeout
-        levelLoadingTimeOut: 20000,     // Level loading timeout
+      // Check if HLS.js is supported
+      if (Hls.isSupported()) {
+        console.log(`Using HLS.js for stream ${stream.name}`);
+        hls = new Hls({
+          // Buffer management - optimized for go2rtc's dynamic HLS
+          maxBufferLength: 30,            // Maximum buffer length in seconds
+          maxMaxBufferLength: 60,         // Maximum maximum buffer length
+          backBufferLength: 10,           // Back buffer to prevent memory issues
 
-        // Quality settings
-        startLevel: -1,                 // Auto-select quality
-        abrEwmaDefaultEstimate: 500000, // Conservative bandwidth estimate
-        abrBandWidthFactor: 0.7,        // Conservative bandwidth factor
-        abrBandWidthUpFactor: 0.5,      // Conservative quality increase
+          // Live stream settings - tuned for go2rtc
+          liveSyncDurationCount: 3,       // Number of segments to keep behind live edge
+          liveMaxLatencyDurationCount: 10, // Max latency before seeking to live
+          liveDurationInfinity: true,     // Treat as infinite live stream
+          lowLatencyMode: false,          // Disable low latency for stability
 
-        // Worker and debugging
-        enableWorker: true,             // Use web worker for better performance
-        debug: false,                   // Disable debug logging
+          // High water mark - start playback with more buffer
+          highBufferWatchdogPeriod: 3,    // Check buffer health every 3 seconds
 
-        // Buffer flushing - important for preventing appendBuffer errors
-        maxBufferHole: 0.5,             // Maximum buffer hole tolerance
-        maxFragLookUpTolerance: 0.25,   // Fragment lookup tolerance
-        nudgeMaxRetry: 5,               // Retry attempts for buffer nudging
+          // Loading timeouts
+          fragLoadingTimeOut: 30000,      // Fragment loading timeout
+          manifestLoadingTimeOut: 20000,  // Manifest loading timeout
+          levelLoadingTimeOut: 20000,     // Level loading timeout
 
-        // Append error handling - increased retries for better recovery
-        appendErrorMaxRetry: 5,         // Retry appending on error
+          // Quality settings
+          startLevel: -1,                 // Auto-select quality
+          abrEwmaDefaultEstimate: 500000, // Conservative bandwidth estimate
+          abrBandWidthFactor: 0.7,        // Conservative bandwidth factor
+          abrBandWidthUpFactor: 0.5,      // Conservative quality increase
 
-        // Manifest refresh
-        manifestLoadingMaxRetry: 3,     // Retry manifest loading
-        manifestLoadingRetryDelay: 1000 // Delay between manifest retries
-      });
+          // Worker and debugging
+          enableWorker: true,             // Use web worker for better performance
+          debug: false,                   // Disable debug logging
 
-      hls.loadSource(hlsStreamUrl);
-      hls.attachMedia(videoRef.current);
+          // Buffer flushing - important for preventing appendBuffer errors
+          maxBufferHole: 0.5,             // Maximum buffer hole tolerance
+          maxFragLookUpTolerance: 0.25,   // Fragment lookup tolerance
+          nudgeMaxRetry: 5,               // Retry attempts for buffer nudging
 
-      hls.on(Hls.Events.MANIFEST_PARSED, function() {
-        setIsLoading(false);
-        setIsPlaying(true);
+          // Append error handling - increased retries for better recovery
+          appendErrorMaxRetry: 5,         // Retry appending on error
 
-        videoRef.current.play().catch(error => {
-          console.warn('Auto-play prevented:', error);
-          // We'll handle this with the play button overlay
+          // Manifest refresh - go2rtc handles this dynamically
+          manifestLoadingMaxRetry: 3,     // Retry manifest loading
+          manifestLoadingRetryDelay: 1000 // Delay between manifest retries
         });
-      });
 
-      hls.on(Hls.Events.ERROR, function(event, data) {
-        // Handle non-fatal errors
-        if (!data.fatal) {
-          // Don't log or recover from bufferStalledError - it's normal and HLS.js handles it
-          if (data.details === 'bufferStalledError') {
-            // This is a normal buffering event, HLS.js will handle it automatically
-            // Don't call recoverMediaError() as it causes black flicker
+        hls.loadSource(hlsStreamUrl);
+        hls.attachMedia(videoRef.current);
+
+        // Store hls instance for cleanup
+        hlsPlayerRef.current = hls;
+
+        hls.on(Hls.Events.MANIFEST_PARSED, function() {
+          if (!isMounted) return;
+          setIsLoading(false);
+          setIsPlaying(true);
+
+          videoRef.current.play().catch(error => {
+            console.warn('Auto-play prevented:', error);
+            // We'll handle this with the play button overlay
+          });
+        });
+
+        hls.on(Hls.Events.ERROR, function(event, data) {
+          if (!isMounted) return;
+
+          // Handle non-fatal errors
+          if (!data.fatal) {
+            // Don't log or recover from bufferStalledError - it's normal and HLS.js handles it
+            if (data.details === 'bufferStalledError') {
+              // This is a normal buffering event, HLS.js will handle it automatically
+              // Don't call recoverMediaError() as it causes black flicker
+              return;
+            }
+
+            console.log(`HLS non-fatal error: ${data.type}, details: ${data.details}`);
+
+            // Handle other media errors by trying to recover
+            if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+              console.warn('Non-fatal media error, attempting recovery:', data.details);
+              hls.recoverMediaError();
+            } else if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+              console.warn('Non-fatal network error:', data.details);
+              // Network errors often resolve themselves, just log them
+            }
             return;
           }
 
-          console.log(`HLS non-fatal error: ${data.type}, details: ${data.details}`);
+          // Log fatal errors
+          console.error(`HLS fatal error: ${data.type}, details: ${data.details}`);
 
-          // Handle other media errors by trying to recover
-          if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-            console.warn('Non-fatal media error, attempting recovery:', data.details);
-            hls.recoverMediaError();
-          } else if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-            console.warn('Non-fatal network error:', data.details);
-            // Network errors often resolve themselves, just log them
+          // Handle fatal errors
+          console.error('Fatal HLS error:', data);
+
+          switch(data.type) {
+            case Hls.ErrorTypes.NETWORK_ERROR:
+              console.error('Fatal network error encountered, trying to recover');
+              hls.startLoad();
+              break;
+            case Hls.ErrorTypes.MEDIA_ERROR:
+              console.error('Fatal media error encountered, trying to recover');
+              hls.recoverMediaError();
+              break;
+            default:
+              // Cannot recover
+              hls.destroy();
+              setError(data.details || 'HLS playback error');
+              setIsLoading(false);
+              setIsPlaying(false);
+              break;
           }
-          return;
-        }
+        });
+      }
+      // Check if HLS is supported natively (Safari)
+      else if (videoRef.current.canPlayType('application/vnd.apple.mpegurl')) {
+        console.log(`Using native HLS support for stream ${stream.name}`);
+        // Native HLS support (Safari)
+        videoRef.current.src = hlsStreamUrl;
+        videoRef.current.addEventListener('loadedmetadata', function() {
+          if (!isMounted) return;
+          setIsLoading(false);
+          setIsPlaying(true);
+        });
 
-        // Log fatal errors
-        console.error(`HLS fatal error: ${data.type}, details: ${data.details}`);
-
-        // Handle fatal errors
-        console.error('Fatal HLS error:', data);
-
-        switch(data.type) {
-          case Hls.ErrorTypes.NETWORK_ERROR:
-            console.error('Fatal network error encountered, trying to recover');
-            hls.startLoad();
-            break;
-          case Hls.ErrorTypes.MEDIA_ERROR:
-            console.error('Fatal media error encountered, trying to recover');
-            hls.recoverMediaError();
-            break;
-          default:
-            // Cannot recover
-            hls.destroy();
-            setError(data.details || 'HLS playback error');
-            setIsLoading(false);
-            setIsPlaying(false);
-            break;
-        }
-      });
-
-      // Store hls instance for cleanup
-      // Note: We removed the periodic refresh as it was causing buffer state issues
-      // HLS.js will automatically handle manifest refreshes for live streams
-      hlsPlayerRef.current = hls;
-    }
-    // Check if HLS is supported natively (Safari)
-    else if (videoRef.current.canPlayType('application/vnd.apple.mpegurl')) {
-      console.log(`Using native HLS support for stream ${stream.name}`);
-      // Native HLS support (Safari)
-      videoRef.current.src = hlsStreamUrl;
-      videoRef.current.addEventListener('loadedmetadata', function() {
+        videoRef.current.addEventListener('error', function() {
+          if (!isMounted) return;
+          setError('HLS stream failed to load');
+          setIsLoading(false);
+          setIsPlaying(false);
+        });
+      } else {
+        // Fallback for truly unsupported browsers
+        console.error(`HLS not supported for stream ${stream.name} - neither HLS.js nor native support available`);
+        setError('HLS not supported by your browser - please use a modern browser');
         setIsLoading(false);
-        setIsPlaying(true);
-      });
+      }
+    };
 
-      videoRef.current.addEventListener('error', function() {
-        setError('HLS stream failed to load');
-        setIsLoading(false);
-        setIsPlaying(false);
-      });
-    } else {
-      // Fallback for truly unsupported browsers
-      console.error(`HLS not supported for stream ${stream.name} - neither HLS.js nor native support available`);
-      setError('HLS not supported by your browser - please use a modern browser');
-      setIsLoading(false);
-    }
+    // Start initialization
+    initHls();
 
     // Cleanup function
     return () => {
       console.log(`Cleaning up HLS player for stream ${stream.name}`);
+      isMounted = false;
 
       // Destroy HLS instance
       if (hlsPlayerRef.current) {

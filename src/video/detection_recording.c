@@ -392,23 +392,26 @@ int start_detection_recording(const char *stream_name, const char *model_path, f
     detection_recordings[slot].last_detection_time = 0;
     detection_recordings[slot].recording_active = false;
 
-    // Enable buffering if pre_buffer > 0
+    // DISABLED: HLS segment-based pre-buffer is broken and being replaced
+    // The file-based HLS pre-buffer has issues with:
+    // - Stale segments when HLS stream reconnects
+    // - Timing accuracy limited to segment boundaries (~2-4 seconds)
+    // - Disk I/O overhead from constantly copying segment files
+    // - Race conditions between segment cleanup and buffering
+    //
+    // This will be replaced with a memory-based circular buffer that:
+    // - Stores compressed frames from go2rtc's RTSP output
+    // - Provides frame-accurate timing
+    // - Has no disk I/O until detection triggers
+    // - Is always fresh (never stale)
+    //
+    // See Phase 2 in the architecture plan for the new implementation.
+    detection_recordings[slot].buffer_enabled = false;
     if (pre_buffer > 0) {
-        detection_recordings[slot].buffer_enabled = true;
-
-        // Create buffer directory
-        snprintf(detection_recordings[slot].buffer_dir, MAX_PATH_LENGTH,
-                 "%s/detection_buffer/%s", g_config.storage_path, stream_name);
-
-        // Create directory if it doesn't exist (using library function instead of system call)
-        if (mkdir_recursive(detection_recordings[slot].buffer_dir) != 0) {
-            log_warn("Failed to create buffer directory %s", detection_recordings[slot].buffer_dir);
-        }
-
-        log_info("Enabled pre-detection buffering for stream %s (%d seconds, buffer dir: %s)",
-                 stream_name, pre_buffer, detection_recordings[slot].buffer_dir);
+        log_warn("Pre-detection buffering requested for stream %s (%d seconds) but is currently disabled - "
+                 "HLS segment-based pre-buffer is being replaced with memory-based circular buffer",
+                 stream_name, pre_buffer);
     } else {
-        detection_recordings[slot].buffer_enabled = false;
         log_info("Pre-detection buffering disabled for stream %s (pre_buffer = 0)", stream_name);
     }
 
