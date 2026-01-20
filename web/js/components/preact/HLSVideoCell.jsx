@@ -69,7 +69,9 @@ export function HLSVideoCell({
 
       // Build the HLS stream URL using go2rtc's dynamic HLS endpoint
       // This provides fresh, never-stale video directly from go2rtc
-      const hlsStreamUrl = `${go2rtcBaseUrl}/api/stream.m3u8?src=${encodeURIComponent(stream.name)}`;
+      // The &mp4 parameter tells go2rtc to use fMP4 format (required for HLS.js compatibility)
+      // Without it, go2rtc defaults to legacy TS format which causes parsing errors
+      const hlsStreamUrl = `${go2rtcBaseUrl}/api/stream.m3u8?src=${encodeURIComponent(stream.name)}&mp4`;
       console.log(`HLS stream URL: ${hlsStreamUrl}`);
 
       // Check if HLS.js is supported
