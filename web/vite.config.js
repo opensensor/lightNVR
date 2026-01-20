@@ -178,7 +178,7 @@ export default defineConfig({
     viteCompression({
       verbose: true,
       disable: false,
-      threshold: 1024, // Only compress files larger than 1KB
+      threshold: 0, // Compress all files (needed for embedded devices with gzip-only assets)
       algorithm: 'gzip',
       ext: '.gz',
       // Compress JS, CSS, HTML, JSON, and SVG files

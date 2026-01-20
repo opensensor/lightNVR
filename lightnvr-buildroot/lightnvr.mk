@@ -49,9 +49,22 @@ define LIGHTNVR_INSTALL_APP_FILES
 	$(INSTALL) -m 755 -d $(TARGET_DIR)/var/lib/lightnvr/web/assets
 	$(INSTALL) -m 755 -d $(TARGET_DIR)/var/lib/lightnvr/web/css
 	$(INSTALL) -m 755 -d $(TARGET_DIR)/var/lib/lightnvr/web/img
-	# Copy only gzip-compressed JS and CSS files (saves ~70% space)
+	# Copy gzip-compressed JS and CSS files (saves ~70% space)
 	cp $(@D)/web/dist/assets/*.gz $(TARGET_DIR)/var/lib/lightnvr/web/assets/
 	cp $(@D)/web/dist/css/*.gz $(TARGET_DIR)/var/lib/lightnvr/web/css/
+	# Copy small uncompressed files that may not have .gz versions (fallback)
+	-for f in $(@D)/web/dist/assets/*.js; do \
+		gz="$$f.gz"; \
+		if [ ! -f "$$gz" ]; then \
+			cp "$$f" $(TARGET_DIR)/var/lib/lightnvr/web/assets/; \
+		fi; \
+	done
+	-for f in $(@D)/web/dist/css/*.css; do \
+		gz="$$f.gz"; \
+		if [ ! -f "$$gz" ]; then \
+			cp "$$f" $(TARGET_DIR)/var/lib/lightnvr/web/css/; \
+		fi; \
+	done
 	# Copy HTML files (both compressed and uncompressed for initial load)
 	cp $(@D)/web/dist/*.html $(TARGET_DIR)/var/lib/lightnvr/web/
 	cp $(@D)/web/dist/*.html.gz $(TARGET_DIR)/var/lib/lightnvr/web/
