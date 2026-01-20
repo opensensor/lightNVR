@@ -24,6 +24,84 @@
 #include "mongoose.h"
 
 /**
+ * @brief Check if client accepts gzip encoding
+ * @param hm HTTP message containing headers
+ * @return true if client accepts gzip, false otherwise
+ */
+static bool client_accepts_gzip(struct mg_http_message *hm) {
+    struct mg_str *accept_encoding = mg_http_get_header(hm, "Accept-Encoding");
+    if (accept_encoding != NULL && accept_encoding->len > 0) {
+        // Check if "gzip" is in the Accept-Encoding header
+        // Use memmem for searching within non-null-terminated buffer
+        // (strstr requires null-terminated strings)
+        const char *gzip_str = "gzip";
+        size_t gzip_len = 4;
+        if (accept_encoding->len >= gzip_len) {
+            for (size_t i = 0; i <= accept_encoding->len - gzip_len; i++) {
+                if (memcmp(accept_encoding->buf + i, gzip_str, gzip_len) == 0) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+/**
+ * @brief Try to serve a pre-compressed gzip file
+ *
+ * Checks if client accepts gzip and if a .gz version of the file exists.
+ * If both conditions are met, serves the compressed file with appropriate headers.
+ *
+ * @param c Mongoose connection
+ * @param hm HTTP message
+ * @param file_path Path to the original (uncompressed) file
+ * @param content_type MIME type for the Content-Type header
+ * @param extra_headers Additional headers to include (can be NULL)
+ * @return true if compressed file was served, false if caller should serve original
+ */
+static bool try_serve_gzip_file(struct mg_connection *c, struct mg_http_message *hm,
+                                const char *file_path, const char *content_type,
+                                const char *extra_headers) {
+    // Check if client accepts gzip
+    if (!client_accepts_gzip(hm)) {
+        return false;
+    }
+
+    // Construct path to .gz file
+    char gz_path[MAX_PATH_LENGTH * 2];
+    snprintf(gz_path, sizeof(gz_path), "%s.gz", file_path);
+
+    // Check if .gz file exists
+    struct stat st;
+    if (stat(gz_path, &st) != 0 || !S_ISREG(st.st_mode)) {
+        return false;
+    }
+
+    log_debug("Serving gzip-compressed file: %s", gz_path);
+
+    // Build mime_types to override the .gz extension with correct content type
+    char mime_types[256];
+    snprintf(mime_types, sizeof(mime_types), "gz=%s", content_type);
+
+    // Build headers with Content-Encoding: gzip (but NOT Content-Type - let mime_types handle it)
+    char headers[1024];
+    snprintf(headers, sizeof(headers),
+        "Content-Encoding: gzip\r\n"
+        "Vary: Accept-Encoding\r\n"
+        "%s",
+        extra_headers ? extra_headers : "");
+
+    // Serve the compressed file with correct MIME type
+    struct mg_http_serve_opts opts = {
+        .mime_types = mime_types,
+        .extra_headers = headers,
+    };
+    mg_http_serve_file(c, hm, gz_path, &opts);
+    return true;
+}
+
+/**
  * @brief Handle static file request
  */
 void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_message *hm, http_server_t *server) {
@@ -263,7 +341,12 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
             // Log the path we're trying to serve
             log_info("Serving hls.html: %s", index_path);
 
-            // Use Mongoose's built-in file serving capabilities
+            // Try to serve gzip-compressed version first
+            if (try_serve_gzip_file(c, hm, index_path, "text/html", "Connection: close\r\n")) {
+                return;
+            }
+
+            // Fall back to uncompressed file
             struct mg_http_serve_opts opts = {
                 .root_dir = server->config.web_root,
                 .mime_types = "html=text/html",
@@ -289,7 +372,12 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         // Check if index.html exists
         struct stat st;
         if (stat(index_path, &st) == 0 && S_ISREG(st.st_mode)) {
-            // Use Mongoose's built-in file serving capabilities
+            // Try to serve gzip-compressed version first
+            if (try_serve_gzip_file(c, hm, index_path, "text/html", "Connection: close\r\n")) {
+                return;
+            }
+
+            // Fall back to uncompressed file
             struct mg_http_serve_opts opts = {
                 .root_dir = server->config.web_root,
                 .mime_types = "html=text/html,htm=text/html,css=text/css,js=application/javascript,"
@@ -328,53 +416,114 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
 
             // Serve the file without any locks
             // This is a critical optimization for static content
-            
+
+            // Common extra headers for static assets
+            const char *common_extra_headers =
+                "Cache-Control: no-store\r\n"
+                "Connection: close\r\n"
+                "Access-Control-Allow-Origin: *\r\n"
+                "Access-Control-Allow-Methods: GET, OPTIONS\r\n"
+                "Access-Control-Allow-Headers: Origin, Content-Type, Accept, Authorization\r\n";
+
             // Add special handling for JavaScript files to improve Firefox compatibility
             if (strstr(file_path, ".js") != NULL) {
-                // For JavaScript files, add specific headers for Firefox
-                // Create a new opts struct for each request to avoid race conditions
-                const char js_headers[] = 
+                // Try to serve gzip-compressed version first
+                if (try_serve_gzip_file(c, hm, file_path, "application/javascript", common_extra_headers)) {
+                    return;
+                }
+
+                // Fall back to uncompressed file
+                const char js_headers[] =
                     "Content-Type: application/javascript\r\n"
                     "Cache-Control: no-store\r\n"
                     "Connection: close\r\n"
                     "Access-Control-Allow-Origin: *\r\n"
                     "Access-Control-Allow-Methods: GET, OPTIONS\r\n"
                     "Access-Control-Allow-Headers: Origin, Content-Type, Accept, Authorization\r\n";
-                
-                // Create a new struct for each request
+
                 struct mg_http_serve_opts js_opts = {
                     .mime_types = "",
                     .extra_headers = js_headers,
                     .root_dir = server->config.web_root
                 };
-                
-                log_debug("Serving JavaScript file with Firefox-friendly headers: %s", file_path);
+
+                log_debug("Serving JavaScript file: %s", file_path);
                 mg_http_serve_file(c, hm, file_path, &js_opts);
-            } 
+            }
             // Add special handling for CSS files to improve Firefox compatibility
             else if (strstr(file_path, ".css") != NULL) {
-                // For CSS files, add specific headers for Firefox
-                // Create a new opts struct for each request to avoid race conditions
-                const char css_headers[] = 
+                // Try to serve gzip-compressed version first
+                if (try_serve_gzip_file(c, hm, file_path, "text/css", common_extra_headers)) {
+                    return;
+                }
+
+                // Fall back to uncompressed file
+                const char css_headers[] =
                     "Content-Type: text/css\r\n"
                     "Cache-Control: no-store\r\n"
                     "Connection: close\r\n"
                     "Access-Control-Allow-Origin: *\r\n"
                     "Access-Control-Allow-Methods: GET, OPTIONS\r\n"
                     "Access-Control-Allow-Headers: Origin, Content-Type, Accept, Authorization\r\n";
-                
-                // Create a new struct for each request
+
                 struct mg_http_serve_opts css_opts = {
                     .mime_types = "",
                     .extra_headers = css_headers,
                     .root_dir = server->config.web_root
                 };
-                
-                log_debug("Serving CSS file with Firefox-friendly headers: %s", file_path);
+
+                log_debug("Serving CSS file: %s", file_path);
                 mg_http_serve_file(c, hm, file_path, &css_opts);
+            }
+            // Handle HTML files with gzip support
+            else if (strstr(file_path, ".html") != NULL) {
+                // Try to serve gzip-compressed version first
+                if (try_serve_gzip_file(c, hm, file_path, "text/html", common_extra_headers)) {
+                    return;
+                }
+
+                // Fall back to uncompressed file
+                struct mg_http_serve_opts html_opts = {
+                    .mime_types = "html=text/html",
+                    .root_dir = server->config.web_root,
+                    .extra_headers = "Connection: close\r\n"
+                };
+
+                mg_http_serve_file(c, hm, file_path, &html_opts);
+            }
+            // Handle JSON files with gzip support
+            else if (strstr(file_path, ".json") != NULL) {
+                // Try to serve gzip-compressed version first
+                if (try_serve_gzip_file(c, hm, file_path, "application/json", common_extra_headers)) {
+                    return;
+                }
+
+                // Fall back to uncompressed file
+                struct mg_http_serve_opts json_opts = {
+                    .mime_types = "json=application/json",
+                    .root_dir = server->config.web_root,
+                    .extra_headers = "Connection: close\r\n"
+                };
+
+                mg_http_serve_file(c, hm, file_path, &json_opts);
+            }
+            // Handle SVG files with gzip support
+            else if (strstr(file_path, ".svg") != NULL) {
+                // Try to serve gzip-compressed version first
+                if (try_serve_gzip_file(c, hm, file_path, "image/svg+xml", common_extra_headers)) {
+                    return;
+                }
+
+                // Fall back to uncompressed file
+                struct mg_http_serve_opts svg_opts = {
+                    .mime_types = "svg=image/svg+xml",
+                    .root_dir = server->config.web_root,
+                    .extra_headers = "Connection: close\r\n"
+                };
+
+                mg_http_serve_file(c, hm, file_path, &svg_opts);
             } else {
-                // For other files, use standard options
-                // Create a new opts struct for each request to avoid race conditions
+                // For other files, use standard options (no gzip for binary files)
                 struct mg_http_serve_opts std_opts = {
                     .mime_types = "html=text/html,htm=text/html,css=text/css,js=application/javascript,"
                                 "json=application/json,jpg=image/jpeg,jpeg=image/jpeg,png=image/png,"
@@ -384,7 +533,7 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
                     .root_dir = server->config.web_root,
                     .extra_headers = "Connection: close\r\n"
                 };
-                
+
                 mg_http_serve_file(c, hm, file_path, &std_opts);
             }
             return;

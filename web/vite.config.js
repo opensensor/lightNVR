@@ -5,6 +5,7 @@ import { defineConfig } from 'vite';
 import { resolve } from 'path';
 import legacy from '@vitejs/plugin-legacy';
 import preact from '@preact/preset-vite';
+import viteCompression from 'vite-plugin-compression';
 
 // Custom plugin to remove "use client" directives
 const removeUseClientDirective = () => {
@@ -172,7 +173,17 @@ export default defineConfig({
           console.error('Error copying CSS files:', error);
         }
       }
-    }
+    },
+    // Gzip compression for static assets - generates .gz files alongside originals
+    viteCompression({
+      verbose: true,
+      disable: false,
+      threshold: 1024, // Only compress files larger than 1KB
+      algorithm: 'gzip',
+      ext: '.gz',
+      // Compress JS, CSS, HTML, JSON, and SVG files
+      filter: /\.(js|css|html|json|svg)$/i,
+    }),
   ],
 
   // Configure CSS
