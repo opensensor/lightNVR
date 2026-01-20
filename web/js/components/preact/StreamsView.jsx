@@ -718,11 +718,15 @@ export function StreamsView() {
     mutationFn: ({ device, credentials }) => {
       setIsLoadingProfiles(true);
 
+      // Use device_service URL which includes the correct port from discovery
+      // Fall back to constructing URL from ip_address if device_service is not available
+      const deviceUrl = device.device_service || `http://${device.ip_address}/onvif/device_service`;
+
       // Make a simple GET request
       return fetch('/api/onvif/device/profiles', {
         method: 'GET',
         headers: {
-          'X-Device-URL': `http://${device.ip_address}/onvif/device_service`,
+          'X-Device-URL': deviceUrl,
           'X-Username': credentials.username,
           'X-Password': credentials.password
         }
@@ -854,9 +858,13 @@ export function StreamsView() {
     // Store the selected device first
     setSelectedDevice(device);
 
+    // Use device_service URL which includes the correct port from discovery
+    // Fall back to constructing URL from ip_address if device_service is not available
+    const deviceUrl = device.device_service || `http://${device.ip_address}/onvif/device_service`;
+
     // Then make the API call
     testOnvifConnectionMutation.mutate({
-      url: `http://${device.ip_address}/onvif/device_service`,
+      url: deviceUrl,
       username: onvifCredentials.username,
       password: onvifCredentials.password
     });
