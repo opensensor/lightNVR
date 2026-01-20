@@ -401,9 +401,14 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         char file_path[MAX_PATH_LENGTH * 2];
         snprintf(file_path, sizeof(file_path), "%s%s", server->config.web_root, uri);
 
-        // Check if file exists
+        // Check if file exists (either uncompressed or gzip-only)
         struct stat st;
-        if (stat(file_path, &st) == 0) {
+        char gz_path[MAX_PATH_LENGTH * 2];
+        snprintf(gz_path, sizeof(gz_path), "%s.gz", file_path);
+        bool file_exists = (stat(file_path, &st) == 0);
+        bool gz_only = (!file_exists && stat(gz_path, &st) == 0 && S_ISREG(st.st_mode));
+
+        if (file_exists || gz_only) {
             // Check if it's a directory
             if (S_ISDIR(st.st_mode)) {
                 // Try to serve index.html as the index
@@ -432,7 +437,14 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
                     return;
                 }
 
-                // Fall back to uncompressed file
+                // Fall back to uncompressed file (only if it exists)
+                if (gz_only) {
+                    // Only .gz exists but client doesn't accept gzip - return 404
+                    log_info("Client doesn't accept gzip and only .gz file exists: %s", file_path);
+                    mg_http_reply(c, 404, "", "404 Not Found\n");
+                    return;
+                }
+
                 const char js_headers[] =
                     "Content-Type: application/javascript\r\n"
                     "Cache-Control: no-store\r\n"
@@ -457,7 +469,14 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
                     return;
                 }
 
-                // Fall back to uncompressed file
+                // Fall back to uncompressed file (only if it exists)
+                if (gz_only) {
+                    // Only .gz exists but client doesn't accept gzip - return 404
+                    log_info("Client doesn't accept gzip and only .gz file exists: %s", file_path);
+                    mg_http_reply(c, 404, "", "404 Not Found\n");
+                    return;
+                }
+
                 const char css_headers[] =
                     "Content-Type: text/css\r\n"
                     "Cache-Control: no-store\r\n"

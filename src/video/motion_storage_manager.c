@@ -12,6 +12,7 @@
 // Cleanup thread state
 static pthread_t cleanup_thread;
 static bool cleanup_running = false;
+static bool cleanup_initialized = false;  // Track if init was successful
 static pthread_mutex_t cleanup_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t cleanup_cond = PTHREAD_COND_INITIALIZER;
 static int cleanup_interval_seconds = 3600;  // Default: 1 hour
@@ -274,15 +275,16 @@ static void* cleanup_thread_func(void* arg) {
  */
 int init_motion_storage_manager(void) {
     log_info("Initializing motion storage manager");
-    
+
     cleanup_running = true;
-    
+
     if (pthread_create(&cleanup_thread, NULL, cleanup_thread_func, NULL) != 0) {
         log_error("Failed to create cleanup thread");
         cleanup_running = false;
         return -1;
     }
-    
+
+    cleanup_initialized = true;
     log_info("Motion storage manager initialized successfully");
     return 0;
 }
@@ -292,11 +294,18 @@ int init_motion_storage_manager(void) {
  */
 void shutdown_motion_storage_manager(void) {
     log_info("Shutting down motion storage manager");
-    
+
+    // Only attempt shutdown if we were successfully initialized
+    if (!cleanup_initialized) {
+        log_info("Motion storage manager was not initialized, skipping shutdown");
+        return;
+    }
+
     cleanup_running = false;
     pthread_cond_broadcast(&cleanup_cond);
     pthread_join(cleanup_thread, NULL);
-    
+
+    cleanup_initialized = false;
     log_info("Motion storage manager shut down");
 }
 
