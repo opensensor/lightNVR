@@ -287,7 +287,7 @@ static bool ensure_stream_registered_with_go2rtc(const char *stream_name) {
     if (!go2rtc_stream_register(stream_name, config.url,
                                config.onvif_username[0] != '\0' ? config.onvif_username : NULL,
                                config.onvif_password[0] != '\0' ? config.onvif_password : NULL,
-                               config.backchannel_enabled)) {
+                               config.backchannel_enabled, config.protocol)) {
         log_error("Failed to register stream %s with go2rtc", stream_name);
         return false;
     }
@@ -974,7 +974,7 @@ bool go2rtc_integration_register_all_streams(void) {
             if (!go2rtc_stream_register(streams[i].name, streams[i].url,
                                        streams[i].onvif_username[0] != '\0' ? streams[i].onvif_username : NULL,
                                        streams[i].onvif_password[0] != '\0' ? streams[i].onvif_password : NULL,
-                                       streams[i].backchannel_enabled)) {
+                                       streams[i].backchannel_enabled, streams[i].protocol)) {
                 log_error("Failed to register stream %s with go2rtc", streams[i].name);
                 all_success = false;
                 // Continue with other streams
@@ -1064,7 +1064,7 @@ bool go2rtc_sync_streams_from_database(void) {
         // Register the stream
         if (!go2rtc_stream_register(db_streams[i].name, db_streams[i].url,
                                     username, password,
-                                    db_streams[i].backchannel_enabled)) {
+                                    db_streams[i].backchannel_enabled, db_streams[i].protocol)) {
             log_error("Failed to register stream %s with go2rtc", db_streams[i].name);
             all_success = false;
             failed++;
@@ -1248,7 +1248,8 @@ bool go2rtc_integration_reload_stream_config(const char *stream_name,
                                              const char *new_url,
                                              const char *new_username,
                                              const char *new_password,
-                                             int new_backchannel_enabled) {
+                                             int new_backchannel_enabled,
+                                             int new_protocol) {
     if (!stream_name) {
         log_error("go2rtc_integration_reload_stream_config: stream_name is NULL");
         return false;
@@ -1276,12 +1277,19 @@ bool go2rtc_integration_reload_stream_config(const char *stream_name,
     const char *username = new_username;
     const char *password = new_password;
     bool backchannel = (new_backchannel_enabled >= 0) ? (new_backchannel_enabled != 0) : false;
+    stream_protocol_t protocol = STREAM_PROTOCOL_TCP;  // default
 
     if (have_config) {
         if (!url) url = config.url;
         if (!username) username = config.onvif_username[0] != '\0' ? config.onvif_username : NULL;
         if (!password) password = config.onvif_password[0] != '\0' ? config.onvif_password : NULL;
         if (new_backchannel_enabled < 0) backchannel = config.backchannel_enabled;
+        if (new_protocol < 0) protocol = config.protocol;
+    }
+
+    // If new_protocol is explicitly provided, use it
+    if (new_protocol >= 0) {
+        protocol = (stream_protocol_t)new_protocol;
     }
 
     if (!url || url[0] == '\0') {
@@ -1300,12 +1308,13 @@ bool go2rtc_integration_reload_stream_config(const char *stream_name,
     usleep(500000); // 500ms
 
     // Re-register with new configuration
-    if (!go2rtc_stream_register(stream_name, url, username, password, backchannel)) {
+    if (!go2rtc_stream_register(stream_name, url, username, password, backchannel, protocol)) {
         log_error("Failed to re-register stream %s with go2rtc", stream_name);
         return false;
     }
 
-    log_info("Successfully reloaded stream %s in go2rtc with URL: %s", stream_name, url);
+    log_info("Successfully reloaded stream %s in go2rtc with URL: %s (protocol=%s)",
+             stream_name, url, protocol == STREAM_PROTOCOL_UDP ? "UDP" : "TCP");
     return true;
 }
 
@@ -1316,7 +1325,7 @@ bool go2rtc_integration_reload_stream(const char *stream_name) {
     }
 
     // Use the generic reload function with NULL values to use current config
-    return go2rtc_integration_reload_stream_config(stream_name, NULL, NULL, NULL, -1);
+    return go2rtc_integration_reload_stream_config(stream_name, NULL, NULL, NULL, -1, -1);
 }
 
 bool go2rtc_integration_unregister_stream(const char *stream_name) {
@@ -1417,7 +1426,7 @@ bool go2rtc_integration_register_stream(const char *stream_name) {
     if (go2rtc_stream_register(stream_name, config.url,
                                username[0] != '\0' ? username : NULL,
                                password[0] != '\0' ? password : NULL,
-                               config.backchannel_enabled)) {
+                               config.backchannel_enabled, config.protocol)) {
         log_info("Successfully registered stream %s with go2rtc", stream_name);
         return true;
     }

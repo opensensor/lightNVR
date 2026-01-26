@@ -84,7 +84,7 @@ bool go2rtc_stream_init(const char *binary_path, const char *config_dir, int api
 
 bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
                            const char *username, const char *password,
-                           bool backchannel_enabled) {
+                           bool backchannel_enabled, stream_protocol_t protocol) {
     if (!g_initialized) {
         log_error("go2rtc stream integration not initialized");
         return false;
@@ -96,10 +96,6 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
     }
 
     // Log the input parameters for debugging
-    log_info("Registering stream with go2rtc: id=%s, url=%s, username=%s, backchannel=%s",
-             stream_id, stream_url, username ? username : "none",
-             backchannel_enabled ? "enabled" : "disabled");
-
     // URL encode the stream ID to handle spaces and special characters
     char encoded_stream_id[URL_BUFFER_SIZE];
     char *encoded = curl_easy_escape(NULL, stream_id, 0);
@@ -167,19 +163,33 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
         }
     }
 
-    // Append timeout and backchannel parameters to the URL using fragment (#)
-    // go2rtc uses fragment parameters for stream options
-    char new_url[URL_BUFFER_SIZE];
-    if (backchannel_enabled) {
-        // Enable backchannel for two-way audio support
-        snprintf(new_url, URL_BUFFER_SIZE, "%s#timeout=30#backchannel=1", modified_url);
-        log_info("Added timeout and backchannel parameters to URL: %s", new_url);
-    } else {
-        snprintf(new_url, URL_BUFFER_SIZE, "%s#timeout=30", modified_url);
-        log_info("Added timeout parameter to URL: %s", new_url);
+    // Build fragment parameters for go2rtc
+    // go2rtc uses fragment (#) parameters for stream options like timeout, backchannel, transport
+    char fragment_params[256] = {0};
+    int offset = 0;
+
+    // Add transport parameter if UDP is selected
+    // Note: Check if URL already contains #transport= to avoid duplicates
+    if (protocol == STREAM_PROTOCOL_UDP && strstr(modified_url, "#transport=") == NULL) {
+        offset += snprintf(fragment_params + offset, sizeof(fragment_params) - offset, "#transport=udp");
+        log_info("Adding UDP transport parameter for stream");
     }
+
+    // Add timeout parameter
+    offset += snprintf(fragment_params + offset, sizeof(fragment_params) - offset, "#timeout=30");
+
+    // Add backchannel parameter if enabled
+    if (backchannel_enabled) {
+        offset += snprintf(fragment_params + offset, sizeof(fragment_params) - offset, "#backchannel=1");
+    }
+
+    // Append fragment parameters to URL
+    char new_url[URL_BUFFER_SIZE];
+    snprintf(new_url, URL_BUFFER_SIZE, "%s%s", modified_url, fragment_params);
     strncpy(modified_url, new_url, URL_BUFFER_SIZE - 1);
     modified_url[URL_BUFFER_SIZE - 1] = '\0';
+
+    log_info("Final URL with go2rtc parameters: %s", modified_url);
 
     // Register stream with go2rtc
     bool result = go2rtc_api_add_stream(encoded_stream_id, modified_url);

@@ -1003,7 +1003,8 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
             if (go2rtc_integration_reload_stream_config(config.name, config.url,
                                                         config.onvif_username[0] != '\0' ? config.onvif_username : NULL,
                                                         config.onvif_password[0] != '\0' ? config.onvif_password : NULL,
-                                                        config.backchannel_enabled ? 1 : 0)) {
+                                                        config.backchannel_enabled ? 1 : 0,
+                                                        config.protocol)) {
                 log_info("Successfully reloaded stream %s in go2rtc with new URL", config.name);
             } else {
                 log_error("Failed to reload stream %s in go2rtc", config.name);

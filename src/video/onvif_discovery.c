@@ -9,6 +9,7 @@
 #include "video/onvif_discovery_thread.h"
 #include "video/onvif_device_management.h"
 #include "core/logger.h"
+#include "core/curl_init.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -410,8 +411,11 @@ int try_direct_http_discovery(char candidate_ips[][16], int candidate_count,
     CURL *curl;
     CURLcode res;
     
-    // Initialize CURL
-    curl_global_init(CURL_GLOBAL_DEFAULT);
+    // Initialize CURL global (thread-safe, idempotent)
+    if (curl_init_global() != 0) {
+        log_error("Failed to initialize curl global for direct HTTP discovery");
+        return 0;
+    }
     curl = curl_easy_init();
     if (!curl) {
         log_error("Failed to initialize CURL for direct HTTP discovery");
@@ -503,11 +507,10 @@ int try_direct_http_discovery(char candidate_ips[][16], int candidate_count,
         }
     }
     
-    // Clean up
+    // Clean up (Note: Don't call curl_global_cleanup() - it's managed centrally)
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
-    curl_global_cleanup();
-    
+
     log_info("Direct HTTP probing completed, found %d devices", count);
     
     return count;

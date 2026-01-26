@@ -9,6 +9,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <time.h>
+#include "core/config.h"  // For stream_protocol_t
 
 /**
  * @brief Initialize the go2rtc integration module
@@ -131,13 +132,15 @@ bool go2rtc_integration_get_hls_url(const char *stream_name, char *url, size_t u
  * @param new_username New username (can be NULL to use current config)
  * @param new_password New password (can be NULL to use current config)
  * @param new_backchannel_enabled New backchannel setting (-1 to use current config)
+ * @param new_protocol New protocol setting (-1 to use current config, 0=TCP, 1=UDP)
  * @return true if successful, false otherwise
  */
 bool go2rtc_integration_reload_stream_config(const char *stream_name,
                                              const char *new_url,
                                              const char *new_username,
                                              const char *new_password,
-                                             int new_backchannel_enabled);
+                                             int new_backchannel_enabled,
+                                             int new_protocol);
 
 /**
  * @brief Reload a stream's go2rtc registration from its current database/memory configuration

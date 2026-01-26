@@ -8,6 +8,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include "core/config.h"  // For stream_protocol_t
 
 /**
  * @brief Initialize the go2rtc stream integration module
@@ -27,11 +28,12 @@ bool go2rtc_stream_init(const char *binary_path, const char *config_dir, int api
  * @param username Optional username for authentication (can be NULL)
  * @param password Optional password for authentication (can be NULL)
  * @param backchannel_enabled Whether to enable two-way audio (backchannel) support
+ * @param protocol Stream protocol (TCP or UDP) - used to set transport parameter for go2rtc
  * @return true if stream was registered successfully, false otherwise
  */
 bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
                            const char *username, const char *password,
-                           bool backchannel_enabled);
+                           bool backchannel_enabled, stream_protocol_t protocol);
 
 /**
  * @brief Unregister a stream from go2rtc

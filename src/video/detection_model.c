@@ -150,6 +150,10 @@ const char* get_model_type(const char *model_path) {
     if (ends_with(model_path, "api-detection")) {
         return MODEL_TYPE_API;
     }
+    // Also recognize HTTP/HTTPS URLs as API detection (e.g., http://localhost:9001/api/v1/detect)
+    if (strncmp(model_path, "http://", 7) == 0 || strncmp(model_path, "https://", 8) == 0) {
+        return MODEL_TYPE_API;
+    }
     if (ends_with(model_path, "onvif")) {
         return MODEL_TYPE_ONVIF;
     }
@@ -318,7 +322,9 @@ detection_model_t load_detection_model(const char *model_path, float threshold) 
     }
 
     // Check if this is an API URL (starts with http:// or https://) or the special "api-detection" string
-    bool is_api_detection = ends_with(model_path, "api-detection");
+    bool is_api_detection = ends_with(model_path, "api-detection") ||
+                            strncmp(model_path, "http://", 7) == 0 ||
+                            strncmp(model_path, "https://", 8) == 0;
     bool is_onvif_detection = ends_with(model_path, "onvif");
 
     // Only check file existence if it's not an API URL or ONVIF

@@ -41,6 +41,7 @@
 #include "video/onvif_discovery.h"
 #include "video/ffmpeg_leak_detector.h"
 #include "video/onvif_motion_recording.h"
+#include "core/curl_init.h"
 
 // Include go2rtc headers if USE_GO2RTC is defined
 #ifdef USE_GO2RTC
@@ -518,6 +519,13 @@ int main(int argc, char *argv[]) {
     memcpy(&g_config, &config, sizeof(config_t));
 
     log_info("LightNVR v%s starting up", LIGHTNVR_VERSION_STRING);
+
+    // Initialize libcurl globally (MUST be done once at startup, before any threads)
+    if (curl_init_global() != 0) {
+        log_error("Failed to initialize libcurl globally");
+        return EXIT_FAILURE;
+    }
+    log_info("libcurl initialized globally");
 
     // Initialize database
     if (init_database(config.db_path) != 0) {
@@ -1281,6 +1289,10 @@ cleanup:
         go2rtc_stream_cleanup();
         #endif
 
+        // Clean up libcurl globally (after all curl-using services are shut down)
+        log_info("Cleaning up libcurl globally...");
+        curl_cleanup_global();
+
         // Kill the watchdog timer since we completed successfully
         kill(cleanup_pid, SIGKILL);
         waitpid(cleanup_pid, NULL, 0);
@@ -1352,6 +1364,10 @@ cleanup:
 
         // Clean up the shutdown coordinator
         shutdown_coordinator_cleanup();
+
+        // Clean up libcurl globally (after all curl-using services are shut down)
+        log_info("Cleaning up libcurl globally...");
+        curl_cleanup_global();
 
         // Restore signal mask
         pthread_sigmask(SIG_SETMASK, &old_mask, NULL);

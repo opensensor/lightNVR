@@ -16,6 +16,7 @@
 
 #include "core/logger.h"
 #include "core/config.h"
+#include "core/curl_init.h"
 #include "core/shutdown_coordinator.h"
 #include "video/onvif_detection.h"
 #include "video/detection_result.h"
@@ -473,17 +474,16 @@ int init_onvif_detection_system(void) {
         curl_handle = NULL;
     }
 
-    // Initialize curl
-    CURLcode global_init_result = curl_global_init(CURL_GLOBAL_ALL);
-    if (global_init_result != CURLE_OK) {
-        log_error("Failed to initialize curl global: %s", curl_easy_strerror(global_init_result));
+    // Initialize curl global (thread-safe, idempotent)
+    if (curl_init_global() != 0) {
+        log_error("Failed to initialize curl global");
         return -1;
     }
 
     curl_handle = curl_easy_init();
     if (!curl_handle) {
         log_error("Failed to initialize curl handle");
-        curl_global_cleanup();
+        // Note: Don't call curl_global_cleanup() here - it's managed centrally
         return -1;
     }
 
@@ -510,11 +510,8 @@ void shutdown_onvif_detection_system(void) {
         curl_handle = NULL;
     }
 
-    // Only call global cleanup if we were initialized
-    if (initialized) {
-        log_info("Cleaning up curl global resources");
-        curl_global_cleanup();
-    }
+    // Note: Don't call curl_global_cleanup() here - it's managed centrally in curl_init.c
+    // The global cleanup will happen at program shutdown
 
     initialized = false;
     log_info("ONVIF detection system shutdown complete");

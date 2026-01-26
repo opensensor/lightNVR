@@ -863,7 +863,9 @@ static void *stream_detection_thread_func(void *arg) {
         log_info("[Stream %s] Loading detection model: %s", thread->stream_name, thread->model_path);
 
         // Check if this is an API URL or the special "api-detection" string
-        bool is_api_detection = ends_with(thread->model_path, "api-detection");
+        bool is_api_detection = ends_with(thread->model_path, "api-detection") ||
+                                strncmp(thread->model_path, "http://", 7) == 0 ||
+                                strncmp(thread->model_path, "https://", 8) == 0;
         bool is_onvif_detection = ends_with(thread->model_path, "onvif");
 
         // Only check file existence if it's not an API detection
