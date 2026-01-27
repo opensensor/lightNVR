@@ -5,6 +5,7 @@
 
 #include "video/go2rtc/go2rtc_snapshot.h"
 #include "core/logger.h"
+#include "core/curl_init.h"
 #include <curl/curl.h>
 #include <stdlib.h>
 #include <string.h>
@@ -75,7 +76,14 @@ bool go2rtc_get_snapshot(const char *stream_name, unsigned char **jpeg_data, siz
         return false;
     }
     
-    // Initialize CURL
+    // Ensure curl is globally initialized (thread-safe, idempotent)
+    if (curl_init_global() != 0) {
+        log_error("Failed to initialize curl global for snapshot");
+        free(buffer.data);
+        return false;
+    }
+
+    // Initialize CURL handle
     curl = curl_easy_init();
     if (!curl) {
         log_error("Failed to initialize CURL for snapshot");

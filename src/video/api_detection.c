@@ -218,9 +218,10 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         }
     }
 
-    // Set up curl for multipart/form-data
-    struct curl_httppost *formpost = NULL;
-    struct curl_httppost *lastptr = NULL;
+    // Set up curl for multipart/form-data using modern mime API
+    // Note: curl_mime_* API replaced deprecated curl_formadd in libcurl 7.56.0
+    curl_mime *mime = NULL;
+    curl_mimepart *part = NULL;
 
     // Add the JPEG file to the form
     struct stat image_stat;
@@ -229,17 +230,53 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     struct curl_slist *headers = NULL;
 
     if (stat(temp_filename, &image_stat) == 0 && image_stat.st_size > 0) {
-        CURLFORMcode form_result = curl_formadd(&formpost, &lastptr,
-                    CURLFORM_COPYNAME, "file",
-                    CURLFORM_FILE, temp_filename,
-                    CURLFORM_CONTENTTYPE, "image/jpeg",
-                    CURLFORM_END);
+        // Create the mime structure
+        mime = curl_mime_init(curl_handle);
+        if (!mime) {
+            log_error("API Detection: Failed to create mime structure");
+            unlink(temp_filename);
+            result->count = 0;
+            pthread_mutex_unlock(&curl_mutex);
+            return -1;
+        }
 
-        if (form_result != CURL_FORMADD_OK) {
-            log_error("API Detection: Failed to add JPEG file to form (error code: %d)", form_result);
-            free(chunk.memory);
-            curl_formfree(formpost);
-            curl_slist_free_all(headers);
+        // Add the file part
+        part = curl_mime_addpart(mime);
+        if (!part) {
+            log_error("API Detection: Failed to add mime part");
+            curl_mime_free(mime);
+            unlink(temp_filename);
+            result->count = 0;
+            pthread_mutex_unlock(&curl_mutex);
+            return -1;
+        }
+
+        // Set the part name, file data, and content type
+        CURLcode mime_result;
+        mime_result = curl_mime_name(part, "file");
+        if (mime_result != CURLE_OK) {
+            log_error("API Detection: Failed to set mime name: %s", curl_easy_strerror(mime_result));
+            curl_mime_free(mime);
+            unlink(temp_filename);
+            result->count = 0;
+            pthread_mutex_unlock(&curl_mutex);
+            return -1;
+        }
+
+        mime_result = curl_mime_filedata(part, temp_filename);
+        if (mime_result != CURLE_OK) {
+            log_error("API Detection: Failed to set mime filedata: %s", curl_easy_strerror(mime_result));
+            curl_mime_free(mime);
+            unlink(temp_filename);
+            result->count = 0;
+            pthread_mutex_unlock(&curl_mutex);
+            return -1;
+        }
+
+        mime_result = curl_mime_type(part, "image/jpeg");
+        if (mime_result != CURLE_OK) {
+            log_error("API Detection: Failed to set mime type: %s", curl_easy_strerror(mime_result));
+            curl_mime_free(mime);
             unlink(temp_filename);
             result->count = 0;
             pthread_mutex_unlock(&curl_mutex);
@@ -251,7 +288,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         log_error("API Detection: JPEG file missing or empty: %s", temp_filename);
         // Now we can safely free them
         if (chunk.memory) free(chunk.memory);
-        if (formpost) curl_formfree(formpost);
+        if (mime) curl_mime_free(mime);
         if (headers) curl_slist_free_all(headers);
 
         unlink(temp_filename);
@@ -280,7 +317,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
 
     // Set up the request with the URL including query parameters
     curl_easy_setopt(curl_handle, CURLOPT_URL, url_with_params);
-    curl_easy_setopt(curl_handle, CURLOPT_HTTPPOST, formpost);
+    curl_easy_setopt(curl_handle, CURLOPT_MIMEPOST, mime);
 
     // Add the accept header
     headers = curl_slist_append(headers, "accept: application/json");
@@ -303,7 +340,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     if (!curl_handle || !initialized) {
         log_error("API Detection: curl handle is invalid or API detection system not initialized");
         free(chunk.memory);
-        curl_formfree(formpost);
+        curl_mime_free(mime);
         curl_slist_free_all(headers);
 
         // Clean up the temporary file
@@ -347,7 +384,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         }
 
         free(chunk.memory);
-        curl_formfree(formpost);
+        curl_mime_free(mime);
         curl_slist_free_all(headers);
 
         // Clean up the temporary file
@@ -366,7 +403,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     if (http_code != 200) {
         log_error("API request failed with HTTP code %ld", http_code);
         free(chunk.memory);
-        curl_formfree(formpost);
+        curl_mime_free(mime);
         curl_slist_free_all(headers);
 
         // Clean up the temporary file
@@ -381,7 +418,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     if (!chunk.memory || chunk.size == 0) {
         log_error("API Detection: Empty response from server");
         free(chunk.memory);
-        curl_formfree(formpost);
+        curl_mime_free(mime);
         curl_slist_free_all(headers);
 
         // Clean up the temporary file
@@ -415,7 +452,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         log_error("API Detection: Response size: %zu bytes", chunk.size);
         log_error("API Detection: Response preview: %s", preview);
         free(chunk.memory);
-        curl_formfree(formpost);
+        curl_mime_free(mime);
         curl_slist_free_all(headers);
 
         // Clean up the temporary file
@@ -439,7 +476,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         }
         cJSON_Delete(root);
         free(chunk.memory);
-        curl_formfree(formpost);
+        curl_mime_free(mime);
         curl_slist_free_all(headers);
 
         // Clean up the temporary file
@@ -551,7 +588,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     // Clean up
     cJSON_Delete(root);
     free(chunk.memory);
-    curl_formfree(formpost);
+    curl_mime_free(mime);
     curl_slist_free_all(headers);
 
     // Clean up the temporary file AFTER all curl operations are complete
