@@ -173,40 +173,15 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     // This eliminates the need for ffmpeg conversion and all the associated logs
     unsigned char *jpeg_data = NULL;
     size_t jpeg_size = 0;
-    char temp_filename[256] = {0};
 
     if (stream_name && go2rtc_get_snapshot(stream_name, &jpeg_data, &jpeg_size)) {
         log_info("API Detection: Successfully fetched snapshot from go2rtc: %zu bytes", jpeg_size);
-
-        // Write the JPEG data to a temporary file for curl to upload
-        snprintf(temp_filename, sizeof(temp_filename), "/tmp/lightnvr_go2rtc_snapshot_%s_XXXXXX", stream_name);
-        int temp_fd = mkstemp(temp_filename);
-        if (temp_fd >= 0) {
-            ssize_t written = write(temp_fd, jpeg_data, jpeg_size);
-            close(temp_fd);
-
-            if (written != (ssize_t)jpeg_size) {
-                log_error("API Detection: Failed to write snapshot to temp file");
-                free(jpeg_data);
-                unlink(temp_filename);
-                pthread_mutex_unlock(&curl_mutex);
-                return -1;
-            }
-        } else {
-            log_error("API Detection: Failed to create temp file for snapshot");
-            free(jpeg_data);
-            pthread_mutex_unlock(&curl_mutex);
-            return -1;
-        }
-
-        // Free the JPEG data as we've written it to file
-        free(jpeg_data);
-        jpeg_data = NULL;
     } else {
         log_warn("API Detection: Failed to get snapshot from go2rtc, falling back to libav JPEG encoding");
 
-        // FALLBACK: Use FFmpeg library to encode raw frame to JPEG
-        // Create a temporary filename for the JPEG output
+        // FALLBACK: Use FFmpeg library to encode raw frame to JPEG in memory
+        // We'll encode to a temp file and read it back for now
+        char temp_filename[256];
         snprintf(temp_filename, sizeof(temp_filename), "/tmp/lightnvr_api_detection_%d.jpg", (int)getpid());
 
         // Encode raw image data to JPEG using FFmpeg library
@@ -216,86 +191,131 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
             pthread_mutex_unlock(&curl_mutex);
             return -1;
         }
+
+        // Read the file into memory
+        FILE *fp = fopen(temp_filename, "rb");
+        if (!fp) {
+            log_error("API Detection: Failed to open temp JPEG file");
+            unlink(temp_filename);
+            pthread_mutex_unlock(&curl_mutex);
+            return -1;
+        }
+
+        fseek(fp, 0, SEEK_END);
+        jpeg_size = ftell(fp);
+        fseek(fp, 0, SEEK_SET);
+
+        jpeg_data = malloc(jpeg_size);
+        if (!jpeg_data) {
+            log_error("API Detection: Failed to allocate memory for JPEG data");
+            fclose(fp);
+            unlink(temp_filename);
+            pthread_mutex_unlock(&curl_mutex);
+            return -1;
+        }
+
+        size_t read_size = fread(jpeg_data, 1, jpeg_size, fp);
+        fclose(fp);
+        unlink(temp_filename);
+
+        if (read_size != jpeg_size) {
+            log_error("API Detection: Failed to read JPEG file");
+            free(jpeg_data);
+            pthread_mutex_unlock(&curl_mutex);
+            return -1;
+        }
+
+        log_info("API Detection: Encoded frame to JPEG: %zu bytes", jpeg_size);
+    }
+
+    // Validate JPEG data
+    if (!jpeg_data || jpeg_size == 0) {
+        log_error("API Detection: No JPEG data available");
+        if (jpeg_data) free(jpeg_data);
+        pthread_mutex_unlock(&curl_mutex);
+        return -1;
     }
 
     // Set up curl for multipart/form-data using modern mime API
     // Note: curl_mime_* API replaced deprecated curl_formadd in libcurl 7.56.0
     curl_mime *mime = NULL;
     curl_mimepart *part = NULL;
-
-    // Add the JPEG file to the form
-    struct stat image_stat;
     memory_struct_t chunk = {0};
     chunk.memory = NULL;
     struct curl_slist *headers = NULL;
 
-    if (stat(temp_filename, &image_stat) == 0 && image_stat.st_size > 0) {
-        // Create the mime structure
-        mime = curl_mime_init(curl_handle);
-        if (!mime) {
-            log_error("API Detection: Failed to create mime structure");
-            unlink(temp_filename);
-            result->count = 0;
-            pthread_mutex_unlock(&curl_mutex);
-            return -1;
-        }
-
-        // Add the file part
-        part = curl_mime_addpart(mime);
-        if (!part) {
-            log_error("API Detection: Failed to add mime part");
-            curl_mime_free(mime);
-            unlink(temp_filename);
-            result->count = 0;
-            pthread_mutex_unlock(&curl_mutex);
-            return -1;
-        }
-
-        // Set the part name, file data, and content type
-        CURLcode mime_result;
-        mime_result = curl_mime_name(part, "file");
-        if (mime_result != CURLE_OK) {
-            log_error("API Detection: Failed to set mime name: %s", curl_easy_strerror(mime_result));
-            curl_mime_free(mime);
-            unlink(temp_filename);
-            result->count = 0;
-            pthread_mutex_unlock(&curl_mutex);
-            return -1;
-        }
-
-        mime_result = curl_mime_filedata(part, temp_filename);
-        if (mime_result != CURLE_OK) {
-            log_error("API Detection: Failed to set mime filedata: %s", curl_easy_strerror(mime_result));
-            curl_mime_free(mime);
-            unlink(temp_filename);
-            result->count = 0;
-            pthread_mutex_unlock(&curl_mutex);
-            return -1;
-        }
-
-        mime_result = curl_mime_type(part, "image/jpeg");
-        if (mime_result != CURLE_OK) {
-            log_error("API Detection: Failed to set mime type: %s", curl_easy_strerror(mime_result));
-            curl_mime_free(mime);
-            unlink(temp_filename);
-            result->count = 0;
-            pthread_mutex_unlock(&curl_mutex);
-            return -1;
-        }
-
-        log_info("API Detection: Successfully added JPEG file to form: %s", temp_filename);
-    } else {
-        log_error("API Detection: JPEG file missing or empty: %s", temp_filename);
-        // Now we can safely free them
-        if (chunk.memory) free(chunk.memory);
-        if (mime) curl_mime_free(mime);
-        if (headers) curl_slist_free_all(headers);
-
-        unlink(temp_filename);
+    // Create the mime structure
+    mime = curl_mime_init(curl_handle);
+    if (!mime) {
+        log_error("API Detection: Failed to create mime structure");
+        free(jpeg_data);
         result->count = 0;
         pthread_mutex_unlock(&curl_mutex);
         return -1;
     }
+
+    // Add the file part
+    part = curl_mime_addpart(mime);
+    if (!part) {
+        log_error("API Detection: Failed to add mime part");
+        curl_mime_free(mime);
+        free(jpeg_data);
+        result->count = 0;
+        pthread_mutex_unlock(&curl_mutex);
+        return -1;
+    }
+
+    // Set the part name
+    CURLcode mime_result;
+    mime_result = curl_mime_name(part, "file");
+    if (mime_result != CURLE_OK) {
+        log_error("API Detection: Failed to set mime name: %s", curl_easy_strerror(mime_result));
+        curl_mime_free(mime);
+        free(jpeg_data);
+        result->count = 0;
+        pthread_mutex_unlock(&curl_mutex);
+        return -1;
+    }
+
+    // Use curl_mime_data to pass data directly from memory (CURL_ZERO_TERMINATED not used, we pass size)
+    // Note: curl_mime_data copies the data, so we can free jpeg_data after this call
+    mime_result = curl_mime_data(part, (const char *)jpeg_data, jpeg_size);
+    if (mime_result != CURLE_OK) {
+        log_error("API Detection: Failed to set mime data: %s", curl_easy_strerror(mime_result));
+        curl_mime_free(mime);
+        free(jpeg_data);
+        result->count = 0;
+        pthread_mutex_unlock(&curl_mutex);
+        return -1;
+    }
+
+    // Set the filename (required for proper multipart form upload)
+    mime_result = curl_mime_filename(part, "snapshot.jpg");
+    if (mime_result != CURLE_OK) {
+        log_error("API Detection: Failed to set mime filename: %s", curl_easy_strerror(mime_result));
+        curl_mime_free(mime);
+        free(jpeg_data);
+        result->count = 0;
+        pthread_mutex_unlock(&curl_mutex);
+        return -1;
+    }
+
+    // Set the content type
+    mime_result = curl_mime_type(part, "image/jpeg");
+    if (mime_result != CURLE_OK) {
+        log_error("API Detection: Failed to set mime type: %s", curl_easy_strerror(mime_result));
+        curl_mime_free(mime);
+        free(jpeg_data);
+        result->count = 0;
+        pthread_mutex_unlock(&curl_mutex);
+        return -1;
+    }
+
+    // Free the JPEG data now that curl has copied it
+    free(jpeg_data);
+    jpeg_data = NULL;
+
+    log_info("API Detection: Successfully added JPEG data to form (%zu bytes)", jpeg_size);
 
     // Get the backend from config (default to "onnx" if not set)
     extern config_t g_config;
@@ -343,9 +363,6 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         curl_mime_free(mime);
         curl_slist_free_all(headers);
 
-        // Clean up the temporary file
-        unlink(temp_filename);
-
         // Initialize result to empty to prevent segmentation fault
         result->count = 0;
         pthread_mutex_unlock(&curl_mutex);
@@ -387,9 +404,6 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         curl_mime_free(mime);
         curl_slist_free_all(headers);
 
-        // Clean up the temporary file
-        unlink(temp_filename);
-
         // Initialize result to empty to prevent segmentation fault
         result->count = 0;
         pthread_mutex_unlock(&curl_mutex);
@@ -406,9 +420,6 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         curl_mime_free(mime);
         curl_slist_free_all(headers);
 
-        // Clean up the temporary file
-        unlink(temp_filename);
-
         pthread_mutex_unlock(&curl_mutex);
         return -1;
     }
@@ -420,9 +431,6 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         free(chunk.memory);
         curl_mime_free(mime);
         curl_slist_free_all(headers);
-
-        // Clean up the temporary file
-        unlink(temp_filename);
 
         // Initialize result to empty to prevent segmentation fault
         result->count = 0;
@@ -455,9 +463,6 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         curl_mime_free(mime);
         curl_slist_free_all(headers);
 
-        // Clean up the temporary file
-        unlink(temp_filename);
-
         // Initialize result to empty to prevent segmentation fault
         result->count = 0;
         pthread_mutex_unlock(&curl_mutex);
@@ -478,9 +483,6 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         free(chunk.memory);
         curl_mime_free(mime);
         curl_slist_free_all(headers);
-
-        // Clean up the temporary file
-        unlink(temp_filename);
 
         // Initialize result to empty to prevent segmentation fault
         result->count = 0;
@@ -590,9 +592,6 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     free(chunk.memory);
     curl_mime_free(mime);
     curl_slist_free_all(headers);
-
-    // Clean up the temporary file AFTER all curl operations are complete
-    unlink(temp_filename);
 
     pthread_mutex_unlock(&curl_mutex);
     return 0;
