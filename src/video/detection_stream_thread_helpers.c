@@ -27,6 +27,7 @@
 #include "video/detection_model.h"
 #include "video/onvif_detection.h"
 #include "video/stream_state.h"
+#include "video/api_detection.h"
 
 // Forward declaration of the internal function - this is defined in detection_stream_thread.c
 extern int process_segment_for_detection(stream_detection_thread_t *thread, const char *segment_path);
@@ -875,8 +876,88 @@ int process_segment_if_needed(stream_detection_thread_t *thread,
                                  thread->stream_name);
                         result = -1;
                     }
+                } else if (model_type && strcmp(model_type, MODEL_TYPE_API) == 0) {
+                    // For API detection models, try go2rtc snapshot first to avoid expensive video decoding
+                    // This saves ~50-100 MB of memory by skipping FFmpeg decoder allocation
+                    log_info("[Stream %s] Using API detection with go2rtc snapshot (memory-optimized path)", thread->stream_name);
+
+                    // Get the API URL
+                    const char *model_path = get_model_path(thread->model);
+                    const char *api_url = NULL;
+
+                    // Check for per-stream API URL first
+                    if (thread->detection_api_url[0] != '\0') {
+                        api_url = thread->detection_api_url;
+                        log_info("[Stream %s] Using per-stream detection API URL: %s", thread->stream_name, api_url);
+                    } else if (model_path && ends_with(model_path, "api-detection")) {
+                        // Get the API URL from the global config
+                        extern config_t g_config;
+                        api_url = g_config.api_detection_url;
+                        log_info("[Stream %s] Using API detection URL from global config: %s",
+                                thread->stream_name, api_url ? api_url : "NULL");
+                    } else {
+                        // Use the model path directly as the URL
+                        api_url = model_path;
+                        log_info("[Stream %s] Using API detection with URL from model path: %s",
+                                thread->stream_name, api_url ? api_url : "NULL");
+                    }
+
+                    if (!api_url || api_url[0] == '\0') {
+                        log_error("[Stream %s] Failed to get API URL from model or config", thread->stream_name);
+                        result = -1;
+                    } else {
+                        // Try snapshot-only detection first (no video decoding needed)
+                        detection_result_t result_struct;
+                        memset(&result_struct, 0, sizeof(detection_result_t));
+
+                        int snapshot_result = detect_objects_api_snapshot(api_url, thread->stream_name,
+                                                                          &result_struct, thread->threshold);
+
+                        if (snapshot_result == 0) {
+                            // Success! We detected objects without decoding video
+                            log_info("[Stream %s] API detection (snapshot) successful: %d objects detected",
+                                    thread->stream_name, result_struct.count);
+                            result = 0;
+
+                            // Process detection results for recording if objects were detected
+                            if (result_struct.count > 0) {
+                                // Create a dummy frame buffer for recording
+                                // We don't have actual frame data, but we need to pass something
+                                int width = 640;  // Default width
+                                int height = 480; // Default height
+                                int channels = 3; // RGB
+                                uint8_t *dummy_frame = (uint8_t *)calloc(width * height * channels, 1);
+
+                                if (dummy_frame) {
+                                    time_t current_time = time(NULL);
+                                    int record_ret = process_frame_for_recording(thread->stream_name,
+                                                                                dummy_frame, width, height,
+                                                                                channels, current_time, &result_struct);
+                                    if (record_ret != 0) {
+                                        log_error("[Stream %s] Failed to process API detection for recording",
+                                                 thread->stream_name);
+                                    }
+                                    free(dummy_frame);
+                                }
+                            }
+                        } else if (snapshot_result == -2) {
+                            // go2rtc snapshot failed, fall back to full video decoding
+                            log_warn("[Stream %s] go2rtc snapshot failed, falling back to video decoding",
+                                    thread->stream_name);
+                            if (access(newest_segment, F_OK) == 0) {
+                                result = process_segment_for_detection(thread, newest_segment);
+                            } else {
+                                log_warn("[Stream %s] Segment no longer exists: %s", thread->stream_name, newest_segment);
+                                segment_processing_failed = true;
+                            }
+                        } else {
+                            // General API error
+                            log_error("[Stream %s] API detection failed with error %d", thread->stream_name, snapshot_result);
+                            result = snapshot_result;
+                        }
+                    }
                 } else {
-                    // For other detection models, process the HLS segment as usual
+                    // For other detection models (non-API, non-ONVIF), process the HLS segment as usual
                     if (access(newest_segment, F_OK) == 0) {
                         log_info("[Stream %s] Processing HLS segment for detection: %s", thread->stream_name, newest_segment);
                         result = process_segment_for_detection(thread, newest_segment);

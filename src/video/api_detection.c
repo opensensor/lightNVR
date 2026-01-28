@@ -101,6 +101,9 @@ void shutdown_api_detection_system(void) {
         curl_handle = NULL;
     }
 
+    // Cleanup cached JPEG encoders to free memory
+    jpeg_encoder_cleanup_all();
+
     // Note: Don't call curl_global_cleanup() here - it's managed centrally in curl_init.c
     // The global cleanup will happen at program shutdown
 
@@ -177,55 +180,26 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     if (stream_name && go2rtc_get_snapshot(stream_name, &jpeg_data, &jpeg_size)) {
         log_info("API Detection: Successfully fetched snapshot from go2rtc: %zu bytes", jpeg_size);
     } else {
-        log_warn("API Detection: Failed to get snapshot from go2rtc, falling back to libav JPEG encoding");
+        log_warn("API Detection: Failed to get snapshot from go2rtc, falling back to cached JPEG encoding");
 
-        // FALLBACK: Use FFmpeg library to encode raw frame to JPEG in memory
-        // We'll encode to a temp file and read it back for now
-        char temp_filename[256];
-        snprintf(temp_filename, sizeof(temp_filename), "/tmp/lightnvr_api_detection_%d.jpg", (int)getpid());
+        // FALLBACK: Use cached JPEG encoder to encode raw frame to JPEG in memory
+        // This reuses the expensive AVCodecContext instead of recreating it every time
+        jpeg_encoder_cache_t *encoder = jpeg_encoder_get_cached(width, height, channels, 85);
+        if (!encoder) {
+            log_error("API Detection: Failed to get cached JPEG encoder");
+            pthread_mutex_unlock(&curl_mutex);
+            return -1;
+        }
 
-        // Encode raw image data to JPEG using FFmpeg library
-        int encode_result = ffmpeg_encode_jpeg(frame_data, width, height, channels, 85, temp_filename);
+        // Encode directly to memory - no temp file needed
+        int encode_result = jpeg_encoder_cache_encode_to_memory(encoder, frame_data, &jpeg_data, &jpeg_size);
         if (encode_result != 0) {
-            log_error("API Detection: Failed to encode frame to JPEG using libav");
+            log_error("API Detection: Failed to encode frame to JPEG using cached encoder");
             pthread_mutex_unlock(&curl_mutex);
             return -1;
         }
 
-        // Read the file into memory
-        FILE *fp = fopen(temp_filename, "rb");
-        if (!fp) {
-            log_error("API Detection: Failed to open temp JPEG file");
-            unlink(temp_filename);
-            pthread_mutex_unlock(&curl_mutex);
-            return -1;
-        }
-
-        fseek(fp, 0, SEEK_END);
-        jpeg_size = ftell(fp);
-        fseek(fp, 0, SEEK_SET);
-
-        jpeg_data = malloc(jpeg_size);
-        if (!jpeg_data) {
-            log_error("API Detection: Failed to allocate memory for JPEG data");
-            fclose(fp);
-            unlink(temp_filename);
-            pthread_mutex_unlock(&curl_mutex);
-            return -1;
-        }
-
-        size_t read_size = fread(jpeg_data, 1, jpeg_size, fp);
-        fclose(fp);
-        unlink(temp_filename);
-
-        if (read_size != jpeg_size) {
-            log_error("API Detection: Failed to read JPEG file");
-            free(jpeg_data);
-            pthread_mutex_unlock(&curl_mutex);
-            return -1;
-        }
-
-        log_info("API Detection: Encoded frame to JPEG: %zu bytes", jpeg_size);
+        log_info("API Detection: Encoded frame to JPEG using cached encoder: %zu bytes", jpeg_size);
     }
 
     // Validate JPEG data
@@ -594,5 +568,323 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     curl_slist_free_all(headers);
 
     pthread_mutex_unlock(&curl_mutex);
+    return 0;
+}
+
+/**
+ * Detect objects using the API with go2rtc snapshot only (no frame data required)
+ *
+ * This function fetches a snapshot directly from go2rtc and sends it to the detection API.
+ * It does NOT require decoded frame data, which saves significant memory by avoiding
+ * the need to decode video segments.
+ *
+ * Returns: 0 on success, -1 on general failure, -2 if go2rtc snapshot failed
+ */
+int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
+                                detection_result_t *result, float threshold) {
+    // Check if we're in shutdown mode
+    if (is_shutdown_initiated()) {
+        log_info("API Detection (snapshot): System shutdown in progress, skipping detection");
+        return -1;
+    }
+
+    // Stream name is required for go2rtc snapshot
+    if (!stream_name || stream_name[0] == '\0') {
+        log_error("API Detection (snapshot): Stream name is required");
+        return -1;
+    }
+
+    // Thread safety for curl operations
+    pthread_mutex_lock(&curl_mutex);
+
+    // Initialize result
+    if (result) {
+        memset(result, 0, sizeof(detection_result_t));
+    } else {
+        log_error("API Detection (snapshot): NULL result pointer provided");
+        pthread_mutex_unlock(&curl_mutex);
+        return -1;
+    }
+
+    // Handle "api-detection" special string
+    const char *actual_api_url = api_url;
+    if (api_url && strcmp(api_url, "api-detection") == 0) {
+        extern config_t g_config;
+        actual_api_url = g_config.api_detection_url;
+        log_info("API Detection (snapshot): Using API URL from config: %s", actual_api_url ? actual_api_url : "NULL");
+    }
+
+    if (!initialized || !curl_handle) {
+        log_error("API Detection (snapshot): System not initialized");
+        pthread_mutex_unlock(&curl_mutex);
+        return -1;
+    }
+
+    if (!actual_api_url) {
+        log_error("API Detection (snapshot): Invalid API URL");
+        pthread_mutex_unlock(&curl_mutex);
+        return -1;
+    }
+
+    // Check URL format
+    if (strncmp(actual_api_url, "http://", 7) != 0 && strncmp(actual_api_url, "https://", 8) != 0) {
+        log_error("API Detection (snapshot): Invalid URL format: %s", actual_api_url);
+        pthread_mutex_unlock(&curl_mutex);
+        return -1;
+    }
+
+    // Try to get snapshot from go2rtc
+    unsigned char *jpeg_data = NULL;
+    size_t jpeg_size = 0;
+
+    if (!go2rtc_get_snapshot(stream_name, &jpeg_data, &jpeg_size)) {
+        log_warn("API Detection (snapshot): Failed to get snapshot from go2rtc for stream %s", stream_name);
+        pthread_mutex_unlock(&curl_mutex);
+        return -2;  // Special return code: go2rtc failed, caller should fall back
+    }
+
+    log_info("API Detection (snapshot): Successfully fetched snapshot from go2rtc: %zu bytes", jpeg_size);
+
+    // Validate JPEG data
+    if (!jpeg_data || jpeg_size == 0) {
+        log_error("API Detection (snapshot): No JPEG data available");
+        if (jpeg_data) free(jpeg_data);
+        pthread_mutex_unlock(&curl_mutex);
+        return -2;
+    }
+
+    // Reset curl handle
+    curl_easy_reset(curl_handle);
+
+    // Set up curl for multipart/form-data
+    curl_mime *mime = NULL;
+    curl_mimepart *part = NULL;
+    memory_struct_t chunk = {0};
+    chunk.memory = NULL;
+    struct curl_slist *headers = NULL;
+
+    // Create the mime structure
+    mime = curl_mime_init(curl_handle);
+    if (!mime) {
+        log_error("API Detection (snapshot): Failed to create mime structure");
+        free(jpeg_data);
+        pthread_mutex_unlock(&curl_mutex);
+        return -1;
+    }
+
+    // Add the file part
+    part = curl_mime_addpart(mime);
+    if (!part) {
+        log_error("API Detection (snapshot): Failed to add mime part");
+        curl_mime_free(mime);
+        free(jpeg_data);
+        pthread_mutex_unlock(&curl_mutex);
+        return -1;
+    }
+
+    // Set up the mime part
+    CURLcode mime_result;
+    mime_result = curl_mime_name(part, "file");
+    if (mime_result != CURLE_OK) {
+        curl_mime_free(mime);
+        free(jpeg_data);
+        pthread_mutex_unlock(&curl_mutex);
+        return -1;
+    }
+
+    mime_result = curl_mime_data(part, (const char *)jpeg_data, jpeg_size);
+    if (mime_result != CURLE_OK) {
+        curl_mime_free(mime);
+        free(jpeg_data);
+        pthread_mutex_unlock(&curl_mutex);
+        return -1;
+    }
+
+    mime_result = curl_mime_filename(part, "snapshot.jpg");
+    if (mime_result != CURLE_OK) {
+        curl_mime_free(mime);
+        free(jpeg_data);
+        pthread_mutex_unlock(&curl_mutex);
+        return -1;
+    }
+
+    mime_result = curl_mime_type(part, "image/jpeg");
+    if (mime_result != CURLE_OK) {
+        curl_mime_free(mime);
+        free(jpeg_data);
+        pthread_mutex_unlock(&curl_mutex);
+        return -1;
+    }
+
+    // Free JPEG data now that curl has copied it
+    free(jpeg_data);
+    jpeg_data = NULL;
+
+    // Get backend from config
+    extern config_t g_config;
+    const char *backend = g_config.api_detection_backend;
+    if (!backend || strlen(backend) == 0) {
+        backend = "onnx";
+    }
+
+    float actual_threshold = (threshold > 0.0f) ? threshold : 0.5f;
+
+    // Construct URL with parameters
+    char url_with_params[1024];
+    snprintf(url_with_params, sizeof(url_with_params),
+             "%s?backend=%s&confidence_threshold=%.2f&return_image=false",
+             actual_api_url, backend, actual_threshold);
+
+    log_info("API Detection (snapshot): Sending request to %s", url_with_params);
+
+    // Set up the request
+    curl_easy_setopt(curl_handle, CURLOPT_URL, url_with_params);
+    curl_easy_setopt(curl_handle, CURLOPT_MIMEPOST, mime);
+
+    headers = curl_slist_append(headers, "accept: application/json");
+    curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, headers);
+
+    chunk.memory = malloc(1);
+    chunk.size = 0;
+
+    curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, write_memory_callback);
+    curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)&chunk);
+    curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 10);
+
+    // Perform the request
+    CURLcode res = curl_easy_perform(curl_handle);
+
+    if (res != CURLE_OK) {
+        log_error("API Detection (snapshot): curl_easy_perform() failed: %s", curl_easy_strerror(res));
+        free(chunk.memory);
+        curl_mime_free(mime);
+        curl_slist_free_all(headers);
+        pthread_mutex_unlock(&curl_mutex);
+        return -1;
+    }
+
+    // Check HTTP response code
+    long http_code = 0;
+    curl_easy_getinfo(curl_handle, CURLINFO_RESPONSE_CODE, &http_code);
+
+    if (http_code != 200) {
+        log_error("API Detection (snapshot): HTTP error %ld", http_code);
+        free(chunk.memory);
+        curl_mime_free(mime);
+        curl_slist_free_all(headers);
+        pthread_mutex_unlock(&curl_mutex);
+        return -1;
+    }
+
+    // Parse JSON response
+    if (!chunk.memory || chunk.size == 0) {
+        log_error("API Detection (snapshot): Empty response");
+        free(chunk.memory);
+        curl_mime_free(mime);
+        curl_slist_free_all(headers);
+        pthread_mutex_unlock(&curl_mutex);
+        return -1;
+    }
+
+    cJSON *root = cJSON_Parse(chunk.memory);
+    if (!root) {
+        log_error("API Detection (snapshot): Failed to parse JSON response");
+        free(chunk.memory);
+        curl_mime_free(mime);
+        curl_slist_free_all(headers);
+        pthread_mutex_unlock(&curl_mutex);
+        return -1;
+    }
+
+    // Extract detections
+    cJSON *detections = cJSON_GetObjectItem(root, "detections");
+    if (!detections || !cJSON_IsArray(detections)) {
+        log_error("API Detection (snapshot): Invalid JSON response");
+        cJSON_Delete(root);
+        free(chunk.memory);
+        curl_mime_free(mime);
+        curl_slist_free_all(headers);
+        pthread_mutex_unlock(&curl_mutex);
+        return -1;
+    }
+
+    // Process each detection
+    int array_size = cJSON_GetArraySize(detections);
+    for (int i = 0; i < array_size; i++) {
+        if (result->count >= MAX_DETECTIONS) {
+            log_warn("API Detection (snapshot): Maximum detections reached");
+            break;
+        }
+
+        cJSON *detection = cJSON_GetArrayItem(detections, i);
+        if (!detection) continue;
+
+        cJSON *label = cJSON_GetObjectItem(detection, "label");
+        cJSON *confidence = cJSON_GetObjectItem(detection, "confidence");
+
+        cJSON *bounding_box = cJSON_GetObjectItem(detection, "bounding_box");
+        cJSON *x_min = NULL, *y_min = NULL, *x_max = NULL, *y_max = NULL;
+
+        if (bounding_box) {
+            x_min = cJSON_GetObjectItem(bounding_box, "x_min");
+            y_min = cJSON_GetObjectItem(bounding_box, "y_min");
+            x_max = cJSON_GetObjectItem(bounding_box, "x_max");
+            y_max = cJSON_GetObjectItem(bounding_box, "y_max");
+        } else {
+            x_min = cJSON_GetObjectItem(detection, "x_min");
+            y_min = cJSON_GetObjectItem(detection, "y_min");
+            x_max = cJSON_GetObjectItem(detection, "x_max");
+            y_max = cJSON_GetObjectItem(detection, "y_max");
+        }
+
+        if (!label || !cJSON_IsString(label) ||
+            !confidence || !cJSON_IsNumber(confidence) ||
+            !x_min || !cJSON_IsNumber(x_min) ||
+            !y_min || !cJSON_IsNumber(y_min) ||
+            !x_max || !cJSON_IsNumber(x_max) ||
+            !y_max || !cJSON_IsNumber(y_max)) {
+            continue;
+        }
+
+        // Add detection to result
+        strncpy(result->detections[result->count].label, label->valuestring, MAX_LABEL_LENGTH - 1);
+        result->detections[result->count].label[MAX_LABEL_LENGTH - 1] = '\0';
+        result->detections[result->count].confidence = confidence->valuedouble;
+        result->detections[result->count].x = x_min->valuedouble;
+        result->detections[result->count].y = y_min->valuedouble;
+        result->detections[result->count].width = x_max->valuedouble - x_min->valuedouble;
+        result->detections[result->count].height = y_max->valuedouble - y_min->valuedouble;
+
+        cJSON *track_id = cJSON_GetObjectItem(detection, "track_id");
+        result->detections[result->count].track_id = (track_id && cJSON_IsNumber(track_id))
+            ? (int)track_id->valuedouble : -1;
+
+        cJSON *zone_id = cJSON_GetObjectItem(detection, "zone_id");
+        if (zone_id && cJSON_IsString(zone_id)) {
+            strncpy(result->detections[result->count].zone_id, zone_id->valuestring, MAX_ZONE_ID_LENGTH - 1);
+            result->detections[result->count].zone_id[MAX_ZONE_ID_LENGTH - 1] = '\0';
+        } else {
+            result->detections[result->count].zone_id[0] = '\0';
+        }
+
+        result->count++;
+    }
+
+    // Filter by zones and store in database
+    if (stream_name && stream_name[0] != '\0') {
+        log_info("API Detection (snapshot): Filtering %d detections by zones for stream %s",
+                 result->count, stream_name);
+        filter_detections_by_zones(stream_name, result);
+        store_detections_in_db(stream_name, result, 0);
+    }
+
+    // Clean up
+    cJSON_Delete(root);
+    free(chunk.memory);
+    curl_mime_free(mime);
+    curl_slist_free_all(headers);
+
+    pthread_mutex_unlock(&curl_mutex);
+    log_info("API Detection (snapshot): Successfully detected %d objects", result->count);
     return 0;
 }

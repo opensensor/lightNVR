@@ -80,6 +80,72 @@ int ffmpeg_encode_jpeg(const unsigned char *frame_data, int width, int height,
                        int channels, int quality, const char *output_path);
 
 /**
+ * Opaque handle for cached JPEG encoder
+ */
+typedef struct jpeg_encoder_cache jpeg_encoder_cache_t;
+
+/**
+ * Create a cached JPEG encoder for a specific resolution
+ * This avoids the expensive avcodec_open2() call on every frame
+ *
+ * @param width Image width
+ * @param height Image height
+ * @param channels Number of color channels (1=gray, 3=RGB, 4=RGBA)
+ * @param quality JPEG quality (1-100, default 85)
+ * @return Encoder handle on success, NULL on failure
+ */
+jpeg_encoder_cache_t *jpeg_encoder_cache_create(int width, int height, int channels, int quality);
+
+/**
+ * Encode a frame using a cached JPEG encoder
+ * Much faster than ffmpeg_encode_jpeg() for repeated encoding at same resolution
+ *
+ * @param encoder Cached encoder handle
+ * @param frame_data Raw image data (RGB24, RGBA, or grayscale)
+ * @param output_path Path to write the output JPEG file
+ * @return 0 on success, negative value on error
+ */
+int jpeg_encoder_cache_encode(jpeg_encoder_cache_t *encoder, const unsigned char *frame_data,
+                              const char *output_path);
+
+/**
+ * Encode a frame to memory using a cached JPEG encoder
+ *
+ * @param encoder Cached encoder handle
+ * @param frame_data Raw image data (RGB24, RGBA, or grayscale)
+ * @param out_data Pointer to receive allocated JPEG data (caller must free)
+ * @param out_size Pointer to receive JPEG data size
+ * @return 0 on success, negative value on error
+ */
+int jpeg_encoder_cache_encode_to_memory(jpeg_encoder_cache_t *encoder, const unsigned char *frame_data,
+                                        unsigned char **out_data, size_t *out_size);
+
+/**
+ * Destroy a cached JPEG encoder and free all resources
+ *
+ * @param encoder Encoder handle to destroy
+ */
+void jpeg_encoder_cache_destroy(jpeg_encoder_cache_t *encoder);
+
+/**
+ * Get or create a thread-local cached JPEG encoder
+ * This provides automatic caching per-thread without manual management
+ *
+ * @param width Image width
+ * @param height Image height
+ * @param channels Number of color channels
+ * @param quality JPEG quality
+ * @return Encoder handle (do NOT destroy - managed automatically)
+ */
+jpeg_encoder_cache_t *jpeg_encoder_get_cached(int width, int height, int channels, int quality);
+
+/**
+ * Cleanup all thread-local cached JPEG encoders
+ * Call this during shutdown
+ */
+void jpeg_encoder_cleanup_all(void);
+
+/**
  * Concatenate multiple TS segments into a single MP4 file using FFmpeg libraries
  * This replaces the need for calling ffmpeg binary with concat demuxer
  *

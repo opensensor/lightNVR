@@ -8,6 +8,9 @@
 #include <errno.h>
 #include <string.h>
 #include <dirent.h>
+#include <pthread.h>
+#include <time.h>
+#include <stdbool.h>
 #include <libavutil/opt.h>
 
 /**
@@ -605,6 +608,415 @@ cleanup:
     if (codec_ctx) avcodec_free_context(&codec_ctx);
 
     return ret;
+}
+
+/**
+ * Cached JPEG encoder structure
+ * Reuses expensive FFmpeg contexts across multiple encode operations
+ */
+struct jpeg_encoder_cache {
+    AVCodecContext *codec_ctx;
+    AVFrame *frame;
+    AVPacket *pkt;
+    struct SwsContext *sws_ctx;
+    int width;
+    int height;
+    int channels;
+    int quality;
+    enum AVPixelFormat src_pix_fmt;
+    pthread_mutex_t mutex;
+};
+
+/**
+ * Create a cached JPEG encoder
+ */
+jpeg_encoder_cache_t *jpeg_encoder_cache_create(int width, int height, int channels, int quality) {
+    if (width <= 0 || height <= 0 || channels < 1 || channels > 4) {
+        log_error("Invalid parameters for JPEG encoder cache: %dx%d, %d channels", width, height, channels);
+        return NULL;
+    }
+
+    jpeg_encoder_cache_t *encoder = calloc(1, sizeof(jpeg_encoder_cache_t));
+    if (!encoder) {
+        log_error("Failed to allocate JPEG encoder cache");
+        return NULL;
+    }
+
+    encoder->width = width;
+    encoder->height = height;
+    encoder->channels = channels;
+    encoder->quality = quality;
+    pthread_mutex_init(&encoder->mutex, NULL);
+
+    // Determine input pixel format based on channels
+    switch (channels) {
+        case 1:
+            encoder->src_pix_fmt = AV_PIX_FMT_GRAY8;
+            break;
+        case 3:
+            encoder->src_pix_fmt = AV_PIX_FMT_RGB24;
+            break;
+        case 4:
+            encoder->src_pix_fmt = AV_PIX_FMT_RGBA;
+            break;
+        default:
+            log_error("Unsupported channel count: %d", channels);
+            free(encoder);
+            return NULL;
+    }
+
+    // Find the MJPEG encoder
+    const AVCodec *codec = avcodec_find_encoder(AV_CODEC_ID_MJPEG);
+    if (!codec) {
+        log_error("MJPEG encoder not found");
+        free(encoder);
+        return NULL;
+    }
+
+    // Allocate codec context
+    encoder->codec_ctx = avcodec_alloc_context3(codec);
+    if (!encoder->codec_ctx) {
+        log_error("Failed to allocate codec context for JPEG cache");
+        free(encoder);
+        return NULL;
+    }
+
+    // Set codec parameters
+    encoder->codec_ctx->width = width;
+    encoder->codec_ctx->height = height;
+    encoder->codec_ctx->time_base = (AVRational){1, 25};
+    encoder->codec_ctx->pix_fmt = AV_PIX_FMT_YUVJ420P;
+
+    // Set quality (1-31, lower is better; convert from 1-100 scale)
+    int qscale = 31 - (quality * 30 / 100);
+    if (qscale < 1) qscale = 1;
+    if (qscale > 31) qscale = 31;
+    encoder->codec_ctx->flags |= AV_CODEC_FLAG_QSCALE;
+    encoder->codec_ctx->global_quality = qscale * FF_QP2LAMBDA;
+
+    // Open the codec - this is the expensive operation we're caching
+    int ret = avcodec_open2(encoder->codec_ctx, codec, NULL);
+    if (ret < 0) {
+        log_ffmpeg_error(ret, "Failed to open MJPEG codec for cache");
+        avcodec_free_context(&encoder->codec_ctx);
+        free(encoder);
+        return NULL;
+    }
+
+    // Allocate frame
+    encoder->frame = av_frame_alloc();
+    if (!encoder->frame) {
+        log_error("Failed to allocate frame for JPEG cache");
+        avcodec_free_context(&encoder->codec_ctx);
+        free(encoder);
+        return NULL;
+    }
+
+    encoder->frame->format = encoder->codec_ctx->pix_fmt;
+    encoder->frame->width = width;
+    encoder->frame->height = height;
+
+    ret = av_frame_get_buffer(encoder->frame, 0);
+    if (ret < 0) {
+        log_ffmpeg_error(ret, "Failed to allocate frame buffer for JPEG cache");
+        av_frame_free(&encoder->frame);
+        avcodec_free_context(&encoder->codec_ctx);
+        free(encoder);
+        return NULL;
+    }
+
+    // Create scaling context for pixel format conversion
+    encoder->sws_ctx = sws_getContext(width, height, encoder->src_pix_fmt,
+                                       width, height, encoder->codec_ctx->pix_fmt,
+                                       SWS_BILINEAR, NULL, NULL, NULL);
+    if (!encoder->sws_ctx) {
+        log_error("Failed to create scaling context for JPEG cache");
+        av_frame_free(&encoder->frame);
+        avcodec_free_context(&encoder->codec_ctx);
+        free(encoder);
+        return NULL;
+    }
+
+    // Allocate packet
+    encoder->pkt = av_packet_alloc();
+    if (!encoder->pkt) {
+        log_error("Failed to allocate packet for JPEG cache");
+        sws_freeContext(encoder->sws_ctx);
+        av_frame_free(&encoder->frame);
+        avcodec_free_context(&encoder->codec_ctx);
+        free(encoder);
+        return NULL;
+    }
+
+    log_info("Created cached JPEG encoder: %dx%d, %d channels, quality %d", width, height, channels, quality);
+    return encoder;
+}
+
+/**
+ * Encode a frame using cached encoder
+ */
+int jpeg_encoder_cache_encode(jpeg_encoder_cache_t *encoder, const unsigned char *frame_data,
+                              const char *output_path) {
+    if (!encoder || !frame_data || !output_path) {
+        log_error("Invalid parameters for cached JPEG encode");
+        return -1;
+    }
+
+    pthread_mutex_lock(&encoder->mutex);
+
+    int ret = 0;
+    FILE *outfile = NULL;
+
+    // Make frame writable
+    ret = av_frame_make_writable(encoder->frame);
+    if (ret < 0) {
+        log_ffmpeg_error(ret, "Failed to make frame writable");
+        pthread_mutex_unlock(&encoder->mutex);
+        return -1;
+    }
+
+    // Set up source data pointers
+    const uint8_t *src_data[4] = {frame_data, NULL, NULL, NULL};
+    int src_linesize[4] = {encoder->width * encoder->channels, 0, 0, 0};
+
+    // Convert pixel format
+    sws_scale(encoder->sws_ctx, src_data, src_linesize, 0, encoder->height,
+              encoder->frame->data, encoder->frame->linesize);
+
+    // Reset packet
+    av_packet_unref(encoder->pkt);
+
+    // Encode the frame
+    ret = avcodec_send_frame(encoder->codec_ctx, encoder->frame);
+    if (ret < 0) {
+        log_ffmpeg_error(ret, "Failed to send frame for cached encoding");
+        pthread_mutex_unlock(&encoder->mutex);
+        return -1;
+    }
+
+    ret = avcodec_receive_packet(encoder->codec_ctx, encoder->pkt);
+    if (ret < 0) {
+        log_ffmpeg_error(ret, "Failed to receive encoded packet from cache");
+        pthread_mutex_unlock(&encoder->mutex);
+        return -1;
+    }
+
+    // Write the JPEG data to file
+    outfile = fopen(output_path, "wb");
+    if (!outfile) {
+        log_error("Failed to open output file %s: %s", output_path, strerror(errno));
+        pthread_mutex_unlock(&encoder->mutex);
+        return -1;
+    }
+
+    if (fwrite(encoder->pkt->data, 1, encoder->pkt->size, outfile) != (size_t)encoder->pkt->size) {
+        log_error("Failed to write JPEG data to file");
+        fclose(outfile);
+        pthread_mutex_unlock(&encoder->mutex);
+        return -1;
+    }
+
+    fclose(outfile);
+    log_debug("Cached JPEG encode: %dx%d, %d bytes -> %s", encoder->width, encoder->height,
+              encoder->pkt->size, output_path);
+
+    pthread_mutex_unlock(&encoder->mutex);
+    return 0;
+}
+
+/**
+ * Encode a frame to memory using cached encoder
+ */
+int jpeg_encoder_cache_encode_to_memory(jpeg_encoder_cache_t *encoder, const unsigned char *frame_data,
+                                        unsigned char **out_data, size_t *out_size) {
+    if (!encoder || !frame_data || !out_data || !out_size) {
+        log_error("Invalid parameters for cached JPEG encode to memory");
+        return -1;
+    }
+
+    pthread_mutex_lock(&encoder->mutex);
+
+    int ret = 0;
+
+    // Make frame writable
+    ret = av_frame_make_writable(encoder->frame);
+    if (ret < 0) {
+        log_ffmpeg_error(ret, "Failed to make frame writable");
+        pthread_mutex_unlock(&encoder->mutex);
+        return -1;
+    }
+
+    // Set up source data pointers
+    const uint8_t *src_data[4] = {frame_data, NULL, NULL, NULL};
+    int src_linesize[4] = {encoder->width * encoder->channels, 0, 0, 0};
+
+    // Convert pixel format
+    sws_scale(encoder->sws_ctx, src_data, src_linesize, 0, encoder->height,
+              encoder->frame->data, encoder->frame->linesize);
+
+    // Reset packet
+    av_packet_unref(encoder->pkt);
+
+    // Encode the frame
+    ret = avcodec_send_frame(encoder->codec_ctx, encoder->frame);
+    if (ret < 0) {
+        log_ffmpeg_error(ret, "Failed to send frame for cached encoding to memory");
+        pthread_mutex_unlock(&encoder->mutex);
+        return -1;
+    }
+
+    ret = avcodec_receive_packet(encoder->codec_ctx, encoder->pkt);
+    if (ret < 0) {
+        log_ffmpeg_error(ret, "Failed to receive encoded packet from cache");
+        pthread_mutex_unlock(&encoder->mutex);
+        return -1;
+    }
+
+    // Allocate output buffer and copy data
+    *out_data = malloc(encoder->pkt->size);
+    if (!*out_data) {
+        log_error("Failed to allocate memory for JPEG output");
+        pthread_mutex_unlock(&encoder->mutex);
+        return -1;
+    }
+
+    memcpy(*out_data, encoder->pkt->data, encoder->pkt->size);
+    *out_size = encoder->pkt->size;
+
+    log_debug("Cached JPEG encode to memory: %dx%d, %d bytes", encoder->width, encoder->height,
+              encoder->pkt->size);
+
+    pthread_mutex_unlock(&encoder->mutex);
+    return 0;
+}
+
+/**
+ * Destroy a cached JPEG encoder
+ */
+void jpeg_encoder_cache_destroy(jpeg_encoder_cache_t *encoder) {
+    if (!encoder) return;
+
+    pthread_mutex_lock(&encoder->mutex);
+
+    if (encoder->pkt) av_packet_free(&encoder->pkt);
+    if (encoder->sws_ctx) sws_freeContext(encoder->sws_ctx);
+    if (encoder->frame) av_frame_free(&encoder->frame);
+    if (encoder->codec_ctx) avcodec_free_context(&encoder->codec_ctx);
+
+    pthread_mutex_unlock(&encoder->mutex);
+    pthread_mutex_destroy(&encoder->mutex);
+
+    log_info("Destroyed cached JPEG encoder: %dx%d", encoder->width, encoder->height);
+    free(encoder);
+}
+
+// Global cache for JPEG encoders (one per unique resolution/channel/quality combo)
+#define MAX_JPEG_ENCODER_CACHE 16
+
+typedef struct {
+    jpeg_encoder_cache_t *encoder;
+    int width;
+    int height;
+    int channels;
+    int quality;
+    time_t last_used;
+} jpeg_encoder_cache_entry_t;
+
+static jpeg_encoder_cache_entry_t jpeg_encoder_global_cache[MAX_JPEG_ENCODER_CACHE];
+static pthread_mutex_t jpeg_encoder_global_mutex = PTHREAD_MUTEX_INITIALIZER;
+static bool jpeg_encoder_cache_initialized = false;
+
+/**
+ * Get or create a cached JPEG encoder
+ */
+jpeg_encoder_cache_t *jpeg_encoder_get_cached(int width, int height, int channels, int quality) {
+    pthread_mutex_lock(&jpeg_encoder_global_mutex);
+
+    if (!jpeg_encoder_cache_initialized) {
+        memset(jpeg_encoder_global_cache, 0, sizeof(jpeg_encoder_global_cache));
+        jpeg_encoder_cache_initialized = true;
+    }
+
+    time_t now = time(NULL);
+    int oldest_idx = -1;
+    time_t oldest_time = now;
+    int free_idx = -1;
+
+    // Look for existing encoder or find a free/oldest slot
+    for (int i = 0; i < MAX_JPEG_ENCODER_CACHE; i++) {
+        if (jpeg_encoder_global_cache[i].encoder) {
+            // Check if this matches our requirements
+            if (jpeg_encoder_global_cache[i].width == width &&
+                jpeg_encoder_global_cache[i].height == height &&
+                jpeg_encoder_global_cache[i].channels == channels &&
+                jpeg_encoder_global_cache[i].quality == quality) {
+                // Found a match
+                jpeg_encoder_global_cache[i].last_used = now;
+                jpeg_encoder_cache_t *encoder = jpeg_encoder_global_cache[i].encoder;
+                pthread_mutex_unlock(&jpeg_encoder_global_mutex);
+                return encoder;
+            }
+            // Track oldest for potential eviction
+            if (jpeg_encoder_global_cache[i].last_used < oldest_time) {
+                oldest_time = jpeg_encoder_global_cache[i].last_used;
+                oldest_idx = i;
+            }
+        } else if (free_idx < 0) {
+            free_idx = i;
+        }
+    }
+
+    // No match found, need to create a new encoder
+    int target_idx;
+    if (free_idx >= 0) {
+        target_idx = free_idx;
+    } else if (oldest_idx >= 0) {
+        // Evict oldest encoder
+        log_info("Evicting cached JPEG encoder: %dx%d to make room for %dx%d",
+                 jpeg_encoder_global_cache[oldest_idx].width,
+                 jpeg_encoder_global_cache[oldest_idx].height,
+                 width, height);
+        jpeg_encoder_cache_destroy(jpeg_encoder_global_cache[oldest_idx].encoder);
+        jpeg_encoder_global_cache[oldest_idx].encoder = NULL;
+        target_idx = oldest_idx;
+    } else {
+        log_error("No available slot for JPEG encoder cache");
+        pthread_mutex_unlock(&jpeg_encoder_global_mutex);
+        return NULL;
+    }
+
+    // Create new encoder
+    jpeg_encoder_cache_t *new_encoder = jpeg_encoder_cache_create(width, height, channels, quality);
+    if (new_encoder) {
+        jpeg_encoder_global_cache[target_idx].encoder = new_encoder;
+        jpeg_encoder_global_cache[target_idx].width = width;
+        jpeg_encoder_global_cache[target_idx].height = height;
+        jpeg_encoder_global_cache[target_idx].channels = channels;
+        jpeg_encoder_global_cache[target_idx].quality = quality;
+        jpeg_encoder_global_cache[target_idx].last_used = now;
+    }
+
+    pthread_mutex_unlock(&jpeg_encoder_global_mutex);
+    return new_encoder;
+}
+
+/**
+ * Cleanup all cached JPEG encoders
+ */
+void jpeg_encoder_cleanup_all(void) {
+    pthread_mutex_lock(&jpeg_encoder_global_mutex);
+
+    for (int i = 0; i < MAX_JPEG_ENCODER_CACHE; i++) {
+        if (jpeg_encoder_global_cache[i].encoder) {
+            jpeg_encoder_cache_destroy(jpeg_encoder_global_cache[i].encoder);
+            jpeg_encoder_global_cache[i].encoder = NULL;
+        }
+    }
+
+    jpeg_encoder_cache_initialized = false;
+    log_info("Cleaned up all cached JPEG encoders");
+
+    pthread_mutex_unlock(&jpeg_encoder_global_mutex);
 }
 
 /**
