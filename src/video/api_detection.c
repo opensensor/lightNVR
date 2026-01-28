@@ -326,6 +326,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
 
     // Set a timeout
     curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 10);
+    curl_easy_setopt(curl_handle, CURLOPT_NOSIGNAL, 1L); // Prevent curl from using signals (required for multi-threaded apps)
 
     // Perform the request
     log_info("API Detection: Sending request to %s", url_with_params);
@@ -750,6 +751,7 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
     curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, write_memory_callback);
     curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)&chunk);
     curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 10);
+    curl_easy_setopt(curl_handle, CURLOPT_NOSIGNAL, 1L); // Prevent curl from using signals (required for multi-threaded apps)
 
     // Perform the request
     CURLcode res = curl_easy_perform(curl_handle);
