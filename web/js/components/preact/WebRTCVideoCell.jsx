@@ -67,6 +67,7 @@ export function WebRTCVideoCell({
 
     // Store cleanup functions
     let connectionTimeout = null;
+    let videoDataTimeout = null;
     let statsInterval = null;
     let go2rtcBaseUrl = null;
 
@@ -110,9 +111,33 @@ export function WebRTCVideoCell({
         // Set srcObject
         videoElement.srcObject = event.streams[0];
 
+        // Set a timeout to detect if no video data is received
+        // This handles the case where go2rtc hasn't connected to the source camera yet
+        if (videoDataTimeout) {
+          clearTimeout(videoDataTimeout);
+        }
+        videoDataTimeout = setTimeout(() => {
+          // Check if video is actually playing by checking if we have video dimensions
+          // Use videoElement state directly to avoid stale closure issues
+          if (videoElement && (!videoElement.videoWidth || videoElement.videoWidth === 0) && !videoElement.paused === false) {
+            console.warn(`No video data received for stream ${stream.name} within 15 seconds, may need retry`);
+            // Check if video is not playing (paused or no data)
+            if (videoElement.paused || videoElement.readyState < 2) {
+              console.error(`Stream ${stream.name} connected but no video data - source may not be ready`);
+              setError('Stream connected but no video data. Click Retry to reconnect.');
+              setIsLoading(false);
+            }
+          }
+        }, 15000); // 15 second timeout for video data
+
         // Add event handlers
         videoElement.onloadedmetadata = () => {
           console.log(`Video metadata loaded for stream ${stream.name}`);
+          // Clear the video data timeout since we got metadata
+          if (videoDataTimeout) {
+            clearTimeout(videoDataTimeout);
+            videoDataTimeout = null;
+          }
         };
 
         videoElement.onloadeddata = () => {
@@ -123,6 +148,11 @@ export function WebRTCVideoCell({
           console.log(`Video playing for stream ${stream.name}`);
           setIsLoading(false);
           setIsPlaying(true);
+          // Clear the video data timeout since video is playing
+          if (videoDataTimeout) {
+            clearTimeout(videoDataTimeout);
+            videoDataTimeout = null;
+          }
         };
 
         videoElement.onwaiting = () => {
@@ -401,6 +431,16 @@ export function WebRTCVideoCell({
     // Cleanup function
     return () => {
       console.log(`Cleaning up WebRTC connection for stream ${stream.name}`);
+
+      // Clear timeouts
+      if (connectionTimeout) {
+        clearTimeout(connectionTimeout);
+        connectionTimeout = null;
+      }
+      if (videoDataTimeout) {
+        clearTimeout(videoDataTimeout);
+        videoDataTimeout = null;
+      }
 
       // Stop connection monitoring
       if (connectionMonitorRef.current) {

@@ -539,15 +539,15 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
           </div>
         </div>
 
-        <div id="recordings-controls" className="mx-4 mb-4 p-4 border border-green-500 rounded-lg bg-white dark:bg-gray-700 shadow-md relative z-10">
-          <h3 className="text-lg font-bold text-center mb-4 text-gray-800 dark:text-white">
+        <div id="recordings-controls" className="mx-4 mb-4 p-4 border border-green-500 rounded-lg bg-card text-card-foreground shadow-md relative z-10">
+          <h3 className="text-lg font-bold text-center mb-4 text-foreground">
             PLAYBACK CONTROLS
           </h3>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
             {/* Speed controls section */}
-            <div className="border-b pb-4 md:border-b-0 md:border-r md:pr-4 md:pb-0">
-              <h4 className="font-bold text-center mb-3 text-gray-700 dark:text-gray-300">
+            <div className="border-b border-border pb-4 md:border-b-0 md:border-r md:pr-4 md:pb-0">
+              <h4 className="font-bold text-center mb-3 text-foreground">
                 Playback Speed
               </h4>
 
@@ -558,7 +558,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
                     className={`speed-btn px-3 py-2 rounded-full ${
                       speed === currentSpeed
                         ? 'badge-success'
-                        : 'bg-gray-200 hover:bg-gray-300'
+                        : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
                     } text-sm font-medium transition-all focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50`}
                     data-speed={speed}
                     onClick={() => handleSpeedChange(speed)}
@@ -575,7 +575,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
 
             {/* Detection overlay section */}
             <div className="pt-4 md:pt-0 md:pl-4">
-              <h4 className="font-bold text-center mb-2 text-gray-700 dark:text-gray-300">
+              <h4 className="font-bold text-center mb-2 text-foreground">
                 Detection Overlays
               </h4>
 
@@ -584,14 +584,14 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
                   <input
                     type="checkbox"
                     id="detection-overlay-checkbox"
-                    className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 dark:focus:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                    className="w-4 h-4 accent-primary bg-secondary border-border rounded focus:ring-primary focus:ring-2"
                     checked={detectionOverlayEnabled}
                     onChange={(e) => setDetectionOverlayEnabled(e.target.checked)}
                     disabled={detections.length === 0}
                   />
                   <label
                     htmlFor="detection-overlay-checkbox"
-                    className="text-sm font-medium text-gray-700 dark:text-gray-300"
+                    className="text-sm font-medium text-foreground"
                   >
                     Show Detection Overlays
                   </label>
@@ -600,7 +600,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
                 <div className="flex flex-col w-full mt-2 mb-2">
                   <label
                     htmlFor="detection-sensitivity-slider"
-                    className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                    className="text-sm font-medium text-foreground mb-1"
                   >
                     Detection Sensitivity
                   </label>
@@ -608,7 +608,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
                   <input
                     type="range"
                     id="detection-sensitivity-slider"
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                    className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
                     min="1"
                     max="10"
                     step="1"
@@ -636,7 +636,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
           {downloadUrl && (
             <div className="flex justify-center mt-4 pt-2 border-t border-border">
               <a
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center text-sm"
+                className="px-4 py-2 bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors flex items-center text-sm"
                 href={downloadUrl}
                 download={`video-${Date.now()}.mp4`}
               >
