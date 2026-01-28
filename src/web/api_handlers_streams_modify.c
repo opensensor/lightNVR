@@ -487,6 +487,8 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
     cJSON *detection_based_recording_json = cJSON_GetObjectItem(stream_json, "detection_based_recording");
     bool detection_based_recording_value = false;
     bool has_detection_based_recording = false;
+    // Save the previous detection state BEFORE we overwrite it
+    bool original_detection_based_recording = config.detection_based_recording;
     if (detection_based_recording_json && cJSON_IsBool(detection_based_recording_json)) {
         detection_based_recording_value = cJSON_IsTrue(detection_based_recording_json);
         has_detection_based_recording = true;
@@ -853,9 +855,11 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
 
     // Check if detection_based_recording was changed in this request
     if (has_detection_based_recording) {
-        detection_enabled_changed = true;
-        detection_was_enabled = !detection_based_recording_value; // Previous state was opposite
-        detection_now_enabled = detection_based_recording_value;  // New state
+        // Use the saved original state (before we overwrote config.detection_based_recording)
+        detection_was_enabled = original_detection_based_recording;
+        detection_now_enabled = detection_based_recording_value;
+        // Only mark as changed if the state actually changed
+        detection_enabled_changed = (detection_was_enabled != detection_now_enabled);
     } else {
         // If not explicitly changed in this request, use the current config value
         detection_now_enabled = config.detection_based_recording;
