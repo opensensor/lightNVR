@@ -46,10 +46,28 @@ typedef struct {
 static size_t go2rtc_curl_write_cb(void *contents, size_t size, size_t nmemb, void *userp) {
     size_t total = size * nmemb;
     char **response = (char **)userp;
-    *response = realloc(*response, strlen(*response ? *response : "") + total + 1);
-    if (*response) {
-        strncat(*response, contents, total);
+
+    // Calculate current length safely (0 if *response is NULL)
+    size_t current_len = (*response) ? strlen(*response) : 0;
+    size_t new_size = current_len + total + 1;
+
+    // Reallocate buffer to hold existing content + new content + null terminator
+    char *new_buf = realloc(*response, new_size);
+    if (!new_buf) {
+        log_error("Failed to allocate memory for curl response");
+        return 0;
     }
+
+    // If this is the first allocation, initialize the buffer
+    if (!*response) {
+        new_buf[0] = '\0';
+    }
+    *response = new_buf;
+
+    // Append new content using memcpy (safer than strncat for binary data)
+    memcpy(*response + current_len, contents, total);
+    (*response)[current_len + total] = '\0';
+
     return total;
 }
 
