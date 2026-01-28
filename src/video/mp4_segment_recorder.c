@@ -1180,8 +1180,11 @@ cleanup:
         log_debug("Closed input context due to error");
     }
 
-    // Final FFmpeg cleanup to prevent memory leaks
-    avformat_network_deinit();
+    // Free the options dictionary
+    // Note: avformat_network_deinit() should NOT be called here as it's a global cleanup
+    // function that should only be called once at program shutdown, not during each
+    // recording error. Calling it here would unbalance the init/deinit reference count
+    // and could cause issues with other concurrent recordings.
     av_dict_free(&opts);
 
     // Return the error code
