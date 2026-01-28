@@ -15,7 +15,6 @@ export function FiltersSidebar({
   pagination,
   setPagination,
   streams,
-  filtersVisible,
   applyFilters,
   resetFilters,
   handleDateRangeChange,
@@ -23,7 +22,7 @@ export function FiltersSidebar({
 }) {
   return (
     <aside id="filters-sidebar"
-           className={`filters-sidebar w-full md:w-64 bg-card text-card-foreground rounded-lg shadow p-4 md:sticky md:top-4 md:self-start transition-all duration-300 ${!filtersVisible ? 'hidden md:block' : ''}`}>
+           className="filters-sidebar w-full md:w-64 bg-card text-card-foreground rounded-lg shadow p-4 md:sticky md:top-4 md:self-start transition-all duration-300">
       <div className="filter-group mb-4">
         <h3 className="text-lg font-medium mb-2 pb-1 border-b border-border">Date Range</h3>
         <div className="filter-option mb-2">

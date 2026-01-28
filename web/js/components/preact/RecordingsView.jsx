@@ -30,7 +30,6 @@ export function RecordingsView() {
   const [userRole, setUserRole] = useState(null);
   const [recordings, setRecordings] = useState([]);
   const [streams, setStreams] = useState([]);
-  const [filtersVisible, setFiltersVisible] = useState(true);
   const [sortField, setSortField] = useState('start_time');
   const [sortDirection, setSortDirection] = useState('desc');
   const [filters, setFilters] = useState({
@@ -152,14 +151,6 @@ export function RecordingsView() {
       setSortDirection(urlFilters.order || 'desc');
     }
 
-    // Handle responsive behavior
-    handleResponsiveFilters();
-    window.addEventListener('resize', handleResponsiveFilters);
-
-    // Cleanup
-    return () => {
-      window.removeEventListener('resize', handleResponsiveFilters);
-    };
   }, []);
 
   // Update active filters when filters change
@@ -255,21 +246,6 @@ export function RecordingsView() {
       return urlFilters; // Return the filters so we can use them directly
     }
     return null;
-  };
-
-  // Handle responsive filters
-  const handleResponsiveFilters = () => {
-    // On mobile, hide filters by default
-    if (window.innerWidth < 768) {
-      setFiltersVisible(false);
-    } else {
-      setFiltersVisible(true);
-    }
-  };
-
-  // Toggle filters visibility
-  const toggleFilters = () => {
-    setFiltersVisible(!filtersVisible);
   };
 
   // State for data status
@@ -724,21 +700,6 @@ export function RecordingsView() {
             <a href="timeline.html" class="px-3 py-1 rounded-r-md" style={{backgroundColor: 'hsl(var(--secondary))', color: 'hsl(var(--secondary-foreground))'}} onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary) / 0.8)'} onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'}>Timeline View</a>
           </div>
         </div>
-        <button id="toggle-filters-btn"
-                class={`p-2 rounded-full focus:outline-none flex items-center gap-2 transition-colors ${
-                  filtersVisible
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600'
-                }`}
-                style={filtersVisible ? {backgroundColor: 'hsl(var(--primary))', color: 'hsl(var(--primary-foreground))'} : {}}
-                title={filtersVisible ? "Hide Filters" : "Show Filters"}
-                onClick={toggleFilters}>
-          {/* Filter funnel icon */}
-          <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-            <path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L12 11.414V15a1 1 0 01-.293.707l-2 2A1 1 0 018 17v-5.586L3.293 6.707A1 1 0 013 6V3z" clip-rule="evenodd"></path>
-          </svg>
-          <span class="text-sm hidden sm:inline">{filtersVisible ? 'Hide Filters' : 'Filters'}</span>
-        </button>
       </div>
 
       <div class="recordings-layout flex flex-col md:flex-row gap-4 w-full">
@@ -748,7 +709,6 @@ export function RecordingsView() {
           pagination={pagination}
           setPagination={setPagination}
           streams={streams}
-          filtersVisible={filtersVisible}
           applyFilters={applyFilters}
           resetFilters={resetFilters}
           handleDateRangeChange={handleDateRangeChange}
