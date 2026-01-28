@@ -18,11 +18,15 @@
 #include <curl/curl.h>
 #include <ctype.h>
 #include <cjson/cJSON.h>
+#include <pthread.h>
 
 // API client configuration
 static char *g_api_host = NULL;
 static int g_api_port = 0;
 static bool g_initialized = false;
+
+// Mutex for thread-safe access to the global response buffer
+static pthread_mutex_t g_api_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // Buffer sizes
 #define HTTP_BUFFER_SIZE 4096
@@ -218,24 +222,27 @@ bool go2rtc_api_add_stream(const char *stream_id, const char *stream_url) {
         log_error("go2rtc API client not initialized");
         return false;
     }
-    
+
     if (!stream_id || !stream_url) {
         log_error("Invalid parameters for go2rtc_api_add_stream");
         return false;
     }
-    
+
     CURL *curl;
     CURLcode res;
     char url[URL_BUFFER_SIZE];
     bool success = false;
-    
+
     // Initialize CURL
     curl = curl_easy_init();
     if (!curl) {
         log_error("Failed to initialize CURL");
         return false;
     }
-    
+
+    // Lock mutex for thread-safe access to global response buffer
+    pthread_mutex_lock(&g_api_mutex);
+
     // Reset response buffer
     g_response_size = 0;
     g_response_buffer[0] = '\0';
@@ -289,10 +296,13 @@ bool go2rtc_api_add_stream(const char *stream_id, const char *stream_url) {
             log_error("Failed to add stream to go2rtc (status %ld): %s", http_code, g_response_buffer);
         }
     }
-    
+
+    // Unlock mutex before cleanup
+    pthread_mutex_unlock(&g_api_mutex);
+
     // Clean up
     curl_easy_cleanup(curl);
-    
+
     return success;
 }
 
@@ -301,24 +311,27 @@ bool go2rtc_api_remove_stream(const char *stream_id) {
         log_error("go2rtc API client not initialized");
         return false;
     }
-    
+
     if (!stream_id) {
         log_error("Invalid parameter for go2rtc_api_remove_stream");
         return false;
     }
-    
+
     CURL *curl;
     CURLcode res;
     char url[URL_BUFFER_SIZE];
     bool success = false;
-    
+
     // Initialize CURL
     curl = curl_easy_init();
     if (!curl) {
         log_error("Failed to initialize CURL");
         return false;
     }
-    
+
+    // Lock mutex for thread-safe access to global response buffer
+    pthread_mutex_lock(&g_api_mutex);
+
     // Reset response buffer
     g_response_size = 0;
     g_response_buffer[0] = '\0';
@@ -386,10 +399,13 @@ bool go2rtc_api_remove_stream(const char *stream_id) {
             }
         }
     }
-    
+
+    // Unlock mutex before cleanup
+    pthread_mutex_unlock(&g_api_mutex);
+
     // Clean up
     curl_easy_cleanup(curl);
-    
+
     return success;
 }
 
@@ -521,6 +537,9 @@ bool go2rtc_api_get_server_info(int *rtsp_port) {
         return false;
     }
 
+    // Lock mutex for thread-safe access to global response buffer
+    pthread_mutex_lock(&g_api_mutex);
+
     // Reset response buffer
     g_response_size = 0;
     g_response_buffer[0] = '\0';
@@ -582,6 +601,9 @@ bool go2rtc_api_get_server_info(int *rtsp_port) {
             log_error("Failed to get go2rtc server info (status %ld): %s", http_code, g_response_buffer);
         }
     }
+
+    // Unlock mutex before cleanup
+    pthread_mutex_unlock(&g_api_mutex);
 
     // Clean up
     curl_easy_cleanup(curl);
