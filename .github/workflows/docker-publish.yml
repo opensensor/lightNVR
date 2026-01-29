@@ -51,6 +51,7 @@ jobs:
             org.opencontainers.image.vendor=OpenSensor
 
       - name: Login to GHCR
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -63,7 +64,19 @@ jobs:
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
 
+      # Build only (no push) for PRs - verifies the build works
+      - name: Build (PR verification)
+        if: github.event_name == 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          push: false
+
+      # Build and push by digest for tags and manual triggers
       - name: Build and push by digest
+        if: github.event_name != 'pull_request'
         id: build
         uses: docker/build-push-action@v6
         with:
@@ -73,6 +86,7 @@ jobs:
           outputs: type=image,push-by-digest=true,name=${{ env.REGISTRY_IMAGE }},name-canonical=true,push=true
 
       - name: Save digest
+        if: github.event_name != 'pull_request'
         run: |
           mkdir -p ${{ runner.temp }}/digests
           platform="${{ matrix.platform }}"
@@ -81,6 +95,7 @@ jobs:
           echo "Saved digest for $platform: $digest"
 
       - name: Upload digest
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: digests-${{ env.PLATFORM_PAIR }}
@@ -90,6 +105,8 @@ jobs:
   manifest:
     needs: build
     runs-on: ubuntu-latest
+    # Only create and push manifest for non-PR events
+    if: github.event_name != 'pull_request'
 
     steps:
       - name: Download all digests
