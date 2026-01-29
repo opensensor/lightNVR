@@ -18,3 +18,6 @@ log:
 
 streams:
   # Streams will be added dynamically by LightNVR
+  Full:
+    - rtsp://thingino:thingino@192.168.82.156:554/ch1#transport=tcp#timeout=30
+    - ffmpeg:Full#video=copy#audio=aac

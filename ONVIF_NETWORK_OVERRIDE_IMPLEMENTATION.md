@@ -55,9 +55,9 @@ else if (strcmp(section, "onvif") == 0) {
 }
 ```
 
-### 4. Environment Variable Check (`src/video/onvif_discovery.c`)
+### 4. Priority-Based Network Selection (`src/video/onvif_discovery.c`)
 
-Modified `discover_onvif_devices()` to check environment variable:
+Modified `discover_onvif_devices()` to implement complete priority order:
 ```c
 if (!network || strlen(network) == 0 || strcmp(network, "auto") == 0) {
     // Priority 1: Check environment variable
@@ -65,8 +65,15 @@ if (!network || strlen(network) == 0 || strcmp(network, "auto") == 0) {
     if (env_network && strlen(env_network) > 0 && strcmp(env_network, "auto") != 0) {
         log_info("Using ONVIF discovery network from environment variable: %s", env_network);
         network = env_network;
-    } else {
-        // Priority 2: Auto-detect
+    }
+    // Priority 2: Check config file
+    else if (g_config.onvif_discovery_network[0] != '\0' &&
+             strcmp(g_config.onvif_discovery_network, "auto") != 0) {
+        log_info("Using ONVIF discovery network from config file: %s", g_config.onvif_discovery_network);
+        network = g_config.onvif_discovery_network;
+    }
+    // Priority 3: Auto-detect
+    else {
         network_count = detect_local_networks(detected_networks, MAX_DETECTED_NETWORKS);
         // ... use first detected network
     }
