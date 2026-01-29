@@ -1252,7 +1252,8 @@ bool go2rtc_integration_reload_stream_config(const char *stream_name,
                                              const char *new_username,
                                              const char *new_password,
                                              int new_backchannel_enabled,
-                                             int new_protocol) {
+                                             int new_protocol,
+                                             int new_record_audio) {
     if (!stream_name) {
         log_error("go2rtc_integration_reload_stream_config: stream_name is NULL");
         return false;
@@ -1289,7 +1290,12 @@ bool go2rtc_integration_reload_stream_config(const char *stream_name,
         if (!password) password = config.onvif_password[0] != '\0' ? config.onvif_password : NULL;
         if (new_backchannel_enabled < 0) backchannel = config.backchannel_enabled;
         if (new_protocol < 0) protocol = config.protocol;
-        record_audio = config.record_audio;
+        if (new_record_audio < 0) record_audio = config.record_audio;
+    }
+
+    // If new_record_audio is explicitly provided, use it
+    if (new_record_audio >= 0) {
+        record_audio = (new_record_audio != 0);
     }
 
     // If new_protocol is explicitly provided, use it
@@ -1329,8 +1335,8 @@ bool go2rtc_integration_reload_stream(const char *stream_name) {
         return false;
     }
 
-    // Use the generic reload function with NULL values to use current config
-    return go2rtc_integration_reload_stream_config(stream_name, NULL, NULL, NULL, -1, -1);
+    // Use the generic reload function with -1 values to use current config
+    return go2rtc_integration_reload_stream_config(stream_name, NULL, NULL, NULL, -1, -1, -1);
 }
 
 bool go2rtc_integration_unregister_stream(const char *stream_name) {

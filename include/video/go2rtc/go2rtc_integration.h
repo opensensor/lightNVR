@@ -133,6 +133,7 @@ bool go2rtc_integration_get_hls_url(const char *stream_name, char *url, size_t u
  * @param new_password New password (can be NULL to use current config)
  * @param new_backchannel_enabled New backchannel setting (-1 to use current config)
  * @param new_protocol New protocol setting (-1 to use current config, 0=TCP, 1=UDP)
+ * @param new_record_audio New audio recording setting (-1 to use current config, 0=disabled, 1=enabled)
  * @return true if successful, false otherwise
  */
 bool go2rtc_integration_reload_stream_config(const char *stream_name,
@@ -140,7 +141,8 @@ bool go2rtc_integration_reload_stream_config(const char *stream_name,
                                              const char *new_username,
                                              const char *new_password,
                                              int new_backchannel_enabled,
-                                             int new_protocol);
+                                             int new_protocol,
+                                             int new_record_audio);
 
 /**
  * @brief Reload a stream's go2rtc registration from its current database/memory configuration

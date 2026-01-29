@@ -419,6 +419,7 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
     original_url[MAX_URL_LENGTH - 1] = '\0';
 
     stream_protocol_t original_protocol = config.protocol;
+    bool original_record_audio = config.record_audio;
 
     cJSON *url = cJSON_GetObjectItem(stream_json, "url");
     if (url && cJSON_IsString(url)) {
@@ -962,9 +963,10 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
                 requires_restart ? "true" : "false",
                 is_running ? "true" : "false");
 
-        // If URL or protocol changed, we need to force restart the HLS stream thread
+        // If URL, protocol, or record_audio changed, we need to update go2rtc registration
         bool url_changed = strcmp(original_url, config.url) != 0;
         bool protocol_changed = original_protocol != config.protocol;
+        bool record_audio_changed = original_record_audio != config.record_audio;
 
         // First clear HLS segments if URL changed
         if (url_changed) {
@@ -997,10 +999,11 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
             }
         }
 
-        // If URL or protocol changed, update go2rtc stream registration BEFORE starting the stream
+        // If URL, protocol, or record_audio changed, update go2rtc stream registration BEFORE starting the stream
         // This prevents race conditions where the stream tries to use go2rtc before it's updated
-        if ((url_changed || protocol_changed)) {
-            log_info("URL or protocol changed for stream %s, updating go2rtc registration BEFORE starting stream", config.name);
+        // record_audio changes require go2rtc reload to add/remove FFmpeg AAC transcoding source
+        if ((url_changed || protocol_changed || record_audio_changed)) {
+            log_info("URL, protocol, or record_audio changed for stream %s, updating go2rtc registration BEFORE starting stream", config.name);
 
             // Use centralized function to reload stream config in go2rtc
             // This handles unregister + wait + re-register internally
@@ -1008,8 +1011,9 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
                                                         config.onvif_username[0] != '\0' ? config.onvif_username : NULL,
                                                         config.onvif_password[0] != '\0' ? config.onvif_password : NULL,
                                                         config.backchannel_enabled ? 1 : 0,
-                                                        config.protocol)) {
-                log_info("Successfully reloaded stream %s in go2rtc with new URL", config.name);
+                                                        config.protocol,
+                                                        config.record_audio ? 1 : 0)) {
+                log_info("Successfully reloaded stream %s in go2rtc with updated config", config.name);
             } else {
                 log_error("Failed to reload stream %s in go2rtc", config.name);
                 // Continue anyway - the stream may still work
