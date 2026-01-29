@@ -225,15 +225,6 @@ export function SettingsView() {
               Read-only (admin privileges required to modify)
             </span>
           )}
-          {canModifySettings && (
-            <button
-              id="save-settings-btn"
-              class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
-              onClick={saveSettings}
-            >
-              Save Settings
-            </button>
-          )}
         </div>
       </div>
 
@@ -583,6 +574,19 @@ export function SettingsView() {
             </div>
           </div>
           </div>
+
+          {/* Save Settings Button - at bottom of form */}
+          {canModifySettings && (
+            <div class="flex justify-end mt-6">
+              <button
+                id="save-settings-btn"
+                class="px-6 py-2 bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+                onClick={saveSettings}
+              >
+                Save Settings
+              </button>
+            </div>
+          )}
         </div>
       </ContentLoader>
     </section>
