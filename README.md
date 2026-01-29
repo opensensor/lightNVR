@@ -17,7 +17,7 @@ LightNVR provides a lightweight yet powerful solution for recording and managing
 
 #### 🎯 Smart Detection & Recording
 - **Detection Zones**: Visual polygon-based zone editor for targeted object detection - define multiple zones per camera with custom class filters and confidence thresholds
-- **light-object-detect Integration**: Seamless integration with [light-object-detect](https://github.com/opensensorlight-object-detect) API for ONNX/TFLite-based object detection with zone filtering
+- **light-object-detect Integration**: Seamless integration with [light-object-detect](https://github.com/opensensor/light-object-detect) API for ONNX/TFLite-based object detection with zone filtering
 - **ONVIF Motion Recording**: Automated recording triggered by ONVIF motion detection events
 - **Object Detection**: Optional SOD integration for motion and object detection (supports both RealNet and CNN models)
 
@@ -281,7 +281,7 @@ Powerful object detection using modern ONNX and TFLite models with zone-aware fi
 
 6. **(Optional) Set up object detection**:
 
-   For advanced object detection with zone filtering, integrate with [light-object-detect](https://github.com/opensensorlight-object-detect):
+   For advanced object detection with zone filtering, integrate with [light-object-detect](https://github.com/opensensor/light-object-detect):
 
    ```bash
    # Install light-object-detect (requires Python 3.8+)
@@ -525,7 +525,7 @@ LightNVR is built on the shoulders of giants. Special thanks to:
 - **[HLS.js](https://github.com/video-dev/hls.js/)** - JavaScript HLS client
 
 ### Detection & AI
-- **[light-object-detect](https://github.com/opensensorlight-object-detect)** - ONNX/TFLite object detection API
+- **[light-object-detect](https://github.com/opensensor/light-object-detect)** - ONNX/TFLite object detection API
 - **[SOD](https://github.com/symisc/sod)** - Embedded computer vision library
 
 ### Community
