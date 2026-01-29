@@ -17,31 +17,31 @@ export function PaginationControls({ pagination, goToPage }) {
       </div>
       <div className="pagination-buttons flex items-center space-x-1">
         <button id="pagination-first"
-                className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-secondary text-secondary-foreground hover:bg-secondary/80 focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
                 title="First Page"
                 onClick={() => goToPage(1)}
                 disabled={pagination.currentPage === 1}>
           «
         </button>
         <button id="pagination-prev"
-                className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-secondary text-secondary-foreground hover:bg-secondary/80 focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Previous Page"
                 onClick={() => goToPage(pagination.currentPage - 1)}
                 disabled={pagination.currentPage === 1}>
           ‹
         </button>
-        <span id="pagination-current" className="px-2 text-sm text-gray-700 dark:text-gray-300">
+        <span id="pagination-current" className="px-2 text-sm text-foreground">
           Page {pagination.currentPage} of {pagination.totalPages}
         </span>
         <button id="pagination-next"
-                className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-secondary text-secondary-foreground hover:bg-secondary/80 focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Next Page"
                 onClick={() => goToPage(pagination.currentPage + 1)}
                 disabled={pagination.currentPage === pagination.totalPages}>
           ›
         </button>
         <button id="pagination-last"
-                className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-secondary text-secondary-foreground hover:bg-secondary/80 focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Last Page"
                 onClick={() => goToPage(pagination.totalPages)}
                 disabled={pagination.currentPage === pagination.totalPages}>

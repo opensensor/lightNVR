@@ -44,18 +44,18 @@ export function SpeedControls() {
   };
 
   return (
-    <div className="mt-2 mb-4 p-2 border border-green-500 rounded-lg bg-card text-card-foreground shadow-sm">
+    <div className="mt-2 mb-4 p-2 border border-primary rounded-lg bg-card text-card-foreground shadow-sm">
       <div className="flex flex-col items-center">
-        <div className="text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">Playback Speed</div>
+        <div className="text-sm font-semibold mb-2 text-foreground">Playback Speed</div>
 
         <div className="flex flex-wrap justify-center gap-1">
           {speeds.map(speed => (
             <button
               key={`speed-${speed}`}
               className={`speed-btn px-2 py-1 text-sm rounded-full ${speed === currentSpeed
-                ? 'badge-success'
-                : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'}
-                font-medium transition-all focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-opacity-50`}
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}
+                font-medium transition-all focus:outline-none focus:ring-1 focus:ring-primary focus:ring-opacity-50`}
               data-speed={speed}
               onClick={() => setPlaybackSpeed(speed)}
             >
@@ -64,7 +64,7 @@ export function SpeedControls() {
           ))}
         </div>
 
-        <div className="mt-1 text-xs font-medium text-green-600 dark:text-green-400">
+        <div className="mt-1 text-xs font-medium text-primary">
           Current: {currentSpeed}× {currentSpeed === 1.0 ? '(Normal)' : ''}
         </div>
       </div>

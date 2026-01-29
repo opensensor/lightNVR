@@ -385,7 +385,7 @@ export function WebRTCView() {
           <div className="flex space-x-2">
             <button
               id="hls-toggle-btn"
-              className="btn-success focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 inline-block text-center"
+              className="btn-secondary focus:outline-none focus:ring-2 focus:ring-primary inline-block text-center"
               style={{ position: 'relative', zIndex: 50 }} // Very high z-index to ensure clickability
               onClick={() => {
                 window.location.href = '/hls.html';
@@ -400,7 +400,7 @@ export function WebRTCView() {
             <label htmlFor="layout-selector" className="mr-2">Layout:</label>
             <select
               id="layout-selector"
-              className="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600"
+              className="px-3 py-2 border border-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
               value={layout}
               onChange={(e) => {
                 const newLayout = e.target.value;
@@ -422,7 +422,7 @@ export function WebRTCView() {
               <label htmlFor="stream-selector" className="mr-2">Stream:</label>
               <select
                 id="stream-selector"
-                className="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600"
+                className="px-3 py-2 border border-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
                 value={selectedStream}
                 onChange={(e) => {
                   const newStream = e.target.value;
@@ -438,7 +438,7 @@ export function WebRTCView() {
 
           <button
             id="fullscreen-btn"
-            className="p-2 rounded-full bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 focus:outline-none"
+            className="p-2 rounded-full bg-secondary hover:bg-secondary/80 text-secondary-foreground focus:outline-none focus:ring-2 focus:ring-primary"
             onClick={() => toggleFullscreen()}
             title="Toggle Fullscreen"
           >
@@ -460,8 +460,8 @@ export function WebRTCView() {
               <div className="flex justify-center items-center col-span-full row-span-full h-64 w-full" style={{ pointerEvents: 'none', zIndex: 1 }}>
                 <div className="flex flex-col items-center justify-center py-8">
                 <div
-                  className="inline-block animate-spin rounded-full border-4 border-input border-t-blue-600 dark:border-t-blue-500 w-16 h-16"></div>
-                <p className="mt-4 text-gray-700 dark:text-gray-300">Loading streams...</p>
+                  className="inline-block animate-spin rounded-full border-4 border-secondary border-t-primary w-16 h-16"></div>
+                <p className="mt-4 text-muted-foreground">Loading streams...</p>
               </div>
             </div>
           ) : (isLoading && !isLoadingStreams) ? (
@@ -475,13 +475,13 @@ export function WebRTCView() {
             >
               <div className="flex flex-col items-center justify-center py-8">
                 <div
-                  className="inline-block animate-spin rounded-full border-4 border-input border-t-blue-600 dark:border-t-blue-500 w-16 h-16"></div>
-                <p className="mt-4 text-gray-700 dark:text-gray-300">Loading streams...</p>
+                  className="inline-block animate-spin rounded-full border-4 border-secondary border-t-primary w-16 h-16"></div>
+                <p className="mt-4 text-muted-foreground">Loading streams...</p>
               </div>
             </div>
           ) : (streamsError) ? (
             <div className="placeholder flex flex-col justify-center items-center col-span-full row-span-full bg-card text-card-foreground rounded-lg shadow-md text-center p-8">
-              <p className="mb-6 text-gray-600 dark:text-gray-300 text-lg">Error loading streams: {streamsError.message}</p>
+              <p className="mb-6 text-muted-foreground text-lg">Error loading streams: {streamsError.message}</p>
               <button
                 onClick={() => window.location.reload()}
                 className="btn-primary"
@@ -491,7 +491,7 @@ export function WebRTCView() {
             </div>
           ) : streams.length === 0 ? (
             <div className="placeholder flex flex-col justify-center items-center col-span-full row-span-full bg-card text-card-foreground rounded-lg shadow-md text-center p-8">
-              <p className="mb-6 text-gray-600 dark:text-gray-300 text-lg">No streams configured</p>
+              <p className="mb-6 text-muted-foreground text-lg">No streams configured</p>
               <a href="streams.html" className="btn-primary">Configure Streams</a>
             </div>
           ) : (
@@ -510,7 +510,7 @@ export function WebRTCView() {
         {layout !== '1' && streams.length > getMaxStreamsForLayout() ? (
           <div className="pagination-controls flex justify-center items-center space-x-4 mt-4">
             <button
-              className="btn-primary focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={() => {
                 console.log('Changing to previous page');
                 setCurrentPage(Math.max(0, currentPage - 1));
@@ -520,12 +520,12 @@ export function WebRTCView() {
               Previous
             </button>
 
-            <span className="text-gray-700 dark:text-gray-300">
+            <span className="text-foreground">
               Page {currentPage + 1} of {Math.ceil(streams.length / getMaxStreamsForLayout())}
             </span>
 
             <button
-              className="btn-primary focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={() => {
                 console.log('Changing to next page');
                 const totalPages = Math.ceil(streams.length / getMaxStreamsForLayout());

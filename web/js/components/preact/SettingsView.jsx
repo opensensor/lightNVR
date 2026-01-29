@@ -516,7 +516,7 @@ export function SettingsView() {
                   min="0"
                   max="100"
                   step="1"
-                  class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                  class="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary disabled:opacity-60 disabled:cursor-not-allowed"
                   value={settings.defaultDetectionThreshold}
                   onChange={handleThresholdChange}
                   disabled={!canModifySettings}

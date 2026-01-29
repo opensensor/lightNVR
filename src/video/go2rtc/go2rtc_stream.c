@@ -84,7 +84,8 @@ bool go2rtc_stream_init(const char *binary_path, const char *config_dir, int api
 
 bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
                            const char *username, const char *password,
-                           bool backchannel_enabled, stream_protocol_t protocol) {
+                           bool backchannel_enabled, stream_protocol_t protocol,
+                           bool record_audio) {
     if (!g_initialized) {
         log_error("go2rtc stream integration not initialized");
         return false;
@@ -146,14 +147,14 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
         char *protocol_end = strstr(modified_url, "://");
         if (protocol_end) {
             // Format: protocol://username:password@rest_of_url
-            char protocol[16] = {0};
+            char proto_str[16] = {0};
             size_t protocol_len = protocol_end - modified_url;
-            if (protocol_len < sizeof(protocol)) {
-                strncpy(protocol, modified_url, protocol_len);
-                protocol[protocol_len] = '\0';
+            if (protocol_len < sizeof(proto_str)) {
+                strncpy(proto_str, modified_url, protocol_len);
+                proto_str[protocol_len] = '\0';
 
                 snprintf(new_url, URL_BUFFER_SIZE, "%s://%s:%s@%s",
-                         protocol, username, password, protocol_end + 3);
+                         proto_str, username, password, protocol_end + 3);
 
                 strncpy(modified_url, new_url, URL_BUFFER_SIZE - 1);
                 modified_url[URL_BUFFER_SIZE - 1] = '\0';
@@ -191,13 +192,42 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
 
     log_info("Final URL with go2rtc parameters: %s", modified_url);
 
-    // Register stream with go2rtc
-    bool result = go2rtc_api_add_stream(encoded_stream_id, modified_url);
+    bool result;
 
-    if (result) {
-        log_info("Successfully registered stream with go2rtc: %s", encoded_stream_id);
+    // If audio recording is enabled, add FFmpeg AAC transcoding source
+    // This creates a stream with two sources:
+    // 1. Primary RTSP source (video copy, original audio)
+    // 2. FFmpeg source that transcodes audio to AAC for MP4 compatibility
+    if (record_audio) {
+        log_info("Audio recording enabled for stream %s, adding FFmpeg AAC transcoding source", stream_id);
+
+        // Build the FFmpeg transcoding source URL
+        // Format: ffmpeg:stream_id#video=copy#audio=aac
+        // This tells go2rtc to use FFmpeg to transcode audio to AAC while copying video
+        char ffmpeg_source[URL_BUFFER_SIZE];
+        snprintf(ffmpeg_source, URL_BUFFER_SIZE, "ffmpeg:%s#video=copy#audio=aac", stream_id);
+
+        // Register with both sources
+        const char *sources[2] = { modified_url, ffmpeg_source };
+        result = go2rtc_api_add_stream_multi(encoded_stream_id, sources, 2);
+
+        if (result) {
+            log_info("Successfully registered stream with go2rtc (with AAC audio transcoding): %s", encoded_stream_id);
+        } else {
+            log_error("Failed to register stream with go2rtc (with AAC audio): %s", encoded_stream_id);
+            // Fall back to single source registration
+            log_warn("Falling back to single source registration without AAC transcoding");
+            result = go2rtc_api_add_stream(encoded_stream_id, modified_url);
+        }
     } else {
-        log_error("Failed to register stream with go2rtc: %s", encoded_stream_id);
+        // Register stream with go2rtc (single source, no audio transcoding)
+        result = go2rtc_api_add_stream(encoded_stream_id, modified_url);
+
+        if (result) {
+            log_info("Successfully registered stream with go2rtc: %s", encoded_stream_id);
+        } else {
+            log_error("Failed to register stream with go2rtc: %s", encoded_stream_id);
+        }
     }
 
     return result;

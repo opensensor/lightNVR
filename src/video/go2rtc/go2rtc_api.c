@@ -306,6 +306,115 @@ bool go2rtc_api_add_stream(const char *stream_id, const char *stream_url) {
     return success;
 }
 
+bool go2rtc_api_add_stream_multi(const char *stream_id, const char **sources, int num_sources) {
+    if (!g_initialized) {
+        log_error("go2rtc API client not initialized");
+        return false;
+    }
+
+    if (!stream_id || !sources || num_sources <= 0) {
+        log_error("Invalid parameters for go2rtc_api_add_stream_multi");
+        return false;
+    }
+
+    CURL *curl;
+    CURLcode res;
+    bool success = false;
+
+    // Initialize CURL
+    curl = curl_easy_init();
+    if (!curl) {
+        log_error("Failed to initialize CURL");
+        return false;
+    }
+
+    // Lock mutex for thread-safe access to global response buffer
+    pthread_mutex_lock(&g_api_mutex);
+
+    // Reset response buffer
+    g_response_size = 0;
+    g_response_buffer[0] = '\0';
+
+    // Build URL with multiple src parameters
+    // Format: http://host:port/api/streams?src=url1&src=url2&name=stream_id
+    // We need a larger buffer for multiple sources
+    char *url = malloc(URL_BUFFER_SIZE * (num_sources + 1));
+    if (!url) {
+        log_error("Failed to allocate memory for URL");
+        pthread_mutex_unlock(&g_api_mutex);
+        curl_easy_cleanup(curl);
+        return false;
+    }
+
+    int offset = snprintf(url, URL_BUFFER_SIZE, "http://%s:%d/api/streams?",
+                          g_api_host, g_api_port);
+
+    // Add each source as a src parameter
+    for (int i = 0; i < num_sources; i++) {
+        // URL encode the source
+        char encoded_url[URL_BUFFER_SIZE * 3] = {0};
+        const char *p = sources[i];
+        char *q = encoded_url;
+        while (*p && (q - encoded_url < URL_BUFFER_SIZE * 3 - 4)) {
+            if (isalnum(*p) || *p == '-' || *p == '_' || *p == '.' || *p == '~') {
+                *q++ = *p;
+            } else if (*p == ' ') {
+                *q++ = '+';
+            } else {
+                sprintf(q, "%%%02X", (unsigned char)*p);
+                q += 3;
+            }
+            p++;
+        }
+        *q = '\0';
+
+        if (i > 0) {
+            offset += snprintf(url + offset, URL_BUFFER_SIZE - offset, "&");
+        }
+        offset += snprintf(url + offset, URL_BUFFER_SIZE * (num_sources + 1) - offset,
+                          "src=%s", encoded_url);
+    }
+
+    // Add stream name
+    offset += snprintf(url + offset, URL_BUFFER_SIZE * (num_sources + 1) - offset,
+                      "&name=%s", stream_id);
+
+    log_info("Adding stream with multiple sources: %s", url);
+
+    // Set CURL options for PUT request
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, StaticWriteCallback);
+
+    // Perform the request
+    res = curl_easy_perform(curl);
+
+    // Check for errors
+    if (res != CURLE_OK) {
+        log_error("CURL request failed: %s", curl_easy_strerror(res));
+    } else {
+        long http_code = 0;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+
+        if (http_code == 200) {
+            log_info("Added stream to go2rtc with %d sources: %s", num_sources, stream_id);
+            log_info("Response: %s", g_response_buffer);
+            success = true;
+        } else {
+            log_error("Failed to add stream to go2rtc (status %ld): %s", http_code, g_response_buffer);
+        }
+    }
+
+    // Unlock mutex before cleanup
+    pthread_mutex_unlock(&g_api_mutex);
+
+    // Clean up
+    free(url);
+    curl_easy_cleanup(curl);
+
+    return success;
+}
+
 bool go2rtc_api_remove_stream(const char *stream_id) {
     if (!g_initialized) {
         log_error("go2rtc API client not initialized");

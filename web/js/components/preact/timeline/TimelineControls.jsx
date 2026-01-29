@@ -386,14 +386,14 @@ export function TimelineControls() {
             )}
           </svg>
         </button>
-        <span className="text-xs text-gray-600 dark:text-gray-300">Play from current position</span>
+        <span className="text-xs text-muted-foreground">Play from current position</span>
       </div>
 
       <div className="flex items-center gap-1">
-        <span className="text-xs text-gray-600 dark:text-gray-300 mr-1">Zoom:</span>
+        <span className="text-xs text-muted-foreground mr-1">Zoom:</span>
         <button
           id="zoom-out-button"
-          className="w-6 h-6 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+          className="w-6 h-6 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
           onClick={zoomOut}
           title="Zoom Out (Show more time)"
           disabled={zoomLevel <= 1}
@@ -404,7 +404,7 @@ export function TimelineControls() {
         </button>
         <button
           id="zoom-in-button"
-          className="w-6 h-6 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+          className="w-6 h-6 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
           onClick={zoomIn}
           title="Zoom In (Show less time)"
           disabled={zoomLevel >= 8}

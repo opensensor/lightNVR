@@ -1,5 +1,6 @@
 /**
  * Timeline CSS Styles
+ * Uses CSS custom properties for theme-aware colors
  */
 
 /* Timeline container */
@@ -7,8 +8,8 @@
     position: relative;
     width: 100%;
     height: 100px;
-    background-color: #f0f0f0;
-    border: 1px solid #ccc;
+    background-color: hsl(var(--secondary));
+    border: 1px solid hsl(var(--border));
     border-radius: 4px;
     margin-bottom: 20px;
     overflow: hidden;
@@ -19,8 +20,8 @@
     position: relative;
     width: 100%;
     height: 30px;
-    background-color: #e0e0e0;
-    border-bottom: 1px solid #ccc;
+    background-color: hsl(var(--muted));
+    border-bottom: 1px solid hsl(var(--border));
 }
 
 /* Timeline tick marks */
@@ -29,13 +30,13 @@
     top: 15px;
     width: 1px;
     height: 10px;
-    background-color: #999;
+    background-color: hsl(var(--muted-foreground));
 }
 
 .timeline-tick.major {
     top: 10px;
     height: 20px;
-    background-color: #666;
+    background-color: hsl(var(--foreground));
 }
 
 /* Timeline labels */
@@ -44,7 +45,7 @@
     top: 0;
     transform: translateX(-50%);
     font-size: 10px;
-    color: #666;
+    color: hsl(var(--muted-foreground));
     padding: 2px;
 }
 
@@ -60,7 +61,7 @@
 .timeline-segment {
     position: absolute;
     height: 20px;
-    background-color: #4a90e2;
+    background-color: hsl(var(--primary));
     border-radius: 2px;
     top: 25px;
     opacity: 0.8;
@@ -77,7 +78,7 @@
 
 /* Segments with detection */
 .timeline-segment.has-detection {
-    background-color: #e74c3c;
+    background-color: hsl(var(--destructive));
 }
 
 /* Timeline cursor */
@@ -86,7 +87,7 @@
     top: 0;
     width: 2px;
     height: 100%;
-    background-color: #ff5722;
+    background-color: hsl(var(--warning, 25 95% 53%));
     z-index: 10;
 }
 
@@ -118,8 +119,8 @@
     width: 40px;
     height: 40px;
     border-radius: 50%;
-    background-color: #4a90e2;
-    color: white;
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
     border: none;
     cursor: pointer;
     display: flex;
@@ -129,7 +130,7 @@
 }
 
 .timeline-control-btn:hover {
-    background-color: #3a80d2;
+    background-color: hsl(var(--primary) / 0.8);
 }
 
 .timeline-control-btn .icon {
@@ -141,9 +142,10 @@
     font-family: monospace;
     font-size: 18px;
     padding: 5px 10px;
-    background-color: #f0f0f0;
+    background-color: hsl(var(--secondary));
     border-radius: 4px;
-    border: 1px solid #ddd;
+    border: 1px solid hsl(var(--border));
+    color: hsl(var(--foreground));
 }
 
 /* Timeline zoom controls */
@@ -156,8 +158,9 @@
     width: 30px;
     height: 30px;
     border-radius: 4px;
-    background-color: #f0f0f0;
-    border: 1px solid #ddd;
+    background-color: hsl(var(--secondary));
+    border: 1px solid hsl(var(--border));
+    color: hsl(var(--foreground));
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -166,7 +169,7 @@
 }
 
 .timeline-zoom-btn:hover {
-    background-color: #e0e0e0;
+    background-color: hsl(var(--secondary) / 0.8);
 }
 
 /* Status message container */
@@ -194,47 +197,6 @@
 .status-message.show {
     opacity: 1;
     transform: translateX(0);
-}
-
-/* Dark mode support */
-@media (prefers-color-scheme: dark) {
-    .timeline-container {
-        background-color: #2a2a2a;
-        border-color: #444;
-    }
-    
-    .timeline-ruler {
-        background-color: #333;
-        border-color: #444;
-    }
-    
-    .timeline-tick {
-        background-color: #777;
-    }
-    
-    .timeline-tick.major {
-        background-color: #999;
-    }
-    
-    .timeline-label {
-        color: #ccc;
-    }
-    
-    .timeline-time-display {
-        background-color: #333;
-        border-color: #444;
-        color: #eee;
-    }
-    
-    .timeline-zoom-btn {
-        background-color: #333;
-        border-color: #444;
-        color: #eee;
-    }
-    
-    .timeline-zoom-btn:hover {
-        background-color: #444;
-    }
 }
 
 /* Responsive adjustments */

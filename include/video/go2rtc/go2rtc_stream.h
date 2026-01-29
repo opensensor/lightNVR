@@ -29,11 +29,13 @@ bool go2rtc_stream_init(const char *binary_path, const char *config_dir, int api
  * @param password Optional password for authentication (can be NULL)
  * @param backchannel_enabled Whether to enable two-way audio (backchannel) support
  * @param protocol Stream protocol (TCP or UDP) - used to set transport parameter for go2rtc
+ * @param record_audio Whether audio recording is enabled - if true, adds FFmpeg AAC transcoding source
  * @return true if stream was registered successfully, false otherwise
  */
 bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
                            const char *username, const char *password,
-                           bool backchannel_enabled, stream_protocol_t protocol);
+                           bool backchannel_enabled, stream_protocol_t protocol,
+                           bool record_audio);
 
 /**
  * @brief Unregister a stream from go2rtc

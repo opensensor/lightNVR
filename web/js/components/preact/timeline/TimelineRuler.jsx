@@ -108,7 +108,7 @@ export function TimelineRuler() {
         markers.push(
           <div
             key={`tick-${hour}`}
-            className="absolute top-0 w-px h-5 bg-gray-500 dark:bg-gray-400"
+            className="absolute top-0 w-px h-5 bg-foreground"
             style={{ left: `${position}%` }}
           ></div>
         );
@@ -117,7 +117,7 @@ export function TimelineRuler() {
         markers.push(
           <div
             key={`label-${hour}`}
-            className="absolute top-0 text-xs text-gray-600 dark:text-gray-300 transform -translate-x-1/2"
+            className="absolute top-0 text-xs text-muted-foreground transform -translate-x-1/2"
             style={{ left: `${position}%` }}
           >
             {hour}:00
@@ -130,7 +130,7 @@ export function TimelineRuler() {
           markers.push(
             <div
               key={`tick-${hour}-30`}
-              className="absolute top-2 w-px h-3 bg-gray-400 dark:bg-gray-500"
+              className="absolute top-2 w-px h-3 bg-muted-foreground"
               style={{ left: `${halfHourPosition}%` }}
             ></div>
           );
@@ -143,7 +143,7 @@ export function TimelineRuler() {
             markers.push(
               <div
                 key={`tick-${hour}-15`}
-                className="absolute top-3 w-px h-2 bg-gray-400 dark:bg-gray-500"
+                className="absolute top-3 w-px h-2 bg-muted-foreground"
                 style={{ left: `${quarterHourPosition1}%` }}
               ></div>
             );
@@ -151,7 +151,7 @@ export function TimelineRuler() {
             markers.push(
               <div
                 key={`tick-${hour}-45`}
-                className="absolute top-3 w-px h-2 bg-gray-400 dark:bg-gray-500"
+                className="absolute top-3 w-px h-2 bg-muted-foreground"
                 style={{ left: `${quarterHourPosition3}%` }}
               ></div>
             );
@@ -164,9 +164,9 @@ export function TimelineRuler() {
   };
 
   return (
-    <div className="timeline-ruler relative w-full h-8 bg-gray-300 dark:bg-gray-800 border-b border-gray-400 dark:border-gray-600">
+    <div className="timeline-ruler relative w-full h-8 bg-muted border-b border-border">
       {generateHourMarkers()}
-      <div className="absolute bottom-0 left-0 text-xs text-gray-500 px-1">
+      <div className="absolute bottom-0 left-0 text-xs text-muted-foreground px-1">
         Zoom: {zoomLevel}x ({Math.round(24 / zoomLevel)} hours)
       </div>
     </div>

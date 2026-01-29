@@ -472,7 +472,7 @@ export function TimelinePage() {
     if (segments.length === 0) {
       return (
         <div className="flex flex-col items-center justify-center py-12 text-center">
-          <svg className="w-16 h-16 text-gray-400 dark:text-gray-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <svg className="w-16 h-16 text-muted-foreground mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
           </svg>
           <p className="text-muted-foreground text-lg">No recordings found for the selected date and stream</p>
@@ -491,7 +491,7 @@ export function TimelinePage() {
         {/* Timeline */}
         <div
           id="timeline-container"
-          className="relative w-full h-24 bg-gray-200 dark:bg-gray-700 border border-input rounded-lg mb-6 overflow-hidden"
+          className="relative w-full h-24 bg-secondary border border-input rounded-lg mb-6 overflow-hidden"
           ref={timelineContainerRef}
         >
           <TimelineRuler />
@@ -512,8 +512,8 @@ export function TimelinePage() {
       <div className="flex items-center mb-4">
         <h1 className="text-2xl font-bold">Timeline Playback</h1>
         <div className="ml-4 flex">
-          <a href="recordings.html" className="px-3 py-1 bg-gray-300 text-gray-700 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-400 dark:hover:bg-gray-600 rounded-l-md">Table View</a>
-          <a href="timeline.html" className="px-3 py-1 rounded-r-md" style={{backgroundColor: 'hsl(var(--primary))', color: 'hsl(var(--primary-foreground))'}}>Timeline View</a>
+          <a href="recordings.html" className="px-3 py-1 bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-l-md">Table View</a>
+          <a href="timeline.html" className="px-3 py-1 rounded-r-md bg-primary text-primary-foreground">Timeline View</a>
         </div>
       </div>
 
@@ -523,7 +523,7 @@ export function TimelinePage() {
           <div className="flex justify-between items-center mb-2">
             <label htmlFor="stream-selector">Stream</label>
             <button
-              className="text-xs bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 px-2 py-1 rounded"
+              className="text-xs bg-secondary text-secondary-foreground hover:bg-secondary/80 px-2 py-1 rounded"
               onClick={() => refetchTimeline()}
             >
               Reload Data
@@ -531,7 +531,7 @@ export function TimelinePage() {
           </div>
           <select
             id="stream-selector"
-            className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+            className="w-full p-2 border border-border rounded bg-background text-foreground"
             value={selectedStream || ''}
             onChange={handleStreamChange}
           >
@@ -547,7 +547,7 @@ export function TimelinePage() {
           <input
             type="date"
             id="timeline-date"
-            className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+            className="w-full p-2 border border-border rounded bg-background text-foreground"
             value={selectedDate}
             onChange={handleDateChange}
           />
@@ -561,11 +561,11 @@ export function TimelinePage() {
 
       {/* Current time display */}
       <div className="flex justify-between items-center mb-2">
-        <div id="time-display" className="timeline-time-display bg-gray-200 dark:bg-gray-700 px-3 py-1 rounded font-mono text-base">00:00:00</div>
+        <div id="time-display" className="timeline-time-display bg-secondary text-foreground px-3 py-1 rounded font-mono text-base">00:00:00</div>
       </div>
 
       {/* Debug info */}
-      <div className="mb-2 text-xs text-gray-500">
+      <div className="mb-2 text-xs text-muted-foreground">
         Debug - isLoading: {isLoadingTimeline ? 'true' : 'false'},
         Streams: {streamsList.length},
         Segments: {segments.length}
@@ -575,7 +575,7 @@ export function TimelinePage() {
       {renderContent()}
 
       {/* Instructions */}
-      <div className="mt-6 p-4 bg-gray-200 dark:bg-gray-800 rounded">
+      <div className="mt-6 p-4 bg-secondary rounded">
         <h3 className="text-lg font-semibold mb-2">How to use the timeline:</h3>
         <ul className="list-disc pl-5">
           <li>Select a stream and date to load recordings</li>
