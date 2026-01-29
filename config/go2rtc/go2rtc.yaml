@@ -1,6 +1,7 @@
 # go2rtc configuration file
 api:
   listen: :1984
+  origin: "*"
 
 rtsp:
   listen: :8554

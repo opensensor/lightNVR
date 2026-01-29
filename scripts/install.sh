@@ -297,7 +297,7 @@ if [ "$INSTALL_GO2RTC" -eq 1 ]; then
 
 api:
   listen: :1984
-  base_path: /go2rtc/
+  origin: "*"
 
 webrtc:
   ice_servers:
