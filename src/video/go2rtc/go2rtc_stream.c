@@ -169,11 +169,19 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
     char fragment_params[256] = {0};
     int offset = 0;
 
-    // Add transport parameter if UDP is selected
+    // Add transport parameter based on protocol setting
     // Note: Check if URL already contains #transport= to avoid duplicates
-    if (protocol == STREAM_PROTOCOL_UDP && strstr(modified_url, "#transport=") == NULL) {
-        offset += snprintf(fragment_params + offset, sizeof(fragment_params) - offset, "#transport=udp");
-        log_info("Adding UDP transport parameter for stream");
+    // go2rtc uses #transport=tcp or #transport=udp to control RTP transport
+    // Without explicit transport, go2rtc may use UDP for RTP even with TCP RTSP connection
+    if (strstr(modified_url, "#transport=") == NULL) {
+        if (protocol == STREAM_PROTOCOL_UDP) {
+            offset += snprintf(fragment_params + offset, sizeof(fragment_params) - offset, "#transport=udp");
+            log_info("Adding UDP transport parameter for stream");
+        } else {
+            // Default to TCP for more reliable streaming (STREAM_PROTOCOL_TCP)
+            offset += snprintf(fragment_params + offset, sizeof(fragment_params) - offset, "#transport=tcp");
+            log_info("Adding TCP transport parameter for stream");
+        }
     }
 
     // Add timeout parameter
