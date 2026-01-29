@@ -884,14 +884,14 @@ export function StreamsView() {
             <>
               <button
                   id="discover-onvif-btn"
-                  className="btn-success focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+                  className="btn-secondary focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
                   onClick={() => setOnvifModalVisible(true)}
               >
                 Discover ONVIF Cameras
               </button>
               <button
                   id="add-stream-btn"
-                  className="btn-primary focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+                  className="btn-primary focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
                   onClick={openAddStreamModal}
               >
                 Add Stream
@@ -1357,7 +1357,7 @@ export function StreamsView() {
                 <h4 className="text-md font-medium">Discovered Devices</h4>
                 <button
                     id="discover-btn"
-                    className="btn-success focus:outline-none"
+                    className="btn-primary focus:outline-none focus:ring-2 focus:ring-primary"
                     onClick={startOnvifDiscovery}
                     disabled={isDiscovering}
                     type="button"
@@ -1487,7 +1487,7 @@ export function StreamsView() {
                           <td className="px-6 py-4 whitespace-nowrap">{profile.fps}</td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <button
-                                className="btn-success focus:outline-none"
+                                className="btn-primary focus:outline-none focus:ring-2 focus:ring-primary"
                                 onClick={() => addOnvifDeviceAsStream(profile)}
                                 type="button"
                             >
@@ -1547,7 +1547,7 @@ export function StreamsView() {
                 Cancel
               </button>
               <button
-                  className="btn-success"
+                  className="btn-primary focus:outline-none focus:ring-2 focus:ring-primary"
                   onClick={submitOnvifDevice}
                   type="button"
                   disabled={!customStreamName.trim() || isAddingStream}
