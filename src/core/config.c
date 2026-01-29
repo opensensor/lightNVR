@@ -107,7 +107,12 @@ void load_default_config(config_t *config) {
     snprintf(config->go2rtc_stun_server, sizeof(config->go2rtc_stun_server), "stun.l.google.com:19302");
     config->go2rtc_external_ip[0] = '\0';  // Empty by default (auto-detect)
     config->go2rtc_ice_servers[0] = '\0';  // Empty by default (use STUN server)
-    
+
+    // ONVIF discovery settings
+    config->onvif_discovery_enabled = false;  // Disabled by default
+    config->onvif_discovery_interval = 300;   // 5 minutes between scans
+    snprintf(config->onvif_discovery_network, sizeof(config->onvif_discovery_network), "auto");
+
     // Initialize default values for detection-based recording in streams
     for (int i = 0; i < MAX_STREAMS; i++) {
         config->streams[i].detection_based_recording = false;
@@ -489,7 +494,25 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             config->go2rtc_ice_servers[sizeof(config->go2rtc_ice_servers) - 1] = '\0';
         }
     }
-    
+    // ONVIF settings
+    else if (strcmp(section, "onvif") == 0) {
+        if (strcmp(name, "discovery_enabled") == 0) {
+            config->onvif_discovery_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        } else if (strcmp(name, "discovery_interval") == 0) {
+            config->onvif_discovery_interval = atoi(value);
+            // Clamp to reasonable range (30 seconds to 1 hour)
+            if (config->onvif_discovery_interval < 30) {
+                config->onvif_discovery_interval = 30;
+            }
+            if (config->onvif_discovery_interval > 3600) {
+                config->onvif_discovery_interval = 3600;
+            }
+        } else if (strcmp(name, "discovery_network") == 0) {
+            strncpy(config->onvif_discovery_network, value, sizeof(config->onvif_discovery_network) - 1);
+            config->onvif_discovery_network[sizeof(config->onvif_discovery_network) - 1] = '\0';
+        }
+    }
+
     return 1; // Return 1 to continue processing
 }
 

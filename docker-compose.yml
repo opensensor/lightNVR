@@ -4,6 +4,7 @@ services:
   lightnvr:
     build: .
     container_name: lightnvr
+    network_mode: host
     restart: unless-stopped
     ports:
       - "8080:8080"     # Web UI
@@ -26,9 +27,9 @@ services:
 
       # Auto-initialize configuration files on first run
       - LIGHTNVR_AUTO_INIT=true
-    networks:
-      - lightnvr
 
-networks:
-  lightnvr:
-    driver: bridge
+      # ONVIF camera discovery network (for containers)
+      # Uncomment and set to your camera network in CIDR notation
+      # Example: 192.168.1.0/24 for cameras on 192.168.1.x network
+      # - LIGHTNVR_ONVIF_NETWORK=192.168.1.0/24
+
