@@ -229,6 +229,7 @@ services:
 | `GO2RTC_CONFIG_PERSIST` | `true` | Persist go2rtc config across restarts |
 | `LIGHTNVR_AUTO_INIT` | `true` | Auto-initialize config files on first run |
 | `LIGHTNVR_WEB_ROOT` | `/var/lib/lightnvr/web` | Web assets directory |
+| `LIGHTNVR_ONVIF_NETWORK` | (none) | Override ONVIF discovery network (e.g., `192.168.1.0/24`) |
 
 ### Example Usage
 
@@ -237,6 +238,34 @@ environment:
   - TZ=America/New_York
   - GO2RTC_CONFIG_PERSIST=true
   - LIGHTNVR_AUTO_INIT=true
+  - LIGHTNVR_ONVIF_NETWORK=192.168.1.0/24
+```
+
+### ONVIF Discovery in Containers
+
+When running in a container, ONVIF auto-detection skips Docker bridge interfaces by default. To enable ONVIF camera discovery in containerized deployments, set the `LIGHTNVR_ONVIF_NETWORK` environment variable to specify which network to scan:
+
+```yaml
+services:
+  lightnvr:
+    environment:
+      # Specify the network where your cameras are located
+      - LIGHTNVR_ONVIF_NETWORK=192.168.1.0/24
+```
+
+**Network Priority:**
+1. Explicit network parameter (API calls)
+2. `LIGHTNVR_ONVIF_NETWORK` environment variable
+3. `discovery_network` in config file (`[onvif]` section)
+4. Auto-detection (skips Docker interfaces)
+
+**Finding Your Network:**
+```bash
+# On the Docker host, find your camera network
+ip addr show
+
+# Example: If your host IP is 192.168.1.100 with netmask 255.255.255.0
+# Use: LIGHTNVR_ONVIF_NETWORK=192.168.1.0/24
 ```
 
 ## First Run Experience

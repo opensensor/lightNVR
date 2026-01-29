@@ -122,6 +122,13 @@ api_port = 1984
 ; WebRTC configuration for NAT/firewall traversal
 webrtc_enabled = true
 webrtc_ice_servers = stun:stun.l.google.com:19302
+
+[onvif]
+; ONVIF camera discovery settings
+discovery_enabled = false
+discovery_interval = 300
+; For containers, use LIGHTNVR_ONVIF_NETWORK environment variable instead
+discovery_network = auto
 EOF
         log_info "Default configuration created at /etc/lightnvr/lightnvr.ini"
     else

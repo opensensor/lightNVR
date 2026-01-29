@@ -95,3 +95,4 @@ web/dist/
 # Playwright test artifacts
 playwright-report/
 test-results/
+/data

@@ -9,6 +9,7 @@
 #include "video/onvif_discovery_thread.h"
 #include "video/onvif_device_management.h"
 #include "core/logger.h"
+#include "core/config.h"
 #include "core/curl_init.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -190,24 +191,43 @@ int discover_onvif_devices(const char *network, onvif_device_info_t *devices,
 
     // Check if we need to auto-detect networks
     if (!network || strlen(network) == 0 || strcmp(network, "auto") == 0) {
-        log_info("Auto-detecting networks for ONVIF discovery");
-
-        // Detect local networks
-        network_count = detect_local_networks(detected_networks, MAX_DETECTED_NETWORKS);
-
-        if (network_count <= 0) {
-            log_error("Failed to auto-detect networks for ONVIF discovery");
-            return -1;
+        // Priority 1: Check environment variable LIGHTNVR_ONVIF_NETWORK
+        const char *env_network = getenv("LIGHTNVR_ONVIF_NETWORK");
+        if (env_network && strlen(env_network) > 0 && strcmp(env_network, "auto") != 0) {
+            log_info("Using ONVIF discovery network from environment variable: %s", env_network);
+            strncpy(selected_network, env_network, sizeof(selected_network) - 1);
+            selected_network[sizeof(selected_network) - 1] = '\0';
+            network = selected_network;
         }
+        // Priority 2: Check config file setting
+        else if (g_config.onvif_discovery_network[0] != '\0' &&
+                 strcmp(g_config.onvif_discovery_network, "auto") != 0) {
+            log_info("Using ONVIF discovery network from config file: %s", g_config.onvif_discovery_network);
+            strncpy(selected_network, g_config.onvif_discovery_network, sizeof(selected_network) - 1);
+            selected_network[sizeof(selected_network) - 1] = '\0';
+            network = selected_network;
+        }
+        // Priority 3: Auto-detect networks
+        else {
+            log_info("Auto-detecting networks for ONVIF discovery");
 
-        // Use the first detected network
-        strncpy(selected_network, detected_networks[0], sizeof(selected_network) - 1);
-        selected_network[sizeof(selected_network) - 1] = '\0';
+            // Detect local networks
+            network_count = detect_local_networks(detected_networks, MAX_DETECTED_NETWORKS);
 
-        log_info("Auto-detected network for ONVIF discovery: %s", selected_network);
+            if (network_count <= 0) {
+                log_error("Failed to auto-detect networks for ONVIF discovery");
+                return -1;
+            }
 
-        // Use the selected network
-        network = selected_network;
+            // Use the first detected network
+            strncpy(selected_network, detected_networks[0], sizeof(selected_network) - 1);
+            selected_network[sizeof(selected_network) - 1] = '\0';
+
+            log_info("Auto-detected network for ONVIF discovery: %s", selected_network);
+
+            // Use the selected network
+            network = selected_network;
+        }
     }
 
     log_info("Starting ONVIF discovery on network %s", network);
