@@ -14,7 +14,7 @@ If authentication is enabled in the configuration file, all API requests must in
 
 Example:
 ```bash
-curl -u username:password http://your-lightnvr-ip:8080/api/v1/streams
+curl -u username:password http://your-lightnvr-ip:8080/api/streams
 ```
 
 ## API Endpoints
@@ -24,7 +24,7 @@ curl -u username:password http://your-lightnvr-ip:8080/api/v1/streams
 #### List Streams
 
 ```
-GET /api/v1/streams
+GET /api/streams
 ```
 
 Returns a list of all configured streams.
@@ -66,7 +66,7 @@ Returns a list of all configured streams.
 #### Get Stream
 
 ```
-GET /api/v1/streams/{id}
+GET /api/streams/{id}
 ```
 
 Returns information about a specific stream.
@@ -91,7 +91,7 @@ Returns information about a specific stream.
 #### Add Stream
 
 ```
-POST /api/v1/streams
+POST /api/streams
 ```
 
 Adds a new stream.
@@ -131,7 +131,7 @@ Adds a new stream.
 #### Update Stream
 
 ```
-PUT /api/v1/streams/{id}
+PUT /api/streams/{id}
 ```
 
 Updates an existing stream.
@@ -171,7 +171,7 @@ Updates an existing stream.
 #### Delete Stream
 
 ```
-DELETE /api/v1/streams/{id}
+DELETE /api/streams/{id}
 ```
 
 Deletes a stream.
@@ -188,7 +188,7 @@ Deletes a stream.
 #### List Recordings
 
 ```
-GET /api/v1/recordings
+GET /api/recordings
 ```
 
 Returns a list of all recordings.
@@ -226,7 +226,7 @@ Returns a list of all recordings.
 #### Get Recording
 
 ```
-GET /api/v1/recordings/{id}
+GET /api/recordings/{id}
 ```
 
 Returns information about a specific recording.
@@ -249,7 +249,7 @@ Returns information about a specific recording.
 #### Delete Recording
 
 ```
-DELETE /api/v1/recordings/{id}
+DELETE /api/recordings/{id}
 ```
 
 Deletes a recording.
@@ -266,7 +266,7 @@ Deletes a recording.
 #### Get System Information
 
 ```
-GET /api/v1/system
+GET /api/system
 ```
 
 Returns system information.
@@ -291,7 +291,7 @@ Returns system information.
 #### Get System Settings
 
 ```
-GET /api/v1/settings
+GET /api/settings
 ```
 
 Returns system settings.
@@ -316,7 +316,7 @@ Returns system settings.
 #### Update System Settings
 
 ```
-PUT /api/v1/settings
+PUT /api/settings
 ```
 
 Updates system settings.
@@ -352,7 +352,7 @@ Updates system settings.
 #### Get Live Stream (HLS)
 
 ```
-GET /api/v1/streaming/{id}/hls/playlist.m3u8
+GET /api/streaming/{id}/hls/playlist.m3u8
 ```
 
 Returns the HLS playlist for a live stream.
@@ -360,7 +360,7 @@ Returns the HLS playlist for a live stream.
 #### Get Live Stream (MJPEG)
 
 ```
-GET /api/v1/streaming/{id}/mjpeg
+GET /api/streaming/{id}/mjpeg
 ```
 
 Returns a Motion JPEG stream.
@@ -393,24 +393,24 @@ To prevent abuse, the API implements rate limiting. If you exceed the rate limit
 
 List all streams:
 ```bash
-curl -u admin:admin http://your-lightnvr-ip:8080/api/v1/streams
+curl -u admin:admin http://your-lightnvr-ip:8080/api/streams
 ```
 
 Get system information:
 ```bash
-curl -u admin:admin http://your-lightnvr-ip:8080/api/v1/system
+curl -u admin:admin http://your-lightnvr-ip:8080/api/system
 ```
 
 Add a new stream:
 ```bash
-curl -u admin:admin -X POST -H "Content-Type: application/json" -d '{"name":"New Camera","url":"rtsp://192.168.1.103:554/stream1","enabled":true,"width":1280,"height":720,"fps":10,"codec":"h264","priority":5,"record":true}' http://your-lightnvr-ip:8080/api/v1/streams
+curl -u admin:admin -X POST -H "Content-Type: application/json" -d '{"name":"New Camera","url":"rtsp://192.168.1.103:554/stream1","enabled":true,"width":1280,"height":720,"fps":10,"codec":"h264","priority":5,"record":true}' http://your-lightnvr-ip:8080/api/streams
 ```
 
 ### JavaScript Examples
 
 List all streams:
 ```javascript
-fetch('http://your-lightnvr-ip:8080/api/v1/streams', {
+fetch('http://your-lightnvr-ip:8080/api/streams', {
   headers: {
     'Authorization': 'Basic ' + btoa('admin:admin')
   }
@@ -421,7 +421,7 @@ fetch('http://your-lightnvr-ip:8080/api/v1/streams', {
 
 Add a new stream:
 ```javascript
-fetch('http://your-lightnvr-ip:8080/api/v1/streams', {
+fetch('http://your-lightnvr-ip:8080/api/streams', {
   method: 'POST',
   headers: {
     'Authorization': 'Basic ' + btoa('admin:admin'),
@@ -456,7 +456,7 @@ function StreamsList() {
 
   useEffect(() => {
     // Fetch streams when component mounts
-    fetch('/api/v1/streams')
+    fetch('/api/streams')
       .then(response => {
         if (!response.ok) {
           throw new Error('Network response was not ok');
