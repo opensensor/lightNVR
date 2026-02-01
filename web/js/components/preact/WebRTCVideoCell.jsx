@@ -146,6 +146,43 @@ export function WebRTCVideoCell({
       if (event.track.kind === 'video') {
         console.log(`Video track received for stream ${stream.name}`);
 
+        // Track retry attempts for play()
+        let playRetryCount = 0;
+        const maxPlayRetries = 3;
+        let playRetryTimeout = null;
+
+        // Function to attempt play with retry logic
+        const attemptPlay = () => {
+          if (!videoElement || videoElement.paused === false) {
+            // Already playing or element gone
+            return;
+          }
+
+          console.log(`Attempting to play video for stream ${stream.name} (attempt ${playRetryCount + 1})`);
+          videoElement.play()
+            .then(() => {
+              console.log(`Video play() succeeded for stream ${stream.name}`);
+              playRetryCount = 0; // Reset on success
+            })
+            .catch(err => {
+              // AbortError is expected when srcObject changes or another play() is called
+              // Don't treat it as a fatal error, just log and potentially retry
+              if (err.name === 'AbortError') {
+                console.log(`Video play() was interrupted for stream ${stream.name}, will retry if needed`);
+                playRetryCount++;
+                if (playRetryCount < maxPlayRetries) {
+                  // Retry after a short delay
+                  playRetryTimeout = setTimeout(attemptPlay, 500);
+                }
+              } else if (err.name === 'NotAllowedError') {
+                console.warn(`Autoplay blocked for stream ${stream.name}, user interaction required`);
+                setError('Click to play video (autoplay blocked)');
+              } else {
+                console.error(`Video play() failed for stream ${stream.name}:`, err);
+              }
+            });
+        };
+
         // Set a timeout to detect if no video data is received
         // This handles the case where go2rtc hasn't connected to the source camera yet
         if (videoDataTimeout) {
@@ -153,9 +190,8 @@ export function WebRTCVideoCell({
         }
         videoDataTimeout = setTimeout(() => {
           // Check if video is actually playing by checking if we have video dimensions
-          // Use videoElement state directly to avoid stale closure issues
-          if (videoElement && (!videoElement.videoWidth || videoElement.videoWidth === 0) && !videoElement.paused === false) {
-            console.warn(`No video data received for stream ${stream.name} within 15 seconds, may need retry`);
+          if (videoElement && (!videoElement.videoWidth || videoElement.videoWidth === 0)) {
+            console.warn(`No video data received for stream ${stream.name} within 10 seconds, may need retry`);
             // Check if video is not playing (paused or no data)
             if (videoElement.paused || videoElement.readyState < 2) {
               console.error(`Stream ${stream.name} connected but no video data - source may not be ready`);
@@ -163,7 +199,7 @@ export function WebRTCVideoCell({
               setIsLoading(false);
             }
           }
-        }, 15000); // 15 second timeout for video data
+        }, 10000); // 10 second timeout for video data (reduced from 15)
 
         // Add event handlers
         videoElement.onloadedmetadata = () => {
@@ -183,19 +219,40 @@ export function WebRTCVideoCell({
           console.log(`Video playing for stream ${stream.name}`);
           setIsLoading(false);
           setIsPlaying(true);
-          // Clear the video data timeout since video is playing
+          // Clear timeouts since video is playing
           if (videoDataTimeout) {
             clearTimeout(videoDataTimeout);
             videoDataTimeout = null;
+          }
+          if (playRetryTimeout) {
+            clearTimeout(playRetryTimeout);
+            playRetryTimeout = null;
           }
         };
 
         videoElement.onwaiting = () => {
           console.log(`Video waiting for data for stream ${stream.name}`);
+          // If video is waiting and paused, try to play again after a short delay
+          // This handles cases where the video gets stuck in waiting state
+          if (videoElement.paused && playRetryCount < maxPlayRetries) {
+            console.log(`Video paused while waiting for stream ${stream.name}, scheduling retry`);
+            if (playRetryTimeout) {
+              clearTimeout(playRetryTimeout);
+            }
+            playRetryTimeout = setTimeout(attemptPlay, 1000);
+          }
         };
 
         videoElement.onstalled = () => {
           console.warn(`Video stalled for stream ${stream.name}`);
+          // Try to recover from stalled state
+          if (videoElement.paused && playRetryCount < maxPlayRetries) {
+            console.log(`Attempting to recover from stalled state for stream ${stream.name}`);
+            if (playRetryTimeout) {
+              clearTimeout(playRetryTimeout);
+            }
+            playRetryTimeout = setTimeout(attemptPlay, 1000);
+          }
         };
 
         videoElement.onerror = (event) => {
@@ -205,22 +262,15 @@ export function WebRTCVideoCell({
           }
           setError('Failed to load video');
           setIsLoading(false);
+          // Clear retry timeout on error
+          if (playRetryTimeout) {
+            clearTimeout(playRetryTimeout);
+            playRetryTimeout = null;
+          }
         };
 
-        // Explicitly start playback
-        console.log(`Attempting to play video for stream ${stream.name}`);
-        videoElement.play()
-          .then(() => {
-            console.log(`Video play() succeeded for stream ${stream.name}`);
-          })
-          .catch(err => {
-            console.error(`Video play() failed for stream ${stream.name}:`, err);
-            // Try again with user interaction if autoplay was blocked
-            if (err.name === 'NotAllowedError') {
-              console.warn(`Autoplay blocked for stream ${stream.name}, user interaction required`);
-              setError('Click to play video (autoplay blocked)');
-            }
-          });
+        // Start initial playback attempt
+        attemptPlay();
       } else if (event.track.kind === 'audio') {
         console.log(`Audio track received for stream ${stream.name}`);
       }
