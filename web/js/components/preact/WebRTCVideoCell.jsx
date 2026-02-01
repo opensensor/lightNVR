@@ -40,6 +40,30 @@ export function WebRTCVideoCell({
   const [audioLevel, setAudioLevel] = useState(0);
   const [talkMode, setTalkMode] = useState('ptt'); // 'ptt' (push-to-talk) or 'toggle'
 
+  // Audio playback state (for hearing audio from camera)
+  const [audioEnabled, setAudioEnabled] = useState(false);
+
+  // Effect to directly set the muted property on the video element
+  // This is necessary because React/Preact doesn't always update the muted attribute correctly
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.muted = !audioEnabled;
+      console.log(`Set video muted=${!audioEnabled} for stream ${stream?.name || 'unknown'}`);
+
+      // Debug: Log audio track info
+      if (videoRef.current.srcObject) {
+        const audioTracks = videoRef.current.srcObject.getAudioTracks();
+        console.log(`Audio tracks for ${stream?.name}: ${audioTracks.length}`, audioTracks.map(t => ({
+          id: t.id,
+          label: t.label,
+          enabled: t.enabled,
+          muted: t.muted,
+          readyState: t.readyState
+        })));
+      }
+    }
+  }, [audioEnabled, stream?.name]);
+
   // PTZ controls state
   const [showPTZControls, setShowPTZControls] = useState(false);
 
@@ -97,19 +121,25 @@ export function WebRTCVideoCell({
 
     // Set up event handlers
     pc.ontrack = (event) => {
-      console.log(`Track received for stream ${stream.name}`, event);
+      console.log(`Track received for stream ${stream.name}: ${event.track.kind}`, event);
+      console.log(`Track muted: ${event.track.muted}, enabled: ${event.track.enabled}, readyState: ${event.track.readyState}`);
+
+      const videoElement = videoRef.current;
+      if (!videoElement) {
+        console.error(`Video element not found for stream ${stream.name}`);
+        return;
+      }
+
+      // Always use event.streams[0] which contains the actual remote stream with all tracks
+      // This ensures both video and audio tracks are properly attached
+      if (event.streams && event.streams[0]) {
+        videoElement.srcObject = event.streams[0];
+        console.log(`Set srcObject from ontrack event for stream ${stream.name}, tracks:`,
+          event.streams[0].getTracks().map(t => `${t.kind}:${t.readyState}:muted=${t.muted}`));
+      }
 
       if (event.track.kind === 'video') {
-        const videoElement = videoRef.current;
-        if (!videoElement) {
-          console.error(`Video element not found for stream ${stream.name}`);
-          return;
-        }
-
-        console.log(`Setting srcObject for stream ${stream.name}`, event.streams[0]);
-
-        // Set srcObject
-        videoElement.srcObject = event.streams[0];
+        console.log(`Video track received for stream ${stream.name}`);
 
         // Set a timeout to detect if no video data is received
         // This handles the case where go2rtc hasn't connected to the source camera yet
@@ -186,6 +216,8 @@ export function WebRTCVideoCell({
               setError('Click to play video (autoplay blocked)');
             }
           });
+      } else if (event.track.kind === 'audio') {
+        console.log(`Audio track received for stream ${stream.name}`);
       }
     };
 
@@ -250,7 +282,8 @@ export function WebRTCVideoCell({
       }
     };
 
-    // Add transceivers
+    // Add transceivers for video and audio
+    // Add video transceiver
     pc.addTransceiver('video', {direction: 'recvonly'});
 
     // Add audio transceiver for backchannel support if enabled
@@ -264,6 +297,8 @@ export function WebRTCVideoCell({
       // Just receive audio from the camera (if available)
       pc.addTransceiver('audio', {direction: 'recvonly'});
     }
+
+    // Note: srcObject will be set in the ontrack event handler when we receive the remote stream
 
     // Connect directly to go2rtc for WebRTC
     // go2rtcBaseUrl is set at the start of initWebRTC from settings
@@ -318,6 +353,14 @@ export function WebRTCVideoCell({
       })
       .then(sdpAnswer => {
         console.log(`Received SDP answer from go2rtc for stream ${stream.name}`);
+        // Debug: Check if audio is in the SDP answer
+        const hasAudio = sdpAnswer.includes('m=audio');
+        console.log(`SDP answer contains audio: ${hasAudio} for stream ${stream.name}`);
+        if (hasAudio) {
+          // Find the audio section and log a snippet
+          const audioIndex = sdpAnswer.indexOf('m=audio');
+          console.log(`SDP audio section preview: ${sdpAnswer.substring(audioIndex, audioIndex + 200)}...`);
+        }
         // go2rtc returns raw SDP, wrap it in RTCSessionDescription
         const answer = {
           type: 'answer',
@@ -657,7 +700,7 @@ export function WebRTCVideoCell({
         className="video-element"
         ref={videoRef}
         autoPlay
-        muted
+        muted={!audioEnabled}
         disablePictureInPicture
         playsInline
         style={{ width: '100%', height: '100%', objectFit: 'contain' }}
@@ -775,6 +818,40 @@ export function WebRTCVideoCell({
             }}
           />
         </div>
+        {/* Audio playback toggle button (for hearing camera audio) */}
+        {isPlaying && (
+          <button
+            className={`audio-toggle-btn ${audioEnabled ? 'active' : ''}`}
+            title={audioEnabled ? 'Mute camera audio' : 'Unmute camera audio'}
+            onClick={() => setAudioEnabled(!audioEnabled)}
+            style={{
+              backgroundColor: audioEnabled ? 'rgba(34, 197, 94, 0.8)' : 'transparent',
+              border: 'none',
+              padding: '5px',
+              borderRadius: '4px',
+              color: 'white',
+              cursor: 'pointer',
+              transition: 'background-color 0.2s ease'
+            }}
+            onMouseOver={(e) => !audioEnabled && (e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)')}
+            onMouseOut={(e) => !audioEnabled && (e.currentTarget.style.backgroundColor = 'transparent')}
+          >
+            {/* Speaker icon - different icon based on muted state */}
+            {audioEnabled ? (
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                <line x1="23" y1="9" x2="17" y2="15"></line>
+                <line x1="17" y1="9" x2="23" y2="15"></line>
+              </svg>
+            )}
+          </button>
+        )}
         {/* Two-way audio controls for backchannel */}
         {stream.backchannel_enabled && isPlaying && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', position: 'relative' }}>
