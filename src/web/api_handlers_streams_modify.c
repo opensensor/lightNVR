@@ -6,6 +6,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <unistd.h>
+#include <pthread.h>
 
 #include "web/api_handlers.h"
 #include "web/mongoose_adapter.h"
@@ -24,6 +25,288 @@
 #include "video/go2rtc/go2rtc_stream.h"
 #include "video/go2rtc/go2rtc_integration.h"
 #include "video/go2rtc/go2rtc_api.h"
+#include "web/mongoose_server_multithreading.h"
+
+/**
+ * @brief Structure for PUT stream update task
+ */
+typedef struct {
+    stream_handle_t stream;                    // Stream handle
+    stream_config_t config;                    // Updated stream configuration
+    char decoded_id[MAX_STREAM_NAME];          // Decoded stream ID
+    char original_url[MAX_URL_LENGTH];         // Original URL before update
+    stream_protocol_t original_protocol;       // Original protocol before update
+    bool original_record_audio;                // Original record_audio before update
+    bool config_changed;                       // Whether config changed
+    bool requires_restart;                     // Whether restart is required
+    bool is_running;                           // Whether stream was running
+    bool onvif_test_performed;                 // Whether ONVIF test was performed
+    bool onvif_test_success;                   // Whether ONVIF test succeeded
+    bool original_detection_based_recording;   // Original detection state
+    bool has_detection_based_recording;        // Whether detection_based_recording was provided
+    bool detection_based_recording_value;      // Value of detection_based_recording
+    bool has_detection_model;                  // Whether detection_model was provided
+    bool has_detection_threshold;              // Whether detection_threshold was provided
+    bool has_detection_interval;               // Whether detection_interval was provided
+} put_stream_task_t;
+
+/**
+ * @brief Free a PUT stream task
+ */
+static void put_stream_task_free(put_stream_task_t *task) {
+    if (task) {
+        free(task);
+    }
+}
+
+/**
+ * @brief Worker function for PUT stream update
+ *
+ * This function performs the actual stream update work in a background thread.
+ */
+static void put_stream_worker(put_stream_task_t *task) {
+    if (!task) {
+        log_error("Invalid PUT stream task");
+        return;
+    }
+
+    log_info("Processing PUT /api/streams/%s in worker thread", task->decoded_id);
+
+    // Update stream configuration in database first
+    if (update_stream_config(task->decoded_id, &task->config) != 0) {
+        log_error("Failed to update stream configuration in database for %s", task->decoded_id);
+        put_stream_task_free(task);
+        return;
+    }
+
+    // Force update of stream configuration in memory to ensure it matches the database
+    stream_config_t updated_config;
+    if (get_stream_config(task->stream, &updated_config) != 0) {
+        log_error("Failed to refresh stream configuration from database for stream %s", task->config.name);
+        put_stream_task_free(task);
+        return;
+    }
+
+    if (set_stream_detection_params(task->stream,
+                                   task->config.detection_interval,
+                                   task->config.detection_threshold,
+                                   task->config.pre_detection_buffer,
+                                   task->config.post_detection_buffer) != 0) {
+        log_warn("Failed to update detection parameters for stream %s", task->config.name);
+    }
+
+    if (set_stream_detection_recording(task->stream,
+                                      task->config.detection_based_recording,
+                                      task->config.detection_model) != 0) {
+        log_warn("Failed to update detection recording for stream %s", task->config.name);
+    }
+
+    // If detection settings were changed and the stream is running,
+    // we need to restart the stream to apply the new detection settings
+    if (task->config_changed &&
+        (task->has_detection_based_recording || task->has_detection_model ||
+         task->has_detection_threshold || task->has_detection_interval) &&
+        task->is_running && !task->requires_restart) {
+        log_info("Detection settings changed for stream %s, marking for restart to apply changes", task->config.name);
+        task->requires_restart = true;
+    }
+
+    // Update other stream properties in memory
+    if (set_stream_recording(task->stream, task->config.record) != 0) {
+        log_warn("Failed to update recording setting for stream %s", task->config.name);
+    }
+
+    if (set_stream_streaming_enabled(task->stream, task->config.streaming_enabled) != 0) {
+        log_warn("Failed to update streaming setting for stream %s", task->config.name);
+    }
+
+    // Handle detection thread management based on detection_based_recording setting
+    bool detection_enabled_changed = false;
+    bool detection_was_enabled = false;
+    bool detection_now_enabled = false;
+
+    // Check if detection_based_recording was changed in this request
+    if (task->has_detection_based_recording) {
+        detection_was_enabled = task->original_detection_based_recording;
+        detection_now_enabled = task->detection_based_recording_value;
+        detection_enabled_changed = (detection_was_enabled != detection_now_enabled);
+    } else {
+        detection_now_enabled = task->config.detection_based_recording;
+        detection_was_enabled = is_stream_detection_thread_running(task->config.name);
+        if (detection_now_enabled && !detection_was_enabled) {
+            log_info("Detection is enabled in config for stream %s but no thread is running", task->config.name);
+            detection_enabled_changed = true;
+            detection_was_enabled = false;
+        }
+    }
+
+    // If detection was enabled and now disabled, stop the detection thread
+    if (detection_was_enabled && !detection_now_enabled) {
+        log_info("Detection disabled for stream %s, stopping detection thread", task->config.name);
+        if (stop_stream_detection_thread(task->config.name) != 0) {
+            log_warn("Failed to stop detection thread for stream %s", task->config.name);
+        } else {
+            log_info("Successfully stopped detection thread for stream %s", task->config.name);
+        }
+    }
+    // If detection was disabled and now enabled, start the detection thread
+    else if (!detection_was_enabled && detection_now_enabled) {
+        if (task->config.detection_model[0] != '\0' && task->config.enabled) {
+            log_info("Detection enabled for stream %s, starting detection thread with model %s",
+                    task->config.name, task->config.detection_model);
+
+            if (go2rtc_integration_reload_stream(task->config.name)) {
+                log_info("Successfully ensured stream %s is registered with go2rtc", task->config.name);
+            } else {
+                log_warn("Failed to ensure stream %s is registered with go2rtc", task->config.name);
+            }
+
+            char hls_dir[MAX_PATH_LENGTH];
+            snprintf(hls_dir, MAX_PATH_LENGTH, "/var/lib/lightnvr/recordings/hls/%s", task->config.name);
+
+            if (start_stream_detection_thread(task->config.name, task->config.detection_model,
+                                             task->config.detection_threshold,
+                                             task->config.detection_interval, hls_dir,
+                                             task->config.detection_api_url) != 0) {
+                log_warn("Failed to start detection thread for stream %s", task->config.name);
+            } else {
+                log_info("Successfully started detection thread for stream %s", task->config.name);
+            }
+        } else {
+            log_warn("Detection enabled for stream %s but no model specified or stream disabled", task->config.name);
+        }
+    }
+    // If detection settings changed but detection was already enabled, restart the thread
+    else if (detection_now_enabled && (task->has_detection_model || task->has_detection_threshold || task->has_detection_interval)) {
+        log_info("Detection settings changed for stream %s, restarting detection thread", task->config.name);
+
+        if (stop_stream_detection_thread(task->config.name) != 0) {
+            log_warn("Failed to stop existing detection thread for stream %s", task->config.name);
+        }
+
+        if (task->config.detection_model[0] != '\0' && task->config.enabled) {
+            char hls_dir[MAX_PATH_LENGTH];
+            snprintf(hls_dir, MAX_PATH_LENGTH, "/var/lib/lightnvr/recordings/hls/%s", task->config.name);
+
+            if (start_stream_detection_thread(task->config.name, task->config.detection_model,
+                                             task->config.detection_threshold,
+                                             task->config.detection_interval, hls_dir,
+                                             task->config.detection_api_url) != 0) {
+                log_warn("Failed to restart detection thread for stream %s", task->config.name);
+            } else {
+                log_info("Successfully restarted detection thread for stream %s", task->config.name);
+            }
+        }
+    }
+
+    log_info("Updated stream configuration in memory for stream %s", task->config.name);
+
+    // Verify the update by reading back the configuration
+    if (get_stream_config(task->stream, &updated_config) == 0) {
+        log_info("Detection settings after update - Model: %s, Threshold: %.2f, Interval: %d, Pre-buffer: %d, Post-buffer: %d",
+                 updated_config.detection_model, updated_config.detection_threshold, updated_config.detection_interval,
+                 updated_config.pre_detection_buffer, updated_config.post_detection_buffer);
+    }
+
+    // Restart stream if configuration changed and either:
+    // 1. Critical parameters requiring restart were changed (URL, protocol)
+    // 2. The stream is currently running
+    if (task->config_changed && (task->requires_restart || task->is_running)) {
+        log_info("Restarting stream %s (requires_restart=%s, is_running=%s)",
+                task->config.name,
+                task->requires_restart ? "true" : "false",
+                task->is_running ? "true" : "false");
+
+        bool url_changed = strcmp(task->original_url, task->config.url) != 0;
+        bool protocol_changed = task->original_protocol != task->config.protocol;
+        bool record_audio_changed = task->original_record_audio != task->config.record_audio;
+
+        // First clear HLS segments if URL changed
+        if (url_changed) {
+            log_info("URL changed for stream %s, clearing HLS segments", task->config.name);
+            if (clear_stream_hls_segments(task->config.name) != 0) {
+                log_warn("Failed to clear HLS segments for stream %s", task->config.name);
+            }
+        }
+
+        // Stop stream if it's running
+        if (task->is_running) {
+            log_info("Stopping stream %s for restart", task->config.name);
+
+            if (stop_stream(task->stream) != 0) {
+                log_error("Failed to stop stream: %s", task->decoded_id);
+            }
+
+            // Wait for stream to stop with increased timeout for critical parameter changes
+            int timeout = task->requires_restart ? 50 : 30;
+            while (get_stream_status(task->stream) != STREAM_STATUS_STOPPED && timeout > 0) {
+                usleep(100000); // 100ms
+                timeout--;
+            }
+
+            if (timeout == 0) {
+                log_warn("Timeout waiting for stream %s to stop, continuing anyway", task->config.name);
+            }
+        }
+
+        // If URL, protocol, or record_audio changed, update go2rtc stream registration
+        if ((url_changed || protocol_changed || record_audio_changed)) {
+            log_info("URL, protocol, or record_audio changed for stream %s, updating go2rtc registration", task->config.name);
+
+            if (go2rtc_integration_reload_stream_config(task->config.name, task->config.url,
+                                                        task->config.onvif_username[0] != '\0' ? task->config.onvif_username : NULL,
+                                                        task->config.onvif_password[0] != '\0' ? task->config.onvif_password : NULL,
+                                                        task->config.backchannel_enabled ? 1 : 0,
+                                                        task->config.protocol,
+                                                        task->config.record_audio ? 1 : 0)) {
+                log_info("Successfully reloaded stream %s in go2rtc with updated config", task->config.name);
+            } else {
+                log_error("Failed to reload stream %s in go2rtc", task->config.name);
+            }
+
+            // Wait a moment for go2rtc to be ready
+            usleep(500000); // 500ms
+        }
+
+        // Start stream if enabled (AFTER go2rtc has been updated)
+        if (task->config.enabled) {
+            log_info("Starting stream %s after configuration update", task->config.name);
+            if (start_stream(task->stream) != 0) {
+                log_error("Failed to restart stream: %s", task->decoded_id);
+            }
+
+            // Force restart the HLS stream thread if streaming is enabled and URL/protocol changed
+            if ((url_changed || protocol_changed) && task->config.streaming_enabled) {
+                log_info("Force restarting HLS stream thread for %s after go2rtc update", task->config.name);
+                if (restart_hls_stream(task->config.name) != 0) {
+                    log_warn("Failed to force restart HLS stream for %s", task->config.name);
+                } else {
+                    log_info("Successfully force restarted HLS stream for %s", task->config.name);
+                }
+            }
+        }
+    } else if (task->config_changed) {
+        log_info("Configuration changed for stream %s but restart not required", task->config.name);
+    }
+
+    log_info("Successfully completed stream update for: %s", task->decoded_id);
+
+    // Clean up
+    put_stream_task_free(task);
+}
+
+/**
+ * @brief Handler function for PUT stream
+ *
+ * This function is called by the multithreading system.
+ */
+static void put_stream_handler(struct mg_connection *c, struct mg_http_message *hm) {
+    (void)c;  // Response already sent, we don't use the connection
+
+    // The handler was set but the actual work is done via spawning the worker
+    // This function exists for compatibility with the threading pattern
+    log_debug("put_stream_handler called - work done via task");
+}
 
 /**
  * @brief Direct handler for POST /api/streams
@@ -787,303 +1070,94 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
     // Clean up JSON
     cJSON_Delete(stream_json);
 
-    // Always update stream configuration in database, even if no changes detected
-    // This ensures the database and memory state are in sync
-    log_info("Detection settings before update - Model: %s, Threshold: %.2f, Interval: %d, Pre-buffer: %d, Post-buffer: %d",
-             config.detection_model, config.detection_threshold, config.detection_interval,
-             config.pre_detection_buffer, config.post_detection_buffer);
-
     // Check if stream is running - we'll need this information for detection settings changes
     stream_status_t status = get_stream_status(stream);
     bool is_running = (status == STREAM_STATUS_RUNNING || status == STREAM_STATUS_STARTING);
 
-    // Update stream configuration in database first
-    if (update_stream_config(decoded_id, &config) != 0) {
-        log_error("Failed to update stream configuration in database");
-        mg_send_json_error(c, 500, "Failed to update stream configuration");
+    // Create task structure for background processing
+    put_stream_task_t *task = calloc(1, sizeof(put_stream_task_t));
+    if (!task) {
+        log_error("Failed to allocate memory for PUT stream task");
+        mg_send_json_error(c, 500, "Failed to allocate memory for task");
         return;
     }
 
-    // Force update of stream configuration in memory to ensure it matches the database
-    // This ensures the stream handle has the latest configuration
+    // Populate task with all necessary data
+    task->stream = stream;
+    memcpy(&task->config, &config, sizeof(stream_config_t));
+    strncpy(task->decoded_id, decoded_id, MAX_STREAM_NAME - 1);
+    strncpy(task->original_url, original_url, MAX_URL_LENGTH - 1);
+    task->original_protocol = original_protocol;
+    task->original_record_audio = original_record_audio;
+    task->config_changed = config_changed;
+    task->requires_restart = requires_restart;
+    task->is_running = is_running;
+    task->onvif_test_performed = onvif_test_performed;
+    task->onvif_test_success = onvif_test_success;
+    task->original_detection_based_recording = original_detection_based_recording;
+    task->has_detection_based_recording = has_detection_based_recording;
+    task->detection_based_recording_value = detection_based_recording_value;
+    task->has_detection_model = has_detection_model;
+    task->has_detection_threshold = has_detection_threshold;
+    task->has_detection_interval = has_detection_interval;
 
-    // IMPORTANT: Ensure the in-memory configuration is fully updated from the database
-    // This is critical for URL changes to take effect
-    stream_config_t updated_config;
-    if (get_stream_config(stream, &updated_config) != 0) {
-        log_error("Failed to refresh stream configuration from database for stream %s", config.name);
-        mg_send_json_error(c, 500, "Failed to refresh stream configuration");
+    log_info("Detection settings before update - Model: %s, Threshold: %.2f, Interval: %d, Pre-buffer: %d, Post-buffer: %d",
+             config.detection_model, config.detection_threshold, config.detection_interval,
+             config.pre_detection_buffer, config.post_detection_buffer);
+
+    // Send an immediate 202 Accepted response to the client
+    // Include ONVIF test results if applicable
+    cJSON *response = cJSON_CreateObject();
+    if (!response) {
+        log_error("Failed to create response JSON object");
+        put_stream_task_free(task);
+        mg_send_json_error(c, 500, "Failed to create response JSON");
         return;
     }
 
-    if (set_stream_detection_params(stream,
-                                   config.detection_interval,
-                                   config.detection_threshold,
-                                   config.pre_detection_buffer,
-                                   config.post_detection_buffer) != 0) {
-        log_warn("Failed to update detection parameters for stream %s", config.name);
-    }
-
-    if (set_stream_detection_recording(stream,
-                                      config.detection_based_recording,
-                                      config.detection_model) != 0) {
-        log_warn("Failed to update detection recording for stream %s", config.name);
-    }
-
-    // If detection settings were changed and the stream is running,
-    // we need to restart the stream to apply the new detection settings
-    if (config_changed &&
-        (has_detection_based_recording || has_detection_model ||
-         has_detection_threshold || has_detection_interval) &&
-        is_running && !requires_restart) {
-        log_info("Detection settings changed for stream %s, marking for restart to apply changes", config.name);
-        requires_restart = true;
-    }
-
-    // Update other stream properties in memory
-    if (set_stream_recording(stream, config.record) != 0) {
-        log_warn("Failed to update recording setting for stream %s", config.name);
-    }
-
-    if (set_stream_streaming_enabled(stream, config.streaming_enabled) != 0) {
-        log_warn("Failed to update streaming setting for stream %s", config.name);
-    }
-
-    // Handle detection thread management based on detection_based_recording setting
-    bool detection_enabled_changed = false;
-    bool detection_was_enabled = false;
-    bool detection_now_enabled = false;
-
-    // Check if detection_based_recording was changed in this request
-    if (has_detection_based_recording) {
-        // Use the saved original state (before we overwrote config.detection_based_recording)
-        detection_was_enabled = original_detection_based_recording;
-        detection_now_enabled = detection_based_recording_value;
-        // Only mark as changed if the state actually changed
-        detection_enabled_changed = (detection_was_enabled != detection_now_enabled);
-    } else {
-        // If not explicitly changed in this request, use the current config value
-        detection_now_enabled = config.detection_based_recording;
-
-        // Check if a detection thread is already running
-        detection_was_enabled = is_stream_detection_thread_running(config.name);
-
-        // If detection is enabled in config but no thread is running, we need to start one
-        if (detection_now_enabled && !detection_was_enabled) {
-            log_info("Detection is enabled in config for stream %s but no thread is running", config.name);
-            detection_enabled_changed = true;
-            detection_was_enabled = false; // Force thread start below
-        }
-    }
-
-    // If detection was enabled and now disabled, stop the detection thread
-    if (detection_was_enabled && !detection_now_enabled) {
-        log_info("Detection disabled for stream %s, stopping detection thread", config.name);
-        if (stop_stream_detection_thread(config.name) != 0) {
-            log_warn("Failed to stop detection thread for stream %s", config.name);
-        } else {
-            log_info("Successfully stopped detection thread for stream %s", config.name);
-        }
-    }
-    // If detection was disabled and now enabled, start the detection thread
-    else if (!detection_was_enabled && detection_now_enabled) {
-        // Only start if we have a valid model and the stream is enabled
-        if (config.detection_model[0] != '\0' && config.enabled) {
-            log_info("Detection enabled for stream %s, starting detection thread with model %s",
-                    config.name, config.detection_model);
-
-            // Make sure the stream is registered with go2rtc (use centralized function)
-            if (go2rtc_integration_reload_stream(config.name)) {
-                log_info("Successfully ensured stream %s is registered with go2rtc", config.name);
-            } else {
-                log_warn("Failed to ensure stream %s is registered with go2rtc (go2rtc may not be ready)", config.name);
-            }
-
-            // Construct HLS directory path
-            char hls_dir[MAX_PATH_LENGTH];
-            snprintf(hls_dir, MAX_PATH_LENGTH, "/var/lib/lightnvr/recordings/hls/%s", config.name);
-
-            // Start detection thread
-            if (start_stream_detection_thread(config.name, config.detection_model,
-                                             config.detection_threshold,
-                                             config.detection_interval, hls_dir,
-                                             config.detection_api_url) != 0) {
-                log_warn("Failed to start detection thread for stream %s", config.name);
-            } else {
-                log_info("Successfully started detection thread for stream %s", config.name);
-            }
-        } else {
-            log_warn("Detection enabled for stream %s but no model specified or stream disabled", config.name);
-        }
-    }
-    // If detection settings changed but detection was already enabled, restart the thread with new settings
-    else if (detection_now_enabled && (has_detection_model || has_detection_threshold || has_detection_interval)) {
-        log_info("Detection settings changed for stream %s, restarting detection thread", config.name);
-
-        // Stop existing thread
-        if (stop_stream_detection_thread(config.name) != 0) {
-            log_warn("Failed to stop existing detection thread for stream %s", config.name);
-        }
-
-        // Start new thread with updated settings
-        if (config.detection_model[0] != '\0' && config.enabled) {
-            // Construct HLS directory path
-            char hls_dir[MAX_PATH_LENGTH];
-            snprintf(hls_dir, MAX_PATH_LENGTH, "/var/lib/lightnvr/recordings/hls/%s", config.name);
-
-            // Start detection thread
-            if (start_stream_detection_thread(config.name, config.detection_model,
-                                             config.detection_threshold,
-                                             config.detection_interval, hls_dir,
-                                             config.detection_api_url) != 0) {
-                log_warn("Failed to restart detection thread for stream %s", config.name);
-            } else {
-                log_info("Successfully restarted detection thread for stream %s", config.name);
-            }
-        }
-    }
-
-    log_info("Updated stream configuration in memory for stream %s", config.name);
-
-    // Verify the update by reading back the configuration
-    if (get_stream_config(stream, &updated_config) == 0) {
-        log_info("Detection settings after update - Model: %s, Threshold: %.2f, Interval: %d, Pre-buffer: %d, Post-buffer: %d",
-                 updated_config.detection_model, updated_config.detection_threshold, updated_config.detection_interval,
-                 updated_config.pre_detection_buffer, updated_config.post_detection_buffer);
-    }
-
-    // Restart stream if configuration changed and either:
-    // 1. Critical parameters requiring restart were changed (URL, protocol)
-    // 2. The stream is currently running
-    // Note: We already checked the stream status earlier
-
-    if (config_changed && (requires_restart || is_running)) {
-        log_info("Restarting stream %s (requires_restart=%s, is_running=%s)",
-                config.name,
-                requires_restart ? "true" : "false",
-                is_running ? "true" : "false");
-
-        // If URL, protocol, or record_audio changed, we need to update go2rtc registration
-        bool url_changed = strcmp(original_url, config.url) != 0;
-        bool protocol_changed = original_protocol != config.protocol;
-        bool record_audio_changed = original_record_audio != config.record_audio;
-
-        // First clear HLS segments if URL changed
-        if (url_changed) {
-            log_info("URL changed for stream %s, clearing HLS segments", config.name);
-            if (clear_stream_hls_segments(config.name) != 0) {
-                log_warn("Failed to clear HLS segments for stream %s", config.name);
-                // Continue anyway
-            }
-        }
-
-        // Stop stream if it's running
-        if (is_running) {
-            log_info("Stopping stream %s for restart", config.name);
-
-            // Stop stream
-            if (stop_stream(stream) != 0) {
-                log_error("Failed to stop stream: %s", decoded_id);
-                // Continue anyway
-            }
-
-            // Wait for stream to stop with increased timeout for critical parameter changes
-            int timeout = requires_restart ? 50 : 30; // 5 seconds for critical changes, 3 seconds otherwise
-            while (get_stream_status(stream) != STREAM_STATUS_STOPPED && timeout > 0) {
-                usleep(100000); // 100ms
-                timeout--;
-            }
-
-            if (timeout == 0) {
-                log_warn("Timeout waiting for stream %s to stop, continuing anyway", config.name);
-            }
-        }
-
-        // If URL, protocol, or record_audio changed, update go2rtc stream registration BEFORE starting the stream
-        // This prevents race conditions where the stream tries to use go2rtc before it's updated
-        // record_audio changes require go2rtc reload to add/remove FFmpeg AAC transcoding source
-        if ((url_changed || protocol_changed || record_audio_changed)) {
-            log_info("URL, protocol, or record_audio changed for stream %s, updating go2rtc registration BEFORE starting stream", config.name);
-
-            // Use centralized function to reload stream config in go2rtc
-            // This handles unregister + wait + re-register internally
-            if (go2rtc_integration_reload_stream_config(config.name, config.url,
-                                                        config.onvif_username[0] != '\0' ? config.onvif_username : NULL,
-                                                        config.onvif_password[0] != '\0' ? config.onvif_password : NULL,
-                                                        config.backchannel_enabled ? 1 : 0,
-                                                        config.protocol,
-                                                        config.record_audio ? 1 : 0)) {
-                log_info("Successfully reloaded stream %s in go2rtc with updated config", config.name);
-            } else {
-                log_error("Failed to reload stream %s in go2rtc", config.name);
-                // Continue anyway - the stream may still work
-            }
-
-            // Wait a moment for go2rtc to be ready
-            usleep(500000); // 500ms
-        }
-
-        // Start stream if enabled (AFTER go2rtc has been updated)
-        if (config.enabled) {
-            log_info("Starting stream %s after configuration update", config.name);
-            if (start_stream(stream) != 0) {
-                log_error("Failed to restart stream: %s", decoded_id);
-                // Continue anyway
-            }
-
-            // Force restart the HLS stream thread if streaming is enabled and URL/protocol changed
-            if ((url_changed || protocol_changed) && config.streaming_enabled) {
-                log_info("Force restarting HLS stream thread for %s after go2rtc update", config.name);
-                if (restart_hls_stream(config.name) != 0) {
-                    log_warn("Failed to force restart HLS stream for %s", config.name);
-                    // Continue anyway
-                } else {
-                    log_info("Successfully force restarted HLS stream for %s", config.name);
-                }
-            }
-        }
-    } else if (config_changed) {
-        log_info("Configuration changed for stream %s but restart not required", config.name);
-    }
-
-    // Create success response using cJSON
-    cJSON *success = cJSON_CreateObject();
-    if (!success) {
-        log_error("Failed to create success JSON object");
-        mg_send_json_error(c, 500, "Failed to create success JSON");
-        return;
-    }
-
-    cJSON_AddBoolToObject(success, "success", true);
+    cJSON_AddBoolToObject(response, "success", true);
+    cJSON_AddStringToObject(response, "message", "Stream update request accepted and processing");
 
     // Add ONVIF detection result if applicable
     if (onvif_test_performed) {
         if (onvif_test_success) {
-            cJSON_AddStringToObject(success, "onvif_status", "success");
-            cJSON_AddStringToObject(success, "onvif_message", "ONVIF capabilities detected successfully");
+            cJSON_AddStringToObject(response, "onvif_status", "success");
+            cJSON_AddStringToObject(response, "onvif_message", "ONVIF capabilities detected successfully");
         } else {
-            cJSON_AddStringToObject(success, "onvif_status", "error");
-            cJSON_AddStringToObject(success, "onvif_message", "Failed to detect ONVIF capabilities");
+            cJSON_AddStringToObject(response, "onvif_status", "error");
+            cJSON_AddStringToObject(response, "onvif_message", "Failed to detect ONVIF capabilities");
         }
     }
 
-    // Convert to string
-    char *json_str = cJSON_PrintUnformatted(success);
+    char *json_str = cJSON_PrintUnformatted(response);
+    cJSON_Delete(response);
+
     if (!json_str) {
-        log_error("Failed to convert success JSON to string");
-        cJSON_Delete(success);
-        mg_send_json_error(c, 500, "Failed to convert success JSON to string");
+        log_error("Failed to convert response JSON to string");
+        put_stream_task_free(task);
+        mg_send_json_error(c, 500, "Failed to convert response JSON");
         return;
     }
 
-    // Send response
-    mg_send_json_response(c, 200, json_str);
-
-    // Clean up
+    mg_send_json_response(c, 202, json_str);
     free(json_str);
-    cJSON_Delete(success);
 
-    log_info("Successfully updated stream: %s", decoded_id);
+    // Spawn background thread to perform the actual update work
+    // This prevents blocking the web server event loop
+    pthread_t thread_id;
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+    if (pthread_create(&thread_id, &attr, (void *(*)(void *))put_stream_worker, task) != 0) {
+        log_error("Failed to create worker thread for PUT stream");
+        put_stream_task_free(task);
+        // Response already sent, just log the error
+    } else {
+        log_info("PUT stream task started in worker thread for: %s", decoded_id);
+    }
+
+    pthread_attr_destroy(&attr);
 }
 
 /**

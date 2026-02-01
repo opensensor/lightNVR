@@ -30,26 +30,32 @@
 /* Ensure all layouts work properly in fullscreen mode */
 .fullscreen-mode .video-container.layout-1 {
     grid-template-columns: 1fr;
+    grid-template-rows: 1fr;
 }
 
 .fullscreen-mode .video-container.layout-2 {
     grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: 1fr;
 }
 
 .fullscreen-mode .video-container.layout-4 {
     grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(2, 1fr);
 }
 
 .fullscreen-mode .video-container.layout-6 {
     grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(2, 1fr);
 }
 
 .fullscreen-mode .video-container.layout-9 {
     grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(3, 1fr);
 }
 
 .fullscreen-mode .video-container.layout-16 {
     grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(4, 1fr);
 }
 
 .video-container.layout-4 {
