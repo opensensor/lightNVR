@@ -32,6 +32,7 @@ export function WebRTCVideoCell({
   const [error, setError] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [connectionQuality, setConnectionQuality] = useState('unknown'); // 'unknown', 'good', 'poor', 'bad'
+  const [retryCount, setRetryCount] = useState(0); // Used to trigger WebRTC re-initialization
 
   // Backchannel (two-way audio) state
   const [isTalking, setIsTalking] = useState(false);
@@ -191,7 +192,7 @@ export function WebRTCVideoCell({
         videoDataTimeout = setTimeout(() => {
           // Check if video is actually playing by checking if we have video dimensions
           if (videoElement && (!videoElement.videoWidth || videoElement.videoWidth === 0)) {
-            console.warn(`No video data received for stream ${stream.name} within 10 seconds, may need retry`);
+            console.warn(`No video data received for stream ${stream.name} within 30 seconds, may need retry`);
             // Check if video is not playing (paused or no data)
             if (videoElement.paused || videoElement.readyState < 2) {
               console.error(`Stream ${stream.name} connected but no video data - source may not be ready`);
@@ -199,7 +200,7 @@ export function WebRTCVideoCell({
               setIsLoading(false);
             }
           }
-        }, 10000); // 10 second timeout for video data (reduced from 15)
+        }, 30000); // 30 second timeout for video data
 
         // Add event handlers
         videoElement.onloadedmetadata = () => {
@@ -219,6 +220,8 @@ export function WebRTCVideoCell({
           console.log(`Video playing for stream ${stream.name}`);
           setIsLoading(false);
           setIsPlaying(true);
+          // Clear any error (e.g., if video starts playing after timeout error was shown)
+          setError(null);
           // Clear timeouts since video is playing
           if (videoDataTimeout) {
             clearTimeout(videoDataTimeout);
@@ -585,13 +588,11 @@ export function WebRTCVideoCell({
       // Reset audio sender ref
       audioSenderRef.current = null;
     };
-  }, [stream]);
+  }, [stream, retryCount]);
 
   // Handle retry button click
   const handleRetry = () => {
-    // Force a re-render to restart the WebRTC connection
-    setError(null);
-    setIsLoading(true);
+    console.log(`Retry requested for stream ${stream?.name}`);
 
     // Clean up existing connection
     if (peerConnectionRef.current) {
@@ -605,8 +606,13 @@ export function WebRTCVideoCell({
       videoRef.current.srcObject = null;
     }
 
-    // Force a re-render by updating state
+    // Reset state
+    setError(null);
+    setIsLoading(true);
     setIsPlaying(false);
+
+    // Increment retry count to trigger useEffect re-run
+    setRetryCount(prev => prev + 1);
   };
 
   // Start audio level monitoring
@@ -1086,8 +1092,9 @@ export function WebRTCVideoCell({
             alignItems: 'center',
             backgroundColor: 'rgba(0, 0, 0, 0.7)',
             color: 'white',
-            zIndex: 5,
-            textAlign: 'center'
+            zIndex: 10,
+            textAlign: 'center',
+            pointerEvents: 'auto'
           }}
         >
           <div
@@ -1131,7 +1138,12 @@ export function WebRTCVideoCell({
             </p>
             <button
               className="retry-button"
-              onClick={handleRetry}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                console.log(`Retry button clicked for stream ${stream?.name}`);
+                handleRetry();
+              }}
               style={{
                 padding: '8px 20px',
                 backgroundColor: '#2563eb',
@@ -1142,7 +1154,8 @@ export function WebRTCVideoCell({
                 fontWeight: 'bold',
                 fontSize: '14px',
                 boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
-                transition: 'background-color 0.2s ease'
+                transition: 'background-color 0.2s ease',
+                pointerEvents: 'auto'
               }}
               onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#1d4ed8'}
               onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
