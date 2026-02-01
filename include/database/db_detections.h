@@ -70,4 +70,31 @@ int has_detections_in_time_range(const char *stream_name, time_t start_time, tim
  */
 int delete_old_detections(uint64_t max_age);
 
+/**
+ * Maximum number of unique labels to return in a summary
+ */
+#define MAX_DETECTION_LABELS 10
+
+/**
+ * Structure to hold a detection label summary entry
+ */
+typedef struct {
+    char label[MAX_LABEL_LENGTH];  // Detection label (e.g., "person", "car")
+    int count;                      // Number of times this label was detected
+} detection_label_summary_t;
+
+/**
+ * Get a summary of detection labels for a stream within a time range
+ * Returns unique labels with their counts, sorted by count descending
+ *
+ * @param stream_name Stream name
+ * @param start_time Start time (inclusive)
+ * @param end_time End time (inclusive)
+ * @param labels Array to store label summaries (must have space for MAX_DETECTION_LABELS entries)
+ * @param max_labels Maximum number of labels to return
+ * @return Number of unique labels found, or -1 on error
+ */
+int get_detection_labels_summary(const char *stream_name, time_t start_time, time_t end_time,
+                                 detection_label_summary_t *labels, int max_labels);
+
 #endif // LIGHTNVR_DB_DETECTIONS_H

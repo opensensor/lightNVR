@@ -22,6 +22,7 @@
 #include "core/logger.h"
 #include "core/daemon.h"
 #include "core/shutdown_coordinator.h"
+#include "core/mqtt_client.h"
 #include "video/stream_manager.h"
 #include "video/stream_state.h"
 #include "video/stream_state_adapter.h"
@@ -842,6 +843,22 @@ int main(int argc, char *argv[]) {
         log_info("Batch delete progress tracking initialized successfully");
     }
 
+    // Initialize MQTT client if enabled
+    if (config.mqtt_enabled) {
+        if (mqtt_init(&config) != 0) {
+            log_error("Failed to initialize MQTT client");
+            // Continue anyway, MQTT is optional
+        } else {
+            log_info("MQTT client initialized successfully");
+            // Connect to MQTT broker
+            if (mqtt_connect() != 0) {
+                log_warn("Failed to connect to MQTT broker, will retry automatically");
+            } else {
+                log_info("Connected to MQTT broker");
+            }
+        }
+    }
+
     // Check if detection models exist and start detection-based recording - MOVED TO END OF SETUP
     for (int i = 0; i < config.max_streams; i++) {
         if (config.streams[i].name[0] != '\0' && config.streams[i].enabled &&
@@ -1214,6 +1231,9 @@ cleanup:
         cleanup_detection_resources();
         alarm(0); // Cancel the alarm if cleanup completed successfully
 
+        // Cleanup MQTT client
+        log_info("Cleaning up MQTT client...");
+        mqtt_cleanup();
 
         // Shutdown ONVIF discovery
         log_info("Shutting down ONVIF discovery module...");
@@ -1323,6 +1343,9 @@ cleanup:
         cleanup_mp4_recording_backend();
         cleanup_hls_streaming_backend();
         cleanup_transcoding_backend();
+
+        // Cleanup MQTT client
+        mqtt_cleanup();
 
         // Shut down remaining components
         if (http_server) {

@@ -191,34 +191,57 @@ static int check_delete_permission(struct mg_http_message *hm, http_server_t *se
     // Get the authenticated user
     int64_t user_id;
     user_t user;
-    
+
     // Check if authentication is enabled
     if (!server || !server->config.auth_enabled) {
         return 1; // Authentication is disabled, allow all
     }
-    
+
     // First, check for session token in cookie
+    // Note: mg_http_get_var uses '&' separator which doesn't work for cookies (use ';')
+    // So we manually parse the cookie header
     struct mg_str *cookie = mg_http_get_header(hm, "Cookie");
     if (cookie) {
-        char session_token[64] = {0};
-        if (mg_http_get_var(cookie, "session", session_token, sizeof(session_token)) > 0) {
-            // Validate the session token
-            if (db_auth_validate_session(session_token, &user_id) == 0) {
-                // Session is valid, check user role
-                if (db_auth_get_user_by_id(user_id, &user) == 0) {
-                    // Only admin and regular users can delete recordings, viewers cannot
-                    return (user.role == USER_ROLE_ADMIN || user.role == USER_ROLE_USER);
+        char cookie_str[1024] = {0};
+        if (cookie->len < sizeof(cookie_str) - 1) {
+            memcpy(cookie_str, cookie->buf, cookie->len);
+            cookie_str[cookie->len] = '\0';
+
+            // Look for session cookie
+            char *session_start = strstr(cookie_str, "session=");
+            if (session_start) {
+                session_start += 8; // Skip "session="
+                char *session_end = strchr(session_start, ';');
+                if (!session_end) {
+                    session_end = session_start + strlen(session_start);
+                }
+
+                // Extract session token
+                size_t token_len = session_end - session_start;
+                char session_token[64] = {0};
+                if (token_len < sizeof(session_token) - 1) {
+                    memcpy(session_token, session_start, token_len);
+                    session_token[token_len] = '\0';
+
+                    // Validate the session token
+                    if (db_auth_validate_session(session_token, &user_id) == 0) {
+                        // Session is valid, check user role
+                        if (db_auth_get_user_by_id(user_id, &user) == 0) {
+                            // Only admin and regular users can delete recordings, viewers cannot
+                            return (user.role == USER_ROLE_ADMIN || user.role == USER_ROLE_USER);
+                        }
+                    }
                 }
             }
         }
     }
-    
+
     // If no valid session, try HTTP Basic Auth
     char username[64] = {0};
     char password[64] = {0};
-    
+
     mg_http_creds(hm, username, sizeof(username), password, sizeof(password));
-    
+
     // Check if we have credentials
     if (username[0] != '\0' && password[0] != '\0') {
         // Authenticate the user
@@ -230,7 +253,7 @@ static int check_delete_permission(struct mg_http_message *hm, http_server_t *se
             }
         }
     }
-    
+
     return 0; // No valid authentication or insufficient permissions
 }
 

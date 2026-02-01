@@ -158,6 +158,19 @@ typedef struct {
     char go2rtc_stun_server[256];         // Primary STUN server (default: stun.l.google.com:19302)
     char go2rtc_external_ip[64];          // Optional: External IP for NAT (empty = auto-detect)
     char go2rtc_ice_servers[512];         // Optional: Custom ICE servers (comma-separated)
+
+    // MQTT settings for detection event streaming
+    bool mqtt_enabled;                    // Enable MQTT event publishing (default: false)
+    char mqtt_broker_host[256];           // MQTT broker hostname or IP
+    int mqtt_broker_port;                 // MQTT broker port (default: 1883)
+    char mqtt_username[64];               // MQTT username (optional)
+    char mqtt_password[128];              // MQTT password (optional)
+    char mqtt_client_id[64];              // MQTT client ID (default: lightnvr)
+    char mqtt_topic_prefix[128];          // MQTT topic prefix (default: lightnvr)
+    bool mqtt_tls_enabled;                // Enable TLS for MQTT connection (default: false)
+    int mqtt_keepalive;                   // MQTT keepalive interval in seconds (default: 60)
+    int mqtt_qos;                         // MQTT QoS level 0, 1, or 2 (default: 1)
+    bool mqtt_retain;                     // Retain detection messages (default: false)
 } config_t;
 
 /**

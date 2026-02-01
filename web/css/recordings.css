@@ -38,8 +38,8 @@
 /* Filter tag styling - using theme-aware colors */
 .filter-tag {
     @apply inline-flex items-center rounded-full py-1 px-3 text-sm;
-    background-color: hsl(var(--info-muted));
-    color: hsl(var(--info-muted-foreground));
+    background-color: hsl(var(--secondary));
+    color: hsl(var(--secondary-foreground));
 }
 
 .filter-tag .remove-filter {

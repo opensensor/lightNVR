@@ -15,6 +15,7 @@
 #include "web/api_handlers_common.h"
 #include "core/logger.h"
 #include "core/config.h"
+#include "core/mqtt_client.h"
 #include "video/detection.h"
 #include "video/detection_result.h"
 #include "video/stream_manager.h"
@@ -48,13 +49,22 @@ void store_detection_result(const char *stream_name, const detection_result_t *r
     log_info("Storing detection results for stream '%s': %d detections", stream_name, result->count);
     
     // Store in database
-    int ret = store_detections_in_db(stream_name, result, 0); // 0 = use current time
-    
+    time_t timestamp = time(NULL);
+    int ret = store_detections_in_db(stream_name, result, timestamp);
+
     if (ret != 0) {
         log_error("Failed to store detections in database for stream '%s'", stream_name);
         return;
     }
-    
+
+    // Publish to MQTT if enabled
+    if (result->count > 0) {
+        int mqtt_ret = mqtt_publish_detection(stream_name, result, timestamp);
+        if (mqtt_ret != 0) {
+            log_debug("MQTT publish skipped or failed for stream '%s'", stream_name);
+        }
+    }
+
     // Log the stored detections
     for (int i = 0; i < result->count; i++) {
         log_info("  Detection %d: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]",

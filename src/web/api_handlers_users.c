@@ -111,18 +111,41 @@ static int get_authenticated_user(struct mg_http_message *hm, user_t *user) {
     }
 
     // First, check for session token in cookie
+    // Note: mg_http_get_var uses '&' separator which doesn't work for cookies (use ';')
+    // So we manually parse the cookie header
     struct mg_str *cookie = mg_http_get_header(hm, "Cookie");
     if (cookie) {
-        char session_token[64] = {0};
-        if (mg_http_get_var(cookie, "session", session_token, sizeof(session_token)) > 0) {
-            // Validate the session token
-            int64_t user_id;
-            int rc = db_auth_validate_session(session_token, &user_id);
-            if (rc == 0) {
-                // Session is valid, get user info
-                rc = db_auth_get_user_by_id(user_id, user);
-                if (rc == 0) {
-                    return 1;
+        char cookie_str[1024] = {0};
+        if (cookie->len < sizeof(cookie_str) - 1) {
+            memcpy(cookie_str, cookie->buf, cookie->len);
+            cookie_str[cookie->len] = '\0';
+
+            // Look for session cookie
+            char *session_start = strstr(cookie_str, "session=");
+            if (session_start) {
+                session_start += 8; // Skip "session="
+                char *session_end = strchr(session_start, ';');
+                if (!session_end) {
+                    session_end = session_start + strlen(session_start);
+                }
+
+                // Extract session token
+                size_t token_len = session_end - session_start;
+                char session_token[64] = {0};
+                if (token_len < sizeof(session_token) - 1) {
+                    memcpy(session_token, session_start, token_len);
+                    session_token[token_len] = '\0';
+
+                    // Validate the session token
+                    int64_t user_id;
+                    int rc = db_auth_validate_session(session_token, &user_id);
+                    if (rc == 0) {
+                        // Session is valid, get user info
+                        rc = db_auth_get_user_by_id(user_id, user);
+                        if (rc == 0) {
+                            return 1;
+                        }
+                    }
                 }
             }
         }

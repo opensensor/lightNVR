@@ -68,6 +68,19 @@ pkg_check_modules(SQLITE REQUIRED sqlite3)
 pkg_check_modules(CURL REQUIRED libcurl)
 find_package(Threads REQUIRED)
 
+# MQTT support (optional, uses libmosquitto)
+option(ENABLE_MQTT "Enable MQTT support for detection event streaming" ON)
+if(ENABLE_MQTT)
+    pkg_check_modules(MOSQUITTO QUIET libmosquitto)
+    if(MOSQUITTO_FOUND)
+        message(STATUS "Found libmosquitto: ${MOSQUITTO_LIBRARIES}")
+        add_definitions(-DENABLE_MQTT=1)
+    else()
+        message(WARNING "libmosquitto not found. MQTT support will be disabled. Install libmosquitto-dev to enable.")
+        set(ENABLE_MQTT OFF)
+    endif()
+endif()
+
 # SSL/TLS configuration for Mongoose
 if(ENABLE_SSL)
     if(USE_MBEDTLS)
@@ -387,6 +400,12 @@ target_link_libraries(rebuild_recordings
 # Link cJSON (system library)
 target_link_libraries(lightnvr ${CJSON_LIBRARIES})
 target_link_libraries(rebuild_recordings ${CJSON_LIBRARIES})
+
+# Link MQTT library if enabled
+if(ENABLE_MQTT AND MOSQUITTO_FOUND)
+    target_link_libraries(lightnvr ${MOSQUITTO_LIBRARIES})
+    target_include_directories(lightnvr PRIVATE ${MOSQUITTO_INCLUDE_DIRS})
+endif()
 
 # Link SOD library if enabled
 if(ENABLE_SOD)

@@ -67,6 +67,20 @@ void mg_handle_get_settings(struct mg_connection *c, struct mg_http_message *hm)
     // go2rtc settings (needed by frontend for WebRTC connections)
     cJSON_AddNumberToObject(settings, "go2rtc_api_port", g_config.go2rtc_api_port);
 
+    // MQTT settings
+    cJSON_AddBoolToObject(settings, "mqtt_enabled", g_config.mqtt_enabled);
+    cJSON_AddStringToObject(settings, "mqtt_broker_host", g_config.mqtt_broker_host);
+    cJSON_AddNumberToObject(settings, "mqtt_broker_port", g_config.mqtt_broker_port);
+    cJSON_AddStringToObject(settings, "mqtt_username", g_config.mqtt_username);
+    // Don't include the password for security reasons
+    cJSON_AddStringToObject(settings, "mqtt_password", g_config.mqtt_password[0] ? "********" : "");
+    cJSON_AddStringToObject(settings, "mqtt_client_id", g_config.mqtt_client_id);
+    cJSON_AddStringToObject(settings, "mqtt_topic_prefix", g_config.mqtt_topic_prefix);
+    cJSON_AddBoolToObject(settings, "mqtt_tls_enabled", g_config.mqtt_tls_enabled);
+    cJSON_AddNumberToObject(settings, "mqtt_keepalive", g_config.mqtt_keepalive);
+    cJSON_AddNumberToObject(settings, "mqtt_qos", g_config.mqtt_qos);
+    cJSON_AddBoolToObject(settings, "mqtt_retain", g_config.mqtt_retain);
+
     // Convert to string
     char *json_str = cJSON_PrintUnformatted(settings);
     if (!json_str) {
@@ -291,6 +305,102 @@ void mg_handle_post_settings(struct mg_connection *c, struct mg_http_message *hm
         g_config.default_buffer_strategy[sizeof(g_config.default_buffer_strategy) - 1] = '\0';
         settings_changed = true;
         log_info("Updated default_buffer_strategy: %s", g_config.default_buffer_strategy);
+    }
+
+    // MQTT enabled
+    cJSON *mqtt_enabled = cJSON_GetObjectItem(settings, "mqtt_enabled");
+    if (mqtt_enabled && cJSON_IsBool(mqtt_enabled)) {
+        g_config.mqtt_enabled = cJSON_IsTrue(mqtt_enabled);
+        settings_changed = true;
+        log_info("Updated mqtt_enabled: %s", g_config.mqtt_enabled ? "true" : "false");
+    }
+
+    // MQTT broker host
+    cJSON *mqtt_broker_host = cJSON_GetObjectItem(settings, "mqtt_broker_host");
+    if (mqtt_broker_host && cJSON_IsString(mqtt_broker_host)) {
+        strncpy(g_config.mqtt_broker_host, mqtt_broker_host->valuestring, sizeof(g_config.mqtt_broker_host) - 1);
+        g_config.mqtt_broker_host[sizeof(g_config.mqtt_broker_host) - 1] = '\0';
+        settings_changed = true;
+        log_info("Updated mqtt_broker_host: %s", g_config.mqtt_broker_host);
+    }
+
+    // MQTT broker port
+    cJSON *mqtt_broker_port = cJSON_GetObjectItem(settings, "mqtt_broker_port");
+    if (mqtt_broker_port && cJSON_IsNumber(mqtt_broker_port)) {
+        g_config.mqtt_broker_port = mqtt_broker_port->valueint;
+        settings_changed = true;
+        log_info("Updated mqtt_broker_port: %d", g_config.mqtt_broker_port);
+    }
+
+    // MQTT username
+    cJSON *mqtt_username = cJSON_GetObjectItem(settings, "mqtt_username");
+    if (mqtt_username && cJSON_IsString(mqtt_username)) {
+        strncpy(g_config.mqtt_username, mqtt_username->valuestring, sizeof(g_config.mqtt_username) - 1);
+        g_config.mqtt_username[sizeof(g_config.mqtt_username) - 1] = '\0';
+        settings_changed = true;
+        log_info("Updated mqtt_username: %s", g_config.mqtt_username);
+    }
+
+    // MQTT password (only update if not masked)
+    cJSON *mqtt_password = cJSON_GetObjectItem(settings, "mqtt_password");
+    if (mqtt_password && cJSON_IsString(mqtt_password) && strcmp(mqtt_password->valuestring, "********") != 0) {
+        strncpy(g_config.mqtt_password, mqtt_password->valuestring, sizeof(g_config.mqtt_password) - 1);
+        g_config.mqtt_password[sizeof(g_config.mqtt_password) - 1] = '\0';
+        settings_changed = true;
+        log_info("Updated mqtt_password");
+    }
+
+    // MQTT client ID
+    cJSON *mqtt_client_id = cJSON_GetObjectItem(settings, "mqtt_client_id");
+    if (mqtt_client_id && cJSON_IsString(mqtt_client_id)) {
+        strncpy(g_config.mqtt_client_id, mqtt_client_id->valuestring, sizeof(g_config.mqtt_client_id) - 1);
+        g_config.mqtt_client_id[sizeof(g_config.mqtt_client_id) - 1] = '\0';
+        settings_changed = true;
+        log_info("Updated mqtt_client_id: %s", g_config.mqtt_client_id);
+    }
+
+    // MQTT topic prefix
+    cJSON *mqtt_topic_prefix = cJSON_GetObjectItem(settings, "mqtt_topic_prefix");
+    if (mqtt_topic_prefix && cJSON_IsString(mqtt_topic_prefix)) {
+        strncpy(g_config.mqtt_topic_prefix, mqtt_topic_prefix->valuestring, sizeof(g_config.mqtt_topic_prefix) - 1);
+        g_config.mqtt_topic_prefix[sizeof(g_config.mqtt_topic_prefix) - 1] = '\0';
+        settings_changed = true;
+        log_info("Updated mqtt_topic_prefix: %s", g_config.mqtt_topic_prefix);
+    }
+
+    // MQTT TLS enabled
+    cJSON *mqtt_tls_enabled = cJSON_GetObjectItem(settings, "mqtt_tls_enabled");
+    if (mqtt_tls_enabled && cJSON_IsBool(mqtt_tls_enabled)) {
+        g_config.mqtt_tls_enabled = cJSON_IsTrue(mqtt_tls_enabled);
+        settings_changed = true;
+        log_info("Updated mqtt_tls_enabled: %s", g_config.mqtt_tls_enabled ? "true" : "false");
+    }
+
+    // MQTT keepalive
+    cJSON *mqtt_keepalive = cJSON_GetObjectItem(settings, "mqtt_keepalive");
+    if (mqtt_keepalive && cJSON_IsNumber(mqtt_keepalive)) {
+        g_config.mqtt_keepalive = mqtt_keepalive->valueint;
+        settings_changed = true;
+        log_info("Updated mqtt_keepalive: %d", g_config.mqtt_keepalive);
+    }
+
+    // MQTT QoS
+    cJSON *mqtt_qos = cJSON_GetObjectItem(settings, "mqtt_qos");
+    if (mqtt_qos && cJSON_IsNumber(mqtt_qos)) {
+        int qos = mqtt_qos->valueint;
+        if (qos < 0) qos = 0;
+        if (qos > 2) qos = 2;
+        g_config.mqtt_qos = qos;
+        settings_changed = true;
+        log_info("Updated mqtt_qos: %d", g_config.mqtt_qos);
+    }
+
+    // MQTT retain
+    cJSON *mqtt_retain = cJSON_GetObjectItem(settings, "mqtt_retain");
+    if (mqtt_retain && cJSON_IsBool(mqtt_retain)) {
+        g_config.mqtt_retain = cJSON_IsTrue(mqtt_retain);
+        settings_changed = true;
+        log_info("Updated mqtt_retain: %s", g_config.mqtt_retain ? "true" : "false");
     }
 
     // Database path

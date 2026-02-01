@@ -695,11 +695,94 @@ int delete_old_detections(uint64_t max_age) {
     }
     
     deleted_count = sqlite3_changes(db);
-    
+
     // finalize the prepared statement
     sqlite3_finalize(stmt);
     pthread_mutex_unlock(db_mutex);
-    
+
     log_info("Deleted %d old detections from database", deleted_count);
     return deleted_count;
+}
+
+/**
+ * Get a summary of detection labels for a stream within a time range
+ * Returns unique labels with their counts, sorted by count descending
+ *
+ * @param stream_name Stream name
+ * @param start_time Start time (inclusive)
+ * @param end_time End time (inclusive)
+ * @param labels Array to store label summaries (must have space for max_labels entries)
+ * @param max_labels Maximum number of labels to return
+ * @return Number of unique labels found, or -1 on error
+ */
+int get_detection_labels_summary(const char *stream_name, time_t start_time, time_t end_time,
+                                 detection_label_summary_t *labels, int max_labels) {
+    int rc;
+    sqlite3_stmt *stmt;
+    int count = 0;
+
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *db_mutex = get_db_mutex();
+
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
+    if (!stream_name || !labels || max_labels <= 0) {
+        log_error("Invalid parameters for get_detection_labels_summary");
+        return -1;
+    }
+
+    // Initialize labels array
+    memset(labels, 0, max_labels * sizeof(detection_label_summary_t));
+
+    pthread_mutex_lock(db_mutex);
+
+    // Query to get unique labels with counts, sorted by count descending
+    const char *sql =
+        "SELECT label, COUNT(*) as cnt "
+        "FROM detections "
+        "WHERE stream_name = ? AND timestamp >= ? AND timestamp <= ? "
+        "GROUP BY label "
+        "ORDER BY cnt DESC "
+        "LIMIT ?;";
+
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement for get_detection_labels_summary: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(db_mutex);
+        return -1;
+    }
+
+    // Bind parameters
+    sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
+    sqlite3_bind_int64(stmt, 2, (sqlite3_int64)start_time);
+    sqlite3_bind_int64(stmt, 3, (sqlite3_int64)end_time);
+    sqlite3_bind_int(stmt, 4, max_labels);
+
+    // Execute query and fetch results
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW && count < max_labels) {
+        const char *label = (const char *)sqlite3_column_text(stmt, 0);
+        int label_count = sqlite3_column_int(stmt, 1);
+
+        if (label) {
+            strncpy(labels[count].label, label, MAX_LABEL_LENGTH - 1);
+            labels[count].label[MAX_LABEL_LENGTH - 1] = '\0';
+            labels[count].count = label_count;
+            count++;
+        }
+    }
+
+    if (rc != SQLITE_DONE && rc != SQLITE_ROW) {
+        log_error("Failed to fetch detection labels: %s", sqlite3_errmsg(db));
+        sqlite3_finalize(stmt);
+        pthread_mutex_unlock(db_mutex);
+        return -1;
+    }
+
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(db_mutex);
+
+    return count;
 }

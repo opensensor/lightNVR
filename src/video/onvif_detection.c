@@ -18,6 +18,7 @@
 #include "core/config.h"
 #include "core/curl_init.h"
 #include "core/shutdown_coordinator.h"
+#include "core/mqtt_client.h"
 #include "video/onvif_detection.h"
 #include "video/detection_result.h"
 #include "video/onvif_motion_recording.h"
@@ -631,11 +632,17 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
             }
 
             // Store the detection in the database
-            store_detections_in_db(stream_name, result, 0); // 0 means use current time
+            time_t timestamp = time(NULL);
+            store_detections_in_db(stream_name, result, timestamp);
+
+            // Publish to MQTT if enabled
+            if (result->count > 0) {
+                mqtt_publish_detection(stream_name, result, timestamp);
+            }
 
             // Trigger motion recording if enabled (only if we still have detections after filtering)
             if (result->count > 0) {
-                process_motion_event(stream_name, true, time(NULL));
+                process_motion_event(stream_name, true, timestamp);
             }
         } else {
             log_warn("No stream name provided, skipping database storage");

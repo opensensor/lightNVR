@@ -297,21 +297,47 @@ void mg_handle_get_recordings_worker(struct mg_connection *c, struct mg_http_mes
         cJSON_AddNumberToObject(recording, "duration", duration);
         cJSON_AddStringToObject(recording, "size", size_str);
 
-        // Check if recording has detections:
-        // 1. trigger_type is 'detection' (detection-triggered recording), OR
-        // 2. There are detection events in the detections table during this recording's time range
+        // Check if recording has detections and get detection labels summary
         bool has_detection_flag = (strcmp(recordings[i].trigger_type, "detection") == 0);
-        if (!has_detection_flag && recordings[i].start_time > 0 && recordings[i].end_time > 0) {
-            // Check for detections in the time range
-            int det_result = has_detections_in_time_range(recordings[i].stream_name,
-                                                          recordings[i].start_time,
-                                                          recordings[i].end_time);
-            if (det_result > 0) {
+        detection_label_summary_t labels[MAX_DETECTION_LABELS];
+        int label_count = 0;
+
+        if (recordings[i].start_time > 0 && recordings[i].end_time > 0) {
+            // Get detection labels summary for this recording's time range
+            label_count = get_detection_labels_summary(recordings[i].stream_name,
+                                                       recordings[i].start_time,
+                                                       recordings[i].end_time,
+                                                       labels, MAX_DETECTION_LABELS);
+            if (label_count > 0) {
                 has_detection_flag = true;
+            } else if (!has_detection_flag) {
+                // Fall back to simple check if get_detection_labels_summary returned 0
+                int det_result = has_detections_in_time_range(recordings[i].stream_name,
+                                                              recordings[i].start_time,
+                                                              recordings[i].end_time);
+                if (det_result > 0) {
+                    has_detection_flag = true;
+                }
             }
         }
         cJSON_AddBoolToObject(recording, "has_detection", has_detection_flag);
-        
+
+        // Add detection labels array if there are any detections
+        if (label_count > 0) {
+            cJSON *labels_array = cJSON_CreateArray();
+            if (labels_array) {
+                for (int j = 0; j < label_count; j++) {
+                    cJSON *label_obj = cJSON_CreateObject();
+                    if (label_obj) {
+                        cJSON_AddStringToObject(label_obj, "label", labels[j].label);
+                        cJSON_AddNumberToObject(label_obj, "count", labels[j].count);
+                        cJSON_AddItemToArray(labels_array, label_obj);
+                    }
+                }
+                cJSON_AddItemToObject(recording, "detection_labels", labels_array);
+            }
+        }
+
         cJSON_AddItemToArray(recordings_array, recording);
     }
     
@@ -445,20 +471,46 @@ void mg_handle_get_recording_worker(struct mg_connection *c, struct mg_http_mess
     cJSON_AddNumberToObject(recording_obj, "duration", duration);
     cJSON_AddStringToObject(recording_obj, "size", size_str);
 
-    // Check if recording has detections:
-    // 1. trigger_type is 'detection' (detection-triggered recording), OR
-    // 2. There are detection events in the detections table during this recording's time range
+    // Check if recording has detections and get detection labels summary
     bool has_detection_flag = (strcmp(recording.trigger_type, "detection") == 0);
-    if (!has_detection_flag && recording.start_time > 0 && recording.end_time > 0) {
-        // Check for detections in the time range
-        int det_result = has_detections_in_time_range(recording.stream_name,
-                                                      recording.start_time,
-                                                      recording.end_time);
-        if (det_result > 0) {
+    detection_label_summary_t labels[MAX_DETECTION_LABELS];
+    int label_count = 0;
+
+    if (recording.start_time > 0 && recording.end_time > 0) {
+        // Get detection labels summary for this recording's time range
+        label_count = get_detection_labels_summary(recording.stream_name,
+                                                   recording.start_time,
+                                                   recording.end_time,
+                                                   labels, MAX_DETECTION_LABELS);
+        if (label_count > 0) {
             has_detection_flag = true;
+        } else if (!has_detection_flag) {
+            // Fall back to simple check if get_detection_labels_summary returned 0
+            int det_result = has_detections_in_time_range(recording.stream_name,
+                                                          recording.start_time,
+                                                          recording.end_time);
+            if (det_result > 0) {
+                has_detection_flag = true;
+            }
         }
     }
     cJSON_AddBoolToObject(recording_obj, "has_detection", has_detection_flag);
+
+    // Add detection labels array if there are any detections
+    if (label_count > 0) {
+        cJSON *labels_array = cJSON_CreateArray();
+        if (labels_array) {
+            for (int j = 0; j < label_count; j++) {
+                cJSON *label_obj = cJSON_CreateObject();
+                if (label_obj) {
+                    cJSON_AddStringToObject(label_obj, "label", labels[j].label);
+                    cJSON_AddNumberToObject(label_obj, "count", labels[j].count);
+                    cJSON_AddItemToArray(labels_array, label_obj);
+                }
+            }
+            cJSON_AddItemToObject(recording_obj, "detection_labels", labels_array);
+        }
+    }
 
     // Convert to string
     char *json_str = cJSON_PrintUnformatted(recording_obj);

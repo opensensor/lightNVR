@@ -125,6 +125,19 @@ void load_default_config(config_t *config) {
         config->streams[i].streaming_enabled = true; // Enable streaming by default
         config->streams[i].record_audio = false; // Disable audio recording by default
     }
+
+    // MQTT settings for detection event streaming
+    config->mqtt_enabled = false;               // Disabled by default
+    config->mqtt_broker_host[0] = '\0';         // Must be configured
+    config->mqtt_broker_port = 1883;            // Default MQTT port
+    config->mqtt_username[0] = '\0';            // Optional
+    config->mqtt_password[0] = '\0';            // Optional
+    snprintf(config->mqtt_client_id, sizeof(config->mqtt_client_id), "lightnvr");
+    snprintf(config->mqtt_topic_prefix, sizeof(config->mqtt_topic_prefix), "lightnvr");
+    config->mqtt_tls_enabled = false;           // No TLS by default
+    config->mqtt_keepalive = 60;                // 60 seconds keepalive
+    config->mqtt_qos = 1;                       // QoS 1 (at least once)
+    config->mqtt_retain = false;                // Don't retain messages by default
 }
 
 // Create directory if it doesn't exist
@@ -510,6 +523,49 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         } else if (strcmp(name, "discovery_network") == 0) {
             strncpy(config->onvif_discovery_network, value, sizeof(config->onvif_discovery_network) - 1);
             config->onvif_discovery_network[sizeof(config->onvif_discovery_network) - 1] = '\0';
+        }
+    }
+    // MQTT settings for detection event streaming
+    else if (strcmp(section, "mqtt") == 0) {
+        if (strcmp(name, "enabled") == 0) {
+            config->mqtt_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        } else if (strcmp(name, "broker_host") == 0) {
+            strncpy(config->mqtt_broker_host, value, sizeof(config->mqtt_broker_host) - 1);
+            config->mqtt_broker_host[sizeof(config->mqtt_broker_host) - 1] = '\0';
+        } else if (strcmp(name, "broker_port") == 0) {
+            config->mqtt_broker_port = atoi(value);
+            if (config->mqtt_broker_port <= 0 || config->mqtt_broker_port > 65535) {
+                config->mqtt_broker_port = 1883; // Default port
+            }
+        } else if (strcmp(name, "username") == 0) {
+            strncpy(config->mqtt_username, value, sizeof(config->mqtt_username) - 1);
+            config->mqtt_username[sizeof(config->mqtt_username) - 1] = '\0';
+        } else if (strcmp(name, "password") == 0) {
+            strncpy(config->mqtt_password, value, sizeof(config->mqtt_password) - 1);
+            config->mqtt_password[sizeof(config->mqtt_password) - 1] = '\0';
+        } else if (strcmp(name, "client_id") == 0) {
+            strncpy(config->mqtt_client_id, value, sizeof(config->mqtt_client_id) - 1);
+            config->mqtt_client_id[sizeof(config->mqtt_client_id) - 1] = '\0';
+        } else if (strcmp(name, "topic_prefix") == 0) {
+            strncpy(config->mqtt_topic_prefix, value, sizeof(config->mqtt_topic_prefix) - 1);
+            config->mqtt_topic_prefix[sizeof(config->mqtt_topic_prefix) - 1] = '\0';
+        } else if (strcmp(name, "tls_enabled") == 0) {
+            config->mqtt_tls_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        } else if (strcmp(name, "keepalive") == 0) {
+            config->mqtt_keepalive = atoi(value);
+            if (config->mqtt_keepalive < 5) {
+                config->mqtt_keepalive = 5; // Minimum 5 seconds
+            }
+            if (config->mqtt_keepalive > 3600) {
+                config->mqtt_keepalive = 3600; // Maximum 1 hour
+            }
+        } else if (strcmp(name, "qos") == 0) {
+            config->mqtt_qos = atoi(value);
+            if (config->mqtt_qos < 0 || config->mqtt_qos > 2) {
+                config->mqtt_qos = 1; // Default to QoS 1
+            }
+        } else if (strcmp(name, "retain") == 0) {
+            config->mqtt_retain = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         }
     }
 

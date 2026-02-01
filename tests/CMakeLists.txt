@@ -5,6 +5,11 @@ if(NOT DEFINED ENABLE_SOD)
     option(ENABLE_SOD "Enable SOD library for object detection" ON)
 endif()
 
+# Get the ENABLE_MQTT option from parent
+if(NOT DEFINED ENABLE_MQTT)
+    option(ENABLE_MQTT "Enable MQTT support for detection event streaming" ON)
+endif()
+
 # Include directories
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -16,6 +21,11 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(FFMPEG REQUIRED libavcodec libavformat libavutil libswscale)
 pkg_check_modules(SQLITE REQUIRED sqlite3)
 pkg_check_modules(CURL REQUIRED libcurl)
+
+# Check for MQTT library if MQTT is enabled
+if(ENABLE_MQTT)
+    pkg_check_modules(MOSQUITTO QUIET libmosquitto)
+endif()
 
 # Add include directories for dependencies
 include_directories(
@@ -59,6 +69,9 @@ if(ENABLE_SOD)
     elseif(CJSON_FOUND)
         target_link_libraries(test_sod_unified ${CJSON_LIBRARIES})
     endif()
+    if(ENABLE_MQTT AND MOSQUITTO_FOUND)
+        target_link_libraries(test_sod_unified ${MOSQUITTO_LIBRARIES})
+    endif()
 
     target_link_libraries(test_sod_voc
         lightnvr_lib
@@ -78,6 +91,9 @@ if(ENABLE_SOD)
         target_link_libraries(test_sod_voc cjson_lib)
     elseif(CJSON_FOUND)
         target_link_libraries(test_sod_voc ${CJSON_LIBRARIES})
+    endif()
+    if(ENABLE_MQTT AND MOSQUITTO_FOUND)
+        target_link_libraries(test_sod_voc ${MOSQUITTO_LIBRARIES})
     endif()
 
     # Set output directory for test binaries
@@ -108,6 +124,9 @@ target_link_libraries(test_db_backup
     mongoose_lib
     inih_lib
 )
+if(ENABLE_MQTT AND MOSQUITTO_FOUND)
+    target_link_libraries(test_db_backup ${MOSQUITTO_LIBRARIES})
+endif()
 
 # Set output directory for database backup test
 set_target_properties(test_db_backup
@@ -147,6 +166,9 @@ endif()
 if(ENABLE_SOD)
     target_link_libraries(test_stream_detection sod)
 endif()
+if(ENABLE_MQTT AND MOSQUITTO_FOUND)
+    target_link_libraries(test_stream_detection ${MOSQUITTO_LIBRARIES})
+endif()
 
 # Set output directory for stream detection test
 set_target_properties(test_stream_detection
@@ -185,6 +207,9 @@ endif()
 
 if(ENABLE_SOD)
     target_link_libraries(test_go2rtc_recovery sod)
+endif()
+if(ENABLE_MQTT AND MOSQUITTO_FOUND)
+    target_link_libraries(test_go2rtc_recovery ${MOSQUITTO_LIBRARIES})
 endif()
 
 # Set output directory for go2rtc recovery test

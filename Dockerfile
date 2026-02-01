@@ -9,7 +9,8 @@ RUN apt-get update && apt-get install -y \
     git cmake build-essential pkg-config file \
     libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
     libcurl4-openssl-dev sqlite3 libsqlite3-dev \
-    libmbedtls-dev curl wget ca-certificates gnupg libcjson-dev && \
+    libmbedtls-dev curl wget ca-certificates gnupg libcjson-dev \
+    libmosquitto-dev && \
     # Try to install Node.js from NodeSource (for amd64/arm64)
     # For armv7/armhf, NodeSource may not have packages, so we fall back to Debian's nodejs
     mkdir -p /etc/apt/keyrings && \
@@ -133,7 +134,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Trixie has FFmpeg 7.x: libavcodec61, libavformat61, libavutil59, libswscale8
 RUN apt-get update && apt-get install -y \
     libavcodec61 libavformat61 libavutil59 libswscale8 \
-    libcurl4t64 libmbedtls21 libmbedcrypto16 sqlite3 procps curl && \
+    libcurl4t64 libmbedtls21 libmbedcrypto16 sqlite3 procps curl \
+    libmosquitto1 && \
     rm -rf /var/lib/apt/lists/*
 
 # Create directory structure

@@ -13,6 +13,7 @@
 #include "core/config.h"
 #include "core/curl_init.h"
 #include "core/shutdown_coordinator.h"
+#include "core/mqtt_client.h"
 #include "video/api_detection.h"
 #include "video/detection_result.h"
 #include "video/stream_manager.h"
@@ -557,7 +558,13 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         }
 
         // Store the detections in the database
-        store_detections_in_db(stream_name, result, 0); // 0 means use current time
+        time_t timestamp = time(NULL);
+        store_detections_in_db(stream_name, result, timestamp);
+
+        // Publish to MQTT if enabled
+        if (result->count > 0) {
+            mqtt_publish_detection(stream_name, result, timestamp);
+        }
     } else {
         log_warn("No stream name provided, skipping database storage");
     }
@@ -877,7 +884,13 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
         log_info("API Detection (snapshot): Filtering %d detections by zones for stream %s",
                  result->count, stream_name);
         filter_detections_by_zones(stream_name, result);
-        store_detections_in_db(stream_name, result, 0);
+        time_t timestamp = time(NULL);
+        store_detections_in_db(stream_name, result, timestamp);
+
+        // Publish to MQTT if enabled
+        if (result->count > 0) {
+            mqtt_publish_detection(stream_name, result, timestamp);
+        }
     }
 
     // Clean up

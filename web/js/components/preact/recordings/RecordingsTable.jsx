@@ -133,8 +133,17 @@ export function RecordingsTable({
                 <td className="px-6 py-4 whitespace-nowrap">{formatUtils.formatDateTime(recording.start_time)}</td>
                 <td className="px-6 py-4 whitespace-nowrap">{formatUtils.formatDuration(recording.duration)}</td>
                 <td className="px-6 py-4 whitespace-nowrap">{recording.size || ''}</td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  {recording.has_detections ? (
+                <td className="px-6 py-4">
+                  {recording.detection_labels && recording.detection_labels.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                      {recording.detection_labels.map((det, idx) => (
+                        <span key={idx} className="badge-success text-xs" title={`${det.count} detection${det.count !== 1 ? 's' : ''}`}>
+                          {det.label}
+                          {det.count > 1 && <span className="ml-1 opacity-75">({det.count})</span>}
+                        </span>
+                      ))}
+                    </div>
+                  ) : recording.has_detections || recording.has_detection ? (
                     <span className="badge-success">
                       <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
                         <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"></path>

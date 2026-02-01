@@ -36,7 +36,19 @@ export function SettingsView() {
     defaultDetectionThreshold: 50,
     defaultPreBuffer: 5,
     defaultPostBuffer: 10,
-    bufferStrategy: 'auto'
+    bufferStrategy: 'auto',
+    // MQTT settings
+    mqttEnabled: false,
+    mqttBrokerHost: 'localhost',
+    mqttBrokerPort: '1883',
+    mqttUsername: '',
+    mqttPassword: '',
+    mqttClientId: 'lightnvr',
+    mqttTopicPrefix: 'lightnvr',
+    mqttTlsEnabled: false,
+    mqttKeepalive: '60',
+    mqttQos: '1',
+    mqttRetain: false
   });
 
   // Fetch user role on mount
@@ -130,7 +142,19 @@ export function SettingsView() {
         defaultDetectionThreshold: settingsData.default_detection_threshold || 50,
         defaultPreBuffer: settingsData.pre_detection_buffer?.toString() || '5',
         defaultPostBuffer: settingsData.post_detection_buffer?.toString() || '10',
-        bufferStrategy: settingsData.buffer_strategy || 'auto'
+        bufferStrategy: settingsData.buffer_strategy || 'auto',
+        // MQTT settings
+        mqttEnabled: settingsData.mqtt_enabled || false,
+        mqttBrokerHost: settingsData.mqtt_broker_host || 'localhost',
+        mqttBrokerPort: settingsData.mqtt_broker_port?.toString() || '1883',
+        mqttUsername: settingsData.mqtt_username || '',
+        mqttPassword: settingsData.mqtt_password || '',
+        mqttClientId: settingsData.mqtt_client_id || 'lightnvr',
+        mqttTopicPrefix: settingsData.mqtt_topic_prefix || 'lightnvr',
+        mqttTlsEnabled: settingsData.mqtt_tls_enabled || false,
+        mqttKeepalive: settingsData.mqtt_keepalive?.toString() || '60',
+        mqttQos: settingsData.mqtt_qos?.toString() || '1',
+        mqttRetain: settingsData.mqtt_retain || false
       };
       
       // Update state with loaded settings
@@ -164,7 +188,19 @@ export function SettingsView() {
       default_detection_threshold: settings.defaultDetectionThreshold,
       pre_detection_buffer: parseInt(settings.defaultPreBuffer, 10),
       post_detection_buffer: parseInt(settings.defaultPostBuffer, 10),
-      buffer_strategy: settings.bufferStrategy
+      buffer_strategy: settings.bufferStrategy,
+      // MQTT settings
+      mqtt_enabled: settings.mqttEnabled,
+      mqtt_broker_host: settings.mqttBrokerHost,
+      mqtt_broker_port: parseInt(settings.mqttBrokerPort, 10),
+      mqtt_username: settings.mqttUsername,
+      mqtt_password: settings.mqttPassword,
+      mqtt_client_id: settings.mqttClientId,
+      mqtt_topic_prefix: settings.mqttTopicPrefix,
+      mqtt_tls_enabled: settings.mqttTlsEnabled,
+      mqtt_keepalive: parseInt(settings.mqttKeepalive, 10),
+      mqtt_qos: parseInt(settings.mqttQos, 10),
+      mqtt_retain: settings.mqttRetain
     };
     
     // Use mutation to save settings
@@ -571,6 +607,189 @@ export function SettingsView() {
               <p class="hint text-sm text-muted-foreground mt-1">
                 How pre-detection video is buffered. "Auto" selects the best strategy based on your setup.
               </p>
+            </div>
+          </div>
+          </div>
+
+          {/* MQTT Settings */}
+          <div class="settings-group bg-card rounded-lg shadow p-6 mb-6">
+            <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">MQTT Event Streaming</h3>
+            <p class="text-sm text-muted-foreground mb-4">
+              Publish detection events to an MQTT broker for integration with Home Assistant or other systems.
+            </p>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-mqtt-enabled" class="font-medium">Enable MQTT</label>
+            <div class="col-span-2">
+              <input
+                type="checkbox"
+                id="setting-mqtt-enabled"
+                name="mqttEnabled"
+                class="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded disabled:opacity-60 disabled:cursor-not-allowed"
+                checked={settings.mqttEnabled}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+              />
+              <span class="hint text-sm text-muted-foreground ml-2">Stream detection events to MQTT broker</span>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-mqtt-broker-host" class="font-medium">Broker Host</label>
+            <div class="col-span-2">
+              <input
+                type="text"
+                id="setting-mqtt-broker-host"
+                name="mqttBrokerHost"
+                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.mqttBrokerHost}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+                placeholder="localhost"
+              />
+              <span class="hint text-sm text-muted-foreground block mt-1">MQTT broker hostname or IP address</span>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-mqtt-broker-port" class="font-medium">Broker Port</label>
+            <div class="col-span-2">
+              <input
+                type="number"
+                id="setting-mqtt-broker-port"
+                name="mqttBrokerPort"
+                min="1"
+                max="65535"
+                class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.mqttBrokerPort}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+              />
+              <span class="hint text-sm text-muted-foreground ml-2">Default: 1883 (8883 for TLS)</span>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-mqtt-username" class="font-medium">Username</label>
+            <div class="col-span-2">
+              <input
+                type="text"
+                id="setting-mqtt-username"
+                name="mqttUsername"
+                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.mqttUsername}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+                placeholder="(optional)"
+              />
+              <span class="hint text-sm text-muted-foreground block mt-1">Leave empty for anonymous access</span>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-mqtt-password" class="font-medium">Password</label>
+            <div class="col-span-2">
+              <input
+                type="password"
+                id="setting-mqtt-password"
+                name="mqttPassword"
+                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.mqttPassword}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+                placeholder="(optional)"
+              />
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-mqtt-client-id" class="font-medium">Client ID</label>
+            <div class="col-span-2">
+              <input
+                type="text"
+                id="setting-mqtt-client-id"
+                name="mqttClientId"
+                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.mqttClientId}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+                placeholder="lightnvr"
+              />
+              <span class="hint text-sm text-muted-foreground block mt-1">Unique identifier for this client</span>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-mqtt-topic-prefix" class="font-medium">Topic Prefix</label>
+            <div class="col-span-2">
+              <input
+                type="text"
+                id="setting-mqtt-topic-prefix"
+                name="mqttTopicPrefix"
+                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.mqttTopicPrefix}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+                placeholder="lightnvr"
+              />
+              <span class="hint text-sm text-muted-foreground block mt-1">Events published to: {settings.mqttTopicPrefix}/detections/&lt;stream_name&gt;</span>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-mqtt-tls-enabled" class="font-medium">Enable TLS</label>
+            <div class="col-span-2">
+              <input
+                type="checkbox"
+                id="setting-mqtt-tls-enabled"
+                name="mqttTlsEnabled"
+                class="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded disabled:opacity-60 disabled:cursor-not-allowed"
+                checked={settings.mqttTlsEnabled}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+              />
+              <span class="hint text-sm text-muted-foreground ml-2">Use encrypted connection (typically port 8883)</span>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-mqtt-keepalive" class="font-medium">Keepalive (seconds)</label>
+            <div class="col-span-2">
+              <input
+                type="number"
+                id="setting-mqtt-keepalive"
+                name="mqttKeepalive"
+                min="10"
+                max="3600"
+                class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.mqttKeepalive}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+              />
+              <span class="hint text-sm text-muted-foreground ml-2">Interval to check connection health</span>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-mqtt-qos" class="font-medium">QoS Level</label>
+            <div class="col-span-2">
+              <select
+                id="setting-mqtt-qos"
+                name="mqttQos"
+                class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.mqttQos}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+              >
+                <option value="0">0 - At most once (fire and forget)</option>
+                <option value="1">1 - At least once (recommended)</option>
+                <option value="2">2 - Exactly once (highest overhead)</option>
+              </select>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-mqtt-retain" class="font-medium">Retain Messages</label>
+            <div class="col-span-2">
+              <input
+                type="checkbox"
+                id="setting-mqtt-retain"
+                name="mqttRetain"
+                class="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded disabled:opacity-60 disabled:cursor-not-allowed"
+                checked={settings.mqttRetain}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+              />
+              <span class="hint text-sm text-muted-foreground ml-2">Broker stores last message for new subscribers</span>
             </div>
           </div>
           </div>

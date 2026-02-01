@@ -123,6 +123,30 @@ api_port = 1984
 webrtc_enabled = true
 webrtc_ice_servers = stun:stun.l.google.com:19302
 
+[mqtt]
+; MQTT settings for detection event streaming
+; Enable MQTT publishing of detection events (default: false)
+enabled = false
+; MQTT broker hostname or IP address
+broker_host = localhost
+; MQTT broker port (default: 1883, use 8883 for TLS)
+broker_port = 1883
+; MQTT authentication (optional)
+; username =
+; password =
+; MQTT client ID (default: lightnvr)
+client_id = lightnvr
+; Topic prefix for detection events (default: lightnvr)
+topic_prefix = lightnvr
+; Enable TLS for MQTT connection (default: false)
+tls_enabled = false
+; MQTT keepalive interval in seconds (default: 60)
+keepalive = 60
+; MQTT QoS level: 0 (at most once), 1 (at least once), 2 (exactly once)
+qos = 1
+; Retain detection messages on the broker (default: false)
+retain = false
+
 [onvif]
 ; ONVIF camera discovery settings
 discovery_enabled = false

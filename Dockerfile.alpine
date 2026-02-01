@@ -7,6 +7,7 @@ RUN apk update && apk add --no-cache \
     curl-dev \
     mbedtls2-dev \
     cjson-dev \
+    mosquitto-dev \
     bash
 
 # Fetch external dependencies
@@ -40,10 +41,11 @@ RUN apk update && apk add --no-cache \
     ffmpeg-libavformat \
     sqlite-libs \
     ffmpeg-libavcodec \
-    ffmpeg-libswscale \ 
+    ffmpeg-libswscale \
     libcurl \
     mbedtls2 \
-    cjson 
+    cjson \
+    mosquitto-libs
 
 # Create necessary directories in runtime
 RUN mkdir -p /etc/lightnvr /var/lib/lightnvr/data /var/log/lightnvr /var/run/lightnvr && \
