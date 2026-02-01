@@ -20,7 +20,9 @@
 #include "database/database_manager.h"
 
 // Maximum age of detections to return (in seconds)
-#define MAX_DETECTION_AGE 60
+// For live view, we want to show only recent detections (5 seconds)
+// This prevents detection boxes from being displayed for too long after they occur
+#define MAX_DETECTION_AGE 5
 
 /**
  * @brief Direct handler for GET /api/detection/results/:stream

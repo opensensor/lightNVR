@@ -130,12 +130,17 @@ export function WebRTCVideoCell({
         return;
       }
 
-      // Always use event.streams[0] which contains the actual remote stream with all tracks
-      // This ensures both video and audio tracks are properly attached
+      // Only set srcObject once to avoid interrupting pending play() calls
+      // When multiple tracks arrive (video + audio), each triggers ontrack
+      // Setting srcObject again interrupts the play() call from the first track
       if (event.streams && event.streams[0]) {
-        videoElement.srcObject = event.streams[0];
-        console.log(`Set srcObject from ontrack event for stream ${stream.name}, tracks:`,
-          event.streams[0].getTracks().map(t => `${t.kind}:${t.readyState}:muted=${t.muted}`));
+        if (!videoElement.srcObject || videoElement.srcObject !== event.streams[0]) {
+          videoElement.srcObject = event.streams[0];
+          console.log(`Set srcObject from ontrack event for stream ${stream.name}, tracks:`,
+            event.streams[0].getTracks().map(t => `${t.kind}:${t.readyState}:muted=${t.muted}`));
+        } else {
+          console.log(`srcObject already set for stream ${stream.name}, skipping to avoid interrupting play()`);
+        }
       }
 
       if (event.track.kind === 'video') {
