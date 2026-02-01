@@ -4,7 +4,7 @@
  */
 
 import { h } from 'preact';
-import { useState, useEffect, useRef } from 'preact/hooks';
+import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
 
 /**
@@ -24,37 +24,15 @@ export function BatchDeleteModal() {
     error: false
   });
 
-  // Component initialization
-  useEffect(() => {
-    console.log('BatchDeleteModal initialized');
-
-
-    // Make functions globally available
-    window.showBatchDeleteModal = showModal;
-    window.updateBatchDeleteProgress = updateProgress;
-    window.batchDeleteRecordingsByHttpRequest = batchDeleteRecordingsByHttpRequest;
-  }, []);
-
-  /**
-   * Update progress state
-   * @param {Object} newProgress - New progress data
-   */
-  const updateProgress = (newProgress) => {
-    setProgress(prevProgress => ({
-      ...prevProgress,
-      ...newProgress
-    }));
-
-    // Show modal if it's not already visible
-    if (!isVisible) {
-      setIsVisible(true);
-    }
-  };
+  // Use refs to store the current poll timer so it can be cancelled
+  const pollTimerRef = useRef(null);
+  // Track if we're currently running a batch delete
+  const isRunningRef = useRef(false);
 
   /**
    * Show the modal
    */
-  const showModal = () => {
+  const showModal = useCallback(() => {
     // Reset progress state
     setProgress({
       current: 0,
@@ -68,37 +46,79 @@ export function BatchDeleteModal() {
 
     // Show modal
     setIsVisible(true);
-  };
+  }, []);
 
   /**
    * Close the modal
    */
-  const closeModal = () => {
+  const closeModal = useCallback(() => {
     setIsVisible(false);
-  };
+
+    // Clear any active poll timer
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  }, []);
+
+  /**
+   * Update progress state
+   * @param {Object} newProgress - New progress data
+   */
+  const updateProgress = useCallback((newProgress) => {
+    setProgress(prevProgress => ({
+      ...prevProgress,
+      ...newProgress
+    }));
+  }, []);
 
   /**
    * Cancel batch delete operation
    */
-  const cancelBatchDelete = () => {
+  const cancelBatchDelete = useCallback(() => {
+    // Clear poll timer
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+
+    isRunningRef.current = false;
+
     // Close modal
-    closeModal();
+    setIsVisible(false);
 
     // Show status message
     showStatusMessage('Batch delete operation cancelled', 'warning', 5000);
-  };
+  }, []);
 
   /**
    * Delete recordings by HTTP request
    * @param {Object} params - Delete parameters (ids or filter)
    * @returns {Promise<Object>} Promise that resolves when the operation is complete
    */
-  const batchDeleteRecordingsByHttpRequest = (params) => {
+  const batchDeleteRecordingsByHttpRequest = useCallback((params) => {
     console.log('Using HTTP for batch delete with params:', params);
 
     return new Promise((resolve, reject) => {
-      // Show modal
-      showModal();
+      // Clear any existing timer
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+
+      // Show modal with reset state
+      setProgress({
+        current: 0,
+        total: 0,
+        succeeded: 0,
+        failed: 0,
+        status: 'Preparing to delete recordings...',
+        complete: false,
+        error: false
+      });
+      setIsVisible(true);
+
+      isRunningRef.current = true;
 
       // Calculate total count for progress bar
       let totalCount = 0;
@@ -109,13 +129,11 @@ export function BatchDeleteModal() {
       }
 
       // Update progress to show we're starting
-      updateProgress({
-        current: 0,
+      setProgress(prev => ({
+        ...prev,
         total: totalCount,
-        status: 'Starting batch delete operation...',
-        succeeded: 0,
-        failed: 0
-      });
+        status: 'Starting batch delete operation...'
+      }));
 
       // Send HTTP request to start the batch delete job
       fetch('/api/recordings/batch-delete', {
@@ -142,9 +160,17 @@ export function BatchDeleteModal() {
 
         // Start polling for progress
         const pollInterval = 500; // Poll every 500ms
-        let pollTimer = null;
 
         const pollProgress = () => {
+          // Check if we've been cancelled
+          if (!isRunningRef.current) {
+            if (pollTimerRef.current) {
+              clearInterval(pollTimerRef.current);
+              pollTimerRef.current = null;
+            }
+            return;
+          }
+
           fetch(`/api/recordings/batch-delete/progress/${jobId}`)
             .then(response => {
               if (!response.ok) {
@@ -156,22 +182,25 @@ export function BatchDeleteModal() {
               console.log('Progress update:', progressData);
 
               // Update progress UI
-              updateProgress({
+              setProgress(prev => ({
+                ...prev,
                 current: progressData.current || 0,
                 total: progressData.total || totalCount,
                 succeeded: progressData.succeeded || 0,
                 failed: progressData.failed || 0,
                 status: progressData.status_message || 'Processing...',
                 complete: progressData.complete || false
-              });
+              }));
 
               // Check if complete
               if (progressData.complete) {
                 // Stop polling
-                if (pollTimer) {
-                  clearInterval(pollTimer);
-                  pollTimer = null;
+                if (pollTimerRef.current) {
+                  clearInterval(pollTimerRef.current);
+                  pollTimerRef.current = null;
                 }
+
+                isRunningRef.current = false;
 
                 // Show status message
                 const succeeded = progressData.succeeded || 0;
@@ -180,7 +209,7 @@ export function BatchDeleteModal() {
                   ? `Successfully deleted ${succeeded} recordings`
                   : `Deleted ${succeeded} recordings with ${failed} failures`;
 
-                showStatusMessage(message, 'success', 5000);
+                showStatusMessage(message, failed === 0 ? 'success' : 'warning', 5000);
 
                 // Reload recordings after a short delay
                 setTimeout(() => {
@@ -196,13 +225,15 @@ export function BatchDeleteModal() {
               console.error('Progress polling error:', error);
 
               // Stop polling
-              if (pollTimer) {
-                clearInterval(pollTimer);
-                pollTimer = null;
+              if (pollTimerRef.current) {
+                clearInterval(pollTimerRef.current);
+                pollTimerRef.current = null;
               }
 
+              isRunningRef.current = false;
+
               // Update progress UI to show error
-              updateProgress({
+              setProgress({
                 current: 0,
                 total: 0,
                 succeeded: 0,
@@ -221,13 +252,15 @@ export function BatchDeleteModal() {
 
         // Start polling immediately and then at intervals
         pollProgress();
-        pollTimer = setInterval(pollProgress, pollInterval);
+        pollTimerRef.current = setInterval(pollProgress, pollInterval);
       })
       .catch(error => {
         console.error('Batch delete start error:', error);
 
+        isRunningRef.current = false;
+
         // Update progress UI to show error
-        updateProgress({
+        setProgress({
           current: 0,
           total: 0,
           succeeded: 0,
@@ -243,7 +276,33 @@ export function BatchDeleteModal() {
         reject(error);
       });
     });
-  };
+  }, []);
+
+  // Component initialization - register global functions
+  useEffect(() => {
+    console.log('BatchDeleteModal initialized');
+
+    // Make functions globally available
+    window.showBatchDeleteModal = showModal;
+    window.closeBatchDeleteModal = closeModal;
+    window.updateBatchDeleteProgress = updateProgress;
+    window.batchDeleteRecordingsByHttpRequest = batchDeleteRecordingsByHttpRequest;
+
+    // Cleanup on unmount
+    return () => {
+      // Clear any active poll timer
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+
+      // Clean up global functions
+      delete window.showBatchDeleteModal;
+      delete window.closeBatchDeleteModal;
+      delete window.updateBatchDeleteProgress;
+      delete window.batchDeleteRecordingsByHttpRequest;
+    };
+  }, [showModal, closeModal, updateProgress, batchDeleteRecordingsByHttpRequest]);
 
   // Calculate progress percentage
   const getProgressPercentage = () => {

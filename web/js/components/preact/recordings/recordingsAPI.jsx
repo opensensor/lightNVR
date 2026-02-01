@@ -338,8 +338,8 @@ export const recordingsAPI = {
 
     try {
       // Show batch delete modal
-      if (typeof showBatchDeleteModal === 'function') {
-        showBatchDeleteModal();
+      if (typeof window.showBatchDeleteModal === 'function') {
+        window.showBatchDeleteModal();
       }
 
       // Use HTTP for batch delete (WebSockets were removed)
@@ -504,8 +504,8 @@ export const recordingsAPI = {
       console.log('Deleting with filter:', filter);
 
       // Show batch delete modal with indeterminate progress initially
-      if (typeof showBatchDeleteModal === 'function') {
-        showBatchDeleteModal();
+      if (typeof window.showBatchDeleteModal === 'function') {
+        window.showBatchDeleteModal();
 
         // Update the progress UI with an indeterminate state
         if (typeof window.updateBatchDeleteProgress === 'function') {

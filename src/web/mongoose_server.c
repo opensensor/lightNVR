@@ -129,6 +129,7 @@ static const mg_api_route_t s_api_routes[] = {
     {"GET", "/api/health/hls", mg_handle_get_hls_health, false},
 
     // Recordings API
+    // NOTE: More specific routes MUST come before wildcard routes (e.g., /api/recordings/#)
     {"GET", "/api/recordings", mg_handle_get_recordings, false},
     {"GET", "/api/recordings/play/#", mg_handle_play_recording, true},  // Opt out of auto-threading to prevent hanging
     {"GET", "/api/recordings/download/#", mg_handle_download_recording, true},  // Opt out of auto-threading to prevent hanging
@@ -136,13 +137,13 @@ static const mg_api_route_t s_api_routes[] = {
     {"DELETE", "/api/recordings/files", mg_handle_delete_recording_file, true},  // Already uses threading
     {"GET", "/api/recordings/protected", mg_handle_get_protected_recordings, false},  // Get protected recordings count
     {"POST", "/api/recordings/batch-protect", mg_handle_batch_protect_recordings, false},  // Batch protect/unprotect
-    {"PUT", "/api/recordings/#/protect", mg_handle_put_recording_protect, false},  // Set recording protection
-    {"PUT", "/api/recordings/#/retention", mg_handle_put_recording_retention, false},  // Set recording retention override
-    {"GET", "/api/recordings/#", mg_handle_get_recording, false},
-    {"DELETE", "/api/recordings/#", mg_handle_delete_recording, true},  // Already uses threading
     {"POST", "/api/recordings/batch-delete", mg_handle_batch_delete_recordings, true},  // Already uses threading
     {"GET", "/api/recordings/batch-delete/progress/#", mg_handle_batch_delete_progress, false},  // Progress check is fast
     {"POST", "/api/recordings/sync", mg_handle_post_recordings_sync, false},  // Sync recordings file sizes
+    {"PUT", "/api/recordings/#/protect", mg_handle_put_recording_protect, false},  // Set recording protection
+    {"PUT", "/api/recordings/#/retention", mg_handle_put_recording_retention, false},  // Set recording retention override
+    {"GET", "/api/recordings/#", mg_handle_get_recording, false},  // Wildcard - must be after specific routes
+    {"DELETE", "/api/recordings/#", mg_handle_delete_recording, true},  // Wildcard - must be after specific routes
 
     // No direct HLS handlers - handled by static file handler
 
