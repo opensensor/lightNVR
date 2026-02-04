@@ -82,7 +82,7 @@ void mg_send_json_response(struct mg_connection *c, int status_code, const char 
                          "Pragma: no-cache\r\n"
                          "Expires: 0\r\n";
     
-    log_info("Sending JSON response with status code %d", status_code);
+    log_debug("Sending JSON response with status code %d", status_code);
     mg_http_reply(c, status_code, headers, "%s", json_str);
 }
 

@@ -36,6 +36,7 @@ typedef struct {
 // Shutdown coordinator
 typedef struct {
     atomic_bool shutdown_initiated;
+    atomic_bool coordinator_destroyed;  // Flag to indicate coordinator has been destroyed
     atomic_int component_count;
     component_info_t components[MAX_COMPONENTS];
     pthread_mutex_t mutex;
@@ -64,6 +65,9 @@ void initiate_shutdown(void);
 
 // Check if shutdown has been initiated
 bool is_shutdown_initiated(void);
+
+// Check if coordinator has been destroyed (safe to call anytime)
+bool is_coordinator_destroyed(void);
 
 // Wait for all components to stop (with timeout)
 // Returns true if all components stopped, false if timeout

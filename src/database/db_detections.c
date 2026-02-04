@@ -46,11 +46,11 @@ int store_detections_in_db(const char *stream_name, const detection_result_t *re
         timestamp = time(NULL);
     }
     
-    log_info("Storing %d detections in database for stream %s", result->count, stream_name);
-    
+    log_debug("Storing %d detections in database for stream %s", result->count, stream_name);
+
     // Log the first detection for debugging
     if (result->count > 0) {
-        log_info("First detection: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]",
+        log_debug("First detection: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]",
                 result->detections[0].label,
                 result->detections[0].confidence * 100.0f,
                 result->detections[0].x,
@@ -194,13 +194,13 @@ int store_detections_in_db(const char *stream_name, const detection_result_t *re
         sqlite3_free(err_msg);
     } else if (rows > 0 && cols > 0) {
         int count = atoi(query_result[1]); // First row, first column
-        log_info("Verified %d detections were stored in database for stream %s", count, stream_name);
+        log_debug("Verified %d detections were stored in database for stream %s", count, stream_name);
         sqlite3_free_table(query_result);
     }
-    
+
     pthread_mutex_unlock(db_mutex);
-    
-    log_info("Successfully stored %d detections in database for stream %s", result->count, stream_name);
+
+    log_debug("Successfully stored %d detections in database for stream %s", result->count, stream_name);
     return 0;
 }
 
@@ -242,7 +242,7 @@ int get_detections_from_db_time_range(const char *stream_name, detection_result_
     
     if (start_time > 0 && end_time > 0) {
         // Time range filter
-        log_info("Getting detections for stream %s between %lld and %lld", 
+        log_debug("Getting detections for stream %s between %lld and %lld",
                 stream_name, (long long)start_time, (long long)end_time);
         
         snprintf(sql, sizeof(sql), 
@@ -266,7 +266,7 @@ int get_detections_from_db_time_range(const char *stream_name, detection_result_
         sqlite3_bind_int(stmt, 4, MAX_DETECTIONS);
     } else if (start_time > 0) {
         // Start time filter only
-        log_info("Getting detections for stream %s from %lld", 
+        log_debug("Getting detections for stream %s from %lld",
                 stream_name, (long long)start_time);
         
         snprintf(sql, sizeof(sql), 
@@ -289,7 +289,7 @@ int get_detections_from_db_time_range(const char *stream_name, detection_result_
         sqlite3_bind_int(stmt, 3, MAX_DETECTIONS);
     } else if (end_time > 0) {
         // End time filter only
-        log_info("Getting detections for stream %s until %lld", 
+        log_debug("Getting detections for stream %s until %lld",
                 stream_name, (long long)end_time);
         
         snprintf(sql, sizeof(sql), 
@@ -315,7 +315,7 @@ int get_detections_from_db_time_range(const char *stream_name, detection_result_
         // Calculate cutoff time
         time_t cutoff_time = time(NULL) - max_age;
 
-        log_info("Getting detections for stream %s since %lld (max age %llu seconds)",
+        log_debug("Getting detections for stream %s since %lld (max age %llu seconds)",
                 stream_name, (long long)cutoff_time, (unsigned long long)max_age);
 
         // Get all detections within the time window (not just the latest timestamp)
@@ -339,7 +339,7 @@ int get_detections_from_db_time_range(const char *stream_name, detection_result_
         sqlite3_bind_int(stmt, 3, MAX_DETECTIONS);
     } else {
         // No filters, just get the latest detections
-        log_info("Getting latest detections for stream %s (no time filters)", stream_name);
+        log_debug("Getting latest detections for stream %s (no time filters)", stream_name);
         
         snprintf(sql, sizeof(sql), 
                 "SELECT label, confidence, x, y, width, height "
@@ -393,7 +393,7 @@ int get_detections_from_db_time_range(const char *stream_name, detection_result_
     sqlite3_finalize(stmt);
     pthread_mutex_unlock(db_mutex);
     
-    log_info("Found %d detections in database for stream %s", count, stream_name);
+    log_debug("Found %d detections in database for stream %s", count, stream_name);
     return count;
 }
 
@@ -613,7 +613,7 @@ int has_detections_in_time_range(const char *stream_name, time_t start_time, tim
         return -1;
     }
 
-    log_info("Checking for detections: stream=%s, start=%lld, end=%lld",
+    log_debug("Checking for detections: stream=%s, start=%lld, end=%lld",
              stream_name, (long long)start_time, (long long)end_time);
 
     pthread_mutex_lock(db_mutex);
@@ -635,7 +635,7 @@ int has_detections_in_time_range(const char *stream_name, time_t start_time, tim
     rc = sqlite3_step(stmt);
     if (rc == SQLITE_ROW) {
         has_detections = sqlite3_column_int(stmt, 0);
-        log_info("Detection check result for stream %s: %d", stream_name, has_detections);
+        log_debug("Detection check result for stream %s: %d", stream_name, has_detections);
     } else {
         log_error("Failed to check for detections: %s", sqlite3_errmsg(db));
         sqlite3_finalize(stmt);

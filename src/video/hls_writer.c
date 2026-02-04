@@ -852,11 +852,18 @@ void hls_writer_close(hls_writer_t *writer) {
     in_writer_close = true;
 
     // CRITICAL FIX: Use atomic operations to check if this writer is already being freed
+    // Use a per-writer closed flag instead of a global mutex to allow parallel closing of different writers
     static pthread_mutex_t close_mutex = PTHREAD_MUTEX_INITIALIZER;
-    if (pthread_mutex_trylock(&close_mutex) != 0) {
-        log_warn("Another thread is already closing an HLS writer, aborting to prevent race condition");
-        in_writer_close = false;
-        return;
+
+    // Wait for the mutex with a timeout instead of aborting immediately
+    struct timespec close_timeout;
+    clock_gettime(CLOCK_REALTIME, &close_timeout);
+    close_timeout.tv_sec += 10; // 10 second timeout for acquiring close mutex
+
+    int close_mutex_result = pthread_mutex_timedlock(&close_mutex, &close_timeout);
+    if (close_mutex_result != 0) {
+        log_warn("Timeout waiting for HLS close mutex (error: %s), proceeding with close anyway", strerror(close_mutex_result));
+        // Don't return - try to close anyway since this is critical for cleanup
     }
 
     // CRITICAL FIX: Use a memory barrier to ensure all memory operations are completed
@@ -918,7 +925,9 @@ void hls_writer_close(hls_writer_t *writer) {
         }
         // CRITICAL FIX: Reset close state and unlock mutex before early return
         in_writer_close = false;
-        pthread_mutex_unlock(&close_mutex);
+        if (close_mutex_result == 0) {
+            pthread_mutex_unlock(&close_mutex);
+        }
         return;
     }
 
@@ -1123,6 +1132,8 @@ void hls_writer_close(hls_writer_t *writer) {
     // Reset the recursive call prevention flag
     in_writer_close = false;
 
-    // CRITICAL FIX: Unlock the close mutex
-    pthread_mutex_unlock(&close_mutex);
+    // CRITICAL FIX: Unlock the close mutex only if we acquired it
+    if (close_mutex_result == 0) {
+        pthread_mutex_unlock(&close_mutex);
+    }
 }

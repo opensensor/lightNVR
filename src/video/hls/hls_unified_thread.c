@@ -1941,7 +1941,8 @@ void *hls_unified_thread_func(void *arg) {
         // Store the shutdown component ID for later
         shutdown_id = ctx_local->shutdown_component_id;
     } else {
-        log_warn("Context for stream %s is no longer valid during cleanup", stream_name_buf);
+        // This is expected during shutdown when multiple cleanup paths run
+        log_debug("Context for stream %s is no longer valid during cleanup (already cleaned up)", stream_name_buf);
     }
 
     // CRITICAL FIX: Add memory barrier before cleanup to ensure all threads see consistent state
@@ -2087,10 +2088,11 @@ void *hls_unified_thread_func(void *arg) {
                 log_info("Successfully freed context for stream %s", stream_name_buf);
             }
         } else {
-            log_warn("Skipping cleanup of potentially invalid context for stream %s", stream_name_buf);
+            log_debug("Skipping cleanup of potentially invalid context for stream %s (already cleaned up)", stream_name_buf);
         }
     } else {
-        log_warn("Context is NULL during cleanup for stream %s", stream_name_buf);
+        // This is expected during shutdown when multiple cleanup paths run
+        log_debug("Context is NULL during cleanup for stream %s (already cleaned up)", stream_name_buf);
     }
 
     log_info("Unified HLS thread for stream %s exited", stream_name_buf);
@@ -2810,10 +2812,11 @@ int stop_hls_unified_stream(const char *stream_name) {
                     log_info("Successfully freed context for stream %s", stream_name);
                 }
             } else {
-                log_warn("Skipping cleanup of potentially invalid context for stream %s", stream_name);
+                log_debug("Skipping cleanup of potentially invalid context for stream %s (already cleaned up)", stream_name);
             }
         } else {
-            log_warn("Context is NULL during cleanup for stream %s", stream_name);
+            // This is expected during shutdown when multiple cleanup paths run
+            log_debug("Context is NULL during cleanup for stream %s (already cleaned up)", stream_name);
         }
 
         log_info("Successfully cleaned up resources for stream %s", stream_name);

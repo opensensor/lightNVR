@@ -100,6 +100,14 @@ int mp4_writer_add_audio_stream(mp4_writer_t *writer, const AVCodecParameters *c
 void mp4_writer_close(mp4_writer_t *writer);
 
 /**
+ * Enable or disable audio recording
+ *
+ * @param writer The MP4 writer instance
+ * @param enable 1 to enable audio, 0 to disable
+ */
+void mp4_writer_set_audio(mp4_writer_t *writer, int enable);
+
+/**
  * Set the segment duration for MP4 rotation
  *
  * @param writer The MP4 writer instance

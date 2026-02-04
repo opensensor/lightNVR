@@ -37,12 +37,13 @@
 #include "core/config.h"
 #include "core/shutdown_coordinator.h"
 #include "video/unified_detection_thread.h"
-#include "video/motion_buffer.h"
+#include "video/packet_buffer.h"
 #include "video/detection.h"
 #include "video/detection_model.h"
 #include "video/detection_result.h"
 #include "video/api_detection.h"
 #include "video/mp4_writer.h"
+#include "video/mp4_writer_internal.h"
 #include "video/streams.h"
 #include "video/go2rtc/go2rtc_stream.h"
 #include "database/db_recordings.h"
@@ -103,11 +104,11 @@ int init_unified_detection_system(void) {
     // Clear all context slots
     memset(detection_contexts, 0, sizeof(detection_contexts));
 
-    // Initialize motion buffer pool if not already done
+    // Initialize packet buffer pool if not already done
     extern config_t g_config;
     size_t memory_limit = 256;  // Default 256MB for all buffers
-    if (init_motion_buffer_pool(memory_limit) != 0) {
-        log_error("Failed to initialize motion buffer pool");
+    if (init_packet_buffer_pool(memory_limit) != 0) {
+        log_error("Failed to initialize packet buffer pool");
         pthread_mutex_unlock(&contexts_mutex);
         return -1;
     }
@@ -180,7 +181,7 @@ void shutdown_unified_detection_system(void) {
 
             // Clean up resources
             if (ctx->packet_buffer) {
-                destroy_motion_buffer(ctx->packet_buffer);
+                destroy_packet_buffer(ctx->packet_buffer);
                 ctx->packet_buffer = NULL;
             }
             if (ctx->mp4_writer) {
@@ -200,8 +201,8 @@ void shutdown_unified_detection_system(void) {
         }
     }
 
-    // Cleanup motion buffer pool
-    cleanup_motion_buffer_pool();
+    // Cleanup packet buffer pool
+    cleanup_packet_buffer_pool();
 
     system_initialized = false;
     pthread_mutex_unlock(&contexts_mutex);
@@ -315,6 +316,7 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
     ctx->pre_buffer_seconds = pre_buffer_seconds > 0 ? pre_buffer_seconds : 10;
     ctx->post_buffer_seconds = post_buffer_seconds > 0 ? post_buffer_seconds : 5;
     ctx->detection_interval = config.detection_interval > 0 ? config.detection_interval : DEFAULT_DETECTION_INTERVAL;
+    ctx->record_audio = config.record_audio;
 
     // Get RTSP URL from go2rtc
     if (!go2rtc_stream_get_rtsp_url(stream_name, ctx->rtsp_url, sizeof(ctx->rtsp_url))) {
@@ -339,9 +341,9 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
     }
 
     // Create circular buffer for pre-detection content
-    ctx->packet_buffer = create_motion_buffer(stream_name, ctx->pre_buffer_seconds, BUFFER_MODE_MEMORY);
+    ctx->packet_buffer = create_packet_buffer(stream_name, ctx->pre_buffer_seconds, BUFFER_MODE_MEMORY);
     if (!ctx->packet_buffer) {
-        log_error("Failed to create motion buffer for stream %s", stream_name);
+        log_error("Failed to create pre-detection buffer for stream %s", stream_name);
         pthread_mutex_destroy(&ctx->mutex);
         free(ctx);
         pthread_mutex_unlock(&contexts_mutex);
@@ -368,7 +370,7 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
     if (result != 0) {
         log_error("Failed to create unified detection thread for %s: %s",
                   stream_name, strerror(result));
-        destroy_motion_buffer(ctx->packet_buffer);
+        destroy_packet_buffer(ctx->packet_buffer);
         pthread_mutex_destroy(&ctx->mutex);
         free(ctx);
         detection_contexts[slot] = NULL;
@@ -633,8 +635,8 @@ static void *unified_detection_thread_func(void *arg) {
 
     // Main loop
     while (atomic_load(&ctx->running) && !is_shutdown_initiated()) {
-        // Update state in context
-        atomic_store(&ctx->state, state);
+        // Read current state from context (may have been changed by process_packet)
+        state = atomic_load(&ctx->state);
 
         // State machine
         switch (state) {
@@ -675,6 +677,10 @@ static void *unified_detection_thread_func(void *arg) {
                     // Process packet (buffer, detect, record)
                     process_packet(ctx, pkt);
 
+                    // Re-read state after process_packet as it may have changed
+                    // (e.g., detection triggered -> RECORDING, or post-buffer expired -> BUFFERING)
+                    state = atomic_load(&ctx->state);
+
                     av_packet_unref(pkt);
                 } else {
                     // Read error - check if timeout
@@ -698,7 +704,7 @@ static void *unified_detection_thread_func(void *arg) {
                 }
 
                 // Clear buffer (stale data)
-                motion_buffer_clear(ctx->packet_buffer);
+                packet_buffer_clear(ctx->packet_buffer);
 
                 state = UDT_STATE_CONNECTING;
                 break;
@@ -722,6 +728,10 @@ static void *unified_detection_thread_func(void *arg) {
                 atomic_store(&ctx->running, 0);
                 break;
         }
+
+        // Store any state changes made by the main loop back to ctx->state
+        // (process_packet also updates ctx->state directly for RECORDING/POST_BUFFER transitions)
+        atomic_store(&ctx->state, state);
     }
 
     // Cleanup
@@ -740,7 +750,7 @@ static void *unified_detection_thread_func(void *arg) {
             if (detection_contexts[i] == ctx) {
                 // Clean up resources
                 if (ctx->packet_buffer) {
-                    destroy_motion_buffer(ctx->packet_buffer);
+                    destroy_packet_buffer(ctx->packet_buffer);
                 }
                 pthread_mutex_destroy(&ctx->mutex);
                 free(ctx);
@@ -760,6 +770,7 @@ typedef struct {
     unified_detection_ctx_t *ctx;
     int packets_written;
     bool found_keyframe;
+    bool writer_initialized;
 } flush_callback_ctx_t;
 
 /**
@@ -790,6 +801,22 @@ static int flush_packet_callback(const AVPacket *packet, void *user_data) {
         }
 
         if (input_stream) {
+            // Initialize the MP4 writer on the first keyframe
+            if (!flush_ctx->writer_initialized && !ctx->mp4_writer->is_initialized) {
+                if (packet->stream_index == ctx->video_stream_idx && (packet->flags & AV_PKT_FLAG_KEY)) {
+                    int init_ret = mp4_writer_initialize(ctx->mp4_writer, packet, input_stream);
+                    if (init_ret < 0) {
+                        log_error("[%s] Failed to initialize MP4 writer", ctx->stream_name);
+                        return -1;
+                    }
+                    flush_ctx->writer_initialized = true;
+                    log_info("[%s] MP4 writer initialized on first keyframe", ctx->stream_name);
+                } else {
+                    // Skip until we get a video keyframe to initialize
+                    return 0;
+                }
+            }
+
             int ret = mp4_writer_write_packet(ctx->mp4_writer, packet, input_stream);
             if (ret == 0) {
                 flush_ctx->packets_written++;
@@ -818,7 +845,7 @@ static int process_packet(unified_detection_ctx_t *ctx, AVPacket *pkt) {
 
     // Always add packets to circular buffer (for pre-detection content)
     // The buffer automatically evicts old packets when full
-    motion_buffer_add_packet(ctx->packet_buffer, pkt, now);
+    packet_buffer_add_packet(ctx->packet_buffer, pkt, now);
 
     // If recording, write packet to MP4
     if (current_state == UDT_STATE_RECORDING || current_state == UDT_STATE_POST_BUFFER) {
@@ -831,7 +858,20 @@ static int process_packet(unified_detection_ctx_t *ctx, AVPacket *pkt) {
             }
 
             if (input_stream) {
-                mp4_writer_write_packet(ctx->mp4_writer, pkt, input_stream);
+                // Initialize writer if not yet initialized (safety check)
+                if (!ctx->mp4_writer->is_initialized && is_video && is_keyframe) {
+                    int init_ret = mp4_writer_initialize(ctx->mp4_writer, pkt, input_stream);
+                    if (init_ret < 0) {
+                        log_error("[%s] Failed to initialize MP4 writer during live recording", ctx->stream_name);
+                    } else {
+                        log_info("[%s] MP4 writer initialized during live recording", ctx->stream_name);
+                    }
+                }
+
+                // Only write if initialized
+                if (ctx->mp4_writer->is_initialized) {
+                    mp4_writer_write_packet(ctx->mp4_writer, pkt, input_stream);
+                }
             }
         }
 
@@ -841,6 +881,29 @@ static int process_packet(unified_detection_ctx_t *ctx, AVPacket *pkt) {
                 log_info("[%s] Post-buffer complete, stopping recording", ctx->stream_name);
                 udt_stop_recording(ctx);
                 atomic_store(&ctx->state, UDT_STATE_BUFFERING);
+            }
+        }
+
+        // Check if maximum recording duration exceeded (handles continuous detection)
+        // This ensures recordings complete even when detection keeps triggering
+        // Also check in POST_BUFFER state since recording is still active
+        if ((current_state == UDT_STATE_RECORDING || current_state == UDT_STATE_POST_BUFFER) && ctx->mp4_writer) {
+            time_t recording_duration = now - ctx->mp4_writer->creation_time;
+            int max_duration = ctx->pre_buffer_seconds + ctx->post_buffer_seconds;
+
+            // Log every 10 seconds to track progress
+            if (recording_duration > 0 && (recording_duration % 10) == 0 && is_keyframe) {
+                log_info("[%s] Detection recording: %ld/%d seconds elapsed (pre=%d, post=%d)",
+                         ctx->stream_name, (long)recording_duration, max_duration,
+                         ctx->pre_buffer_seconds, ctx->post_buffer_seconds);
+            }
+
+            if (recording_duration >= max_duration) {
+                log_info("[%s] Maximum recording duration reached (%ld/%d seconds), completing recording",
+                         ctx->stream_name, (long)recording_duration, max_duration);
+                udt_stop_recording(ctx);
+                atomic_store(&ctx->state, UDT_STATE_BUFFERING);
+                // Note: If detection continues, a new recording will start on the next detection
             }
         }
     }
@@ -938,11 +1001,41 @@ static int udt_start_recording(unified_detection_ctx_t *ctx) {
         return -1;
     }
 
+    // Configure audio recording based on stream settings
+    if (ctx->record_audio && ctx->audio_stream_idx >= 0) {
+        mp4_writer_set_audio(ctx->mp4_writer, 1);
+        log_info("[%s] Audio recording enabled for detection recording", ctx->stream_name);
+    } else {
+        mp4_writer_set_audio(ctx->mp4_writer, 0);
+        if (ctx->record_audio && ctx->audio_stream_idx < 0) {
+            log_warn("[%s] Audio recording requested but no audio stream found", ctx->stream_name);
+        }
+    }
+
     // Set trigger type to detection
     strncpy(ctx->mp4_writer->trigger_type, "detection", sizeof(ctx->mp4_writer->trigger_type) - 1);
 
     // Store recording start time
     ctx->mp4_writer->creation_time = now;
+
+    // Add recording to database at START (so it appears in recordings list immediately)
+    // It will be updated with end_time, size, and is_complete=true when recording stops
+    recording_metadata_t metadata = {0};
+    strncpy(metadata.file_path, ctx->current_recording_path, sizeof(metadata.file_path) - 1);
+    strncpy(metadata.stream_name, ctx->stream_name, sizeof(metadata.stream_name) - 1);
+    metadata.start_time = now;
+    metadata.end_time = 0;  // Will be set when recording stops
+    metadata.size_bytes = 0;  // Will be set when recording stops
+    metadata.is_complete = false;  // Will be set to true when recording stops
+    strncpy(metadata.trigger_type, "detection", sizeof(metadata.trigger_type) - 1);
+
+    ctx->current_recording_id = add_recording_metadata(&metadata);
+    if (ctx->current_recording_id > 0) {
+        log_info("[%s] Added detection recording to database (ID: %lu) for file: %s",
+                 ctx->stream_name, (unsigned long)ctx->current_recording_id, ctx->current_recording_path);
+    } else {
+        log_warn("[%s] Failed to add detection recording to database", ctx->stream_name);
+    }
 
     pthread_mutex_lock(&ctx->mutex);
     ctx->total_recordings++;
@@ -975,8 +1068,19 @@ static int udt_stop_recording(unified_detection_ctx_t *ctx) {
     mp4_writer_close(ctx->mp4_writer);
     ctx->mp4_writer = NULL;
 
-    // Update database with recording metadata
-    if (ctx->current_recording_path[0] != '\0') {
+    // Update the existing database record (was created at recording start)
+    if (ctx->current_recording_id > 0) {
+        // Update the existing recording with end_time, size, and mark as complete
+        if (update_recording_metadata(ctx->current_recording_id, end_time, file_size, true) == 0) {
+            log_info("[%s] Recording updated in database (ID: %lu, duration: %ds, size: %ld bytes)",
+                     ctx->stream_name, (unsigned long)ctx->current_recording_id, duration, (long)file_size);
+        } else {
+            log_warn("[%s] Failed to update recording in database (ID: %lu)",
+                     ctx->stream_name, (unsigned long)ctx->current_recording_id);
+        }
+    } else if (ctx->current_recording_path[0] != '\0') {
+        // Fallback: if no recording_id, try to add a new record (shouldn't happen normally)
+        log_warn("[%s] No recording ID found, creating new database entry", ctx->stream_name);
         recording_metadata_t metadata = {0};
         strncpy(metadata.file_path, ctx->current_recording_path, sizeof(metadata.file_path) - 1);
         strncpy(metadata.stream_name, ctx->stream_name, sizeof(metadata.stream_name) - 1);
@@ -1015,7 +1119,7 @@ static int flush_prebuffer_to_recording(unified_detection_ctx_t *ctx) {
     int count = 0;
     size_t memory = 0;
     int duration = 0;
-    motion_buffer_get_stats(ctx->packet_buffer, &count, &memory, &duration);
+    packet_buffer_get_stats(ctx->packet_buffer, &count, &memory, &duration);
 
     log_info("[%s] Pre-buffer contains %d packets (~%d seconds, %zu bytes)",
              ctx->stream_name, count, duration, memory);
@@ -1024,11 +1128,12 @@ static int flush_prebuffer_to_recording(unified_detection_ctx_t *ctx) {
     flush_callback_ctx_t flush_ctx = {
         .ctx = ctx,
         .packets_written = 0,
-        .found_keyframe = false
+        .found_keyframe = false,
+        .writer_initialized = false
     };
 
     // Flush all packets from buffer to MP4 writer
-    int flushed = motion_buffer_flush(ctx->packet_buffer, flush_packet_callback, &flush_ctx);
+    int flushed = packet_buffer_flush(ctx->packet_buffer, flush_packet_callback, &flush_ctx);
 
     if (flushed >= 0) {
         log_info("[%s] Flushed %d packets to recording (%d written starting from keyframe)",

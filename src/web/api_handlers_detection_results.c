@@ -46,7 +46,7 @@ void store_detection_result(const char *stream_name, const detection_result_t *r
         return;
     }
     
-    log_info("Storing detection results for stream '%s': %d detections", stream_name, result->count);
+    log_debug("Storing detection results for stream '%s': %d detections", stream_name, result->count);
     
     // Store in database
     time_t timestamp = time(NULL);
@@ -67,7 +67,7 @@ void store_detection_result(const char *stream_name, const detection_result_t *r
 
     // Log the stored detections
     for (int i = 0; i < result->count; i++) {
-        log_info("  Detection %d: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]",
+        log_debug("  Detection %d: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]",
                 i, result->detections[i].label,
                 result->detections[i].confidence * 100.0f,
                 result->detections[i].x,
@@ -75,22 +75,22 @@ void store_detection_result(const char *stream_name, const detection_result_t *r
                 result->detections[i].width,
                 result->detections[i].height);
     }
-    
-    log_info("Successfully stored %d detections in database for stream '%s'", result->count, stream_name);
+
+    log_debug("Successfully stored %d detections in database for stream '%s'", result->count, stream_name);
 }
 
 /**
  * Debug function to dump current detection results
  */
 void debug_dump_detection_results(void) {
-    log_info("DEBUG: Current detection results (from database):");
-    
+    log_debug("DEBUG: Current detection results (from database):");
+
     // Get all stream names
     stream_config_t streams[MAX_STREAMS];
     int stream_count = get_all_stream_configs(streams, MAX_STREAMS);
-    
+
     if (stream_count <= 0) {
-        log_info("  No streams found");
+        log_debug("  No streams found");
         return;
     }
     
@@ -105,11 +105,11 @@ void debug_dump_detection_results(void) {
         
         if (count > 0) {
             active_streams++;
-            
-            log_info("  Stream '%s', %d detections", streams[i].name, result.count);
-            
+
+            log_debug("  Stream '%s', %d detections", streams[i].name, result.count);
+
             for (int j = 0; j < result.count; j++) {
-                log_info("    Detection %d: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]",
+                log_debug("    Detection %d: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]",
                          j, result.detections[j].label,
                          result.detections[j].confidence * 100.0f,
                          result.detections[j].x,
@@ -119,8 +119,8 @@ void debug_dump_detection_results(void) {
             }
         }
     }
-    
+
     if (active_streams == 0) {
-        log_info("  No active detection results found");
+        log_debug("  No active detection results found");
     }
 }

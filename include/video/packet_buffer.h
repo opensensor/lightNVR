@@ -1,5 +1,5 @@
-#ifndef LIGHTNVR_MOTION_BUFFER_H
-#define LIGHTNVR_MOTION_BUFFER_H
+#ifndef LIGHTNVR_PACKET_BUFFER_H
+#define LIGHTNVR_PACKET_BUFFER_H
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -9,10 +9,12 @@
 #include <libavcodec/avcodec.h>
 
 /**
- * Motion Buffer Module
+ * Packet Buffer Module
  * 
- * This module implements a circular buffer for storing video packets before motion events.
- * It provides efficient memory management for pre-event buffering in motion-triggered recording.
+ * This module implements a circular buffer for storing video packets.
+ * It provides efficient memory management for pre-event buffering in:
+ * - Detection-based recording (pre-detection buffer)
+ * - Motion-triggered recording (pre-event buffer)
  * 
  * Features:
  * - Circular buffer with configurable size
@@ -78,46 +80,46 @@ typedef struct {
     // Thread safety
     pthread_mutex_t mutex;
     bool active;                // Whether this buffer is in use
-} motion_buffer_t;
+} packet_buffer_t;
 
 // Buffer pool for managing multiple stream buffers
 typedef struct {
-    motion_buffer_t buffers[16];    // One buffer per stream (MAX_STREAMS)
+    packet_buffer_t buffers[16];    // One buffer per stream (MAX_STREAMS)
     pthread_mutex_t pool_mutex;
     int active_buffers;
     size_t total_memory_limit;      // Total memory limit for all buffers
     size_t current_memory_usage;    // Current total memory usage
-} motion_buffer_pool_t;
+} packet_buffer_pool_t;
 
 /**
- * Initialize the motion buffer pool
+ * Initialize the packet buffer pool
  * 
  * @param memory_limit_mb Total memory limit in MB for all buffers (0 = unlimited)
  * @return 0 on success, non-zero on failure
  */
-int init_motion_buffer_pool(size_t memory_limit_mb);
+int init_packet_buffer_pool(size_t memory_limit_mb);
 
 /**
- * Cleanup the motion buffer pool
+ * Cleanup the packet buffer pool
  */
-void cleanup_motion_buffer_pool(void);
+void cleanup_packet_buffer_pool(void);
 
 /**
- * Create a motion buffer for a stream
+ * Create a packet buffer for a stream
  * 
  * @param stream_name Name of the stream
  * @param buffer_seconds Duration of buffer in seconds
  * @param mode Buffer storage mode
  * @return Pointer to buffer on success, NULL on failure
  */
-motion_buffer_t* create_motion_buffer(const char *stream_name, int buffer_seconds, buffer_mode_t mode);
+packet_buffer_t* create_packet_buffer(const char *stream_name, int buffer_seconds, buffer_mode_t mode);
 
 /**
- * Destroy a motion buffer
+ * Destroy a packet buffer
  * 
  * @param buffer Buffer to destroy
  */
-void destroy_motion_buffer(motion_buffer_t *buffer);
+void destroy_packet_buffer(packet_buffer_t *buffer);
 
 /**
  * Add a packet to the buffer
@@ -127,7 +129,7 @@ void destroy_motion_buffer(motion_buffer_t *buffer);
  * @param timestamp Timestamp of the packet
  * @return 0 on success, non-zero on failure
  */
-int motion_buffer_add_packet(motion_buffer_t *buffer, const AVPacket *packet, time_t timestamp);
+int packet_buffer_add_packet(packet_buffer_t *buffer, const AVPacket *packet, time_t timestamp);
 
 /**
  * Get the oldest packet from the buffer (without removing it)
@@ -136,7 +138,7 @@ int motion_buffer_add_packet(motion_buffer_t *buffer, const AVPacket *packet, ti
  * @param packet Output packet (caller must free with av_packet_free)
  * @return 0 on success, -1 if buffer is empty
  */
-int motion_buffer_peek_oldest(motion_buffer_t *buffer, AVPacket **packet);
+int packet_buffer_peek_oldest(packet_buffer_t *buffer, AVPacket **packet);
 
 /**
  * Remove and return the oldest packet from the buffer
@@ -145,98 +147,98 @@ int motion_buffer_peek_oldest(motion_buffer_t *buffer, AVPacket **packet);
  * @param packet Output packet (caller must free with av_packet_free)
  * @return 0 on success, -1 if buffer is empty
  */
-int motion_buffer_pop_oldest(motion_buffer_t *buffer, AVPacket **packet);
+int packet_buffer_pop_oldest(packet_buffer_t *buffer, AVPacket **packet);
 
 /**
  * Flush all packets from the buffer to a callback function
- * This is used when motion is detected to write the pre-event buffer to the recording
- * 
+ * This is used when detection/motion is triggered to write the pre-buffer to the recording
+ *
  * @param buffer Buffer to flush
  * @param callback Function to call for each packet
  * @param user_data User data to pass to callback
  * @return Number of packets flushed, -1 on error
  */
-int motion_buffer_flush(motion_buffer_t *buffer, 
+int packet_buffer_flush(packet_buffer_t *buffer,
                        int (*callback)(const AVPacket *packet, void *user_data),
                        void *user_data);
 
 /**
  * Clear all packets from the buffer
- * 
+ *
  * @param buffer Buffer to clear
  */
-void motion_buffer_clear(motion_buffer_t *buffer);
+void packet_buffer_clear(packet_buffer_t *buffer);
 
 /**
  * Get buffer statistics
- * 
+ *
  * @param buffer Buffer to query
  * @param count Output: number of packets in buffer
  * @param memory_usage Output: current memory usage in bytes
  * @param duration Output: duration of buffered content in seconds
  * @return 0 on success, non-zero on failure
  */
-int motion_buffer_get_stats(motion_buffer_t *buffer, int *count, size_t *memory_usage, int *duration);
+int packet_buffer_get_stats(packet_buffer_t *buffer, int *count, size_t *memory_usage, int *duration);
 
 /**
  * Get buffer by stream name
- * 
+ *
  * @param stream_name Name of the stream
  * @return Pointer to buffer, or NULL if not found
  */
-motion_buffer_t* get_motion_buffer(const char *stream_name);
+packet_buffer_t* get_packet_buffer(const char *stream_name);
 
 /**
  * Check if buffer has enough data for the configured duration
- * 
+ *
  * @param buffer Buffer to check
  * @return true if buffer has enough data, false otherwise
  */
-bool motion_buffer_is_ready(motion_buffer_t *buffer);
+bool packet_buffer_is_ready(packet_buffer_t *buffer);
 
 /**
  * Get the number of keyframes in the buffer
- * 
+ *
  * @param buffer Buffer to query
  * @return Number of keyframes
  */
-int motion_buffer_get_keyframe_count(motion_buffer_t *buffer);
+int packet_buffer_get_keyframe_count(packet_buffer_t *buffer);
 
 /**
  * Estimate the number of packets needed for a given duration
  * This is used to calculate max_packets based on buffer_seconds and stream FPS
- * 
+ *
  * @param fps Frames per second of the stream
  * @param duration_seconds Duration in seconds
  * @return Estimated number of packets
  */
-int motion_buffer_estimate_packet_count(int fps, int duration_seconds);
+int packet_buffer_estimate_packet_count(int fps, int duration_seconds);
 
 /**
  * Set memory limit for a specific buffer
- * 
+ *
  * @param buffer Buffer to configure
  * @param limit_mb Memory limit in MB
  * @return 0 on success, non-zero on failure
  */
-int motion_buffer_set_memory_limit(motion_buffer_t *buffer, size_t limit_mb);
+int packet_buffer_set_memory_limit(packet_buffer_t *buffer, size_t limit_mb);
 
 /**
  * Get total memory usage across all buffers
- * 
+ *
  * @return Total memory usage in bytes
  */
-size_t motion_buffer_get_total_memory_usage(void);
+size_t packet_buffer_get_total_memory_usage(void);
 
 /**
  * Enable/disable disk-based fallback for a buffer
- * 
+ *
  * @param buffer Buffer to configure
  * @param enable true to enable disk fallback, false to disable
  * @param disk_path Path to disk buffer directory (NULL to use default)
  * @return 0 on success, non-zero on failure
  */
-int motion_buffer_set_disk_fallback(motion_buffer_t *buffer, bool enable, const char *disk_path);
+int packet_buffer_set_disk_fallback(packet_buffer_t *buffer, bool enable, const char *disk_path);
 
-#endif /* LIGHTNVR_MOTION_BUFFER_H */
+#endif /* LIGHTNVR_PACKET_BUFFER_H */
 

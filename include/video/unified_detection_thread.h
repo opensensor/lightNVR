@@ -22,7 +22,7 @@
 #include <libavcodec/avcodec.h>
 
 #include "core/config.h"
-#include "video/motion_buffer.h"
+#include "video/packet_buffer.h"
 #include "video/detection_model.h"
 #include "video/mp4_writer.h"
 
@@ -71,7 +71,7 @@ typedef struct {
     int post_buffer_seconds;  // Seconds to record after last detection
     
     // Circular buffer for pre-detection content
-    motion_buffer_t *packet_buffer;
+    packet_buffer_t *packet_buffer;
     
     // MP4 recording
     mp4_writer_t *mp4_writer;
@@ -88,6 +88,9 @@ typedef struct {
     atomic_int consecutive_failures;
     int reconnect_attempt;
     
+    // Audio recording configuration
+    bool record_audio;  // Whether to include audio in recordings
+
     // FFmpeg contexts (managed by thread)
     AVFormatContext *input_ctx;
     AVCodecContext *decoder_ctx;

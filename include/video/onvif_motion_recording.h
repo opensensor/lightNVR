@@ -7,7 +7,7 @@
 #include <pthread.h>
 #include <libavformat/avformat.h>
 #include "core/config.h"
-#include "video/motion_buffer.h"
+#include "video/packet_buffer.h"
 
 /**
  * ONVIF Motion Detection Recording Module
@@ -62,7 +62,7 @@ typedef struct {
     bool enabled;                   // Whether motion recording is enabled
 
     // Buffer management
-    motion_buffer_t *buffer;        // Circular buffer for pre-event recording
+    packet_buffer_t *buffer;        // Circular buffer for pre-event recording
     bool buffer_enabled;            // Whether buffering is enabled
 
     // State tracking
@@ -192,7 +192,7 @@ int force_stop_motion_recording(const char *stream_name);
  * @param packet Video packet to buffer
  * @return 0 on success, non-zero on failure
  */
-int feed_packet_to_motion_buffer(const char *stream_name, const AVPacket *packet);
+int feed_packet_to_event_buffer(const char *stream_name, const AVPacket *packet);
 
 /**
  * Get buffer statistics for a stream
@@ -203,7 +203,7 @@ int feed_packet_to_motion_buffer(const char *stream_name, const AVPacket *packet
  * @param duration Output: duration of buffered content in seconds
  * @return 0 on success, non-zero on failure
  */
-int get_motion_buffer_stats(const char *stream_name, int *packet_count, size_t *memory_usage, int *duration);
+int get_event_buffer_stats(const char *stream_name, int *packet_count, size_t *memory_usage, int *duration);
 
 #endif /* LIGHTNVR_ONVIF_MOTION_RECORDING_H */
 

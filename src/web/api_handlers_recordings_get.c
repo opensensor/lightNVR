@@ -31,12 +31,12 @@
 void mg_handle_get_recordings_worker(struct mg_connection *c, struct mg_http_message *hm) {
     // Check if shutdown is in progress - skip expensive database queries
     if (is_shutdown_initiated()) {
-        log_info("Shutdown in progress, rejecting recordings request");
+        log_debug("Shutdown in progress, rejecting recordings request");
         mg_send_json_error(c, 503, "Service shutting down");
         return;
     }
 
-    log_info("Processing GET /api/recordings request in worker thread");
+    log_debug("Processing GET /api/recordings request in worker thread");
 
     // Extract URI for logging
     char uri_buf[MAX_PATH_LENGTH] = {0};
@@ -45,10 +45,10 @@ void mg_handle_get_recordings_worker(struct mg_connection *c, struct mg_http_mes
     uri_buf[uri_len] = '\0';
 
     // Log all headers for debugging
-    log_info("Request headers for %s:", uri_buf);
+    log_debug("Request headers for %s:", uri_buf);
     for (int i = 0; i < MG_MAX_HTTP_HEADERS; i++) {
         if (hm->headers[i].name.len == 0) break;
-        log_info("  %.*s: %.*s",
+        log_debug("  %.*s: %.*s",
                 (int)hm->headers[i].name.len, hm->headers[i].name.buf,
                 (int)hm->headers[i].value.len, hm->headers[i].value.buf);
     }
@@ -69,7 +69,7 @@ void mg_handle_get_recordings_worker(struct mg_connection *c, struct mg_http_mes
     if (hm->query.len > 0 && hm->query.len < sizeof(query_string)) {
         memcpy(query_string, mg_str_get_ptr(&hm->query), hm->query.len);
         query_string[hm->query.len] = '\0';
-        log_info("Query string: %s", query_string);
+        log_debug("Query string: %s", query_string);
     }
     
     // Extract parameters
@@ -144,19 +144,19 @@ void mg_handle_get_recordings_worker(struct mg_connection *c, struct mg_http_mes
             memmove(pos + 1, pos + 3, strlen(pos + 3) + 1);
         }
         
-        log_info("Parsing start time string (decoded): %s", decoded_start_time);
-        
+        log_debug("Parsing start time string (decoded): %s", decoded_start_time);
+
         struct tm tm = {0};
         // Try different time formats
         if (strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%S", &tm) != NULL ||
             strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%S.000Z", &tm) != NULL ||
             strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%S.000", &tm) != NULL ||
             strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%SZ", &tm) != NULL) {
-            
+
             // Convert to UTC timestamp - assume input is already in UTC
             tm.tm_isdst = 0; // No DST for UTC
             start_time = timegm(&tm);
-            log_info("Parsed start time: %ld", (long)start_time);
+            log_debug("Parsed start time: %ld", (long)start_time);
         } else {
             log_error("Failed to parse start time string: %s", decoded_start_time);
         }
@@ -174,19 +174,19 @@ void mg_handle_get_recordings_worker(struct mg_connection *c, struct mg_http_mes
             memmove(pos + 1, pos + 3, strlen(pos + 3) + 1);
         }
         
-        log_info("Parsing end time string (decoded): %s", decoded_end_time);
-        
+        log_debug("Parsing end time string (decoded): %s", decoded_end_time);
+
         struct tm tm = {0};
         // Try different time formats
         if (strptime(decoded_end_time, "%Y-%m-%dT%H:%M:%S", &tm) != NULL ||
             strptime(decoded_end_time, "%Y-%m-%dT%H:%M:%S.000Z", &tm) != NULL ||
             strptime(decoded_end_time, "%Y-%m-%dT%H:%M:%S.000", &tm) != NULL ||
             strptime(decoded_end_time, "%Y-%m-%dT%H:%M:%SZ", &tm) != NULL) {
-            
+
             // Convert to UTC timestamp - assume input is already in UTC
             tm.tm_isdst = 0; // No DST for UTC
             end_time = timegm(&tm);
-            log_info("Parsed end time: %ld", (long)end_time);
+            log_debug("Parsed end time: %ld", (long)end_time);
         } else {
             log_error("Failed to parse end time string: %s", decoded_end_time);
         }
@@ -362,14 +362,14 @@ void mg_handle_get_recordings_worker(struct mg_connection *c, struct mg_http_mes
     }
     
     // Send response directly
-    log_info("Sending JSON response for GET /api/recordings request");
+    log_debug("Sending JSON response for GET /api/recordings request");
     mg_send_json_response(c, 200, json_str);
-    
+
     // Clean up
     free(json_str);
     cJSON_Delete(response);
-    
-    log_info("Successfully handled GET /api/recordings request");
+
+    log_debug("Successfully handled GET /api/recordings request");
 }
 
 /**
@@ -379,12 +379,12 @@ void mg_handle_get_recordings_worker(struct mg_connection *c, struct mg_http_mes
  * For large datasets, this approach ensures the client receives the complete response.
  */
 void mg_handle_get_recordings(struct mg_connection *c, struct mg_http_message *hm) {
-    log_info("Processing GET /api/recordings request");
-    
+    log_debug("Processing GET /api/recordings request");
+
     // Process the request directly
     mg_handle_get_recordings_worker(c, hm);
-    
-    log_info("Completed GET /api/recordings request");
+
+    log_debug("Completed GET /api/recordings request");
 }
 
 /**
@@ -395,12 +395,12 @@ void mg_handle_get_recordings(struct mg_connection *c, struct mg_http_message *h
 void mg_handle_get_recording_worker(struct mg_connection *c, struct mg_http_message *hm) {
     // Check if shutdown is in progress
     if (is_shutdown_initiated()) {
-        log_info("Shutdown in progress, rejecting recording detail request");
+        log_debug("Shutdown in progress, rejecting recording detail request");
         mg_send_json_error(c, 503, "Service shutting down");
         return;
     }
 
-    log_info("Processing GET /api/recordings/:id request in worker thread");
+    log_debug("Processing GET /api/recordings/:id request in worker thread");
 
     // Check authentication
     http_server_t *server = (http_server_t *)c->fn_data;
@@ -429,7 +429,7 @@ void mg_handle_get_recording_worker(struct mg_connection *c, struct mg_http_mess
         return;
     }
     
-    log_info("Handling GET /api/recordings/%llu request", (unsigned long long)id);
+    log_debug("Handling GET /api/recordings/%llu request", (unsigned long long)id);
     
     // Get recording from database
     recording_metadata_t recording;
@@ -543,7 +543,7 @@ void mg_handle_get_recording_worker(struct mg_connection *c, struct mg_http_mess
     free(json_str);
     cJSON_Delete(recording_obj);
     
-    log_info("Successfully handled GET /api/recordings/%llu request", (unsigned long long)id);
+    log_debug("Successfully handled GET /api/recordings/%llu request", (unsigned long long)id);
 }
 
 /**
@@ -553,10 +553,10 @@ void mg_handle_get_recording_worker(struct mg_connection *c, struct mg_http_mess
  * This approach ensures the client receives the complete response.
  */
 void mg_handle_get_recording(struct mg_connection *c, struct mg_http_message *hm) {
-    log_info("Processing GET /api/recordings/:id request");
-    
+    log_debug("Processing GET /api/recordings/:id request");
+
     // Process the request directly
     mg_handle_get_recording_worker(c, hm);
-    
-    log_info("Completed GET /api/recordings/:id request");
+
+    log_debug("Completed GET /api/recordings/:id request");
 }

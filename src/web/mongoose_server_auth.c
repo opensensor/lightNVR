@@ -42,10 +42,10 @@ int mongoose_server_basic_auth_check(struct mg_http_message *hm, http_server_t *
     
     // If no Authorization header, check for session or auth cookie
     if (auth_header == NULL) {
-        log_info("No Authorization header found for URI: %s, checking for cookies", uri);
+        log_debug("No Authorization header found for URI: %s, checking for cookies", uri);
         struct mg_str *cookie_header = mg_http_get_header(hm, "Cookie");
         if (cookie_header != NULL) {
-            log_info("Cookie header found: %.*s", (int)cookie_header->len, cookie_header->buf);
+            log_debug("Cookie header found: %.*s", (int)cookie_header->len, cookie_header->buf);
             
             // Parse the cookie header manually
             char cookie_str[1024] = {0};
@@ -69,15 +69,15 @@ int mongoose_server_basic_auth_check(struct mg_http_message *hm, http_server_t *
                         memcpy(session_cookie_value, session_cookie_start, session_cookie_len);
                         session_cookie_value[session_cookie_len] = '\0';
                         
-                        log_info("Found session cookie value: %s", session_cookie_value);
-                        
+                        log_debug("Found session cookie value: %s", session_cookie_value);
+
                         // Validate the session token
                         int64_t user_id;
                         if (db_auth_validate_session(session_cookie_value, &user_id) == 0) {
-                            log_info("Session token validated successfully for user ID: %lld", (long long)user_id);
+                            log_debug("Session token validated successfully for user ID: %lld", (long long)user_id);
                             return 0; // Authentication successful
                         } else {
-                            log_info("Invalid session token: %s", session_cookie_value);
+                            log_debug("Invalid session token: %s", session_cookie_value);
                         }
                     }
                 }
@@ -98,7 +98,7 @@ int mongoose_server_basic_auth_check(struct mg_http_message *hm, http_server_t *
                         memcpy(auth_cookie_value, auth_cookie_start, auth_cookie_len);
                         auth_cookie_value[auth_cookie_len] = '\0';
                         
-                        log_info("Found auth cookie value: %s", auth_cookie_value);
+                        log_debug("Found auth cookie value: %s", auth_cookie_value);
                         
                         // Create a temporary buffer for the Authorization header value
                         char auth_value[512];
@@ -116,16 +116,16 @@ int mongoose_server_basic_auth_check(struct mg_http_message *hm, http_server_t *
                         
                         // Use the cookie value as the Authorization header
                         auth_header = &static_auth_header;
-                        log_info("Using auth cookie for authentication: %s", auth_header_buf);
+                        log_debug("Using auth cookie for authentication: %s", auth_header_buf);
                     }
                 } else {
-                    log_info("No auth cookie found in cookie string: %s", cookie_str);
+                    log_debug("No auth cookie found in cookie string: %s", cookie_str);
                 }
             } else {
-                log_info("Cookie header too long to process");
+                log_debug("Cookie header too long to process");
             }
         } else {
-            log_info("No Cookie header found");
+            log_debug("No Cookie header found");
         }
         
         // If still no auth header, authentication fails
@@ -168,7 +168,7 @@ int mongoose_server_basic_auth_check(struct mg_http_message *hm, http_server_t *
                 // Get the user to check if they're active
                 user_t db_user;
                 if (db_auth_get_user_by_id(user_id, &db_user) == 0 && db_user.is_active) {
-                    log_info("Authentication successful with database credentials for user: %s (ID: %lld)", 
+                    log_debug("Authentication successful with database credentials for user: %s (ID: %lld)",
                             user, (long long)user_id);
                     return 0; // Authentication successful
                 }

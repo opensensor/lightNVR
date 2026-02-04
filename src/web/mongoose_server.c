@@ -224,18 +224,18 @@ static bool handle_api_request(struct mg_connection *c, struct mg_http_message *
     memcpy(method_buf, hm->method.buf, method_len);
     method_buf[method_len] = '\0';
 
-    log_info("API request received: %s %s, threading=%s", method_buf, uri_buf, use_threading ? "enabled" : "disabled");
+    log_debug("API request received: %s %s, threading=%s", method_buf, uri_buf, use_threading ? "enabled" : "disabled");
 
     // Find matching route
     int route_index = match_route(hm);
     if (route_index >= 0) {
         // Route matched
-        log_info("API route matched: %s %s", method_buf, uri_buf);
+        log_debug("API route matched: %s %s", method_buf, uri_buf);
 
         // Check if this handler should be automatically threaded
         if (use_threading && !s_api_routes[route_index].no_auto_threading) {
             // Handle in a separate thread using mg_thread_function
-            log_info("Handling API request in a worker thread: %s %s", method_buf, uri_buf);
+            log_debug("Handling API request in a worker thread: %s %s", method_buf, uri_buf);
 
             // Create a thread data structure
             struct mg_thread_data *data = calloc(1, sizeof(struct mg_thread_data));
@@ -262,15 +262,15 @@ static bool handle_api_request(struct mg_connection *c, struct mg_http_message *
             // Start thread
             mg_start_thread(mg_thread_function, data);
 
-            log_info("API request started in a worker thread: %s %s", method_buf, uri_buf);
+            log_debug("API request started in a worker thread: %s %s", method_buf, uri_buf);
             return true;
         } else {
             // Either threading is disabled or this handler has opted out of auto-threading
             if (s_api_routes[route_index].no_auto_threading) {
-                log_info("Handler has opted out of auto-threading: %s %s", method_buf, uri_buf);
+                log_debug("Handler has opted out of auto-threading: %s %s", method_buf, uri_buf);
             }
             // Call handler directly
-            log_info("Handling API request directly: %s %s", method_buf, uri_buf);
+            log_debug("Handling API request directly: %s %s", method_buf, uri_buf);
             s_api_routes[route_index].handler(c, hm);
             return true;
         }
@@ -286,7 +286,7 @@ static bool handle_api_request(struct mg_connection *c, struct mg_http_message *
  */
 static void init_route_table(void) {
     // Nothing to initialize since we're using the static s_api_routes table
-    log_info("Route table initialized using API routes table");
+    log_debug("Route table initialized using API routes table");
 }
 
 /**
@@ -294,7 +294,7 @@ static void init_route_table(void) {
  */
 static void free_route_table(void) {
     // Nothing to free since we're using a static table
-    log_info("Route table reference cleared");
+    log_debug("Route table reference cleared");
 }
 
 /**
@@ -567,15 +567,28 @@ int http_server_start(http_server_handle_t server) {
  */
 void http_server_stop(http_server_handle_t server) {
     if (!server || !server->mgr) {
+        log_info("http_server_stop: server or mgr is NULL, skipping");
         return;
     }
 
     if (!server->running) {
+        log_info("http_server_stop: server not running, skipping");
         return;
     }
 
     server->running = false;
-    log_info("Stopping HTTP server");
+    log_info("Stopping HTTP server...");
+
+    // Check if web server socket was already closed by emergency handler
+    extern int web_server_socket;
+    if (web_server_socket < 0) {
+        log_info("Web server socket already closed by emergency handler, fast shutdown path");
+        // Socket was already closed by alarm handler, skip graceful close
+        // Just free the manager and return
+        mg_mgr_free(server->mgr);
+        log_info("HTTP server stopped (fast path)");
+        return;
+    }
 
     // Give connections time to close gracefully
     usleep(250000); // 250ms for connections to close
@@ -880,12 +893,12 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
         uri[uri_len] = '\0';
 
         // Log request details with more information
-        log_info("Received request: uri=%s, method=%.*s", uri,
+        log_debug("Received request: uri=%s, method=%.*s", uri,
                 (int)hm->method.len, hm->method.buf);
 
         // Special handling for root path
         if (strcmp(uri, "/") == 0) {
-            log_info("Root path detected, web_root=%s", server->config.web_root);
+            log_debug("Root path detected, web_root=%s", server->config.web_root);
         }
 
         // Check if this is a static asset that should bypass authentication
@@ -923,12 +936,12 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
         }
         // Process HLS requests with authentication
         else if (is_hls_request) {
-            log_info("Processing HLS request with authentication: %s", uri);
+            log_debug("Processing HLS request with authentication: %s", uri);
 
             // Log all headers for debugging
             for (int i = 0; i < MG_MAX_HTTP_HEADERS; i++) {
                 if (hm->headers[i].name.len == 0) break;
-                log_info("HLS request header: %.*s: %.*s",
+                log_debug("HLS request header: %.*s: %.*s",
                         (int)hm->headers[i].name.len, hm->headers[i].name.buf,
                         (int)hm->headers[i].value.len, hm->headers[i].value.buf);
             }
@@ -955,12 +968,12 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
                 }
             }
 
-            log_info("HLS request auth status: header=%d, cookie=%d, session=%d",
+            log_debug("HLS request auth status: header=%d, cookie=%d, session=%d",
                     has_auth_header, has_auth_cookie, has_session_cookie);
 
             // If authentication is enabled and we have neither auth header nor cookie, return 401
             if (server->config.auth_enabled && !has_auth_header && !has_auth_cookie && !has_session_cookie) {
-                log_info("Authentication required for HLS request but no auth provided");
+                log_debug("Authentication required for HLS request but no auth provided");
                 mg_printf(c, "HTTP/1.1 401 Unauthorized\r\n");
                 mg_printf(c, "Content-Type: application/json\r\n");
                 mg_printf(c, "Content-Length: 26\r\n");
@@ -973,7 +986,7 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
         // For non-static assets and non-HLS requests, check authentication if enabled
         else if (!is_hls_request && server->config.auth_enabled && mongoose_server_basic_auth_check(hm, server) != 0) {
             // Authentication failed
-            log_info("Authentication failed for request: %s", uri);
+            log_debug("Authentication failed for request: %s", uri);
 
             // For API requests, return 401 Unauthorized but don't prompt for basic auth
             if (strncmp(uri, "/api/", 5) == 0) {
@@ -990,7 +1003,7 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
                     strcmp(uri, "/login.html") == 0 ||
                     strncmp(uri, "/login.html?", 12) == 0) {
                     // Root path or login page, serve it without authentication
-                    log_info("Serving %s without authentication", uri);
+                    log_debug("Serving %s without authentication", uri);
                     // Continue processing without redirecting
                 } else {
                     // For other requests, redirect to login page
@@ -1006,7 +1019,7 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
 
         // Handle CORS preflight request
         if (server->config.cors_enabled && mg_match(hm->method, mg_str("OPTIONS"), NULL)) {
-            log_info("Handling CORS preflight request: %s", uri);
+            log_debug("Handling CORS preflight request: %s", uri);
             mongoose_server_handle_cors_preflight(c, hm, server);
             return;
         }
@@ -1020,7 +1033,7 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
 
         // Special handling for root path
         if (strcmp(uri, "/") == 0) {
-            log_info("Root path detected in main handler, redirecting to index.html");
+            log_debug("Root path detected in main handler, redirecting to index.html");
             // Directly serve index.html for root path
             char index_path[MAX_PATH_LENGTH * 2];
             snprintf(index_path, sizeof(index_path), "%s/index.html", server->config.web_root);
@@ -1039,7 +1052,7 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
                     .extra_headers = "Connection: close\r\n"
                 };
 
-                log_info("Serving index file for root path using mg_http_serve_file: %s", index_path);
+                log_debug("Serving index file for root path using mg_http_serve_file: %s", index_path);
                 mg_http_serve_file(c, hm, index_path, &opts);
             } else {
                 // If index.html doesn't exist, redirect to /index.html with query parameters preserved
@@ -1052,7 +1065,7 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
                            MIN(hm->query.len, sizeof(redirect_url) - strlen(redirect_url) - 1));
                 }
 
-                log_info("Index file not found, redirecting to %s", redirect_url);
+                log_debug("Index file not found, redirecting to %s", redirect_url);
                 mg_printf(c, "HTTP/1.1 302 Found\r\n");
                 mg_printf(c, "Location: %s\r\n", redirect_url);
                 mg_printf(c, "Connection: close\r\n");
@@ -1088,7 +1101,7 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
         memcpy(uri_buf, hm->uri.buf, uri_len);
         uri_buf[uri_len] = '\0';
 
-        log_info("Request not handled by API or multithreading, passing to static file handler: %s", uri_buf);
+        log_debug("Request not handled by API or multithreading, passing to static file handler: %s", uri_buf);
 
         // Try to serve static file
         mongoose_server_handle_static_file(c, hm, server);

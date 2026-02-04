@@ -493,24 +493,24 @@ int get_recording_count(time_t start_time, time_t end_time,
     if (has_detection) {
         // Filter by trigger_type = 'detection' OR existence of detections in the recording's time range
         strcat(sql, " AND (r.trigger_type = 'detection' OR EXISTS (SELECT 1 FROM detections d WHERE d.stream_name = r.stream_name AND d.timestamp >= r.start_time AND d.timestamp <= r.end_time))");
-        log_info("Adding detection filter (trigger_type OR detections table)");
+        log_debug("Adding detection filter (trigger_type OR detections table)");
     }
 
     if (start_time > 0) {
         strcat(sql, " AND r.start_time >= ?");
-        log_info("Adding start_time filter: %ld", (long)start_time);
+        log_debug("Adding start_time filter: %ld", (long)start_time);
     }
 
     if (end_time > 0) {
         strcat(sql, " AND r.start_time <= ?");
-        log_info("Adding end_time filter: %ld", (long)end_time);
+        log_debug("Adding end_time filter: %ld", (long)end_time);
     }
 
     if (stream_name) {
         strcat(sql, " AND r.stream_name = ?");
     }
 
-    log_info("SQL query for get_recording_count: %s", sql);
+    log_debug("SQL query for get_recording_count: %s", sql);
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -548,7 +548,7 @@ int get_recording_count(time_t start_time, time_t end_time,
     sqlite3_finalize(stmt);
     pthread_mutex_unlock(db_mutex);
 
-    log_info("Total count of recordings matching criteria: %d", count);
+    log_debug("Total count of recordings matching criteria: %d", count);
     return count;
 }
 
@@ -643,7 +643,7 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
     snprintf(limit_clause, sizeof(limit_clause), " LIMIT ? OFFSET ?");
     strcat(sql, limit_clause);
 
-    log_info("SQL query for get_recording_metadata_paginated: %s", sql);
+    log_debug("SQL query for get_recording_metadata_paginated: %s", sql);
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -739,7 +739,7 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
     sqlite3_finalize(stmt);
     pthread_mutex_unlock(db_mutex);
 
-    log_info("Found %d recordings in database matching criteria (page %d, limit %d)",
+    log_debug("Found %d recordings in database matching criteria (page %d, limit %d)",
              count, (offset / limit) + 1, limit);
     return count;
 }

@@ -89,6 +89,13 @@ void set_web_server_socket(int socket_fd) {
 
 // Improved signal handler with phased shutdown approach
 static void signal_handler(int sig) {
+    // Check if coordinator has been destroyed - if so, we're in final cleanup
+    // and should just exit cleanly without trying to use any mutexes
+    if (is_coordinator_destroyed()) {
+        // Final cleanup is in progress, force exit
+        _exit(0);
+    }
+
     // Log the signal received
     log_info("Received signal %d, shutting down...", sig);
 
@@ -118,85 +125,37 @@ static void signal_handler(int sig) {
     log_info("Shutdown process initiated, waiting for components to stop gracefully");
 }
 
-// Alarm signal handler for forced exit - improved with phased emergency cleanup
+// Atomic flag to track emergency shutdown phase - must be volatile sig_atomic_t for signal safety
+static volatile sig_atomic_t emergency_shutdown_phase = 0;
+
+// Alarm signal handler for forced exit - MUST ONLY use async-signal-safe functions
+// NOTE: pthread_mutex_lock, log_*, malloc, etc. are NOT async-signal-safe and must NOT be used here
 static void alarm_handler(int sig) {
-    static bool emergency_cleanup_in_progress = false;
-    static int emergency_phase = 0;
+    (void)sig; // Suppress unused parameter warning
 
-    // If this is the first time we're called, start emergency cleanup
-    if (!emergency_cleanup_in_progress) {
-        log_warn("Shutdown timeout reached, forcing exit");
-        log_info("Performing emergency cleanup of critical resources");
-        emergency_cleanup_in_progress = true;
+    // Increment the emergency phase atomically
+    emergency_shutdown_phase++;
 
-        // Set a new alarm for the next phase (30 seconds)
-        alarm(30);
-
-        // Phase 1: Try to stop all HLS writers first as they're often the source of hangs
-        log_info("Emergency cleanup phase 1: Stopping HLS writers");
-
-        // Force cleanup of HLS contexts first
-        log_info("Starting detection resources cleanup...");
-        cleanup_detection_resources();
-
-        // Force cleanup of web server connections
+    if (emergency_shutdown_phase == 1) {
+        // Phase 1: Close the web server socket (close() is async-signal-safe)
         if (web_server_socket >= 0) {
-            log_info("Closing web server socket %d", web_server_socket);
             close(web_server_socket);
             web_server_socket = -1;
         }
 
-        // Mark all components as stopping
-        shutdown_coordinator_t *coordinator = get_shutdown_coordinator();
-        if (coordinator) {
-            pthread_mutex_lock(&coordinator->mutex);
-            for (int i = 0; i < atomic_load(&coordinator->component_count); i++) {
-                // Only update components that are still running
-                if (atomic_load(&coordinator->components[i].state) == COMPONENT_RUNNING) {
-                    atomic_store(&coordinator->components[i].state, COMPONENT_STOPPING);
-                    log_info("Forcing component %s (ID: %d) to STOPPING state",
-                             coordinator->components[i].name, i);
-                }
-            }
-            pthread_mutex_unlock(&coordinator->mutex);
-        }
-
-        // Increment phase for next alarm
-        emergency_phase = 1;
-        return;
-    }
-
-    // Phase 2: If we're still not exiting, force all components to stopped state
-    if (emergency_phase == 1) {
-        log_warn("Emergency cleanup phase 1 timed out, proceeding to phase 2");
-
-        // Set a final alarm (15 seconds)
+        // Set another alarm for phase 2 (alarm() is async-signal-safe)
         alarm(15);
-
-        // Force all components to be marked as stopped
-        shutdown_coordinator_t *coordinator = get_shutdown_coordinator();
-        if (coordinator) {
-            pthread_mutex_lock(&coordinator->mutex);
-            for (int i = 0; i < atomic_load(&coordinator->component_count); i++) {
-                if (atomic_load(&coordinator->components[i].state) != COMPONENT_STOPPED) {
-                    log_warn("Forcing component %s (ID: %d) from state %d to STOPPED",
-                             coordinator->components[i].name, i,
-                             atomic_load(&coordinator->components[i].state));
-                    atomic_store(&coordinator->components[i].state, COMPONENT_STOPPED);
-                }
-            }
-            coordinator->all_components_stopped = true;
-            pthread_mutex_unlock(&coordinator->mutex);
-        }
-
-        // Increment phase for next alarm
-        emergency_phase = 2;
         return;
     }
 
-    // Phase 3: Final forced exit
-    log_error("Emergency cleanup timed out after multiple phases, forcing immediate exit");
-    _exit(EXIT_SUCCESS); // Use _exit instead of exit to avoid calling atexit handlers
+    if (emergency_shutdown_phase == 2) {
+        // Phase 2: Give it one more chance
+        alarm(10);
+        return;
+    }
+
+    // Phase 3+: Force exit immediately (_exit is async-signal-safe)
+    _exit(EXIT_SUCCESS);
 }
 
 // Function to initialize signal handlers with improved signal handling
@@ -1103,9 +1062,13 @@ cleanup:
     // Note: go2rtc_stream_cleanup() will be called later
     #endif
 
-    // Block signals during cleanup to prevent interruptions
+    // Block most signals during cleanup to prevent interruptions
+    // But keep SIGUSR1, SIGALRM, and SIGKILL unblocked for emergency shutdown
     sigset_t block_mask, old_mask;
     sigfillset(&block_mask);
+    sigdelset(&block_mask, SIGUSR1);   // Keep USR1 unblocked for watchdog
+    sigdelset(&block_mask, SIGALRM);   // Keep ALRM unblocked for timeouts
+    sigdelset(&block_mask, SIGKILL);   // SIGKILL can't be blocked anyway
     pthread_sigmask(SIG_BLOCK, &block_mask, &old_mask);
 
     // Set up a watchdog timer to force exit if cleanup takes too long
@@ -1113,13 +1076,18 @@ cleanup:
 
     if (cleanup_pid == 0) {
         // Child process - watchdog timer
+        // Unblock all signals in the child so it can log properly
+        sigset_t empty_mask;
+        sigemptyset(&empty_mask);
+        pthread_sigmask(SIG_SETMASK, &empty_mask, NULL);
+
         sleep(30);  // 30 seconds for first phase timeout
         log_error("Cleanup process phase 1 timed out after 30 seconds");
         kill(getppid(), SIGUSR1);  // Send USR1 to parent to trigger emergency cleanup
 
-        // Wait another 30 seconds for emergency cleanup
-        sleep(30);
-        log_error("Cleanup process phase 2 timed out after 30 seconds, forcing exit");
+        // Wait another 15 seconds for emergency cleanup
+        sleep(15);
+        log_error("Cleanup process phase 2 timed out after 15 seconds, forcing exit");
         kill(getppid(), SIGKILL);  // Force kill the parent process
         exit(EXIT_FAILURE);
     } else if (cleanup_pid > 0) {
@@ -1262,10 +1230,10 @@ cleanup:
         // Shutdown detection resources with timeout protection
         log_info("Cleaning up detection resources...");
 
-        // Set an alarm to prevent hanging during detection resource cleanup
-        alarm(5); // 5 second timeout for detection resource cleanup
+        // Note: We no longer set a short alarm here because it would cancel the
+        // 20-second safety alarm from the signal handler. If cleanup_detection_resources()
+        // hangs, the safety alarm will still fire.
         cleanup_detection_resources();
-        alarm(0); // Cancel the alarm if cleanup completed successfully
 
         // Cleanup MQTT client
         log_info("Cleaning up MQTT client...");

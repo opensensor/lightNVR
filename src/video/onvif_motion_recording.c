@@ -311,12 +311,12 @@ static int start_motion_recording_internal(motion_recording_context_t *ctx) {
         size_t memory_usage = 0;
         int duration = 0;
 
-        if (motion_buffer_get_stats(ctx->buffer, &packet_count, &memory_usage, &duration) == 0) {
+        if (packet_buffer_get_stats(ctx->buffer, &packet_count, &memory_usage, &duration) == 0) {
             log_info("Flushing pre-event buffer for stream: %s (%d packets, %d seconds)",
                      ctx->stream_name, packet_count, duration);
 
             // Flush buffer to recording
-            int flushed = motion_buffer_flush(ctx->buffer, flush_packet_callback, (void *)ctx->stream_name);
+            int flushed = packet_buffer_flush(ctx->buffer, flush_packet_callback, (void *)ctx->stream_name);
             if (flushed > 0) {
                 ctx->total_buffer_flushes++;
                 ctx->buffer_flushed = true;
@@ -408,7 +408,7 @@ static void update_recording_state(motion_recording_context_t *ctx, time_t curre
 
         case RECORDING_STATE_BUFFERING:
             // Just buffering, waiting for motion
-            // Buffer is being filled by feed_packet_to_motion_buffer()
+            // Buffer is being filled by feed_packet_to_event_buffer()
             break;
 
         case RECORDING_STATE_RECORDING:
@@ -581,9 +581,9 @@ static void load_motion_configs_from_database(void) {
 int init_onvif_motion_recording(void) {
     log_info("Initializing ONVIF motion recording system");
 
-    // Initialize motion buffer pool (50MB default limit)
-    if (init_motion_buffer_pool(50) != 0) {
-        log_error("Failed to initialize motion buffer pool");
+    // Initialize packet buffer pool (50MB default limit)
+    if (init_packet_buffer_pool(50) != 0) {
+        log_error("Failed to initialize packet buffer pool");
         return -1;
     }
 
@@ -598,7 +598,7 @@ int init_onvif_motion_recording(void) {
     // Initialize event queue
     if (init_event_queue() != 0) {
         log_error("Failed to initialize motion event queue");
-        cleanup_motion_buffer_pool();
+        cleanup_packet_buffer_pool();
         return -1;
     }
 
@@ -608,7 +608,7 @@ int init_onvif_motion_recording(void) {
         log_error("Failed to create motion event processor thread");
         event_processor_running = false;
         cleanup_event_queue();
-        cleanup_motion_buffer_pool();
+        cleanup_packet_buffer_pool();
         return -1;
     }
     event_processor_thread_created = true;
@@ -639,7 +639,7 @@ void cleanup_onvif_motion_recording(void) {
     for (int i = 0; i < MAX_STREAMS; i++) {
         pthread_mutex_lock(&contexts_mutex);
         bool is_active = recording_contexts[i].active;
-        motion_buffer_t *buffer = recording_contexts[i].buffer;
+        packet_buffer_t *buffer = recording_contexts[i].buffer;
         pthread_mutex_unlock(&contexts_mutex);
 
         if (is_active) {
@@ -648,7 +648,7 @@ void cleanup_onvif_motion_recording(void) {
 
             // Destroy buffer if it exists (without holding contexts_mutex)
             if (buffer) {
-                destroy_motion_buffer(buffer);
+                destroy_packet_buffer(buffer);
             }
         }
     }
@@ -667,8 +667,8 @@ void cleanup_onvif_motion_recording(void) {
     // Cleanup event queue
     cleanup_event_queue();
 
-    // Cleanup motion buffer pool
-    cleanup_motion_buffer_pool();
+    // Cleanup packet buffer pool
+    cleanup_packet_buffer_pool();
 
     log_info("ONVIF motion recording system cleaned up");
 }
@@ -703,7 +703,7 @@ int enable_motion_recording(const char *stream_name, const motion_recording_conf
     if (config->pre_buffer_seconds > 0) {
         if (!ctx->buffer) {
             // Create new buffer
-            ctx->buffer = create_motion_buffer(stream_name, config->pre_buffer_seconds, BUFFER_MODE_MEMORY);
+            ctx->buffer = create_packet_buffer(stream_name, config->pre_buffer_seconds, BUFFER_MODE_MEMORY);
             if (ctx->buffer) {
                 ctx->buffer_enabled = true;
                 ctx->state = RECORDING_STATE_BUFFERING;
@@ -716,7 +716,7 @@ int enable_motion_recording(const char *stream_name, const motion_recording_conf
     } else {
         // Destroy buffer if it exists
         if (ctx->buffer) {
-            destroy_motion_buffer(ctx->buffer);
+            destroy_packet_buffer(ctx->buffer);
             ctx->buffer = NULL;
             ctx->buffer_enabled = false;
             ctx->state = RECORDING_STATE_IDLE;
@@ -927,9 +927,9 @@ int force_stop_motion_recording(const char *stream_name) {
 }
 
 /**
- * Feed a video packet to the motion recording buffer
+ * Feed a video packet to the event recording buffer
  */
-int feed_packet_to_motion_buffer(const char *stream_name, const AVPacket *packet) {
+int feed_packet_to_event_buffer(const char *stream_name, const AVPacket *packet) {
     if (!stream_name || !packet) {
         return -1;
     }
@@ -940,7 +940,7 @@ int feed_packet_to_motion_buffer(const char *stream_name, const AVPacket *packet
     }
 
     // Add packet to buffer
-    int result = motion_buffer_add_packet(ctx->buffer, packet, time(NULL));
+    int result = packet_buffer_add_packet(ctx->buffer, packet, time(NULL));
 
     // Update state to BUFFERING if we're in IDLE
     if (result == 0 && ctx->state == RECORDING_STATE_IDLE) {
@@ -955,7 +955,7 @@ int feed_packet_to_motion_buffer(const char *stream_name, const AVPacket *packet
 /**
  * Get buffer statistics for a stream
  */
-int get_motion_buffer_stats(const char *stream_name, int *packet_count, size_t *memory_usage, int *duration) {
+int get_event_buffer_stats(const char *stream_name, int *packet_count, size_t *memory_usage, int *duration) {
     if (!stream_name) {
         return -1;
     }
@@ -965,5 +965,5 @@ int get_motion_buffer_stats(const char *stream_name, int *packet_count, size_t *
         return -1;
     }
 
-    return motion_buffer_get_stats(ctx->buffer, packet_count, memory_usage, duration);
+    return packet_buffer_get_stats(ctx->buffer, packet_count, memory_usage, duration);
 }

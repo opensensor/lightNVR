@@ -1,20 +1,20 @@
 /**
  * AVPacket Memory Buffer Strategy
- * 
- * Wraps the existing motion_buffer.c implementation as a pluggable strategy.
- * 
+ *
+ * Wraps the existing packet_buffer.c implementation as a pluggable strategy.
+ *
  * This strategy:
  * - Maintains a circular buffer of AVPackets in memory
  * - Provides frame-level precision for pre-detection content
  * - Tracks keyframes for proper GOP alignment
  * - Can flush directly to an MP4 writer for unified recordings
- * 
+ *
  * Advantages:
  * - Fine-grained control (frame-level precision)
  * - Proper timestamp handling (PTS/DTS)
  * - Keyframe awareness for seamless concatenation
  * - Unified output (single recording file)
- * 
+ *
  * Disadvantages:
  * - Memory intensive (~10-50MB per stream for 10s of 1080p)
  * - Requires dedicated RTSP reading for packet ingestion
@@ -26,17 +26,17 @@
 #include <pthread.h>
 
 #include "video/pre_detection_buffer.h"
-#include "video/motion_buffer.h"
+#include "video/packet_buffer.h"
 #include "core/logger.h"
 #include "core/config.h"
 
 // Strategy private data
 typedef struct {
     char stream_name[256];
-    motion_buffer_t *motion_buffer;     // Underlying motion buffer
+    packet_buffer_t *packet_buffer;     // Underlying packet buffer
     int buffer_seconds;
     size_t memory_limit_bytes;
-    
+
     // For flush_to_file, we need to track format context
     AVFormatContext *output_ctx;
     bool writing_file;
@@ -44,44 +44,44 @@ typedef struct {
 
 // --- Strategy interface methods ---
 
-static int memory_packet_strategy_init(pre_buffer_strategy_t *self, 
+static int memory_packet_strategy_init(pre_buffer_strategy_t *self,
                                         const buffer_config_t *config) {
     memory_packet_strategy_data_t *data = (memory_packet_strategy_data_t *)self->private_data;
-    
+
     data->buffer_seconds = config->buffer_seconds;
     data->memory_limit_bytes = config->memory_limit_bytes;
-    
-    // Create underlying motion buffer
-    data->motion_buffer = create_motion_buffer(data->stream_name, 
+
+    // Create underlying packet buffer
+    data->packet_buffer = create_packet_buffer(data->stream_name,
                                                 config->buffer_seconds,
                                                 BUFFER_MODE_MEMORY);
-    
-    if (!data->motion_buffer) {
-        log_error("Failed to create motion buffer for %s", data->stream_name);
+
+    if (!data->packet_buffer) {
+        log_error("Failed to create packet buffer for %s", data->stream_name);
         return -1;
     }
-    
+
     // Set memory limit if specified
     if (config->memory_limit_bytes > 0) {
-        motion_buffer_set_memory_limit(data->motion_buffer, 
+        packet_buffer_set_memory_limit(data->packet_buffer,
                                         config->memory_limit_bytes / (1024 * 1024));
     }
-    
+
     self->initialized = true;
     log_info("Memory packet strategy initialized for %s (%d seconds buffer)",
              data->stream_name, config->buffer_seconds);
-    
+
     return 0;
 }
 
 static void memory_packet_strategy_destroy(pre_buffer_strategy_t *self) {
     memory_packet_strategy_data_t *data = (memory_packet_strategy_data_t *)self->private_data;
-    
-    if (data->motion_buffer) {
-        destroy_motion_buffer(data->motion_buffer);
-        data->motion_buffer = NULL;
+
+    if (data->packet_buffer) {
+        destroy_packet_buffer(data->packet_buffer);
+        data->packet_buffer = NULL;
     }
-    
+
     log_debug("Memory packet strategy destroyed for %s", data->stream_name);
     free(data);
     self->private_data = NULL;
@@ -91,56 +91,56 @@ static int memory_packet_strategy_add_packet(pre_buffer_strategy_t *self,
                                               const AVPacket *packet,
                                               time_t timestamp) {
     memory_packet_strategy_data_t *data = (memory_packet_strategy_data_t *)self->private_data;
-    
-    if (!data->motion_buffer) {
+
+    if (!data->packet_buffer) {
         return -1;
     }
-    
-    return motion_buffer_add_packet(data->motion_buffer, packet, timestamp);
+
+    return packet_buffer_add_packet(data->packet_buffer, packet, timestamp);
 }
 
-static int memory_packet_strategy_get_stats(pre_buffer_strategy_t *self, 
+static int memory_packet_strategy_get_stats(pre_buffer_strategy_t *self,
                                              buffer_stats_t *stats) {
     memory_packet_strategy_data_t *data = (memory_packet_strategy_data_t *)self->private_data;
-    
+
     memset(stats, 0, sizeof(*stats));
-    
-    if (!data->motion_buffer) {
+
+    if (!data->packet_buffer) {
         return -1;
     }
-    
+
     int count = 0;
     size_t memory = 0;
     int duration = 0;
-    
-    motion_buffer_get_stats(data->motion_buffer, &count, &memory, &duration);
-    
+
+    packet_buffer_get_stats(data->packet_buffer, &count, &memory, &duration);
+
     stats->packet_count = count;
     stats->memory_usage_bytes = memory;
     stats->buffered_duration_ms = duration * 1000;
-    stats->keyframe_count = motion_buffer_get_keyframe_count(data->motion_buffer);
+    stats->keyframe_count = packet_buffer_get_keyframe_count(data->packet_buffer);
     stats->has_complete_gop = (stats->keyframe_count > 0);
-    stats->oldest_timestamp = data->motion_buffer->oldest_packet_time;
-    stats->newest_timestamp = data->motion_buffer->newest_packet_time;
-    
+    stats->oldest_timestamp = data->packet_buffer->oldest_packet_time;
+    stats->newest_timestamp = data->packet_buffer->newest_packet_time;
+
     return 0;
 }
 
 static bool memory_packet_strategy_is_ready(pre_buffer_strategy_t *self) {
     memory_packet_strategy_data_t *data = (memory_packet_strategy_data_t *)self->private_data;
-    
-    if (!data->motion_buffer) {
+
+    if (!data->packet_buffer) {
         return false;
     }
-    
-    return motion_buffer_is_ready(data->motion_buffer);
+
+    return packet_buffer_is_ready(data->packet_buffer);
 }
 
 static void memory_packet_strategy_clear(pre_buffer_strategy_t *self) {
     memory_packet_strategy_data_t *data = (memory_packet_strategy_data_t *)self->private_data;
 
-    if (data->motion_buffer) {
-        motion_buffer_clear(data->motion_buffer);
+    if (data->packet_buffer) {
+        packet_buffer_clear(data->packet_buffer);
     }
 }
 
@@ -197,7 +197,7 @@ static int memory_packet_strategy_flush_to_file(pre_buffer_strategy_t *self,
                                                   const char *output_path) {
     memory_packet_strategy_data_t *data = (memory_packet_strategy_data_t *)self->private_data;
 
-    if (!data->motion_buffer || data->motion_buffer->count == 0) {
+    if (!data->packet_buffer || data->packet_buffer->count == 0) {
         log_warn("No packets to flush for %s", data->stream_name);
         return -1;
     }
@@ -260,7 +260,7 @@ static int memory_packet_strategy_flush_to_file(pre_buffer_strategy_t *self,
         .first_packet = true
     };
 
-    int flushed = motion_buffer_flush(data->motion_buffer, flush_packet_to_file, &ctx);
+    int flushed = packet_buffer_flush(data->packet_buffer, flush_packet_to_file, &ctx);
 
     // Write trailer and cleanup
     av_write_trailer(output_ctx);
@@ -283,24 +283,24 @@ static int memory_packet_strategy_flush_to_callback(pre_buffer_strategy_t *self,
                                                      void *user_data) {
     memory_packet_strategy_data_t *data = (memory_packet_strategy_data_t *)self->private_data;
 
-    if (!data->motion_buffer) {
+    if (!data->packet_buffer) {
         return -1;
     }
 
-    return motion_buffer_flush(data->motion_buffer, callback, user_data);
+    return packet_buffer_flush(data->packet_buffer, callback, user_data);
 }
 
 // --- Factory function ---
 
 pre_buffer_strategy_t* create_memory_packet_strategy(const char *stream_name,
                                                       const buffer_config_t *config) {
-    // Ensure motion buffer pool is initialized
+    // Ensure packet buffer pool is initialized
     static bool pool_init_attempted = false;
     if (!pool_init_attempted) {
         extern config_t g_config;
         size_t memory_limit = config->memory_limit_bytes > 0 ?
                               config->memory_limit_bytes / (1024 * 1024) : 256;
-        init_motion_buffer_pool(memory_limit);
+        init_packet_buffer_pool(memory_limit);
         pool_init_attempted = true;
     }
 

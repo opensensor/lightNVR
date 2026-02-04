@@ -19,31 +19,44 @@ static shutdown_coordinator_t g_coordinator;
 int init_shutdown_coordinator(void) {
     memset(&g_coordinator, 0, sizeof(shutdown_coordinator_t));
     atomic_store(&g_coordinator.shutdown_initiated, false);
+    atomic_store(&g_coordinator.coordinator_destroyed, false);
     atomic_store(&g_coordinator.component_count, 0);
-    
+
     // Initialize mutex and condition variable
     if (pthread_mutex_init(&g_coordinator.mutex, NULL) != 0) {
         log_error("Failed to initialize shutdown coordinator mutex");
         return -1;
     }
-    
+
     if (pthread_cond_init(&g_coordinator.all_stopped_cond, NULL) != 0) {
         log_error("Failed to initialize shutdown coordinator condition variable");
         pthread_mutex_destroy(&g_coordinator.mutex);
         return -1;
     }
-    
+
     g_coordinator.all_components_stopped = false;
-    
+
     log_info("Shutdown coordinator initialized");
     return 0;
 }
 
 // Shutdown and cleanup the coordinator
 void shutdown_coordinator_cleanup(void) {
+    // Mark coordinator as destroyed BEFORE destroying mutex
+    // This prevents signal handlers from trying to use the mutex
+    atomic_store(&g_coordinator.coordinator_destroyed, true);
+
+    // Small memory barrier to ensure the flag is visible to other threads
+    __sync_synchronize();
+
     pthread_mutex_destroy(&g_coordinator.mutex);
     pthread_cond_destroy(&g_coordinator.all_stopped_cond);
     log_info("Shutdown coordinator cleaned up");
+}
+
+// Check if coordinator has been destroyed
+bool is_coordinator_destroyed(void) {
+    return atomic_load(&g_coordinator.coordinator_destroyed);
 }
 
 // Register a component with the coordinator
@@ -85,21 +98,31 @@ int register_component(const char *name, component_type_t type, void *context, i
 
 // Update a component's state
 void update_component_state(int component_id, component_state_t state) {
+    // Check if coordinator has been destroyed
+    if (atomic_load(&g_coordinator.coordinator_destroyed)) {
+        return;  // Silently ignore updates after coordinator is destroyed
+    }
+
     if (component_id < 0 || component_id >= atomic_load(&g_coordinator.component_count)) {
         log_error("Invalid component ID: %d", component_id);
         return;
     }
-    
+
     component_info_t *component = &g_coordinator.components[component_id];
     atomic_store(&component->state, state);
-    
-    log_info("Updated component %s (ID: %d) state to %d", 
+
+    log_info("Updated component %s (ID: %d) state to %d",
              component->name, component_id, state);
-    
+
     // If the component is now stopped, check if all components are stopped
     if (state == COMPONENT_STOPPED) {
+        // Double-check coordinator isn't destroyed before locking mutex
+        if (atomic_load(&g_coordinator.coordinator_destroyed)) {
+            return;
+        }
+
         pthread_mutex_lock(&g_coordinator.mutex);
-        
+
         // Check if all components are stopped
         bool all_stopped = true;
         for (int i = 0; i < atomic_load(&g_coordinator.component_count); i++) {
@@ -108,13 +131,13 @@ void update_component_state(int component_id, component_state_t state) {
                 break;
             }
         }
-        
+
         if (all_stopped && !g_coordinator.all_components_stopped) {
             g_coordinator.all_components_stopped = true;
             pthread_cond_broadcast(&g_coordinator.all_stopped_cond);
             log_info("All components are now stopped");
         }
-        
+
         pthread_mutex_unlock(&g_coordinator.mutex);
     }
 }
@@ -131,11 +154,22 @@ component_state_t get_component_state(int component_id) {
 
 // Initiate shutdown sequence
 void initiate_shutdown(void) {
+    // Check if coordinator has already been destroyed
+    if (atomic_load(&g_coordinator.coordinator_destroyed)) {
+        // Coordinator already cleaned up, just return silently
+        return;
+    }
+
     // Set the shutdown flag
     atomic_store(&g_coordinator.shutdown_initiated, true);
-    
+
     log_info("Shutdown sequence initiated");
-    
+
+    // Double-check coordinator isn't destroyed before locking mutex
+    if (atomic_load(&g_coordinator.coordinator_destroyed)) {
+        return;
+    }
+
     // Signal all components to stop in priority order
     pthread_mutex_lock(&g_coordinator.mutex);
     
@@ -187,10 +221,16 @@ bool is_shutdown_initiated(void) {
 
 // Wait for all components to stop (with timeout)
 bool wait_for_all_components_stopped(int timeout_seconds) {
+    // Check if coordinator has been destroyed
+    if (atomic_load(&g_coordinator.coordinator_destroyed)) {
+        log_warn("Coordinator already destroyed, cannot wait for components");
+        return true;  // Return true to indicate we should proceed
+    }
+
     struct timespec timeout;
     clock_gettime(CLOCK_REALTIME, &timeout);
     timeout.tv_sec += timeout_seconds;
-    
+
     pthread_mutex_lock(&g_coordinator.mutex);
     
     // If all components are already stopped, return immediately

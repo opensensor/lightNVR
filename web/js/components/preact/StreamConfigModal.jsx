@@ -349,51 +349,300 @@ export function StreamConfigModal({
               onToggle={() => onToggleSection('recording')}
             >
               <div className="space-y-4">
-                <div className="flex items-center space-x-4">
-                  <label className="flex items-center space-x-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      id="stream-record"
-                      name="record"
-                      className="h-4 w-4 rounded border-gray-300"
-                      style={{accentColor: 'hsl(var(--primary))'}}
-                      checked={currentStream.record}
-                      onChange={onInputChange}
-                    />
-                    <span className="text-sm font-medium">Enable Continuous Recording</span>
-                  </label>
-                  <label className="flex items-center space-x-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      id="stream-record-audio"
-                      name="recordAudio"
-                      className="h-4 w-4 rounded border-gray-300"
-                      style={{accentColor: 'hsl(var(--primary))'}}
-                      checked={currentStream.recordAudio}
-                      onChange={onInputChange}
-                    />
-                    <span className="text-sm font-medium">Record Audio</span>
-                  </label>
-                  <label className="flex items-center space-x-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      id="stream-backchannel-enabled"
-                      name="backchannelEnabled"
-                      className="h-4 w-4 rounded border-gray-300"
-                      style={{accentColor: 'hsl(var(--primary))'}}
-                      checked={currentStream.backchannelEnabled}
-                      onChange={onInputChange}
-                    />
-                    <span className="text-sm font-medium">Two-Way Audio</span>
-                  </label>
+                {/* Recording Mode Selection */}
+                <div className="space-y-3">
+                  <h5 className="text-sm font-semibold">Recording Mode</h5>
+                  <div className="space-y-2">
+                    <label className="flex items-start space-x-3 cursor-pointer p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors">
+                      <input
+                        type="checkbox"
+                        id="stream-record"
+                        name="record"
+                        className="h-4 w-4 mt-0.5 rounded border-gray-300"
+                        style={{accentColor: 'hsl(var(--primary))'}}
+                        checked={currentStream.record}
+                        onChange={onInputChange}
+                      />
+                      <div>
+                        <span className="text-sm font-medium">Enable Continuous Recording</span>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Record all video continuously to disk
+                        </p>
+                      </div>
+                    </label>
+                    <label className="flex items-start space-x-3 cursor-pointer p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors">
+                      <input
+                        type="checkbox"
+                        id="stream-detection-enabled"
+                        name="detectionEnabled"
+                        className="h-4 w-4 mt-0.5 rounded border-gray-300"
+                        style={{accentColor: 'hsl(var(--primary))'}}
+                        checked={currentStream.detectionEnabled}
+                        onChange={onInputChange}
+                      />
+                      <div>
+                        <span className="text-sm font-medium">Enable AI Detection-Based Recording</span>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Only record when AI detects objects (person, car, etc.)
+                        </p>
+                      </div>
+                    </label>
+                  </div>
+
+                  {/* Show info box based on recording mode selection */}
+                  {currentStream.record && currentStream.detectionEnabled && (
+                    <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-md">
+                      <p className="text-sm text-blue-200">
+                        <strong>ℹ️ Both modes enabled:</strong> Continuous recording will run, and detection events will be logged and associated with the recordings.
+                      </p>
+                    </div>
+                  )}
+                  {!currentStream.record && currentStream.detectionEnabled && (
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-md">
+                      <p className="text-sm text-amber-200">
+                        <strong>⚡ Detection-only mode:</strong> Video will only be saved when detections occur, with pre and post buffers.
+                      </p>
+                    </div>
+                  )}
+                  {!currentStream.record && !currentStream.detectionEnabled && (
+                    <div className="p-3 bg-muted border border-border rounded-md">
+                      <p className="text-sm text-muted-foreground">
+                        ⚠️ No recording mode selected. Video will not be saved to disk.
+                      </p>
+                    </div>
+                  )}
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  Continuous recording saves all video to disk. Audio recording requires the stream to have an audio track.
-                  Two-way audio enables speaking through the camera's speaker (requires camera support).
-                </p>
+
+                {/* Audio Settings */}
+                <div className="border-t border-border pt-4">
+                  <h5 className="text-sm font-semibold mb-3">Audio Settings</h5>
+                  <div className="flex items-center space-x-4">
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        id="stream-record-audio"
+                        name="recordAudio"
+                        className="h-4 w-4 rounded border-gray-300"
+                        style={{accentColor: 'hsl(var(--primary))'}}
+                        checked={currentStream.recordAudio}
+                        onChange={onInputChange}
+                      />
+                      <span className="text-sm font-medium">Record Audio</span>
+                    </label>
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        id="stream-backchannel-enabled"
+                        name="backchannelEnabled"
+                        className="h-4 w-4 rounded border-gray-300"
+                        style={{accentColor: 'hsl(var(--primary))'}}
+                        checked={currentStream.backchannelEnabled}
+                        onChange={onInputChange}
+                      />
+                      <span className="text-sm font-medium">Two-Way Audio</span>
+                    </label>
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Audio recording applies to both continuous and detection-based recordings (requires audio track in stream).
+                  </p>
+                </div>
+
+                {/* AI Detection Settings - nested under recording */}
+                {currentStream.detectionEnabled && (
+                  <div className="border-t border-border pt-4">
+                    <h5 className="text-sm font-semibold mb-3">AI Detection Settings</h5>
+                    <div className="space-y-4">
+                      <div>
+                        <label htmlFor="stream-detection-model" className="block text-sm font-medium mb-2">
+                          Detection Model
+                        </label>
+                        <div className="flex space-x-2">
+                          <select
+                            id="stream-detection-model"
+                            name="detectionModel"
+                            className="flex-1 px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
+                            value={currentStream.detectionModel && (currentStream.detectionModel.startsWith('http://') || currentStream.detectionModel.startsWith('https://')) ? 'api-detection' : currentStream.detectionModel}
+                            onChange={onInputChange}
+                          >
+                            <option value="">Select a model</option>
+                            {detectionModels.map(model => (
+                              <option key={model.id} value={model.id}>{model.name}</option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={onRefreshModels}
+                            className="p-2 rounded-md bg-secondary hover:bg-secondary/80 text-secondary-foreground focus:outline-none"
+                            title="Refresh Models"
+                          >
+                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                            </svg>
+                          </button>
+                        </div>
+
+                        {/* Show info box and custom endpoint option for API detection */}
+                        {(currentStream.detectionModel === 'api-detection' ||
+                          (currentStream.detectionModel && (currentStream.detectionModel.startsWith('http://') || currentStream.detectionModel.startsWith('https://')))) && (
+                          <div className="mt-3 space-y-3">
+                            {/* Show info box only when using default endpoint */}
+                            {currentStream.detectionModel === 'api-detection' && (
+                              <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-md">
+                                <p className="text-sm text-blue-200 mb-2">
+                                  <strong>ℹ️ Using Default API Endpoint:</strong>
+                                </p>
+                                <p className="text-xs text-blue-300 font-mono bg-black/30 px-2 py-1 rounded">
+                                  http://localhost:9001/detect
+                                </p>
+                                <p className="text-xs text-blue-300 mt-2">
+                                  Configured in <code className="bg-black/30 px-1 rounded">lightnvr.ini</code> under <code className="bg-black/30 px-1 rounded">[api_detection]</code>
+                                </p>
+                                <p className="text-xs text-yellow-300 mt-2">
+                                  ⚠️ Make sure light-object-detect is running on this endpoint
+                                </p>
+                              </div>
+                            )}
+
+                            {/* Show custom endpoint input when using custom URL */}
+                            {currentStream.detectionModel && (currentStream.detectionModel.startsWith('http://') || currentStream.detectionModel.startsWith('https://')) && (
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <label htmlFor="stream-custom-api-url" className="block text-sm font-medium">
+                                    Custom API Endpoint URL
+                                  </label>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      // Switch back to default API detection
+                                      const event = {
+                                        target: {
+                                          name: 'detectionModel',
+                                          value: 'api-detection'
+                                        }
+                                      };
+                                      onInputChange(event);
+                                    }}
+                                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                                  >
+                                    Use Default Endpoint
+                                  </button>
+                                </div>
+                                <input
+                                  type="text"
+                                  id="stream-custom-api-url"
+                                  name="customApiUrl"
+                                  className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground font-mono text-sm"
+                                  placeholder="http://192.168.1.100:9001/detect"
+                                  value={currentStream.detectionModel}
+                                  onChange={onInputChange}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                  Enter the full URL to your custom detection API endpoint
+                                </p>
+                              </div>
+                            )}
+
+                            {/* Override button - show only when using default endpoint */}
+                            {currentStream.detectionModel === 'api-detection' && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  // Switch to custom API mode by setting a placeholder URL
+                                  const event = {
+                                    target: {
+                                      name: 'customApiUrl',
+                                      value: 'http://'
+                                    }
+                                  };
+                                  onInputChange(event);
+                                }}
+                                className="w-full px-3 py-2 bg-secondary hover:bg-secondary/80 text-secondary-foreground rounded-md text-sm font-medium transition-colors"
+                              >
+                                Override with Custom Endpoint
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <label htmlFor="stream-detection-threshold" className="block text-sm font-medium mb-2">
+                          Detection Threshold: <span className="text-primary font-semibold">{currentStream.detectionThreshold}%</span>
+                        </label>
+                        <input
+                          type="range"
+                          id="stream-detection-threshold"
+                          name="detectionThreshold"
+                          className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer"
+                          min="0"
+                          max="100"
+                          step="1"
+                          value={currentStream.detectionThreshold}
+                          onInput={onThresholdChange}
+                        />
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Minimum confidence level to trigger recording (0-100%)
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <label htmlFor="stream-detection-interval" className="block text-sm font-medium mb-2">
+                            Detection Interval (frames)
+                          </label>
+                          <input
+                            type="number"
+                            id="stream-detection-interval"
+                            name="detectionInterval"
+                            className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
+                            min="1"
+                            max="100"
+                            value={currentStream.detectionInterval}
+                            onChange={onInputChange}
+                          />
+                          <p className="mt-1 text-xs text-muted-foreground">Run detection every N frames</p>
+                        </div>
+
+                        <div>
+                          <label htmlFor="stream-pre-buffer" className="block text-sm font-medium mb-2">
+                            Pre-Detection Buffer (sec)
+                          </label>
+                          <input
+                            type="number"
+                            id="stream-pre-buffer"
+                            name="preBuffer"
+                            className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
+                            min="0"
+                            max="60"
+                            value={currentStream.preBuffer}
+                            onChange={onInputChange}
+                          />
+                          <p className="mt-1 text-xs text-muted-foreground">Seconds before detection</p>
+                        </div>
+
+                        <div>
+                          <label htmlFor="stream-post-buffer" className="block text-sm font-medium mb-2">
+                            Post-Detection Buffer (sec)
+                          </label>
+                          <input
+                            type="number"
+                            id="stream-post-buffer"
+                            name="postBuffer"
+                            className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
+                            min="0"
+                            max="300"
+                            value={currentStream.postBuffer}
+                            onChange={onInputChange}
+                          />
+                          <p className="mt-1 text-xs text-muted-foreground">Seconds after detection</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Retention Policy Settings */}
-                <div className="border-t border-border pt-4 mt-4">
+                <div className="border-t border-border pt-4">
                   <h5 className="text-sm font-semibold mb-3">Retention Policy</h5>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
@@ -446,224 +695,6 @@ export function StreamConfigModal({
                     </div>
                   </div>
                 </div>
-              </div>
-            </AccordionSection>
-
-            {/* AI Detection Recording Section */}
-            <AccordionSection
-              title="AI Detection Recording"
-              isExpanded={expandedSections.detection}
-              onToggle={() => onToggleSection('detection')}
-              badge="Optional"
-            >
-              <div className="space-y-4">
-                <div className="flex items-center">
-                  <label className="flex items-center space-x-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      id="stream-detection-enabled"
-                      name="detectionEnabled"
-                      className="h-4 w-4 rounded border-gray-300"
-                      style={{accentColor: 'hsl(var(--primary))'}}
-                      checked={currentStream.detectionEnabled}
-                      onChange={onInputChange}
-                    />
-                    <span className="text-sm font-medium">Enable AI Detection-Based Recording</span>
-                  </label>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Only record when AI detects specific objects (person, car, etc.). Requires a detection model.
-                </p>
-
-                {currentStream.detectionEnabled && (
-                  <>
-                    <div>
-                      <label htmlFor="stream-detection-model" className="block text-sm font-medium mb-2">
-                        Detection Model
-                      </label>
-                      <div className="flex space-x-2">
-                        <select
-                          id="stream-detection-model"
-                          name="detectionModel"
-                          className="flex-1 px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
-                          value={currentStream.detectionModel && (currentStream.detectionModel.startsWith('http://') || currentStream.detectionModel.startsWith('https://')) ? 'api-detection' : currentStream.detectionModel}
-                          onChange={onInputChange}
-                        >
-                          <option value="">Select a model</option>
-                          {detectionModels.map(model => (
-                            <option key={model.id} value={model.id}>{model.name}</option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          onClick={onRefreshModels}
-                          className="p-2 rounded-md bg-secondary hover:bg-secondary/80 text-secondary-foreground focus:outline-none"
-                          title="Refresh Models"
-                        >
-                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
-                          </svg>
-                        </button>
-                      </div>
-
-                      {/* Show info box and custom endpoint option for API detection */}
-                      {(currentStream.detectionModel === 'api-detection' ||
-                        (currentStream.detectionModel && (currentStream.detectionModel.startsWith('http://') || currentStream.detectionModel.startsWith('https://')))) && (
-                        <div className="mt-3 space-y-3">
-                          {/* Show info box only when using default endpoint */}
-                          {currentStream.detectionModel === 'api-detection' && (
-                            <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-md">
-                              <p className="text-sm text-blue-200 mb-2">
-                                <strong>ℹ️ Using Default API Endpoint:</strong>
-                              </p>
-                              <p className="text-xs text-blue-300 font-mono bg-black/30 px-2 py-1 rounded">
-                                http://localhost:9001/detect
-                              </p>
-                              <p className="text-xs text-blue-300 mt-2">
-                                Configured in <code className="bg-black/30 px-1 rounded">lightnvr.ini</code> under <code className="bg-black/30 px-1 rounded">[api_detection]</code>
-                              </p>
-                              <p className="text-xs text-yellow-300 mt-2">
-                                ⚠️ Make sure light-object-detect is running on this endpoint
-                              </p>
-                            </div>
-                          )}
-
-                          {/* Show custom endpoint input when using custom URL */}
-                          {currentStream.detectionModel && (currentStream.detectionModel.startsWith('http://') || currentStream.detectionModel.startsWith('https://')) && (
-                            <div className="space-y-2">
-                              <div className="flex items-center justify-between">
-                                <label htmlFor="stream-custom-api-url" className="block text-sm font-medium">
-                                  Custom API Endpoint URL
-                                </label>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    // Switch back to default API detection
-                                    const event = {
-                                      target: {
-                                        name: 'detectionModel',
-                                        value: 'api-detection'
-                                      }
-                                    };
-                                    onInputChange(event);
-                                  }}
-                                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                                >
-                                  Use Default Endpoint
-                                </button>
-                              </div>
-                              <input
-                                type="text"
-                                id="stream-custom-api-url"
-                                name="customApiUrl"
-                                className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground font-mono text-sm"
-                                placeholder="http://192.168.1.100:9001/detect"
-                                value={currentStream.detectionModel}
-                                onChange={onInputChange}
-                              />
-                              <p className="text-xs text-muted-foreground">
-                                Enter the full URL to your custom detection API endpoint
-                              </p>
-                            </div>
-                          )}
-
-                          {/* Override button - show only when using default endpoint */}
-                          {currentStream.detectionModel === 'api-detection' && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                // Switch to custom API mode by setting a placeholder URL
-                                const event = {
-                                  target: {
-                                    name: 'customApiUrl',
-                                    value: 'http://'
-                                  }
-                                };
-                                onInputChange(event);
-                              }}
-                              className="w-full px-3 py-2 bg-secondary hover:bg-secondary/80 text-secondary-foreground rounded-md text-sm font-medium transition-colors"
-                            >
-                              Override with Custom Endpoint
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <label htmlFor="stream-detection-threshold" className="block text-sm font-medium mb-2">
-                        Detection Threshold: <span className="text-primary font-semibold">{currentStream.detectionThreshold}%</span>
-                      </label>
-                      <input
-                        type="range"
-                        id="stream-detection-threshold"
-                        name="detectionThreshold"
-                        className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer"
-                        min="0"
-                        max="100"
-                        step="1"
-                        value={currentStream.detectionThreshold}
-                        onInput={onThresholdChange}
-                      />
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Minimum confidence level to trigger recording (0-100%)
-                      </p>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div>
-                        <label htmlFor="stream-detection-interval" className="block text-sm font-medium mb-2">
-                          Detection Interval (frames)
-                        </label>
-                        <input
-                          type="number"
-                          id="stream-detection-interval"
-                          name="detectionInterval"
-                          className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
-                          min="1"
-                          max="100"
-                          value={currentStream.detectionInterval}
-                          onChange={onInputChange}
-                        />
-                        <p className="mt-1 text-xs text-muted-foreground">Run detection every N frames</p>
-                      </div>
-
-                      <div>
-                        <label htmlFor="stream-pre-buffer" className="block text-sm font-medium mb-2">
-                          Pre-Detection Buffer (sec)
-                        </label>
-                        <input
-                          type="number"
-                          id="stream-pre-buffer"
-                          name="preBuffer"
-                          className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
-                          min="0"
-                          max="60"
-                          value={currentStream.preBuffer}
-                          onChange={onInputChange}
-                        />
-                        <p className="mt-1 text-xs text-muted-foreground">Seconds before detection</p>
-                      </div>
-
-                      <div>
-                        <label htmlFor="stream-post-buffer" className="block text-sm font-medium mb-2">
-                          Post-Detection Buffer (sec)
-                        </label>
-                        <input
-                          type="number"
-                          id="stream-post-buffer"
-                          name="postBuffer"
-                          className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
-                          min="0"
-                          max="300"
-                          value={currentStream.postBuffer}
-                          onChange={onInputChange}
-                        />
-                        <p className="mt-1 text-xs text-muted-foreground">Seconds after detection</p>
-                      </div>
-                    </div>
-                  </>
-                )}
               </div>
             </AccordionSection>
 

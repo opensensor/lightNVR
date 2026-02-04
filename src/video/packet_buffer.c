@@ -1,7 +1,7 @@
 /**
- * Motion Buffer Implementation
+ * Packet Buffer Implementation
  * 
- * Circular buffer for storing video packets before motion events.
+ * Circular buffer for storing video packets for pre-event/pre-detection buffering.
  */
 
 #include <stdio.h>
@@ -13,24 +13,24 @@
 #include <sys/stat.h>
 #include <errno.h>
 
-#include "video/motion_buffer.h"
+#include "video/packet_buffer.h"
 #include "core/logger.h"
 #include "core/config.h"
 
 // Global buffer pool
-static motion_buffer_pool_t buffer_pool;
+static packet_buffer_pool_t buffer_pool;
 static bool pool_initialized = false;
 
 /**
- * Initialize the motion buffer pool
+ * Initialize the packet buffer pool
  */
-int init_motion_buffer_pool(size_t memory_limit_mb) {
+int init_packet_buffer_pool(size_t memory_limit_mb) {
     if (pool_initialized) {
-        log_warn("Motion buffer pool already initialized");
+        log_warn("Packet buffer pool already initialized");
         return 0;
     }
     
-    memset(&buffer_pool, 0, sizeof(motion_buffer_pool_t));
+    memset(&buffer_pool, 0, sizeof(packet_buffer_pool_t));
     
     if (pthread_mutex_init(&buffer_pool.pool_mutex, NULL) != 0) {
         log_error("Failed to initialize buffer pool mutex");
@@ -48,15 +48,15 @@ int init_motion_buffer_pool(size_t memory_limit_mb) {
     }
     
     pool_initialized = true;
-    log_info("Motion buffer pool initialized (memory limit: %zu MB)", memory_limit_mb);
+    log_info("Packet buffer pool initialized (memory limit: %zu MB)", memory_limit_mb);
     
     return 0;
 }
 
 /**
- * Cleanup the motion buffer pool
+ * Cleanup the packet buffer pool
  */
-void cleanup_motion_buffer_pool(void) {
+void cleanup_packet_buffer_pool(void) {
     if (!pool_initialized) {
         return;
     }
@@ -64,7 +64,7 @@ void cleanup_motion_buffer_pool(void) {
     // First pass: destroy all active buffers (this needs pool_mutex unlocked)
     for (int i = 0; i < 16; i++) {
         if (buffer_pool.buffers[i].active) {
-            destroy_motion_buffer(&buffer_pool.buffers[i]);
+            destroy_packet_buffer(&buffer_pool.buffers[i]);
         }
     }
 
@@ -78,35 +78,35 @@ void cleanup_motion_buffer_pool(void) {
     pthread_mutex_destroy(&buffer_pool.pool_mutex);
 
     pool_initialized = false;
-    log_info("Motion buffer pool cleaned up");
+    log_info("Packet buffer pool cleaned up");
 }
 
 /**
  * Estimate packet count based on FPS and duration
  */
-int motion_buffer_estimate_packet_count(int fps, int duration_seconds) {
+int packet_buffer_estimate_packet_count(int fps, int duration_seconds) {
     // Add 20% overhead for audio packets and variations
     return (int)((fps * duration_seconds) * 1.2);
 }
 
 /**
- * Create a motion buffer for a stream
+ * Create a packet buffer for a stream
  */
-motion_buffer_t* create_motion_buffer(const char *stream_name, int buffer_seconds, buffer_mode_t mode) {
+packet_buffer_t* create_packet_buffer(const char *stream_name, int buffer_seconds, buffer_mode_t mode) {
     if (!pool_initialized) {
-        log_error("Motion buffer pool not initialized");
+        log_error("Packet buffer pool not initialized");
         return NULL;
     }
     
     if (!stream_name || buffer_seconds < MIN_BUFFER_SECONDS || buffer_seconds > MAX_BUFFER_SECONDS) {
-        log_error("Invalid parameters for create_motion_buffer");
+        log_error("Invalid parameters for create_packet_buffer");
         return NULL;
     }
     
     pthread_mutex_lock(&buffer_pool.pool_mutex);
     
     // Find a free buffer slot
-    motion_buffer_t *buffer = NULL;
+    packet_buffer_t *buffer = NULL;
     for (int i = 0; i < 16; i++) {
         if (!buffer_pool.buffers[i].active) {
             buffer = &buffer_pool.buffers[i];
@@ -123,13 +123,13 @@ motion_buffer_t* create_motion_buffer(const char *stream_name, int buffer_second
     // Initialize buffer
     pthread_mutex_lock(&buffer->mutex);
     
-    memset(buffer, 0, sizeof(motion_buffer_t));
+    memset(buffer, 0, sizeof(packet_buffer_t));
     strncpy(buffer->stream_name, stream_name, sizeof(buffer->stream_name) - 1);
     buffer->buffer_seconds = buffer_seconds;
     buffer->mode = mode;
     
     // Estimate packet count (assume 15 FPS average)
-    buffer->max_packets = motion_buffer_estimate_packet_count(15, buffer_seconds);
+    buffer->max_packets = packet_buffer_estimate_packet_count(15, buffer_seconds);
     
     // Allocate packet array
     buffer->packets = (buffered_packet_t *)calloc(buffer->max_packets, sizeof(buffered_packet_t));
@@ -151,32 +151,32 @@ motion_buffer_t* create_motion_buffer(const char *stream_name, int buffer_second
         config_t *config = get_streaming_config();
         if (config) {
             snprintf(buffer->disk_buffer_path, sizeof(buffer->disk_buffer_path),
-                    "%s/.motion_buffer_%s", config->storage_path, stream_name);
+                    "%s/.packet_buffer_%s", config->storage_path, stream_name);
             mkdir(buffer->disk_buffer_path, 0755);
         }
     }
-    
+
     buffer_pool.active_buffers++;
-    
+
     pthread_mutex_unlock(&buffer->mutex);
     pthread_mutex_unlock(&buffer_pool.pool_mutex);
-    
-    log_info("Created motion buffer for stream: %s (duration: %ds, max packets: %d, mode: %d)",
+
+    log_info("Created packet buffer for stream: %s (duration: %ds, max packets: %d, mode: %d)",
              stream_name, buffer_seconds, buffer->max_packets, mode);
-    
+
     return buffer;
 }
 
 /**
- * Destroy a motion buffer
+ * Destroy a packet buffer
  */
-void destroy_motion_buffer(motion_buffer_t *buffer) {
+void destroy_packet_buffer(packet_buffer_t *buffer) {
     if (!buffer || !buffer->active) {
         return;
     }
-    
+
     pthread_mutex_lock(&buffer->mutex);
-    
+
     // Free all buffered packets
     if (buffer->packets) {
         for (int i = 0; i < buffer->max_packets; i++) {
@@ -187,36 +187,36 @@ void destroy_motion_buffer(motion_buffer_t *buffer) {
         free(buffer->packets);
         buffer->packets = NULL;
     }
-    
+
     // Close disk buffer if open
     if (buffer->disk_buffer_file) {
         fclose(buffer->disk_buffer_file);
         buffer->disk_buffer_file = NULL;
     }
-    
+
     // Update pool statistics
     pthread_mutex_lock(&buffer_pool.pool_mutex);
     buffer_pool.current_memory_usage -= buffer->current_memory_usage;
     buffer_pool.active_buffers--;
     pthread_mutex_unlock(&buffer_pool.pool_mutex);
-    
+
     buffer->active = false;
-    
+
     pthread_mutex_unlock(&buffer->mutex);
-    
-    log_info("Destroyed motion buffer for stream: %s", buffer->stream_name);
+
+    log_info("Destroyed packet buffer for stream: %s", buffer->stream_name);
 }
 
 /**
  * Add a packet to the buffer
  */
-int motion_buffer_add_packet(motion_buffer_t *buffer, const AVPacket *packet, time_t timestamp) {
+int packet_buffer_add_packet(packet_buffer_t *buffer, const AVPacket *packet, time_t timestamp) {
     if (!buffer || !buffer->active || !packet) {
         return -1;
     }
-    
+
     pthread_mutex_lock(&buffer->mutex);
-    
+
     // Check if buffer is full
     if (buffer->count >= buffer->max_packets) {
         // Remove oldest packet to make room
@@ -228,7 +228,7 @@ int motion_buffer_add_packet(motion_buffer_t *buffer, const AVPacket *packet, ti
         buffer->count--;
         buffer->total_packets_dropped++;
     }
-    
+
     // Clone the packet
     AVPacket *cloned_packet = av_packet_clone(packet);
     if (!cloned_packet) {
@@ -236,7 +236,7 @@ int motion_buffer_add_packet(motion_buffer_t *buffer, const AVPacket *packet, ti
         pthread_mutex_unlock(&buffer->mutex);
         return -1;
     }
-    
+
     // Store packet in buffer
     buffered_packet_t *slot = &buffer->packets[buffer->head];
     slot->packet = cloned_packet;
@@ -246,7 +246,7 @@ int motion_buffer_add_packet(motion_buffer_t *buffer, const AVPacket *packet, ti
     slot->stream_index = packet->stream_index;
     slot->is_keyframe = (packet->flags & AV_PKT_FLAG_KEY) != 0;
     slot->data_size = packet->size;
-    
+
     // Update statistics
     buffer->current_memory_usage += packet->size;
     if (buffer->current_memory_usage > buffer->peak_memory_usage) {
@@ -254,17 +254,17 @@ int motion_buffer_add_packet(motion_buffer_t *buffer, const AVPacket *packet, ti
     }
     buffer->total_bytes_buffered += packet->size;
     buffer->total_packets_buffered++;
-    
+
     // Update timing
     if (buffer->count == 0) {
         buffer->oldest_packet_time = timestamp;
     }
     buffer->newest_packet_time = timestamp;
-    
+
     // Advance head
     buffer->head = (buffer->head + 1) % buffer->max_packets;
     buffer->count++;
-    
+
     pthread_mutex_unlock(&buffer->mutex);
 
     return 0;
@@ -273,7 +273,7 @@ int motion_buffer_add_packet(motion_buffer_t *buffer, const AVPacket *packet, ti
 /**
  * Peek at the oldest packet without removing it
  */
-int motion_buffer_peek_oldest(motion_buffer_t *buffer, AVPacket **packet) {
+int packet_buffer_peek_oldest(packet_buffer_t *buffer, AVPacket **packet) {
     if (!buffer || !buffer->active || !packet) {
         return -1;
     }
@@ -296,7 +296,7 @@ int motion_buffer_peek_oldest(motion_buffer_t *buffer, AVPacket **packet) {
 /**
  * Pop the oldest packet from the buffer
  */
-int motion_buffer_pop_oldest(motion_buffer_t *buffer, AVPacket **packet) {
+int packet_buffer_pop_oldest(packet_buffer_t *buffer, AVPacket **packet) {
     if (!buffer || !buffer->active || !packet) {
         return -1;
     }
@@ -332,7 +332,7 @@ int motion_buffer_pop_oldest(motion_buffer_t *buffer, AVPacket **packet) {
 /**
  * Flush all packets from the buffer
  */
-int motion_buffer_flush(motion_buffer_t *buffer,
+int packet_buffer_flush(packet_buffer_t *buffer,
                        int (*callback)(const AVPacket *packet, void *user_data),
                        void *user_data) {
     if (!buffer || !buffer->active || !callback) {
@@ -377,7 +377,7 @@ int motion_buffer_flush(motion_buffer_t *buffer,
 /**
  * Clear all packets from the buffer
  */
-void motion_buffer_clear(motion_buffer_t *buffer) {
+void packet_buffer_clear(packet_buffer_t *buffer) {
     if (!buffer || !buffer->active) {
         return;
     }
@@ -406,7 +406,7 @@ void motion_buffer_clear(motion_buffer_t *buffer) {
 /**
  * Get buffer statistics
  */
-int motion_buffer_get_stats(motion_buffer_t *buffer, int *count, size_t *memory_usage, int *duration) {
+int packet_buffer_get_stats(packet_buffer_t *buffer, int *count, size_t *memory_usage, int *duration) {
     if (!buffer || !buffer->active) {
         return -1;
     }
@@ -435,7 +435,7 @@ int motion_buffer_get_stats(motion_buffer_t *buffer, int *count, size_t *memory_
 /**
  * Get buffer by stream name
  */
-motion_buffer_t* get_motion_buffer(const char *stream_name) {
+packet_buffer_t* get_packet_buffer(const char *stream_name) {
     if (!pool_initialized || !stream_name) {
         return NULL;
     }
@@ -457,7 +457,7 @@ motion_buffer_t* get_motion_buffer(const char *stream_name) {
 /**
  * Check if buffer is ready
  */
-bool motion_buffer_is_ready(motion_buffer_t *buffer) {
+bool packet_buffer_is_ready(packet_buffer_t *buffer) {
     if (!buffer || !buffer->active) {
         return false;
     }
@@ -478,7 +478,7 @@ bool motion_buffer_is_ready(motion_buffer_t *buffer) {
 /**
  * Get keyframe count
  */
-int motion_buffer_get_keyframe_count(motion_buffer_t *buffer) {
+int packet_buffer_get_keyframe_count(packet_buffer_t *buffer) {
     if (!buffer || !buffer->active) {
         return 0;
     }
@@ -501,7 +501,7 @@ int motion_buffer_get_keyframe_count(motion_buffer_t *buffer) {
 /**
  * Set memory limit for a buffer
  */
-int motion_buffer_set_memory_limit(motion_buffer_t *buffer, size_t limit_mb) {
+int packet_buffer_set_memory_limit(packet_buffer_t *buffer, size_t limit_mb) {
     if (!buffer || !buffer->active) {
         return -1;
     }
@@ -516,7 +516,7 @@ int motion_buffer_set_memory_limit(motion_buffer_t *buffer, size_t limit_mb) {
 /**
  * Get total memory usage
  */
-size_t motion_buffer_get_total_memory_usage(void) {
+size_t packet_buffer_get_total_memory_usage(void) {
     if (!pool_initialized) {
         return 0;
     }
@@ -531,7 +531,7 @@ size_t motion_buffer_get_total_memory_usage(void) {
 /**
  * Set disk fallback
  */
-int motion_buffer_set_disk_fallback(motion_buffer_t *buffer, bool enable, const char *disk_path) {
+int packet_buffer_set_disk_fallback(packet_buffer_t *buffer, bool enable, const char *disk_path) {
     if (!buffer || !buffer->active) {
         return -1;
     }
