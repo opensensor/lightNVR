@@ -1016,6 +1016,9 @@ int main(int argc, char *argv[]) {
     log_info("LightNVR initialized successfully");
 
     // Main loop
+    // Initialize the service check time to now since we just called check_and_ensure_services()
+    time_t service_check_init_time = time(NULL);
+
     while (running) {
         // Log that the daemon is still running (maybe once per minute)
         static time_t last_log_time = 0;
@@ -1023,6 +1026,11 @@ int main(int argc, char *argv[]) {
         static time_t last_ffmpeg_leak_check_time = 0;
         static time_t last_service_check_time = 0;
         time_t now = time(NULL);
+
+        // Initialize last_service_check_time on first iteration to avoid immediate re-check
+        if (last_service_check_time == 0) {
+            last_service_check_time = service_check_init_time;
+        }
 
         if (now - last_log_time > 60) {
             log_debug("Daemon is still running...");
@@ -1050,8 +1058,8 @@ int main(int argc, char *argv[]) {
             last_ffmpeg_leak_check_time = now;
         }
 
-        // Periodically check and restart failed recording/streaming services every 60 seconds
-        // This ensures self-healing of MP4 recordings that may have died
+        // Periodically check and restart failed services every 60 seconds
+        // This ensures self-healing of MP4 recordings, HLS streams, and detection threads
         if (now - last_service_check_time > 60) {
             check_and_ensure_services();
             last_service_check_time = now;
