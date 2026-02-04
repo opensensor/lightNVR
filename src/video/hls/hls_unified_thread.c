@@ -982,6 +982,11 @@ void *hls_unified_thread_func(void *arg) {
         state->hls_ctx = ctx->writer;
     }
 
+    // Track whether we've ever successfully written packets
+    // This is used to determine if we need to recreate the writer on reconnection
+    // Only recreate the writer if we've actually used it (prevents crash on initial connection failures)
+    bool has_written_packets = false;
+
     // CRITICAL FIX: Add a local copy of the context pointer for safety checks
     hls_unified_thread_ctx_t *ctx_safe = ctx;
 
@@ -1448,6 +1453,10 @@ void *hls_unified_thread_func(void *arg) {
                         atomic_store(&ctx->last_packet_time, (int_fast64_t)last_packet_time);
                         atomic_store(&ctx->consecutive_failures, 0);
                         atomic_store(&ctx->connection_valid, 1);
+
+                        // Mark that we've successfully written packets
+                        // This is used to determine if we need to recreate the writer on reconnection
+                        has_written_packets = true;
                     }
 
                     // Unlock the writer mutex
@@ -1682,28 +1691,34 @@ void *hls_unified_thread_func(void *arg) {
                 log_info("Successfully reconnected to stream %s after %d attempts",
                         stream_name, reconnect_attempt);
 
-                // CRITICAL FIX: Recreate HLS writer after reconnection to reset timestamp state
-                // The old HLS output context has stale DTS values that will cause
-                // "non monotonically increasing dts" errors with the new stream timestamps
-                if (ctx->writer) {
-                    log_info("Closing old HLS writer for stream %s after reconnection", stream_name);
+                // CRITICAL FIX: Only recreate HLS writer if we've actually written packets before
+                // This prevents crashing when the initial connection fails and we enter RECONNECTING
+                // state before ever writing any packets. In that case, the writer was just created
+                // and doesn't have stale timestamp state.
+                if (has_written_packets && ctx->writer) {
+                    log_info("Closing old HLS writer for stream %s after reconnection (has_written_packets=true)", stream_name);
                     hls_writer_t *old_writer = __atomic_exchange_n(&ctx->writer, NULL, __ATOMIC_SEQ_CST);
                     if (old_writer) {
                         hls_writer_close(old_writer);
                         log_info("Successfully closed old HLS writer for stream %s", stream_name);
                     }
-                }
 
-                // Create new HLS writer with fresh timestamp state
-                ctx->writer = hls_writer_create(ctx->output_path, stream_name, 5);
-                if (!ctx->writer) {
-                    log_error("Failed to create new HLS writer for %s after reconnection", stream_name);
-                    // Stay in reconnecting state to try again
-                    reconnect_attempt++;
-                    thread_state = HLS_THREAD_RECONNECTING;
-                    break;
+                    // Create new HLS writer with fresh timestamp state
+                    ctx->writer = hls_writer_create(ctx->output_path, stream_name, 5);
+                    if (!ctx->writer) {
+                        log_error("Failed to create new HLS writer for %s after reconnection", stream_name);
+                        // Stay in reconnecting state to try again
+                        reconnect_attempt++;
+                        thread_state = HLS_THREAD_RECONNECTING;
+                        break;
+                    }
+                    log_info("Created new HLS writer for stream %s after reconnection", stream_name);
+
+                    // Reset the has_written_packets flag for the new writer
+                    has_written_packets = false;
+                } else if (!has_written_packets) {
+                    log_info("Keeping existing HLS writer for stream %s (no packets written yet)", stream_name);
                 }
-                log_info("Created new HLS writer for stream %s after reconnection", stream_name);
 
                 thread_state = HLS_THREAD_RUNNING;
                 reconnect_attempt = 0;
