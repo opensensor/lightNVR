@@ -107,6 +107,10 @@ static const mg_api_route_t s_api_routes[] = {
     {"GET", "/api/streams/#/retention", mg_handle_get_stream_retention, false},
     {"PUT", "/api/streams/#/retention", mg_handle_put_stream_retention, false},
 
+    // Stream Refresh API (must come before /api/streams/# to match correctly)
+    // Triggers go2rtc re-registration for self-healing WebRTC connections
+    {"POST", "/api/streams/#/refresh", mg_handle_post_stream_refresh, false},
+
     {"GET", "/api/streams/#/full", mg_handle_get_stream_full, true},  // Aggregated stream + motion config
     {"GET", "/api/streams/#", mg_handle_get_stream, true},  // Opt out of auto-threading to prevent double threading
     {"PUT", "/api/streams/#", mg_handle_put_stream, false},

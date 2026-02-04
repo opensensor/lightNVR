@@ -76,6 +76,7 @@ export function WebRTCVideoCell({
   const abortControllerRef = useRef(null);
   const connectionMonitorRef = useRef(null);
   const reconnectAttemptsRef = useRef(0);
+  const refreshRequestedRef = useRef(false);  // Track if we've already requested a refresh for this connection attempt
   const localStreamRef = useRef(null);
   const audioSenderRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -89,6 +90,9 @@ export function WebRTCVideoCell({
     console.log(`Initializing WebRTC connection for stream ${stream.name}`);
     setIsLoading(true);
     setError(null);
+
+    // Reset the refresh flag for this new connection attempt
+    refreshRequestedRef.current = false;
 
     // Store cleanup functions
     let connectionTimeout = null;
@@ -284,8 +288,41 @@ export function WebRTCVideoCell({
 
       if (pc.iceConnectionState === 'failed') {
         console.error(`WebRTC ICE connection failed for stream ${stream.name}`);
-        setError('WebRTC ICE connection failed');
-        setIsLoading(false);
+
+        // Auto-refresh and retry if we haven't already for this connection attempt
+        if (!refreshRequestedRef.current && reconnectAttemptsRef.current < 3) {
+          refreshRequestedRef.current = true;
+          reconnectAttemptsRef.current++;
+          console.log(`Auto-refreshing go2rtc registration for stream ${stream.name} (attempt ${reconnectAttemptsRef.current}/3)`);
+
+          // Trigger a refresh and retry automatically
+          (async () => {
+            try {
+              const response = await fetch(`/api/streams/${encodeURIComponent(stream.name)}/refresh`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+              });
+              if (response.ok) {
+                console.log(`Successfully refreshed go2rtc registration for ${stream.name}, retrying connection...`);
+                // Small delay to allow go2rtc to process the refresh
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                // Trigger a retry by incrementing retryCount
+                setRetryCount(prev => prev + 1);
+                return;
+              } else {
+                console.warn(`Failed to refresh stream ${stream.name}: ${response.status}`);
+              }
+            } catch (err) {
+              console.error(`Error refreshing stream ${stream.name}:`, err);
+            }
+            // If refresh failed, show the error
+            setError('WebRTC ICE connection failed');
+            setIsLoading(false);
+          })();
+        } else {
+          setError('WebRTC ICE connection failed');
+          setIsLoading(false);
+        }
       } else if (pc.iceConnectionState === 'disconnected') {
         // Connection is temporarily disconnected, log but don't show error yet
         console.warn(`WebRTC ICE connection disconnected for stream ${stream.name}, attempting to recover...`);
@@ -304,6 +341,8 @@ export function WebRTCVideoCell({
         }, 5000); // Wait 5 seconds to see if connection recovers
       } else if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
         // Connection is established or completed, clear any previous error
+        // Reset refresh flag for next potential failure
+        refreshRequestedRef.current = false;
         if (error) {
           console.log(`WebRTC connection restored for stream ${stream.name}`);
           setError(null);
@@ -590,8 +629,43 @@ export function WebRTCVideoCell({
     };
   }, [stream, retryCount]);
 
+  /**
+   * Refresh the stream's go2rtc registration
+   * This is useful when WebRTC connections fail due to stale go2rtc state
+   * @returns {Promise<boolean>} true if refresh was successful
+   */
+  const refreshStreamRegistration = async () => {
+    if (!stream?.name) {
+      console.warn('Cannot refresh stream: no stream name');
+      return false;
+    }
+
+    try {
+      console.log(`Refreshing go2rtc registration for stream ${stream.name}`);
+      const response = await fetch(`/api/streams/${encodeURIComponent(stream.name)}/refresh`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log(`Successfully refreshed go2rtc registration for stream ${stream.name}:`, data);
+        return true;
+      } else {
+        const errorText = await response.text();
+        console.warn(`Failed to refresh stream ${stream.name}: ${response.status} - ${errorText}`);
+        return false;
+      }
+    } catch (err) {
+      console.error(`Error refreshing stream ${stream.name}:`, err);
+      return false;
+    }
+  };
+
   // Handle retry button click
-  const handleRetry = () => {
+  const handleRetry = async () => {
     console.log(`Retry requested for stream ${stream?.name}`);
 
     // Clean up existing connection
@@ -610,6 +684,17 @@ export function WebRTCVideoCell({
     setError(null);
     setIsLoading(true);
     setIsPlaying(false);
+
+    // Reset auto-retry counters on manual retry (user gets fresh attempts)
+    reconnectAttemptsRef.current = 0;
+    refreshRequestedRef.current = false;
+
+    // Refresh the stream's go2rtc registration before retrying
+    // This helps recover from stale go2rtc state that causes WebRTC failures
+    await refreshStreamRegistration();
+
+    // Small delay to allow go2rtc to re-register the stream
+    await new Promise(resolve => setTimeout(resolve, 500));
 
     // Increment retry count to trigger useEffect re-run
     setRetryCount(prev => prev + 1);

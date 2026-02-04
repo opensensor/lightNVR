@@ -1282,3 +1282,74 @@ void mg_handle_delete_stream(struct mg_connection *c, struct mg_http_message *hm
 
     log_info("Successfully %s stream: %s", permanent_delete ? "permanently deleted" : "disabled", decoded_id);
 }
+
+/**
+ * @brief Handler for POST /api/streams/{stream_name}/refresh
+ *
+ * This endpoint triggers a re-registration of the stream with go2rtc.
+ * It's useful when WebRTC connections fail and the stream needs to be refreshed
+ * without changing any configuration.
+ *
+ * @param c Mongoose connection
+ * @param hm Mongoose HTTP message
+ */
+void mg_handle_post_stream_refresh(struct mg_connection *c, struct mg_http_message *hm) {
+    log_info("Handling POST /api/streams/:name/refresh request");
+
+    // Extract stream name from URL
+    char stream_name[MAX_STREAM_NAME] = {0};
+    if (mg_extract_path_param(hm, "/api/streams/", stream_name, sizeof(stream_name)) != 0) {
+        log_error("Failed to extract stream name from URL");
+        mg_send_json_error(c, 400, "Invalid stream name in URL");
+        return;
+    }
+
+    // Remove /refresh suffix if present
+    char *suffix = strstr(stream_name, "/refresh");
+    if (suffix) {
+        *suffix = '\0';
+    }
+
+    // URL decode the stream name
+    char decoded_name[MAX_STREAM_NAME] = {0};
+    mg_url_decode_string(stream_name, decoded_name, sizeof(decoded_name));
+
+    log_info("Refreshing go2rtc registration for stream: %s", decoded_name);
+
+    // Check if the stream exists
+    stream_handle_t stream = get_stream_by_name(decoded_name);
+    if (!stream) {
+        log_error("Stream not found: %s", decoded_name);
+        mg_send_json_error(c, 404, "Stream not found");
+        return;
+    }
+
+    // Check if go2rtc integration is initialized
+    if (!go2rtc_integration_is_initialized()) {
+        log_error("go2rtc integration not initialized");
+        mg_send_json_error(c, 503, "go2rtc integration not available");
+        return;
+    }
+
+    // Reload the stream with go2rtc
+    bool success = go2rtc_integration_reload_stream(decoded_name);
+
+    if (success) {
+        log_info("Successfully refreshed go2rtc registration for stream: %s", decoded_name);
+
+        // Create success response
+        cJSON *response = cJSON_CreateObject();
+        cJSON_AddBoolToObject(response, "success", true);
+        cJSON_AddStringToObject(response, "message", "Stream refreshed successfully");
+        cJSON_AddStringToObject(response, "stream", decoded_name);
+
+        char *json_str = cJSON_PrintUnformatted(response);
+        mg_send_json_response(c, 200, json_str);
+
+        free(json_str);
+        cJSON_Delete(response);
+    } else {
+        log_error("Failed to refresh go2rtc registration for stream: %s", decoded_name);
+        mg_send_json_error(c, 500, "Failed to refresh stream with go2rtc");
+    }
+}

@@ -72,6 +72,17 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm);
 void mg_handle_delete_stream(struct mg_connection *c, struct mg_http_message *hm);
 
 /**
+ * @brief Direct handler for POST /api/streams/:id/refresh
+ *
+ * Triggers a re-registration of the stream with go2rtc.
+ * Useful when WebRTC connections fail and the stream needs to be refreshed.
+ *
+ * @param c Mongoose connection
+ * @param hm Mongoose HTTP message
+ */
+void mg_handle_post_stream_refresh(struct mg_connection *c, struct mg_http_message *hm);
+
+/**
  * @brief Direct handler for POST /api/streams/:id/toggle_streaming
  *
  * @param c Mongoose connection
