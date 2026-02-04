@@ -1681,6 +1681,30 @@ void *hls_unified_thread_func(void *arg) {
                 // Reconnection successful
                 log_info("Successfully reconnected to stream %s after %d attempts",
                         stream_name, reconnect_attempt);
+
+                // CRITICAL FIX: Recreate HLS writer after reconnection to reset timestamp state
+                // The old HLS output context has stale DTS values that will cause
+                // "non monotonically increasing dts" errors with the new stream timestamps
+                if (ctx->writer) {
+                    log_info("Closing old HLS writer for stream %s after reconnection", stream_name);
+                    hls_writer_t *old_writer = __atomic_exchange_n(&ctx->writer, NULL, __ATOMIC_SEQ_CST);
+                    if (old_writer) {
+                        hls_writer_close(old_writer);
+                        log_info("Successfully closed old HLS writer for stream %s", stream_name);
+                    }
+                }
+
+                // Create new HLS writer with fresh timestamp state
+                ctx->writer = hls_writer_create(ctx->output_path, stream_name, 5);
+                if (!ctx->writer) {
+                    log_error("Failed to create new HLS writer for %s after reconnection", stream_name);
+                    // Stay in reconnecting state to try again
+                    reconnect_attempt++;
+                    thread_state = HLS_THREAD_RECONNECTING;
+                    break;
+                }
+                log_info("Created new HLS writer for stream %s after reconnection", stream_name);
+
                 thread_state = HLS_THREAD_RUNNING;
                 reconnect_attempt = 0;
                 atomic_store(&ctx->connection_valid, 1);
