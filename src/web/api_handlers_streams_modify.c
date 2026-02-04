@@ -17,7 +17,7 @@
 #include "video/stream_state.h"
 #include "mongoose.h"
 #include "video/detection_stream.h"
-#include "video/detection_stream_thread.h"
+#include "video/unified_detection_thread.h"
 #include "database/database_manager.h"
 #include "video/hls/hls_directory.h"
 #include "video/hls/hls_api.h"
@@ -132,7 +132,7 @@ static void put_stream_worker(put_stream_task_t *task) {
         detection_enabled_changed = (detection_was_enabled != detection_now_enabled);
     } else {
         detection_now_enabled = task->config.detection_based_recording;
-        detection_was_enabled = is_stream_detection_thread_running(task->config.name);
+        detection_was_enabled = is_unified_detection_running(task->config.name);
         if (detection_now_enabled && !detection_was_enabled) {
             log_info("Detection is enabled in config for stream %s but no thread is running", task->config.name);
             detection_enabled_changed = true;
@@ -142,17 +142,17 @@ static void put_stream_worker(put_stream_task_t *task) {
 
     // If detection was enabled and now disabled, stop the detection thread
     if (detection_was_enabled && !detection_now_enabled) {
-        log_info("Detection disabled for stream %s, stopping detection thread", task->config.name);
-        if (stop_stream_detection_thread(task->config.name) != 0) {
-            log_warn("Failed to stop detection thread for stream %s", task->config.name);
+        log_info("Detection disabled for stream %s, stopping unified detection thread", task->config.name);
+        if (stop_unified_detection_thread(task->config.name) != 0) {
+            log_warn("Failed to stop unified detection thread for stream %s", task->config.name);
         } else {
-            log_info("Successfully stopped detection thread for stream %s", task->config.name);
+            log_info("Successfully stopped unified detection thread for stream %s", task->config.name);
         }
     }
     // If detection was disabled and now enabled, start the detection thread
     else if (!detection_was_enabled && detection_now_enabled) {
         if (task->config.detection_model[0] != '\0' && task->config.enabled) {
-            log_info("Detection enabled for stream %s, starting detection thread with model %s",
+            log_info("Detection enabled for stream %s, starting unified detection thread with model %s",
                     task->config.name, task->config.detection_model);
 
             if (go2rtc_integration_reload_stream(task->config.name)) {
@@ -161,16 +161,14 @@ static void put_stream_worker(put_stream_task_t *task) {
                 log_warn("Failed to ensure stream %s is registered with go2rtc", task->config.name);
             }
 
-            char hls_dir[MAX_PATH_LENGTH];
-            snprintf(hls_dir, MAX_PATH_LENGTH, "/var/lib/lightnvr/recordings/hls/%s", task->config.name);
-
-            if (start_stream_detection_thread(task->config.name, task->config.detection_model,
-                                             task->config.detection_threshold,
-                                             task->config.detection_interval, hls_dir,
-                                             task->config.detection_api_url) != 0) {
-                log_warn("Failed to start detection thread for stream %s", task->config.name);
+            if (start_unified_detection_thread(task->config.name,
+                                              task->config.detection_model,
+                                              task->config.detection_threshold,
+                                              task->config.pre_detection_buffer,
+                                              task->config.post_detection_buffer) != 0) {
+                log_warn("Failed to start unified detection thread for stream %s", task->config.name);
             } else {
-                log_info("Successfully started detection thread for stream %s", task->config.name);
+                log_info("Successfully started unified detection thread for stream %s", task->config.name);
             }
         } else {
             log_warn("Detection enabled for stream %s but no model specified or stream disabled", task->config.name);
@@ -178,23 +176,21 @@ static void put_stream_worker(put_stream_task_t *task) {
     }
     // If detection settings changed but detection was already enabled, restart the thread
     else if (detection_now_enabled && (task->has_detection_model || task->has_detection_threshold || task->has_detection_interval)) {
-        log_info("Detection settings changed for stream %s, restarting detection thread", task->config.name);
+        log_info("Detection settings changed for stream %s, restarting unified detection thread", task->config.name);
 
-        if (stop_stream_detection_thread(task->config.name) != 0) {
-            log_warn("Failed to stop existing detection thread for stream %s", task->config.name);
+        if (stop_unified_detection_thread(task->config.name) != 0) {
+            log_warn("Failed to stop existing unified detection thread for stream %s", task->config.name);
         }
 
         if (task->config.detection_model[0] != '\0' && task->config.enabled) {
-            char hls_dir[MAX_PATH_LENGTH];
-            snprintf(hls_dir, MAX_PATH_LENGTH, "/var/lib/lightnvr/recordings/hls/%s", task->config.name);
-
-            if (start_stream_detection_thread(task->config.name, task->config.detection_model,
-                                             task->config.detection_threshold,
-                                             task->config.detection_interval, hls_dir,
-                                             task->config.detection_api_url) != 0) {
-                log_warn("Failed to restart detection thread for stream %s", task->config.name);
+            if (start_unified_detection_thread(task->config.name,
+                                              task->config.detection_model,
+                                              task->config.detection_threshold,
+                                              task->config.pre_detection_buffer,
+                                              task->config.post_detection_buffer) != 0) {
+                log_warn("Failed to restart unified detection thread for stream %s", task->config.name);
             } else {
-                log_info("Successfully restarted detection thread for stream %s", task->config.name);
+                log_info("Successfully restarted unified detection thread for stream %s", task->config.name);
             }
         }
     }
@@ -591,21 +587,18 @@ void mg_handle_post_stream(struct mg_connection *c, struct mg_http_message *hm) 
 
         // Start detection thread if detection is enabled and we have a model
         if (config.detection_based_recording && config.detection_model[0] != '\0') {
-            log_info("Detection enabled for new stream %s, starting detection thread with model %s",
+            log_info("Detection enabled for new stream %s, starting unified detection thread with model %s",
                     config.name, config.detection_model);
 
-            // Construct HLS directory path
-            char hls_dir[MAX_PATH_LENGTH];
-            snprintf(hls_dir, MAX_PATH_LENGTH, "/var/lib/lightnvr/recordings/hls/%s", config.name);
-
-            // Start detection thread
-            if (start_stream_detection_thread(config.name, config.detection_model,
-                                             config.detection_threshold,
-                                             config.detection_interval, hls_dir,
-                                             config.detection_api_url) != 0) {
-                log_warn("Failed to start detection thread for new stream %s", config.name);
+            // Start unified detection thread
+            if (start_unified_detection_thread(config.name,
+                                              config.detection_model,
+                                              config.detection_threshold,
+                                              config.pre_detection_buffer,
+                                              config.post_detection_buffer) != 0) {
+                log_warn("Failed to start unified detection thread for new stream %s", config.name);
             } else {
-                log_info("Successfully started detection thread for new stream %s", config.name);
+                log_info("Successfully started unified detection thread for new stream %s", config.name);
             }
         }
     }
@@ -1039,22 +1032,19 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
                                 log_warn("Failed to register stream %s with go2rtc (go2rtc may not be ready)", decoded_id);
                             }
 
-                            // If detection is enabled for this stream, start the detection thread
+                            // If detection is enabled for this stream, start the unified detection thread
                             if (stream_config.detection_based_recording && stream_config.detection_model[0] != '\0') {
-                                log_info("Starting detection thread for enabled stream %s", decoded_id);
+                                log_info("Starting unified detection thread for enabled stream %s", decoded_id);
 
-                                // Construct HLS directory path
-                                char hls_dir[MAX_PATH_LENGTH];
-                                snprintf(hls_dir, MAX_PATH_LENGTH, "/var/lib/lightnvr/recordings/hls/%s", decoded_id);
-
-                                // Start detection thread
-                                if (start_stream_detection_thread(decoded_id, stream_config.detection_model,
-                                                               stream_config.detection_threshold,
-                                                               stream_config.detection_interval, hls_dir,
-                                                               stream_config.detection_api_url) != 0) {
-                                    log_warn("Failed to start detection thread for stream %s", decoded_id);
+                                // Start unified detection thread
+                                if (start_unified_detection_thread(decoded_id,
+                                                                  stream_config.detection_model,
+                                                                  stream_config.detection_threshold,
+                                                                  stream_config.pre_detection_buffer,
+                                                                  stream_config.post_detection_buffer) != 0) {
+                                    log_warn("Failed to start unified detection thread for stream %s", decoded_id);
                                 } else {
-                                    log_info("Successfully started detection thread for stream %s", decoded_id);
+                                    log_info("Successfully started unified detection thread for stream %s", decoded_id);
                                 }
                             }
                         } else {
@@ -1215,14 +1205,14 @@ void mg_handle_delete_stream(struct mg_connection *c, struct mg_http_message *hm
         }
     }
 
-    // Stop any detection thread for this stream
-    if (is_stream_detection_thread_running(decoded_id)) {
-        log_info("Stopping detection thread for stream %s", decoded_id);
-        if (stop_stream_detection_thread(decoded_id) != 0) {
-            log_warn("Failed to stop detection thread for stream %s", decoded_id);
+    // Stop any unified detection thread for this stream
+    if (is_unified_detection_running(decoded_id)) {
+        log_info("Stopping unified detection thread for stream %s", decoded_id);
+        if (stop_unified_detection_thread(decoded_id) != 0) {
+            log_warn("Failed to stop unified detection thread for stream %s", decoded_id);
             // Continue anyway
         } else {
-            log_info("Successfully stopped detection thread for stream %s", decoded_id);
+            log_info("Successfully stopped unified detection thread for stream %s", decoded_id);
         }
     }
 

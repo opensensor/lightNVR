@@ -12,7 +12,7 @@
 #include "video/stream_reader.h"
 #include "video/stream_state.h"
 #include "database/db_streams.h"
-#include "video/detection_stream_thread.h"
+#include "video/unified_detection_thread.h"
 #ifdef USE_GO2RTC
 #include "video/go2rtc/go2rtc_integration.h"
 #endif
@@ -285,32 +285,29 @@ int set_stream_detection_recording(stream_handle_t stream, bool enabled, const c
 
     // If detection was enabled and is now being disabled, stop the detection thread
     if (now_disabled) {
-        log_info("Detection disabled for stream %s, stopping detection thread", stream_name);
+        log_info("Detection disabled for stream %s, stopping unified detection thread", stream_name);
 
-        // Stop the detection thread
-        if (stop_stream_detection_thread(stream_name) != 0) {
-            log_warn("Failed to stop detection thread for stream %s", stream_name);
+        // Stop the unified detection thread
+        if (stop_unified_detection_thread(stream_name) != 0) {
+            log_warn("Failed to stop unified detection thread for stream %s", stream_name);
         } else {
-            log_info("Successfully stopped detection thread for stream %s", stream_name);
+            log_info("Successfully stopped unified detection thread for stream %s", stream_name);
         }
     }
     // If detection was disabled and is now being enabled, start the detection thread
     else if (now_enabled && config_copy.detection_model[0] != '\0') {
-        log_info("Detection enabled for stream %s, starting detection thread with model %s",
+        log_info("Detection enabled for stream %s, starting unified detection thread with model %s",
                 stream_name, config_copy.detection_model);
 
-        // Construct HLS directory path
-        char hls_dir[MAX_PATH_LENGTH];
-        snprintf(hls_dir, MAX_PATH_LENGTH, "/var/lib/lightnvr/recordings/hls/%s", stream_name);
-
-        // Start detection thread
-        if (start_stream_detection_thread(stream_name, config_copy.detection_model,
-                                         config_copy.detection_threshold,
-                                         config_copy.detection_interval, hls_dir,
-                                         config_copy.detection_api_url) != 0) {
-            log_warn("Failed to start detection thread for stream %s", stream_name);
+        // Start unified detection thread
+        if (start_unified_detection_thread(stream_name,
+                                          config_copy.detection_model,
+                                          config_copy.detection_threshold,
+                                          config_copy.pre_detection_buffer,
+                                          config_copy.post_detection_buffer) != 0) {
+            log_warn("Failed to start unified detection thread for stream %s", stream_name);
         } else {
-            log_info("Successfully started detection thread for stream %s", stream_name);
+            log_info("Successfully started unified detection thread for stream %s", stream_name);
         }
     }
 

@@ -76,16 +76,8 @@ void unregister_mp4_writer_for_stream(const char *stream_name);
 int find_mp4_recording(const char *stream_name, time_t timestamp, char *mp4_path, size_t path_size);
 int get_recording_state(const char *stream_name);
 
-// Detection-based recording functions
-int start_detection_recording(const char *stream_name, const char *model_path, float threshold,
-                             int pre_buffer, int post_buffer);
-int stop_detection_recording(const char *stream_name);
-int process_frame_for_recording(const char *stream_name, const unsigned char *frame_data,
-                               int width, int height, int channels, time_t frame_time,
-                               detection_result_t *result);
-int get_detection_recording_state(const char *stream_name, bool *recording_active);
-void init_detection_recording_system(void);
-void shutdown_detection_recording_system(void);
+// Unified detection recording system (replaces old detection_recording.c)
+// See unified_detection_thread.h for the new API
 
 // Motion detection functions
 int enable_motion_detection(const char *stream_name, float sensitivity, float min_motion_area, int cooldown_time);

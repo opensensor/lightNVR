@@ -32,7 +32,7 @@
 #include "video/detection_embedded.h"
 #include "video/detection_integration.h"
 #include "video/detection_frame_processing.h"
-#include "video/detection_stream_thread.h"
+#include "video/unified_detection_thread.h"
 
 // Track which streams are currently being processed for detection
 char *active_detection_streams = NULL; // Accessible from detection_frame_processing.c
@@ -67,15 +67,15 @@ int init_detection_integration(void) {
         return -1;
     }
 
-    // Initialize the stream detection system - we always use it now
-    if (init_stream_detection_system() != 0) {
-        log_error("Failed to initialize stream detection system");
-        // This is a critical error now that we've removed the fallback
+    // Initialize the unified detection system
+    if (init_unified_detection_system() != 0) {
+        log_error("Failed to initialize unified detection system");
+        // This is a critical error
         free(active_detection_streams);
         active_detection_streams = NULL;
         return -1;
     } else {
-        log_info("Stream detection system initialized");
+        log_info("Unified detection system initialized");
     }
     
     // Initialize the API detection system
@@ -147,9 +147,9 @@ void cleanup_detection_resources(void) {
         active_detections = 0;
     }
 
-    // Shutdown the stream detection system
-    shutdown_stream_detection_system();
-    log_info("Stream detection system shutdown");
+    // Shutdown the unified detection system
+    shutdown_unified_detection_system();
+    log_info("Unified detection system shutdown");
 
     // Force cleanup of all SOD models to prevent memory leaks
     force_cleanup_sod_models();

@@ -22,7 +22,7 @@
 #include "video/streams.h"
 #include "video/stream_reader.h"
 #include "video/detection_integration.h"
-#include "video/detection_recording.h" // For monitor_hls_segments_for_detection
+#include "video/unified_detection_thread.h"
 
 // Structure to track detection stream readers
 typedef struct {
@@ -161,43 +161,17 @@ int start_detection_stream_reader(const char *stream_name, int detection_interva
     pthread_mutex_unlock(&detection_streams[slot].mutex);
     pthread_mutex_unlock(&detection_streams_mutex);
     
-    // CRITICAL FIX: Explicitly call monitor_hls_segments_for_detection to start the detection thread
-    // This ensures the thread is started immediately rather than waiting for the next monitoring cycle
-    log_info("Explicitly starting detection thread for stream %s", stream_name);
-    
-    // Forward declaration for monitor_hls_segments_for_detection
-    extern int monitor_hls_segments_for_detection(const char *stream_name);
-    
-    int result = monitor_hls_segments_for_detection(stream_name);
-    if (result != 0) {
-        log_error("Failed to start detection thread for stream %s (error code: %d)", 
-                 stream_name, result);
-        return result;
+    // The unified detection thread is now started separately via start_unified_detection_thread()
+    // This function just marks the stream as detection-enabled in the tracking array
+    log_info("Detection stream reader marked as enabled for stream %s", stream_name);
+
+    // Check if unified detection thread is already running
+    if (!is_unified_detection_running(stream_name)) {
+        log_info("Unified detection thread not yet running for stream %s - will be started by detection system", stream_name);
+    } else {
+        log_info("Unified detection thread already running for stream %s", stream_name);
     }
-    
-    // Verify the thread is actually running
-    extern bool is_stream_detection_thread_running(const char *stream_name);
-    if (!is_stream_detection_thread_running(stream_name)) {
-        log_warn("Detection thread not running for stream %s after explicit start attempt", stream_name);
-        
-        // Try one more time with a delay
-        log_info("Waiting 1 second and trying again...");
-        sleep(1);
-        
-        result = monitor_hls_segments_for_detection(stream_name);
-        if (result != 0) {
-            log_error("Failed to start detection thread for stream %s on second attempt (error code: %d)", 
-                     stream_name, result);
-            return result;
-        }
-        
-        if (!is_stream_detection_thread_running(stream_name)) {
-            log_error("Detection thread still not running for stream %s after second attempt", stream_name);
-            return -1;
-        }
-    }
-    
-    log_info("Detection thread successfully started for stream %s", stream_name);
+
     return 0;
 }
 
@@ -271,27 +245,14 @@ bool is_detection_stream_reader_running(const char *stream_name) {
             
             bool running = (detection_streams[i].reader_ctx != NULL);
             pthread_mutex_unlock(&detection_streams_mutex);
-            
-            // Also check if the detection thread is running
-            extern bool is_stream_detection_thread_running(const char *stream_name);
-            bool thread_running = is_stream_detection_thread_running(stream_name);
-            
-            log_info("Detection stream reader for %s: reader=%s, thread=%s", 
-                    stream_name, running ? "running" : "not running", 
+
+            // Also check if the unified detection thread is running
+            bool thread_running = is_unified_detection_running(stream_name);
+
+            log_info("Detection stream reader for %s: reader=%s, thread=%s",
+                    stream_name, running ? "running" : "not running",
                     thread_running ? "running" : "not running");
-            
-            // If the reader is running but the thread is not, try to start the thread
-            if (running && !thread_running) {
-                log_warn("Detection stream reader is running but thread is not for %s, trying to start thread", stream_name);
-                extern int monitor_hls_segments_for_detection(const char *stream_name);
-                monitor_hls_segments_for_detection(stream_name);
-                
-                // Check again after trying to start the thread
-                thread_running = is_stream_detection_thread_running(stream_name);
-                log_info("After retry, detection thread for %s is %s", 
-                        stream_name, thread_running ? "running" : "still not running");
-            }
-            
+
             return running && thread_running;
         }
     }
@@ -335,65 +296,49 @@ int get_detection_interval(const char *stream_name) {
  */
 void print_detection_stream_status(void) {
     pthread_mutex_lock(&detection_streams_mutex);
-    
+
     log_info("=== Detection Stream Status ===");
     int active_count = 0;
-    
+    int running_threads = 0;
+
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (detection_streams[i].stream_name[0] != '\0') {
             pthread_mutex_lock(&detection_streams[i].mutex);
-            
-            // Check if the thread is actually running
-            extern bool is_stream_detection_thread_running(const char *stream_name);
-            bool thread_running = is_stream_detection_thread_running(detection_streams[i].stream_name);
-            
-            const char *status = detection_streams[i].reader_ctx ? 
-                (thread_running ? "ACTIVE (thread running)" : "CONFIGURED (thread not running)") : 
+
+            // Check if the unified detection thread is running
+            bool thread_running = is_unified_detection_running(detection_streams[i].stream_name);
+
+            if (thread_running) {
+                running_threads++;
+            }
+
+            const char *status = detection_streams[i].reader_ctx ?
+                (thread_running ? "ACTIVE (thread running)" : "CONFIGURED (thread not running)") :
                 "INACTIVE";
-            
-            log_info("Stream %s: %s (interval: %d, frame counter: %d)", 
-                    detection_streams[i].stream_name, 
+
+            log_info("Stream %s: %s (interval: %d, frame counter: %d)",
+                    detection_streams[i].stream_name,
                     status,
                     detection_streams[i].detection_interval,
                     detection_streams[i].frame_counter);
-            
-            // Also log the HLS directory path if the thread is running
+
+            // Log unified detection state if thread is running
             if (thread_running) {
-                // Get the thread status
-                extern int get_stream_detection_status(const char *stream_name, bool *has_thread, 
-                                                     time_t *last_check_time, time_t *last_detection_time);
-                
-                bool has_thread = false;
-                time_t last_check = 0;
-                time_t last_detection = 0;
-                
-                if (get_stream_detection_status(detection_streams[i].stream_name, &has_thread, 
-                                              &last_check, &last_detection) == 0) {
-                    char last_detection_str[64] = "never";
-                    if (last_detection > 0) {
-                        strftime(last_detection_str, sizeof(last_detection_str), 
-                                "%Y-%m-%d %H:%M:%S", localtime(&last_detection));
-                    }
-                    
-                    log_info("  - Last detection: %s", last_detection_str);
-                }
+                unified_detection_state_t state = get_unified_detection_state(detection_streams[i].stream_name);
+                log_info("  - Unified detection state: %d", state);
             }
-            
+
             if (detection_streams[i].reader_ctx) {
                 active_count++;
             }
-            
+
             pthread_mutex_unlock(&detection_streams[i].mutex);
         }
     }
-    
-    // Also log the number of running detection threads
-    extern int get_running_stream_detection_threads(void);
-    int running_threads = get_running_stream_detection_threads();
-    
-    log_info("Total active detection streams: %d (running threads: %d)", 
+
+    log_info("Total active detection streams: %d (running threads: %d)",
             active_count, running_threads);
     log_info("==============================");
-    
+
     pthread_mutex_unlock(&detection_streams_mutex);
 }

@@ -36,8 +36,7 @@
 #include "video/detection_stream.h"
 #include "video/detection.h"
 #include "video/detection_integration.h"
-#include "video/detection_recording.h"
-#include "video/detection_stream_thread.h"
+#include "video/unified_detection_thread.h"
 #include "video/timestamp_manager.h"
 #include "video/onvif_discovery.h"
 #include "video/ffmpeg_leak_detector.h"
@@ -803,9 +802,6 @@ int main(int argc, char *argv[]) {
     }
 
 
-    // Initialize detection recording system
-    init_detection_recording_system();
-
     // Initialize detection stream system
     init_detection_stream_system();
 
@@ -926,21 +922,18 @@ int main(int argc, char *argv[]) {
                         config.streams[i].name, result);
             }
 
-            // Now directly start the detection thread
-            log_info("Directly starting detection thread for stream %s", config.streams[i].name);
+            // Now directly start the unified detection thread
+            log_info("Directly starting unified detection thread for stream %s", config.streams[i].name);
 
-            // Construct HLS directory path
-            char hls_dir[MAX_PATH_LENGTH];
-            snprintf(hls_dir, MAX_PATH_LENGTH, "/var/lib/lightnvr/recordings/hls/%s", config.streams[i].name);
-
-            // Start the detection thread
-            if (start_stream_detection_thread(config.streams[i].name, model_path,
-                                             config.streams[i].detection_threshold,
-                                             config.streams[i].detection_interval, hls_dir,
-                                             config.streams[i].detection_api_url) != 0) {
-                log_warn("Failed to start detection thread for stream %s", config.streams[i].name);
+            // Start the unified detection thread
+            if (start_unified_detection_thread(config.streams[i].name,
+                                              model_path,
+                                              config.streams[i].detection_threshold,
+                                              config.streams[i].pre_detection_buffer,
+                                              config.streams[i].post_detection_buffer) != 0) {
+                log_warn("Failed to start unified detection thread for stream %s", config.streams[i].name);
             } else {
-                log_info("Successfully started detection thread for stream %s", config.streams[i].name);
+                log_info("Successfully started unified detection thread for stream %s", config.streams[i].name);
             }
         }
     }
@@ -1505,10 +1498,11 @@ static void check_and_ensure_services(void) {
         // Handle detection-based recording - MOVED TO END OF SETUP
         if (config.streams[i].name[0] != '\0' && config.streams[i].enabled && config.streams[i].detection_based_recording) {
             log_info("Ensuring detection-based recording is active for stream: %s", config.streams[i].name);
-            if (start_stream_detection_thread(config.streams[i].name, config.streams[i].detection_model,
-                                             config.streams[i].detection_threshold,
-                                             config.streams[i].detection_interval, NULL,
-                                             config.streams[i].detection_api_url) != 0) {
+            if (start_unified_detection_thread(config.streams[i].name,
+                                              config.streams[i].detection_model,
+                                              config.streams[i].detection_threshold,
+                                              config.streams[i].pre_detection_buffer,
+                                              config.streams[i].post_detection_buffer) != 0) {
                 log_warn("Failed to start detection-based recording for stream: %s", config.streams[i].name);
             } else {
                 log_info("Successfully started detection-based recording for stream: %s", config.streams[i].name);
