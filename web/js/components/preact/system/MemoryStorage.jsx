@@ -14,12 +14,13 @@ export function MemoryStorage({ systemInfo, formatBytes }) {
   // Get memory usage values
   const lightNvrMemoryUsed = systemInfo.memory?.used || 0;
   const go2rtcMemoryUsed = systemInfo.go2rtcMemory?.used || 0;
+  const detectorMemoryUsed = systemInfo.detectorMemory?.used || 0;
   const totalSystemMemory = systemInfo.memory?.total || 0;
 
-  // Calculate combined memory usage
-  const combinedMemoryUsed = lightNvrMemoryUsed + go2rtcMemoryUsed;
+  // Calculate combined memory usage (all three processes)
+  const combinedMemoryUsed = lightNvrMemoryUsed + go2rtcMemoryUsed + detectorMemoryUsed;
 
-  // Calculate the percentage of total system memory used by both processes combined
+  // Calculate the percentage of total system memory used by all processes combined
   const combinedMemoryPercent = totalSystemMemory ?
     (combinedMemoryUsed / totalSystemMemory * 100).toFixed(1) : 0;
 
@@ -31,6 +32,9 @@ export function MemoryStorage({ systemInfo, formatBytes }) {
   const go2rtcSlicePercent = combinedMemoryUsed ?
     (go2rtcMemoryUsed / combinedMemoryUsed * 100).toFixed(1) : 0;
 
+  const detectorSlicePercent = combinedMemoryUsed ?
+    (detectorMemoryUsed / combinedMemoryUsed * 100).toFixed(1) : 0;
+
   // These variables ensure the slivers add up to 100% of the combined usage bar
 
   return (
@@ -40,12 +44,15 @@ export function MemoryStorage({ systemInfo, formatBytes }) {
         <div>
           <div className="flex justify-between mb-1">
             <span className="font-medium">Process Memory:</span>
-            <div>
-              <span className="inline-block px-2 py-0.5 mr-1 text-xs rounded" style={{backgroundColor: 'hsl(var(--primary-muted))', color: 'hsl(var(--primary))'}}>
+            <div className="flex flex-wrap justify-end gap-1">
+              <span className="inline-block px-2 py-0.5 text-xs rounded" style={{backgroundColor: 'hsl(var(--primary-muted))', color: 'hsl(var(--primary))'}}>
                 LightNVR: {formatBytes(lightNvrMemoryUsed)}
               </span>
               <span className="inline-block px-2 py-0.5 text-xs rounded badge-success">
                 go2rtc: {formatBytes(go2rtcMemoryUsed)}
+              </span>
+              <span className="inline-block px-2 py-0.5 text-xs rounded badge-warning">
+                detector: {formatBytes(detectorMemoryUsed)}
               </span>
             </div>
           </div>
@@ -57,6 +64,7 @@ export function MemoryStorage({ systemInfo, formatBytes }) {
             <div className="flex h-full" style={{ width: `${combinedMemoryPercent}%` }}>
               <div className="h-2.5" style={{ width: `${lightNvrSlicePercent}%`, backgroundColor: 'hsl(var(--primary))' }}></div>
               <div className="h-2.5" style={{ width: `${go2rtcSlicePercent}%`, backgroundColor: 'hsl(var(--success))' }}></div>
+              <div className="h-2.5" style={{ width: `${detectorSlicePercent}%`, backgroundColor: 'hsl(var(--warning))' }}></div>
             </div>
           </div>
         </div>

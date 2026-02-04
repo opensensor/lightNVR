@@ -36,6 +36,69 @@ extern bool get_go2rtc_memory_usage(unsigned long long *memory_usage);
 // External declarations
 extern bool daemon_mode;
 
+/**
+ * @brief Get memory usage of light-object-detect process
+ *
+ * @param memory_usage Pointer to store memory usage in bytes
+ * @return true if successful, false otherwise (process not running)
+ */
+static bool get_detector_memory_usage(unsigned long long *memory_usage) {
+    if (!memory_usage) {
+        return false;
+    }
+
+    // Initialize to 0
+    *memory_usage = 0;
+
+    // Find light-object-detect process using pgrep
+    FILE *fp = popen("pgrep -f 'light-object-detect' 2>/dev/null | head -1", "r");
+    if (!fp) {
+        log_debug("Failed to execute pgrep for light-object-detect");
+        return false;
+    }
+
+    char line[32];
+    pid_t pid = -1;
+    if (fgets(line, sizeof(line), fp)) {
+        pid = atoi(line);
+    }
+    pclose(fp);
+
+    if (pid <= 0) {
+        log_debug("No light-object-detect process found");
+        return false;
+    }
+
+    // Get memory usage from /proc/{pid}/status
+    char status_path[64];
+    snprintf(status_path, sizeof(status_path), "/proc/%d/status", pid);
+
+    FILE *status_file = fopen(status_path, "r");
+    if (!status_file) {
+        log_debug("Failed to open %s: %s", status_path, strerror(errno));
+        return false;
+    }
+
+    char status_line[256];
+    unsigned long vm_rss = 0;
+
+    while (fgets(status_line, sizeof(status_line), status_file)) {
+        if (strncmp(status_line, "VmRSS:", 6) == 0) {
+            // VmRSS is in kB - actual physical memory used
+            sscanf(status_line + 6, "%lu", &vm_rss);
+            break;
+        }
+    }
+
+    fclose(status_file);
+
+    // Convert kB to bytes
+    *memory_usage = vm_rss * 1024;
+
+    log_debug("light-object-detect memory usage (PID %d): %llu bytes", pid, *memory_usage);
+    return true;
+}
+
 // Forward declarations from api_handlers_system_logs.c
 extern void mg_handle_get_system_logs(struct mg_connection *c, struct mg_http_message *hm);
 extern void mg_handle_post_system_logs_clear(struct mg_connection *c, struct mg_http_message *hm);
@@ -164,6 +227,32 @@ void mg_handle_get_system_info(struct mg_connection *c, struct mg_http_message *
 
         // Add go2rtc memory object to info
         cJSON_AddItemToObject(info, "go2rtcMemory", go2rtc_memory);
+    }
+
+    // Get memory information for the light-object-detect process
+    cJSON *detector_memory = cJSON_CreateObject();
+    if (detector_memory) {
+        unsigned long long detector_used = 0;
+
+        // Try to get light-object-detect memory usage (returns false if not running)
+        if (get_detector_memory_usage(&detector_used)) {
+            log_debug("light-object-detect memory usage: %llu bytes", detector_used);
+        } else {
+            log_debug("light-object-detect not running or memory unavailable, using 0");
+        }
+
+        // Use the system total memory as the total for detector as well
+        unsigned long long total = system_total;
+
+        // Calculate free as the difference between total and used
+        unsigned long long free = (total > detector_used) ? (total - detector_used) : 0;
+
+        cJSON_AddNumberToObject(detector_memory, "total", total);
+        cJSON_AddNumberToObject(detector_memory, "used", detector_used);
+        cJSON_AddNumberToObject(detector_memory, "free", free);
+
+        // Add detector memory object to info
+        cJSON_AddItemToObject(info, "detectorMemory", detector_memory);
     }
 
     // Get system-wide memory information
