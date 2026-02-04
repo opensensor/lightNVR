@@ -349,11 +349,38 @@ int start_mp4_recording(const char *stream_name) {
         return -1;
     }
 
-    // Check if already running
+    // Check if already running - but also verify the recording is actually working
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (recording_contexts[i] && strcmp(recording_contexts[i]->config.name, stream_name) == 0) {
-            log_info("MP4 recording for stream %s already running", stream_name);
-            return 0;  // Already running
+            // Check if the recording is actually working (not just existing)
+            mp4_writer_t *writer = recording_contexts[i]->mp4_writer;
+            if (writer && mp4_writer_is_recording(writer)) {
+                log_info("MP4 recording for stream %s already running and healthy", stream_name);
+                return 0;  // Already running and healthy
+            }
+
+            // Recording context exists but is dead - clean it up first
+            log_warn("MP4 recording for stream %s exists but is dead, cleaning up before restart", stream_name);
+
+            // Stop the dead recording
+            recording_contexts[i]->running = 0;
+
+            // Stop the recording thread if it exists
+            if (writer) {
+                mp4_writer_stop_recording_thread(writer);
+                mp4_writer_close(writer);
+                recording_contexts[i]->mp4_writer = NULL;
+            }
+
+            // Unregister the writer
+            unregister_mp4_writer_for_stream(stream_name);
+
+            // Free the context
+            free(recording_contexts[i]);
+            recording_contexts[i] = NULL;
+
+            log_info("Cleaned up dead MP4 recording for stream %s, will restart", stream_name);
+            break;  // Continue to start a new recording
         }
     }
 
@@ -483,11 +510,38 @@ int start_mp4_recording_with_url(const char *stream_name, const char *url) {
         return -1;
     }
 
-    // Check if already running
+    // Check if already running - but also verify the recording is actually working
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (recording_contexts[i] && strcmp(recording_contexts[i]->config.name, stream_name) == 0) {
-            log_info("MP4 recording for stream %s already running", stream_name);
-            return 0;  // Already running
+            // Check if the recording is actually working (not just existing)
+            mp4_writer_t *writer = recording_contexts[i]->mp4_writer;
+            if (writer && mp4_writer_is_recording(writer)) {
+                log_info("MP4 recording for stream %s already running and healthy", stream_name);
+                return 0;  // Already running and healthy
+            }
+
+            // Recording context exists but is dead - clean it up first
+            log_warn("MP4 recording for stream %s exists but is dead, cleaning up before restart", stream_name);
+
+            // Stop the dead recording
+            recording_contexts[i]->running = 0;
+
+            // Stop the recording thread if it exists
+            if (writer) {
+                mp4_writer_stop_recording_thread(writer);
+                mp4_writer_close(writer);
+                recording_contexts[i]->mp4_writer = NULL;
+            }
+
+            // Unregister the writer
+            unregister_mp4_writer_for_stream(stream_name);
+
+            // Free the context
+            free(recording_contexts[i]);
+            recording_contexts[i] = NULL;
+
+            log_info("Cleaned up dead MP4 recording for stream %s, will restart", stream_name);
+            break;  // Continue to start a new recording
         }
     }
 
@@ -813,11 +867,38 @@ int start_mp4_recording_with_url_and_trigger(const char *stream_name, const char
     strncpy(config.url, url, sizeof(config.url) - 1);
     config.url[sizeof(config.url) - 1] = '\0';
 
-    // Check if already running
+    // Check if already running - but also verify the recording is actually working
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (recording_contexts[i] && strcmp(recording_contexts[i]->config.name, stream_name) == 0) {
-            log_info("MP4 recording for stream %s already running", stream_name);
-            return 0;  // Already running
+            // Check if the recording is actually working (not just existing)
+            mp4_writer_t *writer = recording_contexts[i]->mp4_writer;
+            if (writer && mp4_writer_is_recording(writer)) {
+                log_info("MP4 recording for stream %s already running and healthy", stream_name);
+                return 0;  // Already running and healthy
+            }
+
+            // Recording context exists but is dead - clean it up first
+            log_warn("MP4 recording for stream %s exists but is dead, cleaning up before restart", stream_name);
+
+            // Stop the dead recording
+            recording_contexts[i]->running = 0;
+
+            // Stop the recording thread if it exists
+            if (writer) {
+                mp4_writer_stop_recording_thread(writer);
+                mp4_writer_close(writer);
+                recording_contexts[i]->mp4_writer = NULL;
+            }
+
+            // Unregister the writer
+            unregister_mp4_writer_for_stream(stream_name);
+
+            // Free the context
+            free(recording_contexts[i]);
+            recording_contexts[i] = NULL;
+
+            log_info("Cleaned up dead MP4 recording for stream %s, will restart", stream_name);
+            break;  // Continue to start a new recording
         }
     }
 

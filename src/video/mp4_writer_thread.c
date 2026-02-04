@@ -601,7 +601,11 @@ void mp4_writer_stop_recording_thread(mp4_writer_t *writer) {
 }
 
 /**
- * Check if the recording thread is running
+ * Check if the recording thread is running and actively producing recordings
+ *
+ * This function checks not only if the thread is running, but also if it has
+ * written packets recently. A thread that is "running" but hasn't written
+ * packets in a long time is considered dead and should be restarted.
  */
 int mp4_writer_is_recording(mp4_writer_t *writer) {
     if (!writer) {
@@ -618,7 +622,40 @@ int mp4_writer_is_recording(mp4_writer_t *writer) {
         return 0;
     }
 
-    return thread_ctx->running;
+    // Check if the thread is running
+    if (!thread_ctx->running) {
+        return 0;
+    }
+
+    // CRITICAL FIX: Check if the recording is actually producing output
+    // A thread can be "running" but stuck or not actually writing packets
+    // If no packets have been written in the last 90 seconds, consider it dead
+    // (90 seconds allows for segment duration of 30 seconds plus some buffer)
+    time_t now = time(NULL);
+    time_t last_packet = writer->last_packet_time;
+
+    // If last_packet_time is 0, the recording just started - give it time to initialize
+    // Allow up to 120 seconds for initial connection and first packet
+    if (last_packet == 0) {
+        time_t creation_time = writer->creation_time;
+        if (creation_time > 0 && (now - creation_time) > 120) {
+            log_warn("MP4 recording for stream %s has been running for %ld seconds but never wrote any packets - considering it dead",
+                    writer->stream_name, (long)(now - creation_time));
+            return 0;
+        }
+        // Still initializing, consider it running
+        return 1;
+    }
+
+    // Check if packets have been written recently
+    long seconds_since_last_packet = (long)(now - last_packet);
+    if (seconds_since_last_packet > 90) {
+        log_warn("MP4 recording for stream %s hasn't written packets in %ld seconds - considering it dead",
+                writer->stream_name, seconds_since_last_packet);
+        return 0;
+    }
+
+    return 1;
 }
 
 /**
