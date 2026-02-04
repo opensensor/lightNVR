@@ -1021,6 +1021,7 @@ int main(int argc, char *argv[]) {
         static time_t last_log_time = 0;
         static time_t last_status_time = 0;
         static time_t last_ffmpeg_leak_check_time = 0;
+        static time_t last_service_check_time = 0;
         time_t now = time(NULL);
 
         if (now - last_log_time > 60) {
@@ -1047,6 +1048,13 @@ int main(int argc, char *argv[]) {
             }
 
             last_ffmpeg_leak_check_time = now;
+        }
+
+        // Periodically check and restart failed recording/streaming services every 60 seconds
+        // This ensures self-healing of MP4 recordings that may have died
+        if (now - last_service_check_time > 60) {
+            check_and_ensure_services();
+            last_service_check_time = now;
         }
 
         // Process events, monitor system health, etc.

@@ -293,21 +293,28 @@ int get_recording_state(const char *stream_name) {
         return -1;
     }
 
-    // Find the active recording for this stream
+    // Check if there's an active MP4 writer with a running recording thread
+    // This is the more reliable check as it verifies the thread is actually running
+    mp4_writer_t *writer = get_mp4_writer_for_stream(stream_name);
+    if (writer) {
+        // Check if the recording thread is actually running
+        // A writer object can exist but have a stopped/dead thread
+        if (mp4_writer_is_recording(writer)) {
+            return 1; // Recording thread is actively running
+        }
+        // Writer exists but thread is not running - recording has died
+        log_debug("MP4 writer exists for stream %s but recording thread is not running", stream_name);
+        return 0;
+    }
+
+    // Also check the active_recordings array for backward compatibility
     for (int i = 0; i < MAX_STREAMS; i++) {
-        if (active_recordings[i].recording_id > 0 && 
+        if (active_recordings[i].recording_id > 0 &&
             strcmp(active_recordings[i].stream_name, stream_name) == 0) {
-            return 1; // Recording is active
+            return 1; // Recording is active in legacy system
         }
     }
 
-    // If no active recording found in active_recordings, check if there's an active MP4 writer
-    // using the function from mp4_recording.c
-    mp4_writer_t *writer = get_mp4_writer_for_stream(stream_name);
-    if (writer) {
-        return 1; // MP4 recording is active
-    }
-    
     return 0; // No active recording
 }
 
