@@ -295,13 +295,14 @@ static bool is_web_server_thread_running(void) {
  * @brief Restart the web server
  *
  * This function attempts to restart the web server by stopping and starting it again.
- * Note: This is a complex operation and may not always succeed.
+ * This is necessary when the server thread is deadlocked (alive but not responding).
  *
  * @return true if restart succeeded, false otherwise
  */
 static bool restart_web_server(void) {
     // Get the global http_server from main.c
     extern http_server_handle_t http_server;
+    extern void http_server_stop(http_server_handle_t server);
 
     if (!http_server) {
         log_error("Cannot restart web server: no server handle available");
@@ -327,8 +328,32 @@ static bool restart_web_server(void) {
     log_info("Attempting to restart web server (attempt %d/%d)",
              g_restart_attempts, MAX_RESTART_ATTEMPTS);
 
-    // Try to restart the server by calling http_server_start again
-    // The server should handle being started when it's already initialized
+    // CRITICAL FIX: First stop the server to signal the event loop to exit
+    // This is necessary because http_server_start() returns early if server->running is true
+    log_info("Stopping web server before restart...");
+    http_server_stop(http_server);
+
+    // Wait for the event loop thread to exit
+    // The thread is detached, so we can't join it, but we can wait a bit
+    log_info("Waiting for web server thread to exit...");
+    for (int i = 0; i < 30; i++) {  // Wait up to 3 seconds
+        usleep(100000);  // 100ms
+
+        // Check if thread is still running
+        if (!is_web_server_thread_running()) {
+            log_info("Web server thread has exited");
+            break;
+        }
+
+        if (i == 29) {
+            log_warn("Web server thread did not exit after 3 seconds, proceeding anyway");
+        }
+    }
+
+    // Small delay to ensure resources are released
+    usleep(500000);  // 500ms
+
+    // Now start the server again - this will create a new event loop thread
     if (http_server_start(http_server) != 0) {
         log_error("Failed to restart web server");
         return false;
