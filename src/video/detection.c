@@ -24,6 +24,7 @@
 #include "../../include/video/sod_realnet.h"
 #include "../../include/video/motion_detection.h"
 #include "../../include/video/api_detection.h"
+#include "../../include/video/unified_detection_thread.h"
 #include "../../include/video/ffmpeg_utils.h"  // For comprehensive_ffmpeg_cleanup
 #include "../../include/core/logger.h"
 #include "../../include/core/config.h"  // For MAX_PATH_LENGTH
@@ -71,6 +72,15 @@ int init_detection_system(void) {
         log_info("API detection system initialized");
     }
 
+    // Initialize unified detection thread system
+    int unified_ret = init_unified_detection_system();
+    if (unified_ret != 0) {
+        log_error("Failed to initialize unified detection thread system");
+        log_warn("Unified detection recording will not be available");
+    } else {
+        log_info("Unified detection thread system initialized");
+    }
+
     log_info("Detection system initialized");
     return 0;
 }
@@ -79,6 +89,10 @@ int init_detection_system(void) {
  * Shutdown the detection system
  */
 void shutdown_detection_system(void) {
+    // Shutdown unified detection thread system first (it may depend on models)
+    shutdown_unified_detection_system();
+    log_info("Unified detection thread system shutdown");
+
     // Shutdown the model system
     shutdown_detection_model_system();
 

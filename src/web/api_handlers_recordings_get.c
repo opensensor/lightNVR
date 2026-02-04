@@ -16,6 +16,7 @@
 #include "web/http_server.h"
 #include "core/logger.h"
 #include "core/config.h"
+#include "core/shutdown_coordinator.h"
 #include "mongoose.h"
 #include "database/database_manager.h"
 #include "database/db_recordings.h"
@@ -24,27 +25,34 @@
 
 /**
  * @brief Worker function for GET /api/recordings
- * 
+ *
  * This function is called by the multithreading system to handle recordings requests.
  */
 void mg_handle_get_recordings_worker(struct mg_connection *c, struct mg_http_message *hm) {
+    // Check if shutdown is in progress - skip expensive database queries
+    if (is_shutdown_initiated()) {
+        log_info("Shutdown in progress, rejecting recordings request");
+        mg_send_json_error(c, 503, "Service shutting down");
+        return;
+    }
+
     log_info("Processing GET /api/recordings request in worker thread");
-    
+
     // Extract URI for logging
     char uri_buf[MAX_PATH_LENGTH] = {0};
     size_t uri_len = hm->uri.len < sizeof(uri_buf) - 1 ? hm->uri.len : sizeof(uri_buf) - 1;
     memcpy(uri_buf, hm->uri.buf, uri_len);
     uri_buf[uri_len] = '\0';
-    
+
     // Log all headers for debugging
     log_info("Request headers for %s:", uri_buf);
     for (int i = 0; i < MG_MAX_HTTP_HEADERS; i++) {
         if (hm->headers[i].name.len == 0) break;
-        log_info("  %.*s: %.*s", 
+        log_info("  %.*s: %.*s",
                 (int)hm->headers[i].name.len, hm->headers[i].name.buf,
                 (int)hm->headers[i].value.len, hm->headers[i].value.buf);
     }
-    
+
     // Check authentication
     http_server_t *server = (http_server_t *)c->fn_data;
     if (server && server->config.auth_enabled) {
@@ -381,12 +389,19 @@ void mg_handle_get_recordings(struct mg_connection *c, struct mg_http_message *h
 
 /**
  * @brief Worker function for GET /api/recordings/:id
- * 
+ *
  * This function is called by the multithreading system to handle recording detail requests.
  */
 void mg_handle_get_recording_worker(struct mg_connection *c, struct mg_http_message *hm) {
+    // Check if shutdown is in progress
+    if (is_shutdown_initiated()) {
+        log_info("Shutdown in progress, rejecting recording detail request");
+        mg_send_json_error(c, 503, "Service shutting down");
+        return;
+    }
+
     log_info("Processing GET /api/recordings/:id request in worker thread");
-    
+
     // Check authentication
     http_server_t *server = (http_server_t *)c->fn_data;
     if (server && server->config.auth_enabled) {

@@ -41,6 +41,7 @@
 #include "video/detection.h"
 #include "video/detection_model.h"
 #include "video/detection_result.h"
+#include "video/api_detection.h"
 #include "video/mp4_writer.h"
 #include "video/streams.h"
 #include "video/go2rtc/go2rtc_stream.h"
@@ -70,6 +71,23 @@ static int udt_start_recording(unified_detection_ctx_t *ctx);
 static int udt_stop_recording(unified_detection_ctx_t *ctx);
 static int flush_prebuffer_to_recording(unified_detection_ctx_t *ctx);
 static const char* state_to_string(unified_detection_state_t state);
+
+/**
+ * Check if a model path indicates API-based detection
+ * Returns true if the path is "api-detection" or starts with http:// or https://
+ */
+static bool is_api_detection(const char *model_path) {
+    if (!model_path || model_path[0] == '\0') {
+        return false;
+    }
+    if (strcmp(model_path, "api-detection") == 0) {
+        return true;
+    }
+    if (strncmp(model_path, "http://", 7) == 0 || strncmp(model_path, "https://", 8) == 0) {
+        return true;
+    }
+    return false;
+}
 
 /**
  * Initialize the unified detection thread system
@@ -111,29 +129,72 @@ void shutdown_unified_detection_system(void) {
 
     log_info("Shutting down unified detection system");
 
+    // First pass: Signal all threads to stop (without holding the lock for long)
     pthread_mutex_lock(&contexts_mutex);
+    for (int i = 0; i < MAX_UNIFIED_DETECTION_THREADS; i++) {
+        if (detection_contexts[i]) {
+            unified_detection_ctx_t *ctx = detection_contexts[i];
+            atomic_store(&ctx->running, 0);
+            atomic_store(&ctx->state, UDT_STATE_STOPPING);
+            log_info("Signaled unified detection thread %s to stop", ctx->stream_name);
+        }
+    }
+    pthread_mutex_unlock(&contexts_mutex);
 
-    // Stop all running threads
+    // Wait for all threads to reach STOPPED state (up to 5 seconds total)
+    int max_wait_iterations = 50;  // 50 * 100ms = 5 seconds
+    for (int wait_iter = 0; wait_iter < max_wait_iterations; wait_iter++) {
+        bool all_stopped = true;
+
+        pthread_mutex_lock(&contexts_mutex);
+        for (int i = 0; i < MAX_UNIFIED_DETECTION_THREADS; i++) {
+            if (detection_contexts[i]) {
+                unified_detection_state_t state = atomic_load(&detection_contexts[i]->state);
+                if (state != UDT_STATE_STOPPED) {
+                    all_stopped = false;
+                    break;
+                }
+            }
+        }
+        pthread_mutex_unlock(&contexts_mutex);
+
+        if (all_stopped) {
+            log_info("All unified detection threads have stopped");
+            break;
+        }
+
+        usleep(100000);  // 100ms
+
+        if (wait_iter == max_wait_iterations - 1) {
+            log_warn("Timeout waiting for unified detection threads to stop, proceeding with cleanup");
+        }
+    }
+
+    // Second pass: Clean up contexts (threads should be stopped now)
+    pthread_mutex_lock(&contexts_mutex);
     for (int i = 0; i < MAX_UNIFIED_DETECTION_THREADS; i++) {
         if (detection_contexts[i]) {
             unified_detection_ctx_t *ctx = detection_contexts[i];
 
-            // Signal thread to stop
-            atomic_store(&ctx->running, 0);
-            atomic_store(&ctx->state, UDT_STATE_STOPPING);
+            log_info("Cleaning up unified detection context for %s", ctx->stream_name);
 
-            // Wait briefly for thread to exit
-            // Note: threads are detached, so we can't join them
-            usleep(100000);  // 100ms
-
-            // Clean up context
+            // Clean up resources
             if (ctx->packet_buffer) {
                 destroy_motion_buffer(ctx->packet_buffer);
+                ctx->packet_buffer = NULL;
             }
             if (ctx->mp4_writer) {
                 mp4_writer_close(ctx->mp4_writer);
+                ctx->mp4_writer = NULL;
             }
-            pthread_mutex_destroy(&ctx->mutex);
+
+            // Only destroy mutex if thread has stopped
+            if (atomic_load(&ctx->state) == UDT_STATE_STOPPED) {
+                pthread_mutex_destroy(&ctx->mutex);
+            } else {
+                log_warn("Skipping mutex destroy for %s - thread may still be running", ctx->stream_name);
+            }
+
             free(ctx);
             detection_contexts[i] = NULL;
         }
@@ -317,8 +378,9 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
 
     pthread_mutex_unlock(&contexts_mutex);
 
-    log_info("Started unified detection thread for stream %s (pre-buffer: %ds, post-buffer: %ds)",
-             stream_name, ctx->pre_buffer_seconds, ctx->post_buffer_seconds);
+    log_info("Started unified detection thread for stream %s (model=%s, threshold=%.2f, interval=%d, pre-buffer=%ds, post-buffer=%ds)",
+             stream_name, ctx->model_path, ctx->detection_threshold, ctx->detection_interval,
+             ctx->pre_buffer_seconds, ctx->post_buffer_seconds);
 
     return 0;
 }
@@ -669,21 +731,26 @@ static void *unified_detection_thread_func(void *arg) {
     atomic_store(&ctx->state, UDT_STATE_STOPPED);
     log_info("[%s] Unified detection thread exiting", stream_name);
 
-    // Remove from contexts array
-    pthread_mutex_lock(&contexts_mutex);
-    for (int i = 0; i < MAX_UNIFIED_DETECTION_THREADS; i++) {
-        if (detection_contexts[i] == ctx) {
-            // Clean up resources
-            if (ctx->packet_buffer) {
-                destroy_motion_buffer(ctx->packet_buffer);
+    // During shutdown, the shutdown_unified_detection_system() will clean up
+    // During normal operation (stream disabled), we clean up here
+    if (!is_shutdown_initiated()) {
+        // Remove from contexts array
+        pthread_mutex_lock(&contexts_mutex);
+        for (int i = 0; i < MAX_UNIFIED_DETECTION_THREADS; i++) {
+            if (detection_contexts[i] == ctx) {
+                // Clean up resources
+                if (ctx->packet_buffer) {
+                    destroy_motion_buffer(ctx->packet_buffer);
+                }
+                pthread_mutex_destroy(&ctx->mutex);
+                free(ctx);
+                detection_contexts[i] = NULL;
+                break;
             }
-            pthread_mutex_destroy(&ctx->mutex);
-            free(ctx);
-            detection_contexts[i] = NULL;
-            break;
         }
+        pthread_mutex_unlock(&contexts_mutex);
     }
-    pthread_mutex_unlock(&contexts_mutex);
+    // During shutdown, just exit - shutdown handler will clean up
 
     return NULL;
 }
@@ -782,8 +849,18 @@ static int process_packet(unified_detection_ctx_t *ctx, AVPacket *pkt) {
     if (is_keyframe && current_state != UDT_STATE_POST_BUFFER) {
         ctx->keyframe_counter++;
 
+        // Log every 10th keyframe to show detection is running
+        if (ctx->keyframe_counter % 10 == 1) {
+            log_debug("[%s] Keyframe %d/%d, model_path=%s, state=%d",
+                     ctx->stream_name, ctx->keyframe_counter, ctx->detection_interval,
+                     ctx->model_path, current_state);
+        }
+
         if (ctx->keyframe_counter >= ctx->detection_interval) {
             ctx->keyframe_counter = 0;
+
+            log_info("[%s] Running detection (interval=%d, model=%s)",
+                    ctx->stream_name, ctx->detection_interval, ctx->model_path);
 
             // Decode frame and run detection
             bool detection_triggered = run_detection_on_frame(ctx, pkt);
@@ -964,14 +1041,71 @@ static int flush_prebuffer_to_recording(unified_detection_ctx_t *ctx) {
 }
 
 /**
- * Run detection on a video packet (decode frame and run detection model)
+ * Run detection on a keyframe
+ *
+ * This function handles both API-based detection (like light-object-detect)
+ * and embedded model detection (SOD). For API detection, it uses go2rtc
+ * snapshots which is more efficient than decoding frames.
  *
  * @param ctx The unified detection context
- * @param pkt The video packet containing a keyframe
+ * @param pkt The video packet containing a keyframe (unused for API detection)
  * @return true if detection was triggered, false otherwise
  */
 static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt) {
-    if (!ctx || !pkt || !ctx->decoder_ctx) return false;
+    if (!ctx) return false;
+
+    detection_result_t result;
+    memset(&result, 0, sizeof(detection_result_t));
+
+    // Check if this is API-based detection
+    if (is_api_detection(ctx->model_path)) {
+        // API detection - use go2rtc snapshot (more efficient, no frame decoding needed)
+        log_debug("[%s] Running API detection via snapshot", ctx->stream_name);
+
+        // The model_path contains either "api-detection" or an HTTP URL
+        // detect_objects_api_snapshot handles the "api-detection" special case
+        // by looking up g_config.api_detection_url
+        int detect_ret = detect_objects_api_snapshot(ctx->model_path, ctx->stream_name,
+                                                     &result, ctx->detection_threshold);
+
+        if (detect_ret == -2) {
+            // go2rtc snapshot failed - this is a transient error, don't log as error
+            log_debug("[%s] go2rtc snapshot unavailable, skipping detection", ctx->stream_name);
+            return false;
+        }
+
+        if (detect_ret != 0) {
+            log_warn("[%s] API detection failed with error %d", ctx->stream_name, detect_ret);
+            return false;
+        }
+
+        // Note: detect_objects_api_snapshot already handles:
+        // - Filtering by zones
+        // - Storing in database
+        // - MQTT publishing
+
+        // Check if any detections meet the threshold and trigger recording
+        bool detection_triggered = false;
+        for (int i = 0; i < result.count; i++) {
+            if (result.detections[i].confidence >= ctx->detection_threshold) {
+                detection_triggered = true;
+                log_info("[%s] API Detection: %s (%.1f%%) at [%.2f, %.2f, %.2f, %.2f]",
+                         ctx->stream_name,
+                         result.detections[i].label,
+                         result.detections[i].confidence * 100.0f,
+                         result.detections[i].x,
+                         result.detections[i].y,
+                         result.detections[i].width,
+                         result.detections[i].height);
+            }
+        }
+
+        ctx->total_detections += result.count;
+        return detection_triggered;
+    }
+
+    // Embedded model detection - requires frame decoding
+    if (!pkt || !ctx->decoder_ctx) return false;
 
     // Check if we have a detection model loaded
     if (!ctx->model) {
@@ -1043,9 +1177,6 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt) 
     av_frame_free(&frame);
 
     // Run detection
-    detection_result_t result;
-    memset(&result, 0, sizeof(detection_result_t));
-
     int detect_ret = detect_objects(ctx->model, rgb_buffer, width, height, channels, &result);
 
     free(rgb_buffer);
@@ -1077,6 +1208,7 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt) 
         if (store_detections_in_db(ctx->stream_name, &result, now) != 0) {
             log_warn("[%s] Failed to store detections in database", ctx->stream_name);
         }
+        ctx->total_detections += result.count;
     }
 
     return detection_triggered;

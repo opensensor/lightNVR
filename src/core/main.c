@@ -861,9 +861,19 @@ int main(int argc, char *argv[]) {
         if (config.streams[i].name[0] != '\0' && config.streams[i].enabled &&
             config.streams[i].detection_based_recording && config.streams[i].detection_model[0] != '\0') {
 
-            // Check if model file exists
+            // Determine the model path - handle API-based detection vs file-based models
             char model_path[MAX_PATH_LENGTH];
-            if (config.streams[i].detection_model[0] != '/') {
+            bool is_api_based = (strcmp(config.streams[i].detection_model, "api-detection") == 0) ||
+                               (strncmp(config.streams[i].detection_model, "http://", 7) == 0) ||
+                               (strncmp(config.streams[i].detection_model, "https://", 8) == 0);
+
+            if (is_api_based) {
+                // For API-based detection, use the model string as-is
+                strncpy(model_path, config.streams[i].detection_model, MAX_PATH_LENGTH - 1);
+                model_path[MAX_PATH_LENGTH - 1] = '\0';
+                log_info("Using API-based detection for stream %s: %s",
+                        config.streams[i].name, model_path);
+            } else if (config.streams[i].detection_model[0] != '/') {
                 // Relative path, use configured models path from INI if it exists
                 if (config.models_path && strlen(config.models_path) > 0) {
                     snprintf(model_path, sizeof(model_path), "%s/%s", config.models_path, config.streams[i].detection_model);
@@ -871,34 +881,44 @@ int main(int argc, char *argv[]) {
                     // Fall back to default path if INI config doesn't exist
                     snprintf(model_path, MAX_PATH_LENGTH, "/etc/lightnvr/models/%s", config.streams[i].detection_model);
                 }
+
+                // Check if file exists
+                FILE *model_file = fopen(model_path, "r");
+                if (model_file) {
+                    fclose(model_file);
+                    log_info("Detection model found: %s", model_path);
+                } else {
+                    log_error("Detection model not found: %s", model_path);
+                    log_error("Detection will not work properly!");
+
+                    // Create the models directory if it doesn't exist
+                    if (mkdir(config.models_path, 0755) != 0 && errno != EEXIST) {
+                        log_error("Failed to create models directory: %s", strerror(errno));
+                    } else {
+                        log_info("Created models directory: %s", config.models_path);
+                    }
+                }
             } else {
                 // Absolute path
                 strncpy(model_path, config.streams[i].detection_model, MAX_PATH_LENGTH - 1);
-            }
+                model_path[MAX_PATH_LENGTH - 1] = '\0';
 
-            // Check if file exists
-            FILE *model_file = fopen(model_path, "r");
-            if (model_file) {
-                fclose(model_file);
-                log_info("Detection model found: %s", model_path);
-            } else {
-                log_error("Detection model not found: %s", model_path);
-                log_error("Detection will not work properly!");
-
-                // Create the models directory if it doesn't exist
-                if (mkdir(config.models_path, 0755) != 0 && errno != EEXIST) {
-                    log_error("Failed to create models directory: %s", strerror(errno));
+                // Check if file exists
+                FILE *model_file = fopen(model_path, "r");
+                if (model_file) {
+                    fclose(model_file);
+                    log_info("Detection model found: %s", model_path);
                 } else {
-                    log_info("Created models directory: %s", config.models_path);
+                    log_error("Detection model not found: %s", model_path);
                 }
             }
 
             log_info("Starting detection-based recording for stream %s with model %s",
-                    config.streams[i].name, config.streams[i].detection_model);
+                    config.streams[i].name, model_path);
 
             // Start detection stream reader with more detailed logging
             log_info("Starting detection stream reader for stream %s with model %s",
-                    config.streams[i].name, config.streams[i].detection_model);
+                    config.streams[i].name, model_path);
 
             int detection_interval = config.streams[i].detection_interval > 0 ?
                                     config.streams[i].detection_interval : 10;
@@ -923,7 +943,8 @@ int main(int argc, char *argv[]) {
             }
 
             // Now directly start the unified detection thread
-            log_info("Directly starting unified detection thread for stream %s", config.streams[i].name);
+            log_info("Directly starting unified detection thread for stream %s with model %s",
+                    config.streams[i].name, model_path);
 
             // Start the unified detection thread
             if (start_unified_detection_thread(config.streams[i].name,

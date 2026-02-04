@@ -147,14 +147,11 @@ void cleanup_detection_resources(void) {
         active_detections = 0;
     }
 
-    // Shutdown the unified detection system
-    shutdown_unified_detection_system();
-    log_info("Unified detection system shutdown");
-
     // Force cleanup of all SOD models to prevent memory leaks
     force_cleanup_sod_models();
 
     // Ensure all detection models are unloaded
+    // Note: shutdown_detection_system() also shuts down the unified detection system
     shutdown_detection_system();
 
     // Ensure motion detection is cleaned up

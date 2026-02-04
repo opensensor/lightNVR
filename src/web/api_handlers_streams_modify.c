@@ -1327,6 +1327,32 @@ void mg_handle_post_stream_refresh(struct mg_connection *c, struct mg_http_messa
     if (success) {
         log_info("Successfully refreshed go2rtc registration for stream: %s", decoded_name);
 
+        // Also restart the unified detection thread if detection-based recording is enabled
+        stream_config_t config;
+        if (get_stream_config(stream, &config) == 0) {
+            if (config.detection_based_recording && config.detection_model[0] != '\0') {
+                log_info("Restarting unified detection thread for stream: %s", decoded_name);
+
+                // Stop existing detection thread if running
+                if (is_unified_detection_running(decoded_name)) {
+                    stop_unified_detection_thread(decoded_name);
+                    // Give it a moment to stop
+                    usleep(500000);  // 500ms
+                }
+
+                // Start the detection thread
+                if (start_unified_detection_thread(decoded_name,
+                                                   config.detection_model,
+                                                   config.detection_threshold,
+                                                   config.pre_detection_buffer,
+                                                   config.post_detection_buffer) != 0) {
+                    log_warn("Failed to restart unified detection thread for stream: %s", decoded_name);
+                } else {
+                    log_info("Successfully restarted unified detection thread for stream: %s", decoded_name);
+                }
+            }
+        }
+
         // Create success response
         cJSON *response = cJSON_CreateObject();
         cJSON_AddBoolToObject(response, "success", true);
