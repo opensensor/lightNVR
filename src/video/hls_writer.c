@@ -602,172 +602,28 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
         log_debug("Using original packet for non-H264 stream %s", writer->stream_name);
     }
 
-    // Initialize DTS tracker if needed
-    stream_dts_info_t *dts_tracker = &writer->dts_tracker;
-    if (!dts_tracker->initialized) {
-        // Use a safe default value if both pts and dts are invalid
-        int64_t first_ts = 0;
+    // SIMPLIFIED TIMESTAMP HANDLING: Trust go2rtc to provide clean timestamps
+    // go2rtc handles RTSP stream normalization, so we only need minimal fixes
 
-        if (pkt->dts != AV_NOPTS_VALUE) {
-            first_ts = pkt->dts;
-        } else if (pkt->pts != AV_NOPTS_VALUE) {
-            first_ts = pkt->pts;
-        } else {
-            // Both are invalid, use 0 as a safe starting point
-            first_ts = 0;
-            log_warn("Both PTS and DTS are invalid for first packet in stream %s, using 0",
-                    writer->stream_name);
-        }
-
-        dts_tracker->first_dts = first_ts;
-        dts_tracker->last_dts = first_ts;
-        dts_tracker->time_base = input_stream->time_base;
-        dts_tracker->initialized = 1;
-
-        log_debug("Initialized DTS tracker for HLS stream %s: first_dts=%lld, time_base=%d/%d",
-                 writer->stream_name,
-                 (long long)dts_tracker->first_dts,
-                 dts_tracker->time_base.num,
-                 dts_tracker->time_base.den);
+    // Only fix if both PTS and DTS are invalid (rare edge case)
+    if (out_pkt_ptr->pts == AV_NOPTS_VALUE && out_pkt_ptr->dts == AV_NOPTS_VALUE) {
+        log_warn("Both PTS and DTS are invalid for packet in stream %s, skipping packet",
+                writer->stream_name);
+        av_packet_free(&out_pkt_ptr);
+        return 0; // Skip this packet rather than trying to fix it
     }
 
-    // Fix invalid timestamps
-    if (out_pkt_ptr->pts == AV_NOPTS_VALUE || out_pkt_ptr->dts == AV_NOPTS_VALUE) {
-        if (out_pkt_ptr->pts == AV_NOPTS_VALUE && out_pkt_ptr->dts == AV_NOPTS_VALUE) {
-            if (dts_tracker->last_dts != AV_NOPTS_VALUE) {
-                // Calculate a reasonable increment based on the stream's framerate if available
-                int64_t increment = 1;
-
-                // CRITICAL FIX: Add additional safety checks to prevent division by zero
-                if (input_stream->avg_frame_rate.num > 0 && input_stream->avg_frame_rate.den > 0 &&
-                    input_stream->time_base.num > 0 && input_stream->time_base.den > 0) {
-
-                    // Calculate frame duration in stream timebase units
-                    AVRational tb = input_stream->time_base;
-                    AVRational fr = input_stream->avg_frame_rate;
-
-                    // CRITICAL FIX: Check for potential division by zero in av_inv_q
-                    if (fr.num > 0) {
-                        // Safely invert the frame rate
-                        AVRational inv_fr = av_make_q(fr.den, fr.num);
-
-                        // Only proceed if the inverted frame rate is valid
-                        if (inv_fr.num > 0 && inv_fr.den > 0 && tb.den > 0) {
-                            increment = av_rescale_q(1, inv_fr, tb);
-
-                            // Ensure increment is at least 1
-                            if (increment < 1) increment = 1;
-                        } else {
-                            log_warn("Invalid inverted frame rate or timebase for stream %s, using default increment",
-                                   writer->stream_name);
-                        }
-                    } else {
-                        log_warn("Cannot invert frame rate with zero numerator for stream %s",
-                               writer->stream_name);
-                    }
-                }
-
-                out_pkt_ptr->dts = dts_tracker->last_dts + increment;
-                out_pkt_ptr->pts = out_pkt_ptr->dts;
-
-                log_debug("Generated timestamps for stream %s: pts=%lld, dts=%lld (increment=%lld)",
-                         writer->stream_name, (long long)out_pkt_ptr->pts, (long long)out_pkt_ptr->dts,
-                         (long long)increment);
-            } else {
-                out_pkt_ptr->dts = 1;
-                out_pkt_ptr->pts = 1;
-                log_debug("Set initial timestamps for stream %s with no previous reference",
-                         writer->stream_name);
-            }
-        } else if (out_pkt_ptr->pts == AV_NOPTS_VALUE) {
-            out_pkt_ptr->pts = out_pkt_ptr->dts;
-        } else if (out_pkt_ptr->dts == AV_NOPTS_VALUE) {
-            out_pkt_ptr->dts = out_pkt_ptr->pts;
-        }
+    // If only one is missing, copy from the other
+    if (out_pkt_ptr->pts == AV_NOPTS_VALUE) {
+        out_pkt_ptr->pts = out_pkt_ptr->dts;
+    } else if (out_pkt_ptr->dts == AV_NOPTS_VALUE) {
+        out_pkt_ptr->dts = out_pkt_ptr->pts;
     }
 
-    // Ensure timestamps are positive
-    if (out_pkt_ptr->pts <= 0 || out_pkt_ptr->dts <= 0) {
-        if (out_pkt_ptr->pts <= 0) {
-            out_pkt_ptr->pts = out_pkt_ptr->dts > 0 ? out_pkt_ptr->dts : 1;
-            log_debug("Corrected non-positive PTS for stream %s: new pts=%lld",
-                     writer->stream_name, (long long)out_pkt_ptr->pts);
-        }
-
-        if (out_pkt_ptr->dts <= 0) {
-            out_pkt_ptr->dts = out_pkt_ptr->pts > 0 ? out_pkt_ptr->pts : 1;
-            log_debug("Corrected non-positive DTS for stream %s: new dts=%lld",
-                     writer->stream_name, (long long)out_pkt_ptr->dts);
-        }
+    // Ensure PTS >= DTS (required by HLS format)
+    if (out_pkt_ptr->pts < out_pkt_ptr->dts) {
+        out_pkt_ptr->pts = out_pkt_ptr->dts;
     }
-
-    // Handle timestamp discontinuities
-    if (dts_tracker->last_dts != AV_NOPTS_VALUE) {
-        if (out_pkt_ptr->dts < dts_tracker->last_dts) {
-            // Fix backwards DTS
-            int64_t fixed_dts = dts_tracker->last_dts + 1;
-            int64_t pts_dts_diff = 0;
-
-            // Safely calculate PTS-DTS difference to avoid arithmetic exceptions
-            if (out_pkt_ptr->pts != AV_NOPTS_VALUE && out_pkt_ptr->dts != AV_NOPTS_VALUE) {
-                pts_dts_diff = out_pkt_ptr->pts - out_pkt_ptr->dts;
-            }
-
-            log_debug("Fixing backwards DTS in stream %s: last=%lld, current=%lld, fixed=%lld",
-                     writer->stream_name,
-                     (long long)dts_tracker->last_dts,
-                     (long long)out_pkt_ptr->dts,
-                     (long long)fixed_dts);
-
-            out_pkt_ptr->dts = fixed_dts;
-            if (out_pkt_ptr->pts != AV_NOPTS_VALUE) {
-                out_pkt_ptr->pts = fixed_dts + pts_dts_diff;
-            }
-
-            // Ensure PTS >= DTS after correction
-            if (out_pkt_ptr->pts != AV_NOPTS_VALUE && out_pkt_ptr->pts < out_pkt_ptr->dts) {
-                out_pkt_ptr->pts = out_pkt_ptr->dts;
-            }
-        }
-        // Handle large DTS jumps by normalizing the timestamps
-        else if (out_pkt_ptr->dts > dts_tracker->last_dts + 90000) {
-            // log_debug("HLS large DTS jump in stream %s: last=%lld, current=%lld, diff=%lld",
-            //         writer->stream_name,
-            //         (long long)dts_tracker->last_dts,
-            //         (long long)out_pkt_ptr->dts,
-            //         (long long)(out_pkt_ptr->dts - dts_tracker->last_dts));
-
-            // CRITICAL FIX: Normalize timestamps to prevent exceeding MP4 format limits
-            // The MP4 format has a limit of 0x7fffffff (2,147,483,647) for DTS values
-            // We'll reset the DTS to a small value after the last DTS to maintain continuity
-            int64_t fixed_dts = dts_tracker->last_dts + 3000; // Add 3000 ticks (about 1/10 second at 90kHz)
-            int64_t pts_dts_diff = out_pkt_ptr->pts - out_pkt_ptr->dts;
-            //
-            // log_debug("Normalizing timestamps for stream %s: old_dts=%lld, new_dts=%lld",
-            //         writer->stream_name, (long long)out_pkt_ptr->dts, (long long)fixed_dts);
-
-            out_pkt_ptr->dts = fixed_dts;
-            out_pkt_ptr->pts = fixed_dts + (pts_dts_diff > 0 ? pts_dts_diff : 0);
-
-            // Ensure PTS >= DTS after correction
-            if (out_pkt_ptr->pts < out_pkt_ptr->dts) {
-                out_pkt_ptr->pts = out_pkt_ptr->dts;
-            }
-
-            // Ensure timestamps don't exceed MP4 format limits
-            if (out_pkt_ptr->dts > 0x7fffffff || out_pkt_ptr->pts > 0x7fffffff) {
-                // Reset timestamps to small values if they're getting too large
-                log_warn("Timestamps exceeding MP4 format limits for stream %s, resetting", writer->stream_name);
-                out_pkt_ptr->dts = 1000;
-                out_pkt_ptr->pts = 1000;
-                dts_tracker->first_dts = 1000;
-                dts_tracker->last_dts = 1000;
-            }
-        }
-    }
-
-    // Update last DTS
-    dts_tracker->last_dts = out_pkt_ptr->dts;
 
     // Validate writer context before rescaling
     if (!writer->output_ctx || !writer->output_ctx->streams || !writer->output_ctx->streams[0]) {
@@ -817,22 +673,14 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
         // Try to fix directory issues
         if (strstr(error_buf, "No such file or directory") != NULL) {
             ensure_output_directory(writer);
-        } else if (strstr(error_buf, "Invalid argument") != NULL ||
-                  strstr(error_buf, "non monotonically increasing dts") != NULL ||
-                  strstr(error_buf, "Invalid data found when processing input") != NULL) {
-            // Reset DTS tracker on timestamp errors or invalid data
-            log_warn("Resetting DTS tracker for stream %s due to error: %s", writer->stream_name, error_buf);
-            dts_tracker->initialized = 0;
-            dts_tracker->last_dts = 0;
-            // No dts_step member in the struct, so we don't modify it
-
-            // For invalid data errors, return 0 instead of the error code
-            // This allows the stream processing to continue despite occasional bad packets
-            if (strstr(error_buf, "Invalid data found when processing input") != NULL) {
-                log_warn("Ignoring invalid packet data for stream %s and continuing", writer->stream_name);
-                result = 0;  // Set success to continue processing
-            }
+        } else if (strstr(error_buf, "Invalid data found when processing input") != NULL) {
+            // For invalid data errors, return 0 to continue processing
+            // go2rtc handles stream normalization, so occasional bad packets can be skipped
+            log_warn("Ignoring invalid packet data for stream %s and continuing", writer->stream_name);
+            result = 0;
         }
+        // For other errors (Invalid argument, non-monotonic DTS), just log and return error
+        // The caller can decide whether to retry or reinitialize the stream
     } else {
         // Success case
         // Let FFmpeg handle segment cleanup automatically
