@@ -60,6 +60,7 @@ void init_recordings_system(void);
 #include "web/http_server.h"
 #include "web/mongoose_server.h"
 #include "web/api_handlers.h"
+#include "web/api_handlers_health.h"
 #include "web/batch_delete_progress.h"
 #include "mongoose.h"
 
@@ -987,6 +988,11 @@ int main(int argc, char *argv[]) {
 
     log_info("Mongoose web server started successfully on port %d", config.web_port);
 
+    // Initialize and start health check system for web server self-healing
+    init_health_check_system();
+    start_health_check_thread();
+    log_info("Web server health check system started");
+
     // In daemon mode, add extra verification that the port is actually open
     if (daemon_mode) {
         log_info("Daemon mode: Verifying port %d is accessible...", config.web_port);
@@ -1255,6 +1261,10 @@ cleanup:
         log_info("Shutting down ONVIF discovery module...");
         shutdown_onvif_discovery();
 
+        // Shut down health check system first (before web server)
+        log_info("Shutting down health check system...");
+        cleanup_health_check_system();
+
         // Now shut down components
         log_info("Shutting down web server...");
         if (http_server) {
@@ -1363,6 +1373,9 @@ cleanup:
         // Cleanup MQTT client
         mqtt_cleanup();
 
+        // Cleanup health check system
+        cleanup_health_check_system();
+
         // Shut down remaining components
         if (http_server) {
             http_server_stop(http_server);
@@ -1439,6 +1452,14 @@ static void check_and_ensure_services(void) {
         log_debug("Skipping service check during shutdown");
         return;
     }
+
+    // Check web server health and mark for restart if needed
+    // The health check thread will handle the actual restart
+    if (!is_web_server_healthy()) {
+        log_warn("Web server is not healthy, marking for restart");
+        mark_server_for_restart();
+    }
+
     for (int i = 0; i < config.max_streams; i++) {
         if (config.streams[i].name[0] != '\0' && config.streams[i].enabled && config.streams[i].record) {
             // Check if MP4 recording is active for this stream

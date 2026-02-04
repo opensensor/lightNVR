@@ -3,6 +3,7 @@
  * @brief Health check API handlers for the web server
  */
 
+#define _GNU_SOURCE  // For pthread_timedjoin_np
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,6 +17,7 @@
 #include <errno.h>
 #include <stdbool.h>
 #include <pthread.h>
+#include <signal.h>
 #include <curl/curl.h>
 #include "core/shutdown_coordinator.h"
 
@@ -265,4 +267,279 @@ void mg_handle_get_hls_health(struct mg_connection *c, struct mg_http_message *h
     cJSON_Delete(health);
 
     log_info("Successfully handled GET /api/health/hls request");
+}
+
+/**
+ * @brief Check if the web server thread is still running
+ *
+ * @return true if running, false otherwise
+ */
+static bool is_web_server_thread_running(void) {
+    pthread_mutex_lock(&g_web_server_thread_mutex);
+
+    if (!g_web_server_thread_id_set) {
+        pthread_mutex_unlock(&g_web_server_thread_mutex);
+        return false;
+    }
+
+    // Use pthread_kill with signal 0 to check if thread exists
+    int result = pthread_kill(g_web_server_thread_id, 0);
+
+    pthread_mutex_unlock(&g_web_server_thread_mutex);
+
+    // ESRCH means thread doesn't exist, 0 means it exists
+    return (result == 0);
+}
+
+/**
+ * @brief Restart the web server
+ *
+ * This function attempts to restart the web server by stopping and starting it again.
+ * Note: This is a complex operation and may not always succeed.
+ *
+ * @return true if restart succeeded, false otherwise
+ */
+static bool restart_web_server(void) {
+    // Get the global http_server from main.c
+    extern http_server_handle_t http_server;
+
+    if (!http_server) {
+        log_error("Cannot restart web server: no server handle available");
+        return false;
+    }
+
+    // Check cooldown period
+    time_t now = time(NULL);
+    if (now - g_last_restart_attempt < RESTART_COOLDOWN_SECONDS) {
+        log_warn("Web server restart attempt too soon, waiting for cooldown");
+        return false;
+    }
+
+    // Check max restart attempts
+    if (g_restart_attempts >= MAX_RESTART_ATTEMPTS) {
+        log_error("Maximum web server restart attempts (%d) reached", MAX_RESTART_ATTEMPTS);
+        return false;
+    }
+
+    g_last_restart_attempt = now;
+    g_restart_attempts++;
+
+    log_info("Attempting to restart web server (attempt %d/%d)",
+             g_restart_attempts, MAX_RESTART_ATTEMPTS);
+
+    // Try to restart the server by calling http_server_start again
+    // The server should handle being started when it's already initialized
+    if (http_server_start(http_server) != 0) {
+        log_error("Failed to restart web server");
+        return false;
+    }
+
+    log_info("Web server restarted successfully");
+    g_restart_attempts = 0; // Reset on success
+    g_is_healthy = true;
+    g_failed_health_checks = 0;
+
+    return true;
+}
+
+/**
+ * @brief Health check thread function
+ *
+ * This thread periodically checks if the web server is healthy and attempts
+ * to restart it if necessary.
+ */
+static void *health_check_thread_func(void *arg) {
+    (void)arg;
+
+    log_info("Health check thread started");
+
+    while (g_health_thread_running) {
+        // Don't check during shutdown
+        if (is_shutdown_initiated()) {
+            log_info("Shutdown initiated, stopping health check thread");
+            break;
+        }
+
+        // Sleep for the health check interval
+        for (int i = 0; i < g_health_check_interval && g_health_thread_running; i++) {
+            sleep(1);
+            if (is_shutdown_initiated()) break;
+        }
+
+        if (!g_health_thread_running || is_shutdown_initiated()) {
+            break;
+        }
+
+        // Perform health check
+        bool check_result = perform_health_check();
+
+        if (!check_result) {
+            log_warn("Health check failed (consecutive failures: %d)", g_failed_health_checks);
+
+            // Check if web server thread is still running
+            if (!is_web_server_thread_running()) {
+                log_error("Web server thread is not running!");
+                g_server_needs_restart = true;
+            }
+
+            // If we've had multiple consecutive failures, try to restart
+            if (g_failed_health_checks >= 3 || g_server_needs_restart) {
+                log_warn("Multiple health check failures or server thread dead, attempting restart");
+
+                if (restart_web_server()) {
+                    log_info("Web server restart succeeded");
+                    g_server_needs_restart = false;
+                } else {
+                    log_error("Web server restart failed");
+                }
+            }
+        } else {
+            // Reset restart attempts counter on successful health check
+            if (g_restart_attempts > 0) {
+                log_info("Health check succeeded after restart, resetting attempt counter");
+                g_restart_attempts = 0;
+            }
+        }
+    }
+
+    log_info("Health check thread exiting");
+    return NULL;
+}
+
+/**
+ * @brief Initialize health check system
+ */
+void init_health_check_system(void) {
+    g_start_time = time(NULL);
+    g_last_health_check = g_start_time;
+    g_is_healthy = true;
+    g_failed_health_checks = 0;
+    g_total_requests = 0;
+    g_failed_requests = 0;
+    g_server_needs_restart = false;
+    g_restart_attempts = 0;
+    g_last_restart_attempt = 0;
+
+    // Get the web port from config
+    extern config_t config;
+    snprintf(g_health_check_url, sizeof(g_health_check_url),
+             "http://127.0.0.1:%d/api/health", config.web_port);
+
+    log_info("Health check system initialized with URL: %s", g_health_check_url);
+}
+
+/**
+ * @brief Start health check thread
+ */
+void start_health_check_thread(void) {
+    if (g_health_thread_running) {
+        log_warn("Health check thread already running");
+        return;
+    }
+
+    g_health_thread_running = true;
+
+    if (pthread_create(&g_health_check_thread, NULL, health_check_thread_func, NULL) != 0) {
+        log_error("Failed to create health check thread");
+        g_health_thread_running = false;
+        return;
+    }
+
+    log_info("Health check thread started with %d second interval", g_health_check_interval);
+}
+
+/**
+ * @brief Stop health check thread
+ */
+void stop_health_check_thread(void) {
+    if (!g_health_thread_running) {
+        return;
+    }
+
+    log_info("Stopping health check thread...");
+    g_health_thread_running = false;
+
+    // Wait for thread to exit (with timeout)
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += 5; // 5 second timeout
+
+    int result = pthread_timedjoin_np(g_health_check_thread, NULL, &ts);
+    if (result != 0) {
+        log_warn("Health check thread did not exit in time, detaching");
+        pthread_detach(g_health_check_thread);
+    } else {
+        log_info("Health check thread stopped successfully");
+    }
+}
+
+/**
+ * @brief Cleanup health check system during shutdown
+ */
+void cleanup_health_check_system(void) {
+    stop_health_check_thread();
+
+    // Reset all state
+    g_is_healthy = false;
+    g_failed_health_checks = 0;
+    g_server_needs_restart = false;
+
+    log_info("Health check system cleaned up");
+}
+
+/**
+ * @brief Update health check metrics for a request
+ */
+void update_health_metrics(bool request_succeeded) {
+    g_total_requests++;
+    if (!request_succeeded) {
+        g_failed_requests++;
+    }
+}
+
+/**
+ * @brief Check if the web server is healthy
+ */
+bool is_web_server_healthy(void) {
+    return g_is_healthy && is_web_server_thread_running();
+}
+
+/**
+ * @brief Get the number of consecutive failed health checks
+ */
+int get_failed_health_checks(void) {
+    return g_failed_health_checks;
+}
+
+/**
+ * @brief Reset health check metrics
+ */
+void reset_health_metrics(void) {
+    g_total_requests = 0;
+    g_failed_requests = 0;
+    g_failed_health_checks = 0;
+    g_is_healthy = true;
+}
+
+/**
+ * @brief Check if the server needs to be restarted
+ */
+bool check_server_restart_needed(void) {
+    return g_server_needs_restart;
+}
+
+/**
+ * @brief Mark the server as needing restart
+ */
+void mark_server_for_restart(void) {
+    g_server_needs_restart = true;
+    log_warn("Web server marked for restart");
+}
+
+/**
+ * @brief Reset the restart flag after successful restart
+ */
+void reset_server_restart_flag(void) {
+    g_server_needs_restart = false;
+    g_restart_attempts = 0;
 }
