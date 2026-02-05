@@ -69,6 +69,7 @@ typedef struct {
     // Buffer configuration
     int pre_buffer_seconds;   // Seconds to keep before detection
     int post_buffer_seconds;  // Seconds to record after last detection
+    int segment_duration;     // Maximum segment duration in seconds (for chunking detection recordings)
     
     // Circular buffer for pre-detection content
     packet_buffer_t *packet_buffer;

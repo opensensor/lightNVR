@@ -101,7 +101,7 @@ bool go2rtc_get_snapshot(const char *stream_name, unsigned char **jpeg_data, siz
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buffer);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L); // 10 second timeout
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 3L); // 3 second timeout - keep short to not block detection cadence
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L); // Follow redirects
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L); // Prevent curl from using signals (required for multi-threaded apps)
     

@@ -200,7 +200,11 @@ void shutdown_unified_detection_system(void) {
                 destroy_packet_buffer(ctx->packet_buffer);
                 ctx->packet_buffer = NULL;
             }
+            // Note: mp4_writer should have been closed by udt_stop_recording() in the thread
+            // This is a safety fallback - if thread didn't close it properly, close it now
+            // but we won't have proper database update in this case
             if (ctx->mp4_writer) {
+                log_warn("MP4 writer still active during shutdown cleanup for %s - closing without database update", ctx->stream_name);
                 mp4_writer_close(ctx->mp4_writer);
                 ctx->mp4_writer = NULL;
             }
@@ -325,12 +329,17 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
         return -1;
     }
 
+    // Get global config first for segment_duration and storage_path
+    config_t *global_cfg = get_streaming_config();
+
     // Initialize context
     strncpy(ctx->stream_name, stream_name, sizeof(ctx->stream_name) - 1);
     strncpy(ctx->model_path, model_path, sizeof(ctx->model_path) - 1);
     ctx->detection_threshold = threshold;
     ctx->pre_buffer_seconds = pre_buffer_seconds > 0 ? pre_buffer_seconds : 10;
     ctx->post_buffer_seconds = post_buffer_seconds > 0 ? post_buffer_seconds : 5;
+    // Use the global segment_duration config for chunking detection recordings (same as continuous recordings)
+    ctx->segment_duration = (global_cfg && global_cfg->mp4_segment_duration > 0) ? global_cfg->mp4_segment_duration : 30;
     ctx->detection_interval = config.detection_interval > 0 ? config.detection_interval : DEFAULT_DETECTION_INTERVAL;
     ctx->record_audio = config.record_audio;
     ctx->annotation_only = annotation_only;
@@ -346,10 +355,9 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
     }
 
     // Set output directory
-    config_t *global_config = get_streaming_config();
-    if (global_config) {
+    if (global_cfg) {
         snprintf(ctx->output_dir, sizeof(ctx->output_dir), "%s/%s",
-                 global_config->storage_path, stream_name);
+                 global_cfg->storage_path, stream_name);
         mkdir(ctx->output_dir, 0755);
     }
 
@@ -401,9 +409,9 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
 
     pthread_mutex_unlock(&contexts_mutex);
 
-    log_info("Started unified detection thread for stream %s (model=%s, threshold=%.2f, interval=%d, pre-buffer=%ds, post-buffer=%ds)",
+    log_info("Started unified detection thread for stream %s (model=%s, threshold=%.2f, interval=%d, pre-buffer=%ds, post-buffer=%ds, segment=%ds)",
              stream_name, ctx->model_path, ctx->detection_threshold, ctx->detection_interval,
-             ctx->pre_buffer_seconds, ctx->post_buffer_seconds);
+             ctx->pre_buffer_seconds, ctx->post_buffer_seconds, ctx->segment_duration);
 
     return 0;
 }
@@ -759,6 +767,13 @@ static void *unified_detection_thread_func(void *arg) {
         atomic_store(&ctx->state, state);
     }
 
+    // Close any active recording before cleanup
+    // This ensures database is updated with correct end_time and duration
+    if (ctx->mp4_writer) {
+        log_info("[%s] Closing active recording before thread exit", stream_name);
+        udt_stop_recording(ctx);
+    }
+
     // Cleanup
     av_packet_free(&pkt);
     av_frame_free(&frame);
@@ -909,26 +924,40 @@ static int process_packet(unified_detection_ctx_t *ctx, AVPacket *pkt) {
             }
         }
 
-        // Check if maximum recording duration exceeded (handles continuous detection)
-        // This ensures recordings complete even when detection keeps triggering
+        // Check if segment duration exceeded - chunk detection recordings like continuous recordings
+        // This ensures recordings are chunked into segments even when detection keeps triggering
         // Also check in POST_BUFFER state since recording is still active
         if ((current_state == UDT_STATE_RECORDING || current_state == UDT_STATE_POST_BUFFER) && ctx->mp4_writer) {
             time_t recording_duration = now - ctx->mp4_writer->creation_time;
-            int max_duration = ctx->pre_buffer_seconds + ctx->post_buffer_seconds;
+            // Use segment_duration for chunking (same as continuous recordings)
+            int max_duration = ctx->segment_duration > 0 ? ctx->segment_duration : 30;
 
             // Log every 10 seconds to track progress
             if (recording_duration > 0 && (recording_duration % 10) == 0 && is_keyframe) {
-                log_info("[%s] Detection recording: %ld/%d seconds elapsed (pre=%d, post=%d)",
+                log_info("[%s] Detection recording: %ld/%d seconds elapsed (segment_duration=%d)",
                          ctx->stream_name, (long)recording_duration, max_duration,
-                         ctx->pre_buffer_seconds, ctx->post_buffer_seconds);
+                         ctx->segment_duration);
             }
 
             if (recording_duration >= max_duration) {
-                log_info("[%s] Maximum recording duration reached (%ld/%d seconds), completing recording",
+                log_info("[%s] Segment duration reached (%ld/%d seconds), starting new segment",
                          ctx->stream_name, (long)recording_duration, max_duration);
                 udt_stop_recording(ctx);
-                atomic_store(&ctx->state, UDT_STATE_BUFFERING);
-                // Note: If detection continues, a new recording will start on the next detection
+
+                // Immediately start a new recording segment if still in detection mode
+                // This keeps recordings chunked while maintaining continuous coverage
+                if (current_state == UDT_STATE_RECORDING) {
+                    if (udt_start_recording(ctx) == 0) {
+                        log_info("[%s] Started new recording segment", ctx->stream_name);
+                        // Stay in RECORDING state
+                    } else {
+                        log_error("[%s] Failed to start new recording segment, going to BUFFERING", ctx->stream_name);
+                        atomic_store(&ctx->state, UDT_STATE_BUFFERING);
+                    }
+                } else {
+                    // In POST_BUFFER, just go back to BUFFERING
+                    atomic_store(&ctx->state, UDT_STATE_BUFFERING);
+                }
             }
         }
     }
@@ -964,24 +993,28 @@ static int process_packet(unified_detection_ctx_t *ctx, AVPacket *pkt) {
                 ctx->total_detections++;
                 pthread_mutex_unlock(&ctx->mutex);
 
-                // If not already recording, start recording
-                if (current_state == UDT_STATE_BUFFERING) {
-                    log_info("[%s] Detection triggered, starting recording", ctx->stream_name);
+                // In annotation_only mode, we don't manage recording state - just store detections
+                // The continuous recording system handles the actual MP4 files
+                if (!ctx->annotation_only) {
+                    // If not already recording, start recording
+                    if (current_state == UDT_STATE_BUFFERING) {
+                        log_info("[%s] Detection triggered, starting recording", ctx->stream_name);
 
-                    // Start recording first, then flush pre-buffer
-                    if (udt_start_recording(ctx) == 0) {
-                        flush_prebuffer_to_recording(ctx);
+                        // Start recording first, then flush pre-buffer
+                        if (udt_start_recording(ctx) == 0) {
+                            flush_prebuffer_to_recording(ctx);
+                            atomic_store(&ctx->state, UDT_STATE_RECORDING);
+                        }
+                    }
+                    // If in post-buffer, go back to recording
+                    else if (current_state == UDT_STATE_POST_BUFFER) {
+                        log_info("[%s] Detection during post-buffer, continuing recording", ctx->stream_name);
                         atomic_store(&ctx->state, UDT_STATE_RECORDING);
                     }
                 }
-                // If in post-buffer, go back to recording
-                else if (current_state == UDT_STATE_POST_BUFFER) {
-                    log_info("[%s] Detection during post-buffer, continuing recording", ctx->stream_name);
-                    atomic_store(&ctx->state, UDT_STATE_RECORDING);
-                }
             }
-            // No detection - check if we should enter post-buffer
-            else if (current_state == UDT_STATE_RECORDING) {
+            // No detection - check if we should enter post-buffer (only in detection-recording mode)
+            else if (!ctx->annotation_only && current_state == UDT_STATE_RECORDING) {
                 // Check if enough time has passed since last detection
                 if (now - ctx->last_detection_time > 2) {  // 2 second grace period
                     log_info("[%s] No detection, entering post-buffer (%d seconds)",
