@@ -703,6 +703,24 @@ static void *unified_detection_thread_func(void *arg) {
             case UDT_STATE_BUFFERING:
             case UDT_STATE_RECORDING:
             case UDT_STATE_POST_BUFFER:
+                // Periodic heartbeat log (every 30 seconds) to show thread is alive
+                {
+                    static time_t last_heartbeat[MAX_UNIFIED_DETECTION_THREADS] = {0};
+                    time_t now = time(NULL);
+                    int slot_idx = -1;
+                    for (int i = 0; i < MAX_UNIFIED_DETECTION_THREADS; i++) {
+                        if (detection_contexts[i] == ctx) { slot_idx = i; break; }
+                    }
+                    if (slot_idx >= 0 && now - last_heartbeat[slot_idx] >= 30) {
+                        last_heartbeat[slot_idx] = now;
+                        log_info("[%s] Heartbeat: state=%s, packets=%lu, detections=%lu, last_check=%lds ago",
+                                 stream_name, state_to_string(state),
+                                 (unsigned long)ctx->total_packets_processed,
+                                 (unsigned long)ctx->total_detections,
+                                 (long)(now - ctx->last_detection_check_time));
+                    }
+                }
+
                 // Read packet
                 if (av_read_frame(ctx->input_ctx, pkt) >= 0) {
                     atomic_store(&ctx->last_packet_time, (int_fast64_t)time(NULL));
@@ -924,40 +942,34 @@ static int process_packet(unified_detection_ctx_t *ctx, AVPacket *pkt) {
             }
         }
 
-        // Check if segment duration exceeded - chunk detection recordings like continuous recordings
-        // This ensures recordings are chunked into segments even when detection keeps triggering
-        // Also check in POST_BUFFER state since recording is still active
+        // Check if max recording duration exceeded for detection recordings
+        // Detection recordings should be limited to pre_buffer + post_buffer duration
+        // This ensures detection recordings are short clips around the detection event,
+        // not long continuous recordings like scheduled/continuous recordings
         if ((current_state == UDT_STATE_RECORDING || current_state == UDT_STATE_POST_BUFFER) && ctx->mp4_writer) {
             time_t recording_duration = now - ctx->mp4_writer->creation_time;
-            // Use segment_duration for chunking (same as continuous recordings)
-            int max_duration = ctx->segment_duration > 0 ? ctx->segment_duration : 30;
+            // For detection recordings, max duration is pre_buffer + post_buffer
+            // This limits each detection clip to a reasonable length
+            int max_duration = ctx->pre_buffer_seconds + ctx->post_buffer_seconds;
+            // Ensure a reasonable minimum (at least 10 seconds)
+            if (max_duration < 10) max_duration = 10;
 
             // Log every 10 seconds to track progress
             if (recording_duration > 0 && (recording_duration % 10) == 0 && is_keyframe) {
-                log_info("[%s] Detection recording: %ld/%d seconds elapsed (segment_duration=%d)",
+                log_info("[%s] Detection recording: %ld/%d seconds elapsed (pre=%d + post=%d)",
                          ctx->stream_name, (long)recording_duration, max_duration,
-                         ctx->segment_duration);
+                         ctx->pre_buffer_seconds, ctx->post_buffer_seconds);
             }
 
             if (recording_duration >= max_duration) {
-                log_info("[%s] Segment duration reached (%ld/%d seconds), starting new segment",
+                log_info("[%s] Max detection recording duration reached (%ld/%d seconds), stopping",
                          ctx->stream_name, (long)recording_duration, max_duration);
                 udt_stop_recording(ctx);
-
-                // Immediately start a new recording segment if still in detection mode
-                // This keeps recordings chunked while maintaining continuous coverage
-                if (current_state == UDT_STATE_RECORDING) {
-                    if (udt_start_recording(ctx) == 0) {
-                        log_info("[%s] Started new recording segment", ctx->stream_name);
-                        // Stay in RECORDING state
-                    } else {
-                        log_error("[%s] Failed to start new recording segment, going to BUFFERING", ctx->stream_name);
-                        atomic_store(&ctx->state, UDT_STATE_BUFFERING);
-                    }
-                } else {
-                    // In POST_BUFFER, just go back to BUFFERING
-                    atomic_store(&ctx->state, UDT_STATE_BUFFERING);
-                }
+                // Go back to BUFFERING state - let detection trigger a new recording naturally
+                // This ensures each detection recording is a short clip, not one long file
+                atomic_store(&ctx->state, UDT_STATE_BUFFERING);
+                // Reset detection time so next detection can trigger immediately
+                ctx->last_detection_time = 0;
             }
         }
     }
@@ -1242,7 +1254,7 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt) 
 
     // Check if this is API-based detection
     if (is_api_detection(ctx->model_path)) {
-        // API detection - use go2rtc snapshot (more efficient, no frame decoding needed)
+        // API detection - try go2rtc snapshot first (more efficient, no frame decoding needed)
         log_debug("[%s] Running API detection via snapshot", ctx->stream_name);
 
         // The model_path contains either "api-detection" or an HTTP URL
@@ -1252,12 +1264,91 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt) 
                                                      &result, ctx->detection_threshold);
 
         if (detect_ret == -2) {
-            // go2rtc snapshot failed - this is a transient error, don't log as error
-            log_debug("[%s] go2rtc snapshot unavailable, skipping detection", ctx->stream_name);
-            return false;
-        }
+            // go2rtc snapshot failed - fall back to local frame decoding
+            log_info("[%s] go2rtc snapshot unavailable, falling back to local frame decode", ctx->stream_name);
 
-        if (detect_ret != 0) {
+            // We need a packet and decoder to fall back
+            if (!pkt || !ctx->decoder_ctx) {
+                log_debug("[%s] Cannot fall back: no packet or decoder available", ctx->stream_name);
+                return false;
+            }
+
+            // Decode the packet to get a frame
+            int ret = avcodec_send_packet(ctx->decoder_ctx, pkt);
+            if (ret < 0) {
+                log_debug("[%s] Fallback decode failed: avcodec_send_packet error %d", ctx->stream_name, ret);
+                return false;
+            }
+
+            AVFrame *frame = av_frame_alloc();
+            if (!frame) {
+                log_debug("[%s] Fallback decode failed: could not allocate frame", ctx->stream_name);
+                return false;
+            }
+
+            ret = avcodec_receive_frame(ctx->decoder_ctx, frame);
+            if (ret < 0) {
+                av_frame_free(&frame);
+                log_debug("[%s] Fallback decode failed: avcodec_receive_frame error %d", ctx->stream_name, ret);
+                return false;
+            }
+
+            // Convert frame to RGB for API detection
+            int width = frame->width;
+            int height = frame->height;
+            int channels = 3;  // RGB
+
+            struct SwsContext *sws_ctx = sws_getContext(
+                width, height, frame->format,
+                width, height, AV_PIX_FMT_RGB24,
+                SWS_BILINEAR, NULL, NULL, NULL);
+
+            if (!sws_ctx) {
+                log_error("[%s] Fallback: failed to create sws context", ctx->stream_name);
+                av_frame_free(&frame);
+                return false;
+            }
+
+            size_t rgb_buffer_size = width * height * channels;
+            uint8_t *rgb_buffer = malloc(rgb_buffer_size);
+            if (!rgb_buffer) {
+                log_error("[%s] Fallback: failed to allocate RGB buffer", ctx->stream_name);
+                sws_freeContext(sws_ctx);
+                av_frame_free(&frame);
+                return false;
+            }
+
+            uint8_t *rgb_data[4] = {rgb_buffer, NULL, NULL, NULL};
+            int rgb_linesize[4] = {width * channels, 0, 0, 0};
+
+            sws_scale(sws_ctx, (const uint8_t * const *)frame->data, frame->linesize,
+                      0, height, rgb_data, rgb_linesize);
+
+            sws_freeContext(sws_ctx);
+            av_frame_free(&frame);
+
+            // Get the actual API URL
+            const char *actual_api_url = ctx->model_path;
+            if (strcmp(ctx->model_path, "api-detection") == 0) {
+                extern config_t g_config;
+                actual_api_url = g_config.api_detection_url;
+            }
+
+            log_info("[%s] Fallback: sending %dx%d frame to API detection", ctx->stream_name, width, height);
+
+            // Call API detection with decoded frame
+            detect_ret = detect_objects_api(actual_api_url, rgb_buffer, width, height, channels,
+                                            &result, ctx->stream_name, ctx->detection_threshold);
+
+            free(rgb_buffer);
+
+            if (detect_ret != 0) {
+                log_warn("[%s] Fallback API detection failed with error %d", ctx->stream_name, detect_ret);
+                return false;
+            }
+
+            log_info("[%s] Fallback API detection successful: %d objects detected", ctx->stream_name, result.count);
+        } else if (detect_ret != 0) {
             log_warn("[%s] API detection failed with error %d", ctx->stream_name, detect_ret);
             return false;
         }

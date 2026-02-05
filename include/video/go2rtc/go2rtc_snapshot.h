@@ -11,15 +11,26 @@
 
 /**
  * @brief Get a JPEG snapshot from go2rtc for a stream
- * 
+ *
  * @param stream_name Name of the stream to get snapshot from
  * @param jpeg_data Pointer to buffer that will receive the JPEG data (will be allocated)
  * @param jpeg_size Pointer to size_t that will receive the size of the JPEG data
  * @return true if successful, false otherwise
- * 
- * Note: The caller is responsible for freeing the jpeg_data buffer when done
+ *
+ * Note: The caller is responsible for freeing the jpeg_data buffer when done.
+ * This function uses a thread-local CURL handle for connection reuse, which
+ * significantly improves performance by avoiding TCP connection overhead.
  */
 bool go2rtc_get_snapshot(const char *stream_name, unsigned char **jpeg_data, size_t *jpeg_size);
+
+/**
+ * @brief Cleanup thread-local CURL handle
+ *
+ * Call this function before a thread exits to properly cleanup the thread-local
+ * CURL handle. If not called, the handle will be cleaned up when the thread exits
+ * but this provides explicit cleanup.
+ */
+void go2rtc_snapshot_cleanup_thread(void);
 
 #endif /* GO2RTC_SNAPSHOT_H */
 

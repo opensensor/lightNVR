@@ -28,6 +28,8 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <stdatomic.h>
+#include <cjson/cJSON.h>
+#include <curl/curl.h>
 
 // Tracking for streams using go2rtc
 #define MAX_TRACKED_STREAMS 16
@@ -76,6 +78,22 @@ static bool g_initialized = false;
 #define PROCESS_MAX_RESTARTS_PER_WINDOW 5
 #define PROCESS_RESTART_WINDOW_SEC 600  // 10 minutes
 
+// Stuck stream detection: consecutive checks with no byte count increase
+#define STUCK_STREAM_MAX_STALLED_CHECKS 3
+
+// Stuck stream tracking per stream
+typedef struct {
+    char stream_name[MAX_STREAM_NAME];
+    int64_t last_bytes_recv;      // Last known bytes received by producer
+    int64_t last_bytes_send;      // Last known bytes sent by preload consumer
+    int stalled_checks;           // Consecutive checks with no increase
+    time_t last_check_time;       // Time of last check
+    bool tracking_active;         // Whether we're actively tracking this stream
+} stuck_stream_tracker_t;
+
+static stuck_stream_tracker_t g_stuck_trackers[MAX_TRACKED_STREAMS] = {0};
+static pthread_mutex_t g_stuck_tracker_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 // Unified monitor state
 static pthread_t g_monitor_thread;
 static bool g_monitor_running = false;
@@ -87,6 +105,219 @@ static time_t g_last_restart_time = 0;
 static int g_consecutive_api_failures = 0;
 static time_t g_restart_history[PROCESS_MAX_RESTARTS_PER_WINDOW];
 static int g_restart_history_index = 0;
+
+// ============================================================================
+// Stuck Stream Detection Functions
+// ============================================================================
+
+// CURL write callback for fetching stream info
+static size_t stuck_stream_write_callback(void *contents, size_t size, size_t nmemb, void *userp) {
+    size_t realsize = size * nmemb;
+    char **buffer = (char **)userp;
+
+    if (*buffer == NULL) {
+        *buffer = malloc(realsize + 1);
+        if (*buffer == NULL) return 0;
+        memcpy(*buffer, contents, realsize);
+        (*buffer)[realsize] = '\0';
+    } else {
+        size_t old_len = strlen(*buffer);
+        char *new_buffer = realloc(*buffer, old_len + realsize + 1);
+        if (new_buffer == NULL) return 0;
+        *buffer = new_buffer;
+        memcpy(*buffer + old_len, contents, realsize);
+        (*buffer)[old_len + realsize] = '\0';
+    }
+    return realsize;
+}
+
+/**
+ * @brief Get stuck stream tracker for a stream, or create one
+ */
+static stuck_stream_tracker_t *get_or_create_stuck_tracker(const char *stream_name) {
+    pthread_mutex_lock(&g_stuck_tracker_mutex);
+
+    // First, look for existing tracker
+    for (int i = 0; i < MAX_TRACKED_STREAMS; i++) {
+        if (g_stuck_trackers[i].tracking_active &&
+            strcmp(g_stuck_trackers[i].stream_name, stream_name) == 0) {
+            pthread_mutex_unlock(&g_stuck_tracker_mutex);
+            return &g_stuck_trackers[i];
+        }
+    }
+
+    // Create new tracker
+    for (int i = 0; i < MAX_TRACKED_STREAMS; i++) {
+        if (!g_stuck_trackers[i].tracking_active) {
+            memset(&g_stuck_trackers[i], 0, sizeof(stuck_stream_tracker_t));
+            strncpy(g_stuck_trackers[i].stream_name, stream_name, MAX_STREAM_NAME - 1);
+            g_stuck_trackers[i].tracking_active = true;
+            g_stuck_trackers[i].last_bytes_recv = -1;  // -1 = not yet initialized
+            g_stuck_trackers[i].last_bytes_send = -1;
+            pthread_mutex_unlock(&g_stuck_tracker_mutex);
+            return &g_stuck_trackers[i];
+        }
+    }
+
+    pthread_mutex_unlock(&g_stuck_tracker_mutex);
+    return NULL;
+}
+
+/**
+ * @brief Reset stuck tracker for a stream (e.g., after reload)
+ */
+static void reset_stuck_tracker(const char *stream_name) {
+    pthread_mutex_lock(&g_stuck_tracker_mutex);
+    for (int i = 0; i < MAX_TRACKED_STREAMS; i++) {
+        if (g_stuck_trackers[i].tracking_active &&
+            strcmp(g_stuck_trackers[i].stream_name, stream_name) == 0) {
+            g_stuck_trackers[i].last_bytes_recv = -1;
+            g_stuck_trackers[i].last_bytes_send = -1;
+            g_stuck_trackers[i].stalled_checks = 0;
+            g_stuck_trackers[i].last_check_time = 0;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&g_stuck_tracker_mutex);
+}
+
+/**
+ * @brief Check if a stream is stuck by monitoring go2rtc byte counts
+ *
+ * Returns true if the stream appears to be stuck (no data flow)
+ */
+static bool check_stream_data_flow(const char *stream_name) {
+    // Fetch stream info from go2rtc API
+    CURL *curl = curl_easy_init();
+    if (!curl) {
+        log_error("Failed to init CURL for stuck stream check");
+        return false;
+    }
+
+    char url[512];
+    snprintf(url, sizeof(url), "http://localhost:1984/api/streams?src=%s", stream_name);
+
+    char *response = NULL;
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, stuck_stream_write_callback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 3L);
+
+    CURLcode res = curl_easy_perform(curl);
+    curl_easy_cleanup(curl);
+
+    if (res != CURLE_OK || !response) {
+        if (response) free(response);
+        log_debug("Failed to fetch stream info for %s: %s", stream_name,
+                  curl_easy_strerror(res));
+        return false;
+    }
+
+    // Parse the JSON response
+    cJSON *root = cJSON_Parse(response);
+    free(response);
+
+    if (!root) {
+        log_debug("Failed to parse stream info JSON for %s", stream_name);
+        return false;
+    }
+
+    // Get or create tracker
+    stuck_stream_tracker_t *tracker = get_or_create_stuck_tracker(stream_name);
+    if (!tracker) {
+        cJSON_Delete(root);
+        return false;
+    }
+
+    // Find the stream in the response
+    // go2rtc returns: { "stream_name": { "producers": [...], "consumers": [...] } }
+    cJSON *stream_obj = cJSON_GetObjectItem(root, stream_name);
+    if (!stream_obj) {
+        cJSON_Delete(root);
+        log_debug("Stream %s not found in go2rtc response", stream_name);
+        return false;
+    }
+
+    // Get total bytes from producers and consumers
+    int64_t total_bytes_recv = 0;
+    int64_t total_bytes_send = 0;
+
+    cJSON *producers = cJSON_GetObjectItem(stream_obj, "producers");
+    if (cJSON_IsArray(producers)) {
+        cJSON *producer;
+        cJSON_ArrayForEach(producer, producers) {
+            cJSON *bytes = cJSON_GetObjectItem(producer, "bytes_recv");
+            if (cJSON_IsNumber(bytes)) {
+                total_bytes_recv += (int64_t)bytes->valuedouble;
+            }
+        }
+    }
+
+    cJSON *consumers = cJSON_GetObjectItem(stream_obj, "consumers");
+    if (cJSON_IsArray(consumers)) {
+        cJSON *consumer;
+        cJSON_ArrayForEach(consumer, consumers) {
+            cJSON *bytes = cJSON_GetObjectItem(consumer, "bytes_send");
+            if (cJSON_IsNumber(bytes)) {
+                total_bytes_send += (int64_t)bytes->valuedouble;
+            }
+        }
+    }
+
+    cJSON_Delete(root);
+
+    // Check if bytes have increased since last check
+    bool is_stuck = false;
+    time_t now = time(NULL);
+
+    pthread_mutex_lock(&g_stuck_tracker_mutex);
+
+    if (tracker->last_bytes_recv == -1) {
+        // First check - just record the baseline
+        tracker->last_bytes_recv = total_bytes_recv;
+        tracker->last_bytes_send = total_bytes_send;
+        tracker->last_check_time = now;
+        tracker->stalled_checks = 0;
+        log_debug("Stream %s: initialized byte tracking (recv=%lld, send=%lld)",
+                  stream_name, (long long)total_bytes_recv, (long long)total_bytes_send);
+    } else {
+        // Check if bytes have increased
+        bool data_flowing = (total_bytes_recv > tracker->last_bytes_recv) ||
+                           (total_bytes_send > tracker->last_bytes_send);
+
+        if (data_flowing) {
+            // Data is flowing - reset stalled counter
+            if (tracker->stalled_checks > 0) {
+                log_debug("Stream %s: data flow resumed (recv=%lld, send=%lld)",
+                          stream_name, (long long)total_bytes_recv, (long long)total_bytes_send);
+            }
+            tracker->stalled_checks = 0;
+        } else {
+            // No data flow - increment stalled counter
+            tracker->stalled_checks++;
+            log_warn("Stream %s: no data flow detected for %d consecutive checks "
+                     "(recv=%lld unchanged, send=%lld unchanged)",
+                     stream_name, tracker->stalled_checks,
+                     (long long)total_bytes_recv, (long long)total_bytes_send);
+
+            if (tracker->stalled_checks >= STUCK_STREAM_MAX_STALLED_CHECKS) {
+                log_error("Stream %s: appears STUCK - no data flow for %d checks",
+                          stream_name, tracker->stalled_checks);
+                is_stuck = true;
+            }
+        }
+
+        // Update tracking
+        tracker->last_bytes_recv = total_bytes_recv;
+        tracker->last_bytes_send = total_bytes_send;
+        tracker->last_check_time = now;
+    }
+
+    pthread_mutex_unlock(&g_stuck_tracker_mutex);
+
+    return is_stuck;
+}
 
 /**
  * @brief Save original stream configuration
@@ -553,11 +784,13 @@ static void *unified_health_monitor_thread(void *arg) {
             stream_config_t config;
             if (get_stream_config(stream, &config) != 0) continue;
 
+            // Check 1: Stream state-based re-registration (ERROR/RECONNECTING states)
             if (stream_needs_reregistration(config.name)) {
-                log_info("Stream %s needs re-registration, attempting to fix", config.name);
+                log_info("Stream %s needs re-registration (state-based), attempting to fix", config.name);
 
                 if (go2rtc_integration_reload_stream(config.name)) {
                     log_info("Successfully re-registered stream %s", config.name);
+                    reset_stuck_tracker(config.name);  // Reset stuck tracking after reload
 
                     // Update reconnect state
                     stream_state_manager_t *state = get_stream_state_by_name(config.name);
@@ -567,6 +800,21 @@ static void *unified_health_monitor_thread(void *arg) {
                     }
                 } else {
                     log_error("Failed to re-register stream %s", config.name);
+                }
+                continue;  // Skip stuck check for this stream, we just reloaded it
+            }
+
+            // Check 2: Stuck stream detection (no data flow even though state looks OK)
+            // This catches cases where go2rtc thinks the stream is fine but no data is flowing
+            // (e.g., video doorbells that stop sending frames without disconnecting)
+            if (check_stream_data_flow(config.name)) {
+                log_warn("Stream %s detected as STUCK (no data flow), attempting reload", config.name);
+
+                if (go2rtc_integration_reload_stream(config.name)) {
+                    log_info("Successfully reloaded stuck stream %s", config.name);
+                    reset_stuck_tracker(config.name);  // Reset tracking after reload
+                } else {
+                    log_error("Failed to reload stuck stream %s", config.name);
                 }
             }
         }
