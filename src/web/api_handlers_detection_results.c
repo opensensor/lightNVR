@@ -48,9 +48,9 @@ void store_detection_result(const char *stream_name, const detection_result_t *r
     
     log_debug("Storing detection results for stream '%s': %d detections", stream_name, result->count);
     
-    // Store in database
+    // Store in database (no recording_id linkage for direct API calls)
     time_t timestamp = time(NULL);
-    int ret = store_detections_in_db(stream_name, result, timestamp);
+    int ret = store_detections_in_db(stream_name, result, timestamp, 0);
 
     if (ret != 0) {
         log_error("Failed to store detections in database for stream '%s'", stream_name);

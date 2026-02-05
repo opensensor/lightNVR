@@ -413,9 +413,18 @@ bool go2rtc_consumer_start_hls(const char *stream_id, const char *output_path, i
         }
     }
     
-    // For HLS, we don't need to add a consumer, we can just use the direct URL
-    // We'll just track that we're using HLS for this stream
-    
+    // CRITICAL FIX: Register HLS as a persistent go2rtc consumer by preloading the stream
+    // This keeps the stream producer active, ensuring detection snapshots work reliably
+    // even when no WebRTC viewers are connected.
+    // Previously this was skipped ("we don't need to add a consumer") which caused
+    // detection failures when no active viewers were present.
+    if (!go2rtc_api_preload_stream(stream_id)) {
+        log_warn("Failed to preload stream %s for HLS - detection snapshots may be intermittent", stream_id);
+        // Continue anyway - HLS will still work, just detection may be unreliable
+    } else {
+        log_info("Preloaded stream %s to keep go2rtc producer active for HLS/detection", stream_id);
+    }
+
     // Add to our tracking array
     consumer_state_t *consumer = add_consumer(g_hls_consumers, stream_id, output_path, segment_duration);
     if (!consumer) {

@@ -92,6 +92,10 @@ typedef struct {
     // Audio recording configuration
     bool record_audio;  // Whether to include audio in recordings
 
+    // Annotation-only mode: when true, detection runs but does NOT create separate MP4 files
+    // Detections are stored in the database and linked to the continuous recording
+    bool annotation_only;
+
     // FFmpeg contexts (managed by thread)
     AVFormatContext *input_ctx;
     AVCodecContext *decoder_ctx;
@@ -123,17 +127,19 @@ void shutdown_unified_detection_system(void);
 
 /**
  * Start unified detection recording for a stream
- * 
+ *
  * @param stream_name Name of the stream
  * @param model_path Path to detection model
  * @param threshold Detection confidence threshold (0.0-1.0)
  * @param pre_buffer_seconds Seconds of pre-detection buffer
  * @param post_buffer_seconds Seconds of post-detection recording
+ * @param annotation_only If true, detection runs but does NOT create separate MP4 files.
+ *                        Detections are stored in DB and linked to the continuous recording.
  * @return 0 on success, -1 on error
  */
 int start_unified_detection_thread(const char *stream_name, const char *model_path,
                                    float threshold, int pre_buffer_seconds,
-                                   int post_buffer_seconds);
+                                   int post_buffer_seconds, bool annotation_only);
 
 /**
  * Stop unified detection recording for a stream

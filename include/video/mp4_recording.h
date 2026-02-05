@@ -105,11 +105,22 @@ int stop_mp4_recording(const char *stream_name);
 
 /**
  * Get the MP4 writer for a stream
- * 
+ *
  * @param stream_name Name of the stream
  * @return MP4 writer instance or NULL if not found
  */
 mp4_writer_t *get_mp4_writer_for_stream(const char *stream_name);
+
+/**
+ * Get the current recording ID for a stream's continuous recording
+ *
+ * This function is used in annotation mode to link detections to the
+ * ongoing continuous recording for the stream.
+ *
+ * @param stream_name Name of the stream
+ * @return Recording ID (>0) if a continuous recording is active, 0 if not recording
+ */
+uint64_t get_current_recording_id_for_stream(const char *stream_name);
 
 /**
  * Register an MP4 writer for a stream

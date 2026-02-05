@@ -121,13 +121,27 @@ The detection subsystem provides object detection and motion detection:
 - **Motion Detection**: ONVIF-based motion events from cameras
 - **Detection Zones**: Polygon-based regions of interest per stream
 - **Detection-triggered recording**: Start/stop recordings based on detection events
+- **Unified Detection Thread**: Per-stream thread with pre/post detection buffering
+
+#### Recording Modes
+
+LightNVR supports four recording modes based on the `record` and `detection_based_recording` flags:
+
+| `record` | `detection_based_recording` | Behavior |
+|----------|----------------------------|----------|
+| `false` | `false` | No recording, no detection |
+| `true` | `false` | Continuous recording only (MP4 with `trigger_type='scheduled'`) |
+| `false` | `true` | Detection-only recording (MP4 created only when detections occur) |
+| `true` | `true` | **Annotation mode**: Continuous recording + detection annotations linked via `recording_id` |
+
+In **annotation mode**, the unified detection thread runs but does NOT create separate MP4 files. Instead, detections are stored in the database with a `recording_id` foreign key linking to the ongoing continuous recording.
 
 Key files:
-- `src/video/detection_recording.c`: Detection-based recording logic
-- `src/video/detection_stream_thread.c`: Per-stream detection thread
+- `src/video/unified_detection_thread.c`: Unified per-stream detection thread with buffering and annotation mode
 - `src/video/detection_integration.c`: Model loading (TFLite/SOD/API)
 - `src/video/onvif_motion_recording.c`: ONVIF motion event handling
 - `src/video/motion_buffer.c`: Pre-event circular buffer for motion recordings
+- `src/database/db_detections.c`: Detection storage with optional recording_id linkage
 
 See [SOD_INTEGRATION.md](SOD_INTEGRATION.md) and [ONVIF_MOTION_RECORDING.md](ONVIF_MOTION_RECORDING.md) for details.
 

@@ -922,15 +922,18 @@ int main(int argc, char *argv[]) {
             }
 
             // Now directly start the unified detection thread
-            log_info("Directly starting unified detection thread for stream %s with model %s",
-                    config.streams[i].name, model_path);
+            // If continuous recording is also enabled, run detection in annotation-only mode
+            bool annotation_only = config.streams[i].record;
+            log_info("Directly starting unified detection thread for stream %s with model %s (annotation_only=%s)",
+                    config.streams[i].name, model_path, annotation_only ? "true" : "false");
 
             // Start the unified detection thread
             if (start_unified_detection_thread(config.streams[i].name,
                                               model_path,
                                               config.streams[i].detection_threshold,
                                               config.streams[i].pre_detection_buffer,
-                                              config.streams[i].post_detection_buffer) != 0) {
+                                              config.streams[i].post_detection_buffer,
+                                              annotation_only) != 0) {
                 log_warn("Failed to start unified detection thread for stream %s", config.streams[i].name);
             } else {
                 log_info("Successfully started unified detection thread for stream %s", config.streams[i].name);
@@ -1509,12 +1512,16 @@ static void check_and_ensure_services(void) {
         }
         // Handle detection-based recording - MOVED TO END OF SETUP
         if (config.streams[i].name[0] != '\0' && config.streams[i].enabled && config.streams[i].detection_based_recording) {
-            log_info("Ensuring detection-based recording is active for stream: %s", config.streams[i].name);
+            // If continuous recording is also enabled, run detection in annotation-only mode
+            bool annotation_only = config.streams[i].record;
+            log_info("Ensuring detection-based recording is active for stream: %s (annotation_only=%s)",
+                     config.streams[i].name, annotation_only ? "true" : "false");
             if (start_unified_detection_thread(config.streams[i].name,
                                               config.streams[i].detection_model,
                                               config.streams[i].detection_threshold,
                                               config.streams[i].pre_detection_buffer,
-                                              config.streams[i].post_detection_buffer) != 0) {
+                                              config.streams[i].post_detection_buffer,
+                                              annotation_only) != 0) {
                 log_warn("Failed to start detection-based recording for stream: %s", config.streams[i].name);
             } else {
                 log_info("Successfully started detection-based recording for stream: %s", config.streams[i].name);

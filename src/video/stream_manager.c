@@ -28,6 +28,48 @@ typedef struct {
     time_t last_detection_time;  // Added for detection-based recording
 } stream_t;
 
+/**
+ * Recording mode enum - determines how recording and detection interact
+ */
+typedef enum {
+    RECORD_MODE_NONE,                    // No recording, no detection
+    RECORD_MODE_CONTINUOUS,              // Continuous recording only (mp4_recording_core)
+    RECORD_MODE_DETECTION_ONLY,          // Detection-triggered recording only (unified_detection_thread)
+    RECORD_MODE_CONTINUOUS_WITH_ANNOTATION  // Continuous recording + detection annotations
+} recording_mode_t;
+
+/**
+ * Get the recording mode based on configuration flags
+ *
+ * @param record The record flag from stream config
+ * @param detection_based_recording The detection_based_recording flag from stream config
+ * @return The appropriate recording mode
+ */
+static recording_mode_t get_recording_mode(bool record, bool detection_based_recording) {
+    if (record && detection_based_recording) {
+        return RECORD_MODE_CONTINUOUS_WITH_ANNOTATION;
+    } else if (record) {
+        return RECORD_MODE_CONTINUOUS;
+    } else if (detection_based_recording) {
+        return RECORD_MODE_DETECTION_ONLY;
+    } else {
+        return RECORD_MODE_NONE;
+    }
+}
+
+/**
+ * Convert recording mode to string for logging
+ */
+static const char* recording_mode_to_string(recording_mode_t mode) {
+    switch (mode) {
+        case RECORD_MODE_NONE: return "NONE";
+        case RECORD_MODE_CONTINUOUS: return "CONTINUOUS";
+        case RECORD_MODE_DETECTION_ONLY: return "DETECTION_ONLY";
+        case RECORD_MODE_CONTINUOUS_WITH_ANNOTATION: return "CONTINUOUS_WITH_ANNOTATION";
+        default: return "UNKNOWN";
+    }
+}
+
 // Global array of streams
 static stream_t streams[MAX_STREAMS];
 static bool initialized = false;
@@ -107,9 +149,10 @@ void shutdown_stream_manager(void) {
 
             bool streaming_enabled = streams[i].config.streaming_enabled;
             bool recording_enabled = streams[i].config.record;
+            bool detection_enabled = streams[i].config.detection_based_recording;
 
-            // Stop HLS stream if it was enabled
-            if (streaming_enabled) {
+            // Stop HLS stream if it was enabled (either for streaming or detection keepalive)
+            if (streaming_enabled || detection_enabled) {
                 stop_hls_stream(stream_name);
                 log_info("Stopped HLS streaming for '%s' during shutdown", stream_name);
             }
@@ -296,15 +339,18 @@ int set_stream_detection_recording(stream_handle_t stream, bool enabled, const c
     }
     // If detection was disabled and is now being enabled, start the detection thread
     else if (now_enabled && config_copy.detection_model[0] != '\0') {
-        log_info("Detection enabled for stream %s, starting unified detection thread with model %s",
-                stream_name, config_copy.detection_model);
+        // If continuous recording is also enabled, run detection in annotation-only mode
+        bool annotation_only = config_copy.record;
+        log_info("Detection enabled for stream %s, starting unified detection thread with model %s (annotation_only=%s)",
+                stream_name, config_copy.detection_model, annotation_only ? "true" : "false");
 
         // Start unified detection thread
         if (start_unified_detection_thread(stream_name,
                                           config_copy.detection_model,
                                           config_copy.detection_threshold,
                                           config_copy.pre_detection_buffer,
-                                          config_copy.post_detection_buffer) != 0) {
+                                          config_copy.post_detection_buffer,
+                                          annotation_only) != 0) {
             log_warn("Failed to start unified detection thread for stream %s", stream_name);
         } else {
             log_info("Successfully started unified detection thread for stream %s", stream_name);
@@ -555,23 +601,35 @@ int start_stream(stream_handle_t handle) {
     // Get recording_enabled flag
     bool recording_enabled = s->config.record;
 
+    // Get detection_based_recording flag
+    bool detection_enabled = s->config.detection_based_recording;
+
     pthread_mutex_unlock(&s->mutex);
 
     // Track if any component started successfully
     bool any_component_started = false;
 
-    // Start HLS stream only if streaming is enabled
+    // Start HLS stream if streaming is enabled OR if detection is enabled
+    // When detection is enabled, HLS keeps the go2rtc stream alive so detection
+    // snapshots work reliably even when no WebRTC viewers are connected.
     int hls_result = 0;
-    if (streaming_enabled) {
+    bool need_hls = streaming_enabled || detection_enabled;
+    if (need_hls) {
         hls_result = start_hls_stream(stream_name);
         if (hls_result != 0) {
             log_error("Failed to start HLS stream '%s'", stream_name);
         } else {
-            log_info("Started HLS streaming for '%s'", stream_name);
+            if (streaming_enabled && detection_enabled) {
+                log_info("Started HLS streaming for '%s' (streaming + detection keepalive)", stream_name);
+            } else if (detection_enabled) {
+                log_info("Started HLS for '%s' as go2rtc keepalive for detection", stream_name);
+            } else {
+                log_info("Started HLS streaming for '%s'", stream_name);
+            }
             any_component_started = true;
         }
     } else {
-        log_info("Streaming disabled for '%s', not starting HLS stream", stream_name);
+        log_info("Streaming and detection disabled for '%s', not starting HLS stream", stream_name);
     }
 
     // Start recording if enabled - completely independent of streaming status
@@ -657,10 +715,13 @@ int stop_stream(stream_handle_t handle) {
     // Get recording_enabled flag
     bool recording_enabled = s->config.record;
 
+    // Get detection_based_recording flag
+    bool detection_enabled = s->config.detection_based_recording;
+
     pthread_mutex_unlock(&s->mutex);
 
-    // Stop HLS stream if it was started
-    if (streaming_enabled) {
+    // Stop HLS stream if it was started (either for streaming or detection keepalive)
+    if (streaming_enabled || detection_enabled) {
         int result = stop_hls_stream(stream_name);
         if (result != 0) {
             log_warn("Failed to stop HLS stream '%s'", stream_name);

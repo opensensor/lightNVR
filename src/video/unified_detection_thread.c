@@ -44,6 +44,7 @@
 #include "video/api_detection.h"
 #include "video/mp4_writer.h"
 #include "video/mp4_writer_internal.h"
+#include "video/mp4_recording.h"
 #include "video/streams.h"
 #include "video/go2rtc/go2rtc_stream.h"
 #include "database/db_recordings.h"
@@ -272,7 +273,7 @@ static int find_empty_slot(void) {
  */
 int start_unified_detection_thread(const char *stream_name, const char *model_path,
                                    float threshold, int pre_buffer_seconds,
-                                   int post_buffer_seconds) {
+                                   int post_buffer_seconds, bool annotation_only) {
     if (!stream_name || !model_path) {
         log_error("Invalid parameters for start_unified_detection_thread");
         return -1;
@@ -332,6 +333,11 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
     ctx->post_buffer_seconds = post_buffer_seconds > 0 ? post_buffer_seconds : 5;
     ctx->detection_interval = config.detection_interval > 0 ? config.detection_interval : DEFAULT_DETECTION_INTERVAL;
     ctx->record_audio = config.record_audio;
+    ctx->annotation_only = annotation_only;
+
+    if (annotation_only) {
+        log_info("[%s] Detection running in annotation-only mode (no separate MP4 files)", stream_name);
+    }
 
     // Get RTSP URL from go2rtc
     if (!go2rtc_stream_get_rtsp_url(stream_name, ctx->rtsp_url, sizeof(ctx->rtsp_url))) {
@@ -992,9 +998,17 @@ static int process_packet(unified_detection_ctx_t *ctx, AVPacket *pkt) {
 
 /**
  * Start recording - create MP4 writer
+ * In annotation_only mode, this is a no-op - detections are stored but no separate MP4 is created
  */
 static int udt_start_recording(unified_detection_ctx_t *ctx) {
     if (!ctx) return -1;
+
+    // In annotation-only mode, skip MP4 creation
+    // Detections will be stored and linked to the continuous recording instead
+    if (ctx->annotation_only) {
+        log_debug("[%s] Annotation-only mode: skipping MP4 creation for detection", ctx->stream_name);
+        return 0;
+    }
 
     // Ensure output directory exists
     struct stat st = {0};
@@ -1069,9 +1083,18 @@ static int udt_start_recording(unified_detection_ctx_t *ctx) {
 
 /**
  * Stop recording - close MP4 writer and update database
+ * In annotation_only mode, this is a no-op since no MP4 was created
  */
 static int udt_stop_recording(unified_detection_ctx_t *ctx) {
-    if (!ctx || !ctx->mp4_writer) return -1;
+    if (!ctx) return -1;
+
+    // In annotation-only mode, no MP4 was created, so nothing to stop
+    if (ctx->annotation_only) {
+        log_debug("[%s] Annotation-only mode: no MP4 to stop", ctx->stream_name);
+        return 0;
+    }
+
+    if (!ctx->mp4_writer) return -1;
 
     log_info("[%s] Stopping detection recording: %s", ctx->stream_name, ctx->current_recording_path);
 
@@ -1332,7 +1355,21 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt) 
     // Store detections in database if any were found
     if (result.count > 0) {
         time_t now = time(NULL);
-        if (store_detections_in_db(ctx->stream_name, &result, now) != 0) {
+
+        // In annotation_only mode, link detections to the continuous recording
+        uint64_t rec_id = 0;
+        if (ctx->annotation_only) {
+            rec_id = get_current_recording_id_for_stream(ctx->stream_name);
+            if (rec_id > 0) {
+                log_debug("[%s] Annotation mode: linking detections to recording ID %lu",
+                         ctx->stream_name, (unsigned long)rec_id);
+            } else {
+                log_debug("[%s] Annotation mode: no active recording to link detections to",
+                         ctx->stream_name);
+            }
+        }
+
+        if (store_detections_in_db(ctx->stream_name, &result, now, rec_id) != 0) {
             log_warn("[%s] Failed to store detections in database", ctx->stream_name);
         }
         ctx->total_detections += result.count;

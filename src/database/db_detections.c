@@ -17,13 +17,15 @@
 
 /**
  * Store detection results in the database
- * 
+ *
  * @param stream_name Stream name
  * @param result Detection results
  * @param timestamp Timestamp of the detection (0 for current time)
+ * @param recording_id Recording ID to link detections to (0 for no link)
  * @return 0 on success, non-zero on failure
  */
-int store_detections_in_db(const char *stream_name, const detection_result_t *result, time_t timestamp) {
+int store_detections_in_db(const char *stream_name, const detection_result_t *result,
+                           time_t timestamp, uint64_t recording_id) {
     int rc;
     sqlite3_stmt *stmt;
     
@@ -93,7 +95,9 @@ int store_detections_in_db(const char *stream_name, const detection_result_t *re
             "width REAL NOT NULL,"
             "height REAL NOT NULL,"
             "track_id INTEGER DEFAULT -1,"
-            "zone_id TEXT DEFAULT ''"
+            "zone_id TEXT DEFAULT '',"
+            "recording_id INTEGER,"
+            "FOREIGN KEY (recording_id) REFERENCES recordings(id)"
             ");";
         
         rc = sqlite3_exec(db, create_detections_table, NULL, NULL, &err_msg);
@@ -119,7 +123,7 @@ int store_detections_in_db(const char *stream_name, const detection_result_t *re
     } else {
         sqlite3_free_table(query_result);
     }
-    
+
     // Begin transaction for better performance when inserting multiple detections
     rc = sqlite3_exec(db, "BEGIN TRANSACTION;", NULL, NULL, &err_msg);
     if (rc != SQLITE_OK) {
@@ -129,8 +133,8 @@ int store_detections_in_db(const char *stream_name, const detection_result_t *re
         return -1;
     }
     
-    const char *sql = "INSERT INTO detections (stream_name, timestamp, label, confidence, x, y, width, height, track_id, zone_id) "
-                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+    const char *sql = "INSERT INTO detections (stream_name, timestamp, label, confidence, x, y, width, height, track_id, zone_id, recording_id) "
+                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -153,6 +157,13 @@ int store_detections_in_db(const char *stream_name, const detection_result_t *re
         sqlite3_bind_double(stmt, 8, result->detections[i].height);
         sqlite3_bind_int(stmt, 9, result->detections[i].track_id);
         sqlite3_bind_text(stmt, 10, result->detections[i].zone_id, -1, SQLITE_STATIC);
+
+        // Bind recording_id - NULL if 0, otherwise the actual ID
+        if (recording_id > 0) {
+            sqlite3_bind_int64(stmt, 11, (sqlite3_int64)recording_id);
+        } else {
+            sqlite3_bind_null(stmt, 11);
+        }
         
         // Execute statement
         rc = sqlite3_step(stmt);

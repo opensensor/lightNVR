@@ -631,9 +631,9 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
                 log_warn("Failed to filter detections by zones, storing all detections");
             }
 
-            // Store the detection in the database
+            // Store the detection in the database (no recording_id linkage for ONVIF)
             time_t timestamp = time(NULL);
-            store_detections_in_db(stream_name, result, timestamp);
+            store_detections_in_db(stream_name, result, timestamp, 0);
 
             // Publish to MQTT if enabled
             if (result->count > 0) {

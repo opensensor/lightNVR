@@ -7,13 +7,16 @@
 
 /**
  * Store detection results in the database
- * 
+ *
  * @param stream_name Stream name
  * @param result Detection results
  * @param timestamp Timestamp of the detection (0 for current time)
+ * @param recording_id Recording ID to link detections to (0 for no link)
+ *                     When non-zero, the detections are annotated onto the specified recording
  * @return 0 on success, non-zero on failure
  */
-int store_detections_in_db(const char *stream_name, const detection_result_t *result, time_t timestamp);
+int store_detections_in_db(const char *stream_name, const detection_result_t *result,
+                           time_t timestamp, uint64_t recording_id);
 
 /**
  * Get detection results from the database with time range filtering

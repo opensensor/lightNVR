@@ -46,9 +46,10 @@ int main(int argc, char **argv) {
     float threshold = 0.5f;
     int pre_buffer = 5;
     int post_buffer = 10;
+    bool annotation_only = false;  // Test in detection-only mode (creates MP4s)
 
     // Start the unified detection thread
-    int ret = start_unified_detection_thread(stream_name, model_path, threshold, pre_buffer, post_buffer);
+    int ret = start_unified_detection_thread(stream_name, model_path, threshold, pre_buffer, post_buffer, annotation_only);
     if (ret != 0) {
         log_error("Failed to start unified detection thread for stream %s", stream_name);
         return 1;

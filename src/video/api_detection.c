@@ -557,9 +557,9 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
             log_warn("Failed to filter detections by zones, storing all detections");
         }
 
-        // Store the detections in the database
+        // Store the detections in the database (no recording_id linkage for API detection)
         time_t timestamp = time(NULL);
-        store_detections_in_db(stream_name, result, timestamp);
+        store_detections_in_db(stream_name, result, timestamp, 0);
 
         // Publish to MQTT if enabled
         if (result->count > 0) {
@@ -880,7 +880,7 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
                  result->count, stream_name);
         filter_detections_by_zones(stream_name, result);
         time_t timestamp = time(NULL);
-        store_detections_in_db(stream_name, result, timestamp);
+        store_detections_in_db(stream_name, result, timestamp, 0);
 
         // Publish to MQTT if enabled
         if (result->count > 0) {

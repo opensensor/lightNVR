@@ -152,8 +152,10 @@ static void put_stream_worker(put_stream_task_t *task) {
     // If detection was disabled and now enabled, start the detection thread
     else if (!detection_was_enabled && detection_now_enabled) {
         if (task->config.detection_model[0] != '\0' && task->config.enabled) {
-            log_info("Detection enabled for stream %s, starting unified detection thread with model %s",
-                    task->config.name, task->config.detection_model);
+            // If continuous recording is also enabled, run detection in annotation-only mode
+            bool annotation_only = task->config.record;
+            log_info("Detection enabled for stream %s, starting unified detection thread with model %s (annotation_only=%s)",
+                    task->config.name, task->config.detection_model, annotation_only ? "true" : "false");
 
             if (go2rtc_integration_reload_stream(task->config.name)) {
                 log_info("Successfully ensured stream %s is registered with go2rtc", task->config.name);
@@ -165,7 +167,8 @@ static void put_stream_worker(put_stream_task_t *task) {
                                               task->config.detection_model,
                                               task->config.detection_threshold,
                                               task->config.pre_detection_buffer,
-                                              task->config.post_detection_buffer) != 0) {
+                                              task->config.post_detection_buffer,
+                                              annotation_only) != 0) {
                 log_warn("Failed to start unified detection thread for stream %s", task->config.name);
             } else {
                 log_info("Successfully started unified detection thread for stream %s", task->config.name);
@@ -183,11 +186,14 @@ static void put_stream_worker(put_stream_task_t *task) {
         }
 
         if (task->config.detection_model[0] != '\0' && task->config.enabled) {
+            // If continuous recording is also enabled, run detection in annotation-only mode
+            bool annotation_only = task->config.record;
             if (start_unified_detection_thread(task->config.name,
                                               task->config.detection_model,
                                               task->config.detection_threshold,
                                               task->config.pre_detection_buffer,
-                                              task->config.post_detection_buffer) != 0) {
+                                              task->config.post_detection_buffer,
+                                              annotation_only) != 0) {
                 log_warn("Failed to restart unified detection thread for stream %s", task->config.name);
             } else {
                 log_info("Successfully restarted unified detection thread for stream %s", task->config.name);
@@ -587,15 +593,18 @@ void mg_handle_post_stream(struct mg_connection *c, struct mg_http_message *hm) 
 
         // Start detection thread if detection is enabled and we have a model
         if (config.detection_based_recording && config.detection_model[0] != '\0') {
-            log_info("Detection enabled for new stream %s, starting unified detection thread with model %s",
-                    config.name, config.detection_model);
+            // If continuous recording is also enabled, run detection in annotation-only mode
+            bool annotation_only = config.record;
+            log_info("Detection enabled for new stream %s, starting unified detection thread with model %s (annotation_only=%s)",
+                    config.name, config.detection_model, annotation_only ? "true" : "false");
 
             // Start unified detection thread
             if (start_unified_detection_thread(config.name,
                                               config.detection_model,
                                               config.detection_threshold,
                                               config.pre_detection_buffer,
-                                              config.post_detection_buffer) != 0) {
+                                              config.post_detection_buffer,
+                                              annotation_only) != 0) {
                 log_warn("Failed to start unified detection thread for new stream %s", config.name);
             } else {
                 log_info("Successfully started unified detection thread for new stream %s", config.name);
@@ -1034,14 +1043,18 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
 
                             // If detection is enabled for this stream, start the unified detection thread
                             if (stream_config.detection_based_recording && stream_config.detection_model[0] != '\0') {
-                                log_info("Starting unified detection thread for enabled stream %s", decoded_id);
+                                // If continuous recording is also enabled, run detection in annotation-only mode
+                                bool annotation_only = stream_config.record;
+                                log_info("Starting unified detection thread for enabled stream %s (annotation_only=%s)",
+                                         decoded_id, annotation_only ? "true" : "false");
 
                                 // Start unified detection thread
                                 if (start_unified_detection_thread(decoded_id,
                                                                   stream_config.detection_model,
                                                                   stream_config.detection_threshold,
                                                                   stream_config.pre_detection_buffer,
-                                                                  stream_config.post_detection_buffer) != 0) {
+                                                                  stream_config.post_detection_buffer,
+                                                                  annotation_only) != 0) {
                                     log_warn("Failed to start unified detection thread for stream %s", decoded_id);
                                 } else {
                                     log_info("Successfully started unified detection thread for stream %s", decoded_id);
@@ -1341,11 +1354,14 @@ void mg_handle_post_stream_refresh(struct mg_connection *c, struct mg_http_messa
                 }
 
                 // Start the detection thread
+                // If continuous recording is also enabled, run detection in annotation-only mode
+                bool annotation_only = config.record;
                 if (start_unified_detection_thread(decoded_name,
                                                    config.detection_model,
                                                    config.detection_threshold,
                                                    config.pre_detection_buffer,
-                                                   config.post_detection_buffer) != 0) {
+                                                   config.post_detection_buffer,
+                                                   annotation_only) != 0) {
                     log_warn("Failed to restart unified detection thread for stream: %s", decoded_name);
                 } else {
                     log_info("Successfully restarted unified detection thread for stream: %s", decoded_name);
