@@ -101,10 +101,14 @@ static void signal_handler(int sig) {
 
     // Check if we're already shutting down
     static bool shutdown_in_progress = false;
+    static int signal_count = 0;
+    signal_count++;
+
     if (shutdown_in_progress) {
-        log_warn("Received another signal %d during shutdown, continuing with clean shutdown", sig);
-        // Do not force immediate exit, continue with clean shutdown
-        return;
+        // Second signal during shutdown - force exit to avoid mutex corruption
+        // Using _exit() is async-signal-safe and avoids the futex error
+        log_warn("Received signal %d during shutdown (signal #%d), forcing immediate exit", sig, signal_count);
+        _exit(1);
     }
 
     // Mark that we're in the process of shutting down
@@ -1054,14 +1058,6 @@ int main(int argc, char *argv[]) {
 cleanup:
     log_info("Starting cleanup process...");
 
-    // We'll clean up go2rtc later in the shutdown sequence
-    // First clean up go2rtc integration (but not the process yet)
-    #ifdef USE_GO2RTC
-    log_info("Cleaning up go2rtc integration...");
-    go2rtc_integration_cleanup();
-    // Note: go2rtc_stream_cleanup() will be called later
-    #endif
-
     // Block most signals during cleanup to prevent interruptions
     // But keep SIGUSR1, SIGALRM, and SIGKILL unblocked for emergency shutdown
     sigset_t block_mask, old_mask;
@@ -1098,6 +1094,13 @@ cleanup:
         memset(&sa_usr1, 0, sizeof(sa_usr1));
         sa_usr1.sa_handler = alarm_handler;  // Reuse the alarm handler for USR1
         sigaction(SIGUSR1, &sa_usr1, NULL);
+
+        // Clean up go2rtc integration first (inside watchdog-protected block)
+        // This includes stopping the health monitor thread which can block
+        #ifdef USE_GO2RTC
+        log_info("Cleaning up go2rtc integration...");
+        go2rtc_integration_cleanup();
+        #endif
 
         // Components should already be registered during initialization
         // No need to register them again during shutdown
