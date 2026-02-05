@@ -405,6 +405,24 @@ static bool mqtt_run_with_timeout(struct mosquitto *m, mqtt_cleanup_op_t op, int
 }
 
 /**
+ * Try to acquire mutex with timeout using portable polling approach
+ * Returns true if mutex was acquired, false if timeout
+ */
+static bool mqtt_try_lock_with_timeout(int timeout_ms) {
+    int elapsed_ms = 0;
+    const int poll_interval_ms = 50;
+
+    while (elapsed_ms < timeout_ms) {
+        if (pthread_mutex_trylock(&mqtt_mutex) == 0) {
+            return true;  // Successfully acquired mutex
+        }
+        usleep(poll_interval_ms * 1000);
+        elapsed_ms += poll_interval_ms;
+    }
+    return false;  // Timeout
+}
+
+/**
  * Disconnect from the MQTT broker
  * Returns true if disconnect completed cleanly, false if there were timeouts
  */
@@ -418,14 +436,9 @@ static bool mqtt_disconnect_internal(void) {
 
     log_info("MQTT: Attempting to acquire mutex for disconnect...");
 
-    // Try to lock with timeout to avoid blocking during shutdown
-    struct timespec timeout;
-    clock_gettime(CLOCK_REALTIME, &timeout);
-    timeout.tv_sec += 2;  // 2 second timeout
-
-    int lock_result = pthread_mutex_timedlock(&mqtt_mutex, &timeout);
-    if (lock_result != 0) {
-        log_warn("MQTT: Failed to acquire mutex for disconnect (timeout or error), proceeding anyway");
+    // Try to lock with timeout using portable polling approach
+    if (!mqtt_try_lock_with_timeout(2000)) {  // 2 second timeout
+        log_warn("MQTT: Failed to acquire mutex for disconnect (timeout), proceeding anyway");
         // Force disconnect without mutex - risky but better than hanging
         mosquitto_disconnect(mosq);
         if (!mqtt_run_with_timeout(mosq, MQTT_OP_LOOP_STOP, 2, "mosquitto_loop_stop")) {
@@ -485,14 +498,9 @@ void mqtt_cleanup(void) {
 
     log_info("MQTT: Attempting to acquire mutex for destroy...");
 
-    // Try to lock with timeout to avoid blocking during shutdown
-    struct timespec timeout;
-    clock_gettime(CLOCK_REALTIME, &timeout);
-    timeout.tv_sec += 2;  // 2 second timeout
-
-    int lock_result = pthread_mutex_timedlock(&mqtt_mutex, &timeout);
-    if (lock_result != 0) {
-        log_warn("MQTT: Failed to acquire mutex for destroy (timeout or error), skipping remaining cleanup");
+    // Try to lock with timeout using portable polling approach
+    if (!mqtt_try_lock_with_timeout(2000)) {  // 2 second timeout
+        log_warn("MQTT: Failed to acquire mutex for destroy (timeout), skipping remaining cleanup");
         // Skip destroy and lib_cleanup entirely - they're blocking and we're shutting down anyway
         mosq = NULL;
         mqtt_config = NULL;

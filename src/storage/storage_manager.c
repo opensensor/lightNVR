@@ -535,13 +535,15 @@ bool ensure_disk_space(uint64_t min_free_bytes) {
 // Storage manager thread state
 static struct {
     pthread_t thread;
-    bool running;
+    volatile bool running;
+    volatile bool exited;  // Flag to indicate thread has exited
     int interval_seconds;
     pthread_mutex_t mutex;
     time_t last_cache_refresh;
     int cache_refresh_interval; // in seconds
 } storage_manager_thread = {
     .running = false,
+    .exited = true,  // Initially true since thread hasn't started
     .interval_seconds = 3600, // Default to 1 hour
     .last_cache_refresh = 0,
     .cache_refresh_interval = 900 // Default to 15 minutes
@@ -602,6 +604,7 @@ static void* storage_manager_thread_func(void *arg) {
     }
 
     log_info("Storage manager thread exiting");
+    storage_manager_thread.exited = true;  // Signal that thread has exited
     return NULL;
 }
 
@@ -629,6 +632,7 @@ int start_storage_manager_thread(int interval_seconds) {
     // Set interval (minimum 60 seconds)
     storage_manager_thread.interval_seconds = (interval_seconds < 60) ? 60 : interval_seconds;
     storage_manager_thread.running = true;
+    storage_manager_thread.exited = false;  // Reset the exited flag
 
     // Create thread
     if (pthread_create(&storage_manager_thread.thread, NULL, storage_manager_thread_func, NULL) != 0) {
@@ -644,12 +648,14 @@ int start_storage_manager_thread(int interval_seconds) {
 }
 
 // Stop the storage manager thread
+// Uses portable polling approach instead of pthread_timedjoin_np (GNU extension)
+// to work on both glibc and musl (e.g., Linux 4.4 with thingino-firmware)
 int stop_storage_manager_thread(void) {
     pthread_mutex_lock(&storage_manager_thread.mutex);
 
     // Check if thread is running
-    if (!storage_manager_thread.running) {
-        log_warn("Storage manager thread is not running");
+    if (!storage_manager_thread.running && storage_manager_thread.exited) {
+        log_info("Storage manager thread is not running");
         pthread_mutex_unlock(&storage_manager_thread.mutex);
         return 0;
     }
@@ -658,12 +664,27 @@ int stop_storage_manager_thread(void) {
     storage_manager_thread.running = false;
     pthread_mutex_unlock(&storage_manager_thread.mutex);
 
-    // Wait for thread to exit
-    if (pthread_join(storage_manager_thread.thread, NULL) != 0) {
-        log_error("Failed to join storage manager thread: %s", strerror(errno));
-        return -1;
+    log_info("Waiting for storage manager thread to exit...");
+
+    // Use portable polling approach with timeout (5 seconds)
+    // Poll every 100ms to check if thread has exited
+    int timeout_ms = 5000;
+    int elapsed_ms = 0;
+    const int poll_interval_ms = 100;
+
+    while (elapsed_ms < timeout_ms) {
+        if (storage_manager_thread.exited) {
+            // Thread has exited, we can join it
+            pthread_join(storage_manager_thread.thread, NULL);
+            log_info("Storage manager thread stopped successfully");
+            return 0;
+        }
+        usleep(poll_interval_ms * 1000);
+        elapsed_ms += poll_interval_ms;
     }
 
-    log_info("Storage manager thread stopped");
+    // Thread did not exit in time, detach it
+    log_warn("Storage manager thread did not exit in time (%d ms), detaching", timeout_ms);
+    pthread_detach(storage_manager_thread.thread);
     return 0;
 }
