@@ -231,10 +231,11 @@ int detect_objects(detection_model_t model, const unsigned char *frame_data,
             log_error("Failed to get API URL from model");
             ret = -1;
         } else {
-            // We don't have the stream name or threshold here, so we'll pass NULL/-1.0
+            // We don't have the stream name, threshold, or recording_id here, so we'll pass NULL/-1.0/0
             // The stream name will be set by the caller when storing the detections
             // A negative threshold tells detect_objects_api to use the default (0.5)
-            ret = detect_objects_api(api_url, frame_data, width, height, channels, result, NULL, -1.0f);
+            // recording_id of 0 means no recording linkage
+            ret = detect_objects_api(api_url, frame_data, width, height, channels, result, NULL, -1.0f, 0);
         }
     }
     else {

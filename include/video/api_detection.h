@@ -1,6 +1,7 @@
 #ifndef LIGHTNVR_API_DETECTION_H
 #define LIGHTNVR_API_DETECTION_H
 
+#include <stdint.h>
 #include "video/detection_result.h"
 
 // Model type for API-based detection
@@ -29,11 +30,12 @@ void shutdown_api_detection_system(void);
  * @param result Pointer to a detection_result_t structure to store the results
  * @param stream_name The name of the stream (for database storage)
  * @param threshold Confidence threshold for detection (0.0-1.0, use negative for default)
+ * @param recording_id Recording ID to link detections to (0 for no link)
  * @return 0 on success, non-zero on failure
  */
 int detect_objects_api(const char *api_url, const unsigned char *frame_data,
                       int width, int height, int channels, detection_result_t *result,
-                      const char *stream_name, float threshold);
+                      const char *stream_name, float threshold, uint64_t recording_id);
 
 /**
  * Detect objects using the API with go2rtc snapshot only (no frame data required)
@@ -46,9 +48,10 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
  * @param stream_name The name of the stream (required for go2rtc snapshot)
  * @param result Pointer to a detection_result_t structure to store the results
  * @param threshold Confidence threshold for detection (0.0-1.0, use negative for default)
+ * @param recording_id Recording ID to link detections to (0 for no link)
  * @return 0 on success, -1 on general failure, -2 if go2rtc snapshot failed (caller should fall back)
  */
 int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
-                                detection_result_t *result, float threshold);
+                                detection_result_t *result, float threshold, uint64_t recording_id);
 
 #endif /* LIGHTNVR_API_DETECTION_H */

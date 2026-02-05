@@ -1257,11 +1257,21 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt) 
         // API detection - try go2rtc snapshot first (more efficient, no frame decoding needed)
         log_debug("[%s] Running API detection via snapshot", ctx->stream_name);
 
+        // Determine recording_id to link detections to
+        uint64_t rec_id = 0;
+        if (ctx->annotation_only) {
+            // In annotation_only mode, link detections to the continuous recording
+            rec_id = get_current_recording_id_for_stream(ctx->stream_name);
+        } else if (ctx->current_recording_id > 0) {
+            // For detection recordings, link to the current detection recording
+            rec_id = ctx->current_recording_id;
+        }
+
         // The model_path contains either "api-detection" or an HTTP URL
         // detect_objects_api_snapshot handles the "api-detection" special case
         // by looking up g_config.api_detection_url
         int detect_ret = detect_objects_api_snapshot(ctx->model_path, ctx->stream_name,
-                                                     &result, ctx->detection_threshold);
+                                                     &result, ctx->detection_threshold, rec_id);
 
         if (detect_ret == -2) {
             // go2rtc snapshot failed - fall back to local frame decoding
@@ -1336,9 +1346,9 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt) 
 
             log_info("[%s] Fallback: sending %dx%d frame to API detection", ctx->stream_name, width, height);
 
-            // Call API detection with decoded frame
+            // Call API detection with decoded frame (rec_id already computed above)
             detect_ret = detect_objects_api(actual_api_url, rgb_buffer, width, height, channels,
-                                            &result, ctx->stream_name, ctx->detection_threshold);
+                                            &result, ctx->stream_name, ctx->detection_threshold, rec_id);
 
             free(rgb_buffer);
 
