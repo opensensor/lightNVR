@@ -185,9 +185,11 @@ static void init_signals() {
         memset(&sa, 0, sizeof(sa));
         sa.sa_handler = signal_handler;
 
-        // Add SA_RESTART flag to automatically restart interrupted system calls
-        // This helps prevent issues with blocking I/O operations during signal handling
-        sa.sa_flags = SA_RESTART;
+        // NOTE: We intentionally do NOT use SA_RESTART here
+        // SA_RESTART would cause sleep() in the main loop to restart after the signal handler returns,
+        // which would delay the shutdown response. Without SA_RESTART, sleep() will return early
+        // with EINTR, allowing the main loop to check the running flag immediately.
+        sa.sa_flags = 0;
 
         sigaction(SIGINT, &sa, NULL);
         sigaction(SIGTERM, &sa, NULL);
