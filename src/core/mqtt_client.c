@@ -6,6 +6,8 @@
 #include <errno.h>
 #include <pthread.h>
 #include <signal.h>
+#include <unistd.h>
+#include <time.h>
 #include <mosquitto.h>
 #include <cjson/cJSON.h>
 
@@ -17,13 +19,6 @@ static struct mosquitto *mosq = NULL;
 static const config_t *mqtt_config = NULL;
 static bool connected = false;
 static pthread_mutex_t mqtt_mutex = PTHREAD_MUTEX_INITIALIZER;
-
-// Cleanup thread state - use a generation counter to avoid race conditions
-// between timed-out operations and subsequent ones
-static volatile int cleanup_generation = 0;
-static volatile int cleanup_completed_generation = -1;
-static pthread_mutex_t cleanup_mutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t cleanup_cond = PTHREAD_COND_INITIALIZER;
 
 // Forward declarations for callbacks
 static void on_connect(struct mosquitto *mosq, void *userdata, int rc);
@@ -331,11 +326,11 @@ typedef enum {
     MQTT_OP_LIB_CLEANUP
 } mqtt_cleanup_op_t;
 
-// Thread argument structure
+// Thread argument structure - uses a simple volatile flag for completion
 typedef struct {
     struct mosquitto *mosq;
     mqtt_cleanup_op_t op;
-    int generation;  // Used to identify which operation completed
+    volatile int *done_flag;  // Pointer to completion flag
 } mqtt_cleanup_arg_t;
 
 /**
@@ -343,7 +338,7 @@ typedef struct {
  */
 static void *mqtt_cleanup_thread(void *arg) {
     mqtt_cleanup_arg_t *cleanup_arg = (mqtt_cleanup_arg_t *)arg;
-    int my_generation = cleanup_arg->generation;
+    volatile int *done_flag = cleanup_arg->done_flag;
 
     switch (cleanup_arg->op) {
         case MQTT_OP_LOOP_STOP:
@@ -357,78 +352,56 @@ static void *mqtt_cleanup_thread(void *arg) {
             break;
     }
 
-    // Signal that cleanup is done for this specific generation
-    pthread_mutex_lock(&cleanup_mutex);
-    cleanup_completed_generation = my_generation;
-    pthread_cond_signal(&cleanup_cond);
-    pthread_mutex_unlock(&cleanup_mutex);
+    // Signal completion by setting the flag
+    // Note: cleanup_arg is on the stack of the caller and remains valid
+    // until the caller returns (after timeout or completion)
+    *done_flag = 1;
 
-    free(cleanup_arg);
     return NULL;
 }
 
 /**
  * Run a mosquitto cleanup operation with a timeout
+ * Uses simple polling with usleep - portable across glibc and musl
  * Returns true if completed within timeout, false if timed out
  */
 static bool mqtt_run_with_timeout(struct mosquitto *m, mqtt_cleanup_op_t op, int timeout_sec, const char *op_name) {
     pthread_t thread;
+    volatile int done_flag = 0;
 
-    // Increment generation counter to uniquely identify this operation
-    // This prevents race conditions where a previously timed-out operation
-    // signals completion and interferes with a new operation
-    pthread_mutex_lock(&cleanup_mutex);
-    int my_generation = ++cleanup_generation;
-    pthread_mutex_unlock(&cleanup_mutex);
-
-    // Allocate argument structure (will be freed by thread)
-    mqtt_cleanup_arg_t *arg = malloc(sizeof(mqtt_cleanup_arg_t));
-    if (!arg) {
-        log_warn("MQTT: Failed to allocate cleanup arg for %s", op_name);
-        return false;
-    }
-    arg->mosq = m;
-    arg->op = op;
-    arg->generation = my_generation;
+    // Argument structure on stack - valid for duration of this function
+    mqtt_cleanup_arg_t arg;
+    arg.mosq = m;
+    arg.op = op;
+    arg.done_flag = &done_flag;
 
     // Create thread to run the operation
-    if (pthread_create(&thread, NULL, mqtt_cleanup_thread, arg) != 0) {
+    if (pthread_create(&thread, NULL, mqtt_cleanup_thread, &arg) != 0) {
         log_warn("MQTT: Failed to create thread for %s", op_name);
-        free(arg);
         return false;
     }
 
-    // Detach the thread so it cleans up automatically
+    // Detach the thread so it cleans up automatically if we timeout
     pthread_detach(thread);
 
-    // Wait for completion with timeout
-    // Calculate absolute deadline once
-    struct timespec deadline;
-    clock_gettime(CLOCK_REALTIME, &deadline);
-    deadline.tv_sec += timeout_sec;
+    // Poll for completion with 50ms intervals
+    int timeout_ms = timeout_sec * 1000;
+    int elapsed_ms = 0;
+    const int poll_interval_ms = 50;
 
-    pthread_mutex_lock(&cleanup_mutex);
-    while (cleanup_completed_generation != my_generation) {
-        int rc = pthread_cond_timedwait(&cleanup_cond, &cleanup_mutex, &deadline);
-        if (rc == ETIMEDOUT) {
-            pthread_mutex_unlock(&cleanup_mutex);
-            log_warn("MQTT: %s timed out after %d seconds", op_name, timeout_sec);
-            return false;
+    while (elapsed_ms < timeout_ms) {
+        if (done_flag) {
+            // Operation completed successfully
+            return true;
         }
-        // Spurious wakeup or signal from different operation - check deadline
-        struct timespec now;
-        clock_gettime(CLOCK_REALTIME, &now);
-        if (now.tv_sec > deadline.tv_sec ||
-            (now.tv_sec == deadline.tv_sec && now.tv_nsec >= deadline.tv_nsec)) {
-            pthread_mutex_unlock(&cleanup_mutex);
-            log_warn("MQTT: %s timed out after %d seconds (deadline passed)", op_name, timeout_sec);
-            return false;
-        }
-        // Continue waiting - might have been signaled by a different operation
+        usleep(poll_interval_ms * 1000);
+        elapsed_ms += poll_interval_ms;
     }
-    pthread_mutex_unlock(&cleanup_mutex);
 
-    return true;
+    // Timeout - the thread is still running but we'll return anyway
+    // The thread will eventually complete (or process will exit)
+    log_warn("MQTT: %s timed out after %d seconds", op_name, timeout_sec);
+    return false;
 }
 
 /**

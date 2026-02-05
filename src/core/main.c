@@ -87,7 +87,16 @@ void set_web_server_socket(int socket_fd) {
     web_server_socket = socket_fd;
 }
 
+// Async-signal-safe write to stderr
+// Note: We cast to void to suppress the unused result warning
+static void signal_safe_write(const char *msg) {
+    if (msg) {
+        (void)write(STDERR_FILENO, msg, strlen(msg));
+    }
+}
+
 // Improved signal handler with phased shutdown approach
+// IMPORTANT: This handler must be async-signal-safe - no mutex operations!
 static void signal_handler(int sig) {
     // Check if coordinator has been destroyed - if so, we're in final cleanup
     // and should just exit cleanly without trying to use any mutexes
@@ -96,25 +105,27 @@ static void signal_handler(int sig) {
         _exit(0);
     }
 
-    // Log the signal received
-    log_info("Received signal %d, shutting down...", sig);
-
     // Check if we're already shutting down
-    static bool shutdown_in_progress = false;
-    static int signal_count = 0;
+    // Use volatile to ensure visibility across signal invocations
+    static volatile sig_atomic_t shutdown_in_progress = 0;
+    static volatile sig_atomic_t signal_count = 0;
     signal_count++;
 
     if (shutdown_in_progress) {
-        // Second signal during shutdown - force exit to avoid mutex corruption
-        // Using _exit() is async-signal-safe and avoids the futex error
-        log_warn("Received signal %d during shutdown (signal #%d), forcing immediate exit", sig, signal_count);
+        // Second signal during shutdown - force exit immediately
+        // Using _exit() is async-signal-safe
+        signal_safe_write("[SIGNAL] Received signal during shutdown, forcing immediate exit\n");
         _exit(1);
     }
 
     // Mark that we're in the process of shutting down
-    shutdown_in_progress = true;
+    shutdown_in_progress = 1;
+
+    // Write to stderr (async-signal-safe)
+    signal_safe_write("[SIGNAL] Received shutdown signal, initiating shutdown...\n");
 
     // Initiate shutdown sequence through the coordinator
+    // Note: initiate_shutdown uses atomics which are async-signal-safe
     initiate_shutdown();
 
     // Set the running flag to false to trigger shutdown
@@ -124,9 +135,6 @@ static void signal_handler(int sig) {
     // Set an alarm to force exit if normal shutdown doesn't work
     // Increased from 10 to 20 seconds to give more time for graceful shutdown
     alarm(20);
-
-    // Log that we've started the shutdown process
-    log_info("Shutdown process initiated, waiting for components to stop gracefully");
 }
 
 // Atomic flag to track emergency shutdown phase - must be volatile sig_atomic_t for signal safety
