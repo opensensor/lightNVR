@@ -117,7 +117,7 @@ void load_default_config(config_t *config) {
     for (int i = 0; i < MAX_STREAMS; i++) {
         config->streams[i].detection_based_recording = false;
         config->streams[i].detection_model[0] = '\0';
-        config->streams[i].detection_interval = 10; // Check every 10 frames
+        config->streams[i].detection_interval = 10; // Check every 10 seconds
         config->streams[i].detection_threshold = 0.5f; // 50% confidence threshold
         config->streams[i].pre_detection_buffer = 5; // 5 seconds before detection
         config->streams[i].post_detection_buffer = 10; // 10 seconds after detection

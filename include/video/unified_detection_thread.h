@@ -64,7 +64,7 @@ typedef struct {
     char model_path[MAX_PATH_LENGTH];
     detection_model_t model;
     float detection_threshold;
-    int detection_interval;  // Process every Nth keyframe
+    int detection_interval;  // Seconds between detection checks
     
     // Buffer configuration
     int pre_buffer_seconds;   // Seconds to keep before detection
@@ -80,8 +80,9 @@ typedef struct {
     
     // Detection state
     time_t last_detection_time;      // When last detection occurred
+    time_t last_detection_check_time; // When last detection check was attempted (for time-based interval)
     time_t post_buffer_end_time;     // When post-buffer recording should end
-    int keyframe_counter;            // For detection interval
+    int log_counter;                 // Counter for periodic logging
     
     // Connection state
     atomic_int_fast64_t last_packet_time;

@@ -55,7 +55,7 @@
 #define MAX_PACKET_TIMEOUT_SEC 10
 
 // Detection settings
-#define DEFAULT_DETECTION_INTERVAL 5  // Process every 5th keyframe
+#define DEFAULT_DETECTION_INTERVAL 5  // Seconds between detection checks (fallback if not configured)
 
 // Global array of unified detection contexts
 static unified_detection_ctx_t *detection_contexts[MAX_UNIFIED_DETECTION_THREADS] = {0};
@@ -927,22 +927,25 @@ static int process_packet(unified_detection_ctx_t *ctx, AVPacket *pkt) {
         }
     }
 
-    // Run detection on keyframes (at configured interval)
+    // Run detection based on time interval (in seconds)
+    // We check on keyframes as a convenient trigger point, but the decision is time-based
+    // This ensures detection_interval is interpreted as seconds, not keyframe count
     if (is_keyframe && current_state != UDT_STATE_POST_BUFFER) {
-        ctx->keyframe_counter++;
+        time_t time_since_last_check = now - ctx->last_detection_check_time;
 
-        // Log every 10th keyframe to show detection is running
-        if (ctx->keyframe_counter % 10 == 1) {
-            log_debug("[%s] Keyframe %d/%d, model_path=%s, state=%d",
-                     ctx->stream_name, ctx->keyframe_counter, ctx->detection_interval,
+        // Log periodically to show detection is running
+        if (time_since_last_check > 0 && (ctx->log_counter++ % 10) == 0) {
+            log_debug("[%s] Time since last detection check: %ld/%d seconds, model=%s, state=%d",
+                     ctx->stream_name, (long)time_since_last_check, ctx->detection_interval,
                      ctx->model_path, current_state);
         }
 
-        if (ctx->keyframe_counter >= ctx->detection_interval) {
-            ctx->keyframe_counter = 0;
+        // Run detection if enough time has passed (detection_interval is in seconds)
+        if (time_since_last_check >= ctx->detection_interval) {
+            ctx->last_detection_check_time = now;
 
-            log_info("[%s] Running detection (interval=%d, model=%s)",
-                    ctx->stream_name, ctx->detection_interval, ctx->model_path);
+            log_info("[%s] Running detection (interval=%ds, elapsed=%lds, model=%s)",
+                    ctx->stream_name, ctx->detection_interval, (long)time_since_last_check, ctx->model_path);
 
             // Decode frame and run detection
             bool detection_triggered = run_detection_on_frame(ctx, pkt);
