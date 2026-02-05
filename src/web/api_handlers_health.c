@@ -3,7 +3,7 @@
  * @brief Health check API handlers for the web server
  */
 
-#define _GNU_SOURCE  // For pthread_timedjoin_np
+// Note: _GNU_SOURCE not needed - we use portable polling instead of pthread_timedjoin_np
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -49,7 +49,8 @@ static const int RESTART_COOLDOWN_SECONDS = 60;
 
 // Health check thread variables
 static pthread_t g_health_check_thread;
-static bool g_health_thread_running = false;
+static volatile bool g_health_thread_running = false;
+static volatile bool g_health_thread_exited = false;  // Flag to indicate thread has exited
 static int g_health_check_interval = 30; // seconds
 static char g_health_check_url[256] = "http://127.0.0.1:8080/api/health";
 
@@ -428,6 +429,7 @@ static void *health_check_thread_func(void *arg) {
     }
 
     log_info("Health check thread exiting");
+    g_health_thread_exited = true;  // Signal that thread has exited
     return NULL;
 }
 
@@ -463,6 +465,7 @@ void start_health_check_thread(void) {
     }
 
     g_health_thread_running = true;
+    g_health_thread_exited = false;  // Reset the exited flag
 
     if (pthread_create(&g_health_check_thread, NULL, health_check_thread_func, NULL) != 0) {
         log_error("Failed to create health check thread");
@@ -475,27 +478,39 @@ void start_health_check_thread(void) {
 
 /**
  * @brief Stop health check thread
+ *
+ * Uses a portable polling approach instead of pthread_timedjoin_np (GNU extension)
+ * to work on both glibc and musl (e.g., Linux 4.4 with thingino-firmware)
  */
 void stop_health_check_thread(void) {
-    if (!g_health_thread_running) {
+    if (!g_health_thread_running && g_health_thread_exited) {
+        // Thread was never started or already stopped
         return;
     }
 
     log_info("Stopping health check thread...");
     g_health_thread_running = false;
 
-    // Wait for thread to exit (with timeout)
-    struct timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
-    ts.tv_sec += 5; // 5 second timeout
+    // Use portable polling approach with timeout (5 seconds)
+    // Poll every 50ms to check if thread has exited
+    int timeout_ms = 5000;
+    int elapsed_ms = 0;
+    const int poll_interval_ms = 50;
 
-    int result = pthread_timedjoin_np(g_health_check_thread, NULL, &ts);
-    if (result != 0) {
-        log_warn("Health check thread did not exit in time, detaching");
-        pthread_detach(g_health_check_thread);
-    } else {
-        log_info("Health check thread stopped successfully");
+    while (elapsed_ms < timeout_ms) {
+        if (g_health_thread_exited) {
+            // Thread has exited, we can join it
+            pthread_join(g_health_check_thread, NULL);
+            log_info("Health check thread stopped successfully");
+            return;
+        }
+        usleep(poll_interval_ms * 1000);
+        elapsed_ms += poll_interval_ms;
     }
+
+    // Thread did not exit in time, detach it
+    log_warn("Health check thread did not exit in time (%d ms), detaching", timeout_ms);
+    pthread_detach(g_health_check_thread);
 }
 
 /**
