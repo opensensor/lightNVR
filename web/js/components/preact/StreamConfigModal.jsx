@@ -391,16 +391,16 @@ export function StreamConfigModal({
 
                   {/* Show info box based on recording mode selection */}
                   {currentStream.record && currentStream.detectionEnabled && (
-                    <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-md">
-                      <p className="text-sm text-blue-200">
-                        <strong>ℹ️ Both modes enabled:</strong> Continuous recording will run, and detection events will be logged and associated with the recordings.
+                    <div className="p-3 rounded-md bg-muted border border-border">
+                      <p className="text-sm text-muted-foreground">
+                        <strong className="text-foreground">ℹ️ Both modes enabled:</strong> Continuous recording will run, and detection events will be logged and associated with the recordings.
                       </p>
                     </div>
                   )}
                   {!currentStream.record && currentStream.detectionEnabled && (
-                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-md">
-                      <p className="text-sm text-amber-200">
-                        <strong>⚡ Detection-only mode:</strong> Video will only be saved when detections occur, with pre and post buffers.
+                    <div className="p-3 rounded-md bg-muted border border-border">
+                      <p className="text-sm text-muted-foreground">
+                        <strong className="text-foreground">⚡ Detection-only mode:</strong> Video will only be saved when detections occur, with pre and post buffers.
                       </p>
                     </div>
                   )}
@@ -487,17 +487,17 @@ export function StreamConfigModal({
                           <div className="mt-3 space-y-3">
                             {/* Show info box only when using default endpoint */}
                             {currentStream.detectionModel === 'api-detection' && (
-                              <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-md">
-                                <p className="text-sm text-blue-200 mb-2">
-                                  <strong>ℹ️ Using Default API Endpoint:</strong>
+                              <div className="p-3 rounded-md bg-muted border border-border">
+                                <p className="text-sm mb-2 text-muted-foreground">
+                                  <strong className="text-foreground">ℹ️ Using Default API Endpoint:</strong>
                                 </p>
-                                <p className="text-xs text-blue-300 font-mono bg-black/30 px-2 py-1 rounded">
+                                <p className="text-xs font-mono px-2 py-1 rounded bg-background text-foreground">
                                   http://localhost:9001/detect
                                 </p>
-                                <p className="text-xs text-blue-300 mt-2">
-                                  Configured in <code className="bg-black/30 px-1 rounded">lightnvr.ini</code> under <code className="bg-black/30 px-1 rounded">[api_detection]</code>
+                                <p className="text-xs mt-2 text-muted-foreground">
+                                  Configured in <code className="px-1 rounded bg-background">lightnvr.ini</code> under <code className="px-1 rounded bg-background">[api_detection]</code>
                                 </p>
-                                <p className="text-xs text-yellow-300 mt-2">
+                                <p className="text-xs mt-2 text-muted-foreground">
                                   ⚠️ Make sure light-object-detect is running on this endpoint
                                 </p>
                               </div>
@@ -757,12 +757,12 @@ export function StreamConfigModal({
                     </div>
                   )}
 
-                  <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                  <div className="rounded-lg p-4" style={{backgroundColor: 'hsl(var(--info-muted))', borderWidth: '1px', borderStyle: 'solid', borderColor: 'hsl(var(--info) / 0.3)'}}>
                     <div className="flex">
-                      <svg className="w-5 h-5 text-blue-600 dark:text-blue-400 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <svg className="w-5 h-5 mr-2 flex-shrink-0" style={{color: 'hsl(var(--info))'}} fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                       </svg>
-                      <div className="text-sm text-blue-800 dark:text-blue-200">
+                      <div className="text-sm" style={{color: 'hsl(var(--info-muted-foreground))'}}>
                         <p className="font-medium mb-1">Zone Detection Tips:</p>
                         <ul className="list-disc list-inside space-y-1 text-xs">
                           <li>Click "Configure Zones" to draw detection regions on your camera view</li>

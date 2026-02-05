@@ -3,7 +3,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include <pthread.h>
+#include <signal.h>
 #include <mosquitto.h>
 #include <cjson/cJSON.h>
 
@@ -15,6 +17,13 @@ static struct mosquitto *mosq = NULL;
 static const config_t *mqtt_config = NULL;
 static bool connected = false;
 static pthread_mutex_t mqtt_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// Cleanup thread state - use a generation counter to avoid race conditions
+// between timed-out operations and subsequent ones
+static volatile int cleanup_generation = 0;
+static volatile int cleanup_completed_generation = -1;
+static pthread_mutex_t cleanup_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t cleanup_cond = PTHREAD_COND_INITIALIZER;
 
 // Forward declarations for callbacks
 static void on_connect(struct mosquitto *mosq, void *userdata, int rc);
@@ -315,21 +324,136 @@ int mqtt_publish_raw(const char *topic, const char *payload, bool retain) {
     return 0;
 }
 
+// Cleanup operation types
+typedef enum {
+    MQTT_OP_LOOP_STOP,
+    MQTT_OP_DESTROY,
+    MQTT_OP_LIB_CLEANUP
+} mqtt_cleanup_op_t;
+
+// Thread argument structure
+typedef struct {
+    struct mosquitto *mosq;
+    mqtt_cleanup_op_t op;
+    int generation;  // Used to identify which operation completed
+} mqtt_cleanup_arg_t;
+
+/**
+ * Thread function to run blocking mosquitto operations with timeout capability
+ */
+static void *mqtt_cleanup_thread(void *arg) {
+    mqtt_cleanup_arg_t *cleanup_arg = (mqtt_cleanup_arg_t *)arg;
+    int my_generation = cleanup_arg->generation;
+
+    switch (cleanup_arg->op) {
+        case MQTT_OP_LOOP_STOP:
+            mosquitto_loop_stop(cleanup_arg->mosq, true);
+            break;
+        case MQTT_OP_DESTROY:
+            mosquitto_destroy(cleanup_arg->mosq);
+            break;
+        case MQTT_OP_LIB_CLEANUP:
+            mosquitto_lib_cleanup();
+            break;
+    }
+
+    // Signal that cleanup is done for this specific generation
+    pthread_mutex_lock(&cleanup_mutex);
+    cleanup_completed_generation = my_generation;
+    pthread_cond_signal(&cleanup_cond);
+    pthread_mutex_unlock(&cleanup_mutex);
+
+    free(cleanup_arg);
+    return NULL;
+}
+
+/**
+ * Run a mosquitto cleanup operation with a timeout
+ * Returns true if completed within timeout, false if timed out
+ */
+static bool mqtt_run_with_timeout(struct mosquitto *m, mqtt_cleanup_op_t op, int timeout_sec, const char *op_name) {
+    pthread_t thread;
+
+    // Increment generation counter to uniquely identify this operation
+    // This prevents race conditions where a previously timed-out operation
+    // signals completion and interferes with a new operation
+    pthread_mutex_lock(&cleanup_mutex);
+    int my_generation = ++cleanup_generation;
+    pthread_mutex_unlock(&cleanup_mutex);
+
+    // Allocate argument structure (will be freed by thread)
+    mqtt_cleanup_arg_t *arg = malloc(sizeof(mqtt_cleanup_arg_t));
+    if (!arg) {
+        log_warn("MQTT: Failed to allocate cleanup arg for %s", op_name);
+        return false;
+    }
+    arg->mosq = m;
+    arg->op = op;
+    arg->generation = my_generation;
+
+    // Create thread to run the operation
+    if (pthread_create(&thread, NULL, mqtt_cleanup_thread, arg) != 0) {
+        log_warn("MQTT: Failed to create thread for %s", op_name);
+        free(arg);
+        return false;
+    }
+
+    // Detach the thread so it cleans up automatically
+    pthread_detach(thread);
+
+    // Wait for completion with timeout
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += timeout_sec;
+
+    pthread_mutex_lock(&cleanup_mutex);
+    while (cleanup_completed_generation != my_generation) {
+        int rc = pthread_cond_timedwait(&cleanup_cond, &cleanup_mutex, &ts);
+        if (rc == ETIMEDOUT) {
+            pthread_mutex_unlock(&cleanup_mutex);
+            log_warn("MQTT: %s timed out after %d seconds", op_name, timeout_sec);
+            return false;
+        }
+        // Check again after waking - might have been signaled by a different operation
+    }
+    pthread_mutex_unlock(&cleanup_mutex);
+
+    return true;
+}
+
 /**
  * Disconnect from the MQTT broker
  */
 void mqtt_disconnect(void) {
     if (!mosq) {
+        log_info("MQTT: No client to disconnect");
         return;
     }
 
-    pthread_mutex_lock(&mqtt_mutex);
+    log_info("MQTT: Attempting to acquire mutex for disconnect...");
 
-    // First disconnect to signal the loop to stop
+    // Try to lock with timeout to avoid blocking during shutdown
+    struct timespec timeout;
+    clock_gettime(CLOCK_REALTIME, &timeout);
+    timeout.tv_sec += 2;  // 2 second timeout
+
+    int lock_result = pthread_mutex_timedlock(&mqtt_mutex, &timeout);
+    if (lock_result != 0) {
+        log_warn("MQTT: Failed to acquire mutex for disconnect (timeout or error), proceeding anyway");
+        // Force disconnect without mutex - risky but better than hanging
+        mosquitto_disconnect(mosq);
+        mqtt_run_with_timeout(mosq, MQTT_OP_LOOP_STOP, 2, "mosquitto_loop_stop");
+        connected = false;
+        log_info("MQTT: Forced disconnect without mutex");
+        return;
+    }
+
+    log_info("MQTT: Calling mosquitto_disconnect...");
     mosquitto_disconnect(mosq);
-    // Use force=true to force thread cancellation immediately
-    // This prevents blocking during shutdown if the broker is unresponsive
-    mosquitto_loop_stop(mosq, true);
+
+    log_info("MQTT: Calling mosquitto_loop_stop with 2 second timeout...");
+    mqtt_run_with_timeout(mosq, MQTT_OP_LOOP_STOP, 2, "mosquitto_loop_stop");
+
     connected = false;
 
     pthread_mutex_unlock(&mqtt_mutex);
@@ -341,18 +465,46 @@ void mqtt_disconnect(void) {
  * Cleanup MQTT resources
  */
 void mqtt_cleanup(void) {
-    if (mosq) {
-        mqtt_disconnect();
+    log_info("MQTT: Starting cleanup...");
 
-        pthread_mutex_lock(&mqtt_mutex);
-        mosquitto_destroy(mosq);
+    if (!mosq) {
+        log_info("MQTT: No client to clean up");
+        return;
+    }
+
+    mqtt_disconnect();
+
+    log_info("MQTT: Attempting to acquire mutex for destroy...");
+
+    // Try to lock with timeout to avoid blocking during shutdown
+    struct timespec timeout;
+    clock_gettime(CLOCK_REALTIME, &timeout);
+    timeout.tv_sec += 2;  // 2 second timeout
+
+    int lock_result = pthread_mutex_timedlock(&mqtt_mutex, &timeout);
+    if (lock_result != 0) {
+        log_warn("MQTT: Failed to acquire mutex for destroy (timeout or error), skipping destroy");
+        // Skip destroy entirely - it's blocking and we're shutting down anyway
         mosq = NULL;
         mqtt_config = NULL;
-        pthread_mutex_unlock(&mqtt_mutex);
-
-        mosquitto_lib_cleanup();
-        log_info("MQTT: Cleaned up");
+        log_info("MQTT: Skipped destroy due to mutex timeout");
+        return;
     }
+
+    log_info("MQTT: Calling mosquitto_destroy with 2 second timeout...");
+    bool destroyed = mqtt_run_with_timeout(mosq, MQTT_OP_DESTROY, 2, "mosquitto_destroy");
+    if (destroyed) {
+        mosq = NULL;
+    } else {
+        log_warn("MQTT: mosquitto_destroy timed out, setting mosq to NULL anyway");
+        mosq = NULL;
+    }
+    mqtt_config = NULL;
+    pthread_mutex_unlock(&mqtt_mutex);
+
+    log_info("MQTT: Calling mosquitto_lib_cleanup with 2 second timeout...");
+    mqtt_run_with_timeout(NULL, MQTT_OP_LIB_CLEANUP, 2, "mosquitto_lib_cleanup");
+    log_info("MQTT: Cleaned up");
 }
 
 #endif /* ENABLE_MQTT */
