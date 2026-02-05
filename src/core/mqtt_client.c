@@ -400,6 +400,10 @@ static bool mqtt_run_with_timeout(struct mosquitto *m, mqtt_cleanup_op_t op, int
 
     // Timeout - the thread is still running but we'll return anyway
     // The thread will eventually complete (or process will exit)
+    // Use write() first to ensure we see the timeout even if logger is blocked
+    char timeout_msg[128];
+    snprintf(timeout_msg, sizeof(timeout_msg), "[MQTT DEBUG] %s timed out after %d seconds\n", op_name, timeout_sec);
+    (void)write(STDERR_FILENO, timeout_msg, strlen(timeout_msg));
     log_warn("MQTT: %s timed out after %d seconds", op_name, timeout_sec);
     return false;
 }

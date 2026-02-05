@@ -377,7 +377,7 @@ export function LiveView({isWebRTCDisabled}) {
 
       <div className="page-header flex justify-between items-center mb-4 p-4 bg-card text-card-foreground rounded-lg shadow" style={{ position: 'relative', zIndex: 10, pointerEvents: 'auto' }}>
         <div className="flex items-center space-x-2">
-          <h2 className="text-xl font-bold mr-4">Live View</h2>
+          <h2 className="text-xl font-bold mr-4">Live View (HLS)</h2>
           <div className="flex space-x-2">
             {!isWebRTCDisabled && (
             <button

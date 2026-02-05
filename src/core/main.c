@@ -97,16 +97,20 @@ static void signal_safe_write(const char *msg) {
 
 // Improved signal handler with phased shutdown approach
 // IMPORTANT: This handler must be async-signal-safe - no mutex operations!
+// Only use: write(), _exit(), alarm(), atomic operations on sig_atomic_t
 static void signal_handler(int sig) {
+    (void)sig; // Suppress unused parameter warning
+
     // Check if coordinator has been destroyed - if so, we're in final cleanup
     // and should just exit cleanly without trying to use any mutexes
+    // Note: is_coordinator_destroyed() uses atomic_load which is async-signal-safe
     if (is_coordinator_destroyed()) {
         // Final cleanup is in progress, force exit
         _exit(0);
     }
 
     // Check if we're already shutting down
-    // Use volatile to ensure visibility across signal invocations
+    // Use volatile sig_atomic_t to ensure visibility across signal invocations
     static volatile sig_atomic_t shutdown_in_progress = 0;
     static volatile sig_atomic_t signal_count = 0;
     signal_count++;
@@ -124,11 +128,13 @@ static void signal_handler(int sig) {
     // Write to stderr (async-signal-safe)
     signal_safe_write("[SIGNAL] Received shutdown signal, initiating shutdown...\n");
 
-    // Initiate shutdown sequence through the coordinator
-    // Note: initiate_shutdown uses atomics which are async-signal-safe
-    initiate_shutdown();
+    // IMPORTANT: Do NOT call initiate_shutdown() here!
+    // initiate_shutdown() uses pthread_mutex_lock() and log_info() which are NOT async-signal-safe
+    // Instead, just set the shutdown flag atomically and let the main thread handle the rest
+    // The main thread will call initiate_shutdown() after exiting the main loop
 
-    // Set the running flag to false to trigger shutdown
+    // Set the running flag to false to trigger main loop exit
+    // This is safe because running is declared as volatile bool
     running = false;
 
     // For Linux 4.4 embedded systems, we need a more robust approach
@@ -1063,6 +1069,10 @@ int main(int argc, char *argv[]) {
     }
 
     log_info("Shutting down LightNVR...");
+
+    // Now that we're in the main thread (not signal handler), we can safely
+    // call initiate_shutdown() which uses mutexes and logging
+    initiate_shutdown();
 
     // Cleanup
 cleanup:

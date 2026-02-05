@@ -30,6 +30,7 @@ export function HLSVideoCell({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
 
   // PTZ controls state
   const [showPTZControls, setShowPTZControls] = useState(false);
@@ -40,7 +41,42 @@ export function HLSVideoCell({
   const hlsPlayerRef = useRef(null);
   const detectionOverlayRef = useRef(null);
 
-  // Initialize HLS player when component mounts
+  /**
+   * Refresh the stream's go2rtc registration
+   * This is useful when HLS connections fail due to stale go2rtc state
+   * @returns {Promise<boolean>} true if refresh was successful
+   */
+  const refreshStreamRegistration = async () => {
+    if (!stream?.name) {
+      console.warn('Cannot refresh stream: no stream name');
+      return false;
+    }
+
+    try {
+      console.log(`Refreshing go2rtc registration for stream ${stream.name}`);
+      const response = await fetch(`/api/streams/${encodeURIComponent(stream.name)}/refresh`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log(`Successfully refreshed go2rtc registration for stream ${stream.name}:`, data);
+        return true;
+      } else {
+        const errorText = await response.text();
+        console.warn(`Failed to refresh stream ${stream.name}: ${response.status} - ${errorText}`);
+        return false;
+      }
+    } catch (err) {
+      console.error(`Error refreshing stream ${stream.name}:`, err);
+      return false;
+    }
+  };
+
+  // Initialize HLS player when component mounts or retry is triggered
   useEffect(() => {
     if (!stream || !stream.name || !videoRef.current) return;
 
@@ -79,20 +115,21 @@ export function HLSVideoCell({
         console.log(`Using HLS.js for stream ${stream.name}`);
         hls = new Hls({
           // Buffer management - optimized for go2rtc's dynamic HLS
+          // Larger buffers = more stability, less flickering
           maxBufferLength: 30,            // Maximum buffer length in seconds
           maxMaxBufferLength: 60,         // Maximum maximum buffer length
-          backBufferLength: 10,           // Back buffer to prevent memory issues
+          backBufferLength: 30,           // Increased back buffer for smoother playback
 
-          // Live stream settings - tuned for go2rtc
-          liveSyncDurationCount: 3,       // Number of segments to keep behind live edge
-          liveMaxLatencyDurationCount: 10, // Max latency before seeking to live
+          // Live stream settings - tuned for stability over low latency
+          liveSyncDurationCount: 4,       // Slightly behind live edge for stability
+          liveMaxLatencyDurationCount: 15, // More tolerance before seeking to live
           liveDurationInfinity: true,     // Treat as infinite live stream
           lowLatencyMode: false,          // Disable low latency for stability
 
-          // High water mark - start playback with more buffer
-          highBufferWatchdogPeriod: 3,    // Check buffer health every 3 seconds
+          // Buffer health monitoring - less aggressive checking
+          highBufferWatchdogPeriod: 5,    // Check buffer health every 5 seconds (was 3)
 
-          // Loading timeouts
+          // Loading timeouts - generous to handle network hiccups
           fragLoadingTimeOut: 30000,      // Fragment loading timeout
           manifestLoadingTimeOut: 20000,  // Manifest loading timeout
           levelLoadingTimeOut: 20000,     // Level loading timeout
@@ -107,17 +144,27 @@ export function HLSVideoCell({
           enableWorker: true,             // Use web worker for better performance
           debug: false,                   // Disable debug logging
 
-          // Buffer flushing - important for preventing appendBuffer errors
-          maxBufferHole: 0.5,             // Maximum buffer hole tolerance
-          maxFragLookUpTolerance: 0.25,   // Fragment lookup tolerance
-          nudgeMaxRetry: 5,               // Retry attempts for buffer nudging
+          // Buffer flushing - more tolerant of gaps and holes
+          maxBufferHole: 1.0,             // Increased hole tolerance (was 0.5)
+          maxFragLookUpTolerance: 0.5,    // Increased lookup tolerance (was 0.25)
+          nudgeMaxRetry: 10,              // More retry attempts (was 5)
+          nudgeOffset: 0.2,               // Larger nudge offset for recovery
 
-          // Append error handling - increased retries for better recovery
-          appendErrorMaxRetry: 5,         // Retry appending on error
+          // Append error handling - more retries for better recovery
+          appendErrorMaxRetry: 10,        // More retries on append errors (was 5)
 
-          // Manifest refresh - go2rtc handles this dynamically
-          manifestLoadingMaxRetry: 3,     // Retry manifest loading
-          manifestLoadingRetryDelay: 1000 // Delay between manifest retries
+          // Manifest refresh - more retries for network resilience
+          manifestLoadingMaxRetry: 5,     // More retries (was 3)
+          manifestLoadingRetryDelay: 1000, // Delay between manifest retries
+          levelLoadingMaxRetry: 5,        // Retry level loading
+          fragLoadingMaxRetry: 8,         // More retries for fragments
+
+          // Stall recovery - let HLS.js handle stalls gracefully
+          maxStarvationDelay: 4,          // Max delay before starvation recovery
+          maxLoadingDelay: 4,             // Max loading delay before giving up
+
+          // Start playback even with minimal buffer
+          startFragPrefetch: true         // Prefetch next fragment for smoother playback
         });
 
         hls.loadSource(hlsStreamUrl);
@@ -140,45 +187,66 @@ export function HLSVideoCell({
         hls.on(Hls.Events.ERROR, function(event, data) {
           if (!isMounted) return;
 
-          // Handle non-fatal errors
+          // Handle non-fatal errors - be very conservative to avoid flickering
           if (!data.fatal) {
-            // Don't log or recover from bufferStalledError - it's normal and HLS.js handles it
-            if (data.details === 'bufferStalledError') {
-              // This is a normal buffering event, HLS.js will handle it automatically
-              // Don't call recoverMediaError() as it causes black flicker
+            // These errors are normal during live streaming and HLS.js handles them automatically
+            // Do NOT call recoverMediaError() as it causes black flicker
+            const ignoredErrors = [
+              'bufferStalledError',      // Normal buffering event
+              'bufferNudgeOnStall',      // HLS.js internal recovery
+              'bufferSeekOverHole',      // Gap in buffer, HLS.js handles it
+              'fragParsingError',        // Occasional parsing issues
+              'internalException',       // Internal HLS.js recovery
+              'bufferAppendError'        // Temporary append issues
+            ];
+
+            if (ignoredErrors.includes(data.details)) {
+              // Silently ignore - HLS.js handles these automatically
               return;
             }
 
+            // Log other non-fatal errors but don't try aggressive recovery
             console.log(`HLS non-fatal error: ${data.type}, details: ${data.details}`);
 
-            // Handle other media errors by trying to recover
-            if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-              console.warn('Non-fatal media error, attempting recovery:', data.details);
-              hls.recoverMediaError();
-            } else if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-              console.warn('Non-fatal network error:', data.details);
+            // For network errors, HLS.js will retry automatically - don't intervene
+            if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
               // Network errors often resolve themselves, just log them
+              console.log('Non-fatal network error, HLS.js will retry automatically');
+            }
+            // For media errors, only log - don't call recoverMediaError() as it causes flicker
+            else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+              console.log('Non-fatal media error, monitoring...', data.details);
             }
             return;
           }
 
-          // Log fatal errors
+          // Fatal errors require intervention
           console.error(`HLS fatal error: ${data.type}, details: ${data.details}`);
-
-          // Handle fatal errors
-          console.error('Fatal HLS error:', data);
 
           switch(data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
+              // For network errors, try to restart loading
               console.error('Fatal network error encountered, trying to recover');
-              hls.startLoad();
+              // Add a small delay before restarting to avoid rapid retries
+              setTimeout(() => {
+                if (isMounted && hls) {
+                  hls.startLoad();
+                }
+              }, 1000);
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
+              // For fatal media errors, we need to recover
               console.error('Fatal media error encountered, trying to recover');
-              hls.recoverMediaError();
+              // Use a delay to avoid flicker from rapid recovery attempts
+              setTimeout(() => {
+                if (isMounted && hls) {
+                  hls.recoverMediaError();
+                }
+              }, 500);
               break;
             default:
-              // Cannot recover
+              // Cannot recover from other fatal errors
+              console.error('Unrecoverable HLS error, destroying player');
               hls.destroy();
               setError(data.details || 'HLS playback error');
               setIsLoading(false);
@@ -233,39 +301,38 @@ export function HLSVideoCell({
         videoRef.current.load();
       }
     };
-  }, [stream]);
+  }, [stream, retryCount]);
 
   // Handle retry button click
-  const handleRetry = () => {
-    // Force a re-render to restart the HLS player
-    setError(null);
-    setIsLoading(true);
-    setIsPlaying(false);
-    
+  const handleRetry = async () => {
+    console.log(`Retry requested for stream ${stream?.name}`);
+
     // Clean up existing player
     if (hlsPlayerRef.current) {
       hlsPlayerRef.current.destroy();
       hlsPlayerRef.current = null;
     }
-    
+
     if (videoRef.current) {
       videoRef.current.pause();
       videoRef.current.removeAttribute('src');
       videoRef.current.load();
     }
 
-    // Fetch updated stream info and reinitialize
-    fetch(`/api/streams/${encodeURIComponent(stream.name)}`)
-      .then(response => response.json())
-      .then(updatedStream => {
-        // Force a re-render by updating state
-        setIsLoading(true);
-      })
-      .catch(error => {
-        console.error(`Error fetching stream info for retry: ${error}`);
-        setError('Failed to reconnect');
-        setIsLoading(false);
-      });
+    // Reset state
+    setError(null);
+    setIsLoading(true);
+    setIsPlaying(false);
+
+    // Refresh the stream's go2rtc registration before retrying
+    // This helps recover from stale go2rtc state that causes HLS failures
+    await refreshStreamRegistration();
+
+    // Small delay to allow go2rtc to re-register the stream
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // Increment retry count to trigger useEffect re-run
+    setRetryCount(prev => prev + 1);
   };
 
   return (
