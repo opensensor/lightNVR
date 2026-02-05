@@ -26,15 +26,15 @@ export function WebRTCView() {
   const [streams, setStreams] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Initialize layout from URL or sessionStorage if available
+  // Initialize layout from URL or localStorage if available
   const [layout, setLayout] = useState(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const layoutParam = urlParams.get('layout');
     if (layoutParam) {
       return layoutParam;
     }
-    // Check sessionStorage as a backup
-    const storedLayout = sessionStorage.getItem('webrtc_layout');
+    // Check localStorage for persisted layout preference
+    const storedLayout = localStorage.getItem('lightnvr-webrtc-layout');
     return storedLayout || '4';
   });
 
@@ -175,11 +175,8 @@ export function WebRTCView() {
       sessionStorage.removeItem('webrtc_current_page');
     }
 
-    if (layout !== '4') {
-      sessionStorage.setItem('webrtc_layout', layout);
-    } else {
-      sessionStorage.removeItem('webrtc_layout');
-    }
+    // Save layout to localStorage for persistence across sessions
+    localStorage.setItem('lightnvr-webrtc-layout', layout);
 
     if (layout === '1' && selectedStream) {
       sessionStorage.setItem('webrtc_selected_stream', selectedStream);
