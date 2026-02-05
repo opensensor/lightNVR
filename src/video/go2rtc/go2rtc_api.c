@@ -720,6 +720,75 @@ bool go2rtc_api_get_server_info(int *rtsp_port) {
     return success;
 }
 
+bool go2rtc_api_preload_stream(const char *stream_id) {
+    if (!g_initialized) {
+        log_error("go2rtc API client not initialized");
+        return false;
+    }
+
+    if (!stream_id) {
+        log_error("Invalid parameters for go2rtc_api_preload_stream");
+        return false;
+    }
+
+    CURL *curl;
+    CURLcode res;
+    char url[URL_BUFFER_SIZE];
+    bool success = false;
+
+    // Initialize CURL
+    curl = curl_easy_init();
+    if (!curl) {
+        log_error("Failed to initialize CURL");
+        return false;
+    }
+
+    // Lock mutex for thread-safe access to the global response buffer
+    pthread_mutex_lock(&g_api_mutex);
+
+    // Reset response buffer
+    memset(g_response_buffer, 0, sizeof(g_response_buffer));
+    g_response_size = 0;
+
+    // Build the preload URL: PUT /api/preload?src={stream_id}&video&audio
+    // This tells go2rtc to keep a persistent consumer connected to the stream
+    snprintf(url, sizeof(url), "http://%s:%d/api/preload?src=%s&video&audio",
+            g_api_host, g_api_port, stream_id);
+
+    log_info("Preloading stream with URL: %s", url);
+
+    // Set CURL options for PUT request
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, StaticWriteCallback);
+
+    // Perform the request
+    res = curl_easy_perform(curl);
+
+    // Check for errors
+    if (res != CURLE_OK) {
+        log_error("CURL request failed for preload: %s", curl_easy_strerror(res));
+    } else {
+        long http_code = 0;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+
+        if (http_code == 200) {
+            log_info("Successfully preloaded stream in go2rtc: %s", stream_id);
+            success = true;
+        } else {
+            log_error("Failed to preload stream in go2rtc (status %ld): %s", http_code, g_response_buffer);
+        }
+    }
+
+    // Unlock mutex before cleanup
+    pthread_mutex_unlock(&g_api_mutex);
+
+    // Clean up
+    curl_easy_cleanup(curl);
+
+    return success;
+}
+
 void go2rtc_api_cleanup(void) {
     if (!g_initialized) {
         return;
