@@ -602,15 +602,11 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
         return -1;
     }
 
-    // Thread safety for curl operations
-    pthread_mutex_lock(&curl_mutex);
-
     // Initialize result
     if (result) {
         memset(result, 0, sizeof(detection_result_t));
     } else {
         log_error("API Detection (snapshot): NULL result pointer provided");
-        pthread_mutex_unlock(&curl_mutex);
         return -1;
     }
 
@@ -622,22 +618,17 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
         log_info("API Detection (snapshot): Using API URL from config: %s", actual_api_url ? actual_api_url : "NULL");
     }
 
-    if (!initialized || !curl_handle) {
-        log_error("API Detection (snapshot): System not initialized");
-        pthread_mutex_unlock(&curl_mutex);
-        return -1;
-    }
+    // Note: We no longer check initialized/curl_handle here because we create a per-call handle
+    // This allows parallel detection requests from multiple threads
 
     if (!actual_api_url) {
         log_error("API Detection (snapshot): Invalid API URL");
-        pthread_mutex_unlock(&curl_mutex);
         return -1;
     }
 
     // Check URL format
     if (strncmp(actual_api_url, "http://", 7) != 0 && strncmp(actual_api_url, "https://", 8) != 0) {
         log_error("API Detection (snapshot): Invalid URL format: %s", actual_api_url);
-        pthread_mutex_unlock(&curl_mutex);
         return -1;
     }
 
@@ -647,7 +638,6 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
 
     if (!go2rtc_get_snapshot(stream_name, &jpeg_data, &jpeg_size)) {
         log_warn("API Detection (snapshot): Failed to get snapshot from go2rtc for stream %s", stream_name);
-        pthread_mutex_unlock(&curl_mutex);
         return -2;  // Special return code: go2rtc failed, caller should fall back
     }
 
@@ -657,12 +647,17 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
     if (!jpeg_data || jpeg_size == 0) {
         log_error("API Detection (snapshot): No JPEG data available");
         if (jpeg_data) free(jpeg_data);
-        pthread_mutex_unlock(&curl_mutex);
         return -2;
     }
 
-    // Reset curl handle
-    curl_easy_reset(curl_handle);
+    // Create a per-call curl handle to allow parallel requests from multiple threads
+    // This avoids the global mutex bottleneck that was serializing all detection calls
+    CURL *local_curl = curl_easy_init();
+    if (!local_curl) {
+        log_error("API Detection (snapshot): Failed to create curl handle");
+        free(jpeg_data);
+        return -1;
+    }
 
     // Set up curl for multipart/form-data
     curl_mime *mime = NULL;
@@ -672,11 +667,11 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
     struct curl_slist *headers = NULL;
 
     // Create the mime structure
-    mime = curl_mime_init(curl_handle);
+    mime = curl_mime_init(local_curl);
     if (!mime) {
         log_error("API Detection (snapshot): Failed to create mime structure");
         free(jpeg_data);
-        pthread_mutex_unlock(&curl_mutex);
+        curl_easy_cleanup(local_curl);
         return -1;
     }
 
@@ -686,7 +681,7 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
         log_error("API Detection (snapshot): Failed to add mime part");
         curl_mime_free(mime);
         free(jpeg_data);
-        pthread_mutex_unlock(&curl_mutex);
+        curl_easy_cleanup(local_curl);
         return -1;
     }
 
@@ -696,7 +691,7 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
     if (mime_result != CURLE_OK) {
         curl_mime_free(mime);
         free(jpeg_data);
-        pthread_mutex_unlock(&curl_mutex);
+        curl_easy_cleanup(local_curl);
         return -1;
     }
 
@@ -704,7 +699,7 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
     if (mime_result != CURLE_OK) {
         curl_mime_free(mime);
         free(jpeg_data);
-        pthread_mutex_unlock(&curl_mutex);
+        curl_easy_cleanup(local_curl);
         return -1;
     }
 
@@ -712,7 +707,7 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
     if (mime_result != CURLE_OK) {
         curl_mime_free(mime);
         free(jpeg_data);
-        pthread_mutex_unlock(&curl_mutex);
+        curl_easy_cleanup(local_curl);
         return -1;
     }
 
@@ -720,7 +715,7 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
     if (mime_result != CURLE_OK) {
         curl_mime_free(mime);
         free(jpeg_data);
-        pthread_mutex_unlock(&curl_mutex);
+        curl_easy_cleanup(local_curl);
         return -1;
     }
 
@@ -746,42 +741,42 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
     log_info("API Detection (snapshot): Sending request to %s", url_with_params);
 
     // Set up the request
-    curl_easy_setopt(curl_handle, CURLOPT_URL, url_with_params);
-    curl_easy_setopt(curl_handle, CURLOPT_MIMEPOST, mime);
+    curl_easy_setopt(local_curl, CURLOPT_URL, url_with_params);
+    curl_easy_setopt(local_curl, CURLOPT_MIMEPOST, mime);
 
     headers = curl_slist_append(headers, "accept: application/json");
-    curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(local_curl, CURLOPT_HTTPHEADER, headers);
 
     chunk.memory = malloc(1);
     chunk.size = 0;
 
-    curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, write_memory_callback);
-    curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)&chunk);
-    curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 10);
-    curl_easy_setopt(curl_handle, CURLOPT_NOSIGNAL, 1L); // Prevent curl from using signals (required for multi-threaded apps)
+    curl_easy_setopt(local_curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
+    curl_easy_setopt(local_curl, CURLOPT_WRITEDATA, (void *)&chunk);
+    curl_easy_setopt(local_curl, CURLOPT_TIMEOUT, 10);
+    curl_easy_setopt(local_curl, CURLOPT_NOSIGNAL, 1L); // Prevent curl from using signals (required for multi-threaded apps)
 
     // Perform the request
-    CURLcode res = curl_easy_perform(curl_handle);
+    CURLcode res = curl_easy_perform(local_curl);
 
     if (res != CURLE_OK) {
         log_error("API Detection (snapshot): curl_easy_perform() failed: %s", curl_easy_strerror(res));
         free(chunk.memory);
         curl_mime_free(mime);
         curl_slist_free_all(headers);
-        pthread_mutex_unlock(&curl_mutex);
+        curl_easy_cleanup(local_curl);
         return -1;
     }
 
     // Check HTTP response code
     long http_code = 0;
-    curl_easy_getinfo(curl_handle, CURLINFO_RESPONSE_CODE, &http_code);
+    curl_easy_getinfo(local_curl, CURLINFO_RESPONSE_CODE, &http_code);
 
     if (http_code != 200) {
         log_error("API Detection (snapshot): HTTP error %ld", http_code);
         free(chunk.memory);
         curl_mime_free(mime);
         curl_slist_free_all(headers);
-        pthread_mutex_unlock(&curl_mutex);
+        curl_easy_cleanup(local_curl);
         return -1;
     }
 
@@ -791,7 +786,7 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
         free(chunk.memory);
         curl_mime_free(mime);
         curl_slist_free_all(headers);
-        pthread_mutex_unlock(&curl_mutex);
+        curl_easy_cleanup(local_curl);
         return -1;
     }
 
@@ -801,7 +796,7 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
         free(chunk.memory);
         curl_mime_free(mime);
         curl_slist_free_all(headers);
-        pthread_mutex_unlock(&curl_mutex);
+        curl_easy_cleanup(local_curl);
         return -1;
     }
 
@@ -813,7 +808,7 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
         free(chunk.memory);
         curl_mime_free(mime);
         curl_slist_free_all(headers);
-        pthread_mutex_unlock(&curl_mutex);
+        curl_easy_cleanup(local_curl);
         return -1;
     }
 
@@ -898,8 +893,8 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
     free(chunk.memory);
     curl_mime_free(mime);
     curl_slist_free_all(headers);
+    curl_easy_cleanup(local_curl);
 
-    pthread_mutex_unlock(&curl_mutex);
     log_info("API Detection (snapshot): Successfully detected %d objects", result->count);
     return 0;
 }
