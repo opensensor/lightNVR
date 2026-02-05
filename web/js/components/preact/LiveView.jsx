@@ -3,8 +3,8 @@
  * Preact component for the HLS live view page
  */
 
-import { h, render } from 'preact';
-import { useState, useEffect, useRef, useCallback, useMemo } from 'preact/hooks';
+import { h } from 'preact';
+import { useState, useEffect, useRef, useMemo } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { setupModals, addModalStyles } from './UI.jsx';
 import { useFullscreenManager, FullscreenManager } from './FullscreenManager.jsx';
@@ -105,7 +105,51 @@ export function LiveView({isWebRTCDisabled}) {
       const processStreams = async () => {
         try {
           // Filter and process the streams
-          const filteredStreams = await filterStreamsForHLS(streamsData);
+          // Note: filterStreamsForHLS is defined below but called here via closure
+          // We use a local function to fetch stream details to avoid hoisting issues
+          const fetchStreamDetails = async (stream) => {
+            try {
+              const streamId = stream.id || stream.name;
+              const streamDetails = await queryClient.fetchQuery({
+                queryKey: ['stream-details', streamId],
+                queryFn: async () => {
+                  const response = await fetch(`/api/streams/${encodeURIComponent(streamId)}`);
+                  if (!response.ok) {
+                    throw new Error(`Failed to load details for stream ${stream.name}`);
+                  }
+                  return response.json();
+                },
+                staleTime: 30000 // 30 seconds
+              });
+              return streamDetails;
+            } catch (error) {
+              console.error(`Error loading details for stream ${stream.name}:`, error);
+              return stream;
+            }
+          };
+
+          // Fetch details for all streams
+          const detailedStreams = await Promise.all(streamsData.map(fetchStreamDetails));
+          console.log('Loaded detailed streams for HLS view:', detailedStreams);
+
+          // Filter out streams that are soft deleted, inactive, or not configured for streaming
+          const filteredStreams = detailedStreams.filter(stream => {
+            if (stream.is_deleted) {
+              console.log(`Stream ${stream.name} is soft deleted, filtering out`);
+              return false;
+            }
+            if (!stream.enabled) {
+              console.log(`Stream ${stream.name} is inactive, filtering out`);
+              return false;
+            }
+            if (!stream.streaming_enabled) {
+              console.log(`Stream ${stream.name} is not configured for streaming, filtering out`);
+              return false;
+            }
+            return true;
+          });
+
+          console.log('Filtered streams for HLS view:', filteredStreams);
 
           if (filteredStreams.length > 0) {
             setStreams(filteredStreams);
@@ -132,7 +176,10 @@ export function LiveView({isWebRTCDisabled}) {
 
       processStreams();
     }
-  }, [streamsData, selectedStream]);
+    // Note: We intentionally only re-run when streamsData changes
+    // selectedStream is read but we don't want to trigger refetch when it changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streamsData, queryClient]);
 
   // Update URL when layout, page, or selectedStream changes
   useEffect(() => {
@@ -186,134 +233,29 @@ export function LiveView({isWebRTCDisabled}) {
     }
   }, [currentPage, layout, selectedStream, streams.length]);
 
-  /**
-   * Filter streams for HLS Live view
-   * @param {Array} streams - Array of streams
-   * @returns {Promise<Array>} Promise resolving to filtered array of streams
-   */
-  const filterStreamsForHLS = async (streams) => {
-    try {
-      if (!streams || !Array.isArray(streams)) {
-        console.warn('No streams data provided to filter');
-        return [];
-      }
-
-      // For HLS view, we need to fetch full details for each stream
-      const streamPromises = streams.map(async (stream) => {
-        try {
-          const streamId = stream.id || stream.name;
-
-          const streamDetails = await queryClient.fetchQuery({
-            queryKey: ['stream-details', streamId],
-            queryFn: async () => {
-              const response = await fetch(`/api/streams/${encodeURIComponent(streamId)}`);
-              if (!response.ok) {
-                throw new Error(`Failed to load details for stream ${stream.name}`);
-              }
-              return response.json();
-            },
-            staleTime: 30000 // 30 seconds
-          });
-
-          return streamDetails;
-        } catch (error) {
-          console.error(`Error loading details for stream ${stream.name}:`, error);
-          // Return the basic stream info if we can't get details
-          return stream;
-        }
-      });
-
-      const detailedStreams = await Promise.all(streamPromises);
-      console.log('Loaded detailed streams for HLS view:', detailedStreams);
-
-      // Filter out streams that are soft deleted, inactive, or not configured for streaming
-      const filteredStreams = detailedStreams.filter(stream => {
-        // Filter out soft deleted streams
-        if (stream.is_deleted) {
-          console.log(`Stream ${stream.name} is soft deleted, filtering out`);
-          return false;
-        }
-
-        // Filter out inactive streams
-        if (!stream.enabled) {
-          console.log(`Stream ${stream.name} is inactive, filtering out`);
-          return false;
-        }
-
-        // Filter out streams not configured for streaming
-        if (!stream.streaming_enabled) {
-          console.log(`Stream ${stream.name} is not configured for streaming, filtering out`);
-          return false;
-        }
-
-        return true;
-      });
-
-      console.log('Filtered streams for HLS view:', filteredStreams);
-
-      return filteredStreams || [];
-    } catch (error) {
-      console.error('Error filtering streams for HLS view:', error);
-      showStatusMessage('Error processing streams: ' + error.message);
-      return [];
-    }
-  };
-
-  /**
-   * Get maximum number of streams to display based on layout
-   * @returns {number} Maximum number of streams
-   */
-  const getMaxStreamsForLayout = useCallback(() => {
+  // Memoize max streams for layout to use throughout the component
+  const maxStreams = useMemo(() => {
     switch (layout) {
-      case '1': return 1;  // Single view
-      case '2': return 2;  // 2x1 grid
-      case '4': return 4;  // 2x2 grid
-      case '6': return 6;  // 2x3 grid
-      case '9': return 9;  // 3x3 grid
-      case '16': return 16; // 4x4 grid
+      case '1': return 1;
+      case '2': return 2;
+      case '4': return 4;
+      case '6': return 6;
+      case '9': return 9;
+      case '16': return 16;
       default: return 4;
     }
   }, [layout]);
-
-  /**
-   * Get streams to show based on layout, selected stream, and pagination
-   * @returns {Array} Streams to show
-   */
-  const getStreamsToShow = useCallback(() => {
-    // Filter streams based on layout and selected stream
-    let streamsToShow = streams;
-    if (layout === '1' && selectedStream) {
-      streamsToShow = streams.filter(stream => stream.name === selectedStream);
-    } else {
-      // Apply pagination
-      const maxStreams = getMaxStreamsForLayout();
-      const totalPages = Math.ceil(streams.length / maxStreams);
-
-      // Ensure current page is valid
-      if (currentPage >= totalPages && totalPages > 0) {
-        return []; // Will be handled by the effect that watches currentPage
-      }
-
-      // Get streams for current page
-      const startIdx = currentPage * maxStreams;
-      const endIdx = Math.min(startIdx + maxStreams, streams.length);
-      streamsToShow = streams.slice(startIdx, endIdx);
-    }
-
-    return streamsToShow;
-  }, [streams, layout, selectedStream, currentPage]);
 
   // Ensure current page is valid when streams or layout changes
   useEffect(() => {
     if (streams.length === 0) return;
 
-    const maxStreams = getMaxStreamsForLayout();
     const totalPages = Math.ceil(streams.length / maxStreams);
 
     if (currentPage >= totalPages) {
       setCurrentPage(Math.max(0, totalPages - 1));
     }
-  }, [streams, layout, currentPage, getMaxStreamsForLayout]);
+  }, [streams, maxStreams, currentPage]);
 
   /**
    * Toggle fullscreen mode for a specific stream
@@ -359,7 +301,30 @@ export function LiveView({isWebRTCDisabled}) {
   };
 
   // Memoize the streams to show to prevent unnecessary re-renders
-  const streamsToShow = useMemo(() => getStreamsToShow(), [streams, layout, selectedStream, currentPage, getMaxStreamsForLayout]);
+  const streamsToShow = useMemo(() => {
+    // Filter streams based on layout and selected stream
+    let result = streams;
+    if (layout === '1' && selectedStream) {
+      result = streams.filter(stream => stream.name === selectedStream);
+    } else {
+      // Apply pagination
+      const totalPages = Math.ceil(streams.length / maxStreams);
+
+      // Ensure current page is valid
+      if (currentPage >= totalPages && totalPages > 0) {
+        result = []; // Will be handled by the effect that watches currentPage
+      } else {
+        // Get streams for current page
+        const startIdx = currentPage * maxStreams;
+        const endIdx = Math.min(startIdx + maxStreams, streams.length);
+        result = streams.slice(startIdx, endIdx);
+      }
+    }
+
+    console.log(`[LiveView] streamsToShow computed: ${result.length} streams`, result.map(s => s.name));
+    console.log(`[LiveView] layout=${layout}, currentPage=${currentPage}, totalStreams=${streams.length}`);
+    return result;
+  }, [streams, layout, selectedStream, currentPage, maxStreams]);
 
   return (
     <section
@@ -493,19 +458,21 @@ export function LiveView({isWebRTCDisabled}) {
               <a href="streams.html" className="btn-primary">Configure Streams</a>
             </div>
           ) : (
-            // Render video cells using our self-contained WebRTCVideoCell component
-            streamsToShow.map(stream => (
+            // Render video cells using our self-contained HLSVideoCell component
+            // Pass index for staggered initialization to avoid overwhelming go2rtc
+            streamsToShow.map((stream, index) => (
               <HLSVideoCell
                 key={stream.name}
                 stream={stream}
                 onToggleFullscreen={toggleStreamFullscreen}
                 streamId={stream.name} // Add explicit streamId prop to prevent re-renders
+                initDelay={index * 500} // Stagger initialization by 500ms per stream
               />
             ))
           )}
         </div>
 
-        {layout !== '1' && streams.length > getMaxStreamsForLayout() ? (
+        {layout !== '1' && streams.length > maxStreams ? (
           <div className="pagination-controls flex justify-center items-center space-x-4 mt-4">
             <button
               className="btn-primary focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
@@ -519,17 +486,17 @@ export function LiveView({isWebRTCDisabled}) {
             </button>
 
             <span className="text-foreground">
-              Page {currentPage + 1} of {Math.ceil(streams.length / getMaxStreamsForLayout())}
+              Page {currentPage + 1} of {Math.ceil(streams.length / maxStreams)}
             </span>
 
             <button
               className="btn-primary focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={() => {
                 console.log('Changing to next page');
-                const totalPages = Math.ceil(streams.length / getMaxStreamsForLayout());
+                const totalPages = Math.ceil(streams.length / maxStreams);
                 setCurrentPage(Math.min(totalPages - 1, currentPage + 1));
               }}
-              disabled={currentPage >= Math.ceil(streams.length / getMaxStreamsForLayout()) - 1}
+              disabled={currentPage >= Math.ceil(streams.length / maxStreams) - 1}
             >
               Next
             </button>

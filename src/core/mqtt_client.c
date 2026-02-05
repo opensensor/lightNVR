@@ -18,6 +18,7 @@
 static struct mosquitto *mosq = NULL;
 static const config_t *mqtt_config = NULL;
 static bool connected = false;
+static volatile bool shutting_down = false;  // Flag to prevent callbacks from acquiring mutex during shutdown
 static pthread_mutex_t mqtt_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // Forward declarations for callbacks
@@ -156,8 +157,18 @@ bool mqtt_is_connected(void) {
 static void on_connect(struct mosquitto *m, void *userdata, int rc) {
     (void)m;
     (void)userdata;
-    
+
+    // Skip mutex acquisition if we're shutting down to prevent deadlock
+    if (shutting_down) {
+        return;
+    }
+
     pthread_mutex_lock(&mqtt_mutex);
+    // Double-check after acquiring mutex
+    if (shutting_down) {
+        pthread_mutex_unlock(&mqtt_mutex);
+        return;
+    }
     if (rc == 0) {
         connected = true;
         log_info("MQTT: Connected to broker successfully");
@@ -173,7 +184,23 @@ static void on_disconnect(struct mosquitto *m, void *userdata, int rc) {
     (void)m;
     (void)userdata;
 
+    // Skip mutex acquisition if we're shutting down to prevent deadlock
+    if (shutting_down) {
+        // Still update the flag without mutex during shutdown - it's a simple write
+        connected = false;
+        if (rc == 0) {
+            log_info("MQTT: Disconnected from broker (shutdown)");
+        }
+        return;
+    }
+
     pthread_mutex_lock(&mqtt_mutex);
+    // Double-check after acquiring mutex
+    if (shutting_down) {
+        pthread_mutex_unlock(&mqtt_mutex);
+        connected = false;
+        return;
+    }
     connected = false;
     pthread_mutex_unlock(&mqtt_mutex);
 
@@ -481,6 +508,12 @@ void mqtt_disconnect(void) {
  */
 void mqtt_cleanup(void) {
     log_info("MQTT: Starting cleanup...");
+
+    // Set shutdown flag FIRST to prevent callbacks from acquiring mutex
+    // This must happen before any other cleanup operations
+    shutting_down = true;
+    // Memory barrier to ensure the flag is visible to other threads
+    __sync_synchronize();
 
     if (!mosq) {
         log_info("MQTT: No client to clean up");
