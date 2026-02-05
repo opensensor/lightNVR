@@ -325,8 +325,11 @@ void mqtt_disconnect(void) {
 
     pthread_mutex_lock(&mqtt_mutex);
 
-    mosquitto_loop_stop(mosq, true);
+    // First disconnect to signal the loop to stop
     mosquitto_disconnect(mosq);
+    // Use force=true to force thread cancellation immediately
+    // This prevents blocking during shutdown if the broker is unresponsive
+    mosquitto_loop_stop(mosq, true);
     connected = false;
 
     pthread_mutex_unlock(&mqtt_mutex);

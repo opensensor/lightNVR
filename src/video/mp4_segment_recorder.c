@@ -1257,14 +1257,79 @@ int mp4_segment_recorder_write_packet(mp4_writer_t *writer, const AVPacket *pkt,
         // Set the stream index to the video stream
         out_pkt->stream_index = writer->video_stream_idx;
 
+        // Track first video DTS/PTS for timestamp remapping
+        // This ensures detection recordings start at 0 instead of the stream's current time
+        if (writer->first_dts == AV_NOPTS_VALUE && out_pkt->dts != AV_NOPTS_VALUE) {
+            writer->first_dts = out_pkt->dts;
+            writer->first_pts = (out_pkt->pts != AV_NOPTS_VALUE) ? out_pkt->pts : out_pkt->dts;
+            log_debug("[%s] First video DTS: %lld, PTS: %lld (for timestamp remapping)",
+                    writer->stream_name, (long long)writer->first_dts, (long long)writer->first_pts);
+        }
+
+        // Remap timestamps relative to first packet so recording starts at 0
+        if (writer->first_dts != AV_NOPTS_VALUE && out_pkt->dts != AV_NOPTS_VALUE) {
+            out_pkt->dts -= writer->first_dts;
+            if (out_pkt->dts < 0) out_pkt->dts = 0;
+        }
+        if (writer->first_pts != AV_NOPTS_VALUE && out_pkt->pts != AV_NOPTS_VALUE) {
+            out_pkt->pts -= writer->first_pts;
+            if (out_pkt->pts < 0) out_pkt->pts = 0;
+        }
+
         // Ensure PTS >= DTS for video packets
         if (out_pkt->pts != AV_NOPTS_VALUE && out_pkt->dts != AV_NOPTS_VALUE && out_pkt->pts < out_pkt->dts) {
             out_pkt->pts = out_pkt->dts;
         }
+
+        // Ensure monotonically increasing DTS values
+        if (out_pkt->dts != AV_NOPTS_VALUE && writer->last_dts != AV_NOPTS_VALUE && out_pkt->dts <= writer->last_dts) {
+            int64_t fixed_dts = writer->last_dts + 1;
+            if (out_pkt->pts != AV_NOPTS_VALUE) {
+                int64_t pts_dts_diff = out_pkt->pts - out_pkt->dts;
+                out_pkt->dts = fixed_dts;
+                out_pkt->pts = fixed_dts + (pts_dts_diff > 0 ? pts_dts_diff : 0);
+            } else {
+                out_pkt->dts = fixed_dts;
+                out_pkt->pts = fixed_dts;
+            }
+        }
+        writer->last_dts = out_pkt->dts;
+
     } else if (input_stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
         // Set the stream index to the audio stream
         if (writer->audio.stream_idx >= 0) {
             out_pkt->stream_index = writer->audio.stream_idx;
+
+            // Track first audio DTS for timestamp remapping
+            if (writer->audio.first_dts == AV_NOPTS_VALUE && out_pkt->dts != AV_NOPTS_VALUE) {
+                writer->audio.first_dts = out_pkt->dts;
+                log_debug("[%s] First audio DTS: %lld (for timestamp remapping)",
+                        writer->stream_name, (long long)writer->audio.first_dts);
+            }
+
+            // Remap audio timestamps relative to first audio packet
+            if (writer->audio.first_dts != AV_NOPTS_VALUE && out_pkt->dts != AV_NOPTS_VALUE) {
+                out_pkt->dts -= writer->audio.first_dts;
+                if (out_pkt->dts < 0) out_pkt->dts = 0;
+            }
+            if (writer->audio.first_dts != AV_NOPTS_VALUE && out_pkt->pts != AV_NOPTS_VALUE) {
+                out_pkt->pts -= writer->audio.first_dts;
+                if (out_pkt->pts < 0) out_pkt->pts = 0;
+            }
+
+            // Ensure monotonically increasing audio DTS values
+            if (out_pkt->dts != AV_NOPTS_VALUE && writer->audio.last_dts != 0 && out_pkt->dts <= writer->audio.last_dts) {
+                int64_t fixed_dts = writer->audio.last_dts + 1;
+                if (out_pkt->pts != AV_NOPTS_VALUE) {
+                    int64_t pts_dts_diff = out_pkt->pts - out_pkt->dts;
+                    out_pkt->dts = fixed_dts;
+                    out_pkt->pts = fixed_dts + (pts_dts_diff > 0 ? pts_dts_diff : 0);
+                } else {
+                    out_pkt->dts = fixed_dts;
+                    out_pkt->pts = fixed_dts;
+                }
+            }
+            writer->audio.last_dts = out_pkt->dts;
         } else {
             // No audio stream in the output, drop the packet
             av_packet_free(&out_pkt);

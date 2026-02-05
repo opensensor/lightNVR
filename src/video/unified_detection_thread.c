@@ -74,6 +74,21 @@ static int flush_prebuffer_to_recording(unified_detection_ctx_t *ctx);
 static const char* state_to_string(unified_detection_state_t state);
 
 /**
+ * FFmpeg interrupt callback to allow cancellation of blocking operations
+ * Returns 1 to abort, 0 to continue
+ */
+static int ffmpeg_interrupt_callback(void *opaque) {
+    unified_detection_ctx_t *ctx = (unified_detection_ctx_t *)opaque;
+    if (!ctx) return 1;  // Abort if no context
+
+    // Check if we should stop
+    if (!atomic_load(&ctx->running) || is_shutdown_initiated()) {
+        return 1;  // Abort the operation
+    }
+    return 0;  // Continue
+}
+
+/**
  * Check if a model path indicates API-based detection
  * Returns true if the path is "api-detection" or starts with http:// or https://
  */
@@ -496,6 +511,10 @@ static int connect_to_stream(unified_detection_ctx_t *ctx) {
         log_error("[%s] Failed to allocate format context", ctx->stream_name);
         return -1;
     }
+
+    // Set interrupt callback to allow cancellation during shutdown
+    ctx->input_ctx->interrupt_callback.callback = ffmpeg_interrupt_callback;
+    ctx->input_ctx->interrupt_callback.opaque = ctx;
 
     // Set RTSP options
     AVDictionary *opts = NULL;
