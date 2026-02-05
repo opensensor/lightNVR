@@ -797,3 +797,66 @@ int get_detection_labels_summary(const char *stream_name, time_t start_time, tim
 
     return count;
 }
+
+/**
+ * Update recent detections with a recording_id
+ * This links detections that were stored before the recording was created to the recording.
+ * Useful for detection-triggered recordings where the first detection triggers the recording.
+ */
+int update_detections_recording_id(const char *stream_name, uint64_t recording_id, time_t since_time) {
+    int rc;
+    sqlite3_stmt *stmt;
+
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *db_mutex = get_db_mutex();
+
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
+    if (!stream_name || recording_id == 0) {
+        log_error("Invalid parameters for update_detections_recording_id");
+        return -1;
+    }
+
+    pthread_mutex_lock(db_mutex);
+
+    // Update detections where recording_id is NULL or 0 for the given stream and time range
+    const char *sql =
+        "UPDATE detections "
+        "SET recording_id = ? "
+        "WHERE stream_name = ? AND timestamp >= ? AND (recording_id IS NULL OR recording_id = 0);";
+
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement for update_detections_recording_id: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(db_mutex);
+        return -1;
+    }
+
+    // Bind parameters
+    sqlite3_bind_int64(stmt, 1, (sqlite3_int64)recording_id);
+    sqlite3_bind_text(stmt, 2, stream_name, -1, SQLITE_STATIC);
+    sqlite3_bind_int64(stmt, 3, (sqlite3_int64)since_time);
+
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE) {
+        log_error("Failed to update detections with recording_id: %s", sqlite3_errmsg(db));
+        sqlite3_finalize(stmt);
+        pthread_mutex_unlock(db_mutex);
+        return -1;
+    }
+
+    int updated = sqlite3_changes(db);
+
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(db_mutex);
+
+    if (updated > 0) {
+        log_debug("Updated %d detections with recording_id %lu for stream %s",
+                  updated, (unsigned long)recording_id, stream_name);
+    }
+
+    return updated;
+}

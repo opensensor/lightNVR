@@ -1016,6 +1016,17 @@ static int process_packet(unified_detection_ctx_t *ctx, AVPacket *pkt) {
                         if (udt_start_recording(ctx) == 0) {
                             flush_prebuffer_to_recording(ctx);
                             atomic_store(&ctx->state, UDT_STATE_RECORDING);
+
+                            // Link any recent detections (that triggered this recording) to the new recording_id
+                            // Look back up to detection_interval + 2 seconds to catch the triggering detection
+                            time_t lookback = now - (ctx->detection_interval > 0 ? ctx->detection_interval + 2 : 7);
+                            int updated = update_detections_recording_id(ctx->stream_name,
+                                                                          ctx->current_recording_id,
+                                                                          lookback);
+                            if (updated > 0) {
+                                log_debug("[%s] Linked %d recent detections to recording ID %lu",
+                                         ctx->stream_name, updated, (unsigned long)ctx->current_recording_id);
+                            }
                         }
                     }
                     // If in post-buffer, go back to recording

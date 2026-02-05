@@ -100,4 +100,16 @@ typedef struct {
 int get_detection_labels_summary(const char *stream_name, time_t start_time, time_t end_time,
                                  detection_label_summary_t *labels, int max_labels);
 
+/**
+ * Update recent detections with a recording_id
+ * This links detections that were stored before the recording was created to the recording.
+ * Useful for detection-triggered recordings where the first detection triggers the recording.
+ *
+ * @param stream_name Stream name
+ * @param recording_id Recording ID to link detections to
+ * @param since_time Only update detections with timestamp >= this value
+ * @return Number of detections updated, or -1 on error
+ */
+int update_detections_recording_id(const char *stream_name, uint64_t recording_id, time_t since_time);
+
 #endif // LIGHTNVR_DB_DETECTIONS_H
