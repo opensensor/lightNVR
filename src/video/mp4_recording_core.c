@@ -145,6 +145,13 @@ static void *mp4_recording_thread(void *arg) {
 
     log_info("Created MP4 writer for %s at %s (trigger_type: %s)", stream_name, ctx->output_path, ctx->mp4_writer->trigger_type);
 
+    // Register the MP4 writer for this stream so get_recording_state() can find it
+    if (register_mp4_writer_for_stream(stream_name, ctx->mp4_writer) != 0) {
+        log_warn("Failed to register MP4 writer for stream %s", stream_name);
+    } else {
+        log_info("Registered MP4 writer for stream %s", stream_name);
+    }
+
     // Set segment duration in the MP4 writer
     int segment_duration = ctx->config.segment_duration > 0 ? ctx->config.segment_duration : 30;
     mp4_writer_set_segment_duration(ctx->mp4_writer, segment_duration);
