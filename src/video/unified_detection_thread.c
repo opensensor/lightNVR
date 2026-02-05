@@ -1480,9 +1480,10 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt) 
     if (result.count > 0) {
         time_t now = time(NULL);
 
-        // In annotation_only mode, link detections to the continuous recording
+        // Link detections to the current recording
         uint64_t rec_id = 0;
         if (ctx->annotation_only) {
+            // In annotation_only mode, link detections to the continuous recording
             rec_id = get_current_recording_id_for_stream(ctx->stream_name);
             if (rec_id > 0) {
                 log_debug("[%s] Annotation mode: linking detections to recording ID %lu",
@@ -1491,6 +1492,11 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt) 
                 log_debug("[%s] Annotation mode: no active recording to link detections to",
                          ctx->stream_name);
             }
+        } else if (ctx->current_recording_id > 0) {
+            // For detection recordings, link to the current detection recording
+            rec_id = ctx->current_recording_id;
+            log_debug("[%s] Detection mode: linking detections to recording ID %lu",
+                     ctx->stream_name, (unsigned long)rec_id);
         }
 
         if (store_detections_in_db(ctx->stream_name, &result, now, rec_id) != 0) {
