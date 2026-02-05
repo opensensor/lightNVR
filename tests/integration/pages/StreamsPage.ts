@@ -87,10 +87,12 @@ export class StreamsPage extends BasePage {
    * Check if a stream exists by name
    */
   async streamExists(name: string): Promise<boolean> {
-    await sleep(500);
+    // Wait for the streams list to be loaded and potentially refreshed
+    await sleep(1000);
     const streamRow = this.getStreamByName(name);
     try {
-      await streamRow.waitFor({ state: 'visible', timeout: 3000 });
+      // Increase timeout to allow for API refetch and re-render
+      await streamRow.waitFor({ state: 'visible', timeout: 10000 });
       return true;
     } catch (e) {
       return false;
@@ -133,7 +135,22 @@ export class StreamsPage extends BasePage {
 
     // Click save and wait for it to complete
     await this.saveButton.click({ force: true });
-    await sleep(2000); // Wait for save to complete and list to refresh
+
+    // Wait for the modal to close - this indicates the save was successful
+    // The modal closing is triggered by the onSuccess callback in the mutation
+    try {
+      await this.addStreamModal.waitFor({ state: 'hidden', timeout: 10000 });
+    } catch (e) {
+      // Modal might not be found if it closed very quickly
+      // Check if the stream name input is still visible
+      const nameInputVisible = await this.streamNameInput.isVisible();
+      if (nameInputVisible) {
+        throw new Error('Modal did not close after save - save may have failed');
+      }
+    }
+
+    // Wait for the streams list to be refreshed (React Query refetch)
+    await sleep(1000);
   }
 
   /**
