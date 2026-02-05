@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include <unistd.h>
 #include <pthread.h>
 #include <sys/stat.h>
@@ -191,42 +192,54 @@ void close_all_mp4_writers(void) {
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (mp4_writers[i] && mp4_writer_stream_names[i][0] != '\0') {
             // Store the writer pointer
-            writers_to_close[num_writers_to_close] = mp4_writers[i];
-            
-            // Make a safe copy of the stream name
-            strncpy(stream_names_to_close[num_writers_to_close], 
-                    mp4_writer_stream_names[i], 
+            mp4_writer_t *writer = mp4_writers[i];
+            writers_to_close[num_writers_to_close] = writer;
+
+            // Make a safe copy of the stream name FIRST from the static array (known safe memory)
+            strncpy(stream_names_to_close[num_writers_to_close],
+                    mp4_writer_stream_names[i],
                     sizeof(stream_names_to_close[0]) - 1);
             stream_names_to_close[num_writers_to_close][sizeof(stream_names_to_close[0]) - 1] = '\0';
-            
-            // Safely get the file path from the MP4 writer
-            if (mp4_writers[i]->output_path && mp4_writers[i]->output_path[0] != '\0') {
-                strncpy(file_paths_to_close[num_writers_to_close], 
-                        mp4_writers[i]->output_path, 
+
+            // Clear the entry in the global array IMMEDIATELY to prevent any race conditions
+            // This must be done before we access the writer's fields
+            mp4_writers[i] = NULL;
+            mp4_writer_stream_names[i][0] = '\0';
+
+            // Now safely try to access the writer's output_path
+            // Use the stream_name from the writer to validate it's still valid
+            // (if the stream_name matches, the writer is likely still valid)
+            bool writer_valid = false;
+            if (writer->stream_name[0] != '\0' &&
+                strcmp(writer->stream_name, stream_names_to_close[num_writers_to_close]) == 0) {
+                writer_valid = true;
+            }
+
+            if (writer_valid && writer->output_path[0] != '\0') {
+                strncpy(file_paths_to_close[num_writers_to_close],
+                        writer->output_path,
                         MAX_PATH_LENGTH - 1);
                 file_paths_to_close[num_writers_to_close][MAX_PATH_LENGTH - 1] = '\0';
-                
+
                 // Log the path we're about to check
                 log_info("Checking MP4 file: %s", file_paths_to_close[num_writers_to_close]);
-                
+
                 // Get file size before closing
                 struct stat st;
                 if (stat(file_paths_to_close[num_writers_to_close], &st) == 0) {
                     log_info("MP4 file size: %llu bytes", (unsigned long long)st.st_size);
                 } else {
-                    log_warn("Cannot stat MP4 file: %s (error: %s)", 
-                            file_paths_to_close[num_writers_to_close], 
+                    log_warn("Cannot stat MP4 file: %s (error: %s)",
+                            file_paths_to_close[num_writers_to_close],
                             strerror(errno));
                 }
             } else {
-                log_warn("MP4 writer for stream %s has invalid or empty output path", 
-                        stream_names_to_close[num_writers_to_close]);
+                log_warn("MP4 writer for stream %s has invalid or empty output path (writer_valid=%d)",
+                        stream_names_to_close[num_writers_to_close], writer_valid);
+                // Still set an empty path so we know not to use it later
+                file_paths_to_close[num_writers_to_close][0] = '\0';
             }
-            
-            // Clear the entry in the global array
-            mp4_writers[i] = NULL;
-            mp4_writer_stream_names[i][0] = '\0';
-            
+
             // Increment counter
             num_writers_to_close++;
         }

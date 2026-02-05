@@ -228,12 +228,21 @@ static void *mp4_recording_thread(void *arg) {
 
     // When done, stop the RTSP recording thread and close the writer
     if (ctx->mp4_writer) {
+        // Make a local copy of the mp4_writer pointer
+        mp4_writer_t *writer = ctx->mp4_writer;
+
+        // Set the pointer to NULL in the context to prevent double-free
+        ctx->mp4_writer = NULL;
+
         log_info("Stopping RTSP recording thread for stream %s", stream_name);
-        mp4_writer_stop_recording_thread(ctx->mp4_writer);
+        mp4_writer_stop_recording_thread(writer);
+
+        // Unregister the writer from the global array BEFORE closing it
+        // This prevents close_all_mp4_writers() from trying to access freed memory
+        unregister_mp4_writer_for_stream(stream_name);
 
         log_info("Closing MP4 writer for stream %s during thread exit", stream_name);
-        mp4_writer_close(ctx->mp4_writer);
-        ctx->mp4_writer = NULL;
+        mp4_writer_close(writer);
     }
 
     log_info("MP4 recording thread for stream %s exited", stream_name);
@@ -714,6 +723,10 @@ int stop_mp4_recording(const char *stream_name) {
 
             // Set the pointer to NULL in the context to prevent double-free
             ctx->mp4_writer = NULL;
+
+            // Unregister the writer from the global array BEFORE closing it
+            // This prevents close_all_mp4_writers() from trying to access freed memory
+            unregister_mp4_writer_for_stream(stream_name);
 
             // Now close the writer with our local copy
             log_info("Closing MP4 writer for stream %s", stream_name);
