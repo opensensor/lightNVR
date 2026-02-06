@@ -1295,6 +1295,26 @@ int mp4_segment_recorder_write_packet(mp4_writer_t *writer, const AVPacket *pkt,
         }
         writer->last_dts = out_pkt->dts;
 
+        // Set packet duration to prevent jittery playback
+        // RTSP streams typically have duration=0, which causes playback issues
+        if (out_pkt->duration == 0 || out_pkt->duration == AV_NOPTS_VALUE) {
+            if (input_stream->avg_frame_rate.num > 0 && input_stream->avg_frame_rate.den > 0) {
+                // Calculate duration based on framerate (in input timebase units)
+                out_pkt->duration = av_rescale_q(1,
+                                               av_inv_q(input_stream->avg_frame_rate),
+                                               input_stream->time_base);
+            } else {
+                // Default to a reasonable value if framerate is not available
+                out_pkt->duration = 1;
+            }
+        }
+
+        // Rescale timestamps from input timebase to output timebase
+        AVStream *out_stream = writer->output_ctx->streams[writer->video_stream_idx];
+        if (out_stream) {
+            av_packet_rescale_ts(out_pkt, input_stream->time_base, out_stream->time_base);
+        }
+
     } else if (input_stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
         // Set the stream index to the audio stream
         if (writer->audio.stream_idx >= 0) {
@@ -1330,6 +1350,24 @@ int mp4_segment_recorder_write_packet(mp4_writer_t *writer, const AVPacket *pkt,
                 }
             }
             writer->audio.last_dts = out_pkt->dts;
+
+            // Set audio packet duration if not set
+            if (out_pkt->duration == 0 || out_pkt->duration == AV_NOPTS_VALUE) {
+                // For audio, use frame_size / sample_rate if available
+                if (input_stream->codecpar->frame_size > 0 && input_stream->codecpar->sample_rate > 0) {
+                    out_pkt->duration = av_rescale_q(input_stream->codecpar->frame_size,
+                                                    (AVRational){1, input_stream->codecpar->sample_rate},
+                                                    input_stream->time_base);
+                } else {
+                    out_pkt->duration = 1;
+                }
+            }
+
+            // Rescale timestamps from input timebase to output timebase
+            AVStream *out_stream = writer->output_ctx->streams[writer->audio.stream_idx];
+            if (out_stream) {
+                av_packet_rescale_ts(out_pkt, input_stream->time_base, out_stream->time_base);
+            }
         } else {
             // No audio stream in the output, drop the packet
             av_packet_free(&out_pkt);
