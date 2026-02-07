@@ -130,7 +130,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Install only necessary runtime dependencies
 # Trixie has FFmpeg 7.x: libavcodec61, libavformat61, libavutil59, libswscale8
+# ffmpeg CLI is needed by go2rtc for audio transcoding (AAC→OPUS for WebRTC)
 RUN apt-get update && apt-get install -y \
+    ffmpeg \
     libavcodec61 libavformat61 libavutil59 libswscale8 \
     libcurl4t64 libmbedtls21 libmbedcrypto16 sqlite3 procps curl \
     libmosquitto1 && \
