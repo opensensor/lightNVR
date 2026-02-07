@@ -225,8 +225,19 @@ void mg_handle_go2rtc_webrtc_offer_worker(struct mg_connection *c, struct mg_htt
         goto cleanup;
     }
 
-    // Set content type header only, let curl handle Content-Length
-    headers = curl_slist_append(headers, "Content-Type: application/json");
+    // Forward the Content-Type header from the client request to go2rtc
+    // go2rtc uses Content-Type to decide how to parse the body:
+    //   application/json  → JSON {"type":"offer","sdp":"..."}
+    //   application/sdp   → raw SDP (WHEP)
+    //   other / missing   → raw SDP
+    char content_type_header[256] = "Content-Type: application/sdp";
+    struct mg_str *ct = mg_http_get_header(hm, "Content-Type");
+    if (ct && ct->len > 0 && ct->len < sizeof(content_type_header) - 15) {
+        snprintf(content_type_header, sizeof(content_type_header),
+                 "Content-Type: %.*s", (int)ct->len, ct->buf);
+    }
+    log_info("Forwarding header to go2rtc: %s", content_type_header);
+    headers = curl_slist_append(headers, content_type_header);
 
     if (!headers) {
         log_error("Failed to create headers list");
@@ -255,19 +266,35 @@ void mg_handle_go2rtc_webrtc_offer_worker(struct mg_connection *c, struct mg_htt
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
 
     // Send the response back to the client
-    if (http_code == 200 && response.data) {
+    // go2rtc returns 200 for JSON/raw and 201 for application/sdp (WHEP)
+    if ((http_code == 200 || http_code == 201) && response.data) {
         // Log the response for debugging
-        log_info("Response from go2rtc: %s", response.data);
+        log_info("Response from go2rtc (HTTP %ld): %s", http_code, response.data);
+
+        // Determine response Content-Type based on what we sent to go2rtc
+        // go2rtc mirrors the request Content-Type in its response
+        const char *resp_ct = "application/sdp";
+        if (ct && ct->len > 0) {
+            // Use a static buffer for the response content type header
+            static __thread char resp_ct_buf[256];
+            snprintf(resp_ct_buf, sizeof(resp_ct_buf), "%.*s", (int)ct->len, ct->buf);
+            resp_ct = resp_ct_buf;
+        }
+
+        // Build response headers with the correct Content-Type
+        char resp_headers[512];
+        snprintf(resp_headers, sizeof(resp_headers),
+                 "Content-Type: %s\r\n"
+                 "Access-Control-Allow-Origin: *\r\n"
+                 "Access-Control-Allow-Methods: POST, OPTIONS\r\n"
+                 "Access-Control-Allow-Headers: Content-Type, Authorization, Origin, X-Requested-With, Accept\r\n"
+                 "Access-Control-Allow-Credentials: true\r\n"
+                 "Connection: close\r\n",
+                 resp_ct);
 
         // Set CORS headers and send the response
-        mg_http_reply(c, 200,
-                     "Content-Type: application/json\r\n"
-                     "Access-Control-Allow-Origin: *\r\n"
-                     "Access-Control-Allow-Methods: POST, OPTIONS\r\n"
-                     "Access-Control-Allow-Headers: Content-Type, Authorization, Origin, X-Requested-With, Accept\r\n"
-                     "Access-Control-Allow-Credentials: true\r\n"
-                     "Connection: close\r\n",
-                     "%s", response.data ? response.data : "{}");
+        mg_http_reply(c, (int)http_code, resp_headers,
+                     "%s", response.data ? response.data : "");
     } else {
         log_error("go2rtc API returned error: %ld", http_code);
         mg_send_json_error(c, (int)http_code, response.data ? response.data : "Error from go2rtc API");
