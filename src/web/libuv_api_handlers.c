@@ -105,7 +105,7 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/system/status", "GET", handle_get_system_status);
 
     // Detection API
-    http_server_register_handler(server, "/api/detection/results/", "GET", handle_get_detection_results);
+    http_server_register_handler(server, "/api/detection/results/#", "GET", handle_get_detection_results);
     http_server_register_handler(server, "/api/detection/models", "GET", handle_get_detection_models);
 
     // Motion Recording API
@@ -163,7 +163,10 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/timeline/manifest", "GET", handle_timeline_manifest);
     http_server_register_handler(server, "/api/timeline/play", "GET", handle_timeline_playback);
 
-    log_info("Successfully registered %d API handlers", 73);  // Updated: added all 3 timeline handlers
+    // HLS Streaming (backend-agnostic handler)
+    http_server_register_handler(server, "/hls/", "GET", handle_direct_hls_request);
+
+    log_info("Successfully registered %d API handlers", 74);  // Updated: added HLS handler
 
     return 0;
 }

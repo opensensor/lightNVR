@@ -18,6 +18,23 @@
 #include "database/db_auth.h"
 
 /**
+ * @brief Initialize the authentication system
+ */
+int init_auth_system(void) {
+    log_info("Initializing authentication system");
+
+    // Initialize the database authentication system
+    int rc = db_auth_init();
+    if (rc != 0) {
+        log_error("Failed to initialize database authentication system");
+        return -1;
+    }
+
+    log_info("Authentication system initialized successfully");
+    return 0;
+}
+
+/**
  * @brief Helper to parse form-encoded body (username=...&password=...)
  */
 static int parse_form_credentials(const char *body, size_t body_len, char *username, size_t username_size, char *password, size_t password_size) {

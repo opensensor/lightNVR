@@ -26,7 +26,7 @@ option(USE_WOLFSSL "Use WolfSSL instead of OpenSSL (if SSL is enabled)" OFF)
 set(HTTP_BACKEND "libuv" CACHE STRING "HTTP server backend (libuv only)")
 set_property(CACHE HTTP_BACKEND PROPERTY STRINGS libuv)
 
-# Define TLS constants (from mongoose.h)
+# Define TLS constants (for backward compatibility with old config)
 set(MG_TLS_NONE 0)
 set(MG_TLS_MBED 1)
 set(MG_TLS_OPENSSL 2)
@@ -86,7 +86,7 @@ if(ENABLE_MQTT)
     endif()
 endif()
 
-# SSL/TLS configuration for Mongoose
+# SSL/TLS configuration
 if(ENABLE_SSL)
     if(USE_MBEDTLS)
         add_definitions(-DMG_TLS=${MG_TLS_MBED})
@@ -116,7 +116,7 @@ if(ENABLE_SSL)
     endif()
 else()
     add_definitions(-DMG_TLS=${MG_TLS_NONE})
-    message(STATUS "SSL/TLS support is disabled for Mongoose")
+    message(STATUS "SSL/TLS support is disabled")
     # Define empty variables for SSL
     set(SSL_INCLUDE_DIRS "")
     set(SSL_LIBRARIES "")
@@ -301,11 +301,7 @@ set(LIBUV_SERVER_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/web/libuv_api_handlers.c"
 )
 
-# Mongoose is still needed temporarily for handlers that haven't been converted yet
-# Build mongoose library for compatibility
-set(MONGOOSE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose/mongoose.c")
-add_library(mongoose_lib STATIC ${MONGOOSE_SOURCES})
-target_include_directories(mongoose_lib INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose")
+# Mongoose has been completely removed - all handlers now use libuv backend
 
 # Set up inih library
 set(INIH_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/external/inih/ini.c")
@@ -351,17 +347,9 @@ list(FILTER UTILS_SOURCES EXCLUDE REGEX ".*rebuild_recordings\\.c$")
 message(STATUS "Excluding rebuild_recordings.c from main executable")
 file(GLOB_RECURSE WEB_SOURCES "src/web/*.c")
 
-# Filter web sources - exclude mongoose and libuv sources
-# Mongoose sources are no longer used (removed)
-# libuv sources are explicitly added via LIBUV_SERVER_SOURCES
-list(FILTER WEB_SOURCES EXCLUDE REGEX ".*mongoose_server.*\\.c$")
-list(FILTER WEB_SOURCES EXCLUDE REGEX ".*mongoose_adapter.*\\.c$")
+# Filter web sources - exclude libuv sources (they're added separately via LIBUV_SERVER_SOURCES)
 list(FILTER WEB_SOURCES EXCLUDE REGEX ".*libuv_.*\\.c$")
-# Exclude old Mongoose-specific handler files (backend-agnostic versions exist or not yet converted)
-list(FILTER WEB_SOURCES EXCLUDE REGEX ".*api_handlers_users\\.c$")
-list(FILTER WEB_SOURCES EXCLUDE REGEX ".*api_handlers_onvif\\.c$")
-list(FILTER WEB_SOURCES EXCLUDE REGEX ".*api_handlers_recordings_files\\.c$")
-list(FILTER WEB_SOURCES EXCLUDE REGEX ".*api_handlers_timeline\\.c$")
+# Exclude api_handlers_go2rtc_proxy.c (not yet converted to backend-agnostic)
 list(FILTER WEB_SOURCES EXCLUDE REGEX ".*api_handlers_go2rtc_proxy\\.c$")
 
 file(GLOB_RECURSE ROOT_SOURCES "src/*.c")
@@ -370,14 +358,7 @@ list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*sod/sod\\.c$")
 list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*utils/rebuild_recordings\\.c$")
 # Also exclude libuv sources from ROOT_SOURCES (they're added separately)
 list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*libuv_.*\\.c$")
-# Exclude mongoose-specific sources (no longer used)
-list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*mongoose_server.*\\.c$")
-list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*mongoose_adapter.*\\.c$")
-# Exclude old Mongoose-specific handler files (backend-agnostic versions exist or not yet converted)
-list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*api_handlers_users\\.c$")
-list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*api_handlers_onvif\\.c$")
-list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*api_handlers_recordings_files\\.c$")
-# api_handlers_timeline.c is now backend-agnostic - DO NOT EXCLUDE
+# Exclude api_handlers_go2rtc_proxy.c (not yet converted to backend-agnostic)
 list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*api_handlers_go2rtc_proxy\\.c$")
 message(STATUS "Excluding rebuild_recordings.c from ROOT_SOURCES")
 
@@ -417,7 +398,7 @@ if(ENABLE_GO2RTC)
     message(STATUS "go2rtc API port: ${GO2RTC_API_PORT}")
 endif()
 
-# Combine all sources (excluding mongoose, inih, bundled cjson)
+# Combine all sources (excluding inih, bundled cjson)
 set(SOURCES
         ${CORE_SOURCES}
         ${DATABASE_SOURCES}
@@ -443,7 +424,6 @@ list(APPEND SOURCES ${LIBUV_SERVER_SOURCES})
 add_library(lightnvr_lib STATIC ${SOURCES})
 target_include_directories(lightnvr_lib PUBLIC ${LIGHTNVR_INCLUDE_DIRS})
 target_include_directories(lightnvr_lib PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose"
     "${CMAKE_CURRENT_SOURCE_DIR}/external/inih"
 )
 
@@ -482,7 +462,6 @@ set_target_properties(lightnvr rebuild_recordings PROPERTIES
 target_link_libraries(lightnvr
         lightnvr_lib
         ${HTTP_BACKEND_LIBS}
-        mongoose_lib
         inih_lib
         ${FFMPEG_LIBRARIES}
         ${SQLITE_LIBRARIES}

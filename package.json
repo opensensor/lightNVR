@@ -7,7 +7,11 @@
     "test:api": "npx playwright test --grep @api",
     "test:ui": "npx playwright test --grep @ui",
     "test:go2rtc": "npx playwright test --grep @go2rtc",
-    "test:report": "npx playwright show-report"
+    "test:report": "npx playwright show-report",
+    "test:load": "node --experimental-strip-types tests/load/index.ts",
+    "test:load:api": "node --experimental-strip-types tests/load/index.ts --tags api",
+    "test:load:html": "node --experimental-strip-types tests/load/index.ts --tags html",
+    "test:load:heavy": "node --experimental-strip-types tests/load/index.ts -n 1000 -c 50"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.1",

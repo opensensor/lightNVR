@@ -4,7 +4,6 @@
 #include <sys/types.h>  /* for off_t */
 #include <time.h>       /* for time_t */
 #include "database/database_manager.h"  /* for recording_metadata_t */
-#include "mongoose.h"  /* for mongoose-specific handlers */
 
 /**
  * Get the total count of recordings matching given filters

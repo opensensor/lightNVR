@@ -229,6 +229,12 @@ void handle_get_detection_results(const http_request_t *req, http_response_t *re
 void handle_get_detection_models(const http_request_t *req, http_response_t *res);
 
 /**
+ * @brief Backend-agnostic handler for direct HLS requests
+ * Endpoint: /hls/{stream_name}/{file}
+ */
+void handle_direct_hls_request(const http_request_t *req, http_response_t *res);
+
+/**
  * @brief Direct handler for POST /api/system/logs/clear
  *
  * @param c Mongoose connection

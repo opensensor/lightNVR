@@ -23,12 +23,10 @@
 
 #include "web/api_handlers.h"
 #include "web/api_handlers_health.h"
-#include "web/mongoose_adapter.h"
 #include "web/http_server.h"
 #include "web/request_response.h"
 #include "core/logger.h"
 #include "core/config.h"
-#include "mongoose.h"
 
 // Forward declarations for functions defined later in this file
 static bool is_web_server_thread_running(void);

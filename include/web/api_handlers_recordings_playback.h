@@ -23,24 +23,4 @@ void handle_recordings_playback(const http_request_t *req, http_response_t *res)
  */
 void handle_recordings_download(const http_request_t *req, http_response_t *res);
 
-#ifdef HTTP_BACKEND_MONGOOSE
-#include "mongoose.h"
-
-/**
- * @brief Mongoose-specific handler for GET /api/recordings/play/:id
- *
- * @param c Mongoose connection
- * @param hm HTTP message
- */
-void mg_handle_play_recording(struct mg_connection *c, struct mg_http_message *hm);
-
-/**
- * @brief Mongoose-specific handler for GET /api/recordings/download/:id
- *
- * @param c Mongoose connection
- * @param hm HTTP message
- */
-void mg_handle_download_recording(struct mg_connection *c, struct mg_http_message *hm);
-#endif
-
 #endif // API_HANDLERS_RECORDINGS_PLAYBACK_H
