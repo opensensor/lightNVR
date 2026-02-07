@@ -1147,8 +1147,8 @@ cleanup:
         // No need to register them again during shutdown
         log_info("Starting shutdown sequence for all components...");
 
-        // Wait a moment for callbacks to clear and any in-progress operations to complete
-        usleep(1000000);  // 1000ms (increased from 500ms)
+        // Brief wait for callbacks to clear and any in-progress operations to complete
+        usleep(250000);  // 250ms (reduced from 1000ms)
 
         // Stop all detection stream readers first
         log_info("Stopping all detection stream readers...");
@@ -1242,8 +1242,8 @@ cleanup:
         log_info("Cleaning up detection stream system...");
         shutdown_detection_stream_system();
 
-        // Wait for detection streams to stop
-        usleep(1000000);  // 1000ms
+        // Brief wait for detection streams to stop
+        usleep(200000);  // 200ms (reduced from 1000ms)
 
         // Clean up all HLS writers first to ensure proper FFmpeg resource cleanup
         log_info("Cleaning up all HLS writers...");
@@ -1253,8 +1253,8 @@ cleanup:
         log_info("Cleaning up HLS streaming backend...");
         cleanup_hls_streaming_backend();
 
-        // Wait for HLS streaming to clean up
-        usleep(1000000);  // 1000ms
+        // Brief wait for HLS streaming cleanup
+        usleep(200000);  // 200ms (reduced from 1000ms)
 
         // Clean up ONVIF motion recording system before MP4 backend
         log_info("Cleaning up ONVIF motion recording system...");
@@ -1264,8 +1264,8 @@ cleanup:
         log_info("Cleaning up MP4 recording backend...");
         cleanup_mp4_recording_backend();
 
-        // Wait for MP4 recording to clean up
-        usleep(1000000);  // 1000ms
+        // Brief wait for MP4 recording cleanup
+        usleep(200000);  // 200ms (reduced from 1000ms)
 
         // Clean up FFmpeg resources
         log_info("Cleaning up transcoding backend...");
@@ -1384,8 +1384,8 @@ cleanup:
             }
         }
 
-        // Wait a moment
-        usleep(1000000);  // 1 second
+        // Brief wait before cleanup
+        usleep(200000);  // 200ms (reduced from 1000ms)
 
         // Close all MP4 writers first
         close_all_mp4_writers();
